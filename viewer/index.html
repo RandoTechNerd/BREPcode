@@ -3966,8 +3966,7 @@
 
     function spawnHandles(fid) {
       clearHandles();
-      const site = ((mapText === code.value && featureMap) ? featureMap[fid] : null)
-        || freeformSiteOf(code.value);
+      const site = (mapText === code.value && featureMap) ? featureMap[fid] : null;
       if (!site) return;
       const bb = new THREE.Box3();
       for (const m of modelGroup.children) if (m.userData.featureId === fid) bb.expandByObject(m);
@@ -4039,21 +4038,6 @@
     // mapping can't tie the result back to one call and no handles would spawn,
     // leaving a shape you can convert once and then never touch again. When the
     // document IS a single freeform call, synthesise the site directly.
-    function freeformSiteOf(text) {
-      const m = /freeform\s*\(\s*\[/.exec(text);
-      if (!m) return null;
-      // walk to the matching close paren so nested brackets don't fool us
-      let depth = 0, end = -1;
-      for (let i = m.index + m[0].length - 2; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === "(") depth++;
-        else if (ch === ")") { depth--; if (depth === 0) { end = i + 1; break; } }
-      }
-      if (end < 0) return null;
-      const site = { kind: "freeform", start: m.index, end };
-      return existingFreeformPoints(text, site) ? site : null;
-    }
-
     const fmtPt = (p) => `[${p.map((n) => +n.toFixed(2)).join(", ")}]`;
     function freeformCall(points) {
       return `freeform([\n  ${points.map(fmtPt).join(",\n  ")},\n])`;
@@ -4143,8 +4127,7 @@
         // freeform falls back to its own site, same as the click path: its
         // markers may not be in featureMap, and without this the handles spawn
         // but refuse to drag.
-        const hSite = ((mapText === code.value && featureMap) ? featureMap[H.fid] : null)
-          || freeformSiteOf(code.value);
+        const hSite = (mapText === code.value && featureMap) ? featureMap[H.fid] : null;
         if (hSite) {
           const fbb = new THREE.Box3();
           for (const m of modelGroup.children) if (m.userData.featureId === H.fid) fbb.expandByObject(m);
@@ -4255,8 +4238,7 @@
       // A freeform() has no one-to-one feature mapping (it compiles to a hull of
       // markers), so fall back to its own site or clicking it would select
       // nothing and its corners would be uneditable after the first drag.
-      const site = (hit && mapFresh ? featureMap[hit.object.userData.featureId] : null)
-        || (hit ? freeformSiteOf(code.value) : null);
+      const site = hit && mapFresh ? featureMap[hit.object.userData.featureId] : null;
       if (!hit) clearHandles();          // clicked empty space: drop the selection
       if (site) {
         const fid = hit.object.userData.featureId;
@@ -4654,7 +4636,7 @@
       const fdims = fbb.isEmpty() ? "" :
         ` (${["x", "y", "z"].map((a) => (fbb.max[a] - fbb.min[a]).toFixed(1)).join(" × ")} mm)`;
 
-      const site = featureMap?.[fid] || freeformSiteOf(code.value);
+      const site = featureMap?.[fid];
       if (!site) {
         if (modelGroup.children.length) {
           hint.innerHTML = `This piece measures <b>${fdims.replace(/[()]/g, "").trim() || "?"}</b> — can't map it back to a single call (loops, helpers, or modules), so edit the text directly.`;

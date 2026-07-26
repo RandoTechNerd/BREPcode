@@ -723,18 +723,25 @@ const round3 = (n) => Math.round(n * 1000) / 1000;
 // the whole call. Textual order equals emission order for straight-line code —
 // the viewer verifies the kind sequence against the compile trace before
 // trusting the mapping.
-const PRIM_WORDS = /\b(freeform|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh)\s*\(/g;
+const PRIM_WORDS = /\b(freeform|hull|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh)\s*\(/g;
 const KIND_CODES = {
   cube: ["P.CU"], cuboid: ["P.CU"],
   sphere: ["P.S"], spheroid: ["P.S"],
   cylinder: ["P.CY", "P.CO"], cyl: ["P.CY", "P.CO"],
   cone: ["P.CO"], torus: ["P.T"],
   importedMesh: ["IMPORT3D"],
-  freeform: ["P.S"],        // one marker sphere per corner
+  // hull() (and freeform(), which is a hull of corner markers) builds its
+  // children in a THROWAWAY history and re-imports the result, so it reaches
+  // the trace as a single IMPORT3D no matter how many shapes went in.
+  freeform: ["IMPORT3D"], hull: ["IMPORT3D"],
 };
 
 export function primitiveSites(text) {
   const sites = [];
+  // Shapes written INSIDE a hull()/freeform() are built in a throwaway history
+  // and re-imported as one mesh, so they never reach the trace. Counting them
+  // as sites made the sequences disagree and killed the whole map.
+  let swallowUntil = -1;
   for (const m of text.matchAll(PRIM_WORDS)) {
     const open = m.index + m[0].length - 1;
     let depth = 0, end = -1;
@@ -743,20 +750,8 @@ export function primitiveSites(text) {
       else if (text[i] === ")" && --depth === 0) { end = i + 1; break; }
     }
     if (end < 0) continue;
-    // freeform() is ONE call in the source but compiles to one marker sphere
-    // per corner. Emitting a single site made the sequence lengths disagree,
-    // and mapTraceToSites answers all-or-nothing: the whole document became
-    // unclickable, negatives included, the moment a freeform appeared. Push one
-    // site per point, all pointing at the same call, so the counts line up and
-    // clicking any part of the shape selects the freeform.
-    if (m[1] === "freeform") {
-      const body = text.slice(m.index, end);
-      const pts = (body.match(/\[\s*-?[\d.]+\s*,\s*-?[\d.]+\s*,\s*-?[\d.]+\s*\]/g) || []).length;
-      for (let i = 0; i < pts; i++) {
-        sites.push({ kind: "freeform", start: m.index, end, codes: ["P.S"] });
-      }
-      continue;
-    }
+    if (m.index < swallowUntil) continue;          // nested inside a hull
+    if (m[1] === "hull" || m[1] === "freeform") swallowUntil = end;
     sites.push({ kind: m[1], start: m.index, end, codes: KIND_CODES[m[1]] });
   }
   return sites;
@@ -767,13 +762,55 @@ export function primitiveSites(text) {
 // variables all make them diverge, and then we simply don't map.
 export function mapTraceToSites(trace, text) {
   const sites = primitiveSites(text);
-  if (trace.length !== sites.length) return null;
-  for (let i = 0; i < trace.length; i++) {
-    if (!sites[i].codes.includes(trace[i].code)) return null;
+
+  // Best case: the sequences agree outright, so every shape maps.
+  if (trace.length === sites.length
+    && trace.every((t, i) => sites[i].codes.includes(t.code))) {
+    const byId = {};
+    trace.forEach((t, i) => { byId[t.id] = sites[i]; });
+    return byId;
   }
+
+  // Otherwise DEGRADE PER SHAPE rather than giving up on the document. This
+  // used to return null, which meant one loop, helper or unrecognised call made
+  // every shape in the model unclickable, with no way to tell why.
+  //
+  // The safety rule is unchanged: only map where the answer is provably right,
+  // because a WRONG mapping is far worse than none — dragging one shape would
+  // silently rewrite another shape's numbers. So a code is only mapped when the
+  // trace and the source contain the SAME NUMBER of it. Then the nth of that
+  // code in the trace must be the nth in the source, since the compiler emits
+  // in source order. Any code whose counts disagree is left unmapped, and only
+  // those shapes go dead.
+  //
+  // A site may accept several codes (cylinder covers both P.CY and P.CO). Pin
+  // it to one by seeing which of them the trace actually contains; if more than
+  // one does, the document mixes them and there is no safe way to tell which
+  // site produced which, so that site is left out.
+  const present = new Set(trace.map((t) => t.code));
+  const byCode = new Map();
+  sites.forEach((s, i) => {
+    const hits = s.codes.filter((c) => present.has(c));
+    if (hits.length !== 1) return;
+    const list = byCode.get(hits[0]) || [];
+    list.push(i);
+    byCode.set(hits[0], list);
+  });
+  const traceByCode = new Map();
+  trace.forEach((t, i) => {
+    const list = traceByCode.get(t.code) || [];
+    list.push(i);
+    traceByCode.set(t.code, list);
+  });
+
   const byId = {};
-  trace.forEach((t, i) => { byId[t.id] = sites[i]; });
-  return byId;
+  let mapped = 0;
+  for (const [code, tIdx] of traceByCode) {
+    const sIdx = byCode.get(code);
+    if (!sIdx || sIdx.length !== tIdx.length) continue;   // counts disagree: skip this code
+    tIdx.forEach((t, k) => { byId[trace[t].id] = sites[sIdx[k]]; mapped++; });
+  }
+  return mapped ? byId : null;
 }
 
 // Innermost union/difference/intersection call span containing pos, or null.
