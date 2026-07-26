@@ -97,6 +97,41 @@ function buildPrim(r, n) {
 export async function buildCurved(root) {
   const r = await loadReplicad();
 
+  // hull() has no analytic equivalent: OCCT has no convex-hull operation, and
+  // the result genuinely IS faceted, so there is nothing curved to preserve.
+  // The route in is to compute the hull ourselves and hand OCCT the triangles
+  // through importSTL, which gives a real shape that booleans and projects
+  // like any other. Resolved in a pre-pass because importSTL is async while
+  // build() below is not, innermost hulls first so nested ones work.
+  const hullShapes = new Map();
+  const kids = (n) => (n?.child ? [n.child] : (Array.isArray(n?.children) ? n.children : []));
+  const resolveHulls = async (n) => {
+    if (!n || typeof n !== "object") return;
+    for (const c of kids(n)) await resolveHulls(c);
+    if (n.kind !== "hull" || hullShapes.has(n)) return;
+
+    const pts = [];
+    for (const child of n.children) {
+      const mesh = build(child, new Matrix4()).mesh();
+      const v = mesh.vertices;
+      for (let i = 0; i < v.length; i += 3) pts.push(new Vector3(v[i], v[i + 1], v[i + 2]));
+    }
+    if (pts.length < 4) throw new Error("curved export: hull() needs shapes with geometry");
+    const { ConvexGeometry } = await import("three/addons/geometries/ConvexGeometry.js");
+    const geo = new ConvexGeometry(pts);
+    const pos = geo.attributes.position;
+    const out = ["solid hull"];
+    for (let i = 0; i < pos.count; i += 3) {
+      out.push("facet normal 0 0 0", "outer loop");
+      for (let k = 0; k < 3; k++) {
+        out.push(`vertex ${pos.getX(i + k)} ${pos.getY(i + k)} ${pos.getZ(i + k)}`);
+      }
+      out.push("endloop", "endfacet");
+    }
+    out.push("endsolid hull");
+    hullShapes.set(n, await r.importSTL(new Blob([out.join("\n")], { type: "model/stl" })));
+  };
+
   const build = (n, matrix) => {
     if (n.kind === "xform") {
       return build(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix));
@@ -134,12 +169,18 @@ export async function buildCurved(root) {
       const rev = d.close().sketchOnPlane("XZ").revolve([0, 0, 1], { angleDegrees: n.angle ?? 360 });
       return applyMatrix(rev, matrix);
     }
+    if (n.kind === "hull") {
+      const shape = hullShapes.get(n);
+      if (!shape) throw new Error("curved export: hull was not resolved before the build");
+      return applyMatrix(shape, matrix);
+    }
     if (n.kind === "import") {
       throw new Error("importedMesh() is triangles all the way down — there are no curved surfaces to recover. Export meshes as STL/3MF instead.");
     }
     throw new Error(`curved export: unknown node kind "${n.kind}"`);
   };
 
+  await resolveHulls(root);
   return build(root, new Matrix4());
 }
 

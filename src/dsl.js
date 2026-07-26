@@ -393,8 +393,14 @@ export function freeform(points, opts = {}) {
     throw new TypeError("freeform() needs at least 4 corner points, e.g. freeform([[0,0,0], [10,0,0], [10,10,0], [0,0,10]]) — press Free-form and drag a corner and the editor fills this in");
   }
   const bead = Math.max(0.001, opts.bead ?? opts.r ?? 0.01);
-  const fn = Math.max(3, Math.min(16, Math.round(opts.$fn ?? 6)));
-  return hull(...pts.map((p) => translate([p[0], p[1], p[2]], sphere({ r: bead, $fn: fn }))));
+  // A CUBE, not a sphere. The marker is 0.01mm, far under a nozzle, so its
+  // shape cannot matter to the print, but it matters a lot downstream: every
+  // marker vertex is a hull vertex, and every hull facet becomes hidden-line
+  // geometry in the blueprint. A sphere contributes hundreds of points (the
+  // STEP path meshes it analytically, ignoring $fn); a cube contributes eight.
+  // Eight spheres made a 1.7MB SVG.
+  return hull(...pts.map((p) => translate([p[0], p[1], p[2]],
+    cube([bead, bead, bead], { center: true }))));
 }
 
 // The 8 corners of an axis-aligned box, in the order the viewer's corner

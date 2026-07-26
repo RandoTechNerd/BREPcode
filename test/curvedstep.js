@@ -15,6 +15,7 @@ import { buildCurved, _setReplicad } from "../viewer/curved.js";
 import {
   cube, cylinder, cone, sphere, torus, polygon, linearExtrude,
   difference, union, translate, rotate, scale, importedMesh, registerImport,
+  hull, freeform,
 } from "../src/dsl.js";
 
 let pass = 0, fail = 0;
@@ -87,6 +88,35 @@ try {
   check("mesh import errors clearly", false, "no error");
 } catch (e) {
   check("mesh import errors clearly", /triangles/.test(e.message), e.message.slice(0, 60));
+}
+
+// hull() has no analytic form and OCCT has no hull operation, so the exporter
+// computes the hull itself and feeds OCCT the triangles. Before this, hull threw
+// "unknown node kind" and took SVG blueprint and STEP export down with it.
+console.log("\nhull and freeform reach the curved exporter\n");
+{
+  const shape = await buildCurved(
+    hull(cylinder({ r: 10, h: 4 }), translate([40, 0, 0], cylinder({ r: 5, h: 4 }))));
+  const [lo, hi] = shape.boundingBox.bounds;
+  const near = (a, b) => Math.abs(a - b) < 0.6;
+  check("hull exports at all", !!shape);
+  check("hull spans both cylinders", near(lo[0], -10) && near(hi[0], 45),
+    `x ${lo[0].toFixed(1)}..${hi[0].toFixed(1)}`);
+  check("hull keeps its height", near(hi[2] - lo[2], 4), `${(hi[2] - lo[2]).toFixed(2)}`);
+}
+{
+  // a hull inside a boolean, which is where the old failure actually bit
+  const shape = await buildCurved(difference(
+    hull(cylinder({ r: 12, h: 6 }), translate([35, 0, 0], cylinder({ r: 12, h: 6 }))),
+    translate([17, 0, -1], cylinder({ r: 5, h: 10 }))));
+  check("hull can be cut by a boolean", !!shape && shape.boundingBox.bounds[1][0] > 40);
+}
+{
+  const shape = await buildCurved(freeform([[0, 0, 0], [20, 0, 0], [0, 20, 0], [0, 0, 10]]));
+  const [lo, hi] = shape.boundingBox.bounds;
+  check("freeform exports", !!shape);
+  check("freeform spans its corners", hi[0] - lo[0] > 19 && hi[2] - lo[2] > 9,
+    `${(hi[0] - lo[0]).toFixed(1)} x ${(hi[2] - lo[2]).toFixed(1)}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
