@@ -6,6 +6,10 @@ dist-site/
 dist-desktop/
 BREPcode-site.zip
 
+# One-off models produced while answering a question — handed to the user, not
+# part of the source. Regenerate rather than commit.
+out/
+
 # Scratch models and exports left behind while testing
 /*.stl
 /*.3mf

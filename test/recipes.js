@@ -51,6 +51,30 @@ check("stated dimensions silence the question too",
 check("...but a vague request still asks",
   asks("can you make me a holder").includes("holder"));
 
+// ---- the editor counts as context, not just the message -----------------
+// "make it narrower" with an import on screen is a question ABOUT an import,
+// but the sentence contains no word that says so. Missing #imported here is how
+// a model ends up inventing a bounding box and writing cutters that miss.
+{
+  const code = 'return stretch({ axis: "x", by: -60, at: 0 },\n  importedMesh("black frame PRINT THIS ONE - BLACK .stl", { split: true }));';
+  const withCode = matchRecipes("make it narrower", manifest, { code }).matched.map((r) => r.tag);
+  const without = matchRecipes("make it narrower", manifest).matched.map((r) => r.tag);
+  check("the message alone finds #resize", without.includes("resize"), without.join(","));
+  check("...but not #imported, because nothing said so", !without.includes("imported"));
+  check("the editor's importedMesh() pulls #imported in", withCode.includes("imported"), withCode.join(","));
+  check("...and #resize is still there", withCode.includes("resize"));
+
+  // questions stay a property of the REQUEST — a screenful of code must not
+  // decide whether the user was vague
+  const vague = matchRecipes("can you make me a holder", manifest, { code: "cube([10,10,10])" });
+  check("code does not silence a vague request's question",
+    vague.questions.some((q) => q.tag === "holder"), JSON.stringify(vague.questions));
+
+  // and an empty editor must behave exactly as before
+  check("empty editor changes nothing",
+    matchRecipes("make it narrower", manifest, { code: "" }).matched.length === without.length);
+}
+
 // ---- false positives are the expensive failure --------------------------
 check("\"aardvark\" does not match #AA", !tags("a model of an aardvark").includes("AA"));
 check("\"excellent\" does not match #batt", !tags("that is excellent, thanks").includes("batt"));

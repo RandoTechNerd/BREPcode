@@ -86,11 +86,22 @@ export function statesDimensions(text) {
 
 // Returns the recipes this message calls for, most specific first, plus any
 // questions still worth asking.
+//
+// opts.code is the model currently in the editor. It has to be searched too:
+// "make it narrower" with importedMesh("frame.stl") on screen is a question
+// about an import, but the message alone contains no word that says so, and the
+// import rules are exactly what stops the model inventing a bounding box. The
+// editor is already sent to the LLM as context — this makes the LIBRARY see the
+// same thing the model does.
+//
+// Questions, though, come from the message only. Whether a request is vague is
+// a property of what the user asked, not of what happens to be on screen.
 export function matchRecipes(text, manifest, opts = {}) {
   const entries = manifest?.recipes || [];
+  const haystack = opts.code ? `${text}\n${opts.code}` : text;
   const hit = new Map();
   for (const r of entries) {
-    if ((r.match || []).some((term) => termMatches(term, text))) hit.set(r.tag, r);
+    if ((r.match || []).some((term) => termMatches(term, haystack))) hit.set(r.tag, r);
   }
 
   // A matched child pulls its parent in for context even when the parent's own

@@ -6702,7 +6702,11 @@
         let reference = "";
         try {
           const R = await getRecipes();
-          const ref = await R.referenceFor(text);
+          // The editor goes in as well as the message. "make it narrower" with
+          // an importedMesh() on screen is a question about an import, but the
+          // sentence alone says nothing that would match — and the import rules
+          // are precisely what stops the model inventing a bounding box.
+          const ref = await R.referenceFor(text, { code: code.value });
           reference = ref.text;
           if (ref.questions.length) {
             reference += `\n\nSTILL UNKNOWN — ${ref.questions.map((q) => q.ask).join(" ")}`

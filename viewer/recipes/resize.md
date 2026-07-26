@@ -53,8 +53,15 @@ matter.
 
 ### Getting it right
 
-- `at` is where the cut lands, in the part's own coordinates. Imports are
-  recentred, so **`at: 0` is the middle** and is almost always what you want.
+- **`at: 0` is the middle. Never write `at: width / 2`.** This is the single
+  most common way to get this wrong. The viewer recentres every import, so a
+  120mm-wide part spans −60 to +60 — `width / 2` is 60, which is its right
+  EDGE. The removed slab is centred on `at`, so half of it hangs off the end
+  into empty space and you take out half of what you asked for: on a real
+  120mm frame, `at: 60, by: -60` yields a **90mm** part, not 60mm, chewed in
+  from one side. `at: 0` gives the correct 60mm.
+- `at` is only non-zero when you deliberately want an off-centre cut — and then
+  it is a coordinate in the part's own space (−60…+60 here), never a width.
 - Land the cut on a plain stretch of the part — not through a hole, a boss or
   a piece of text, or the two halves will not meet cleanly.
 - "Remove 50% of the width" means `by: -(width * 0.5)`. Read the width from the
