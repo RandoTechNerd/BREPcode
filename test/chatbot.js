@@ -4,6 +4,7 @@
 import {
   respond, buildModelsRequest, extractModels, modelScore,
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
+  parseOp, opCode, EPS,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -386,6 +387,85 @@ console.log("\nmodel ranking\n");
     parseFaceEdit("the top looks nice", box) === null);
   check("scale needs to be asked for by name",
     parseScale("make it wider", box) === null);
+}
+
+// ---- plain-English operations ---------------------------------------------
+// "Punch a hole in it", "round the edges", "drop it to the floor". Each has one
+// sensible reading given the box, so none needs a follow-up. The epsilon
+// overshoot is the part that must not regress: a cutter flush with the solid's
+// face is a coincident face, which looks fine in the viewer and prints as a
+// skin over the hole.
+{
+  const near2 = (a, b, tol) => Math.abs(a - b) <= tol;
+  const measure = async (code) => {
+    const stl = toSTL(await build(evalCode(code)), "t");
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    if (!v.length) throw new Error("built to nothing");
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    let vol = 0;
+    for (const p of v) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
+    for (let i = 0; i < v.length; i += 3) {
+      const [a, b, c] = [v[i], v[i + 1], v[i + 2]];
+      vol += (a[0] * (b[1] * c[2] - c[1] * b[2]) - a[1] * (b[0] * c[2] - c[0] * b[2]) + a[2] * (b[0] * c[1] - c[0] * b[1])) / 6;
+    }
+    return { size: hi.map((h, i) => h - lo[i]), min: lo, vol: Math.abs(vol) };
+  };
+
+  const SRC = "return translate([0, 0, 5], cube([100, 60, 10]));";   // floating 5mm up
+  const base = await measure(SRC);
+  const box = { min: base.min, max: base.min.map((n, i) => n + base.size[i]) };
+
+  // the phrases from the translation lexicon
+  for (const [q, kind] of [
+    ["punch a hole in it", "hole"], ["take a bite out of the middle", "hole"],
+    ["cut a hole through it", "hole"],
+    ["round the edges", "round"], ["smooth it", "round"], ["soften the corners", "round"],
+    ["bevel the edges", "bevel"], ["chamfer it", "bevel"],
+    ["drop it to the floor", "floor"], ["centre it", "centre"], ["center it", "centre"],
+  ]) {
+    const op = parseOp(q, box);
+    check(`"${q}" reads as ${kind}`, op?.kind === kind, JSON.stringify(op));
+  }
+
+  // and each one builds into geometry that actually changed
+  const hole = parseOp("punch a hole in it", box);
+  const holeCode = opCode(SRC, hole);
+  check("the hole cutter starts BELOW the base (epsilon)",
+    holeCode.includes(`${base.min[2] - 0.01}`), holeCode);
+  check("...and is taller than the part (epsilon at both ends)",
+    /h: 10\.02\b/.test(holeCode), holeCode);
+  const holed = await measure(holeCode);
+  check("...and really removes a cylinder of material",
+    near2(base.vol - holed.vol, Math.PI * 10 * 10 * 10, 60),
+    `removed ${(base.vol - holed.vol).toFixed(0)}, expected ${(Math.PI * 1000).toFixed(0)}`);
+
+  const floored = await measure(opCode(SRC, parseOp("drop it to the floor", box)));
+  check("drop to the floor lands the base exactly on z = 0", near2(floored.min[2], 0, 0.02), `${floored.min[2]}`);
+
+  const centred = await measure(opCode(SRC, parseOp("centre it", box)));
+  check("centre it centres on x and y",
+    near2(centred.min[0] + centred.size[0] / 2, 0, 0.02) && near2(centred.min[1] + centred.size[1] / 2, 0, 0.02));
+
+  const rounded = await measure(opCode(SRC, parseOp("round the edges", box)));
+  check("rounding eases material off without changing the size",
+    rounded.vol < base.vol && near2(rounded.size[0], 100, 0.05), `${rounded.vol.toFixed(0)}`);
+
+  // sizes are honoured when given, and refused when impossible
+  check("an explicit hole size is used", parseOp("punch a 20mm hole", box)?.dia === 20);
+  check("a radius is doubled to a diameter", parseOp("punch a hole r 5", box)?.dia === 10);
+  check("an explicit fillet radius is used", parseOp("round the edges 2mm", box)?.r === 2);
+  check("a hole bigger than the part is refused",
+    /doesn't fit/.test(parseOp("punch a 90mm hole", box)?.error || ""));
+  check("a fillet bigger than the part is refused",
+    /too big/.test(parseOp("round it by 40mm", box)?.error || ""));
+  check("already on the floor says so rather than moving it",
+    parseOp("drop it to the floor", { min: [0, 0, 0], max: [10, 10, 10] })?.already === true);
+
+  // things this must NOT claim
+  check("hollow goes to the AI — there is no shell operator", parseOp("make it hollow", box) === null);
+  check("\"put a cone on top\" goes to the AI", parseOp("put a cone on top", box) === null);
+  check("a face phrase is left to the face editor", parseOp("round the top edge", box) === null);
+  check("no dims means no local op", parseOp("punch a hole in it", null) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

@@ -530,7 +530,7 @@ on every request: the fins paragraph, the imported-mesh rules, the whole referen
 whether you asked for a battery box or a cube.
 
 `viewer/recipes/` breaks that into tagged markdown files that are fetched only when a message
-actually mentions them. The prompt went from **9.1 KB on every call to 3.4 KB**, plus 1-3 KB only
+actually mentions them. The prompt went from **9.1 KB on every call to 4.3 KB**, plus 1-3 KB only
 when it is relevant.
 
 Tags nest, and that is the useful part:
@@ -550,6 +550,46 @@ Adding a subject is dropping a `.md` file in with a `tag:` and `match:` header �
 frontmatter (`npm run recipes`), and `test/recipes.js` fails if the committed manifest has drifted,
 because a hand-maintained list is exactly how the three.js addons once went missing from two
 shipped bundles.
+
+### Editing in plain English, with no API key
+
+Beginners describe the *result*, not the operation. A good number of those phrases have exactly one
+sensible reading once the part's bounding box is known, so the built-in assistant answers them
+directly — no key, no cost, no round-trip, and **no chance of inventing a bounding box**, which is
+the failure this class of edit is famous for.
+
+| You say | It does |
+|---|---|
+| punch a hole, cut the middle, take a bite out of it | `difference` with a cylinder down the centre, through |
+| round the edges, smooth it, soften the corners | `fillet` |
+| bevel it, chamfer it, slant the edges | `chamfer` |
+| take 0.2mm off the top, trim 2mm from the left | shave that face |
+| extend the right side by 7mm, add 5mm to the top | push that face out |
+| decrease width by 30%, make it 50mm wide, 20mm longer | cut a slab out of the middle, or fill one in |
+| double the width, half the height | `scale` (and it says that features scaled too) |
+| drop it to the floor | base to z = 0 |
+| centre it | centroid to the origin |
+
+Sizes are used when you give them and derived from the part when you don't. Anything that cannot
+fit is refused with the number that explains why — *"a 90mm hole doesn't fit, the part is only 60mm
+across at its narrowest"* — rather than built into a broken model. Genuinely ambiguous wording
+("make it smaller", "make it wider") still goes to the AI instead of being guessed at.
+
+The rest of the lexicon — hollowing, putting one shape on another's face, aligning several solids —
+needs a judgement the bounding box cannot supply: a wall thickness, which face to open, what shape
+to add. Those go to the model with `#lexicon` attached, and with no key the assistant says which
+piece is missing rather than guessing.
+
+### The epsilon rule
+
+A subtractive body whose face lands exactly on the solid's face is a **coincident face**. The kernel
+may or may not resolve it, and a slicer will happily print a thin skin across the "hole". It looks
+correct in the viewer and fails on the printer, which is the worst way to be wrong.
+
+So every cutter overshoots every surface it breaches. A through hole in a 10mm plate is
+`h: 10 + 2*EPS` starting at `z: -EPS`, never `h: 10` starting at `z: 0`. This is in the always-on
+part of the prompt rather than a recipe, because it applies to every subtraction anyone ever writes,
+and the built-in assistant's own hole command emits it with the comment explaining why.
 
 ## Status and next steps
 

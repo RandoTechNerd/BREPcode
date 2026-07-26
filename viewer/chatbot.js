@@ -524,6 +524,112 @@ export function scaleCode(currentCode, r) {
     `scale([${f.join(", ")}],\n  ${inner.replace(/\n/g, "\n  ")})`);
 }
 
+// ---- plain-English operations on whatever is already built ------------------
+// "Punch a hole in it", "round the edges", "drop it to the floor" — each has
+// exactly one sensible reading once you know the part's box, so none of them
+// needs a model, an API key, or a follow-up question. Anything genuinely
+// ambiguous is left alone and goes to the AI instead.
+//
+// EPS is the overshoot every subtraction gets. A cutter whose face lands
+// exactly on the solid's face is a coincident-face case: the kernel may or may
+// not close it, and a slicer will happily produce a shell with a hole in it.
+// Overshooting by a hair costs nothing and removes the whole class of bug.
+export const EPS = 0.01;
+
+const OPS = {
+  floor: /\b(drop|sit|sink|put|move|place)\b[^.]{0,24}\b(floor|bed|ground|z\s*=?\s*0|plate)\b|\bon the (floor|bed|plate)\b/,
+  centre: /\b(cent(?:er|re)) (it|them|this|the (?:part|model|shape))\b|\bcent(?:er|re) (?:it|on) (?:the )?origin\b|^\s*cent(?:er|re)\s*(?:it)?\s*$/,
+  round: /\b(round(?:ed)?|smooth|soften)\b[^.]{0,20}\b(edge|edges|corner|corners|it|off)\b|\bfillet\b|^\s*smooth it\s*$/,
+  bevel: /\bbevel\b|\bchamfer\b|\bslant\b[^.]{0,16}\bedge/,
+  hole: /\b(punch|bore|drill|put|cut|make|add)\b[^.]{0,20}\bhole\b|\btake a bite\b/,
+};
+
+export function parseOp(text, dims) {
+  const box = boxOf(dims);
+  if (!box) return null;
+  const lower = text.toLowerCase();
+  // a face word means the one-sided face editor owns this, not us
+  if (/\b(top|bottom|left|right|front|back)\b/.test(lower) && !OPS.hole.test(lower)) return null;
+
+  let kind = null;
+  for (const [k, re] of Object.entries(OPS)) if (re.test(lower)) { kind = k; break; }
+  if (!kind) return null;
+
+  const [w, d, h] = box.size;
+  const num = (re, fallback) => {
+    const m = re.exec(lower);
+    return m ? +m[1] : fallback;
+  };
+
+  if (kind === "floor") {
+    if (Math.abs(box.min[2]) < 0.005) return { kind, already: true };
+    return { kind, drop: round2(box.min[2]) };
+  }
+  if (kind === "centre") {
+    const dx = round2(-(box.min[0] + box.max[0]) / 2), dy = round2(-(box.min[1] + box.max[1]) / 2);
+    if (!dx && !dy) return { kind, already: true };
+    return { kind, dx, dy };
+  }
+  if (kind === "round" || kind === "bevel") {
+    // Proportional to the part, capped so it can never eat a thin wall: a 2mm
+    // radius on a 3mm plate is not a rounded edge, it is a missing plate.
+    const auto = round2(Math.min(Math.min(w, d, h) * 0.15, 3));
+    const r = num(/(\d+(?:\.\d+)?)\s*mm\b/, null) ?? num(/\b(?:r|radius|by)\s*(\d+(?:\.\d+)?)/, null) ?? auto;
+    if (!(r > 0)) return null;
+    if (r >= Math.min(w, d, h) / 2) {
+      return { error: `${r}mm is too big — the part is only ${round2(Math.min(w, d, h))}mm on its smallest axis, so that would consume it.` };
+    }
+    return { kind, r: round2(r) };
+  }
+  if (kind === "hole") {
+    // Down the middle of the footprint, through the whole height, unless the
+    // user gave a size. A third of the smaller footprint edge looks right and
+    // always leaves a wall.
+    const dia = num(/(\d+(?:\.\d+)?)\s*mm\b/, null)
+      ?? num(/\b(?:d|dia|diameter)\s*(?:of\s*)?(\d+(?:\.\d+)?)/, null)
+      ?? round2(Math.min(w, d) / 3);
+    const byRadius = /\b(?:r|radius)\s*(?:of\s*)?(\d+(?:\.\d+)?)/.test(lower);
+    const D = byRadius ? num(/\b(?:r|radius)\s*(?:of\s*)?(\d+(?:\.\d+)?)/, dia) * 2 : dia;
+    if (!(D > 0)) return null;
+    if (D >= Math.min(w, d)) {
+      return { error: `a ${round2(D)}mm hole doesn't fit — the part is only ${round2(Math.min(w, d))}mm across at its narrowest.` };
+    }
+    return {
+      kind, dia: round2(D),
+      cx: round2((box.min[0] + box.max[0]) / 2),
+      cy: round2((box.min[1] + box.max[1]) / 2),
+      z0: round2(box.min[2] - EPS),
+      height: round2(h + EPS * 2),
+      box,
+    };
+  }
+  return null;
+}
+
+export function opCode(currentCode, op) {
+  const wrap = (fn) => wrapModel(currentCode, fn);
+  switch (op.kind) {
+    case "floor":
+      return wrap((inner) => `translate([0, 0, ${round2(-op.drop)}],\n  ${inner.replace(/\n/g, "\n  ")})`);
+    case "centre":
+      return wrap((inner) => `translate([${op.dx}, ${op.dy}, 0],\n  ${inner.replace(/\n/g, "\n  ")})`);
+    case "round":
+      return wrap((inner) => `fillet(${op.r},\n  ${inner.replace(/\n/g, "\n  ")})`);
+    case "bevel":
+      return wrap((inner) => `chamfer(${op.r},\n  ${inner.replace(/\n/g, "\n  ")})`);
+    case "hole":
+      // The cutter starts EPS below the base and runs EPS past the top, so
+      // neither end is flush with a face it has to breach.
+      return wrap((inner) =>
+        `difference(\n  ${inner.replace(/\n/g, "\n  ")},\n`
+        + `  // cutter overshoots both faces by ${EPS}mm so no face is coincident\n`
+        + `  translate([${op.cx}, ${op.cy}, ${op.z0}],\n`
+        + `    cylinder({ r: ${round2(op.dia / 2)}, h: ${op.height}, $fn: 64 })))`);
+    default:
+      return currentCode;
+  }
+}
+
 // Main entry. state persists between calls: { pending, flow }
 // dims is the built model's measured [x, y, z] size in mm, when there is one.
 export function respond(text, state = {}, currentCode = "", dims = null) {
@@ -552,6 +658,28 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
           + " (◀ undoes it.)",
         code: faceEditCode(currentCode, f),
       };
+    }
+
+    // Plain-English operations with exactly one sensible reading: punch a hole,
+    // round the edges, bevel, drop to the floor, centre it.
+    const op = parseOp(t, dims);
+    if (op?.error) return { reply: `Can't do that — ${op.error}` };
+    if (op?.already) {
+      return { reply: op.kind === "floor"
+        ? "It's already sitting on z = 0 — nothing to drop."
+        : "It's already centred on the origin." };
+    }
+    if (op) {
+      const said = {
+        floor: () => `Dropped it ${Math.abs(op.drop)}mm so the base sits exactly on z = 0.`,
+        centre: () => `Centred it on the origin — moved ${op.dx}mm on X and ${op.dy}mm on Y.`,
+        round: () => `Rounded every edge with a ${op.r}mm fillet.`,
+        bevel: () => `Chamfered every edge by ${op.r}mm.`,
+        hole: () => `Punched a ${op.dia}mm hole straight down the middle, all the way through.`
+          + ` The cutter overshoots both faces by ${EPS}mm so no face is left coincident —`
+          + ` that's what stops a slicer seeing a lid over the hole.`,
+      }[op.kind]();
+      return { reply: `${said} (◀ undoes it.)`, code: opCode(currentCode, op) };
     }
 
     // Scale is its own thing and the user has to have asked for it by name —
@@ -678,6 +806,25 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
     return { reply: "A holder — how big inside? e.g. “80 wide, 100 deep”, or “go ahead” for 80 × 100 mm." };
   }
 
+  // Lexicon phrases the rule engine deliberately does NOT guess at. Each needs
+  // a judgement the box alone cannot supply — a wall thickness, which face to
+  // open, what shape to add, which of several solids to line up. Falling
+  // through to "I didn't spot a shape I know" would be a useless answer to a
+  // perfectly reasonable request, so name the missing piece instead.
+  if (currentCode.trim()) {
+    const defer = [
+      [/\b(hollow|shell)\b/, "Hollowing needs a wall thickness — there's no shell operator, so it's a difference against an inset copy",
+        "try “make it hollow with 2.4mm walls, open at the top”"],
+      [/\b(on top|attach|stack|mount on)\b/, "Adding a shape on a face needs to know what shape and how big",
+        "try “put a 20mm cone on top”"],
+      [/\b(align|line up|flush)\b/, "Aligning needs at least two solids and which edges should match",
+        "try “centre it” for a single part"],
+    ].find(([re]) => re.test(lower));
+    if (defer) {
+      return { reply: `${defer[1]}. I can do the mechanical edits on my own — holes, fillets, chamfers, resizing, drop to the floor, centre it — but this one wants a real model: add a Gemini or Claude key in ⚙ and it'll be one shot. Otherwise ${defer[2]} and tell me the numbers.` };
+    }
+  }
+
   // requests clearly beyond the built-in skills -> recommend the API
   if (/\b(gear|thread|text|logo|hinge|screw thread|dragon|figurine|organic|helix|spiral|enclosure with lid|case for)\b/.test(lower)) {
     return { reply: "That one's beyond my built-in tricks — I do boxes, stacks, holes, brackets, frames and holders. Add a Gemini or Claude API key in ⚙ settings and I'll pass your exact words to a real model that can write it." };
@@ -801,7 +948,8 @@ Colour: colorize([r,g,b], shape) tags a colour; a model with 2+ colours exports 
 RULES
 - Millimetres. Z is up. Parts print bottom-down on z=0.
 - A REFERENCE section may be appended below with exact sizes and rules for whatever this request is about (a cell, a holder, supports, editing an import). When it is there it is authoritative — build from those numbers rather than recalling your own, and do not ask for measurements it already gives you.
-- Overshoot every cutter: start 1mm below, run 2mm past.
+- OVERSHOOT EVERY CUTTER. A subtractive body whose face lands exactly on the solid's face is a coincident face: the kernel may or may not resolve it and a slicer will print a thin skin across the "hole". It looks right in the viewer and fails on the printer. So a through hole in a 10mm plate is h: 10 + 2*EPS starting at z: -EPS, never h: 10 starting at z: 0. Use a named EPS constant set to 0.01 (1mm is fine too when it reads more clearly). A blind hole overshoots only the face it enters — its closed end is meant to be inside the material.
+- Every parameter gets a real number and every size gets a named const at the top. Never emit code with an undeclared variable: a model that throws is worse than one with a number the user has to correct. Nothing specified at all -> pick proportionate values and say what you chose in one sentence. Partly specified -> derive the rest from normal proportions (height about twice the radius, a hole about a third of the diameter) and state those too.
 - Sizes live in named variables at the top so the user can tweak them.
 - Either a single expression, or statements ending with return.
 - Editing: if the current code contains importedMesh("file.stl") that is the user's real imported part — wrap that exact call (difference to drill, union to add, stretch to lengthen). Keep the filename byte-identical.
