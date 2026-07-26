@@ -1350,6 +1350,16 @@
             <button id="seloutline-add" class="swatch-add" title="Add a custom highlight colour">+</button>
             <input type="color" id="mat-seloutlinecol" value="#3b9dff" style="display:none" />
           </label>
+          <label class="mat-row"><span>Side grabbers</span>
+            <span class="swatches" id="grab-swatches"></span>
+            <button id="grab-add" class="swatch-add" title="Add a custom grabber colour">+</button>
+            <input type="color" id="mat-grabcol" value="#2e76f2" style="display:none" />
+          </label>
+          <label class="mat-row"><span>Corner balls</span>
+            <span class="swatches" id="ball-swatches"></span>
+            <button id="ball-add" class="swatch-add" title="Add a custom corner-ball colour">+</button>
+            <input type="color" id="mat-ballcol" value="#eaf1ff" style="display:none" />
+          </label>
           <label class="mat-row"><span>Edge sharpness</span>
             <input type="range" id="mat-outlineangle" min="1" max="60" value="20" />
             <output id="mat-outlineangle-o">20°</output>
@@ -1694,6 +1704,9 @@
     // Declared up here because resize() runs during startup, long before the
     // outline section below builds the material.
     let outlineMat = null;
+    // Same reason: applyMaterial() runs before the handle materials exist, so it
+    // calls through this stub, which is replaced once they do.
+    let applyHandleColours = () => {};
 
     function resize() {
       const w = stage.clientWidth, h = stage.clientHeight;
@@ -2021,6 +2034,7 @@
       flat: false, wire: false,
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
       selOutline: true, selOutlineCol: "#3b9dff",
+      grabCol: "#2e76f2", ballCol: "#eaf1ff",
       ambient: 55, key: 150, fill: 50, rim: 0, lightcol: "#ffffff", bg: "#0b0f16",
     };
 
@@ -2068,6 +2082,8 @@
     // Highlight colours read as "selected", so they lead with blues and stay
     // clear of the near-black outline palette above.
     const SELOUTLINE_SWATCHES = ["#3b9dff", "#2e76f2", "#00d0ff", "#7ce0a0", "#ffb02e", "#ff5c8a"];
+    const GRAB_SWATCHES = ["#2e76f2", "#3b9dff", "#00c2a8", "#f2802e", "#a76bf2", "#e0e6f0"];
+    const BALL_SWATCHES = ["#eaf1ff", "#ffffff", "#ffd98a", "#9ad0ff", "#c8f5d0", "#ffb3c8"];
     const BG_SWATCHES = ["#0b0f16", "#1a2438", "#eef2f8", "#141024", "#20242b", "#000000"];
     const LIGHTCOL_SWATCHES = ["#ffffff", "#ffe6b0", "#ffd0a0", "#cfe0ff", "#ffd6e6", "#d6ffe0"];
     let mat = { ...MAT_DEFAULTS, ...JSON.parse(localStorage.getItem("brepcode-material") || "{}") };
@@ -2147,6 +2163,9 @@
       $("mat-outlinewidth-o").textContent = `${mat.outlineWidth ?? 1.5}`;
       $("mat-seloutline").checked = !!mat.selOutline;
       $("mat-seloutlinecol").value = mat.selOutlineCol || "#3b9dff";
+      $("mat-grabcol").value = mat.grabCol || "#2e76f2";
+      $("mat-ballcol").value = mat.ballCol || "#eaf1ff";
+      applyHandleColours();
       $("tex-controls").style.display = mat.texture ? "block" : "none";
       // Orca-style labels for fuzzy skin
       $("tex-depth-lbl").textContent = mat.texture === 1 ? "Thickness" : "Depth";
@@ -2175,6 +2194,8 @@
       ["lightcol-swatches", LIGHTCOL_SWATCHES, "lightcol", "lightcol-add", "mat-lightcol"],
       ["outline-swatches", OUTLINE_SWATCHES, "outlineCol", "outline-add", "mat-outlinecol"],
       ["seloutline-swatches", SELOUTLINE_SWATCHES, "selOutlineCol", "seloutline-add", "mat-seloutlinecol"],
+      ["grab-swatches", GRAB_SWATCHES, "grabCol", "grab-add", "mat-grabcol"],
+      ["ball-swatches", BALL_SWATCHES, "ballCol", "ball-add", "mat-ballcol"],
     ];
 
     function pickSwatch(key, c) {
@@ -2188,7 +2209,8 @@
       if (key === "outlineCol") { mat.outline = true; refreshOutlines(); }
       // same reasoning for the selection highlight — pick a colour, get the thing
       if (key === "selOutlineCol") { mat.selOutline = true; refreshHighlight(); }
-      if (key !== "bg" && key !== "lightcol" && key !== "outlineCol" && key !== "selOutlineCol") clearPreset();
+      // handle colours are chrome, not part of the material preset
+      if (!["bg", "lightcol", "outlineCol", "selOutlineCol", "grabCol", "ballCol"].includes(key)) clearPreset();
       applyMaterial(); saveMat();          // applyMaterial reflects the widgets
     }
 
@@ -3678,6 +3700,21 @@
     });
     const handleGeo = new THREE.SphereGeometry(1, 28, 20);   // shared; meshes scale it
 
+    // Handle colours are user-settable. The emissive is derived from the chosen
+    // colour rather than left at its original blue, or an orange grabber would
+    // still glow blue in the shadows.
+    applyHandleColours = () => {
+      const grab = mat.grabCol || "#2e76f2";
+      const ball = mat.ballCol || "#eaf1ff";
+      for (const [m, col, glow] of [
+        [faceHandleMat, grab, 0.28], [faceHandleGhost, grab, 0.28],
+        [cornerHandleMat, ball, 0.32], [cornerHandleGhost, ball, 0.32],
+      ]) {
+        m.color.set(col);
+        m.emissive.set(col).multiplyScalar(glow);
+      }
+    };
+
     // A face grab handle shaped like the face it sits on: square on a cube,
     // round on a cylinder. Built from the same projected hull as the emphasis
     // panel, shrunk about its centroid to bead size and given a little
@@ -3698,18 +3735,35 @@
       const k = radius / maxR;
       const ring = hull.map(([u, v]) => [(u - cu) * k, (v - cv) * k]);
 
+      // Keep the outline but resample it: a 48-sided hull would make a handle
+      // heavier than it needs to look round.
+      const MAX_SIDES = 24;
+      const outline = ring.length <= MAX_SIDES ? ring
+        : Array.from({ length: MAX_SIDES }, (_, i) => ring[Math.round(i * ring.length / MAX_SIDES) % ring.length]);
+
+      // A LENS, not a flat plate: each side sweeps from the rim to a pole on a
+      // quarter-circle, so the face keeps the outline's shape while the surface
+      // stays domed and catches the light the way the old bead did. Flat caps
+      // shaded like paper and lost that entirely.
+      const RINGS = 4;
       const half = thickness / 2;
       const verts = [];
       const at = (u, v, w) => { const p = [0, 0, 0]; p[axis] = w; p[dims[0]] = u; p[dims[1]] = v; return p; };
       const push = (...ps) => { for (const p of ps) verts.push(p[0], p[1], p[2]); };
-      for (let i = 0; i < ring.length; i++) {
-        const a = ring[i], b = ring[(i + 1) % ring.length];
-        // caps (fan from centre), wound so each faces outward
-        push(at(0, 0, half), at(a[0], a[1], half), at(b[0], b[1], half));
-        push(at(0, 0, -half), at(b[0], b[1], -half), at(a[0], a[1], -half));
-        // rim
-        push(at(a[0], a[1], -half), at(b[0], b[1], -half), at(b[0], b[1], half));
-        push(at(a[0], a[1], -half), at(b[0], b[1], half), at(a[0], a[1], half));
+      for (const sign of [1, -1]) {
+        for (let j = 0; j < RINGS; j++) {
+          const t0 = (j / RINGS) * (Math.PI / 2), t1 = ((j + 1) / RINGS) * (Math.PI / 2);
+          const s0 = Math.cos(t0), w0 = sign * half * Math.sin(t0);
+          const s1 = Math.cos(t1), w1 = sign * half * Math.sin(t1);
+          for (let i = 0; i < outline.length; i++) {
+            const a = outline[i], b = outline[(i + 1) % outline.length];
+            const A0 = at(a[0] * s0, a[1] * s0, w0), B0 = at(b[0] * s0, b[1] * s0, w0);
+            const A1 = at(a[0] * s1, a[1] * s1, w1), B1 = at(b[0] * s1, b[1] * s1, w1);
+            // wound outward on the +side, reversed on the -side
+            if (sign > 0) { push(A0, B0, B1); push(A0, B1, A1); }
+            else { push(A0, B1, B0); push(A0, A1, B1); }
+          }
+        }
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
@@ -3931,7 +3985,7 @@
         // A puck shaped like the face it hugs (square on a cube, round on a
         // cylinder), falling back to the flattened bead when the solid has no
         // usable geometry to project.
-        const shaped = shapedHandleGeo(fid, axis, s * 0.62, s * 0.44);
+        const shaped = shapedHandleGeo(fid, axis, s * 0.55, s * 0.34);
         addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
           if (shaped) {
             h.geometry = shaped;      // already sized and centred in local space
@@ -3946,7 +4000,7 @@
       if (findScaleTargets(code.value, site).length) {
         for (const sx of [bb.min.x, bb.max.x]) for (const sy of [bb.min.y, bb.max.y]) for (const sz of [bb.min.z, bb.max.z]) {
           addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
-            h.scale.setScalar(s * 0.5);
+            h.scale.setScalar(s * 0.38);
             h.position.set(sx, sy, sz);
           }, { kind: "corner", fid, center: c.clone() });
         }
