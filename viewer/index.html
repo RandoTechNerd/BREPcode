@@ -3448,11 +3448,17 @@
     // the normal dark edge stays crisp on top and the blue reads as a halo
     // around it. Drawn at the same width and over the top, it just swallowed the
     // outline and looked like the edges had changed colour.
-    // depthTest stays off so a selected part still reads when something is in
-    // front of it.
+    // Drawn in TWO passes, like the dimension lines: a depth-tested pass at full
+    // strength, and a faint pass that ignores depth. Without the split, a hole
+    // on the FAR side of the part glowed through solid material at full
+    // brightness and read as a circle sitting on the near face.
     const highlightMat = new LineMaterial({
       color: 0x3b9dff, linewidth: 4.5, worldUnits: false,
-      transparent: true, opacity: 0.9, depthTest: false,
+      transparent: true, opacity: 0.9, depthTest: true,
+    });
+    const highlightMatBehind = new LineMaterial({
+      color: 0x3b9dff, linewidth: 4.5, worldUnits: false,
+      transparent: true, opacity: 0.16, depthTest: false,
     });
     let highlightFid = null;         // remembered so a colour change can redraw
     function clearHighlight() {
@@ -3463,22 +3469,28 @@
       clearHighlight();
       highlightFid = fid;
       if (!mat.selOutline) return;
-      highlightMat.color.set(mat.selOutlineCol || "#3b9dff");
       // wide enough that the model outline sitting on top can't cover it
-      highlightMat.linewidth = Math.max(3, (mat.outlineWidth ?? 1.5) + 3);
+      const width = Math.max(3, (mat.outlineWidth ?? 1.5) + 3);
       const w = stage.clientWidth, h = stage.clientHeight;
-      if (w && h) highlightMat.resolution.set(w, h);
+      for (const m of [highlightMat, highlightMatBehind]) {
+        m.color.set(mat.selOutlineCol || "#3b9dff");
+        m.linewidth = width;
+        if (w && h) m.resolution.set(w, h);
+      }
       for (const m of modelGroup.children) {
         if (m.userData.featureId !== fid || !m.geometry) continue;
         const edges = new THREE.EdgesGeometry(m.geometry, 20);
         const geo = new LineSegmentsGeometry().fromEdgesGeometry(edges);
         edges.dispose();
-        const line = new LineSegments2(geo, highlightMat);
-        line.position.copy(m.position);
-        line.quaternion.copy(m.quaternion);
-        line.scale.copy(m.scale);
-        line.renderOrder = 2;        // below the model outline (3) — see note above
-        highlightGroup.add(line);
+        // faint see-through pass first, then the crisp depth-tested one
+        for (const [material, order] of [[highlightMatBehind, 1], [highlightMat, 2]]) {
+          const line = new LineSegments2(geo, material);
+          line.position.copy(m.position);
+          line.quaternion.copy(m.quaternion);
+          line.scale.copy(m.scale);
+          line.renderOrder = order;   // both below the model outline (3)
+          highlightGroup.add(line);
+        }
       }
     }
     // Re-run the current selection — used when the colour/toggle changes.
