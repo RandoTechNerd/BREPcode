@@ -314,9 +314,9 @@
     /* Marks a feature as new and still settling, so nobody is surprised when a
        corner drag rewrites their cube() into a list of points. */
     .beta {
-      font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      color: #ffb02e; border: 1px solid rgba(255, 176, 46, .45); border-radius: 4px;
-      padding: 0 3px; margin-left: 3px; vertical-align: 1px;
+      font-size: 7.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+      color: rgba(255, 176, 46, .55); border: 1px solid rgba(255, 176, 46, .2); border-radius: 3px;
+      padding: 0 2px; margin-left: 3px; vertical-align: 1px; opacity: .85;
     }
     #model-name.named { color: var(--text2); font-weight: 500; }
     #model-name.editable { cursor: text; border-radius: 4px; padding: 1px 5px; margin-left: 3px; }
@@ -500,6 +500,19 @@
       padding: 8px 13px; cursor: pointer;
     }
     #tools-menu button:hover { background: var(--hover-strong); }
+    /* The one mode in an otherwise action-only menu, so it is set apart by a
+       rule above it and reads as a switch rather than a command. */
+    #freeform-row {
+      display: flex; align-items: center; gap: 9px; cursor: pointer;
+      padding: 8px 10px; border: 0; border-top: 1px solid var(--line);
+      background: none; color: inherit; text-align: left; font: inherit;
+    }
+    #freeform-row:hover { background: var(--hover-strong); }
+    #freeform-row input { margin: 0; flex: none; }
+    #freeform-row svg { flex: none; opacity: .85; }
+    #freeform-row span { display: flex; flex-direction: column; line-height: 1.25; }
+    #freeform-row b { font-size: 13px; font-weight: 600; }
+    #freeform-row small:not(.beta) { font-size: 11px; color: var(--muted2); }
     #tools-menu button.active { background: var(--accent); color: #fff; }
     #tools-menu svg { flex: none; opacity: .85; }
     #tools-menu span { display: flex; flex-direction: column; line-height: 1.25; }
@@ -973,6 +986,21 @@
             </svg>
             <span><b>Fin supports — no skirt</b><small>same, without the foot</small></span>
           </button>
+          <!-- A MODE, not an action, so it is a checkbox and it lives last:
+               ticking it changes what a corner drag does, and the conversion it
+               performs is one-way. Nobody should meet it by accident. -->
+          <label id="freeform-row" title="Drag a corner ball to move that corner on its own, skewing the shape. Rewrites the call as freeform() with editable corners, because cube() has nowhere to record a moved corner.">
+            <input type="checkbox" id="freeform" />
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.5 11.5 6 3.5l7.5 2.5-3 7z" />
+              <circle cx="2.5" cy="11.5" r="1.3" fill="currentColor" stroke="none" />
+              <circle cx="6" cy="3.5" r="1.3" fill="currentColor" stroke="none" />
+              <circle cx="13.5" cy="6" r="1.3" fill="currentColor" stroke="none" />
+              <circle cx="10.5" cy="13" r="1.3" fill="currentColor" stroke="none" />
+            </svg>
+            <span><b>Free-form corners <small class="beta">beta</small></b><small>drag one corner on its own to skew</small></span>
+          </label>
         </div>
         <div id="more-menu">
           <button data-act="tools-btn">Toolbox…</button>
@@ -995,9 +1023,6 @@
         </label>
         <label title="Draw measurement lines next to the model.">
           <input type="checkbox" id="dims" checked /> Dims
-        </label>
-        <label class="opt" title="Drag a corner ball to move that corner on its own, skewing the shape. Converts the call to freeform() with 8 editable corners — cube() cannot hold a moved corner.">
-          <input type="checkbox" id="freeform" /> Free-form <small class="beta">beta</small>
         </label>
         <span class="why">off = auto-close brackets &amp; quotes</span>
         <span id="fixnote"></span>
@@ -4007,7 +4032,12 @@
         // A puck shaped like the face it hugs (square on a cube, round on a
         // cylinder), falling back to the flattened bead when the solid has no
         // usable geometry to project.
-        const shaped = shapedHandleGeo(fid, axis, s * 0.55, s * 0.34);
+        // Sit the puck ON the face, not half-sunk INTO it. Centred on the face
+        // plane, half the lens is inside the solid, so on the vertical sides it
+        // looked buried or clipped.
+        const thick = s * 0.34;
+        pos.setComponent(axis, pos.getComponent(axis) + sign * thick * 0.55);
+        const shaped = shapedHandleGeo(fid, axis, s * 0.55, thick);
         addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
           if (shaped) {
             h.geometry = shaped;      // already sized and centred in local space
@@ -4068,6 +4098,34 @@
     // mapping can't tie the result back to one call and no handles would spawn,
     // leaving a shape you can convert once and then never touch again. When the
     // document IS a single freeform call, synthesise the site directly.
+    // The corners we capture are WORLD positions, but the call being replaced
+    // may sit inside translate()/rotate()/scale(). Writing world numbers into a
+    // still-wrapped call applies the transform twice and the shape leaps away
+    // from its handles. Since world coordinates already include the transform,
+    // the fix is to replace the wrapper too. Only wrappers holding nothing but
+    // this one shape are swallowed, so `translate([…], union(a, b))` is safe.
+    const XFORM_TAIL = /\b(translate|rotate|scale|mirror)\s*\(\s*\[[^\]]*\]\s*,\s*$/;
+    function transformWrapSpan(text, site) {
+      let { start, end } = site;
+      for (let guard = 0; guard < 8; guard++) {
+        const head = text.slice(0, start);
+        const m = XFORM_TAIL.exec(head);
+        if (!m) break;
+        const verbAt = head.length - m[0].length;
+        const paren = text.indexOf("(", verbAt);
+        let depth = 0, close = -1;
+        for (let i = paren; i < text.length; i++) {
+          if (text[i] === "(") depth++;
+          else if (text[i] === ")") { depth--; if (depth === 0) { close = i + 1; break; } }
+        }
+        if (close < 0) break;
+        // anything else inside the wrapper means it holds more than this shape
+        if (text.slice(end, close - 1).replace(/[\s,]/g, "") !== "") break;
+        start = verbAt; end = close;
+      }
+      return { start, end };
+    }
+
     const fmtPt = (p) => `[${p.map((n) => +n.toFixed(2)).join(", ")}]`;
     function freeformCall(points) {
       return `freeform([\n  ${points.map(fmtPt).join(",\n  ")},\n])`;
@@ -4568,7 +4626,9 @@
         // gets the one point rewritten.
         const pts = drag.corners.map((p) => p.slice());
         pts[drag.index] = drag.origin.map((v, i) => v + drag.delta[i]);
-        next = text.slice(0, drag.site.start) + freeformCall(pts) + text.slice(drag.site.end);
+        // replace the transform wrapper too, since the points are world-space
+        const span = transformWrapSpan(text, drag.site);
+        next = text.slice(0, span.start) + freeformCall(pts) + text.slice(span.end);
       } else if (drag.mode === "scale") {
         next = rewriteNumbers(text, drag.targets, (v) => v * drag.factor);
       } else if (drag.mode === "resize") {

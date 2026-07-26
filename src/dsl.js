@@ -993,6 +993,11 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const f = await partHistory.newFeature("IMPORT3D");
       f.inputParams.fileToImport = data;
       f.inputParams.meshRepairLevel = "NONE";
+      // IMPORT3D centres its mesh by DEFAULT, which quietly moved every hull()
+      // to the origin: the STL above already carries the shape's real position,
+      // so hull(a, b) rendered somewhere other than where a and b were. It also
+      // put freeform()'s corner handles nowhere near the solid they belong to.
+      f.inputParams.centerMesh = false;
       trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi });
       return f.inputParams.id;
     }
