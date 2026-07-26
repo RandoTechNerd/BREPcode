@@ -11,7 +11,7 @@
 // standard scheme behaves like a real origin without opening a port, so there's
 // no firewall prompt and nothing to collide with a dev server.
 
-const { app, BrowserWindow, protocol, net, shell, Menu } = require("electron");
+const { app, BrowserWindow, protocol, net, shell, Menu, nativeTheme } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -54,6 +54,16 @@ function createWindow() {
   });
   return win;
 }
+
+// The title bar, menu strip and menu popups are drawn by Windows, not by us, so
+// they cannot be styled with CSS — they follow whatever theme the OS thinks the
+// app wants. The viewer is dark, so a machine set to light mode got a white menu
+// bar sitting directly above a black 3D view. Declaring the app dark makes
+// Windows render its own chrome to match.
+//
+// Set before the window exists, so the frame is drawn dark from the first paint
+// rather than flashing light.
+nativeTheme.themeSource = "dark";
 
 app.whenReady().then(() => {
   protocol.handle("app", (req) => {
