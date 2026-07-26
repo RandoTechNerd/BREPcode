@@ -6104,11 +6104,14 @@
     const botState = {};
     const chatLog = [];   // {role, text} for API context
 
-    // curated model lists per provider — a dropdown, not a guessing game
+    // FALLBACK model lists, used only when the provider can't be reached (no
+    // network, blocked CORS, bad key). Enter a working key and the dropdown is
+    // replaced by the models that key can actually call, so this list never
+    // decides what you can use — it just stops the dropdown being empty.
     const AI_MODELS = {
       builtin: [],
-      gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-      claude: ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
+      gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+      claude: ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
     };
     // Best-for-modelling models float to the top with a ROYGBIV tint:
     // violet = strongest pick, sliding down to red for the weakest.

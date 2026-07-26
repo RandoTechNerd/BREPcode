@@ -1,7 +1,7 @@
 // The built-in assistant's rule engine: parsing, follow-ups, and that every
 // generated snippet actually builds into real geometry.
 
-import { respond, buildModelsRequest, extractModels } from "../viewer/chatbot.js";
+import { respond, buildModelsRequest, extractModels, modelScore } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
 import * as dsl from "../src/dsl.js";
@@ -238,6 +238,26 @@ console.log("\nmodel discovery\n");
 
   try { extractModels("gemini", { error: { message: "API key not valid" } }); check("error payload throws", false); }
   catch (e) { check("error payload throws with message", /API key/.test(e.message)); }
+}
+
+
+// The dropdown is ordered by modelScore, so this decides which model a new user
+// actually gets. It has to keep working for names that did not exist when it was
+// written, which is why the version is parsed out rather than matched to a list.
+console.log("\nmodel ranking\n");
+{
+  const rank = (ids) => [...ids].sort((a, b) => modelScore(b) - modelScore(a));
+  const beats = (a, b) => modelScore(a) > modelScore(b);
+  check("a newer version outranks an older one", beats("claude-opus-5", "claude-opus-4-8"));
+  check("within a version, opus outranks sonnet", beats("claude-opus-5", "claude-sonnet-5"));
+  check("and sonnet outranks haiku", beats("claude-sonnet-5", "claude-haiku-4-5"));
+  check("a newer sonnet outranks an older opus", beats("claude-sonnet-5", "claude-opus-4-6"));
+  check("gemini pro outranks gemini flash", beats("gemini-2.5-pro", "gemini-2.5-flash"));
+  check("previews are nudged down", beats("gemini-2.5-pro", "gemini-2.5-pro-preview"));
+  check("an unreleased opus still lands on top",
+    rank(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-4-8", "claude-opus-7"])[0] === "claude-opus-7");
+  check("a dated id is not read as a version number",
+    modelScore("claude-haiku-4-5-20251001") === modelScore("claude-haiku-4-5"));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
