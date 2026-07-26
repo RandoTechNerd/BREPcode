@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d6e4fb"/>
+      <stop offset="1" stop-color="#a8c5f3"/>
+    </linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7099eb"/>
+      <stop offset="1" stop-color="#5a82dd"/>
+    </linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a71d8"/>
+      <stop offset="1" stop-color="#3a5cc4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- isometric cube -->
+  <path d="M32 4 L59 19 L32 34 L5 19 Z" fill="url(#top)"/>
+  <path d="M5 19 L32 34 L32 64 L5 49 Z" fill="url(#left)"/>
+  <path d="M59 19 L59 49 L32 64 L32 34 Z" fill="url(#right)"/>
+
+  <!-- faint + on the top face, drawn in the face's own axes -->
+  <g transform="matrix(13 7.2 -13 7.2 32 19)" fill="#ffffff" opacity="0.28">
+    <rect x="-0.55" y="-0.14" width="1.1" height="0.28"/>
+    <rect x="-0.14" y="-0.55" width="0.28" height="1.1"/>
+  </g>
+
+  <!-- light C on the left face -->
+  <text x="10.5" y="42" transform="skewY(29.05)"
+        font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="23"
+        fill="#c6d9f9" opacity="0.9">C</text>
+
+  <!-- faint B on the right face -->
+  <text x="38" y="76.5" transform="skewY(-29.05)"
+        font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="23"
+        fill="#8fadf0" opacity="0.45">B</text>
+</svg>
