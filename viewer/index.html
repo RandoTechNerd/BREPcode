@@ -237,6 +237,14 @@
     #viewnav .vn-face[data-view="front"] { fill: var(--muted6, #3c465e); }
     #viewnav .vn-face[data-view="right"] { fill: var(--muted7, #2b3346); }
     #viewnav .vn-face:hover { fill: var(--accent-soft); }
+    /* Face letters. pointer-events:none so the polygon underneath still takes
+       the click — the letters are a legend, not a control. */
+    #viewnav .vn-lbl {
+      fill: #e8eefc; font: 700 11px system-ui, sans-serif;
+      text-anchor: middle; dominant-baseline: central;
+      pointer-events: none; opacity: 0.72;
+    }
+    #viewnav .vn-lbl.on-dark { fill: #cfd9ee; }
     @media (max-width: 700px) { #viewnav { display: none; } }
 
     /* bottom-right dock: panels stack upward above the buttons */
@@ -857,6 +865,12 @@
         <polygon class="vn-face" data-view="top"   points="42,20 60,30 42,40 24,30" />
         <polygon class="vn-face" data-view="front" points="24,30 42,40 42,62 24,52" />
         <polygon class="vn-face" data-view="right" points="60,30 42,40 42,62 60,52" />
+        <!-- Which way am I looking? Each letter is sheared onto its own face so
+             it lies on the cube rather than floating over it. Purely a legend:
+             the clicks still land on the polygons underneath. -->
+        <text class="vn-lbl" transform="matrix(0.87,0.48,-0.87,0.48,42,30)">T</text>
+        <text class="vn-lbl on-dark" transform="matrix(0.87,0.48,0,1,33,45)">F</text>
+        <text class="vn-lbl on-dark" transform="matrix(0.87,-0.48,0,1,51,45)">R</text>
       </g>
     </svg>
   </div>
@@ -1336,6 +1350,7 @@
         <div class="mat-tabs">
           <button class="mat-tab active" data-tab="material">Material</button>
           <button class="mat-tab" data-tab="lighting">Lighting</button>
+          <button class="mat-tab" data-tab="grid">Grid</button>
         </div>
         <button class="close-btn" data-close="material" title="Close">&times;</button>
       </header>
@@ -1490,6 +1505,23 @@
             <button id="bg-add" class="swatch-add" title="Add a custom background colour">+</button>
             <input type="color" id="mat-bg" value="#0b0f16" />
           </label>
+        </div>
+
+        <!-- GRID TAB -->
+        <div class="mat-pane" data-pane="grid" style="display: none">
+          <div class="mat-group">Floor</div>
+          <label class="mat-row"><span>Show grid</span>
+            <input type="checkbox" id="grid-show" checked />
+          </label>
+          <label class="mat-row"><span>X / Y markers</span>
+            <input type="checkbox" id="grid-axes" checked />
+          </label>
+          <div class="note" style="padding: 2px 10px 8px">
+            The grid is the floor your part sits on, one square per 10mm at the
+            current scale. The markers put an X and a Y at the far end of each
+            axis so you can tell which way “right” and “back” are — the same
+            directions the resize commands use.
+          </div>
         </div>
       </div>
       <div id="mat-foot"><button id="mat-reset" class="hist-btn">Reset to defaults</button></div>
@@ -1740,71 +1772,39 @@
       if (!axisLabelsOn || !grid) return;
       const t = THEMES[currentTheme] ?? THEMES.dark;
       const hex = (n) => "#" + n.toString(16).padStart(6, "0");
-      const cell = 10 * grid.scale.x;
 
+      // Two letters, at the far end of each grid axis. Nothing else: an earlier
+      // pass hung a whole triad plus a ruler off the model and it was clutter
+      // competing with the dimension lines for the same space. The grid already
+      // shows scale; all that was missing was which way is which.
+      //
+      // Sprites, so they stay legible at any orbit — a letter lying flat in the
+      // floor plane is seen edge-on from the default camera and collapses into
+      // an unreadable squiggle.
+      // The grid is 200 units across whatever the part measures, so its true
+      // edge is off screen for anything small — a letter parked out there is
+      // never seen at the zoom people actually work at. Sit them at the end of
+      // the axis as FRAMED: the grid edge when that is close enough, otherwise
+      // a comfortable distance past the part.
+      const half = 100 * grid.scale.x;
       const bb = new THREE.Box3().setFromObject(modelGroup);
       const span = bb.isEmpty() ? 30 : Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, 5);
-      const lo = bb.isEmpty() ? new THREE.Vector3(-15, -15, 0) : bb.min;
-      const hi = bb.isEmpty() ? new THREE.Vector3(15, 15, 10) : bb.max;
-      const z = grid.position.z + 0.02;         // a hair above the floor, no z-fighting
-      const letter = span * 0.15;
-      const gap = span * 0.16;
+      const reach = Math.min(half, Math.max(span * 1.15, 20));
+      const gx = grid.position.x, gy = grid.position.y;
+      // Lifted to about the part's own height rather than lying on the floor.
+      // On the floor the +X label projects into the bottom-right corner, which
+      // is exactly where the toolbar and the "Type a model" button live.
+      const z = grid.position.z + Math.max(span * 0.22, 3);
+      const letter = Math.max(3, span * 0.16);
+      const pad = letter * 0.9;
 
-      // The two floor letters sit just past the part on their own axis, on the
-      // near/low side of the other one so they never sit under the model.
-      // A triad from ONE corner rather than a letter parked at each far edge.
-      // Spreading them over four corners meant some sat behind the part, some
-      // fell outside the framed view, and none of them said which way the OTHER
-      // two ran. Three short arms from a shared origin is the standard CAD
-      // reading and it stays compact enough to ignore when you don't need it.
-      const arm = span * 0.42;
-      const o = new THREE.Vector3(lo.x - gap, lo.y - gap, z);
-      const ends = {
-        X: new THREE.Vector3(o.x + arm, o.y, o.z),
-        Y: new THREE.Vector3(o.x, o.y + arm, o.z),
-        // taller than the other two: looking down the Y axis foreshortens the
-        // Y arm to nothing and its label lands on Z's. Extra height keeps them
-        // apart in exactly the view where they would otherwise collide.
-        Z: new THREE.Vector3(o.x, o.y, o.z + arm * 1.25),
-      };
-      const armMat = new THREE.LineBasicMaterial({
-        color: t.axis, transparent: true, opacity: 0.45, depthWrite: false,
-      });
-      for (const [name, end] of Object.entries(ends)) {
-        axisGroup.add(new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([o, end]), armMat));
-        const lbl = flatLabel(name, hex(t.axis), letter, "xy", 0.85);
-        // sit the letter just past the arm's tip so it never covers the line
-        lbl.position.copy(end).add(
-          end.clone().sub(o).normalize().multiplyScalar(letter * 0.6));
-        axisGroup.add(lbl);
-      }
+      const X = flatLabel("X", hex(t.axis), letter, "xy", 0.8);
+      X.position.set(gx + reach + pad, gy, z);
+      axisGroup.add(X);
 
-      // Ruler: the grid states its own scale, so nobody has to count squares.
-      // Two cells either side of the part is plenty — a full ruler is clutter,
-      // and the cell size is the number people actually want.
-      const num = letter * 0.5;
-      const faint = hex(t.tick);
-      const near = (v) => Math.round(v / cell) * cell;
-      for (let i = -2; i <= 2; i++) {
-        const dx = near(hi.x) + i * cell;
-        if (Math.abs(dx) > 1e-6) {
-          const tx = flatLabel(String(Math.round(dx)), faint, num, "xy", 0.55);
-          tx.position.set(dx, lo.y - gap, z);
-          axisGroup.add(tx);
-        }
-        const dy = near(hi.y) + i * cell;
-        if (Math.abs(dy) > 1e-6) {
-          const ty = flatLabel(String(Math.round(dy)), faint, num, "xy", 0.55);
-          ty.position.set(lo.x - gap, dy, z);
-          axisGroup.add(ty);
-        }
-      }
-      // the grid's own step, stated once well clear of the axis letters —
-      // otherwise "one square" means nothing
-      const unit = flatLabel(`${Math.round(cell)}mm grid`, faint, num * 0.8, "xy", 0.45);
-      unit.position.set(hi.x + gap, lo.y - gap, z);
-      axisGroup.add(unit);
+      const Y = flatLabel("Y", hex(t.axis), letter, "xy", 0.8);
+      Y.position.set(gx, gy + reach + pad, z);
+      axisGroup.add(Y);
     }
 
     let grid = null;
@@ -2423,6 +2423,35 @@
         document.querySelectorAll(".mat-pane").forEach((p) =>
           p.style.display = p.dataset.pane === tab.dataset.tab ? "block" : "none");
       });
+    }
+
+    // ---- Grid tab ----------------------------------------------------------
+    // Both default ON: the floor is how you judge scale and which way is which,
+    // so a first-time visitor should see it. The preference is remembered, and
+    // a stored "false" is the only thing that turns either off.
+    {
+      const showBox = $("grid-show"), axesBox = $("grid-axes");
+      const stored = (() => {
+        try { return JSON.parse(localStorage.getItem("brepcode-grid") || "{}"); } catch { return {}; }
+      })();
+      showBox.checked = stored.show !== false;
+      axesBox.checked = stored.axes !== false;
+
+      const applyGrid = () => {
+        if (grid) grid.visible = showBox.checked;
+        axisLabelsOn = axesBox.checked && showBox.checked;   // markers belong to the floor
+        buildAxisLabels();
+        localStorage.setItem("brepcode-grid",
+          JSON.stringify({ show: showBox.checked, axes: axesBox.checked }));
+      };
+      showBox.addEventListener("change", applyGrid);
+      axesBox.addEventListener("change", applyGrid);
+      applyGrid();
+      // applyTheme() builds a fresh GridHelper, which starts visible — reapply
+      // the preference whenever that happens, or switching theme silently turns
+      // a hidden grid back on.
+      const themeChips = document.querySelectorAll(".theme-chip");
+      themeChips.forEach((c) => c.addEventListener("click", () => setTimeout(applyGrid, 0)));
     }
 
     // Quick-pick swatches. The built-in list is fixed; anything the user adds
