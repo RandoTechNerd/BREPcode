@@ -851,7 +851,7 @@
   <!-- view navigator: three tiny corner arrows to spin the view -->
   <!-- view cube: click a face to snap to that view, an arrow to spin/tilt,
        centre (double-click anywhere) for the home iso view -->
-  <div id="viewnav" title="Click a face for that view · arrows to spin · double-click = home">
+  <div id="viewnav" title="Click a face to look straight down that axis (Z = from the top, Y = from the front, X = from the right) · arrows to spin · double-click = home">
     <svg viewBox="0 0 84 84" width="72" height="72" aria-label="View navigator">
       <!-- orbit arrows -->
       <g class="vn-arrow">
@@ -865,12 +865,18 @@
         <polygon class="vn-face" data-view="top"   points="42,20 60,30 42,40 24,30" />
         <polygon class="vn-face" data-view="front" points="24,30 42,40 42,62 24,52" />
         <polygon class="vn-face" data-view="right" points="60,30 42,40 42,62 60,52" />
-        <!-- Which way am I looking? Each letter is sheared onto its own face so
-             it lies on the cube rather than floating over it. Purely a legend:
-             the clicks still land on the polygons underneath. -->
-        <text class="vn-lbl" transform="matrix(0.87,0.48,-0.87,0.48,42,30)">T</text>
-        <text class="vn-lbl on-dark" transform="matrix(0.87,0.48,0,1,33,45)">F</text>
-        <text class="vn-lbl on-dark" transform="matrix(0.87,-0.48,0,1,51,45)">R</text>
+        <!-- Which way am I looking? The letter is the AXIS you end up looking
+             down, not the face's name: the top view looks down Z, the front
+             view looks down Y, the right view looks down X. That matches the X
+             and Y markers out on the grid, so the two read as one system rather
+             than two vocabularies for the same directions.
+
+             Each letter is sheared onto its own face so it lies on the cube
+             rather than floating over it. Purely a legend — pointer-events are
+             off, so every click still lands on the polygon underneath. -->
+        <text class="vn-lbl" transform="matrix(0.87,0.48,-0.87,0.48,42,30)">Z</text>
+        <text class="vn-lbl on-dark" transform="matrix(0.87,0.48,0,1,33,45)">Y</text>
+        <text class="vn-lbl on-dark" transform="matrix(0.87,-0.48,0,1,51,45)">X</text>
       </g>
     </svg>
   </div>
@@ -1800,11 +1806,34 @@
 
       const X = flatLabel("X", hex(t.axis), letter, "xy", 0.8);
       X.position.set(gx + reach + pad, gy, z);
+      X.userData.axis = new THREE.Vector3(1, 0, 0);
       axisGroup.add(X);
 
       const Y = flatLabel("Y", hex(t.axis), letter, "xy", 0.8);
       Y.position.set(gx, gy + reach + pad, z);
+      Y.userData.axis = new THREE.Vector3(0, 1, 0);
       axisGroup.add(Y);
+    }
+
+    // Look straight down an axis and that axis's label ends up between you and
+    // the part, square to the camera, plastered across the middle of the model
+    // — which is exactly the view you chose in order to see the model. It is
+    // also the one view where the label says nothing: an axis pointing at your
+    // eye has no visible direction to indicate. So fade it out as the camera
+    // lines up with it, and back in as soon as you orbit away.
+    const _viewDir = new THREE.Vector3();
+    function fadeAxisLabels() {
+      if (!axisGroup.children.length) return;
+      camera.getWorldDirection(_viewDir);
+      for (const o of axisGroup.children) {
+        const axis = o.userData?.axis;
+        if (!axis || !o.material) continue;
+        const align = Math.abs(_viewDir.dot(axis));            // 1 = dead on
+        // full strength below 0.82 (~35° off), gone by 0.97 (~14° off)
+        const k = 1 - Math.min(1, Math.max(0, (align - 0.82) / 0.15));
+        o.material.opacity = 0.8 * k;
+        o.visible = k > 0.02;
+      }
     }
 
     let grid = null;
@@ -1971,6 +2000,7 @@
     (function loop() {
       requestAnimationFrame(loop);
       controls.update();
+      fadeAxisLabels();
       renderer.render(scene, camera);
     })();
 
