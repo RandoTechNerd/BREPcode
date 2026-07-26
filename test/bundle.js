@@ -50,7 +50,7 @@ for (const f of sources) {
   check(`${f} has no /node_modules/ path`, !t.includes("/node_modules/"));
 }
 
-// the kernel licence must ship alongside the kernel (licence clause 1)
+// the kernel license must ship alongside the kernel (license clause 1)
 check("kernel LICENSE.md bundled", existsSync(join(OUT, "vendor/kernel/LICENSE.md")));
 check("no plaintext API key", !readFileSync(join(OUT, "index.html"), "utf8").includes("sk-ant-api"));
 

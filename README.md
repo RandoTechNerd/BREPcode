@@ -37,7 +37,7 @@ open-source, browser-native B-rep engine. BREPcode is a language and an interfac
 of it.
 
 The kernel ships **unmodified**, installed from npm, with its `LICENSE.md` bundled beside it in
-every build. That licence requires any modification to the kernel be contributed back to
+every build. That license requires any modification to the kernel be contributed back to
 Autodrop3d via pull request, so this project deliberately never patches it. If the kernel needs
 to change, the change belongs upstream. If BREPcode is useful to you, the kernel is the part worth
 starring.
@@ -530,7 +530,7 @@ The suite computes each solid's volume independently from the exported STL (sign
 rather than trusting the DSL's own bookkeeping, so it verifies the kernel's actual output, e.g. a
 20mm cube minus a r5 through-hole must measure `8000 - π·25·20`.
 
-## Licence
+## License
 
 BREPcode is MIT. See [LICENSE](LICENSE).
 
@@ -540,6 +540,6 @@ to Autodrop3d via pull request. The kernel is installed from npm and shipped unm
 own `LICENSE.md` included in `dist-site/vendor/kernel/` and inside the desktop build. If you fork
 this project, that obligation travels with the kernel, not with BREPcode's own code.
 
-Also bundled, each with its own licence file alongside it:
+Also bundled, each with its own license file alongside it:
 [three.js](https://threejs.org) (MIT), [replicad](https://replicad.xyz) + OpenCascade.js for
 curved-surface STEP export, and [bwip-js](https://github.com/metafloor/bwip-js) for barcodes.
