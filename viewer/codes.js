@@ -128,7 +128,24 @@ export function codeGrid(kind, text, S = 6) {
 
 // base plate + one cuboid per horizontal run of dark modules.
 // mode "emboss" (default) raises the code; "deboss" sinks it via difference.
-function gridToShape(g, o) {
+// A scannable code needs DARK-ON-LIGHT contrast, and on a print that means two
+// filaments. The raised modules are therefore tagged near-black and the plate
+// near-white by default, which is what makes the 2-colour 3MF export come out
+// scannable straight off the printer. Pass color/baseColor to override, or
+// baseColor: null to leave the plate the model's own colour.
+const toHexColor = (c) => {
+  if (c == null) return null;
+  if (Array.isArray(c)) {
+    const to = (v) => Math.max(0, Math.min(255, Math.round((v ?? 0) * 255))).toString(16).padStart(2, "0");
+    return "#" + to(c[0]) + to(c[1]) + to(c[2]);
+  }
+  const s = String(c).trim();
+  if (s[0] === "#") return s.length === 4 ? "#" + s.slice(1).split("").map((x) => x + x).join("") : s;
+  return ({ black: "#111111", white: "#f2f2f2", red: "#cc2222", blue: "#2244cc", green: "#22aa44" })[s.toLowerCase()] || s;
+};
+const tint = (shape, hex) => { if (shape && hex) shape.color = hex; return shape; };
+
+export function gridToShape(g, o) {
   const module = o.module ?? 1.6;                  // mm per module — 1.2+ scans reliably
   const oneD = g.h <= 2;                            // Code 128 is a single tall row
   const barH = o.barHeight ?? (oneD ? (o.height ?? 12) : module);
@@ -136,9 +153,14 @@ function gridToShape(g, o) {
   const border = o.border ?? 2 * module;           // quiet zone — scanners need it
   const baseT = o.base ?? 2;
 
+  const darkHex = toHexColor(o.color ?? o.codeColor ?? o.dark ?? "#111111");
+  const baseHex = "baseColor" in o || "plateColor" in o
+    ? toHexColor(o.baseColor ?? o.plateColor)
+    : toHexColor("#f2f2f2");
+
   const codeW = g.w * module;
   const codeH = oneD ? barH : g.h * module;
-  const base = dsl.cube([codeW + 2 * border, codeH + 2 * border, baseT]);
+  const base = tint(dsl.cube([codeW + 2 * border, codeH + 2 * border, baseT]), baseHex);
 
   // Codes are RAISED (emboss) only — that's the right form for scanning off a
   // print: raise the dark modules and print them in a contrasting filament (see
@@ -156,12 +178,18 @@ function gridToShape(g, o) {
       const runW = (x2 - x + 1) * module;
       const yPos = border + (oneD ? 0 : (g.h - 1 - y) * module);  // row 0 = top, read upright
       const barD = oneD ? barH : module;
-      bars.push(dsl.translate([border + x * module, yPos, baseT], dsl.cube([runW, barD, relief])));
+      bars.push(dsl.translate([border + x * module, yPos, baseT],
+        tint(dsl.cube([runW, barD, relief]), darkHex)));
       x = x2;
     }
   }
   if (!bars.length) throw new Error("empty code — nothing to build");
-  return dsl.group(base, ...bars);
+  const shape = dsl.group(base, ...bars);
+  // center:true puts the plate's middle on the origin, which is what placing a
+  // code on a face needs: the click point becomes the code's centre.
+  if (!o.center) return shape;
+  const plateW = codeW + 2 * border, plateH = codeH + 2 * border;
+  return dsl.translate([-plateW / 2, -plateH / 2, 0], shape);
 }
 
 // Letters -> solids. `size` = cap height in mm; run-merged per row. Centred in

@@ -931,6 +931,8 @@
           <!-- hidden real buttons — the toolbox rows click these, so the tools
                keep one implementation no matter how they're launched -->
           <button id="drill-btn" hidden></button>
+          <button id="code-dm-btn" hidden></button>
+          <button id="code-qr-btn" hidden></button>
           <button id="fins-btn" hidden></button>
           <button id="fins-noskirt-btn" hidden></button>
           <button id="trace-btn" class="hist-btn ovf" title="Trace an image (PNG / JPG) into an extrudable outline">
@@ -985,6 +987,19 @@
               <path d="M4 13.5V4l7 9.5z" /><path d="M6 6.6h1.4M7.2 9h1.4" />
             </svg>
             <span><b>Fin supports — no skirt</b><small>same, without the foot</small></span>
+          </button>
+          <button data-act="code-dm-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none">
+              <path d="M2 2h2v2H2zM6 2h2v2H6zM10 2h4v2h-4zM2 6h2v2H2zM8 6h2v2H8zM12 6h2v2h-2zM2 10h4v2H2zM8 10h2v2H8zM12 10h2v2h-2z" />
+            </svg>
+            <span><b>DataMatrix on a face</b><small>click a face to stamp it</small></span>
+          </button>
+          <button data-act="code-qr-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="2" y="2" width="4.5" height="4.5" /><rect x="9.5" y="2" width="4.5" height="4.5" />
+              <rect x="2" y="9.5" width="4.5" height="4.5" /><path d="M9.5 9.5h2v2h-2zM12.5 12.5h1.5v1.5h-1.5" />
+            </svg>
+            <span><b>QR code on a face</b><small>click a face to stamp it</small></span>
           </button>
           <!-- A MODE, not an action, so it is a checkbox and it lives last:
                ticking it changes what a corner drag does, and the conversion it
@@ -4146,6 +4161,23 @@
       }
     }
 
+    // Same arming pattern as Drill: the next face click is consumed by the tool.
+    let codeArmed = false, codeArmedKind = "datamatrix";
+    function setCodeArmed(on, kind) {
+      if (kind) codeArmedKind = kind;
+      codeArmed = on && !!currentModelExpr();
+      if (codeArmed) setDrillArmed(false);           // only one tool armed at a time
+      renderer.domElement.style.cursor = codeArmed ? "crosshair" : "";
+      for (const id of ["code-dm-btn", "code-qr-btn"]) {
+        const b = $(id);
+        if (b) b.classList.toggle("active", codeArmed && id === (codeArmedKind === "qrcode" ? "code-qr-btn" : "code-dm-btn"));
+      }
+      if (codeArmed) {
+        hint.innerHTML = `▦ <b>${codeArmedKind} armed</b> — click any face and the code is stamped flat onto it, centred where you click. `
+          + "Click the tool again or press <b>Esc</b> to cancel.";
+      }
+    }
+
     function rayToPlane(e, z) {
       const rect = renderer.domElement.getBoundingClientRect();
       raycaster.setFromCamera(new THREE.Vector2(
@@ -4164,7 +4196,7 @@
       // never rebuilding mid-drag). Dragging empty space still orbits. Drill mode
       // and a plain click are handled on pointerup.
       if (modelIsImport) {
-        if (drillArmed) return;
+        if (drillArmed || codeArmed) return;
         const rect = renderer.domElement.getBoundingClientRect();
         raycaster.setFromCamera(new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -4677,6 +4709,43 @@
 
     // Wrap the current model in difference(model, drill(point, normal, {…})),
     // using the ray hit's world point and world normal. Rounds to 0.1mm.
+    // Stamp a scannable code onto the face you clicked. Same shape as the drill
+    // tool, but a union rather than a cut: the code is built flat in XY, so it
+    // gets turned to stand on the face's normal and centred on the click.
+    function codeAtHit(hit) {
+      const expr = currentModelExpr();
+      if (!expr) { setCodeArmed(false); return; }
+      const r1 = (n) => Math.round(n * 10) / 10;
+      const p = hit.point;
+      let n = new THREE.Vector3(0, 0, 1);
+      if (hit.face) {
+        n = hit.face.normal.clone()
+          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+      }
+      // rotation that takes +Z (the code's own up) onto the face normal
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
+      const deg = (rad) => r1((rad * 180) / Math.PI);
+      const rot = `[${deg(e.x)}, ${deg(e.y)}, ${deg(e.z)}]`;
+      const pt = `[${r1(p.x)}, ${r1(p.y)}, ${r1(p.z)}]`;
+      const kind = codeArmedKind;
+      pushHistory(code.value);
+      code.value = `union(\n  ${expr},\n  translate(${pt}, rotate(${rot},\n`
+        + `    ${kind}({ text: "BREPCODE", module: 1.6, base: 0.6, center: true }))),\n)`;
+      setCodeArmed(false);
+      code.focus();
+      // select the text so it can be typed over straight away
+      const m = /text:\s*"([^"]*)"/.exec(code.value);
+      if (m) code.setSelectionRange(m.index + m[0].length - m[1].length - 1, m.index + m[0].length - 1);
+      pushHistory();
+      setStatus("busy", "…");
+      rebuild();
+      hint.innerHTML = `Stamped a <b>${kind}</b> on that face. Type to replace the text; `
+        + "<code>module</code> is mm per square (1.2+ scans), <code>base</code> the backing plate. "
+        + "The squares are tagged dark and the plate light, so a 2-colour 3MF prints it scannable.";
+    }
+
     function drillAtHit(hit) {
       const expr = currentModelExpr();
       if (!expr) { setDrillArmed(false); return; }
@@ -4737,6 +4806,7 @@
       // Drill tool armed: bore a hole at the clicked point, along the face's
       // world-space normal, by wrapping the whole model in difference(…, drill(…)).
       if (drillArmed) { drillAtHit(hit); return; }
+      if (codeArmed) { codeAtHit(hit); return; }
 
       // dimensions of everything that came from the same primitive
       const fid = hit.object.userData.featureId;
@@ -5599,6 +5669,19 @@
     // Drill tool: arm it, then click a face on the model and a hole bores in
     // along that face's normal. Works on imported meshes and any single-expression
     // model (difference wraps the whole thing).
+    // Stamp a code onto a face. Same guard as Drill: it rewrites the whole
+    // model expression, so it needs one to rewrite.
+    for (const [id, kind] of [["code-dm-btn", "datamatrix"], ["code-qr-btn", "qrcode"]]) {
+      $(id).addEventListener("click", () => {
+        if (codeArmed && codeArmedKind === kind) return setCodeArmed(false);
+        if (!currentModelExpr()) {
+          hint.innerHTML = "To stamp a code on a face, the editor needs a <b>single model expression</b> (e.g. straight after Import, or one <code>cube(…)</code>/<code>union(…)</code>). With statement code, add the code call in the text instead.";
+          return;
+        }
+        setCodeArmed(true, kind);
+      });
+    }
+
     $("drill-btn").addEventListener("click", () => {
       if (drillArmed) return setDrillArmed(false);
       if (!currentModelExpr()) {
@@ -6547,7 +6630,7 @@
       else if (e.key === "ArrowUp") snapView("up");
       else if (e.key === "ArrowDown") snapView("down");
       else if (e.key === "Home") snapView("home");
-      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
+      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
       else return;
       e.preventDefault();
     });
