@@ -311,6 +311,13 @@
     .card > header span.sub { color: var(--muted); font-size: 12px; margin-left: 8px; font-weight: 400; }
     /* The model name reads as plain caption text until you hover it — the point
        is that it should not look like a form field sitting in the header. */
+    /* Marks a feature as new and still settling, so nobody is surprised when a
+       corner drag rewrites their cube() into a list of points. */
+    .beta {
+      font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      color: #ffb02e; border: 1px solid rgba(255, 176, 46, .45); border-radius: 4px;
+      padding: 0 3px; margin-left: 3px; vertical-align: 1px;
+    }
     #model-name.named { color: var(--text2); font-weight: 500; }
     #model-name.editable { cursor: text; border-radius: 4px; padding: 1px 5px; margin-left: 3px; }
     #model-name.editable:hover { background: var(--input-bg); color: var(--text2); }
@@ -990,7 +997,7 @@
           <input type="checkbox" id="dims" checked /> Dims
         </label>
         <label class="opt" title="Drag a corner ball to move that corner on its own, skewing the shape. Converts the call to freeform() with 8 editable corners — cube() cannot hold a moved corner.">
-          <input type="checkbox" id="freeform" /> Free-form
+          <input type="checkbox" id="freeform" /> Free-form <small class="beta">beta</small>
         </label>
         <span class="why">off = auto-close brackets &amp; quotes</span>
         <span id="fixnote"></span>
@@ -1520,7 +1527,7 @@
       SPECS, RECIPES, DIALECTS, specOf, diagnose, enclosingCall, autoFix, stripFences, addImplicitReturn,
       swapTarget, wordAt, numberAt, primitiveSites, mapTraceToSites, convertPrimitiveCall,
       isBrepscriptModule, prepareBrepscriptModule,
-      dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers,
+      dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
     } from "./assist.js";
 
     const $ = (id) => document.getElementById(id);
@@ -3858,6 +3865,18 @@
       }
     }
 
+    // Translucent stand-in for a cutter being dragged, so the hole's future
+    // position is visible without re-running the boolean on every mouse move.
+    const ghostGroup = new THREE.Group();
+    scene.add(ghostGroup);
+    const cutterGhostMat = new THREE.MeshStandardMaterial({
+      color: 0xff6b6b, emissive: 0x5a1414, roughness: 0.4,
+      transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide,
+    });
+    function clearGhosts() {
+      for (const g of [...ghostGroup.children]) ghostGroup.remove(g);   // geometry is borrowed
+    }
+
     const splitGroup = new THREE.Group();
     scene.add(splitGroup);
     const AXIS_OF = { x: 0, y: 1, z: 2 };
@@ -4000,8 +4019,19 @@
         }, { kind: "face", axis, sign, fid });
       }
       // corner handles — round beads, uniform scale when the shape has scale targets
-      // freeform always gets corner balls: its corners ARE the shape
-      if (site.kind === "freeform" || findScaleTargets(code.value, site).length) {
+      // A freeform's balls sit on its REAL corners, carrying the index of the
+      // point each one drives. Spawning them on the bounding box (as every
+      // other shape does) left them floating off the part the moment it skewed,
+      // because a skewed solid's corners are nowhere near its axis-aligned box.
+      const ffPts = site.kind === "freeform" ? existingFreeformPoints(code.value, site) : null;
+      if (ffPts) {
+        ffPts.forEach((p, i) => {
+          addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
+            h.scale.setScalar(s * 0.38);
+            h.position.set(p[0], p[1], p[2]);
+          }, { kind: "corner", fid, center: c.clone(), point: i });
+        });
+      } else if (findScaleTargets(code.value, site).length) {
         for (const sx of [bb.min.x, bb.max.x]) for (const sy of [bb.min.y, bb.max.y]) for (const sz of [bb.min.z, bb.max.z]) {
           addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
             h.scale.setScalar(s * 0.38);
@@ -4157,18 +4187,30 @@
             // dimensions with it.
             const fcorners = existingFreeformPoints(code.value, hSite) || cornersOf(fbb);
             const at = hHit.object.position;
-            let best = 0, bestD = Infinity;
-            fcorners.forEach((p, i) => {
-              const d = (p[0] - at.x) ** 2 + (p[1] - at.y) ** 2 + (p[2] - at.z) ** 2;
-              if (d < bestD) { bestD = d; best = i; }
-            });
+            // Prefer the index the handle was spawned with; fall back to
+            // nearest only when converting a primitive, which has no indices.
+            // clamped: the text may have been hand-edited to fewer points since
+            // this handle was spawned, and a stale index would throw
+            let best = Number.isInteger(H.point) && H.point < fcorners.length ? H.point : null;
+            if (best === null) {
+              let bestD = Infinity;
+              fcorners.forEach((p, i) => {
+                const d = (p[0] - at.x) ** 2 + (p[1] - at.y) ** 2 + (p[2] - at.z) ** 2;
+                if (d < bestD) { bestD = d; best = i; }
+              });
+            }
             drag = {
               mode: "freeform", fid: H.fid, site: hSite,
               corners: fcorners.map((p) => p.slice()),
               index: best, origin: fcorners[best].slice(),
               start: at.clone(), planeZ: at.z,
               meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
-              handle: hHit.object, delta: [0, 0, 0], moved: false,
+              // BOTH meshes of the pair: each handle is drawn twice (a crisp
+              // pass and a see-through ghost). Moving only the one the ray hit
+              // left its twin sitting at the old corner, which read as a ghost
+              // ball trailing the drag.
+              handles: handleGroup.children.filter((o) => o.userData.handle === H),
+              delta: [0, 0, 0], moved: false,
               startY: e.clientY,
             };
           } else if (hSite.kind === "cube" || hSite.kind === "cuboid") {
@@ -4190,27 +4232,6 @@
                 ax: 0, ay: 0, moved: false,
               };
             }
-          } else if ($("freeform").checked) {
-            // Free-form: this corner moves on its own instead of scaling the
-            // whole shape. The call becomes freeform([...8 corners...]) on
-            // release, because no primitive can record a corner that has moved.
-            const fcorners = existingFreeformPoints(code.value, hSite)
-              || cornersOf(fbb);
-            const at = hHit.object.position;
-            let best = 0, bestD = Infinity;
-            fcorners.forEach((p, i) => {
-              const d = (p[0] - at.x) ** 2 + (p[1] - at.y) ** 2 + (p[2] - at.z) ** 2;
-              if (d < bestD) { bestD = d; best = i; }
-            });
-            drag = {
-              mode: "freeform", fid: H.fid, site: hSite,
-              corners: fcorners.map((p) => p.slice()),
-              index: best, origin: fcorners[best].slice(),
-              start: at.clone(), planeZ: at.z,
-              meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
-              handle: hHit.object, delta: [0, 0, 0], moved: false,
-              startY: e.clientY,
-            };
           } else {
             const targets = findScaleTargets(code.value, hSite);
             if (targets.length) {
@@ -4276,11 +4297,34 @@
           ? Object.keys(featureMap).filter((id) =>
               featureMap[id].start >= span.start && featureMap[id].end <= span.end)
           : [fid];
+        // A CUTTER's "faces" are the inside of the hole it made, so sliding them
+        // tore the wall out of the solid and left a gap: it read as the solid
+        // moving. Leave the model alone and drag a translucent ghost of the
+        // cutter instead, which is honest about what the boolean will do
+        // without re-running it every frame.
+        const encl = enclosingBooleanSpan(code.value, site.start);
+        const isCutter = !span.whole && encl && encl.op === "difference";
+        const dragMeshes = modelGroup.children.filter((m) => memberFids.includes(m.userData.featureId));
+        let ghosts = null;
+        if (isCutter) {
+          ghosts = [];
+          for (const m of dragMeshes) {
+            const g = new THREE.Mesh(m.geometry, cutterGhostMat);
+            g.position.copy(m.position);
+            g.quaternion.copy(m.quaternion);
+            g.scale.copy(m.scale);
+            g.renderOrder = 995;
+            ghostGroup.add(g);
+            ghosts.push(g);
+          }
+        }
         drag = {
           mode: "move", fid, site, span,
           start: hit.point.clone(),
           planeZ: hit.point.z,
-          meshes: modelGroup.children.filter((m) => memberFids.includes(m.userData.featureId)),
+          meshes: ghosts ? [] : dragMeshes,   // the model itself stays put for a cutter
+          ghosts,
+          origins: ghosts ? ghosts.map((g) => g.position.clone()) : null,
           delta: new THREE.Vector3(),
           moved: false,
         };
@@ -4364,7 +4408,7 @@
         drag.delta = d;
         if (Math.hypot(d[0], d[1], d[2]) > 0.2) drag.moved = true;
         const moved = drag.origin.map((v, i) => v + d[i]);
-        drag.handle.position.set(moved[0], moved[1], moved[2]);
+        for (const h of drag.handles) h.position.set(moved[0], moved[1], moved[2]);
         hint.innerHTML = `Corner &rarr; <b>${fmtPt(moved)}</b>`
           + ` &mdash; ${e.shiftKey ? "up/down" : "hold Shift for up/down"}, release to apply`;
         return;
@@ -4448,8 +4492,14 @@
       drag.delta.copy(delta);
       if (delta.length() > 0.25) drag.moved = true;
       for (const m of drag.meshes) m.position.copy(delta);
+      // a cutter drags a ghost, offset from where its faces already sit
+      if (drag.ghosts) {
+        drag.ghosts.forEach((g, i) => {
+          g.position.copy(drag.origins[i]).add(delta);
+        });
+      }
       const f = (n) => (Math.abs(n) < 0.05 ? "0" : n.toFixed(1));
-      hint.innerHTML = `Moving <b>${drag.span.label}</b> by [${f(delta.x)}, ${f(delta.y)}, ${f(delta.z)}] mm — release to write it into the code${e.shiftKey ? "" : " · hold <b>Shift</b> for vertical"}`;
+      hint.innerHTML = `Moving <b>${drag.span.label}</b>${drag.ghosts ? " (the cutout)" : ""} by [${f(delta.x)}, ${f(delta.y)}, ${f(delta.z)}] mm — release to write it into the code${e.shiftKey ? "" : " · hold <b>Shift</b> for vertical"}`;
     });
 
     // Write the drag into the code: a move wraps/updates translate() around the
@@ -4598,6 +4648,7 @@
       if (drag) {
         controls.enabled = true;
         const wasDrag = drag.moved;
+        clearGhosts();
         for (const m of drag.meshes) { m.position.set(0, 0, 0); m.scale.set(1, 1, 1); }
         const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
         if (wasDrag) {
