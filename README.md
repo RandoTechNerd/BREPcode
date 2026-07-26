@@ -1,16 +1,32 @@
 # BREPcode
 
-**Type a model. Code-CAD in your browser.**
+**Type it, describe it, or grab it and drag. A complete CAD app that runs
+entirely in your browser.**
 
 → **[Try it now at BREPcode.com](https://brepcode.com/)**. Nothing to install, runs entirely
 client-side.
 → **[Download BREPcode.exe](../../releases/latest)**. Portable Windows build, no installer.
 
-An OpenSCAD-style DSL, a live browser viewer, and a headless CLI on top of the
-[BREP.io](https://brep.io) kernel (`brep-io-kernel`).
+It started as code-CAD, and the language is still the heart of it. But there are
+now four ways into the same model, and you can move between them mid-build:
 
-You get BREP.io's real solid modeling engine (manifold booleans, feature history, STL export) but
-you author models the way you'd write OpenSCAD, and you build them from a terminal.
+- **✍️ Write it.** An OpenSCAD-style language that rebuilds as you type. Or paste
+  OpenSCAD, JSCAD, build123d or CadQuery and it translates on the way in.
+- **💬 Describe it.** Tell the built-in chat what you want in plain English and it
+  writes the code. Bring your own Claude or Gemini key, stored in your browser.
+- **🖱 Grab it.** Click a shape to select its code, then drag the handles to
+  resize it. Alt+arrows nudge any number. The edit lands back in the source.
+- **🧰 Import and edit it.** Bring in an STL, 3MF, OBJ or SVG, then drill it,
+  stand it up, split and fill it, thicken its walls, shave the feet off, or add
+  removable support fins.
+
+Plus a live 3D viewer with materials, lighting and CAD outlines, exports to STL,
+OBJ, multi-colour 3MF, GLB, curved-surface STEP and a 3-view blueprint, and a
+[headless CLI](#cli-headless-no-browser) for when you want files instead of a window.
+
+All of it sits on the [BREP.io](https://brep.io) kernel (`brep-io-kernel`): real
+solid modeling, manifold booleans, feature history. Nothing is sent to a server
+except the chat, if you turn it on.
 
 ### Built on BREP.io
 
