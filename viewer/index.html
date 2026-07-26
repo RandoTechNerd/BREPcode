@@ -245,15 +245,25 @@
       pointer-events: none; opacity: 0.72;
     }
     #viewnav .vn-lbl.on-dark { fill: #cfd9ee; }
-    /* Orientation hints. Opacity is driven from the render loop, so these only
-       set colour and geometry — never `opacity`, or the JS would fight the CSS. */
-    #viewnav .vn-hint { pointer-events: none; opacity: 0; }
-    #viewnav #vn-tilt { stroke: var(--accent, #5b8cff); stroke-width: 2.4; stroke-linecap: round; }
-    #viewnav #vn-dot  { fill: var(--accent, #5b8cff); stroke: none; }
-    /* Looking down an axis from the FAR side is a different situation from the
-       near side and must not look identical — warm reads as "you are behind it". */
-    #viewnav .vn-face.lit-near { fill: var(--accent-soft, #3b5da8); }
-    #viewnav .vn-face.lit-far  { fill: #a5722f; }
+    /* Orientation hints. Opacity is set from the render loop, so these only
+       carry colour and geometry — never `opacity`, or the JS would fight it. */
+    #viewnav .vn-edge { pointer-events: none; opacity: 0; }
+    #viewnav line.vn-edge { stroke: var(--accent, #5b8cff); stroke-width: 2.6; stroke-linecap: round; }
+    #viewnav circle.vn-edge { fill: var(--accent, #5b8cff); stroke: none; }
+    /* Three strengths, so "which faces" and "how many" read at a glance:
+       one axis = full, two = half, three = a quarter. */
+    #viewnav .vn-face.lit-1 { fill: #4f7fe0; }
+    #viewnav .vn-face.lit-2 { fill: #3a5da4; }
+    #viewnav .vn-face.lit-3 { fill: #2c4776; }
+    /* From BEHIND the cube the same face is lit from the far side: dim pink,
+       reading as a light shining through rather than a surface facing you. */
+    #viewnav .vn-face.back.lit-1 { fill: #a8517e; }
+    #viewnav .vn-face.back.lit-2 { fill: #7a3c5d; }
+    #viewnav .vn-face.back.lit-3 { fill: #542a41; }
+    #viewnav .vn-cube.behind .vn-face { opacity: 0.55; }        /* see-through from the back */
+    #viewnav .vn-cube.behind .vn-lbl  { opacity: 0.35; }
+    #viewnav line.vn-edge.back   { stroke: #d9749f; }
+    #viewnav circle.vn-edge.back { fill: #d9749f; }
     @media (max-width: 700px) { #viewnav { display: none; } }
 
     /* bottom-right dock: panels stack upward above the buttons */
@@ -903,8 +913,19 @@
 
              All of it is pointer-events:none — the clicks still belong to the
              polygons. -->
-        <line id="vn-tilt" class="vn-hint" x1="42" y1="40" x2="42" y2="20" />
-        <circle id="vn-dot" class="vn-hint" cx="42" cy="30" r="2.6" />
+        <!-- The three shared edges and the one shared corner. Which of them
+             lights up says where the camera is standing:
+
+               looking down ONE axis   -> that face alone, full strength
+               45 between TWO axes     -> both faces at half, plus their edge
+               isometric (all three)   -> all three faint, plus the corner dot
+
+             The cube's centre vertex (42,40) is where all three faces meet, so
+             it is the corner dot; each edge runs from there to an outer vertex. -->
+        <line id="vn-edge-zy" class="vn-edge" x1="42" y1="40" x2="24" y2="30" />
+        <line id="vn-edge-zx" class="vn-edge" x1="42" y1="40" x2="60" y2="30" />
+        <line id="vn-edge-xy" class="vn-edge" x1="42" y1="40" x2="42" y2="62" />
+        <circle id="vn-dot" class="vn-edge" cx="42" cy="40" r="3" />
       </g>
     </svg>
   </div>
@@ -1857,62 +1878,86 @@
     // eye has no visible direction to indicate. So fade it out as the camera
     // lines up with it, and back in as soon as you orbit away.
     // ---- gizmo orientation hints -------------------------------------------
-    // Which of the six directions am I actually looking from, and am I on the
-    // 45-degree tilt the app opens with? The flat cube cannot show either, so
-    // the camera drives them every frame.
-    const _gz = new THREE.Vector3();
-    const VN_FACES = [
-      // OUTWARD normals — the direction each face points, not the axis it lies
-      // on. The front face looks toward -Y, so a camera parked at -Y (the
-      // ordinary front view) is on its NEAR side. Using +Y here reported every
-      // front view as "you are behind it", which is precisely backwards.
-      { sel: '[data-view="top"]',   axis: new THREE.Vector3(0, 0, 1) },
-      { sel: '[data-view="front"]', axis: new THREE.Vector3(0, -1, 0) },
-      { sel: '[data-view="right"]', axis: new THREE.Vector3(1, 0, 0) },
+    // Where is the camera standing? Answered as three coarse zones rather than
+    // anything continuous, because the point is to be readable at a glance on a
+    // 72px cube, not to be a precise readout:
+    //
+    //   ONE axis dominant   -> that face alone, full strength
+    //   TWO comparable      -> both faces at half, plus the edge they share
+    //   THREE comparable    -> all three faint, plus the corner where they meet
+    //
+    // Whether each lit face is turned toward you or away decides the colour:
+    // blue for a face you are looking at, dim pink for one lit from behind,
+    // with the whole cube going translucent so it reads as light coming
+    // through rather than a surface facing you.
+    const GZ_FACES = [
+      { key: "right", axis: 0, normal: 1 },      // +X
+      { key: "front", axis: 1, normal: -1 },     // -Y (the front looks toward -Y)
+      { key: "top",   axis: 2, normal: 1 },      // +Z
     ];
-    let vnEls = null;
+    // which edge joins which pair of axes (0=X, 1=Y, 2=Z)
+    const GZ_EDGES = [
+      { id: "vn-edge-xy", pair: [0, 1] },
+      { id: "vn-edge-zx", pair: [0, 2] },
+      { id: "vn-edge-zy", pair: [1, 2] },
+    ];
+    let gz = null;
     function updateGizmoHints() {
-      if (!vnEls) {
+      if (!gz) {
         const nav = document.getElementById("viewnav");
         if (!nav) return;
-        vnEls = {
-          faces: VN_FACES.map((f) => ({ ...f, el: nav.querySelector(".vn-face" + f.sel) })),
-          tilt: nav.querySelector("#vn-tilt"),
+        gz = {
+          cube: nav.querySelector(".vn-cube"),
+          faces: GZ_FACES.map((f) => ({ ...f, el: nav.querySelector(`.vn-face[data-view="${f.key}"]`) })),
+          edges: GZ_EDGES.map((e) => ({ ...e, el: nav.querySelector("#" + e.id) })),
           dot: nav.querySelector("#vn-dot"),
         };
+        if (!gz.cube) { gz = null; return; }
       }
-      camera.getWorldDirection(_gz);
 
-      let best = null;
-      for (const f of vnEls.faces) {
+      // direction from the model out to the camera, so a positive component
+      // means the camera is on that axis's positive side
+      const v = camera.position.clone().sub(controls.target);
+      if (v.lengthSq() < 1e-9) return;
+      v.normalize();
+      const comp = [v.x, v.y, v.z];
+      const mag = comp.map(Math.abs);
+
+      // An axis counts as "in play" at 0.45 — a 45-degree pose puts two axes at
+      // 0.707 and a corner puts all three at 0.577, so this separates the three
+      // zones cleanly while leaving a dead band around each face view.
+      const live = [0, 1, 2].filter((i) => mag[i] > 0.45);
+      const level = live.length;                    // 1 = face, 2 = edge, 3 = corner
+
+      for (const f of gz.faces) {
         if (!f.el) continue;
-        // dot < 0 means the camera looks along -axis, i.e. it sits on the +side
-        const d = _gz.dot(f.axis);
-        const on = Math.abs(d) > 0.985;                 // within ~10 degrees
-        f.el.classList.toggle("lit-near", on && d < 0); // standing on the + side
-        f.el.classList.toggle("lit-far", on && d > 0);  // looking from behind
-        if (on && (!best || Math.abs(d) > Math.abs(best.d))) best = { f, d };
+        const on = live.includes(f.axis);
+        // the camera is on this face's side when its component matches the
+        // face's outward normal
+        const facing = comp[f.axis] * f.normal > 0;
+        f.el.classList.toggle("lit-1", on && level === 1);
+        f.el.classList.toggle("lit-2", on && level === 2);
+        f.el.classList.toggle("lit-3", on && level === 3);
+        f.el.classList.toggle("back", on && !facing);
       }
 
-      // The dot only appears on a face that is lit, and sits at its centre.
-      if (vnEls.dot) {
-        const at = best && { top: [42, 30], front: [33, 46], right: [51, 46] }[
-          best.f.sel.match(/"(\w+)"/)[1]];
-        vnEls.dot.style.opacity = at ? "0.9" : "0";
-        if (at) { vnEls.dot.setAttribute("cx", at[0]); vnEls.dot.setAttribute("cy", at[1]); }
+      // An edge marker only for the two-axis zone, and only the edge whose pair
+      // is exactly the two live axes.
+      const anyBack = gz.faces.some((f) => live.includes(f.axis) && comp[f.axis] * f.normal <= 0);
+      for (const e of gz.edges) {
+        if (!e.el) continue;
+        const on = level === 2 && e.pair.every((i) => live.includes(i));
+        e.el.style.opacity = on ? "0.95" : "0";
+        e.el.classList.toggle("back", anyBack);
+      }
+      // and the corner dot only for the three-axis zone
+      if (gz.dot) {
+        gz.dot.style.opacity = level === 3 ? "0.95" : "0";
+        gz.dot.classList.toggle("back", anyBack);
       }
 
-      // The tilt marker rides the shared Y/Z edge and brightens as the camera
-      // nears the home pose — level in X, tipped about 30 degrees above the
-      // horizon. It is the one cue that says "this is the view you started in".
-      if (vnEls.tilt) {
-        const flat = Math.hypot(_gz.x, _gz.y) || 1e-6;
-        const pitch = Math.atan2(-_gz.z, flat);              // + = looking down
-        const yaw = Math.abs(_gz.x);                          // 0 = facing along Y
-        const homePitch = Math.atan2(0.55, 1);
-        const near = Math.max(0, 1 - Math.abs(pitch - homePitch) / 0.5) * Math.max(0, 1 - yaw / 0.35);
-        vnEls.tilt.style.opacity = (near * 0.95).toFixed(3);
-      }
+      // Seen from behind, the cube itself goes translucent.
+      gz.cube.classList.toggle("behind", anyBack);
     }
 
     const _viewDir = new THREE.Vector3();
