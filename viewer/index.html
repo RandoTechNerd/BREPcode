@@ -3520,11 +3520,19 @@
     function hull2D(pts) {
       if (pts.length < 3) return pts;
       pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      // Collinear points are dropped with a tolerance scaled to the shape, not
+      // an exact zero: a tessellated cylinder's side vertices sit on a straight
+      // edge only to within float error, and testing exactly turned what should
+      // be a 4-corner rectangle into a 27-gon.
+      const span = Math.max(
+        pts[pts.length - 1][0] - pts[0][0],
+        Math.max(...pts.map((p) => p[1])) - Math.min(...pts.map((p) => p[1])), 1e-6);
+      const eps = span * span * 1e-6;
       const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
       const half = (src) => {
         const out = [];
         for (const p of src) {
-          while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+          while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= eps) out.pop();
           out.push(p);
         }
         out.pop();
@@ -3542,7 +3550,9 @@
     // same shape as the hull of a sample of it, and this keeps an imported
     // 25k-triangle part from costing anything noticeable.
     const SILHOUETTE_SAMPLES = 3000;
-    function faceSilhouette(fid, axis, faceCoord, dims) {
+    // Outline of a solid seen along one axis, shared by the emphasis panel and
+    // the face grab handles so the two can never disagree about its shape.
+    function faceHull(fid, dims) {
       const pts = [];
       const v = new THREE.Vector3();
       let total = 0;
@@ -3563,7 +3573,12 @@
         }
       }
       const hull = hull2D(pts);
-      if (hull.length < 3) return null;
+      return hull.length >= 3 ? hull : null;
+    }
+
+    function faceSilhouette(fid, axis, faceCoord, dims) {
+      const hull = faceHull(fid, dims);
+      if (!hull) return null;
 
       // Fan-triangulate from the centroid — valid for any convex polygon — and
       // write the vertices straight onto the face plane in world space, which
@@ -3662,6 +3677,46 @@
       depthTest: false, depthWrite: false, transparent: true, opacity: 0.22,
     });
     const handleGeo = new THREE.SphereGeometry(1, 28, 20);   // shared; meshes scale it
+
+    // A face grab handle shaped like the face it sits on: square on a cube,
+    // round on a cylinder. Built from the same projected hull as the emphasis
+    // panel, shrunk about its centroid to bead size and given a little
+    // thickness so it reads as a puck rather than a decal.
+    //
+    // Returned in LOCAL space centred on the origin, so the caller still just
+    // sets position and leaves scale at 1.
+    function shapedHandleGeo(fid, axis, radius, thickness) {
+      const dims = [[1, 2], [0, 2], [0, 1]][axis];
+      const hull = faceHull(fid, dims);
+      if (!hull || hull.length < 3) return null;
+      let cu = 0, cv = 0;
+      for (const [u, v] of hull) { cu += u; cv += v; }
+      cu /= hull.length; cv /= hull.length;
+      let maxR = 0;
+      for (const [u, v] of hull) maxR = Math.max(maxR, Math.hypot(u - cu, v - cv));
+      if (!(maxR > 1e-6)) return null;
+      const k = radius / maxR;
+      const ring = hull.map(([u, v]) => [(u - cu) * k, (v - cv) * k]);
+
+      const half = thickness / 2;
+      const verts = [];
+      const at = (u, v, w) => { const p = [0, 0, 0]; p[axis] = w; p[dims[0]] = u; p[dims[1]] = v; return p; };
+      const push = (...ps) => { for (const p of ps) verts.push(p[0], p[1], p[2]); };
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        // caps (fan from centre), wound so each faces outward
+        push(at(0, 0, half), at(a[0], a[1], half), at(b[0], b[1], half));
+        push(at(0, 0, -half), at(b[0], b[1], -half), at(a[0], a[1], -half));
+        // rim
+        push(at(a[0], a[1], -half), at(b[0], b[1], -half), at(b[0], b[1], half));
+        push(at(a[0], a[1], -half), at(b[0], b[1], half), at(a[0], a[1], half));
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+      geo.computeVertexNormals();
+      geo.userData.owned = true;      // not the shared bead; clearHandles disposes it
+      return geo;
+    }
     let selected = null;   // { fid }
 
     // the crisp mesh + its see-through twin, sharing transform and handle data
@@ -3679,7 +3734,16 @@
       selected = null;
       clearHighlight();
       clearEmphasis();
-      for (const h of [...handleGroup.children]) handleGroup.remove(h);   // geometry is shared, don't dispose
+      // the bead geometry is shared and must survive; shaped face pucks are
+      // built per selection, so those do get disposed (once, not per mesh)
+      const done = new Set();
+      for (const h of [...handleGroup.children]) {
+        if (h.geometry?.userData?.owned && !done.has(h.geometry)) {
+          done.add(h.geometry);
+          h.geometry.dispose();
+        }
+        handleGroup.remove(h);
+      }
     }
 
     // ------------------------------------------------- stretch() split line
@@ -3864,10 +3928,17 @@
         if (!findResizeTarget(code.value, site, axis)) continue;
         const pos = c.clone();
         pos.setComponent(axis, sign > 0 ? bb.max.getComponent(axis) : bb.min.getComponent(axis));
-        // a flattened bead (lens) that hugs its face — thin along the face normal
+        // A puck shaped like the face it hugs (square on a cube, round on a
+        // cylinder), falling back to the flattened bead when the solid has no
+        // usable geometry to project.
+        const shaped = shapedHandleGeo(fid, axis, s * 0.62, s * 0.44);
         addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
-          h.scale.set(s * 0.62, s * 0.62, s * 0.62);
-          h.scale.setComponent(axis, s * 0.22);
+          if (shaped) {
+            h.geometry = shaped;      // already sized and centred in local space
+          } else {
+            h.scale.set(s * 0.62, s * 0.62, s * 0.62);
+            h.scale.setComponent(axis, s * 0.22);
+          }
           h.position.copy(pos);
         }, { kind: "face", axis, sign, fid });
       }
