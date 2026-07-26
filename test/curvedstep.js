@@ -119,6 +119,38 @@ console.log("\nhull and freeform reach the curved exporter\n");
     `${(hi[0] - lo[0]).toFixed(1)} x ${(hi[2] - lo[2]).toFixed(1)}`);
 }
 
+// A profile built from arcs repeats a point at every arc junction, because each
+// arc starts where the last one ended. The BREP.io kernel ignores the resulting
+// zero-length edge; OCCT refuses the wire, and emscripten reported it as a bare
+// heap pointer ("SVG export failed: 8867952"). The exporter drops duplicates now.
+console.log("\nprofiles with duplicate points still export\n");
+{
+  // the same shape written twice: once clean, once with every point doubled
+  const square = [[0, 0], [20, 0], [20, 20], [0, 20]];
+  const doubled = square.flatMap((p) => [p, [...p]]);
+  const clean = await buildCurved(linearExtrude({ h: 5 }, polygon(square)));
+  const dupes = await buildCurved(linearExtrude({ h: 5 }, polygon(doubled)));
+  const size = (s) => {
+    const [lo, hi] = s.boundingBox.bounds;
+    return [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]].map((n) => n.toFixed(1)).join("x");
+  };
+  check("duplicated points do not break the export", size(dupes) === size(clean),
+    `${size(dupes)} vs ${size(clean)}`);
+}
+{
+  // a trailing point equal to the first: close() would draw a zero-length segment
+  const closed = [[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]];
+  const s = await buildCurved(linearExtrude({ h: 5 }, polygon(closed)));
+  check("an explicitly closed profile exports", !!s && s.boundingBox.bounds[1][0] > 19);
+}
+{
+  let threw = "";
+  try { await buildCurved(linearExtrude({ h: 5 }, polygon([[0, 0], [0, 0], [0, 0]]))); }
+  catch (e) { threw = e.message; }
+  check("a profile with no area says so in words", /no area/.test(threw), threw.slice(0, 60));
+  check("and is a real Error, not a heap pointer", threw.length > 0);
+}
+
 // The blueprint carries dimensions on all four views. The isometric ones have to
 // run ALONG the projected axes, and that basis was measured out of replicad's
 // camera rather than assumed — so if replicad ever changes its projection, these

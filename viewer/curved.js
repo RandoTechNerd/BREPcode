@@ -132,6 +132,24 @@ export async function buildCurved(root) {
     hullShapes.set(n, await r.importSTL(new Blob([out.join("\n")], { type: "model/stl" })));
   };
 
+  // OCCT refuses a wire containing a zero-length edge, while the BREP.io kernel
+  // quietly ignores one — so a profile that builds fine in the viewer can fail
+  // the STEP/blueprint export with nothing but an emscripten pointer to show for
+  // it. Any polygon assembled from arcs hits this: each arc's first point is the
+  // previous arc's last point. Drop consecutive duplicates, and a closing point
+  // equal to the first, since close() draws that segment itself.
+  const cleanProfile = (pts, what) => {
+    const eps = 1e-6;
+    const same = (a, b) => Math.abs(a[0] - b[0]) < eps && Math.abs(a[1] - b[1]) < eps;
+    const out = [];
+    for (const p of pts) if (!out.length || !same(out[out.length - 1], p)) out.push(p);
+    while (out.length > 1 && same(out[0], out[out.length - 1])) out.pop();
+    if (out.length < 3) {
+      throw new Error(`curved export: ${what} collapsed to ${out.length} distinct point(s) — the profile has no area`);
+    }
+    return out;
+  };
+
   const build = (n, matrix) => {
     if (n.kind === "xform") {
       return build(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix));
@@ -148,8 +166,9 @@ export async function buildCurved(root) {
     }
     if (n.kind === "prim") return applyMatrix(buildPrim(r, n), matrix);
     if (n.kind === "prism") {
-      let d = r.draw(n.pts[0]);
-      for (let i = 1; i < n.pts.length; i++) d = d.lineTo(n.pts[i]);
+      const pts = cleanProfile(n.pts, "linearExtrude() profile");
+      let d = r.draw(pts[0]);
+      for (let i = 1; i < pts.length; i++) d = d.lineTo(pts[i]);
       return applyMatrix(d.close().sketchOnPlane("XY").extrude(n.h), matrix);
     }
     if (n.kind === "edgeop") {
@@ -163,8 +182,9 @@ export async function buildCurved(root) {
       return shape;
     }
     if (n.kind === "revolve") {
-      let d = r.draw(n.pts[0]);
-      for (let i = 1; i < n.pts.length; i++) d = d.lineTo(n.pts[i]);
+      const pts = cleanProfile(n.pts, "revolve() profile");
+      let d = r.draw(pts[0]);
+      for (let i = 1; i < pts.length; i++) d = d.lineTo(pts[i]);
       // revolve the profile about its x=0 edge (the Z axis of the XZ sketch)
       const rev = d.close().sketchOnPlane("XZ").revolve([0, 0, 1], { angleDegrees: n.angle ?? 360 });
       return applyMatrix(rev, matrix);
@@ -180,8 +200,26 @@ export async function buildCurved(root) {
     throw new Error(`curved export: unknown node kind "${n.kind}"`);
   };
 
-  await resolveHulls(root);
-  return build(root, new Matrix4());
+  // OCCT throws C++ exceptions, which emscripten surfaces as a raw heap pointer:
+  // the export failed with "8867952" and nothing else. Anything that is not a
+  // real Error gets turned into something a user can act on. Try to recover the
+  // real message first — some OCCT builds expose a decoder.
+  try {
+    await resolveHulls(root);
+    return build(root, new Matrix4());
+  } catch (e) {
+    if (e instanceof Error) throw e;
+    let detail = "";
+    try {
+      const oc = r.getOC?.();
+      const msg = oc?.getExceptionMessage?.(e) ?? oc?.OCJS?.getExceptionMessage?.(e);
+      if (msg) detail = `: ${String(msg).slice(0, 120)}`;
+    } catch { /* no decoder in this build */ }
+    throw new Error(
+      `the CAD kernel rejected this model${detail}. This is usually a profile with `
+      + "a zero-length or self-crossing edge, or a boolean between shapes that only "
+      + "touch along a face. The mesh exports (STL/3MF) are more forgiving.");
+  }
 }
 
 export async function curvedStepBlob(root) {
