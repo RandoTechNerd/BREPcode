@@ -264,6 +264,10 @@
     #viewnav .vn-cube.behind .vn-lbl  { opacity: 0.35; }
     #viewnav line.vn-edge.back   { stroke: #d9749f; }
     #viewnav circle.vn-edge.back { fill: #d9749f; }
+    /* Invisible hit targets for the edges and corner. `fill: transparent`, not
+       `fill: none` — none makes an SVG shape untargetable by pointer events. */
+    #viewnav .vn-hit circle { fill: transparent; cursor: pointer; }
+    #viewnav .vn-hit circle:hover { fill: rgba(120, 160, 255, 0.28); }
     @media (max-width: 700px) { #viewnav { display: none; } }
 
     /* bottom-right dock: panels stack upward above the buttons */
@@ -926,6 +930,19 @@
         <line id="vn-edge-zx" class="vn-edge" x1="42" y1="40" x2="60" y2="30" />
         <line id="vn-edge-xy" class="vn-edge" x1="42" y1="40" x2="42" y2="62" />
         <circle id="vn-dot" class="vn-edge" cx="42" cy="40" r="3" />
+
+        <!-- Click targets for the edges and the corner, so the cube can be
+             flown to as well as read: clicking where two faces meet takes you
+             to that 45-degree pose, and the shared corner takes you to the
+             isometric. Invisible, and last in the group so they sit ON TOP of
+             the faces and win the click. Radius is generous — these are small
+             on a 72px cube and a near miss should still do the obvious thing. -->
+        <g class="vn-hit">
+          <circle data-view="edge-zy" cx="33" cy="35" r="6" />
+          <circle data-view="edge-zx" cx="51" cy="35" r="6" />
+          <circle data-view="edge-xy" cx="42" cy="51" r="6" />
+          <circle data-view="corner"  cx="42" cy="40" r="5.5" />
+        </g>
       </g>
     </svg>
   </div>
@@ -2913,6 +2930,11 @@
     const ABS_VIEW = {
       front: [0, -1, 0], back: [0, 1, 0], right: [1, 0, 0], leftFace: [-1, 0, 0],
       top: [0, 0, 1], bottom: [0, 0, -1], iso: HOME_DIR,
+      // The poses between faces. Clicking where two faces meet on the cube flies
+      // you to the 45 between them; the shared corner is the true isometric.
+      // Signs match the three faces the cube draws: top +Z, front -Y, right +X.
+      "edge-zy": [0, -1, 1], "edge-zx": [1, 0, 1], "edge-xy": [1, -1, 0],
+      corner: [1, -1, 1],
     };
     function snapView(dir) {
       // Re-centre on the model before turning. The arrows orbit around
@@ -2943,6 +2965,7 @@
       const up = new THREE.Vector3(0, 0, 1);
       let offset = camera.position.clone().sub(target);
       const step = Math.PI / 4;
+      if (ABS_VIEW[dir] || dir === "home") camera.up.set(0, 0, 1);   // back on its feet
       if (ABS_VIEW[dir]) {
         offset = new THREE.Vector3(...ABS_VIEW[dir]).normalize().multiplyScalar(offset.length());
         // Straight up and straight down are the poles of OrbitControls' own
@@ -2956,21 +2979,72 @@
         }
       } else if (dir === "home") {
         offset = new THREE.Vector3(...HOME_DIR).normalize().multiplyScalar(offset.length());
-      } else if (dir === "left") { offset.applyAxisAngle(up, step); }
+      } else if (dir === "opposite") {
+        // Straight to the far side. A quick double-tap on any arrow means "show
+        // me the back of this" — the one move that would otherwise take four
+        // clicks and land somewhere approximate.
+        offset.negate();
+      }
+      else if (dir === "left") { offset.applyAxisAngle(up, step); }
       else if (dir === "right") { offset.applyAxisAngle(up, -step); }
       else if (dir === "up" || dir === "down") {
-        const right = new THREE.Vector3().crossVectors(offset, up).normalize();
-        if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
-        const next = offset.clone().applyAxisAngle(right, dir === "up" ? -step : step);
-        if (Math.abs(Math.asin(next.z / next.length())) < 1.45) offset = next;   // don't flip over the pole
+        // A true tumble: keep going over the top and down the far side instead
+        // of stopping just short of vertical.
+        //
+        // Doing this in spherical coordinates about a fixed Z-up does not work
+        // — reflecting the polar angle at the pole and turning the heading 180
+        // means the NEXT step walks straight back to the pole, so the camera
+        // just bounces between vertical and 45 forever. Rotating the offset and
+        // the camera's own up vector together has no pole at all: the frame
+        // travels with the camera, so the loop closes after eight steps of 45.
+        const axis = new THREE.Vector3().crossVectors(offset, camera.up).normalize();
+        if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0);
+        const turn = dir === "up" ? -step : step;
+        offset.applyAxisAngle(axis, turn);
+        camera.up.applyAxisAngle(axis, turn).normalize();
+      }
+      // Landing exactly on a pole leaves the orbit controller with no defined
+      // heading and the move appears to do nothing — see the note on the
+      // absolute views above. A thousandth off is invisible and enough.
+      if (Math.abs(offset.x) < 1e-9 && Math.abs(offset.y) < 1e-9) {
+        offset.y = -Math.sign(offset.z || 1) * offset.length() * 1e-3;
       }
       camera.position.copy(target).add(offset);
       controls.update();
     }
+    // A second click on the SAME arrow within a moment means "the other side"
+    // instead of another 45. Tracked by hand rather than with dblclick, because
+    // dblclick fires after its own click has already turned the camera — the
+    // first step would happen and then be thrown away, which looks like a
+    // stutter. Only the arrows do this; the faces are absolute already.
+    const DOUBLE_MS = 320;
+    let lastArrow = null, lastArrowAt = 0;
     for (const b of document.querySelectorAll("#viewnav [data-view]")) {
-      b.addEventListener("click", (e) => { e.stopPropagation(); snapView(b.dataset.view); });
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const view = b.dataset.view;
+        // Ask WHERE the element is, not what it is called: the right arrow and
+        // the right cube face both carry data-view="right", so matching on the
+        // name alone made clicking the face spin 45 degrees instead of snapping
+        // to the right view.
+        const spin = !!b.closest(".vn-arrow");
+        const now = performance.now();
+        if (spin && lastArrow === view && now - lastArrowAt < DOUBLE_MS) {
+          lastArrow = null;
+          snapView("opposite");
+          return;
+        }
+        lastArrow = spin ? view : null;
+        lastArrowAt = now;
+        snapView(view);
+      });
     }
-    $("viewnav").addEventListener("dblclick", () => snapView("home"));
+    // Double-clicking the cube itself still means home. Arrows opt out above so
+    // the two gestures cannot fight over the same event.
+    $("viewnav").addEventListener("dblclick", (e) => {
+      if (e.target.closest("[data-view]")) return;
+      snapView("home");
+    });
 
     // ------------------------------------------------------------ dock / UI
     const cheatBtn = $("cheat-btn"), openBtn = $("open-btn");

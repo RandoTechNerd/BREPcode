@@ -21,7 +21,8 @@
     "desktop": "electron desktop/main.cjs",
     "desktop:build": "node build-site.mjs && electron-builder --win --config electron-builder.yml",
     "test:desktop": "electron test/desktop-smoke.cjs",
-    "recipes": "node scripts/recipes-manifest.mjs"
+    "recipes": "node scripts/recipes-manifest.mjs",
+    "test:gizmo": "electron scripts/gizmo-check.cjs"
   },
   "license": "MIT",
   "dependencies": {
