@@ -3503,17 +3503,98 @@
     function clearEmphasis() {
       for (const c of [...emphasisGroup.children]) { c.geometry?.dispose?.(); emphasisGroup.remove(c); }
     }
-    function addFaceEmphasis(bb, axis) {
+    // Convex hull of 2D points (monotone chain). Small and allocation-light —
+    // this runs on a caret move, not per frame.
+    function hull2D(pts) {
+      if (pts.length < 3) return pts;
+      pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      const half = (src) => {
+        const out = [];
+        for (const p of src) {
+          while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+          out.push(p);
+        }
+        out.pop();
+        return out;
+      };
+      return half(pts).concat(half(pts.reverse()));
+    }
+
+    // The face panel used to be a bounding-box rectangle, which looked wrong on
+    // anything round — a sphere got a square plate. Project the selected solid
+    // onto the face plane instead and use its outline, so the grabber takes the
+    // shape of the thing it's attached to.
+    //
+    // Vertices are SUBSAMPLED to a few thousand: the hull of a dense mesh is the
+    // same shape as the hull of a sample of it, and this keeps an imported
+    // 25k-triangle part from costing anything noticeable.
+    const SILHOUETTE_SAMPLES = 3000;
+    function faceSilhouette(fid, axis, faceCoord, dims) {
+      const pts = [];
+      const v = new THREE.Vector3();
+      let total = 0;
+      for (const m of modelGroup.children) {
+        if (m.userData.featureId !== fid || !m.geometry?.attributes?.position) continue;
+        total += m.geometry.attributes.position.count;
+      }
+      if (!total) return null;
+      const step = Math.max(1, Math.ceil(total / SILHOUETTE_SAMPLES));
+      for (const m of modelGroup.children) {
+        if (m.userData.featureId !== fid) continue;
+        const pos = m.geometry?.attributes?.position;
+        if (!pos) continue;
+        m.updateMatrixWorld();
+        for (let i = 0; i < pos.count; i += step) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+          pts.push([v.getComponent(dims[0]), v.getComponent(dims[1])]);
+        }
+      }
+      const hull = hull2D(pts);
+      if (hull.length < 3) return null;
+
+      // Fan-triangulate from the centroid — valid for any convex polygon — and
+      // write the vertices straight onto the face plane in world space, which
+      // sidesteps having to rotate a flat geometry into place.
+      let cu = 0, cv = 0;
+      for (const [u, w] of hull) { cu += u; cv += w; }
+      cu /= hull.length; cv /= hull.length;
+      const verts = [];
+      const push = (u, w) => {
+        const p = [0, 0, 0];
+        p[axis] = faceCoord; p[dims[0]] = u; p[dims[1]] = w;
+        verts.push(p[0], p[1], p[2]);
+      };
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i], b = hull[(i + 1) % hull.length];
+        push(cu, cv); push(a[0], a[1]); push(b[0], b[1]);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function addFaceEmphasis(bb, axis, fid) {
       const size = bb.getSize(new THREE.Vector3());
       const c = bb.getCenter(new THREE.Vector3());
       const dims = [[1, 2], [0, 2], [0, 1]][axis];     // the two spanning axes
       for (const face of [bb.min, bb.max]) {
-        const geo = new THREE.PlaneGeometry(size.getComponent(dims[0]) || 1, size.getComponent(dims[1]) || 1);
+        const at = face.getComponent(axis);
+        // shape-matched panel, falling back to the old rectangle if the solid
+        // has no usable geometry (a group, or nothing selected)
+        const shaped = faceSilhouette(fid, axis, at, dims);
+        const geo = shaped
+          || new THREE.PlaneGeometry(size.getComponent(dims[0]) || 1, size.getComponent(dims[1]) || 1);
         const p = new THREE.Mesh(geo, faceEmphMat);
-        if (axis === 0) p.rotation.y = Math.PI / 2;
-        else if (axis === 1) p.rotation.x = Math.PI / 2;
-        p.position.copy(c);
-        p.position.setComponent(axis, face.getComponent(axis));
+        // the silhouette is built in world space already; only the fallback
+        // rectangle needs turning and placing
+        if (!shaped) {
+          if (axis === 0) p.rotation.y = Math.PI / 2;
+          else if (axis === 1) p.rotation.x = Math.PI / 2;
+          p.position.copy(c);
+          p.position.setComponent(axis, at);
+        }
         p.renderOrder = 996;
         emphasisGroup.add(p);
       }
@@ -3539,7 +3620,7 @@
       for (let axis = 0; axis < 3; axis++) {
         const t = findResizeTarget(code.value, site, axis);
         if (t && selStart >= t.numStart && selStart < t.numEnd) {
-          if (/^(width|depth|height)/.test(t.label || "")) addFaceEmphasis(bb, axis);
+          if (/^(width|depth|height)/.test(t.label || "")) addFaceEmphasis(bb, axis, fid);
           else addCornerEmphasis(bb);          // radius / ring / tube → scales from corners
           return;
         }
