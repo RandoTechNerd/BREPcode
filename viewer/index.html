@@ -245,6 +245,15 @@
       pointer-events: none; opacity: 0.72;
     }
     #viewnav .vn-lbl.on-dark { fill: #cfd9ee; }
+    /* Orientation hints. Opacity is driven from the render loop, so these only
+       set colour and geometry — never `opacity`, or the JS would fight the CSS. */
+    #viewnav .vn-hint { pointer-events: none; opacity: 0; }
+    #viewnav #vn-tilt { stroke: var(--accent, #5b8cff); stroke-width: 2.4; stroke-linecap: round; }
+    #viewnav #vn-dot  { fill: var(--accent, #5b8cff); stroke: none; }
+    /* Looking down an axis from the FAR side is a different situation from the
+       near side and must not look identical — warm reads as "you are behind it". */
+    #viewnav .vn-face.lit-near { fill: var(--accent-soft, #3b5da8); }
+    #viewnav .vn-face.lit-far  { fill: #a5722f; }
     @media (max-width: 700px) { #viewnav { display: none; } }
 
     /* bottom-right dock: panels stack upward above the buttons */
@@ -877,6 +886,25 @@
         <text class="vn-lbl" transform="matrix(0.87,0.48,-0.87,0.48,42,30)">Z</text>
         <text class="vn-lbl on-dark" transform="matrix(0.87,0.48,0,1,33,45)">Y</text>
         <text class="vn-lbl on-dark" transform="matrix(0.87,-0.48,0,1,51,45)">X</text>
+
+        <!-- Where you are actually standing. The cube alone tells you the
+             three directions but not which one you are looking from, and the
+             default view is a 45-degree tilt between Y and Z — a pose the flat
+             drawing cannot show. So:
+
+               * the shared Y/Z edge carries a marker that brightens as the
+                 camera approaches that 45-degree pose;
+               * a face lights up when you are looking straight down its axis,
+                 in the accent colour from the near side and a contrasting
+                 warm colour from the far side, so "front" and "back" are
+                 never the same picture;
+               * a dot sits on the lit face as the confirmation that you are
+                 dead-on rather than merely close.
+
+             All of it is pointer-events:none — the clicks still belong to the
+             polygons. -->
+        <line id="vn-tilt" class="vn-hint" x1="42" y1="40" x2="42" y2="20" />
+        <circle id="vn-dot" class="vn-hint" cx="42" cy="30" r="2.6" />
       </g>
     </svg>
   </div>
@@ -1671,7 +1699,14 @@
     scene.background = new THREE.Color(0x0b0f16);
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
-    camera.position.set(70, -70, 55);
+    // The view everyone recognises: looking at the front with a modest tilt, so
+    // +X reads left-to-right across the screen and +Y runs away from you up the
+    // page — the way a drawing is laid out. A true 3/4 isometric shows more of
+    // the part but leaves both axes running diagonally, which is exactly the
+    // confusion the axis letters exist to fix. Named once so the startup
+    // camera, the refit fallback and the home button cannot drift apart.
+    const HOME_DIR = [0, -1, 0.55];
+    camera.position.set(0, -110, 60);
     camera.up.set(0, 0, 1);                       // Z-up, matching the DSL
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1821,8 +1856,68 @@
     // also the one view where the label says nothing: an axis pointing at your
     // eye has no visible direction to indicate. So fade it out as the camera
     // lines up with it, and back in as soon as you orbit away.
+    // ---- gizmo orientation hints -------------------------------------------
+    // Which of the six directions am I actually looking from, and am I on the
+    // 45-degree tilt the app opens with? The flat cube cannot show either, so
+    // the camera drives them every frame.
+    const _gz = new THREE.Vector3();
+    const VN_FACES = [
+      // OUTWARD normals — the direction each face points, not the axis it lies
+      // on. The front face looks toward -Y, so a camera parked at -Y (the
+      // ordinary front view) is on its NEAR side. Using +Y here reported every
+      // front view as "you are behind it", which is precisely backwards.
+      { sel: '[data-view="top"]',   axis: new THREE.Vector3(0, 0, 1) },
+      { sel: '[data-view="front"]', axis: new THREE.Vector3(0, -1, 0) },
+      { sel: '[data-view="right"]', axis: new THREE.Vector3(1, 0, 0) },
+    ];
+    let vnEls = null;
+    function updateGizmoHints() {
+      if (!vnEls) {
+        const nav = document.getElementById("viewnav");
+        if (!nav) return;
+        vnEls = {
+          faces: VN_FACES.map((f) => ({ ...f, el: nav.querySelector(".vn-face" + f.sel) })),
+          tilt: nav.querySelector("#vn-tilt"),
+          dot: nav.querySelector("#vn-dot"),
+        };
+      }
+      camera.getWorldDirection(_gz);
+
+      let best = null;
+      for (const f of vnEls.faces) {
+        if (!f.el) continue;
+        // dot < 0 means the camera looks along -axis, i.e. it sits on the +side
+        const d = _gz.dot(f.axis);
+        const on = Math.abs(d) > 0.985;                 // within ~10 degrees
+        f.el.classList.toggle("lit-near", on && d < 0); // standing on the + side
+        f.el.classList.toggle("lit-far", on && d > 0);  // looking from behind
+        if (on && (!best || Math.abs(d) > Math.abs(best.d))) best = { f, d };
+      }
+
+      // The dot only appears on a face that is lit, and sits at its centre.
+      if (vnEls.dot) {
+        const at = best && { top: [42, 30], front: [33, 46], right: [51, 46] }[
+          best.f.sel.match(/"(\w+)"/)[1]];
+        vnEls.dot.style.opacity = at ? "0.9" : "0";
+        if (at) { vnEls.dot.setAttribute("cx", at[0]); vnEls.dot.setAttribute("cy", at[1]); }
+      }
+
+      // The tilt marker rides the shared Y/Z edge and brightens as the camera
+      // nears the home pose — level in X, tipped about 30 degrees above the
+      // horizon. It is the one cue that says "this is the view you started in".
+      if (vnEls.tilt) {
+        const flat = Math.hypot(_gz.x, _gz.y) || 1e-6;
+        const pitch = Math.atan2(-_gz.z, flat);              // + = looking down
+        const yaw = Math.abs(_gz.x);                          // 0 = facing along Y
+        const homePitch = Math.atan2(0.55, 1);
+        const near = Math.max(0, 1 - Math.abs(pitch - homePitch) / 0.5) * Math.max(0, 1 - yaw / 0.35);
+        vnEls.tilt.style.opacity = (near * 0.95).toFixed(3);
+      }
+    }
+
     const _viewDir = new THREE.Vector3();
     function fadeAxisLabels() {
+      updateGizmoHints();
       if (!axisGroup.children.length) return;
       camera.getWorldDirection(_viewDir);
       for (const o of axisGroup.children) {
@@ -1961,15 +2056,21 @@
       const off = s * 1.6;
       const { min, max } = bb;
       const V = (x, y, z) => new THREE.Vector3(x, y, z);
+      // All on the LEFT of the part. They used to sit on the right, which in
+      // the default view is where the X marker and the export dock are, so the
+      // height and depth figures had to compete with them. Left is empty in
+      // every orbit that matters, and it matches the convention people expect
+      // from a drawing sheet.
+      //
       // width along X: in front (min y), on the ground plane
       dimension(V(min.x, min.y - off, min.z), V(max.x, min.y - off, min.z),
         V(0, -1, 0), `${size.x.toFixed(1)}`, s);
-      // depth along Y: right side
-      dimension(V(max.x + off, min.y, min.z), V(max.x + off, max.y, min.z),
-        V(1, 0, 0), `${size.y.toFixed(1)}`, s);
-      // height along Z: front-right corner
-      dimension(V(max.x + off, min.y - off, min.z), V(max.x + off, min.y - off, max.z),
-        V(1, -1, 0).normalize(), `${size.z.toFixed(1)}`, s);
+      // depth along Y: left side
+      dimension(V(min.x - off, min.y, min.z), V(min.x - off, max.y, min.z),
+        V(-1, 0, 0), `${size.y.toFixed(1)}`, s);
+      // height along Z: front-left corner
+      dimension(V(min.x - off, min.y - off, min.z), V(min.x - off, min.y - off, max.z),
+        V(-1, -1, 0).normalize(), `${size.z.toFixed(1)}`, s);
     }
 
     // Declared up here because resize() runs during startup, long before the
@@ -2027,7 +2128,7 @@
       let dir = camera.position.clone().sub(controls.target);
       let distance = dir.length();
       if (!framedRadius || distance < 1e-6) {
-        dir = new THREE.Vector3(1, -1, 0.8);
+        dir = new THREE.Vector3(...HOME_DIR);
         distance = 0;
       }
       dir.normalize();
@@ -2766,7 +2867,7 @@
     // snaps to one of these; the arrows do the relative ±45° steps below.
     const ABS_VIEW = {
       front: [0, -1, 0], back: [0, 1, 0], right: [1, 0, 0], leftFace: [-1, 0, 0],
-      top: [0, 0, 1], bottom: [0, 0, -1], iso: [1, -1, 0.8],
+      top: [0, 0, 1], bottom: [0, 0, -1], iso: HOME_DIR,
     };
     function snapView(dir) {
       // Re-centre on the model before turning. The arrows orbit around
@@ -2779,7 +2880,7 @@
         const center = box.getCenter(new THREE.Vector3());
         const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.001);
         let away = camera.position.clone().sub(controls.target);
-        if (away.lengthSq() < 1e-9) away.set(1, -1, 0.8);
+        if (away.lengthSq() < 1e-9) away.set(...HOME_DIR);
         // "home" always refits. The arrows keep whatever zoom you chose — you
         // don't want the view jumping while you inspect something — unless the
         // part has ended up a speck or overflowing the screen, in which case
@@ -2799,8 +2900,17 @@
       const step = Math.PI / 4;
       if (ABS_VIEW[dir]) {
         offset = new THREE.Vector3(...ABS_VIEW[dir]).normalize().multiplyScalar(offset.length());
+        // Straight up and straight down are the poles of OrbitControls' own
+        // spherical coordinates, where the azimuth is undefined. Landing
+        // exactly on one from a perfectly level camera — which the front and
+        // side views now are — leaves damping with no rotation to interpolate,
+        // and the click appeared to do nothing at all. A hair off the pole
+        // gives it a defined heading; the tilt is far too small to see.
+        if (Math.abs(offset.z) > 1e-9 && Math.abs(offset.x) < 1e-9 && Math.abs(offset.y) < 1e-9) {
+          offset.y = -offset.z * 1e-3;
+        }
       } else if (dir === "home") {
-        offset = new THREE.Vector3(1, -1, 0.8).normalize().multiplyScalar(offset.length());
+        offset = new THREE.Vector3(...HOME_DIR).normalize().multiplyScalar(offset.length());
       } else if (dir === "left") { offset.applyAxisAngle(up, step); }
       else if (dir === "right") { offset.applyAxisAngle(up, -step); }
       else if (dir === "up" || dir === "down") {
