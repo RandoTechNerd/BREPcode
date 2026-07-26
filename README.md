@@ -357,7 +357,26 @@ A model file default-exports either a shape or a `(params) => shape` function.
 
 ## Reading OpenSCAD and JSCAD
 
-BrepScript translates both, so existing models build without a rewrite.
+BrepScript translates both, but they are in **very** different states, and it is
+worth being blunt about it.
+
+> ### If you want to run OpenSCAD, use OpenSCAD
+>
+> Real [OpenSCAD](https://openscad.org) is a mature, complete, well-tested
+> program and it is unreservedly the right tool for OpenSCAD code. Nothing here
+> competes with it.
+>
+> The translator in BREPcode exists as a **teaching and porting aid**: paste a
+> `.scad` file you found, see it build, see the equivalent BREPcode next to it,
+> and carry on from there. It handles *light* OpenSCAD. It will not run a serious
+> library-heavy model, and it is not trying to.
+>
+> If a paste fails, that is expected rather than a bug worth reporting. Open it
+> in OpenSCAD.
+
+**JSCAD** is the one that genuinely works. It is JavaScript already, so the
+translation is a real API mapping rather than a parser guessing at another
+language's semantics, and `@jscad/modeling` models tend to build unchanged.
 
 **OpenSCAD**, `.scad` files work directly from the CLI, and pasting OpenSCAD into the viewer is
 auto-detected (the status line then reads `OpenSCAD · …`).
@@ -369,8 +388,25 @@ brepscript examples/knob.scad -o knob.stl
 A practical subset is implemented: variables and arithmetic, `module` and `function` definitions
 (including use-before-definition and `children()`), `for` with `[start:step:end]` ranges, `if`/`else`,
 the `*` `!` `#` `%` modifiers, named and positional arguments, `d`/`d1`/`d2` diameter forms, global or
-per-call `$fn`, axis-angle `rotate(a, v)`, and the usual primitives, booleans and transforms. Anything
-2D, and `hull`/`minkowski`/`surface`/`import`/`projection`, raises a clear error naming the feature.
+per-call `$fn`, axis-angle `rotate(a, v)`, and the usual primitives, booleans and transforms.
+
+What it does **not** do, each raising a clear error naming the feature rather
+than quietly producing the wrong solid:
+
+| Not translated | Why it matters |
+|---|---|
+| The entire 2D subsystem (`square`, `circle`, `polygon` as 2D, `offset`, `projection`, `text`) | Anything that builds a profile then extrudes it. This rules out a large share of real `.scad` files |
+| `include <…>` / `use <…>` | So BOSL2, MCAD, dotSCAD and every other library are out. Paste the file's contents in instead |
+| `minkowski`, `surface`, `import` | No equivalent path |
+| `hull()` of 2D shapes | Works in 3D only, wrap each shape in `linear_extrude()` first |
+| `rotate_extrude` | Use `revolve()` on a BREPcode profile |
+| List comprehensions, recursion, `assert`, `echo` beyond basics | The parser is deliberately small |
+
+Put together: a self-contained model built from 3D primitives and booleans has a
+good chance. Anything using a library, or that starts in 2D and extrudes, will
+not translate. That is the line, and it is not moving much, because closing it
+properly would mean writing an OpenSCAD implementation, which already exists and
+is better than anything this would become.
 
 **JSCAD**, import the compatibility layer; the `@jscad/modeling` API surface is mapped:
 
@@ -458,13 +494,26 @@ that doesn't build.
 
 ## Status and next steps
 
-Working today: primitives, the three booleans (including nesting), transform composition, the CLI,
-parameter injection, STL export, the live viewer, and the OpenSCAD/JSCAD translators.
+**Working today:** primitives, the three booleans (including nesting), transform
+composition, `hull()`, `fillet()` / `chamfer()`, `linearExtrude()` / `revolve()`,
+`stretch()` in both directions, `drill()`, `fins()`, text / stencils / scannable
+codes, mesh import and editing, the CLI with parameter injection, the live
+viewer, and the OpenSCAD / JSCAD translators.
 
-Not yet wired: fillet/chamfer and extrude/revolve (these need *edge and face selection*, which is the
-genuinely hard part, the kernel identifies edges by generated names, so the DSL needs a query layer
-like `.edges({ z: "max" })` before they can be exposed cleanly). Also no STEP/3MF export yet, though
-the kernel ships both exporters.
+**Export:** STL, OBJ, 3MF (including multi-colour), GLB, curved-surface STEP via
+replicad, and a 3-view SVG blueprint. All covered by tests.
+
+**The real remaining gap is edge selection.** `fillet()` and `chamfer()` work,
+but they take a coarse target: everything, or a named face group
+(`fillet({ r: 2, faces: "top" }, …)`). There is no way to say "the four vertical
+edges" or "every edge above z = 10". The kernel identifies edges by generated
+names, so a proper query layer (`.edges({ z: "max" })`) has to come first. That
+is the genuinely hard part, and it is what most of the remaining polish depends
+on.
+
+Also missing: no 2D subsystem (so no `offset()` on profiles, and OpenSCAD's 2D
+operators translate as errors rather than shapes), and no assembly or joint
+model beyond `group()` keeping solids separate.
 
 ## Tests
 
