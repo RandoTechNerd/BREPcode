@@ -264,13 +264,127 @@ function tryTransform(lower, currentCode) {
   return { reply: `Done — ${what}. (◀ undoes it.)`, code };
 }
 
+// ---- resizing through the middle, without an LLM -------------------------
+// "decrease width by 30%", "make it 50mm wide", "20mm longer" are arithmetic,
+// not authorship: given the model's measured size there is exactly one right
+// answer. Doing it here means it works with NO API key, costs nothing, and
+// cannot hallucinate a bounding box — which is the failure this operation is
+// famous for. Anything ambiguous falls through to the AI as before.
+// Comparatives have to be listed as well as the nouns: "taller" does not
+// contain the word "tall" under a \b match, and "make it 30% taller" is a
+// perfectly ordinary thing to say.
+const AXIS_WORDS = {
+  x: /\b(width|wide|wider|narrow|narrower|across|horizontally)\b/,
+  y: /\b(depth|deep|deeper|length|long|longer|shorter|front to back)\b/,
+  z: /\b(height|tall|taller|high|higher|thickness|thick|thicker|thinner)\b/,
+};
+// Which way, from the verb or the comparative.
+const SHRINK = /\b(decrease|reduce|narrow|narrower|shorten|shorter|shrink|smaller|thinner|less|trim|cut|take)\b/;
+const GROW = /\b(increase|widen|wider|lengthen|longer|grow|bigger|taller|higher|deeper|thicker|more|add|extend)\b/;
+
+export function parseResize(text, dims) {
+  if (!dims) return null;
+  const lower = text.toLowerCase();
+
+  let axis = null;
+  for (const [a, re] of Object.entries(AXIS_WORDS)) if (re.test(lower)) { axis = a; break; }
+  if (!axis) return null;
+  const current = dims[{ x: 0, y: 1, z: 2 }[axis]];
+  if (!(current > 0)) return null;
+
+  const shrinking = SHRINK.test(lower);
+  const growing = GROW.test(lower);
+
+  // "by N" is a CHANGE; "to N" is a TARGET. Getting these the wrong way round
+  // turns "reduce the depth by 10mm" into "set the depth to 10mm", which looks
+  // like it worked and destroys the part.
+  const byPct = /\bby\s+(\d+(?:\.\d+)?)\s*%/.exec(lower) || /(\d+(?:\.\d+)?)\s*%/.exec(lower);
+  const byMm = /\bby\s+(\d+(?:\.\d+)?)\s*(?:mm)?\b/.exec(lower);
+  const toMm = /\b(?:to|=)\s*(\d+(?:\.\d+)?)\s*(?:mm)?\b/.exec(lower);
+  // "50mm wide", "20mm longer" — the number sits next to the axis word
+  const bareMm = /\b(\d+(?:\.\d+)?)\s*mm\b/.exec(lower);
+  const isDelta = /\b(longer|shorter|wider|narrower|taller|thicker|thinner|more|less)\b/.test(lower);
+
+  // A RELATIVE change is meaningless without a direction — "30%" or "by 10mm"
+  // could go either way, so those fall through to the AI. An ABSOLUTE target
+  // ("50mm wide") needs no direction at all: the arithmetic decides.
+  let by, target, how;
+  if (byPct) {
+    if (shrinking === growing) return null;           // neither, or contradictory
+    const f = +byPct[1] / 100;
+    by = shrinking ? -(current * f) : current * f;
+    target = current + by;
+    how = `${byPct[1]}% ${shrinking ? "smaller" : "larger"}`;
+  } else if (byMm) {
+    if (shrinking === growing) return null;
+    const d = +byMm[1];
+    by = shrinking ? -d : d;
+    target = current + by;
+    how = `${by > 0 ? "+" : ""}${round2(by)}mm`;
+  } else if (toMm) {
+    target = +toMm[1];
+    by = target - current;
+    how = `${round2(target)}mm`;
+  } else if (bareMm) {
+    const d = +bareMm[1];
+    if (isDelta) {
+      if (shrinking === growing) return null;
+      by = shrinking ? -d : d; target = current + by; how = `${by > 0 ? "+" : ""}${round2(by)}mm`;
+    } else { target = d; by = target - current; how = `${round2(target)}mm`; }
+  } else return null;
+
+  if (!Number.isFinite(by) || Math.abs(by) < 0.01) return null;
+  // 0.12mm of plastic is not a part. Refuse rather than produce a sliver.
+  if (target < 0.5) {
+    return { error: `that would leave ${round2(target)}mm on ${axis.toUpperCase()} — there'd be nothing left to print.` };
+  }
+  return { axis, by: round2(by), current: round2(current), target: round2(target), how, shrinking: by < 0 };
+}
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Wrap whatever is in the editor. A `return expr;` model has its expression
+// wrapped in place so variables and comments above it survive.
+export function resizeCode(currentCode, r) {
+  const opts = `{ axis: "${r.axis}", by: ${r.by}, at: 0 }`;
+  // Negative `by` anchors the result on its low edge, so recentre it — the part
+  // was centred before and should still be afterwards.
+  const shift = r.by < 0
+    ? { x: `[${round2(-r.by / 2)}, 0, 0]`, y: `[0, ${round2(-r.by / 2)}, 0]`, z: `[0, 0, ${round2(-r.by / 2)}]` }[r.axis]
+    : null;
+  const wrap = (inner) => shift
+    ? `translate(${shift},\n  stretch(${opts},\n    ${inner.replace(/\n/g, "\n    ")}))`
+    : `stretch(${opts},\n  ${inner.replace(/\n/g, "\n  ")})`;
+
+  const src = currentCode.trim();
+  const m = /(^|\n)(\s*)return\s+([\s\S]+?);?\s*$/.exec(src);
+  if (m) return src.slice(0, m.index) + `${m[1]}${m[2]}return ${wrap(m[3].trim())};`;
+  return `return ${wrap(src.replace(/;$/, ""))};`;
+}
+
 // Main entry. state persists between calls: { pending, flow }
-export function respond(text, state = {}, currentCode = "") {
+// dims is the built model's measured [x, y, z] size in mm, when there is one.
+export function respond(text, state = {}, currentCode = "", dims = null) {
   const t = text.trim();
   const lower = t.toLowerCase();
 
   if (/^(help|\?|what can you do)/.test(lower)) {
-    return { reply: "Simple things first: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder — just name one. Say “smoother” or “low poly” to change facets. For anything fancier, add an API key in ⚙." };
+    return { reply: "Simple things first: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder — just name one. With a model on screen I can resize it through the middle: “decrease width by 30%”, “make it 50mm wide”, “20mm longer”. Say “smoother” or “low poly” to change facets. For anything fancier, add an API key in ⚙." };
+  }
+
+  // Resize before anything else: it works on whatever is already in the editor,
+  // including an import, and it is pure arithmetic off the measured size.
+  if (currentCode.trim() && dims) {
+    const r = parseResize(t, dims);
+    if (r?.error) return { reply: `Can't do that — ${r.error}` };
+    if (r) {
+      const A = r.axis.toUpperCase();
+      return {
+        reply: `${r.shrinking ? "Cut" : "Added"} ${Math.abs(r.by)}mm ${r.shrinking ? "out of" : "into"} the middle on ${A}`
+          + ` — ${r.current}mm → ${r.target}mm (${r.how}). The other two axes are untouched`
+          + `${r.shrinking ? ", and anything that lived in the removed slab is gone" : ""}. (◀ undoes it.)`,
+        code: resizeCode(currentCode, r),
+      };
+    }
   }
   if (/^(clear|start over|reset)\b/.test(lower)) {
     state.flow = null; state.pending = null;

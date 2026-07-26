@@ -6647,9 +6647,18 @@
         return;
       }
 
+      // The measured size of what is on screen. The built-in assistant needs it
+      // to resize without guessing — the same number the status bar shows.
+      const modelDims = (() => {
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        if (bb.isEmpty()) return null;
+        const s = bb.getSize(new THREE.Vector3());
+        return [s.x, s.y, s.z];
+      })();
+
       const useApi = aiProvider.value !== "builtin" && aiKey.value.trim();
       if (!useApi) {
-        const r = botRespond(text, botState, code.value);
+        const r = botRespond(text, botState, code.value, modelDims);
         if (r.pending) botState.pending = r.pending;
         if (r.clearPending) botState.pending = null;
         addMsg("bot", r.reply);
@@ -6662,7 +6671,7 @@
       // actually handle this (it built code, or it's running a guided flow),
       // answer locally and save the API round-trip.
       if (gemWantsLocalFirst()) {
-        const local = botRespond(text, botState, code.value);
+        const local = botRespond(text, botState, code.value, modelDims);
         if (local.code !== undefined || local.pending) {
           if (local.pending) botState.pending = local.pending;
           if (local.clearPending) botState.pending = null;

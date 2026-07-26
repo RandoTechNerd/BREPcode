@@ -1,7 +1,7 @@
 // The built-in assistant's rule engine: parsing, follow-ups, and that every
 // generated snippet actually builds into real geometry.
 
-import { respond, buildModelsRequest, extractModels, modelScore } from "../viewer/chatbot.js";
+import { respond, buildModelsRequest, extractModels, modelScore, parseResize, resizeCode } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
 import * as dsl from "../src/dsl.js";
@@ -259,6 +259,72 @@ console.log("\nmodel ranking\n");
   check("a dated id is not read as a version number",
     modelScore("claude-haiku-4-5-20251001") === modelScore("claude-haiku-4-5"));
 }
+
+
+// ---- resize without an LLM ------------------------------------------------
+// "decrease width by 30%" is arithmetic, not authorship: given the measured
+// size there is one right answer. Doing it locally means it works with no API
+// key AND cannot hallucinate a bounding box, which is the failure this exact
+// operation is famous for. What must hold is that the phrasing maps to the
+// right axis and amount, that ambiguous wording falls through to the AI rather
+// than guessing, and that the emitted code really builds to the stated size.
+{
+  const dims = [120, 65.44, 5.4];           // the user's real picture frame
+  const R = (q) => parseResize(q, dims);
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  const boundsOf = async (code) => {
+    const stl = toSTL(await build(evalCode(code)), "t");
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    if (!v.length) throw new Error("no vertices parsed — the model built to nothing");
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    for (const p of v) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
+    return { x: [lo[0], hi[0]], y: [lo[1], hi[1]], z: [lo[2], hi[2]] };
+  };
+
+  check("percent shrink picks the x axis and the right amount",
+    R("decrease width by 30%")?.axis === "x" && R("decrease width by 30%")?.by === -36,
+    JSON.stringify(R("decrease width by 30%")));
+  check("percent grow works too", R("increase width by 25%")?.by === 30);
+  check("a comparative counts as an axis word", R("make it 30% taller")?.axis === "z");
+
+  // "by N" is a CHANGE, "to N" is a TARGET. Confusing them turns "reduce the
+  // depth by 10mm" into "set the depth to 10mm" — looks fine, destroys the part.
+  check("\"by 10mm\" is a change, not a target", R("reduce the depth by 10mm")?.by === -10,
+    JSON.stringify(R("reduce the depth by 10mm")));
+  check("\"to 80\" is a target", R("set the width to 80")?.target === 80);
+  check("\"50mm wide\" is a target", R("make it 50mm wide")?.target === 50);
+  check("\"20mm longer\" is a change", R("20mm longer")?.by === 20);
+  check("an absolute target needs no direction word", R("make it 40mm tall")?.target === 40);
+
+  // ambiguity must reach the AI, not be guessed at
+  check("\"make it smaller\" falls through", R("make it smaller") === null);
+  check("a relative change with no direction falls through", R("change the width by 20%") === null);
+  check("an unrelated request falls through", R("make a box with a cone on top") === null);
+  check("no dims means no local resize", parseResize("decrease width by 30%", null) === null);
+
+  check("a nonsense reduction is refused, not built",
+    /nothing left/.test(R("decrease width by 99.9%")?.error || ""), JSON.stringify(R("decrease width by 99.9%")));
+
+  // the emitted code has to be real, and it has to recentre
+  // a stand-in frame registered under the same name, so the emitted code builds
+  dsl.registerImport("frame.stl", toSTL(await build(
+    dsl.difference(dsl.cube([120, 65.44, 5.4], { center: true }),
+      dsl.cube([106, 45, 20], { center: true }))), "frame"));
+  const src = 'return importedMesh("frame.stl", { split: true });';
+  const out = resizeCode(src, R("decrease width by 30%"));
+  check("emitted code cuts at 0, not at width/2", /at:\s*0\b/.test(out) && !/at:\s*\d\d/.test(out), out);
+  check("emitted code recentres the result", /translate\(\[18, 0, 0\]/.test(out), out);
+  check("emitted code keeps the filename byte-identical", out.includes('importedMesh("frame.stl", { split: true })'), out);
+
+  const b = await boundsOf(out);
+  check("...and it really builds 84mm wide", near(b.x[1] - b.x[0], 84, 0.05),
+    `got ${(b.x[1] - b.x[0]).toFixed(2)}`);
+  check("...still centred after the resize", near(b.x[0] + b.x[1], 0, 0.05),
+    `${b.x[0].toFixed(2)}..${b.x[1].toFixed(2)}`);
+  check("...other axes untouched",
+    near(b.y[1] - b.y[0], 65.44, 0.05) && near(b.z[1] - b.z[0], 5.4, 0.05));
+}
+
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

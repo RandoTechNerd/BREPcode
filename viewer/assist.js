@@ -1034,28 +1034,94 @@ const CLOSER = { "(": ")", "[": "]", "{": "}" };
 // (tracking brackets and strings so nested semicolons don't fool us) and, if it
 // reads as an expression rather than a declaration or control flow, return it.
 // Returns null when there's nothing sensible to do, so callers can fall through.
+// Insert the `return` an author (human or model) forgot on the final shape.
+//
+// Two things used to defeat this, and between them they defeated it almost
+// always — the user hit "add return before your final shape" over and over and
+// had to press Fix each time:
+//
+//   1. A TRAILING SEMICOLON. The scan moved the statement boundary past every
+//      `;` at depth 0, including the last one, so the tail came out empty and
+//      it gave up. Practically all generated code ends in `;`.
+//   2. The word "return" ANYWHERE — including inside a comment or a string.
+//      `// return the narrowed frame` was enough to switch the whole thing off,
+//      and so was text({ text: "return" }).
+//
+// So: mask comments and strings before looking for a real `return`, and keep
+// every statement boundary so an empty tail can fall back to the previous one.
 export function addImplicitReturn(src) {
-  if (/\breturn\b/.test(src)) return null;          // already returns something
-  let depth = 0, quote = null, lastStart = 0;
+  let depth = 0, quote = null;
+  const bounds = [0];
+  let masked = "";                    // src with comments/strings blanked out
   for (let i = 0; i < src.length; i++) {
     const c = src[i], prev = src[i - 1];
     if (quote) {
       if (c === quote && prev !== "\\") quote = null;
+      masked += " ";
       continue;
     }
-    if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
-    if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
-    if (c === "/" && src[i + 1] === "*") { i = src.indexOf("*/", i); if (i < 0) return null; i++; continue; }
+    if (c === '"' || c === "'" || c === "`") { quote = c; masked += " "; continue; }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") { masked += " "; i++; }
+      masked += "\n";
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i);
+      if (end < 0) return null;                    // unterminated block comment
+      masked += " ".repeat(end + 2 - i);
+      i = end + 1;
+      continue;
+    }
+    masked += c;
     if ("([{".includes(c)) depth++;
     else if (")]}".includes(c)) depth--;
-    else if ((c === ";" || c === "}") && depth === 0) lastStart = i + 1;
+    else if ((c === ";" || c === "}") && depth === 0) bounds.push(i + 1);
   }
-  const head = src.slice(0, lastStart);
-  const tail = src.slice(lastStart);
-  if (!tail.trim()) return null;                    // trailing semicolon, nothing after
-  // don't touch declarations, control flow, or a lone comment
-  if (/^\s*(?:\/\/|\/\*|const\b|let\b|var\b|function\b|class\b|if\b|for\b|while\b|switch\b|try\b|do\b|export\b|import\b)/.test(tail)) return null;
-  return `${head}${tail.replace(/^(\s*)/, "$1return ")}`;
+  // A real `return` in code (not in a comment or string) means it already returns.
+  if (/\breturn\b/.test(masked)) return null;
+
+  // Walk boundaries from the end for the last one with real content after it.
+  // With a trailing `;` the final boundary is at end-of-string, so this steps
+  // back to the statement before it — exactly the case that used to bail.
+  for (let b = bounds.length - 1; b >= 0; b--) {
+    const head = src.slice(0, bounds[b]);
+    const tail = src.slice(bounds[b]);
+    if (!tail.trim()) continue;
+
+    // Step over whitespace and any comment lines so `return` lands before the
+    // actual expression. A model that writes "// narrow the frame" above its
+    // final line should not lose the fix over a remark.
+    let k = 0;
+    for (;;) {
+      const rest = tail.slice(k);
+      const ws = /^\s*/.exec(rest)[0].length;
+      k += ws;
+      const at = tail.slice(k);
+      if (at.startsWith("//")) { const nl = at.indexOf("\n"); if (nl < 0) return null; k += nl + 1; continue; }
+      if (at.startsWith("/*")) { const e = at.indexOf("*/"); if (e < 0) return null; k += e + 2; continue; }
+      break;
+    }
+    const expr = tail.slice(k);
+    if (!expr.trim()) continue;                    // only comments after this boundary
+
+    // A model that finishes on `const part = union(...);` has assigned the
+    // thing it meant to hand back and simply not handed it back. Returning the
+    // name is unambiguous, so do that rather than making the user press Fix.
+    const decl = /^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/.exec(expr);
+    if (decl) {
+      const rest = src.slice(bounds[b] + k + decl[0].length);
+      // only when it really is the last thing — no further statements after it
+      if (!/;[\s\S]*\S/.test(rest.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, ""))) {
+        return `${src.replace(/\s*$/, "")}\nreturn ${decl[1]};`;
+      }
+      return null;
+    }
+    // control flow and the rest have nothing to return
+    if (/^(?:function\b|class\b|if\b|for\b|while\b|switch\b|try\b|do\b|export\b|import\b)/.test(expr)) return null;
+    return `${head}${tail.slice(0, k)}return ${expr}`;
+  }
+  return null;
 }
 
 export function autoFix(src) {
