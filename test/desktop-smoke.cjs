@@ -88,6 +88,18 @@ app.whenReady().then(async () => {
     check("the explainer no longer claims mail can't be sent",
       await run("!/no server to send mail from/.test(document.getElementById('email-info').textContent)"));
 
+    // The recipe library fetches markdown at runtime over the custom app://
+    // scheme. That is a different code path from http:// and exactly the kind
+    // of thing that works in the browser and 404s in the packaged app.
+    const ref = await run(`(async () => {
+      const R = await import("./recipes.js");
+      const a = await R.referenceFor("a AAA holder, 3 across");
+      return { tags: a.tags, has: a.text.includes("10.5mm"), asks: a.questions.length };
+    })()`);
+    check("recipes load over the app:// scheme", ref.tags.includes("AAA"), JSON.stringify(ref));
+    check("...with the real dimensions in them", ref.has === true);
+    check("...and a named cell asks no follow-up question", ref.asks === 0);
+
     // The draft fallback sets location.href to a mailto:. If the shell let that
     // navigate, the window would go blank; the handler in main.cjs has to catch
     // it. Check the app is still on its own page afterwards.

@@ -493,26 +493,11 @@ Colour: colorize([r,g,b], shape) tags a colour; a model with 2+ colours exports 
 
 RULES
 - Millimetres. Z is up. Parts print bottom-down on z=0.
+- A REFERENCE section may be appended below with exact sizes and rules for whatever this request is about (a cell, a holder, supports, editing an import). When it is there it is authoritative — build from those numbers rather than recalling your own, and do not ask for measurements it already gives you.
 - Overshoot every cutter: start 1mm below, run 2mm past.
 - Sizes live in named variables at the top so the user can tweak them.
 - Either a single expression, or statements ending with return.
 - Editing: if the current code contains importedMesh("file.stl") that is the user's real imported part — wrap that exact call (difference to drill, union to add, stretch to lengthen). Keep the filename byte-identical.
-- WHERE AN IMPORT ACTUALLY SITS — get this wrong and every cutter misses, the build "succeeds", and nothing changes. An import is recentred: X and Y run from -width/2 to +width/2 (NOT 0 to width), and Z runs from 0 up to the height. There is NEVER any geometry below z=0. So a plane that shears the bottom off sits at a POSITIVE z, and a pocket in the underside is bored UPWARD from that plane, not downward from z=0. A cutter placed at negative z removes nothing at all.
-- REMOVING A FEATURE (feet, a boss, a tab, a lip) from an import: never invent its size or position. The status bar gives you the overall dimensions — everything else you must ask the user for, or key off the bounding box. Say plainly "I need the foot positions" rather than guessing coordinates, because a guess produces code that runs cleanly and does nothing, which is far worse than an error. For feet specifically: they are the part's lowest few millimetres, so difference() the part against translate([-200,-200,-1], cube([400,400,H+1])) where H is the height the feet stand — that shears them off flat. To leave a glue pocket where each foot was, add cylinder cutters starting at that same H and running UP into the fresh face, and translate([0,0,-H]) at the end to drop the part back on the bed.
-- THICKER WALLS / WIDER RAILS on an imported part, without changing its outside size: scale it up, then stretch the middle back out by exactly the amount you added. scale([2,2,1], mesh) doubles every rail AND the overall size; stretch({axis:"x", by:-W}) and stretch({axis:"y", by:-H}) with W/H the ORIGINAL width and height then bring the outside back to where it started, leaving the rails at their doubled thickness. The result lands offset by half — recentre with translate([W/2, H/2, 0]). Everything inside the removed slab is gone (a frame's centre bar, an inner boss); union it back afterwards if the user wants it. Measure the part first with the status-bar dimensions, and remember a feature may only be part-depth — a frame's centre bar is often a thin ledge on the BACK face, not a full-thickness rib, so rebuild it as cube([w, d, ledgeZ]) at z=0, not the full height.
-- ORIENTATION FIRST on an imported part. Imports land centred on the origin sitting on z=0, but in whatever pose the STL was saved — often lying down or face-up when the user wants it standing. The status bar dimensions tell you the pose: read them before anything else, and if the part is clearly lying down (its long axis is X or Y when it should be Z), wrap it in rotate([…]) FIRST, then do the rest. rotate([90,0,0]) tips it upright, rotate([0,0,90]) spins it flat, rotate([180,0,0]) flips it over; the rotation is baked in, so drilling/splitting/fins all work on the new pose. Say in one sentence which way you turned it and why.
-- Supports: fins({side:"+x"|"-x"|"+y"|"-y", count, sprues, height, angle, clearance, skirt, at:[faceCoord, spanStart, spanEnd]}, shape) adds removable 45° buttress fins. They deliberately do NOT touch the part: each fin carries level sprues — bars the same width as the fin, rooted inside the plate so they can never detach from it, flat on top, ending a hair short of the surface. "clearance" (0.2mm) is that gap, so a clean print never fuses them on and the part only rests on a sprue if it shifts. "angle" is the buttress slope in degrees from vertical (45 default); "depth" overrides it. Two more knobs matter: "nozzle" (0.4 default) scales the fin width, tooth size and clearance together — set 0.6 for a 0.6mm nozzle — and "lean" tilts the fin's contact edge to match a part printed on a slant — it DEFAULTS to 45 because that is what these supports are for; pass lean:0 for a plumb wall. A tooth's "reach" can be made long deliberately: that turns it into a finger poking in to hold a recessed pocket or a feature set back from the edge. "maxDepth" keeps the fins inside the part's own footprint. The "at" array comes from the model's bounding box: the face's coordinate on that axis, then the span to cover along the other horizontal axis. For a part with holes (a frame, a bracket) evenly spaced nubs would stab into thin air — use positions:[x1,x2,x3] to put fins on the solid rails and sprueAt:[[z,…],[z,…]] (one list per fin) to put nubs only at heights where that column has material; an entry may be {z, reach} when the face is recessed there. Tell the user to press the Fins button, which probes the model and fills all of this in. Only add fins when the user asks for supports.
-
-REFERENCE SIZES — use these when the user names a real object without measurements (state what you assumed in your one sentence):
-AA battery 14.5⌀×50.5 · AAA 10.5⌀×44.5 · 18650 cell 18.6⌀×65.2 · credit card 85.6×54×0.8 · SD card 32×24×2.1 · microSD 15×11×1 · USB-A plug 12×4.5 · USB-C plug 8.4×2.6 · HDMI plug 14×4.5 · GoPro body ≈71×55×34 · phone (typical) 147×72×8 · pen/pencil ≈8⌀×145 · toothbrush handle ≈12–16⌀ · broom handle 24⌀ · wine bottle 76⌀×300 · soda can 66⌀×122 · mason jar mouth 70⌀ · M3 bolt 3⌀/5.5 head · M4 4⌀/7 · M5 5⌀/8.5 · 608 bearing 22⌀×7, bore 8 · Euro coin 23.25⌀ · US quarter 24.26⌀ · golf ball 42.7⌀ · tennis ball 67⌀ · AirTag 31.9⌀×8 · Raspberry Pi 4 85×56×17 · Arduino Uno 68.6×53.4.
-For anything not listed, reason from these anchors (a "small brush handle" sits between pen and toothbrush) and SAY the number you chose.
-
-HOLDER RECIPE — any "holder / stand / dock / caddy for X":
-1. cavity = X's cross-section + 0.4–0.8mm clearance per side (2–3% for soft/varied items).
-2. wall >= 2.4mm around the cavity; floor >= 3mm; overall height ~40–70% of X so it grips without hiding it.
-3. base wider than tall where possible (stability); chamfer(0.8–1.5) or fillet the top rim so insertion is easy.
-4. If X can trap water (brushes, razors): 6–10mm drain hole through the floor.
-Deliver the whole thing parametric: cavityDia, wall, depth as variables.
 
 IDENTITY
 Your name is set by the "Your assistant's name" preference if one is provided. Do not volunteer your name, sign messages, or refer to yourself by name — only state it if the user directly asks what you're called.`;
@@ -539,6 +524,11 @@ export const DEFAULT_GEM = `When a request references a real-world object with u
 // guaranteed to receive the exact same instructions.
 export function composeSystem(opts = {}) {
   return (opts.harness?.trim() || DEFAULT_HARNESS)
+    // Subject knowledge pulled from viewer/recipes/ for THIS message only — the
+    // exact cell dimensions, the holder rules, the fins reference. Placed after
+    // the harness and before the user's own gem so their preferences still have
+    // the last word. Empty for a request that mentions none of it.
+    + (opts.reference || "")
     + (opts.askDims ? DIMS_ASK : DIMS_ASSUME)
     + (opts.botName?.trim()
       ? `\nYour assistant's name preference: "${opts.botName.trim()}". Use it only if the user asks what you're called.`

@@ -45,9 +45,24 @@ const rewrites = [
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
 writeFileSync(join(OUT, "index.html"), rewrite(readFileSync("viewer/index.html", "utf8")));
-for (const f of ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js", "trace.js", "lockbox.js", "locked-key.js", "codes.js", "svg.js"]) {
+for (const f of ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js", "trace.js", "lockbox.js", "locked-key.js", "codes.js", "svg.js", "recipes.js"]) {
   writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));
 }
+// ---- recipe library (markdown, fetched per-message by recipes.js) ----
+// The manifest is REGENERATED here rather than trusted: it is derived from the
+// files' own frontmatter, so a recipe added without re-running the script would
+// otherwise ship invisible — present on disk, absent from the index, never
+// matched, with nothing to indicate anything is wrong.
+{
+  const { buildManifest, serialize, OUT: MPATH } = await import("./scripts/recipes-manifest.mjs");
+  const manifest = buildManifest();
+  writeFileSync(MPATH, serialize(manifest));            // keep the source copy fresh too
+  mkdirSync(join(OUT, "recipes"), { recursive: true });
+  writeFileSync(join(OUT, "recipes", "manifest.json"), serialize(manifest));
+  for (const r of manifest.recipes) cpSync(join("viewer/recipes", r.file), join(OUT, "recipes", r.file));
+  console.log(`  recipes: ${manifest.recipes.length} (${manifest.recipes.filter((r) => r.parent).length} nested)`);
+}
+
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });
 cpSync("node_modules/bwip-js/dist/bwip-js.mjs", join(OUT, "vendor/bwip/bwip-js.mjs"));

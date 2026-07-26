@@ -73,6 +73,12 @@ export const SPECS = [
     hint: "Split a part down a plane and fill the gap with material using its own cross-section — the classic “make it longer through the middle.” With a model in the editor, clicking this wraps it. Then just drag it on the model: the green CUT PLANE slides where the split happens (`at`), and the yellow ARROW opens the gap (`by`). Land the cut on a plain stretch of the part, not through a hole. A NEGATIVE `by` does the reverse — it takes that much out of the middle and closes the gap.",
   },
   {
+    name: "cut the middle out (narrow it)", group: "Edit a part", sig: "cut the middle out (stretch, negative)",
+    wrap: 'stretch({ axis: "x", by: -25, at: 0 }, $MODEL$)',
+    snippet: 'stretch({ axis: "x", by: -60, at: 0 }, importedMesh("frame.stl"))', argStart: 8,
+    hint: "The exact opposite of “split & fill”: it deletes a slab |by| wide from the middle and slides the two ends together, so a 120mm frame with by:-60 comes out 60mm wide with BOTH original ends intact and the height and depth untouched. This is the one to reach for when someone says “make it half as wide” — scaling would shrink the whole part, and hand-writing two intersections against guessed bounding-box numbers is how cutters end up missing the part entirely. It lands anchored on its low edge, so a centred part ends up shifted by HALF what you removed — wrap it in translate([25/2, 0, 0], …) to bring it back. Anything that lived inside the removed slab is gone, which is the point. Same drag handles as split & fill: green plane moves the cut (`at`), yellow arrow sets how much comes out (`by`). Land the cut on a plain stretch of the part, not through a hole.",
+  },
+  {
     name: "shave off the bottom", group: "Edit a part", sig: "cut feet / a lip off flat",
     wrap: 'translate([0, 0, -3],\n  difference($MODEL$,\n    translate([-200, -200, -1], cube([400, 400, 4]))))',
     snippet: 'translate([0, 0, -3],\n  difference(importedMesh("part.stl", { split: true }),\n    translate([-200, -200, -1], cube([400, 400, 4]))))', argStart: 15,

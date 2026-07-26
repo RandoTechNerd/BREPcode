@@ -1570,7 +1570,6 @@
     import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
     import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
     import { LineMaterial } from "three/addons/lines/LineMaterial.js";
-    import { PartHistory } from "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
     import * as dsl from "../src/dsl.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
@@ -1579,6 +1578,20 @@
     // the image tracer, or the key-locker, so they load the first time you use
     // them (and get warmed in the background after the first render). Each
     // loader is memoised, so the module is fetched at most once.
+    // The geometry kernel is by far the largest thing here: ~11MB raw / 3.8MB
+    // gzipped once its PartHistory chunk and friends are counted. As a STATIC
+    // import it had to be fetched, parsed AND executed before a single line
+    // below ran, so the buttons, the editor and the whole UI sat dead behind it
+    // — on a slow connection, seconds of blank page.
+    //
+    // Dynamic + warmed immediately is the best of both: the request goes out
+    // now (helped by the modulepreload in <head>), so the first model appears
+    // at the same moment it always did, but the UI no longer waits on it. Only
+    // the four places that actually build geometry await this.
+    let _kernel;
+    const getKernel = () => (_kernel ??= import("/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js"));
+    getKernel();
+
     let _curved, _trace, _lock;
     const getCurved = () => (_curved ??= import("./curved.js"));
     const getTrace = () => (_trace ??= import("./trace.js"));
@@ -1588,6 +1601,12 @@
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
     // front. DEFAULT_GEM is inlined so the gem textarea needs no chatbot at boot.
+    // The recipe library — subject knowledge (cell dimensions, holder rules,
+    // fins) that used to ride along in every prompt and now arrives only when
+    // the message is about it. Loads on the first chat message, never at boot.
+    let _recipes;
+    const getRecipes = () => (_recipes ??= import("./recipes.js"));
+
     let _exp, _bot, _inv;
     const getExporters = () => (_exp ??= import("./exporters.js"));
     const getChatbot = () => (_bot ??= import("./chatbot.js"));
@@ -2070,6 +2089,7 @@
       clearNegatives();
       if (!negBtn.classList.contains("active") || !lastShape) return;
       try {
+        const { PartHistory } = await getKernel();
         const ph = new PartHistory();
         const trace = [];
         await dsl.compile(lastShape, ph, trace, { keepCutters: true });
@@ -3363,6 +3383,7 @@
           setTimeout(fin, 80);
         });
         if (mine !== token) return;
+        const { PartHistory } = await getKernel();
         const ph = new PartHistory();
         const trace = [];
         await dsl.compile(shape, ph, trace);
@@ -5368,6 +5389,7 @@
         if (!/^\s*solid/.test(contents)) {
           setStatus("busy", `Converting ${file.name}…`);
           await new Promise((r) => setTimeout(r, 30));   // let the spinner paint
+          const { PartHistory } = await getKernel();
           const scratch = new PartHistory();
           const im = await scratch.newFeature("IMPORT3D");
           im.inputParams.fileToImport = contents;
@@ -6087,6 +6109,7 @@
     // catalog so all 46 features are codeable via feature("CODE", {...}).
     (async function buildCatalog() {
       try {
+        const { PartHistory } = await getKernel();
         const ph = new PartHistory();
         const reg = ph.featureRegistry;
         const names = reg.listFeatureNames();
@@ -6672,13 +6695,31 @@
         const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim() };
 
         logLine(`request → ${cfg.provider} · ${cfg.model}`);
+
+        // Pull in only the reference material this message is actually about.
+        // A miss costs nothing and must never block the request, so a broken
+        // library degrades to the old behaviour rather than failing the build.
+        let reference = "";
+        try {
+          const R = await getRecipes();
+          const ref = await R.referenceFor(text);
+          reference = ref.text;
+          if (ref.questions.length) {
+            reference += `\n\nSTILL UNKNOWN — ${ref.questions.map((q) => q.ask).join(" ")}`
+              + ` Follow the dimensions policy below: either ask this in one short question, or state your assumption and build anyway.`;
+          }
+          if (ref.tags.length) logLine(`reference: ${ref.tags.map((t) => "#" + t).join(" ")} (+${(reference.length / 1024).toFixed(1)}KB)`);
+        } catch (e) {
+          logLine(`reference lookup skipped — ${e.message}`);
+        }
+
         // Gemini: ask for the model's thoughts too. Models that don't support
         // thinkingConfig reject the whole request — retry once without it.
         let wantThoughts = cfg.provider === "gemini";
         let json;
         for (;;) {
           const { url, options } = buildApiRequest(cfg, msgs,
-            { includeThoughts: wantThoughts, ...harnessOpts() });
+            { includeThoughts: wantThoughts, reference, ...harnessOpts() });
           const resp = await fetch(url, options);
           json = await resp.json();
           const errMsg = json?.error?.message || "";

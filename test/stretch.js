@@ -129,6 +129,40 @@ console.log("\nstretch: negative by removes from the middle\n");
     `got ${volumeOf(wide).toFixed(0)}`);
 }
 {
+  // "Cut the middle out and close the gap" on a real picture frame — the case
+  // that sent a user hand-writing two intersections against guessed bounding-box
+  // numbers. Modelled on their actual part: a 120 x 65 x 5.4 frame, narrowed by
+  // half. Both original ends must survive and only the width may change.
+  const outer = cube([120, 65, 5.4], { center: true });
+  const window = cube([100, 45, 20], { center: true });
+  const pictureFrame = difference(outer, window);
+
+  for (const [remove, wantW] of [[60, 60], [30, 90]]) {
+    const r = await build(stretch({ axis: "x", by: -remove, at: 0 }, pictureFrame));
+    const b = boundsOf(r);
+    check(`frame 120 wide minus ${remove} is ${wantW} wide`,
+      near(b.x[1] - b.x[0], wantW, 0.05), `got ${(b.x[1] - b.x[0]).toFixed(2)}`);
+    check(`  ...height and depth untouched at -${remove}`,
+      near(b.y[1] - b.y[0], 65, 0.05) && near(b.z[1] - b.z[0], 5.4, 0.05),
+      `got ${(b.y[1] - b.y[0]).toFixed(2)} x ${(b.z[1] - b.z[0]).toFixed(2)}`);
+    check(`  ...still a frame, not a solid slab at -${remove}`,
+      volumeOf(r) < wantW * 65 * 5.4 * 0.95, `got ${volumeOf(r).toFixed(0)}`);
+    // The near half stays put and the far half slides in to meet it, exactly as
+    // the positive case grows away from `at`. So the result is anchored on its
+    // low edge, NOT recentred — a part that came in centred lands off-centre by
+    // half of what was removed. Worth pinning down: it surprises people, and the
+    // fix is a translate the caller has to know to add.
+    check(`  ...anchored on the low edge at -${remove}`,
+      near(b.x[0], -60, 0.05) && near(b.x[1], -60 + wantW, 0.05),
+      `x ${b.x[0].toFixed(2)}..${b.x[1].toFixed(2)}`);
+    const back = boundsOf(await build(
+      translate([remove / 2, 0, 0], stretch({ axis: "x", by: -remove, at: 0 }, pictureFrame))));
+    check(`  ...and translate([${remove}/2,0,0]) recentres it`,
+      near(back.x[0], -wantW / 2, 0.05) && near(back.x[1], wantW / 2, 0.05),
+      `x ${back.x[0].toFixed(2)}..${back.x[1].toFixed(2)}`);
+  }
+}
+{
   let threw = false;
   try { await build(stretch({ axis: "x", by: 0 }, cube([10, 10, 10]))); } catch { threw = true; }
   check("by: 0 still errors", threw);

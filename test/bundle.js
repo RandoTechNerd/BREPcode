@@ -54,5 +54,35 @@ for (const f of sources) {
 check("kernel LICENSE.md bundled", existsSync(join(OUT, "vendor/kernel/LICENSE.md")));
 check("no plaintext API key", !readFileSync(join(OUT, "index.html"), "utf8").includes("sk-ant-api"));
 
+// The kernel is ~13MB once its chunks are counted. A STATIC import of it would
+// block every line of UI code behind that download and parse — the page sat
+// dead for seconds. It must stay a dynamic import, warmed immediately so the
+// first model still appears just as fast. This is easy to undo by accident:
+// adding `import { PartHistory } from ".../brep-kernel.js"` at the top of the
+// module works perfectly on a fast machine and quietly ruins the cold load.
+{
+  const html = readFileSync(join(OUT, "index.html"), "utf8");
+  check("kernel is NOT statically imported",
+    !/^\s*import\s[^\n]*from\s*["'][^"']*brep-kernel\.js["']/m.test(html));
+  check("kernel loader is dynamic", /import\(\s*["'][^"']*brep-kernel\.js["']\s*\)/.test(html));
+  check("kernel fetch is warmed at startup", /\n\s*getKernel\(\);/.test(html));
+}
+
+// The recipe library is fetched at runtime, so a missing file is a 404 the user
+// only meets mid-conversation — the model quietly loses the numbers it was
+// promised. Every recipe the manifest names has to actually ship.
+{
+  const mPath = join(OUT, "recipes/manifest.json");
+  check("recipe manifest shipped", existsSync(mPath));
+  if (existsSync(mPath)) {
+    const m = JSON.parse(readFileSync(mPath, "utf8"));
+    check("manifest lists recipes", m.recipes.length > 0, `${m.recipes.length}`);
+    for (const r of m.recipes) {
+      check(`  shipped recipes/${r.file}`, existsSync(join(OUT, "recipes", r.file)));
+    }
+  }
+  check("recipes.js shipped", existsSync(join(OUT, "recipes.js")));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

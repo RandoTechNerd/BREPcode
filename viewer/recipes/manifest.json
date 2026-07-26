@@ -1,0 +1,216 @@
+{
+  "generated": "scripts/recipes-manifest.mjs",
+  "recipes": [
+    {
+      "tag": "18650",
+      "title": "18650 lithium cell",
+      "file": "batt-18650.md",
+      "match": [
+        "18650",
+        "21700",
+        "20700",
+        "lithium cell",
+        "li-ion cell"
+      ],
+      "parent": "batt"
+    },
+    {
+      "tag": "AA",
+      "title": "AA cell (LR6)",
+      "file": "batt-aa.md",
+      "match": [
+        "aa battery",
+        "aa cell",
+        "aa batteries",
+        "lr6",
+        "double a",
+        "double-a",
+        "mignon"
+      ],
+      "parent": "batt"
+    },
+    {
+      "tag": "AAA",
+      "title": "AAA cell (LR03)",
+      "file": "batt-aaa.md",
+      "match": [
+        "aaa",
+        "lr03",
+        "triple a",
+        "triple-a"
+      ],
+      "parent": "batt"
+    },
+    {
+      "tag": "CR2032",
+      "title": "CR2032 / coin cell",
+      "file": "batt-cr2032.md",
+      "match": [
+        "cr2032",
+        "cr2016",
+        "cr2025",
+        "coin cell",
+        "button cell",
+        "button battery",
+        "watch battery"
+      ],
+      "parent": "batt"
+    },
+    {
+      "tag": "batt",
+      "title": "Batteries and cells",
+      "file": "batt.md",
+      "match": [
+        "battery",
+        "batteries",
+        "cell",
+        "cells",
+        "battery holder",
+        "battery box",
+        "battery case"
+      ],
+      "ask": "Which cell — AA, AAA, 18650, CR2032 or 9V? And how many, in what arrangement (a row, a 2x3 block…)?"
+    },
+    {
+      "tag": "frame",
+      "title": "Picture frames",
+      "file": "frame.md",
+      "match": [
+        "frame",
+        "picture frame",
+        "photo frame",
+        "rabbet"
+      ]
+    },
+    {
+      "tag": "holder",
+      "title": "Holders, stands, docks, caddies",
+      "file": "holder.md",
+      "match": [
+        "holder",
+        "holds",
+        "stand",
+        "dock",
+        "caddy",
+        "cradle",
+        "tray",
+        "organizer",
+        "organiser",
+        "rack",
+        "mount for",
+        "container for",
+        "box for",
+        "case for",
+        "sleeve for"
+      ],
+      "ask": "What is it holding, and roughly how big is that thing (diameter or width x depth, and height)?"
+    },
+    {
+      "tag": "imported",
+      "title": "Editing an imported mesh",
+      "file": "imported.md",
+      "match": [
+        "imported",
+        "importedmesh",
+        "my stl",
+        "the stl",
+        "my model",
+        "my part",
+        "this part",
+        "uploaded",
+        "dragged in"
+      ]
+    },
+    {
+      "tag": "mount",
+      "title": "Brackets and wall mounts",
+      "file": "mount.md",
+      "match": [
+        "bracket",
+        "mount",
+        "wall mount",
+        "wall-mount",
+        "hanger",
+        "hook",
+        "shelf",
+        "l-bracket",
+        "angle bracket"
+      ]
+    },
+    {
+      "tag": "resize",
+      "title": "Making a part narrower, shorter or longer through the middle",
+      "file": "resize.md",
+      "match": [
+        "narrower",
+        "narrow it",
+        "half as wide",
+        "less wide",
+        "reduce the width",
+        "cut the middle",
+        "cut out the middle",
+        "remove the middle",
+        "shorten",
+        "shorter",
+        "lengthen",
+        "longer",
+        "widen",
+        "wider",
+        "make it bigger",
+        "make it smaller",
+        "resize",
+        "trim the middle",
+        "take out of the middle",
+        "close the gap"
+      ]
+    },
+    {
+      "tag": "sizes",
+      "title": "Reference sizes for everyday objects",
+      "file": "sizes.md",
+      "match": [
+        "gopro",
+        "credit card",
+        "sd card",
+        "microsd",
+        "usb",
+        "hdmi",
+        "phone",
+        "pencil",
+        "toothbrush",
+        "broom",
+        "wine bottle",
+        "soda can",
+        "mason jar",
+        "bearing",
+        "coin",
+        "quarter",
+        "golf ball",
+        "tennis ball",
+        "airtag",
+        "raspberry pi",
+        "arduino",
+        "m3",
+        "m4",
+        "m5",
+        "bolt",
+        "screw"
+      ]
+    },
+    {
+      "tag": "supports",
+      "title": "Removable support fins",
+      "file": "supports.md",
+      "match": [
+        "support",
+        "supports",
+        "supported",
+        "overhang",
+        "overhangs",
+        "fins",
+        "bridging",
+        "unsupported"
+      ]
+    }
+  ]
+}

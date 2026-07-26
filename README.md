@@ -523,6 +523,34 @@ through-cuts, overlap unions, one target per difference.
 Every worked example in it is covered by `test/docs.js`, so the guide can't drift into teaching code
 that doesn't build.
 
+### The recipe library
+
+The in-app assistant used to send one fixed system prompt carrying everything it might ever need,
+on every request: the fins paragraph, the imported-mesh rules, the whole reference-size table,
+whether you asked for a battery box or a cube.
+
+`viewer/recipes/` breaks that into tagged markdown files that are fetched only when a message
+actually mentions them. The prompt went from **9.1 KB on every call to 3.4 KB**, plus 1-3 KB only
+when it is relevant.
+
+Tags nest, and that is the useful part:
+
+```
+"a battery holder"            -> #holder + #batt          -> asks "which cell?"
+"a AAA holder, 3 across"      -> ##AAA + #batt + #holder   -> asks nothing, builds
+"make a 20mm cube"            -> nothing at all
+```
+
+`##AAA` is a child of `#batt` and states 10.5 x 44.5 outright, so naming it removes the round-trip.
+A matched child also drags its parent in even when the parent's own keywords never appeared, since
+"a AAA holder" never says the word "battery".
+
+Adding a subject is dropping a `.md` file in with a `tag:` and `match:` header — see
+[viewer/recipes/README.md](viewer/recipes/README.md). The index is **generated** from that
+frontmatter (`npm run recipes`), and `test/recipes.js` fails if the committed manifest has drifted,
+because a hand-maintained list is exactly how the three.js addons once went missing from two
+shipped bundles.
+
 ## Status and next steps
 
 **Working today:** primitives, the three booleans (including nesting), transform
