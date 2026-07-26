@@ -1,0 +1,323 @@
+// True curved-surface STEP export.
+//
+// The BREP.io kernel that powers the live viewer is mesh-backed — every face
+// it knows is triangles, so its exports are always faceted. But the DSL tree
+// still knows the analytic truth ("cylinder r=8 h=14"), so this module
+// mirrors the model into a real OpenCascade kernel (replicad + OCCT wasm,
+// lazy-loaded ~11 MB on first use) and lets OCCT write STEP with genuine
+// CYLINDRICAL / SPHERICAL / CONICAL / TOROIDAL surfaces.
+//
+// Only pure BREPcode shapes can go through: mesh imports have no analytic
+// surfaces to recover, and feature("...") escape hatches have no replicad
+// equivalent — both fail with a clear message instead of a faceted lie.
+
+import { Matrix4, Vector3, Quaternion } from "three";
+
+let replicadReady = null;
+
+export function loadReplicad() {
+  replicadReady ??= (async () => {
+    const [r, loader] = await Promise.all([
+      import("/node_modules/replicad/dist/replicad.js"),
+      import("/node_modules/replicad-opencascadejs/src/replicad_single.js"),
+    ]);
+    const OC = await loader.default({
+      locateFile: () => "/node_modules/replicad-opencascadejs/src/replicad_single.wasm",
+    });
+    r.setOC(OC);
+    return r;
+  })();
+  return replicadReady;
+}
+
+// Test hook: node can't import the dual-format wasm loader directly, so the
+// test suite initialises replicad itself and injects it here.
+export function _setReplicad(r) {
+  replicadReady = Promise.resolve(r);
+}
+
+const IDENTITY = new Matrix4();
+
+// Decompose the accumulated 4x4 into scale -> rotate -> translate and apply
+// through replicad's own ops (M = T·R·S, matching three's decompose).
+function applyMatrix(shape, m) {
+  if (m.equals(IDENTITY)) return shape;
+  const p = new Vector3(), q = new Quaternion(), s = new Vector3();
+  m.decompose(p, q, s);
+  if (Math.abs(s.x - s.y) > 1e-9 || Math.abs(s.x - s.z) > 1e-9) {
+    throw new Error("curved STEP can't apply a non-uniform scale([x, y, z]) — B-rep surfaces don't stretch that way. Scale uniformly, or use the mesh exports (STL/3MF).");
+  }
+  let out = shape;
+  if (Math.abs(s.x - 1) > 1e-12) out = out.scale(s.x, [0, 0, 0]);
+  if (q.w < 0) { q.x *= -1; q.y *= -1; q.z *= -1; q.w *= -1; }
+  const halfSin = Math.sqrt(Math.max(0, 1 - q.w * q.w));
+  if (halfSin > 1e-12) {
+    const deg = (2 * Math.acos(Math.min(1, q.w)) * 180) / Math.PI;
+    out = out.rotate(deg, [0, 0, 0], [q.x / halfSin, q.y / halfSin, q.z / halfSin]);
+  }
+  if (p.x || p.y || p.z) out = out.translate([p.x, p.y, p.z]);
+  return out;
+}
+
+function buildPrim(r, n) {
+  const P = n.params;
+  switch (n.code) {
+    case "P.CU":
+      // our cube is corner-at-origin; replicad's box is centred on XY
+      return r.makeBaseBox(P.sizeX, P.sizeY, P.sizeZ)
+        .translate([P.sizeX / 2, P.sizeY / 2, 0]);
+    case "P.CY":
+      return r.makeCylinder(P.radius, P.height);
+    case "P.CO": {
+      // revolve the frustum profile — OCCT emits a true CONICAL_SURFACE
+      const rb = P.radiusBottom, rt = P.radiusTop, h = P.height;
+      const pts = [[0, 0]];
+      if (rb > 0) pts.push([rb, 0]);
+      if (rt > 0) pts.push([rt, h]);
+      pts.push([0, h]);
+      if (pts.length < 3) throw new Error("cone needs at least one non-zero radius");
+      let d = r.draw(pts[0]);
+      for (let i = 1; i < pts.length; i++) d = d.lineTo(pts[i]);
+      return d.close().sketchOnPlane("XZ").revolve([0, 0, 1]);
+    }
+    case "P.S":
+      return r.makeSphere(P.radius);
+    case "P.T": {
+      if (P.arc != null && P.arc < 360) {
+        throw new Error("curved STEP doesn't support partial-arc torus yet — use a full torus or export STL/3MF");
+      }
+      return r.drawCircle(P.tubeRadius).translate(P.majorRadius, 0)
+        .sketchOnPlane("XZ").revolve([0, 0, 1]);
+    }
+    default:
+      throw new Error(`feature("${n.code}") has no analytic equivalent — curved STEP covers cube/cylinder/cone/sphere/torus/polygon-extrudes and booleans of them`);
+  }
+}
+
+export async function buildCurved(root) {
+  const r = await loadReplicad();
+
+  const build = (n, matrix) => {
+    if (n.kind === "xform") {
+      return build(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix));
+    }
+    if (n.kind === "op") {
+      let acc = build(n.children[0], matrix);
+      for (let i = 1; i < n.children.length; i++) {
+        const tool = build(n.children[i], matrix);
+        acc = n.operation === "SUBTRACT" ? acc.cut(tool)
+          : n.operation === "INTERSECT" ? acc.intersect(tool)
+          : acc.fuse(tool);
+      }
+      return acc;
+    }
+    if (n.kind === "prim") return applyMatrix(buildPrim(r, n), matrix);
+    if (n.kind === "prism") {
+      let d = r.draw(n.pts[0]);
+      for (let i = 1; i < n.pts.length; i++) d = d.lineTo(n.pts[i]);
+      return applyMatrix(d.close().sketchOnPlane("XY").extrude(n.h), matrix);
+    }
+    if (n.kind === "edgeop") {
+      // OCCT rounds/bevels analytically — a curved fillet, not faceted
+      let shape = build(n.child, matrix);
+      try {
+        shape = n.code === "F" ? shape.fillet(n.amount) : shape.chamfer(n.amount);
+      } catch (e) {
+        throw new Error(`curved ${n.code === "F" ? "fillet" : "chamfer"} failed on this shape (radius may be too large for an edge) — try the mesh export, or a smaller amount`);
+      }
+      return shape;
+    }
+    if (n.kind === "revolve") {
+      let d = r.draw(n.pts[0]);
+      for (let i = 1; i < n.pts.length; i++) d = d.lineTo(n.pts[i]);
+      // revolve the profile about its x=0 edge (the Z axis of the XZ sketch)
+      const rev = d.close().sketchOnPlane("XZ").revolve([0, 0, 1], { angleDegrees: n.angle ?? 360 });
+      return applyMatrix(rev, matrix);
+    }
+    if (n.kind === "import") {
+      throw new Error("importedMesh() is triangles all the way down — there are no curved surfaces to recover. Export meshes as STL/3MF instead.");
+    }
+    throw new Error(`curved export: unknown node kind "${n.kind}"`);
+  };
+
+  return build(root, new Matrix4());
+}
+
+export async function curvedStepBlob(root) {
+  const shape = await buildCurved(root);
+  return shape.blobSTEP();
+}
+
+// A 2D vector drawing: the model projected onto a viewing plane, visible
+// edges solid and hidden edges dashed — a proper draughting SVG, not a
+// screenshot. `view` is one of front/back/top/bottom/left/right.
+export async function curvedSvgText(root, view = "top") {
+  const r = await loadReplicad();
+  const shape = await buildCurved(root);
+  const { visible, hidden } = r.drawProjection(shape, view);
+  const vis = visible.toSVG();
+  const hid = hidden.toSVG ? hidden.toSVG() : "";
+  // pull the drawn paths out of replicad's two SVGs and merge into one,
+  // styling hidden edges as thin dashed lines
+  const pathsOf = (svg) => (svg.match(/<path[\s\S]*?\/>/g) || []).join("\n");
+  const vb = vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 100 100";
+  const [, , w, h] = vb.split(/\s+/).map(Number);
+  const stroke = Math.max(w, h) / 400;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${w}" height="${h}">
+ <g fill="none" stroke="#111" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round">
+${pathsOf(vis)}
+ </g>
+ <g fill="none" stroke="#999" stroke-width="${stroke * 0.7}" stroke-dasharray="${stroke * 3} ${stroke * 2}">
+${pathsOf(hid)}
+ </g>
+</svg>`;
+}
+
+// A full engineering drawing / blueprint: three orthographic views (front, top,
+// right) laid out in third-angle projection with a border and a title block —
+// visible edges solid, hidden edges dashed. Views share scale and align by their
+// common dimensions (front↔top share width, front↔right share height).
+export async function curvedDrawingSVG(root, opts = {}) {
+  const r = await loadReplicad();
+  const shape = await buildCurved(root);
+
+  const pathsOf = (svg) => (svg.match(/<path[\s\S]*?\/>/g) || []).join("\n");
+  const project = (view) => {
+    const { visible, hidden } = r.drawProjection(shape, view);
+    const vis = visible.toSVG();
+    const hid = hidden?.toSVG ? hidden.toSVG() : "";
+    const [x, y, w, h] = (vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 10 10").split(/\s+/).map(Number);
+    return { x, y, w: w || 10, h: h || 10, vis: pathsOf(vis), hid: pathsOf(hid) };
+  };
+  const front = project("front"), top = project("top"), right = project("right");
+  // an isometric pictorial view from the [1,1,1] corner for the spare corner
+  const isoCam = new r.ProjectionCamera([100, 100, 100]);
+  isoCam.lookAt([0, 0, 0]);
+  const iso = project(isoCam);
+
+  // one scale for all three, sized so the sheet is ~1000 units wide
+  const bodyW = front.w + Math.max(right.w, 1) + 40;   // front + gap + right (in model units)
+  const bodyH = front.h + Math.max(top.h, 1) + 40;
+  const S = 900 / Math.max(bodyW, bodyH * 1.4);
+  const stroke = 1.1 / S;                               // constant on-paper weight
+
+  const M = 60;                                         // sheet margin
+  const G = 55;                                         // fixed paper gap between views
+  // Every view reserves a band under it for its name plus a horizontal
+  // dimension, and a band beside it for the vertical one. Laying these out as
+  // named constants (rather than nudging each view) is what keeps the sheet
+  // aligned when the part's proportions change.
+  const LBL = 56;                                       // view label + dimension band
+  const DIMPAD = 48;                                    // side band for vertical dimensions
+  const fW = front.w * S, fH = front.h * S;
+  const tW = top.w * S, tH = top.h * S, rW = right.w * S, rH = right.h * S;
+  // third-angle: TOP above FRONT (shared width), RIGHT to the right of FRONT (shared height)
+  const LEFT = M + DIMPAD;
+  const topX = LEFT, topY = M;
+  const frontX = LEFT, frontY = topY + tH + LBL + G;
+  const rightX = LEFT + Math.max(fW, tW) + G, rightY = frontY;
+
+  const sheetW = Math.max(rightX + rW + DIMPAD, frontX + fW, topX + tW) + M;
+  const titleH = 90;
+  const sheetH = frontY + fH + LBL + 20 + titleH + M / 2;
+
+  // the isometric drops into the spare corner: right of TOP, above the RIGHT view
+  const isoBoxX = rightX, isoBoxY = topY;
+  const isoBoxW = sheetW - M - isoBoxX;
+  const isoBoxH = frontY - topY - G;
+  const isoS = 0.9 * Math.min(isoBoxW / iso.w, isoBoxH / iso.h);
+  const isoPX = isoBoxX + (isoBoxW - iso.w * isoS) / 2;
+  const isoPY = isoBoxY + (isoBoxH - iso.h * isoS) / 2;
+
+  // place a view's own-coordinate paths at a sheet position, at scale `sc`
+  const view = (p, px, py, label, sc = S) => {
+    const sw = 1.1 / sc;                                 // constant on-paper weight
+    const t = `translate(${px} ${py}) scale(${sc}) translate(${-p.x} ${-p.y})`;
+    return `<g transform="${t}">
+    <g fill="none" stroke="#eaf3ff" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${p.vis}</g>
+    <g fill="none" stroke="#7fb0e0" stroke-width="${sw * 0.7}" stroke-dasharray="${sw * 4} ${sw * 3}">${p.hid}</g>
+  </g>
+  <text x="${px}" y="${py + p.h * sc + 22}" fill="#bcd8f5" font-family="monospace" font-size="15">${label}</text>`;
+  };
+
+  // Dimensions, in real model units. `sc` converts model units to paper units,
+  // so the numbers are the part's actual size regardless of sheet scale.
+  const mm = (v) => (Math.round(v * 10) / 10).toFixed(1);
+  const DIM_G = `stroke="#8fb8e6" stroke-width="1" fill="#dbe9fb" font-family="monospace" font-size="12"`;
+  const dimH = (px, py, w, value) => `
+  <g ${DIM_G}>
+    <line x1="${px}" y1="${py - 7}" x2="${px}" y2="${py + 5}"/>
+    <line x1="${px + w}" y1="${py - 7}" x2="${px + w}" y2="${py + 5}"/>
+    <line x1="${px}" y1="${py}" x2="${px + w}" y2="${py}"/>
+    <path d="M${px} ${py} l6 -3 v6 z" stroke="none"/>
+    <path d="M${px + w} ${py} l-6 -3 v6 z" stroke="none"/>
+    <text x="${px + w / 2}" y="${py - 7}" text-anchor="middle" stroke="none">${mm(value)}</text>
+  </g>`;
+  const dimV = (px, py, h, value) => `
+  <g ${DIM_G}>
+    <line x1="${px - 5}" y1="${py}" x2="${px + 7}" y2="${py}"/>
+    <line x1="${px - 5}" y1="${py + h}" x2="${px + 7}" y2="${py + h}"/>
+    <line x1="${px}" y1="${py}" x2="${px}" y2="${py + h}"/>
+    <path d="M${px} ${py} l-3 6 h6 z" stroke="none"/>
+    <path d="M${px} ${py + h} l-3 -6 h6 z" stroke="none"/>
+    <text x="${px - 9}" y="${py + h / 2}" text-anchor="middle" stroke="none"
+          transform="rotate(-90 ${px - 9} ${py + h / 2})">${mm(value)}</text>
+  </g>`;
+
+  // Sizes come from the SOLID, not from the projection's viewBox — replicad pads
+  // each projection by a unit of drawing margin, so the viewBox reads 2mm over
+  // on every axis. The same padding is why the dimension line is inset: `span`
+  // trims it back to where the part's silhouette actually starts and ends.
+  const [bmin, bmax] = shape.boundingBox.bounds;
+  const sizeX = bmax[0] - bmin[0], sizeY = bmax[1] - bmin[1], sizeZ = bmax[2] - bmin[2];
+  // p: the projection, len: its true model-unit length along that axis
+  const span = (p, axis, px, len) => {
+    const box = axis === "w" ? p.w : p.h;
+    return { at: px + ((box - len) / 2) * S, size: len * S };
+  };
+  const hDim = (p, px, py, len, view) => {
+    const { at, size } = span(p, "w", px, len);
+    return dimH(at, py, size, len);
+  };
+  const vDim = (p, px, py, len) => {
+    const { at, size } = span(p, "h", py, len);
+    return dimV(px, at, size, len);
+  };
+  const dimensions = [
+    hDim(top, topX, topY + tH + 44, sizeX),      vDim(top, topX - 24, topY, sizeY),
+    hDim(front, frontX, frontY + fH + 44, sizeX), vDim(front, frontX - 24, frontY, sizeZ),
+    hDim(right, rightX, rightY + rH + 44, sizeY), vDim(right, rightX + rW + 24, rightY, sizeZ),
+  ].join("\n");
+
+  // Title block: flush with the inner border's bottom-right corner. It used to
+  // be positioned from the sheet edge instead, which left it hanging outside
+  // the border on one side and short of it on the other.
+  const name = (opts.title || "BREPcode model").replace(/[<&>]/g, "");
+  const tbW = 360;
+  const tbR = sheetW - M / 2, tbB = sheetH - M / 2;      // inner border edges
+  const tbx = tbR - tbW, tb = tbB - titleH;
+  const titleBlock = `
+  <g font-family="monospace" fill="#dbe9fb">
+    <rect x="${tbx}" y="${tb}" width="${tbW}" height="${titleH}" fill="none" stroke="#8fb8e6" stroke-width="1.5"/>
+    <line x1="${tbx}" y1="${tb + 34}" x2="${tbR}" y2="${tb + 34}" stroke="#8fb8e6" stroke-width="1"/>
+    <line x1="${tbR - 140}" y1="${tb + 34}" x2="${tbR - 140}" y2="${tbB}" stroke="#8fb8e6" stroke-width="1"/>
+    <text x="${tbx + 12}" y="${tb + 23}" font-size="18" fill="#ffffff">${name}</text>
+    <text x="${tbx + 12}" y="${tb + 56}" font-size="12">Units: mm</text>
+    <text x="${tbx + 12}" y="${tb + 78}" font-size="12">Third-angle projection</text>
+    <text x="${tbR - 128}" y="${tb + 56}" font-size="12">Scale ${S >= 1 ? S.toFixed(2) : "1:" + (1 / S).toFixed(1)}</text>
+    <text x="${tbR - 128}" y="${tb + 78}" font-size="12">BREPcode</text>
+  </g>`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sheetW.toFixed(0)} ${sheetH.toFixed(0)}" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}">
+  <rect x="0" y="0" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" fill="#0d2c52"/>
+  <rect x="${M / 2}" y="${M / 2}" width="${sheetW - M}" height="${sheetH - M}" fill="none" stroke="#8fb8e6" stroke-width="2"/>
+  ${view(front, frontX, frontY, "FRONT")}
+  ${view(top, topX, topY, "TOP")}
+  ${view(right, rightX, rightY, "RIGHT")}
+  ${view(iso, isoPX, isoPY, "ISOMETRIC", isoS)}
+  ${dimensions}
+  ${titleBlock}
+</svg>`;
+}

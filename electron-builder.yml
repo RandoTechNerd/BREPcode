@@ -1,0 +1,44 @@
+# Packaging for the desktop build. Kept in its own file so package.json stays a
+# library manifest — in particular `main` there must keep pointing at index.js
+# for `import ... from "brepscript"`, so the Electron entry is injected via
+# extraMetadata below rather than by editing it.
+appId: com.randotechnerd.brepcode
+productName: BREPcode
+copyright: MIT — bundles the BREP.io kernel unmodified, see LICENSE.md
+
+directories:
+  output: dist-desktop
+  buildResources: desktop
+
+# Only the shell and the already-built static bundle. node_modules is
+# deliberately absent: dist-site is self-contained (build-site.mjs inlines the
+# kernel and vendor files), so shipping them twice would double the download.
+files:
+  - desktop/**/*
+  - dist-site/**/*
+  - LICENSE.md
+  - package.json
+  # electron-builder bundles production dependencies by default, which here
+  # meant shipping three/replicad/the kernel a SECOND time — 11k files and
+  # ~330MB of asar that nothing loads, because dist-site already vendors
+  # everything it needs and main.cjs only uses electron + node builtins.
+  - "!node_modules/**/*"
+
+extraMetadata:
+  main: desktop/main.cjs
+
+# Nothing here is asar-hostile, and packing keeps the install small and the
+# file count sane.
+asar: true
+
+win:
+  icon: desktop/icon.png
+  target:
+    - target: portable
+      arch: [x64]
+
+# A single self-contained exe, no installer, no admin rights — the least
+# confusing thing to hand someone from a GitHub release.
+portable:
+  artifactName: BREPcode.exe
+  unicode: true

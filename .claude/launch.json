@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "brepcode",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["serve.js", "5320"],
+      "port": 5320
+    }
+  ]
+}

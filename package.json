@@ -1,0 +1,37 @@
+{
+  "name": "brepscript",
+  "version": "0.1.0",
+  "description": "An OpenSCAD-style DSL and CLI for the BREP.io solid modeling kernel",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./dsl": "./src/dsl.js",
+    "./render": "./src/render.js",
+    "./openscad": "./src/openscad.js",
+    "./jscad": "./src/jscad.js"
+  },
+  "bin": {
+    "brepscript": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node test/run.js && node test/translate.js && node test/docs.js && node test/autofix.js && node test/paste.js && node test/libs.js && node test/adjust.js && node test/extrude2d.js && node test/exportfmt.js && node test/importmesh.js && node test/inventory.js && node test/py123d.js && node test/curvedstep.js && node test/edgeops.js && node test/trace.js && node test/chatbot.js && node test/stretch.js && node test/fins.js && node test/openscad_ops.js && node test/forgiving.js && node test/jscad_colors.js && node test/jscad_prims.js",
+    "serve": "node serve.js 5320",
+    "example": "node src/cli.js examples/bracket.js --info",
+    "desktop": "electron desktop/main.cjs",
+    "desktop:build": "node build-site.mjs && electron-builder --win --config electron-builder.yml"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "brep-io-kernel": "^1.0.306",
+    "bwip-js": "^4.11.2",
+    "replicad": "^0.23.1",
+    "replicad-opencascadejs": "^0.23.0",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "author": "RandoTechNerd"
+}

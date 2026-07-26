@@ -1,0 +1,249 @@
+// Export formats for the viewer: STL (native), OBJ + 3MF (generated here),
+// and STEP via the kernel's own exporter.
+//
+// generateSTEP is compiled into the kernel bundle but not re-exported from its
+// public entry, and we deliberately don't modify kernel files (that would
+// trigger its contribute-back license clause). The bundler tags functions with
+// their original names (fn.name survives minification), so we locate it at
+// runtime by name — with the STEP header marker as a fallback.
+//
+// generate3MF exists in the bundle too but only inside chunks that don't
+// export it, so 3MF is generated here instead: a minimal spec-valid package
+// (stored zip + 3dmodel.model XML) that slicers accept.
+
+let kernelStep = null;
+
+export async function loadGenerateSTEP() {
+  if (kernelStep) return kernelStep;
+  const mainUrl = "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
+  const mainSrc = await (await fetch(mainUrl)).text();
+  const chunkName = mainSrc.match(/\.\/(PartHistory-[\w-]+\.js)/)?.[1];
+  if (!chunkName) throw new Error("Couldn't locate the kernel's exporter chunk.");
+  const chunk = await import(`/node_modules/brep-io-kernel/dist-kernel/${chunkName}`);
+  for (const v of Object.values(chunk)) {
+    if (typeof v !== "function") continue;
+    if (v.name === "generateSTEP" || String(v).includes("ISO-10303")) {
+      kernelStep = v;
+      return v;
+    }
+  }
+  throw new Error("STEP exporter not found in this kernel version.");
+}
+
+// ---------------------------------------------------------------- mesh parse
+
+function parseStlTriangles(stl) {
+  const verts = [];
+  const index = new Map();
+  const tris = [];
+  let tri = [];
+  for (const m of stl.matchAll(/vertex\s+(-?[\d.eE+]+)\s+(-?[\d.eE+]+)\s+(-?[\d.eE+]+)/g)) {
+    const key = `${m[1]},${m[2]},${m[3]}`;
+    let i = index.get(key);
+    if (i === undefined) {
+      i = verts.length;
+      index.set(key, i);
+      verts.push([m[1], m[2], m[3]]);
+    }
+    tri.push(i);
+    if (tri.length === 3) { tris.push(tri); tri = []; }
+  }
+  return { verts, tris };
+}
+
+// ---------------------------------------------------------------------- OBJ
+
+export function stlToObj(stl, name = "brepcode-model") {
+  const { verts, tris } = parseStlTriangles(stl);
+  return `# BREPcode export\no ${name}\n`
+    + verts.map((v) => `v ${v[0]} ${v[1]} ${v[2]}`).join("\n") + "\n"
+    + tris.map((t) => `f ${t[0] + 1} ${t[1] + 1} ${t[2] + 1}`).join("\n") + "\n";
+}
+
+// ---------------------------------------------------------------- OBJ -> STL
+
+// Minimal OBJ reader for imports: v/f lines, 1-based (and negative) indices,
+// fan-triangulated polygons. Enough for meshes out of DCC tools and slicers.
+export function objToStl(obj, name = "imported") {
+  const verts = [];
+  const out = [`solid ${name}`];
+  for (const line of obj.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t.startsWith("v ")) {
+      const p = t.slice(2).trim().split(/\s+/).map(Number);
+      verts.push(p);
+    } else if (t.startsWith("f ")) {
+      const idx = t.slice(2).trim().split(/\s+/)
+        .map((tok) => parseInt(tok.split("/")[0], 10))
+        .map((i) => (i < 0 ? verts.length + i : i - 1));
+      for (let k = 1; k + 1 < idx.length; k++) {
+        const tri = [verts[idx[0]], verts[idx[k]], verts[idx[k + 1]]];
+        if (tri.some((v) => !v)) continue;
+        out.push("facet normal 0 0 0", "outer loop");
+        for (const v of tri) out.push(`vertex ${v[0]} ${v[1]} ${v[2]}`);
+        out.push("endloop", "endfacet");
+      }
+    }
+  }
+  out.push(`endsolid ${name}`);
+  return out.join("\n");
+}
+
+// ---------------------------------------------------------------------- 3MF
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// A stored (uncompressed) zip — all any 3MF consumer needs.
+function storedZip(entries) {
+  const enc = new TextEncoder();
+  const chunks = [], central = [];
+  let offset = 0;
+  const u16 = (n) => new Uint8Array([n & 255, (n >> 8) & 255]);
+  const u32 = (n) => new Uint8Array([n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255]);
+
+  for (const [name, content] of entries) {
+    const nameB = enc.encode(name);
+    const data = typeof content === "string" ? enc.encode(content) : content;
+    const crc = crc32(data);
+    const head = [u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0)];
+    central.push({ nameB, crc, size: data.length, offset });
+    for (const p of head) { chunks.push(p); offset += p.length; }
+    chunks.push(nameB, data);
+    offset += nameB.length + data.length;
+  }
+
+  const cdStart = offset;
+  for (const e of central) {
+    const rec = [u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(e.crc), u32(e.size), u32(e.size), u16(e.nameB.length), u16(0), u16(0),
+      u16(0), u16(0), u32(0), u32(e.offset)];
+    for (const p of rec) { chunks.push(p); offset += p.length; }
+    chunks.push(e.nameB);
+    offset += e.nameB.length;
+  }
+  chunks.push(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length),
+    u32(offset - cdStart), u32(cdStart), u16(0));
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return out;
+}
+
+// Colour-aware 3MF. `groups` is [{ verts:[[x,y,z],…], tris:[[a,b,c],…], color:"#rrggbb" }].
+// All geometry lands in ONE object; each triangle carries a p1 index into a
+// <m:colorgroup> via the 3MF materials extension. Bambu Studio / PrusaSlicer /
+// OrcaSlicer read that as per-face paint and auto-assign a filament per colour —
+// so an embossed label or code prints in its own colour on a multi-material
+// printer. Consumers that ignore the extension still get correct geometry.
+export function colored3MF(groups, name = "brepcode-model") {
+  const palette = [];                       // distinct colours, in first-seen order
+  const idxOf = (c) => {
+    const hex = (c || "#cccccc").toUpperCase();
+    let i = palette.indexOf(hex);
+    if (i < 0) { i = palette.length; palette.push(hex); }
+    return i;
+  };
+
+  const verts = [];
+  const tris = [];                          // [v1, v2, v3, colorIndex]
+  for (const g of groups) {
+    const base = verts.length;
+    const ci = idxOf(g.color);
+    for (const v of g.verts) verts.push(v);
+    for (const t of g.tris) tris.push([base + t[0], base + t[1], base + t[2], ci]);
+  }
+  if (!tris.length) return stlTo3MF("", name);
+
+  const M = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02";
+  const colorgroup = `  <m:colorgroup id="2">
+${palette.map((c) => `   <m:color color="${c}"/>`).join("\n")}
+  </m:colorgroup>`;
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
+ <resources>
+${colorgroup}
+  <object id="1" type="model" name="${name}" pid="2" pindex="0">
+   <mesh>
+    <vertices>
+${verts.map((v) => `     <vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join("\n")}
+    </vertices>
+    <triangles>
+${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}" p1="${t[3]}"/>`).join("\n")}
+    </triangles>
+   </mesh>
+  </object>
+ </resources>
+ <build>
+  <item objectid="1"/>
+ </build>
+</model>
+`;
+  return storedZip([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>
+`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+`],
+    ["3D/3dmodel.model", model],
+  ]);
+}
+
+export function stlTo3MF(stl, name = "brepcode-model") {
+  const { verts, tris } = parseStlTriangles(stl);
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+ <resources>
+  <object id="1" type="model" name="${name}">
+   <mesh>
+    <vertices>
+${verts.map((v) => `     <vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join("\n")}
+    </vertices>
+    <triangles>
+${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("\n")}
+    </triangles>
+   </mesh>
+  </object>
+ </resources>
+ <build>
+  <item objectid="1"/>
+ </build>
+</model>
+`;
+  return storedZip([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>
+`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+`],
+    ["3D/3dmodel.model", model],
+  ]);
+}
