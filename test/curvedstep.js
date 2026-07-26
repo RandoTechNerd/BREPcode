@@ -119,5 +119,38 @@ console.log("\nhull and freeform reach the curved exporter\n");
     `${(hi[0] - lo[0]).toFixed(1)} x ${(hi[2] - lo[2]).toFixed(1)}`);
 }
 
+// The blueprint carries dimensions on all four views. The isometric ones have to
+// run ALONG the projected axes, and that basis was measured out of replicad's
+// camera rather than assumed — so if replicad ever changes its projection, these
+// angles are what catches it.
+console.log("\nblueprint dimensions\n");
+{
+  const { curvedDrawingSVG } = await import("../viewer/curved.js");
+  const svg = await curvedDrawingSVG(cube([60, 40, 25]), { title: "dims" });
+  const groups = svg.match(/<g stroke="#8fb8e6" stroke-width="1"[\s\S]*?<\/g>/g) || [];
+  check("every view is dimensioned", groups.length === 9, `${groups.length} groups`);
+
+  const values = groups.map((g) => (g.match(/>([\d.]+)<\/text>/) || [])[1]);
+  const has = (v, n) => values.filter((x) => x === v).length === n;
+  check("60 appears on top, front and isometric", has("60.0", 3), values.join(","));
+  check("40 appears on top, right and isometric", has("40.0", 3), values.join(","));
+  check("25 appears on front, right and isometric", has("25.0", 3), values.join(","));
+
+  const rots = groups
+    .map((g) => (g.match(/rotate\((-?[\d.]+)/) || [])[1])
+    .filter(Boolean).map(Number);
+  const near = (a, b) => rots.some((r) => Math.abs(r - a) < 1.5) && b;
+  check("an isometric dimension runs up-right at +30", near(30, true), rots.join(","));
+  check("another runs up-left at -30", near(-30, true), rots.join(","));
+  check("and one runs vertically", near(-90, true), rots.join(","));
+
+  // nothing may spill outside the drawn border
+  const [, W, H] = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/).map(Number);
+  const coords = groups.flatMap((g) => [...g.matchAll(/[xy][12]="([\d.-]+)"/g)].map((m) => +m[1]));
+  check("no dimension leaves the sheet",
+    Math.min(...coords) > 0 && Math.max(...coords) < Math.max(W, H),
+    `${Math.min(...coords).toFixed(0)}..${Math.max(...coords).toFixed(0)}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

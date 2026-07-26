@@ -325,10 +325,80 @@ export async function curvedDrawingSVG(root, opts = {}) {
     const { at, size } = span(p, "h", py, len);
     return dimV(px, at, size, len);
   };
+  // ---- isometric dimensions -------------------------------------------
+  // Dimensions on a pictorial view have to run ALONG the projected axes, not
+  // square to the page, or they read as belonging to nothing. The basis below
+  // was measured out of replicad's own [100,100,100] camera rather than assumed:
+  // project a marker at the origin and at 40mm along each axis, and the offsets
+  // give each axis's screen direction. It is a true isometric (every axis
+  // foreshortened by sqrt(2/3) = 0.8165, at the classic ±30°) but with X and Y
+  // mirrored from the usual textbook layout, which is exactly the sort of thing
+  // guessing gets wrong.
+  const ISO_X = [-0.70711, 0.40825];
+  const ISO_Y = [0.70711, 0.40825];
+  const ISO_Z = [0, -0.81650];
+  // ...and the projector pads its viewBox by ~1 unit a side, so the shape's own
+  // projected origin is not the viewBox origin.
+  const isoProject = ([x, y, z]) => [
+    x * ISO_X[0] + y * ISO_Y[0] + z * ISO_Z[0],
+    x * ISO_X[1] + y * ISO_Y[1] + z * ISO_Z[1],
+  ];
+  const isoSheet = (p3) => {
+    const [px, py] = isoProject(p3);
+    return [isoPX + (px - iso.x) * isoS, isoPY + (py - iso.y) * isoS];
+  };
+
+  const centre3 = [(bmin[0] + bmax[0]) / 2, (bmin[1] + bmax[1]) / 2, (bmin[2] + bmax[2]) / 2];
+  const centre2 = isoSheet(centre3);
+
+  // One dimension along an edge of the bounding box: projected, then pushed
+  // clear of the shape along the edge's own perpendicular (outward is decided
+  // by which side of it the model's centre falls on, so it works for any
+  // proportions rather than relying on hand-picked offsets).
+  const isoDim = (from3, to3, value, gap = 22) => {
+    const a = isoSheet(from3), b = isoSheet(to3);
+    let dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return "";
+    dx /= len; dy /= len;
+    let nx = -dy, ny = dx;                       // perpendicular
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if ((mid[0] + nx - centre2[0]) ** 2 + (mid[1] + ny - centre2[1]) ** 2
+      < (mid[0] - centre2[0]) ** 2 + (mid[1] - centre2[1]) ** 2) { nx = -nx; ny = -ny; }
+    const A = [a[0] + nx * gap, a[1] + ny * gap];
+    const B = [b[0] + nx * gap, b[1] + ny * gap];
+    // text sits just off the line, and is flipped when it would read upside down
+    let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    let flip = 1;
+    if (deg > 90 || deg < -90) { deg += 180; flip = -1; }
+    const tx = (A[0] + B[0]) / 2 + nx * 9 * flip;
+    const ty = (A[1] + B[1]) / 2 + ny * 9 * flip;
+    return `
+  <g ${DIM_G}>
+    <line x1="${a[0] + nx * 6}" y1="${a[1] + ny * 6}" x2="${A[0] + nx * 5}" y2="${A[1] + ny * 5}"/>
+    <line x1="${b[0] + nx * 6}" y1="${b[1] + ny * 6}" x2="${B[0] + nx * 5}" y2="${B[1] + ny * 5}"/>
+    <line x1="${A[0]}" y1="${A[1]}" x2="${B[0]}" y2="${B[1]}"/>
+    <path d="M${A[0]} ${A[1]} l${(dx * 6 - ny * 3).toFixed(2)} ${(dy * 6 + nx * 3).toFixed(2)} l${(ny * 6).toFixed(2)} ${(-nx * 6).toFixed(2)} z" stroke="none"/>
+    <path d="M${B[0]} ${B[1]} l${(-dx * 6 - ny * 3).toFixed(2)} ${(-dy * 6 + nx * 3).toFixed(2)} l${(ny * 6).toFixed(2)} ${(-nx * 6).toFixed(2)} z" stroke="none"/>
+    <text x="${tx}" y="${ty}" text-anchor="middle" stroke="none"
+          transform="rotate(${deg.toFixed(1)} ${tx} ${ty})">${mm(value)}</text>
+  </g>`;
+  };
+
+  // Dimension the three silhouette edges that meet at the lowest corner, which
+  // is where a reader expects them on an isometric.
+  const [x0, y0, z0] = bmin, [x1, y1, z1] = bmax;
+  const isoDims = [
+    isoDim([x1, y0, z0], [x1, y1, z0], sizeY),   // bottom-left edge, runs along Y
+    isoDim([x1, y1, z0], [x0, y1, z0], sizeX),   // bottom-right edge, runs along X
+    isoDim([x0, y1, z0], [x0, y1, z1], sizeZ),   // the vertical edge on the right
+  ].join("\n");
+
   const dimensions = [
     hDim(top, topX, topY + tH + 44, sizeX),      vDim(top, topX - 24, topY, sizeY),
     hDim(front, frontX, frontY + fH + 44, sizeX), vDim(front, frontX - 24, frontY, sizeZ),
     hDim(right, rightX, rightY + rH + 44, sizeY), vDim(right, rightX + rW + 24, rightY, sizeZ),
+    isoDims,
   ].join("\n");
 
   // Title block: flush with the inner border's bottom-right corner. It used to
