@@ -723,13 +723,14 @@ const round3 = (n) => Math.round(n * 1000) / 1000;
 // the whole call. Textual order equals emission order for straight-line code —
 // the viewer verifies the kind sequence against the compile trace before
 // trusting the mapping.
-const PRIM_WORDS = /\b(cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh)\s*\(/g;
+const PRIM_WORDS = /\b(freeform|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh)\s*\(/g;
 const KIND_CODES = {
   cube: ["P.CU"], cuboid: ["P.CU"],
   sphere: ["P.S"], spheroid: ["P.S"],
   cylinder: ["P.CY", "P.CO"], cyl: ["P.CY", "P.CO"],
   cone: ["P.CO"], torus: ["P.T"],
   importedMesh: ["IMPORT3D"],
+  freeform: ["P.S"],        // one marker sphere per corner
 };
 
 export function primitiveSites(text) {
@@ -742,6 +743,20 @@ export function primitiveSites(text) {
       else if (text[i] === ")" && --depth === 0) { end = i + 1; break; }
     }
     if (end < 0) continue;
+    // freeform() is ONE call in the source but compiles to one marker sphere
+    // per corner. Emitting a single site made the sequence lengths disagree,
+    // and mapTraceToSites answers all-or-nothing: the whole document became
+    // unclickable, negatives included, the moment a freeform appeared. Push one
+    // site per point, all pointing at the same call, so the counts line up and
+    // clicking any part of the shape selects the freeform.
+    if (m[1] === "freeform") {
+      const body = text.slice(m.index, end);
+      const pts = (body.match(/\[\s*-?[\d.]+\s*,\s*-?[\d.]+\s*,\s*-?[\d.]+\s*\]/g) || []).length;
+      for (let i = 0; i < pts; i++) {
+        sites.push({ kind: "freeform", start: m.index, end, codes: ["P.S"] });
+      }
+      continue;
+    }
     sites.push({ kind: m[1], start: m.index, end, codes: KIND_CODES[m[1]] });
   }
   return sites;

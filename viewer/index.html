@@ -4140,7 +4140,11 @@
       const hHit = raycaster.intersectObjects(handleGroup.children, false)[0];
       if (hHit) {
         const H = hHit.object.userData.handle;
-        const hSite = (mapText === code.value && featureMap) ? featureMap[H.fid] : null;
+        // freeform falls back to its own site, same as the click path: its
+        // markers may not be in featureMap, and without this the handles spawn
+        // but refuse to drag.
+        const hSite = ((mapText === code.value && featureMap) ? featureMap[H.fid] : null)
+          || freeformSiteOf(code.value);
         if (hSite) {
           const fbb = new THREE.Box3();
           for (const m of modelGroup.children) if (m.userData.featureId === H.fid) fbb.expandByObject(m);
@@ -4182,6 +4186,7 @@
               start: at.clone(), planeZ: at.z,
               meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
               handle: hHit.object, delta: [0, 0, 0], moved: false,
+              startY: e.clientY,
             };
           } else if (hSite.kind === "cube" || hSite.kind === "cuboid") {
             // boxes: corner STRETCH — width and depth follow the drag
@@ -4221,6 +4226,7 @@
               start: at.clone(), planeZ: at.z,
               meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
               handle: hHit.object, delta: [0, 0, 0], moved: false,
+              startY: e.clientY,
             };
           } else {
             const targets = findScaleTargets(code.value, hSite);
@@ -4366,7 +4372,7 @@
         let d;
         if (e.shiftKey) {
           const rect = renderer.domElement.getBoundingClientRect();
-          const per = (downAt ? (downAt[1] - e.clientY) : 0) / rect.height;
+          const per = (drag.startY - e.clientY) / rect.height;
           d = [0, 0, per * camera.position.distanceTo(controls.target) * 0.9];
         } else {
           const p = rayToPlane(e, drag.planeZ);
@@ -4648,7 +4654,7 @@
       const fdims = fbb.isEmpty() ? "" :
         ` (${["x", "y", "z"].map((a) => (fbb.max[a] - fbb.min[a]).toFixed(1)).join(" × ")} mm)`;
 
-      const site = featureMap?.[fid];
+      const site = featureMap?.[fid] || freeformSiteOf(code.value);
       if (!site) {
         if (modelGroup.children.length) {
           hint.innerHTML = `This piece measures <b>${fdims.replace(/[()]/g, "").trim() || "?"}</b> — can't map it back to a single call (loops, helpers, or modules), so edit the text directly.`;
