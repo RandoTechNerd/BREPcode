@@ -47,10 +47,31 @@ console.log("\nmapTraceToSites\n");
   check("maps matching sequences", good?.["P.CY2"]?.kind === "cylinder");
   check("cone code accepted for cylinder site",
     mapTraceToSites([{ id: "P.CU1", code: "P.CU" }, { id: "P.CO2", code: "P.CO" }], src) !== null);
-  check("length mismatch rejected",
-    mapTraceToSites([{ id: "P.CU1", code: "P.CU" }], src) === null);
-  check("kind mismatch rejected",
-    mapTraceToSites([{ id: "P.S1", code: "P.S" }, { id: "P.CY2", code: "P.CY" }], src) === null);
+  // A mismatch no longer kills the whole document: shapes whose code appears
+  // the same number of times on both sides still map, the rest go dark. What
+  // must never happen is a WRONG mapping, so each case checks where the
+  // survivors point, not just that something came back.
+  {
+    // one cube in the trace, one cube in the source: still unambiguous
+    const partial = mapTraceToSites([{ id: "P.CU1", code: "P.CU" }], src);
+    check("shorter trace still maps its cube", partial?.["P.CU1"]?.kind === "cube");
+  }
+  {
+    // a sphere the source never mentions: it stays unmapped, the cylinder lives
+    const partial = mapTraceToSites(
+      [{ id: "P.S1", code: "P.S" }, { id: "P.CY2", code: "P.CY" }], src);
+    check("unknown sphere stays unmapped", partial && !partial["P.S1"]);
+    check("the cylinder beside it still maps", partial?.["P.CY2"]?.kind === "cylinder");
+  }
+  {
+    // two cubes in the trace but one in the source (a loop): ambiguous, so
+    // NEITHER may map — mapping both to the same call would let a drag on one
+    // silently rewrite the other
+    const loop = mapTraceToSites(
+      [{ id: "a", code: "P.CU" }, { id: "b", code: "P.CU" }, { id: "c", code: "P.CY" }], src);
+    check("ambiguous cubes map to nothing", loop && !loop.a && !loop.b);
+    check("the unambiguous cylinder survives", loop?.c?.kind === "cylinder");
+  }
 }
 
 console.log("\nconvertPrimitiveCall\n");
