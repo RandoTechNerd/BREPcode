@@ -2,27 +2,27 @@
 
 **Type a model. Code-CAD in your browser.**
 
-→ **[Try it now at BREPcode.com](https://brepcode.com/)** — nothing to install, runs entirely
+→ **[Try it now at BREPcode.com](https://brepcode.com/)**. Nothing to install, runs entirely
 client-side.
-→ **[Download BREPcode.exe](../../releases/latest)** — portable Windows build, no installer.
+→ **[Download BREPcode.exe](../../releases/latest)**. Portable Windows build, no installer.
 
 An OpenSCAD-style DSL, a live browser viewer, and a headless CLI on top of the
 [BREP.io](https://brep.io) kernel (`brep-io-kernel`).
 
-You get BREP.io's real solid modeling engine — manifold booleans, feature history, STL export — but
+You get BREP.io's real solid modeling engine (manifold booleans, feature history, STL export) but
 you author models the way you'd write OpenSCAD, and you build them from a terminal.
 
 ### Built on BREP.io
 
 The solid modeling is not ours. Every boolean, every feature, every millimetre of geometry comes
 from the **[BREP.io kernel](https://brep.io)** by [Autodrop3d LLC](https://autodrop3d.com)
-([source](https://github.com/mmiscool/BREP), [@mmiscool](https://github.com/mmiscool)) — an
+([source](https://github.com/mmiscool/BREP), [@mmiscool](https://github.com/mmiscool)), an
 open-source, browser-native B-rep engine. BREPcode is a language and an interface sitting on top
 of it.
 
 The kernel ships **unmodified**, installed from npm, with its `LICENSE.md` bundled beside it in
 every build. That licence requires any modification to the kernel be contributed back to
-Autodrop3d via pull request, so this project deliberately never patches it — if the kernel needs
+Autodrop3d via pull request, so this project deliberately never patches it. If the kernel needs
 to change, the change belongs upstream. If BREPcode is useful to you, the kernel is the part worth
 starring.
 
@@ -61,7 +61,7 @@ await ph.runHistory({ throwOnFeatureError: true });
 BrepScript makes that `difference(cube([20,20,20]), cylinder({r:5, h:40}))`.
 
 The published `brep-io-kernel` CLI (`npx brep-io-kernel`) only serves the browser app as a static
-site — there is no headless script-to-STL path. That's what this adds.
+site; there is no headless script-to-STL path. That's what this adds.
 
 ## Desktop app (Windows)
 
@@ -72,7 +72,7 @@ npm run desktop:build   # -> dist-desktop/BREPcode.exe
 
 `BREPcode.exe` is a **portable** build: one file, no installer, no admin rights,
 nothing written outside its own temp folder. It is the same static bundle the
-website serves (`dist-site/`), wrapped in an Electron window — there is no
+website serves (`dist-site/`), wrapped in an Electron window. There is no
 second implementation to keep in sync, and no network access at runtime.
 
 Two things worth knowing before handing it to someone:
@@ -85,11 +85,45 @@ Two things worth knowing before handing it to someone:
   of the identical app is 10.5 MB zipped.
 
 The shell (`desktop/main.cjs`) serves the bundle over a custom `app://` scheme
-rather than `file://` — ES modules and `WebAssembly.instantiateStreaming` both
+rather than `file://`. ES modules and `WebAssembly.instantiateStreaming` both
 refuse to load from an opaque `file://` origin, and a registered standard scheme
 avoids that without opening a port or tripping the firewall.
 
-## Live viewer — type and watch it build
+## Toolbox and panels
+
+Everything lives in the header bar. Nothing here needs the terminal.
+
+**🧰 Toolbox** is the dropdown for edits that act on a shape you point at:
+
+| Tool | What it does |
+|---|---|
+| **Drill** | Click a face, bore a hole along its normal |
+| **Fin supports** | Removable 45° buttress fins with probed teeth and a bed skirt |
+| **Fin supports, no skirt** | The same without the foot |
+
+**📦 Import** brings in STL / 3MF / OBJ / SVG and unlocks the mesh-editing tools:
+
+| Tool | What it does |
+|---|---|
+| **Rotate / orient** | Stand a part up, lay it flat, flip it over |
+| **Split and fill** | Slice a part and fill the gap with its own cross-section, or pass a negative amount to take length out of the middle |
+| **Thicken walls** | Scale up, then shrink the middle back, so rails get thicker without the part changing size |
+| **Shave off the bottom** | Cut feet or a lip off flat |
+| **Drill** | Same as above, on imported geometry |
+
+**Other panels:**
+
+| Panel | What it does |
+|---|---|
+| **💬 Chat** | Describe a part in plain English and get code. Bring your own API key (Claude or Gemini), stored locally in your browser, never sent anywhere but the provider. Optionally password-locked so you can publish a build with a key baked in |
+| **📖 Cheat sheet** | Every word in the language, grouped and tabbed by dialect, click to insert working code |
+| **🎨 Material and lighting** | Colour, metalness, roughness, opacity, textures, presets, CAD outline mode, lighting rig, background |
+| **🖼 Trace image** | PNG or JPG to an extrudable outline |
+| **📐 Dimensions** | Live width / depth / height overlay |
+| **💾 Export** | STL, OBJ, 3MF (multi-colour), GLB, curved-surface STEP, and a 3-view SVG blueprint |
+| **📁 Inventory** | Your saved models, with thumbnails |
+
+## Live viewer
 
 ```bash
 python -m http.server 5320 --directory BrepScript
@@ -97,20 +131,20 @@ python -m http.server 5320 --directory BrepScript
 ```
 
 A "**+ Type a model**" button sits in the corner. Click it, type BrepScript, and the solid rebuilds
-about half a second after you stop typing — typically 30–150 ms per rebuild. Drag to orbit, scroll to
+about half a second after you stop typing, typically 30-150 ms per rebuild. Drag to orbit, scroll to
 zoom. Syntax errors show in red in the panel and the last good model stays on screen, so a
 half-typed line never blanks the view.
 
 Two buttons sit bottom-right:
 
-- **📖 Cheat sheet** — every word you can use, grouped into Shapes / Combine / Move, each with its
+- **📖 Cheat sheet**: every word you can use, grouped into Shapes / Combine / Move, each with its
   signature and a one-line explanation. Click any entry to insert working code at the caret. At the
   bottom are ready-made starting points (a bolt-hole plate, a hollow box, a peg on a base) that
   replace the editor contents with something that already builds.
-- **+ Type a model** — the editor.
+- **+ Type a model**: the editor.
 
 While typing, a suggestion list appears as soon as a word matches. **Tab** or **Enter** inserts the
-full call with sensible defaults — typing `cy` then Tab gives you `cylinder({ r: 8, h: 20, $fn: 48 })`
+full call with sensible defaults, typing `cy` then Tab gives you `cylinder({ r: 8, h: 20, $fn: 48 })`
 with the arguments pre-selected, so typing immediately replaces them. Arrow keys move through the
 suggestions, Escape dismisses. A hint line under the editor always says what the call you're inside
 expects.
@@ -121,12 +155,12 @@ Mistakes get plain-English fixes rather than raw JavaScript errors:
 |---|---|
 | `cube` | You typed "cube" on its own. Give it values: `cube([20, 20, 10])` |
 | `cub([10,10,10])` | "cub" isn't a BrepScript word. Did you mean `cube()`? |
-| `cube([10,10,` | Unfinished square bracket `[` — add `]` (2 still open in total) |
+| `cube([10,10,` | Unfinished square bracket `[`, add `]` (2 still open in total) |
 | `cube([10,10,10)` | Mismatched brackets: `[` is closed by `)`. Use `]` instead |
-| `linear_extrude(5)` | isn't available here — there's no 2D subsystem yet |
-| `fillet(...)` | isn't available here — not wired up yet, it needs edge selection |
-| `const a = cube(...)` | Almost — add `return` before your final shape |
-| `difference(cube(...), 5)` | Expected a shape, got number: 5 — shapes go inside shapes |
+| `linear_extrude(5)` | isn't available here, there's no 2D subsystem yet |
+| `fillet(...)` | isn't available here, not wired up yet, it needs edge selection |
+| `const a = cube(...)` | Almost, add `return` before your final shape |
+| `difference(cube(...), 5)` | Expected a shape, got number: 5, shapes go inside shapes |
 
 A broken line never blanks the view; the last good model stays on screen while you fix it.
 
@@ -134,32 +168,32 @@ A broken line never blanks the view; the last good model stays on screen while y
 
 The editor and the 3D view edit the same model from either side:
 
-- **Click a shape in the viewport** and its call is selected in the code — including cut features:
+- **Click a shape in the viewport** and its call is selected in the code, including cut features:
   clicking the inside wall of a drilled hole selects the `cylinder` that cut it, because the kernel
   preserves each face's originating feature through booleans. Mapping is only offered when it's
   provably right (the compile trace must match the source's primitive sequence one-to-one); code
   with loops, helper functions, or pasted modules says "can't map" instead of guessing.
-- **Alt+↑/↓ on a number** nudges it and rebuilds — Shift steps ±10, Ctrl steps ±0.1. The hint line
+- **Alt+↑/↓ on a number** nudges it and rebuilds, Shift steps ±10, Ctrl steps ±0.1. The hint line
   shows what you're adjusting and which call it belongs to.
 - **Alt+↑/↓ on a keyword** is the inline swapper: `cube → cylinder → sphere → cone → torus`,
   `union → difference → intersection`, `translate → rotate → scale → mirror`. Primitive swaps
   convert the arguments (`cylinder({ r: 8, h: 14 })` → `sphere({ r: 8 })` → `cube([16, 16, 14])`)
   so the model stays sensible; boolean/transform swaps are literal since their arguments already match.
-- **◀ ▶ in the editor header** step through history. Every change lands in one stack — typing
-  (grouped per pause), scrubs, swaps, cheat-sheet inserts, recipes — so you can walk back through
+- **◀ ▶ in the editor header** step through history. Every change lands in one stack (typing
+  grouped per pause, scrubs, swaps, cheat-sheet inserts, recipes) so you can walk back through
   manual adjustments and forward again. Capped at 200 entries.
 
 ### Exact mode
 
 An **Exact** checkbox sits under the editor, unticked by default. While it's off, forgiving mode
-patches the small stuff before building — unclosed brackets and quotes get closed, smart quotes and
-en-dashes pasted from a document get straightened — and the status bar says what it patched
+patches the small stuff before building, unclosed brackets and quotes get closed, smart quotes and
+en-dashes pasted from a document get straightened, and the status bar says what it patched
 (`auto-fixed: closed 1 open bracket with )`). So a half-typed line keeps rendering while you work.
 
 Two guarantees: **it only ever appends what's missing**, never rewriting or deleting what you typed,
-and **your text is left alone** — the repair is applied to a copy, so the caret never jumps. Brackets
+and **your text is left alone**, the repair is applied to a copy, so the caret never jumps. Brackets
 inside strings and comments aren't counted, and genuinely crossed brackets (`cube([1,1,1)`) are left
-untouched, because guessing there just yields differently-broken code — you get
+untouched, because guessing there just yields differently-broken code, you get
 *"Mismatched brackets: `[` is closed by `)`"* instead.
 
 Tick **Exact** and nothing is patched: you get the strict error, which is what you want when the code
@@ -175,7 +209,7 @@ const t = 4;
 return difference(cube([30, 30, t]), translate([15, 15, -1], cylinder({ r: 9, h: t + 2, $fn: 48 })));
 ```
 
-The page is deliberately dependency-free — no build step and no CDN, just an import map pointing at
+The page is deliberately dependency-free, no build step and no CDN, just an import map pointing at
 `node_modules`. `window.brepscript` exposes `{ scene, camera, renderer, modelGroup, rebuild, dsl }`
 for poking at from the console.
 
@@ -184,7 +218,7 @@ for poking at from the console.
 The kernel ships a `CadEmbed` API that mounts the full BREP.io UI in an iframe. I tried that first and
 it doesn't work here: the frame boots and posts `ready`, but every subsequent request (`init`,
 `getState`) hangs forever inside `#ensureViewer()`, waiting on a `viewer.ready` promise that never
-settles — no error, no rejection, just silence. Two related traps found on the way:
+settles, no error, no rejection, just silence. Two related traps found on the way:
 
 - `CadEmbed`'s default `frameModuleUrl` resolves to the **minified internal chunk**
   (`CAD-BOR-g0AI.js`, whose exports are `A, B, C…`) rather than the `CAD.js` wrapper that actually
@@ -197,12 +231,12 @@ under our control.
 Two gotchas this created, both worth knowing if you render kernel solids yourself:
 
 - The kernel bundles **its own copy of three.js**, and meshes built by one copy are silently skipped
-  by a renderer from another — they never draw, with no warning. The viewer copies raw vertex buffers
+  by a renderer from another, they never draw, with no warning. The viewer copies raw vertex buffers
   into fresh `BufferGeometry` owned by the page's three, baking each mesh's world matrix in.
 - A solid's children are `FACE`, `EDGE`, `VERTEX`, and `Points`. **`EDGE` objects report
   `isMesh === true`**, but they carry a `LineMaterial` and their vertex buffer holds fat-line data,
   not surface positions. Filtering on `isMesh` alone adopts them and yields degenerate quads pinned
-  near the origin — which quietly wrecks the bounding box and sends auto-framing to the wrong place.
+  near the origin, which quietly wrecks the bounding box and sends auto-framing to the wrong place.
   Filter on `type === "FACE"`.
 
 Camera framing re-centres on the model after every rebuild, but keeps whatever angle and zoom you've
@@ -212,7 +246,7 @@ whichever field of view is tighter, so a tall narrow window doesn't clip the par
 
 A third rendering trap, unrelated to the kernel but easy to hit: `renderer.setSize(w, h, false)`
 sets the drawing buffer but **skips the canvas CSS size**, so on any display with
-`devicePixelRatio !== 1` the canvas lays out at buffer size and overflows its container — the image
+`devicePixelRatio !== 1` the canvas lays out at buffer size and overflows its container, the image
 is drawn oversized and anchored top-left, pushing the model off-centre and partly off-screen. Use
 `setSize(w, h)` and let three set the CSS size. A `ResizeObserver` on the container handles panes
 that resize without firing a window `resize` event.
@@ -234,37 +268,65 @@ you drop down to the raw API. BrepScript normalises all of them.
 Two more that cost real debugging time:
 
 - `newFeature()` returns a plain history entry `{ type, inputParams, persistentData, id }`, **not** a
-  feature-class instance — and `inputParams` arrives **pre-populated with defaults**.
+  feature-class instance, and `inputParams` arrives **pre-populated with defaults**.
 - The id lives at `inputParams.id`. Some kernel tests reference `inputParams.featureID`, which is
-  `undefined` — yet the boolean still resolves and cuts correctly, because the kernel falls back when
+  `undefined`, yet the boolean still resolves and cuts correctly, because the kernel falls back when
   a reference is missing. So the mistake is invisible rather than fatal. Wire with `.id` anyway:
   relying on the fallback breaks as soon as there are more than two solids in play.
 - A genuine silent no-op: an `undefined` **entry inside** `targets` (alongside a valid `targetSolid`)
-  is skipped without complaint — the tool solid stays in the scene and nothing is cut.
+  is skipped without complaint, the tool solid stays in the scene and nothing is cut.
 
 ## API
 
 Everything returns an opaque shape node; nothing is evaluated until `build()`.
 
-**Primitives** — `cube([x,y,z] | size, {center})`, `cylinder({r|d, h, r1/r2, $fn, center})`,
+**Primitives**, `cube([x,y,z] | size, {center})`, `cylinder({r|d, h, r1/r2, $fn, center})`,
 `cone({r1, r2, h})`, `sphere({r|d, $fn})`, `torus({r, tube, arc, $fn})`.
 
-**Booleans** — `union(...)`, `difference(target, ...tools)`, `intersection(...)`. All variadic.
+**Booleans**, `union(...)`, `difference(target, ...tools)`, `intersection(...)`. All variadic.
 
-**Transforms** — `translate([x,y,z], ...)`, `rotate([rx,ry,rz], ...)` in degrees,
+**Transforms**, `translate([x,y,z], ...)`, `rotate([rx,ry,rz], ...)` in degrees,
 `scale([x,y,z] | s, ...)`, `mirror([nx,ny,nz], ...)`. Nesting composes as 4×4 matrices and is baked
 into each primitive's transform block at compile time.
 
-**Escape hatch** — `feature("SM.TAB", { ...params })` drives any kernel feature by short code, so
+**Escape hatch**, `feature("SM.TAB", { ...params })` drives any kernel feature by short code, so
 you're never boxed in by the DSL. Available codes include `P.CU P.CY P.S P.CO P.T P.PY` (primitives),
 `B` (boolean), `E` (extrude), `R` (revolve), `F` (fillet), `CH` (chamfer), `SW` (sweep), `LOFT`,
 `TU` (tube), `H` (hole), `M` (mirror), `PATTERN`, `THK` (thicken), `XFORM`, `S` (sketch),
 `TEXT`, `HX` (helix), `SM.*` (sheet metal).
 
-**Programmatic use** — `build(shape)` → `{ partHistory, solids }`, plus `toSTL(result)` and
+**Programmatic use**, `build(shape)` → `{ partHistory, solids }`, plus `toSTL(result)` and
 `stats(result)`.
 
-## CLI
+## CLI (headless, no browser)
+
+This is a **separate way in from the "Type a model" editor**, not the thing that
+powers it. The editor is the browser app: you type, it rebuilds on screen. The CLI
+is a terminal command that takes a `.js` (or `.scad`) file on disk and writes an
+STL, with no window, no viewer, and nothing to click.
+
+Reach for it when you want to make files rather than look at them:
+
+```bash
+# one model to one STL
+node src/cli.js examples/bracket.js -o bracket.stl
+
+# same model, different sizes, no clicking
+for r in 2.5 3 3.5; do
+  node src/cli.js examples/bracket.js -D holeR=$r -o "bracket-$r.stl"
+done
+
+# just measure it, write nothing
+node src/cli.js examples/bracket.js --info
+```
+
+Typical uses: batching out a family of sizes, regenerating parts in a build script
+or CI, or editing an imported mesh repeatably. `examples/remove-feet.js` does the
+last one, shearing the feet off a holder and boring glue pockets, straight from a
+slicer-exported binary STL.
+
+The two share all the same code, so a model that builds in the editor builds here.
+Paste the editor's code into a file, add `export default`, and run it.
 
 ```
 brepscript <model.js> [-o out.stl] [-D key=value]... [--info]
@@ -277,21 +339,11 @@ brepscript <model.js> [-o out.stl] [-D key=value]... [--info]
 
 A model file default-exports either a shape or a `(params) => shape` function.
 
-## Tests
-
-```bash
-node test/run.js     # 17 passing
-```
-
-The suite computes each solid's volume independently from the exported STL (signed tetrahedron sum)
-rather than trusting the DSL's own bookkeeping, so it verifies the kernel's actual output — e.g. a
-20mm cube minus a r5 through-hole must measure `8000 − π·25·20`.
-
 ## Reading OpenSCAD and JSCAD
 
 BrepScript translates both, so existing models build without a rewrite.
 
-**OpenSCAD** — `.scad` files work directly from the CLI, and pasting OpenSCAD into the viewer is
+**OpenSCAD**, `.scad` files work directly from the CLI, and pasting OpenSCAD into the viewer is
 auto-detected (the status line then reads `OpenSCAD · …`).
 
 ```bash
@@ -302,9 +354,9 @@ A practical subset is implemented: variables and arithmetic, `module` and `funct
 (including use-before-definition and `children()`), `for` with `[start:step:end]` ranges, `if`/`else`,
 the `*` `!` `#` `%` modifiers, named and positional arguments, `d`/`d1`/`d2` diameter forms, global or
 per-call `$fn`, axis-angle `rotate(a, v)`, and the usual primitives, booleans and transforms. Anything
-2D — and `hull`/`minkowski`/`surface`/`import`/`projection` — raises a clear error naming the feature.
+2D, and `hull`/`minkowski`/`surface`/`import`/`projection`, raises a clear error naming the feature.
 
-**JSCAD** — import the compatibility layer; the `@jscad/modeling` API surface is mapped:
+**JSCAD**, import the compatibility layer; the `@jscad/modeling` API surface is mapped:
 
 ```js
 import { primitives, booleans, transforms } from "brepscript/jscad";
@@ -322,7 +374,7 @@ scope, so JSCAD can be pasted straight in.
 
 `square`, `circle`, `polygon`, and `linear_extrude` are real now, in all three languages. Under the
 hood each 2D outline becomes a kernel **Plane → Sketch → Extrude** chain (the kernel had the
-machinery all along — sketches with loop detection, `distanceBack` extruding +Z, and a Transform
+machinery all along, sketches with loop detection, `distanceBack` extruding +Z, and a Transform
 feature for placement). Nothing is computed in 2D: booleans between 2D shapes keep their structure
 and are applied by the manifold engine after extrusion, which is equivalent for straight extrusions.
 Cutting tools are automatically overshot so caps never sit coincident.
@@ -335,7 +387,7 @@ linear_extrude(height=8)
   }
 ```
 
-BrepScript: `linearExtrude({ h: 10, center: true }, polygon([[0,0], [20,0], [10,15]]))` — winding is
+BrepScript: `linearExtrude({ h: 10, center: true }, polygon([[0,0], [20,0], [10,15]]))`, winding is
 normalised automatically. JSCAD: `extrudeLinear({ height }, subtract(rectangle(...), circle(...)))`
 plus `polygon`/`rectangle`/`circle`, including via `require('@jscad/modeling/src/operations/extrusions')`.
 
@@ -346,43 +398,43 @@ Deliberately not supported, each with a clear error: `twist`, extrusion `scale`,
 ### OpenSCAD libraries (BOSL2, MCAD, …)
 
 `include <BOSL2/std.scad>` and `use <MCAD/…>` directives are handled rather than fatal. The
-most-used calls are **shimmed** — reimplemented against our primitives — and every approximation
+most-used calls are **shimmed**, reimplemented against our primitives, and every approximation
 announces itself in the warnings line instead of silently changing geometry:
 
 - **BOSL2**: `up/down/left/right/fwd/back`, `move`, `x/y/zmove`, `x/y/zrot`, `cuboid`, `cyl`,
   `x/y/zcyl`, `spheroid`, `tube`, `torus`, the anchor constants (`TOP`, `CENTER`, …). Attachable
-  primitives render their children, so `cuboid() attach(TOP) cyl()` chains — but there is **no
+  primitives render their children, so `cuboid() attach(TOP) cyl()` chains, but there is **no
   attachment solver**: `attach`/`position` place children at the parent's centre and say so.
   `rounding=`/`chamfer=` are accepted and ignored, with a warning ("edges left sharp").
 - **MCAD**: `roundedBox` (corners square, warned), `polyhole`, `teardrop` (approximated, warned).
 - **Anything else** (NopSCADlib, dotSCAD, threadlib, Round-Anything): the include warns that the
-  library isn't bundled and the script continues — it still builds if it only used calls we know,
+  library isn't bundled and the script continues, it still builds if it only used calls we know,
   and otherwise fails naming the missing call.
 
 Also supported: `let()` (statement and expression), `assert()`, and declared-but-`undef` parameters.
 
-This is deliberately a *compatibility net for pasted scripts*, not a claim of BOSL2 support — gears,
+This is deliberately a *compatibility net for pasted scripts*, not a claim of BOSL2 support, gears,
 threading, sweeps, and real rounding would need the actual libraries under an OpenSCAD-WASM engine.
 
 **CLI model files paste as-is too.** A file with `import { … } from "brepscript"` and
-`export default (params) => …` runs verbatim in the viewer — the module skeleton is stripped and the
+`export default (params) => …` runs verbatim in the viewer, the module skeleton is stripped and the
 exported function is called with default params. The status bar always shows the model's bounding
 box (`30.0 × 20.0 × 10.0 mm`), and clicking a shape shows that piece's own dimensions in the hint.
 
 **Pasting LLM output works as-is.** Markdown fences (with any language tag, prose around them, even a
-cut-off reply with an unclosed fence) are stripped before anything else. Full JSCAD modules — the
+cut-off reply with an unclosed fence) are stripped before anything else. Full JSCAD modules, the
 form Gemini and friends actually emit, with `require('@jscad/modeling')` or ESM imports, `main()`,
-`getParameterDefinitions()` (defaults are applied), and `module.exports` — are rewritten and run;
+`getParameterDefinitions()` (defaults are applied), and `module.exports`, are rewritten and run;
 a `main()` that returns an array of solids gets unioned. The status bar shows which language it
 detected (`OpenSCAD · …` / `JSCAD · …`). Requiring an unsupported JSCAD namespace (`extrusions`,
 `hulls`, …) raises an error naming it.
 
 ## Writing models with an LLM
 
-`LLM_PROMPT.md` is a complete authoring guide written for a model rather than a person — paste it
+`LLM_PROMPT.md` is a complete authoring guide written for a model rather than a person, paste it
 into Gemini/Claude/GPT as a system prompt and describe the part you want. It pins down units and
 orientation, gives the full closed vocabulary, lists what doesn't exist (so the model stops reaching
-for `fillet` and `linear_extrude`), and covers the geometry rules that actually matter — overshoot
+for `fillet` and `linear_extrude`), and covers the geometry rules that actually matter, overshoot
 through-cuts, overlap unions, one target per difference.
 
 Every worked example in it is covered by `test/docs.js`, so the guide can't drift into teaching code
@@ -394,7 +446,7 @@ Working today: primitives, the three booleans (including nesting), transform com
 parameter injection, STL export, the live viewer, and the OpenSCAD/JSCAD translators.
 
 Not yet wired: fillet/chamfer and extrude/revolve (these need *edge and face selection*, which is the
-genuinely hard part — the kernel identifies edges by generated names, so the DSL needs a query layer
+genuinely hard part, the kernel identifies edges by generated names, so the DSL needs a query layer
 like `.edges({ z: "max" })` before they can be exposed cleanly). Also no STEP/3MF export yet, though
 the kernel ships both exporters.
 
@@ -406,15 +458,19 @@ node test/run.js  # or run one
 ```
 
 `test/run.js` covers the DSL, `test/translate.js` the OpenSCAD/JSCAD translators, `test/docs.js` the
-examples in `LLM_PROMPT.md`, and `test/bundle.js` the **built** site — that last one exists because a
+examples in `LLM_PROMPT.md`, and `test/bundle.js` the **built** site, that last one exists because a
 missing vendored file passes every source-level check and then 404s for every user.
+
+The suite computes each solid's volume independently from the exported STL (signed tetrahedron sum)
+rather than trusting the DSL's own bookkeeping, so it verifies the kernel's actual output, e.g. a
+20mm cube minus a r5 through-hole must measure `8000 - π·25·20`.
 
 ## Licence
 
 BREPcode is MIT. See [LICENSE](LICENSE).
 
 It depends on the **BREP.io kernel**, which is licensed separately by Autodrop3d LLC and is
-**not** MIT — notably, clause 1 requires that any modification to the kernel be contributed back
+**not** MIT, notably, clause 1 requires that any modification to the kernel be contributed back
 to Autodrop3d via pull request. The kernel is installed from npm and shipped unmodified, with its
 own `LICENSE.md` included in `dist-site/vendor/kernel/` and inside the desktop build. If you fork
 this project, that obligation travels with the kernel, not with BREPcode's own code.
