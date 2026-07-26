@@ -9,7 +9,7 @@
 // is expected to FAIL, and the check is that it fails with an explanation
 // rather than a stack trace.
 
-const { app } = require("electron");
+const { app, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 
@@ -101,12 +101,27 @@ app.whenReady().then(async () => {
     check("...and a named cell asks no follow-up question", ref.asks === 0);
 
     // The draft fallback sets location.href to a mailto:. If the shell let that
-    // navigate, the window would go blank; the handler in main.cjs has to catch
-    // it. Check the app is still on its own page afterwards.
-    await run("location.href = 'mailto:nobody@example.com?subject=smoke'").catch(() => {});
-    await new Promise((r) => setTimeout(r, 800));
-    check("a mailto: draft doesn't navigate the app away",
-      (await run("location.href")).startsWith("app://"), await run("location.href"));
+    // navigate, the window would go blank; main.cjs has to intercept it and
+    // hand the URL to the OS instead.
+    //
+    // openExternal is stubbed for the duration. Without this the test really
+    // does launch the tester's mail client and leave a compose window on their
+    // desktop every run — a test has no business doing that. Recording the call
+    // is also a stronger check than the old one: it proves the URL was handed
+    // over intact, not merely that the page stayed put.
+    const handedToOS = [];
+    const realOpenExternal = shell.openExternal;
+    shell.openExternal = (url) => { handedToOS.push(url); return Promise.resolve(); };
+    try {
+      await run("location.href = 'mailto:nobody@example.com?subject=smoke'").catch(() => {});
+      await new Promise((r) => setTimeout(r, 800));
+      check("a mailto: draft doesn't navigate the app away",
+        (await run("location.href")).startsWith("app://"), await run("location.href"));
+      check("...it goes to the OS mail client instead",
+        handedToOS.some((u) => u.startsWith("mailto:nobody@example.com")), JSON.stringify(handedToOS));
+    } finally {
+      shell.openExternal = realOpenExternal;
+    }
   } catch (e) {
     fail++;
     console.log(`  FAIL  smoke run threw — ${e.message}`);
