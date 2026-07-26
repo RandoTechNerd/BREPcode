@@ -23,6 +23,10 @@ files:
   # ~330MB of asar that nothing loads, because dist-site already vendors
   # everything it needs and main.cjs only uses electron + node builtins.
   - "!node_modules/**/*"
+  # ...with one exception: SMTP needs a real client, and nodemailer is the only
+  # dependency the main process actually loads. It has no dependencies of its
+  # own, so this pulls in ~670KB and nothing else.
+  - node_modules/nodemailer/**/*
 
 extraMetadata:
   main: desktop/main.cjs

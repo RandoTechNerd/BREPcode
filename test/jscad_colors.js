@@ -59,4 +59,4 @@ check("colorToRgba adds alpha", JSON.stringify(colorToRgba([1, 0, 0])) === "[1,0
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
-if (fail) process.exit(1);
+process.exit(fail ? 1 : 0);

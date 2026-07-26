@@ -14,6 +14,7 @@
 const { app, BrowserWindow, protocol, net, shell, Menu, nativeTheme } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const mail = require("./mail.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -32,7 +33,11 @@ function resolveRequest(url) {
   return target;
 }
 
-function createWindow() {
+// `hidden` lets the smoke test open the same window without showing it.
+// Everything that matters — the sandbox flags, the preload, the navigation
+// rules — stays here, so the test drives the real configuration rather than a
+// copy of it that could drift.
+function createWindow({ hidden = false } = {}) {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -41,9 +46,16 @@ function createWindow() {
     backgroundColor: "#0b0f16",     // matches the viewer, so no white flash
     title: "BREPcode",
     show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      // the ONLY channel from page to main — see preload.cjs for what it exposes
+      preload: path.join(__dirname, "preload.cjs"),
+    },
   });
-  win.once("ready-to-show", () => win.show());
+  // hidden is for the smoke test, which drives the page without a visible window
+  if (!hidden) win.once("ready-to-show", () => win.show());
   win.loadURL("app://bundle/index.html");
 
   // Anything aimed at a new window is a real link — hand it to the OS browser
@@ -51,6 +63,16 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Same rule for navigation in the main frame. Without this a `mailto:` from
+  // the Email tab's draft fallback would try to navigate the window itself and
+  // leave the app blank; here it opens the user's mail client and the app stays
+  // where it was. Anything not app:// is refused outright.
+  win.webContents.on("will-navigate", (e, url) => {
+    if (url.startsWith("app://")) return;
+    e.preventDefault();
+    if (/^(https?|mailto):/.test(url)) shell.openExternal(url);
   });
   return win;
 }
@@ -65,12 +87,20 @@ function createWindow() {
 // rather than flashing light.
 nativeTheme.themeSource = "dark";
 
-app.whenReady().then(() => {
+function serveBundle() {
   protocol.handle("app", (req) => {
     const file = resolveRequest(req.url);
     if (!file) return new Response("Forbidden", { status: 403 });
     return net.fetch(pathToFileURL(file).toString());
   });
+}
+
+// Only boot when this file is the entry point. test/desktop-smoke.cjs requires
+// it for createWindow() and does its own setup; without this guard that would
+// pop a second, visible window.
+if (require.main === module) app.whenReady().then(() => {
+  mail.register();          // SMTP over IPC; a browser cannot do this at all
+  serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -102,5 +132,10 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (require.main === module && process.platform !== "darwin") app.quit();
 });
+
+// Exported so test/desktop-smoke.cjs can open the REAL window — same sandbox
+// flags, same preload, same navigation rules — instead of a lookalike that
+// could drift from it. Requiring this file still boots the app as before.
+module.exports = { createWindow, serveBundle };

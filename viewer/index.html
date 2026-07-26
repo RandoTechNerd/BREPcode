@@ -1166,7 +1166,37 @@
             <button id="email-drawing-btn" class="hist-btn" style="font-size:12px">✉ Engineering drawing</button>
             <button id="email-idea-btn" class="hist-btn" style="font-size:12px">✉ Rough-draft note</button>
           </div>
-          <div class="note">Each button downloads the file(s), then opens a pre-written draft addressed to the email above — attach the download and hit send.</div>
+          <div class="note" id="email-how">Each button downloads the file(s), then opens a pre-written draft addressed to the email above — attach the download and hit send.</div>
+
+          <!-- Desktop only. A web page has no way to open an SMTP connection,
+               so this whole block stays hidden in the browser and the mailto
+               hand-off above remains the only route. -->
+          <div id="smtp-block" style="display:none">
+            <div class="row" style="margin-top:8px">
+              <label>Your email</label>
+              <button id="smtp-toggle" class="hist-btn" style="font-size:12px">Set up direct sending</button>
+              <span id="smtp-state" class="note" style="margin:0"></span>
+            </div>
+            <div id="smtp-form" style="display:none">
+              <div class="row"><label>SMTP host</label><input id="smtp-host" placeholder="smtp.gmail.com" /></div>
+              <div class="row"><label>Port</label><input id="smtp-port" type="number" value="587" style="max-width:90px" /></div>
+              <div class="row"><label>Username</label><input id="smtp-user" placeholder="you@gmail.com" /></div>
+              <div class="row"><label>App password</label><input id="smtp-pass" type="password" placeholder="16-character app password" /></div>
+              <div class="row" style="gap:6px">
+                <button id="smtp-save" class="hist-btn" style="font-size:12px">Save</button>
+                <button id="smtp-test" class="hist-btn" style="font-size:12px">Test connection</button>
+                <button id="smtp-preset" class="hist-btn" style="font-size:12px" title="Fill in Gmail's settings">Gmail</button>
+              </div>
+              <div class="note" id="smtp-note"></div>
+              <div class="note">
+                Use an <b>app password</b>, never your account password — Gmail and Outlook reject the
+                real one here anyway. Gmail: Account → Security → 2-Step Verification → App passwords.
+                It is encrypted with your operating system's keychain and stored on this machine only.
+                It is never sent anywhere except to your own mail provider, and the app can't read it
+                back out to the page.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div id="chat-input-row">
@@ -4984,8 +5014,17 @@
       }
       return [...byColor.values()];
     }
+    // When the desktop build is going to attach a file to an email rather than
+    // save it, this holds an array and every export lands in it instead of on
+    // disk. Hooking the one funnel every exporter already goes through means
+    // attaching works for STL, SVG, 3MF and STEP without touching exportAs().
+    let downloadCapture = null;
     function download(name, data, type) {
       const blob = data instanceof Blob ? data : new Blob([data], { type });
+      if (downloadCapture) {
+        downloadCapture.push({ name, blob });
+        return blob.size;
+      }
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = name;
@@ -6244,23 +6283,134 @@
         ["x", "y", "z"].map((a) => (bb.max[a] - bb.min[a]).toFixed(1)).join(" × ") + " mm";
       return { dims, code: code.value.trim() };
     };
-    $("email-model-btn").addEventListener("click", async () => {
+    // ---- desktop: send it for real -----------------------------------------
+    // The browser build stops at a mailto draft because a web page cannot open
+    // an SMTP connection — there are no raw sockets. The desktop build has a
+    // Node process behind it, so with the user's own mail account it can attach
+    // the file and actually send. Everything below no-ops on the web.
+    const DESK = window.brepcodeDesktop;
+    let smtpReady = false;
+    const smtpNote = (msg, bad) => {
+      const n = $("smtp-note");
+      n.textContent = msg;
+      n.style.color = bad ? "var(--warn)" : "";
+    };
+
+    // Run the normal exporters with their output diverted into memory.
+    async function captureExports(fmts) {
+      downloadCapture = [];
+      try {
+        for (const f of fmts) await exportAs(f);
+        return downloadCapture;
+      } finally { downloadCapture = null; }
+    }
+    // btoa() takes a string, so the bytes go across in chunks — one giant
+    // String.fromCharCode(...bytes) blows the argument limit on a big STL.
+    async function toBase64(blob) {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let s = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      return btoa(s);
+    }
+
+    // One path for all three buttons: send it if the desktop build is set up,
+    // otherwise fall back to downloading + opening a draft.
+    async function sendOrDraft(subject, body, fmts) {
+      const to = emailTo.value.trim();
+      if (!to) { addMsg("bot", "Add a “Send to” address in ⚙ → Email first."); return; }
+      if (!(DESK && smtpReady)) {
+        for (const f of fmts) await exportAs(f);
+        openDraft(subject, body);
+        return;
+      }
+      addMsg("bot", `Sending to ${to}…`);
+      try {
+        const files = await captureExports(fmts);
+        const attachments = [];
+        for (const f of files) attachments.push({ filename: f.name, contentBase64: await toBase64(f.blob) });
+        const r = await DESK.sendMail({ to, subject, text: body, attachments });
+        if (!r.ok) throw new Error(r.error);
+        addMsg("bot", attachments.length
+          ? `Sent to ${to} with ${attachments.map((a) => a.filename).join(", ")} attached.`
+          : `Sent to ${to}.`);
+      } catch (e) {
+        addMsg("bot", `Couldn't send: ${e.message}`);
+      }
+    }
+
+    $("email-model-btn").addEventListener("click", () => {
       const m = modelSummary();
-      await exportAs("stl");
-      openDraft("3D model from BREPcode",
-        `Hi,\n\nHere's a 3D model I made in BREPcode (attached as STL).\n\nWhat it is: [one line about the part]\nSize: ${m.dims}\nPrinting: mm scale, flat side down, no supports unless noted.\n\nThe parametric source, in case you want to tweak it:\n\n${m.code}\n\n— sent from BREPcode.com`);
+      sendOrDraft("3D model from BREPcode",
+        `Hi,\n\nHere's a 3D model I made in BREPcode (attached as STL).\n\nWhat it is: [one line about the part]\nSize: ${m.dims}\nPrinting: mm scale, flat side down, no supports unless noted.\n\nThe parametric source, in case you want to tweak it:\n\n${m.code}\n\n— sent from BREPcode.com`,
+        ["stl"]);
     });
-    $("email-drawing-btn").addEventListener("click", async () => {
+    $("email-drawing-btn").addEventListener("click", () => {
       const m = modelSummary();
-      await exportAs("svg");
-      openDraft("Engineering drawing from BREPcode",
-        `Hi,\n\nAttached is the engineering drawing (SVG, third-angle: front / top / right + isometric) for a part measuring ${m.dims}.\n\nNotes: [tolerances / material]\n\n— sent from BREPcode.com`);
+      sendOrDraft("Engineering drawing from BREPcode",
+        `Hi,\n\nAttached is the engineering drawing (SVG, third-angle: front / top / right + isometric) for a part measuring ${m.dims}.\n\nNotes: [tolerances / material]\n\n— sent from BREPcode.com`,
+        ["svg"]);
     });
     $("email-idea-btn").addEventListener("click", () => {
       const m = modelSummary();
-      openDraft("Rough draft — design idea",
-        `Hi,\n\nSketching an idea and wanted your eyes on it before I refine it.\n\nThe concept: [what it's for]\nCurrent size: ${m.dims}\n\nDesign source (paste into BREPcode.com to see it in 3D):\n\n${m.code}\n\n— sent from BREPcode.com`);
+      sendOrDraft("Rough draft — design idea",
+        `Hi,\n\nSketching an idea and wanted your eyes on it before I refine it.\n\nThe concept: [what it's for]\nCurrent size: ${m.dims}\n\nDesign source (paste into BREPcode.com to see it in 3D):\n\n${m.code}\n\n— sent from BREPcode.com`,
+        []);
     });
+
+    if (DESK) {
+      $("smtp-block").style.display = "block";
+      $("email-info").innerHTML =
+        "The desktop app can send mail directly through <b>your own</b> account — set the SMTP details "
+        + "below and these buttons attach the file and send it, with nothing passing through anyone "
+        + "else's server. Leave it unset and they fall back to downloading the file and opening a draft "
+        + "in your mail app. Set the address once here, then just tell the assistant e.g. "
+        + "“<i>send the model with an explainer to Sam</i>” or “<i>email the engineering drawing</i>”.";
+      $("email-how").textContent =
+        "Set your own mail account up below and these buttons send the file straight from your address — no draft, no attaching by hand.";
+      const smtpForm = $("smtp-form");
+      $("smtp-toggle").addEventListener("click", () => {
+        smtpForm.style.display = smtpForm.style.display === "none" ? "block" : "none";
+      });
+      $("smtp-preset").addEventListener("click", () => {
+        $("smtp-host").value = "smtp.gmail.com";
+        $("smtp-port").value = 587;
+        smtpNote("Gmail needs 2-Step Verification turned on before it will issue you an app password.");
+      });
+      const refresh = async () => {
+        const r = await DESK.loadMail();
+        const c = r.config;
+        if (!c) { $("smtp-state").textContent = "not set up — buttons open a draft instead"; return; }
+        $("smtp-host").value = c.host || "";
+        $("smtp-port").value = c.port || 587;
+        $("smtp-user").value = c.user || "";
+        smtpReady = !!c.hasPass;
+        $("smtp-state").textContent = smtpReady ? `sending as ${c.user}` : "password missing";
+        // A machine with no keychain stores it in plain text; say so rather
+        // than letting the user assume it is protected.
+        if (smtpReady && !c.encrypted) smtpNote("Saved, but this machine has no keychain available, so the password is stored unencrypted.", true);
+      };
+      $("smtp-save").addEventListener("click", async () => {
+        const r = await DESK.saveMail({
+          host: $("smtp-host").value.trim(),
+          port: $("smtp-port").value,
+          user: $("smtp-user").value.trim(),
+          pass: $("smtp-pass").value,
+        });
+        if (!r.ok) { smtpNote(r.error, true); return; }
+        $("smtp-pass").value = "";           // the page has no reason to keep it
+        smtpNote("Saved. Hit “Test connection” to check it before you rely on it.");
+        await refresh();
+      });
+      $("smtp-test").addEventListener("click", async () => {
+        smtpNote("Connecting…");
+        const r = await DESK.testMail();
+        if (r.ok) smtpNote("Connected and signed in — sending will work.");
+        else smtpNote(`Failed: ${r.error}`, true);
+      });
+      refresh();
+    }
 
     function saveAiCfg() {
       // before the model dropdown is populated (chatbot lazy-loads on first
@@ -6462,9 +6612,13 @@
         const btn = /draw|blueprint|engineering/i.test(text) ? "email-drawing-btn"
           : /draft|idea|rough/i.test(text) ? "email-idea-btn" : "email-model-btn";
         const to = $("email-to").value.trim();
-        addMsg("bot", to
-          ? `On it — downloading the file and opening a draft to ${to}. Attach the download and send.`
-          : "Set a “Send to” address first: ⚙ → Email tab. Then ask me again — I'll prep the draft and the file.");
+        // when the desktop build is set up to send for real, sendOrDraft
+        // announces it itself — saying "opening a draft" here would be wrong
+        if (!to) {
+          addMsg("bot", "Set a “Send to” address first: ⚙ → Email tab. Then ask me again — I'll prep the draft and the file.");
+        } else if (!(window.brepcodeDesktop && smtpReady)) {
+          addMsg("bot", `On it — downloading the file and opening a draft to ${to}. Attach the download and send.`);
+        }
         if (!to) { $("gear-btn").click?.(); }
         else $(btn).click();
         return;

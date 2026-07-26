@@ -89,7 +89,9 @@ npm run desktop:build   # -> dist-desktop/BREPcode.exe
 `BREPcode.exe` is a **portable** build: one file, no installer, no admin rights,
 nothing written outside its own temp folder. It is the same static bundle the
 website serves (`dist-site/`), wrapped in an Electron window. There is no
-second implementation to keep in sync, and no network access at runtime.
+second implementation to keep in sync. Nothing is uploaded anywhere; the only
+network traffic it can ever make is to a provider you name yourself — your AI
+key's endpoint if you set one, and your own mail server if you set that up.
 
 Two things worth knowing before handing it to someone:
 
@@ -104,6 +106,35 @@ The shell (`desktop/main.cjs`) serves the bundle over a custom `app://` scheme
 rather than `file://`. ES modules and `WebAssembly.instantiateStreaming` both
 refuse to load from an opaque `file://` origin, and a registered standard scheme
 avoids that without opening a port or tripping the firewall.
+
+### Sending a model by email (desktop only)
+
+⚙ → **Email** takes an SMTP host, port, username and app password, after which
+the ✉ buttons attach the STL or the engineering drawing and send it from your
+own address. Nothing routes through a third party.
+
+This is the one feature the website cannot have. A web page has no raw sockets,
+so it cannot open an SMTP connection at all — in the browser the same buttons
+download the file and open a pre-written draft in your mail app, which is as far
+as a page can go. The desktop build has a Node process behind it, so it can do
+the real thing.
+
+Notes:
+
+- Use an **app password**, never your account password. Gmail and Outlook both
+  reject the real one for SMTP anyway. Gmail: Account → Security → 2-Step
+  Verification → App passwords. Pasting it with the spaces Gmail shows is fine.
+- The password is encrypted with Electron's `safeStorage`, which uses the OS
+  keychain (DPAPI on Windows), and written to `userData` — not to the page's
+  `localStorage`, which any script in the page could read. If a machine has no
+  keychain available it is stored in plain text and the panel says so.
+- The preload bridge (`desktop/preload.cjs`) exposes four calls and deliberately
+  **no way to read the password back**. The page sends it once and never sees it
+  again; `sendMail()` takes a recipient and attachments, and the main process
+  supplies the credentials itself. That matters because the page runs model code
+  and, if you turn the assistant on, text written by an AI.
+- `npm run test:desktop` launches the real shell and checks the bridge, the
+  sandbox, the encryption and an IPC round-trip. It never contacts a mail server.
 
 ## Toolbox and panels
 
@@ -518,13 +549,18 @@ model beyond `group()` keeping solids separate.
 ## Tests
 
 ```bash
-npm test          # 22 suites
-node test/run.js  # or run one
+npm test              # 25 suites, 521 checks
+node test/run.js      # or run one
+npm run test:desktop  # separate: launches the real Electron shell
 ```
 
 `test/run.js` covers the DSL, `test/translate.js` the OpenSCAD/JSCAD translators, `test/docs.js` the
 examples in `LLM_PROMPT.md`, and `test/bundle.js` the **built** site, that last one exists because a
 missing vendored file passes every source-level check and then 404s for every user.
+
+Every suite that touches the kernel ends with `process.exit(fail ? 1 : 0)`. That is not decoration:
+the kernel leaves a socket handle open, so a test file that simply runs off the end never exits and
+`npm test` hangs there forever without reporting anything.
 
 The suite computes each solid's volume independently from the exported STL (signed tetrahedron sum)
 rather than trusting the DSL's own bookkeeping, so it verifies the kernel's actual output, e.g. a

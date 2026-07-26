@@ -135,4 +135,4 @@ console.log("\nstretch: negative by removes from the middle\n");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
-if (fail) process.exit(1);
+process.exit(fail ? 1 : 0);
