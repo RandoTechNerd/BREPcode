@@ -25,6 +25,45 @@ the part's own cross-section.
 stretch({ axis: "x", by: 25, at: 0 }, importedMesh("tray.stl"))
 ```
 
+### One-sided work is a different operation
+
+"Take 0.2mm off the top", "extend the right side by 7mm" — these are **not**
+cuts through the middle. Reading them as `stretch` would delete a slab out of
+the centre of the part.
+
+**Trim a face**: `difference()` against a slab covering that face. Overshoot the
+other two axes so the cut is unambiguous.
+
+```js
+// 0.2mm off the top of a part whose box is known
+difference(part,
+  translate([minX - 5, minY - 5, maxZ - 0.2], cube([w + 10, d + 10, 0.2 + 5])))
+```
+
+Taking material off the **bottom** leaves the part floating — add
+`translate([0, 0, -amount], …)` around the whole thing to drop it back onto
+z = 0.
+
+**Extend a face**: `stretch` with the cut plane placed a couple of millimetres
+*inside* that face, so the slice being extruded is real material.
+
+```js
+// push the right face out by 7mm
+stretch({ axis: "x", by: 7, at: maxX - 2 }, part)
+```
+
+To push a **low** face out (left / front / bottom), stretch by the same positive
+amount and then `translate` the whole part back by that amount, so the far face
+stays where it was.
+
+### Scaling is not resizing
+
+`scale([2, 1, 1], part)` multiplies **every feature**: a 2mm wall becomes 4mm, a
+round hole becomes an oval, a fillet changes radius. Only reach for it when the
+user says "scale", "double", "twice as big" — and say in one sentence that the
+details scaled too. If they wanted the outside size changed with the details
+left alone, that is `stretch`, not `scale`.
+
 ### Why not the obvious alternatives
 
 - `scale([0.5, 1, 1], part)` **squashes** it — the border, the rails and every

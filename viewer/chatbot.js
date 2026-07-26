@@ -282,8 +282,115 @@ const AXIS_WORDS = {
 const SHRINK = /\b(decrease|reduce|narrow|narrower|shorten|shorter|shrink|smaller|thinner|less|trim|cut|take)\b/;
 const GROW = /\b(increase|widen|wider|lengthen|longer|grow|bigger|taller|higher|deeper|thicker|more|add|extend)\b/;
 
-export function parseResize(text, dims) {
+// dims arrives either as a plain [x, y, z] size or as a full box. Face work
+// ("off the top", "extend the right side") needs to know WHERE the part is, not
+// just how big it is, so normalise to both and let a size-only caller keep
+// working for the middle-cut cases.
+export function boxOf(dims) {
   if (!dims) return null;
+  if (Array.isArray(dims)) {
+    const size = dims.map(Number);
+    if (!size.every((n) => n > 0)) return null;
+    // assume the viewer's usual placement: centred on x/y, sitting on z = 0
+    return { size, min: [-size[0] / 2, -size[1] / 2, 0], max: [size[0] / 2, size[1] / 2, size[2]], assumed: true };
+  }
+  const { min, max } = dims;
+  if (!min || !max) return null;
+  return { size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]], min: [...min], max: [...max], assumed: false };
+}
+
+// Which face a phrase is talking about. `hi` is the +side of the axis.
+const FACES = {
+  top:    { axis: "z", hi: true,  re: /\b(top|upper|highest)\b/ },
+  bottom: { axis: "z", hi: false, re: /\b(bottom|underside|base|lowest|底)\b/ },
+  right:  { axis: "x", hi: true,  re: /\bright(?:\s*(?:side|hand|edge|end))?\b/ },
+  left:   { axis: "x", hi: false, re: /\bleft(?:\s*(?:side|hand|edge|end))?\b/ },
+  back:   { axis: "y", hi: true,  re: /\b(back|rear)(?:\s*(?:side|edge|face))?\b/ },
+  front:  { axis: "y", hi: false, re: /\bfront(?:\s*(?:side|edge|face))?\b/ },
+};
+const TRIM = /\b(take|shave|trim|cut|remove|shear|slice|knock|chop)\b/;
+const EXTEND = /\b(extend|lengthen|add|grow|raise|build\s+out|push)\b/;
+const MM = /(\d+(?:\.\d+)?)\s*(?:mm)?\b/;
+
+// "take 0.2mm off the top", "extend the right side by 7mm" — one-sided work on
+// a named face, which is a different operation from cutting the middle out:
+// trimming removes material from that face, extending pushes it outward.
+export function parseFaceEdit(text, dims) {
+  const box = boxOf(dims);
+  if (!box) return null;
+  const lower = text.toLowerCase();
+
+  let face = null;
+  for (const [name, f] of Object.entries(FACES)) if (f.re.test(lower)) { face = { name, ...f }; break; }
+  if (!face) return null;
+
+  const trimming = TRIM.test(lower);
+  const extending = EXTEND.test(lower);
+  if (trimming === extending) return null;             // neither, or both — ask the AI
+
+  const m = MM.exec(lower);
+  if (!m) return null;
+  const amount = +m[1];
+  if (!(amount > 0)) return null;
+
+  const i = { x: 0, y: 1, z: 2 }[face.axis];
+  const current = box.size[i];
+  if (trimming && amount >= current) {
+    return { error: `${amount}mm off the ${face.name} would take the whole part — it is only ${round2(current)}mm on ${face.axis.toUpperCase()}.` };
+  }
+  return {
+    kind: trimming ? "trim" : "extend",
+    face: face.name, axis: face.axis, hi: face.hi, amount,
+    current: round2(current),
+    target: round2(trimming ? current - amount : current + amount),
+    box,
+  };
+}
+
+// "double the width", "half the height", "make it twice as wide", "scale to 150%"
+// Scaling is NOT the same as cutting the middle out and the difference matters:
+// scale multiplies every feature — a 2mm wall becomes 4mm, a round hole becomes
+// an oval. The user asked for it by name, so do it, but say so.
+const SCALE_WORDS = [
+  [/\bdoubl(?:e|ing)\b|\btwice as\b|\b2x\b|\bx2\b/, 2],
+  [/\btripl(?:e|ing)\b|\bthree times\b|\b3x\b/, 3],
+  [/\bhalf\b|\bhalve\b|\b0\.5x\b/, 0.5],
+  [/\bquarter\b/, 0.25],
+];
+export function parseScale(text, dims) {
+  const box = boxOf(dims);
+  if (!box) return null;
+  const lower = text.toLowerCase();
+  // stems, not whole words — \bdoubl\b can never match "double"
+  if (!/\b(?:scal\w*|doubl\w*|tripl\w*|halv\w*|half|quarter|twice|times|\d+\s*x|x\s*\d+)\b/.test(lower)) return null;
+
+  let k = null;
+  for (const [re, v] of SCALE_WORDS) if (re.test(lower)) { k = v; break; }
+  if (k === null) {
+    const pct = /\bto\s+(\d+(?:\.\d+)?)\s*%/.exec(lower) || /\bscale[^\d]{0,12}(\d+(?:\.\d+)?)\s*%/.exec(lower);
+    if (pct) k = +pct[1] / 100;
+    else {
+      const f = /\bby\s+(\d+(?:\.\d+)?)\s*(?:x|times)\b/.exec(lower) || /\b(\d+(?:\.\d+)?)\s*(?:x|times)\b/.exec(lower);
+      if (f) k = +f[1];
+    }
+  }
+  if (!(k > 0) || k === 1) return null;
+
+  // an axis word narrows it to one direction; otherwise scale everything
+  let axis = null;
+  for (const [a, re] of Object.entries(AXIS_WORDS)) if (re.test(lower)) { axis = a; break; }
+  const i = { x: 0, y: 1, z: 2 }[axis];
+  return {
+    k, axis,
+    current: axis ? round2(box.size[i]) : box.size.map(round2).join(" × "),
+    target: axis ? round2(box.size[i] * k) : box.size.map((s) => round2(s * k)).join(" × "),
+  };
+}
+
+export function parseResize(text, dims) {
+  const box = boxOf(dims);
+  if (!box) return null;
+  dims = box.size;
   const lower = text.toLowerCase();
 
   let axis = null;
@@ -355,10 +462,66 @@ export function resizeCode(currentCode, r) {
     ? `translate(${shift},\n  stretch(${opts},\n    ${inner.replace(/\n/g, "\n    ")}))`
     : `stretch(${opts},\n  ${inner.replace(/\n/g, "\n  ")})`;
 
+  return wrapModel(currentCode, wrap);
+}
+
+// Wrap whatever the editor's final expression is, leaving the variables and
+// comments above it alone.
+function wrapModel(currentCode, wrap) {
   const src = currentCode.trim();
   const m = /(^|\n)(\s*)return\s+([\s\S]+?);?\s*$/.exec(src);
   if (m) return src.slice(0, m.index) + `${m[1]}${m[2]}return ${wrap(m[3].trim())};`;
   return `return ${wrap(src.replace(/;$/, ""))};`;
+}
+
+// ---- one-sided face work --------------------------------------------------
+// Trimming cuts a slab off a named face; extending pushes that face outward by
+// splitting just inside it and filling with its own cross-section. Both are
+// built from the measured box, so the cutter is always where the part actually
+// is — the whole reason not to leave this to a model that has to guess.
+export function faceEditCode(currentCode, r) {
+  const { box, axis, hi, amount } = r;
+  const i = { x: 0, y: 1, z: 2 }[axis];
+  const PAD = 5;                     // overshoot so the cut is unambiguous
+  const n = (v) => round2(v);
+
+  if (r.kind === "trim") {
+    // a box covering the whole part on the other two axes, `amount` deep on this one
+    const pos = [box.min[0] - PAD, box.min[1] - PAD, box.min[2] - PAD];
+    const size = [box.size[0] + PAD * 2, box.size[1] + PAD * 2, box.size[2] + PAD * 2];
+    if (hi) { pos[i] = box.max[i] - amount; size[i] = amount + PAD; }
+    else { pos[i] = box.min[i] - PAD; size[i] = amount + PAD; }
+    const cutter = `translate([${pos.map(n).join(", ")}],\n      cube([${size.map(n).join(", ")}]))`;
+    // taking material off the BOTTOM leaves the part floating; drop it back down
+    const settle = (!hi && axis === "z") ? `[0, 0, ${n(-amount)}]` : null;
+    return wrapModel(currentCode, (inner) => {
+      const cut = `difference(${inner.replace(/\n/g, "\n    ")},\n    ${cutter})`;
+      return settle ? `translate(${settle},\n  ${cut.replace(/\n/g, "\n  ")})` : cut;
+    });
+  }
+
+  // extend: split a little way inside the face so the slice is real material,
+  // then stretch outward. Everything beyond the plane moves with it.
+  const inset = Math.min(2, Math.max(0.5, box.size[i] * 0.1));
+  const at = n(hi ? box.max[i] - inset : box.min[i] + inset);
+  // a positive `by` grows toward +axis; to push the LOW face out we grow and
+  // then slide the whole part back so the far face stays where it was
+  const by = amount;
+  const shift = hi ? null
+    : { x: `[${n(-amount)}, 0, 0]`, y: `[0, ${n(-amount)}, 0]`, z: `[0, 0, ${n(-amount)}]` }[axis];
+  return wrapModel(currentCode, (inner) => {
+    const s = `stretch({ axis: "${axis}", by: ${n(by)}, at: ${at} },\n    ${inner.replace(/\n/g, "\n    ")})`;
+    return shift ? `translate(${shift},\n  ${s.replace(/\n/g, "\n  ")})` : s;
+  });
+}
+
+// ---- scale ----------------------------------------------------------------
+export function scaleCode(currentCode, r) {
+  const f = r.axis
+    ? { x: [r.k, 1, 1], y: [1, r.k, 1], z: [1, 1, r.k] }[r.axis]
+    : [r.k, r.k, r.k];
+  return wrapModel(currentCode, (inner) =>
+    `scale([${f.join(", ")}],\n  ${inner.replace(/\n/g, "\n  ")})`);
 }
 
 // Main entry. state persists between calls: { pending, flow }
@@ -374,6 +537,36 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
   // Resize before anything else: it works on whatever is already in the editor,
   // including an import, and it is pure arithmetic off the measured size.
   if (currentCode.trim() && dims) {
+    // A named face wins over a bare axis: "take 0.2mm off the top" is one-sided
+    // work, not a cut through the middle, and reading it as the latter would
+    // quietly delete a slab out of the centre of the part.
+    const f = parseFaceEdit(t, dims);
+    if (f?.error) return { reply: `Can't do that — ${f.error}` };
+    if (f) {
+      const verb = f.kind === "trim" ? "Shaved" : "Extended";
+      const where = f.kind === "trim" ? `off the ${f.face}` : `onto the ${f.face}`;
+      return {
+        reply: `${verb} ${f.amount}mm ${where} — ${f.axis.toUpperCase()} goes ${f.current}mm → ${f.target}mm.`
+          + `${f.kind === "trim" && f.face === "bottom" ? " The part is dropped back onto z = 0." : ""}`
+          + `${f.box.assumed ? " (Working from the status-bar size; if the part isn't centred, check the result.)" : ""}`
+          + " (◀ undoes it.)",
+        code: faceEditCode(currentCode, f),
+      };
+    }
+
+    // Scale is its own thing and the user has to have asked for it by name —
+    // it multiplies every feature, which is usually NOT what "make it wider"
+    // means, so nothing routes here by accident.
+    const sc = parseScale(t, dims);
+    if (sc) {
+      return {
+        reply: `Scaled ${sc.axis ? sc.axis.toUpperCase() : "everything"} by ${sc.k}× — ${sc.current}mm → ${sc.target}mm.`
+          + ` Note this multiplies every feature too: walls, holes and fillets all change by ${sc.k}×.`
+          + ` If you wanted the outside size changed while the details stayed put, say “make it N mm wide” instead. (◀ undoes it.)`,
+        code: scaleCode(currentCode, sc),
+      };
+    }
+
     const r = parseResize(t, dims);
     if (r?.error) return { reply: `Can't do that — ${r.error}` };
     if (r) {

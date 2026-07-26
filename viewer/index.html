@@ -1659,11 +1659,154 @@
     // Grid colours come from the theme; the grid itself is recreated on theme
     // change (GridHelper bakes colours into vertex data).
     const THEMES = {
-      dark:     { bg: 0x0b0f16, grid1: 0x2a3a5c, grid2: 0x1d2740 },
-      colorful: { bg: 0x140f24, grid1: 0x51397f, grid2: 0x2f2150 },
-      light:    { bg: 0xeef2f8, grid1: 0xb9c7dd, grid2: 0xdde5f0 },
-      super:    { bg: 0x0a0018, grid1: 0xff2bd0, grid2: 0x22e0ff },
+      dark:     { bg: 0x0b0f16, grid1: 0x2a3a5c, grid2: 0x1d2740, axis: 0x8ea6d2, tick: 0x5d7099 },
+      colorful: { bg: 0x140f24, grid1: 0x51397f, grid2: 0x2f2150, axis: 0xb79ae8, tick: 0x7d63ad },
+      light:    { bg: 0xeef2f8, grid1: 0xb9c7dd, grid2: 0xdde5f0, axis: 0x5a6b88, tick: 0x8c9ab3 },
+      super:    { bg: 0x0a0018, grid1: 0xff2bd0, grid2: 0x22e0ff, axis: 0xff7ae6, tick: 0x6fe6ff },
     };
+    // Declared before the theme/grid setup below: buildAxisLabels() measures
+    // this group, and a const read inside its temporal dead zone throws.
+    const modelGroup = new THREE.Group();
+    scene.add(modelGroup);
+
+    // ---- axis labels + grid ruler -----------------------------------------
+    // Which way is X? Without an answer, "take 2mm off the right" is a guess,
+    // and so is reading a dimension. These letters and tick numbers LIE IN THE
+    // GRID PLANE rather than billboarding at the camera, so they foreshorten
+    // with the floor and read as part of the scene instead of stickers on the
+    // glass. Z is the exception — it stands upright, because that is what Z is.
+    const axisGroup = new THREE.Group();
+    axisGroup.renderOrder = -1;                  // under the model, never over it
+    scene.add(axisGroup);
+    let axisLabelsOn = true;
+
+    function glyph(text, color, px = 64) {
+      const c = document.createElement("canvas");
+      const pad = Math.round(px * 0.3);
+      const probe = c.getContext("2d");
+      probe.font = `700 ${px}px system-ui, sans-serif`;
+      c.width = Math.ceil(probe.measureText(text).width) + pad * 2;
+      c.height = Math.round(px * 1.4);
+      const ctx = c.getContext("2d");
+      ctx.font = `700 ${px}px system-ui, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(text, c.width / 2, c.height / 2);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      return { tex, aspect: c.width / c.height };
+    }
+
+    // A flat quad carrying the glyph, laid in a plane. `plane` picks which.
+    // A sprite, not a quad lying in the grid. Laying the letters flat was the
+    // obvious reading of "match the perspective", and it looks right from above
+    // and wrong from everywhere else: the default camera sits low, so a letter
+    // in the floor plane is seen nearly edge-on and collapses into a squiggle —
+    // the Z in particular was unreadable.
+    //
+    // A sprite is sized in WORLD units, so it still shrinks with distance and
+    // sits correctly among the geometry — it belongs to the scene rather than
+    // being pasted on the glass — but it stays square to the eye and legible
+    // from every orbit. Same choice the dimension labels already make.
+    function flatLabel(text, color, height, _plane, opacity) {
+      const { tex, aspect } = glyph(text, color);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, transparent: true, opacity, depthWrite: false, toneMapped: false,
+      }));
+      s.scale.set(height * aspect, height, 1);
+      return s;
+    }
+
+    function clearAxisLabels() {
+      for (const o of [...axisGroup.children]) {
+        o.geometry?.dispose?.();
+        o.material?.map?.dispose?.();
+        o.material?.dispose?.();          // sprite materials and the arm lines
+        axisGroup.remove(o);
+      }
+    }
+
+    // Rebuilt whenever the grid moves or rescales.
+    //
+    // Everything is placed from the MODEL's box, not the grid's edge. The grid
+    // is 200 units across whatever the part measures, so a 30mm cube leaves its
+    // edges far outside the framed view — labels parked out there are invisible
+    // at the zoom anyone actually works at. Anchoring to the part keeps them on
+    // screen at every scale, and next to the dimensions they explain.
+    function buildAxisLabels() {
+      clearAxisLabels();
+      if (!axisLabelsOn || !grid) return;
+      const t = THEMES[currentTheme] ?? THEMES.dark;
+      const hex = (n) => "#" + n.toString(16).padStart(6, "0");
+      const cell = 10 * grid.scale.x;
+
+      const bb = new THREE.Box3().setFromObject(modelGroup);
+      const span = bb.isEmpty() ? 30 : Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, 5);
+      const lo = bb.isEmpty() ? new THREE.Vector3(-15, -15, 0) : bb.min;
+      const hi = bb.isEmpty() ? new THREE.Vector3(15, 15, 10) : bb.max;
+      const z = grid.position.z + 0.02;         // a hair above the floor, no z-fighting
+      const letter = span * 0.15;
+      const gap = span * 0.16;
+
+      // The two floor letters sit just past the part on their own axis, on the
+      // near/low side of the other one so they never sit under the model.
+      // A triad from ONE corner rather than a letter parked at each far edge.
+      // Spreading them over four corners meant some sat behind the part, some
+      // fell outside the framed view, and none of them said which way the OTHER
+      // two ran. Three short arms from a shared origin is the standard CAD
+      // reading and it stays compact enough to ignore when you don't need it.
+      const arm = span * 0.42;
+      const o = new THREE.Vector3(lo.x - gap, lo.y - gap, z);
+      const ends = {
+        X: new THREE.Vector3(o.x + arm, o.y, o.z),
+        Y: new THREE.Vector3(o.x, o.y + arm, o.z),
+        // taller than the other two: looking down the Y axis foreshortens the
+        // Y arm to nothing and its label lands on Z's. Extra height keeps them
+        // apart in exactly the view where they would otherwise collide.
+        Z: new THREE.Vector3(o.x, o.y, o.z + arm * 1.25),
+      };
+      const armMat = new THREE.LineBasicMaterial({
+        color: t.axis, transparent: true, opacity: 0.45, depthWrite: false,
+      });
+      for (const [name, end] of Object.entries(ends)) {
+        axisGroup.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([o, end]), armMat));
+        const lbl = flatLabel(name, hex(t.axis), letter, "xy", 0.85);
+        // sit the letter just past the arm's tip so it never covers the line
+        lbl.position.copy(end).add(
+          end.clone().sub(o).normalize().multiplyScalar(letter * 0.6));
+        axisGroup.add(lbl);
+      }
+
+      // Ruler: the grid states its own scale, so nobody has to count squares.
+      // Two cells either side of the part is plenty — a full ruler is clutter,
+      // and the cell size is the number people actually want.
+      const num = letter * 0.5;
+      const faint = hex(t.tick);
+      const near = (v) => Math.round(v / cell) * cell;
+      for (let i = -2; i <= 2; i++) {
+        const dx = near(hi.x) + i * cell;
+        if (Math.abs(dx) > 1e-6) {
+          const tx = flatLabel(String(Math.round(dx)), faint, num, "xy", 0.55);
+          tx.position.set(dx, lo.y - gap, z);
+          axisGroup.add(tx);
+        }
+        const dy = near(hi.y) + i * cell;
+        if (Math.abs(dy) > 1e-6) {
+          const ty = flatLabel(String(Math.round(dy)), faint, num, "xy", 0.55);
+          ty.position.set(lo.x - gap, dy, z);
+          axisGroup.add(ty);
+        }
+      }
+      // the grid's own step, stated once well clear of the axis letters —
+      // otherwise "one square" means nothing
+      const unit = flatLabel(`${Math.round(cell)}mm grid`, faint, num * 0.8, "xy", 0.45);
+      unit.position.set(hi.x + gap, lo.y - gap, z);
+      axisGroup.add(unit);
+    }
+
     let grid = null;
     let currentTheme = "dark";
     function applyTheme(name) {
@@ -1682,6 +1825,7 @@
         scene.remove(old);
       }
       scene.add(grid);
+      buildAxisLabels();                        // colours come from the theme
       localStorage.setItem("brepcode-theme", name);
       document.querySelectorAll(".theme-chip").forEach((c) =>
         c.classList.toggle("active", c.dataset.theme === name));
@@ -1704,6 +1848,7 @@
       if (bb.isEmpty()) {
         grid.position.set(0, 0, 0);
         grid.scale.setScalar(1);
+        buildAxisLabels();
         return;
       }
       const span = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y);
@@ -1715,10 +1860,8 @@
         Math.round((bb.min.y + bb.max.y) / 2 / cell) * cell,
         Math.min(0, bb.min.z),
       );
+      buildAxisLabels();      // the ruler has to state the scale it just took
     }
-
-    const modelGroup = new THREE.Group();
-    scene.add(modelGroup);
 
     // ------------------------------------------------- dimension lines overlay
     const dimsGroup = new THREE.Group();
@@ -6647,13 +6790,14 @@
         return;
       }
 
-      // The measured size of what is on screen. The built-in assistant needs it
-      // to resize without guessing — the same number the status bar shows.
+      // The measured box of what is on screen. The built-in assistant needs it
+      // to resize without guessing — min and max, not just the size, because
+      // "take 0.2mm off the top" has to put the cutter where the part actually
+      // is rather than where a centred part would be.
       const modelDims = (() => {
         const bb = new THREE.Box3().setFromObject(modelGroup);
         if (bb.isEmpty()) return null;
-        const s = bb.getSize(new THREE.Vector3());
-        return [s.x, s.y, s.z];
+        return { min: [bb.min.x, bb.min.y, bb.min.z], max: [bb.max.x, bb.max.y, bb.max.z] };
       })();
 
       const useApi = aiProvider.value !== "builtin" && aiKey.value.trim();

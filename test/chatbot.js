@@ -1,7 +1,10 @@
 // The built-in assistant's rule engine: parsing, follow-ups, and that every
 // generated snippet actually builds into real geometry.
 
-import { respond, buildModelsRequest, extractModels, modelScore, parseResize, resizeCode } from "../viewer/chatbot.js";
+import {
+  respond, buildModelsRequest, extractModels, modelScore,
+  parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
+} from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
 import * as dsl from "../src/dsl.js";
@@ -325,6 +328,65 @@ console.log("\nmodel ranking\n");
     near(b.y[1] - b.y[0], 65.44, 0.05) && near(b.z[1] - b.z[0], 5.4, 0.05));
 }
 
+// ---- one-sided face work and scaling --------------------------------------
+// "Take 0.2mm off the top" is NOT a cut through the middle, and reading it as
+// one would quietly delete a slab out of the centre of the part. Each of these
+// is built and measured, because a plausible-looking cutter in the wrong place
+// is the failure mode that costs a print.
+{
+  const near2 = (a, b, tol) => Math.abs(a - b) <= tol;
+  const bounds = async (code) => {
+    const stl = toSTL(await build(evalCode(code)), "t");
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    if (!v.length) throw new Error("built to nothing");
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    for (const p of v) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
+    return { size: hi.map((h, i) => h - lo[i]), min: lo, max: hi };
+  };
+
+  // a frame-shaped part, centred on x/y and sitting on z = 0
+  const SRC = 'return difference(\n  translate([-60, -32.72, 0], cube([120, 65.44, 5.4])),\n  translate([-53, -22, -1], cube([106, 44, 8])));';
+  const base = await bounds(SRC);
+  const box = { min: base.min, max: base.max };
+
+  for (const [q, want] of [
+    ["take 0.2mm off the top",     [120, 65.44, 5.2]],
+    ["shave 1mm off the bottom",   [120, 65.44, 4.4]],
+    ["extend right side by 7mm",   [127, 65.44, 5.4]],
+    ["extend the left side by 7mm",[127, 65.44, 5.4]],
+    ["add 5mm to the top",         [120, 65.44, 10.4]],
+    ["trim 2mm from the left",     [118, 65.44, 5.4]],
+    ["double the width",           [240, 65.44, 5.4]],
+    ["half the height",            [120, 65.44, 2.7]],
+  ]) {
+    const f = parseFaceEdit(q, box);
+    const sc = f ? null : parseScale(q, box);
+    check(`"${q}" is recognised`, !!(f || sc));
+    if (!(f || sc)) continue;
+    const got = await bounds(f ? faceEditCode(SRC, f) : scaleCode(SRC, sc));
+    check(`  ...builds ${want.join(" × ")}`,
+      want.every((w, i) => near2(got.size[i], w, 0.06)),
+      got.size.map((n) => n.toFixed(2)).join(" × "));
+    // whatever we do, the part must still be sitting on the bed
+    check("  ...and still sits on z = 0", near2(got.min[2], 0, 0.06), got.min[2].toFixed(2));
+  }
+
+  // a named face must beat the middle-cut reading
+  check("a face phrase does not fall through to the middle cut",
+    parseFaceEdit("take 2mm off the right", box)?.kind === "trim");
+  check("...while a bare axis phrase still goes to the middle",
+    parseFaceEdit("decrease width by 30%", box) === null
+      && parseResize("decrease width by 30%", box)?.by === -36);
+
+  // refusals rather than slivers
+  check("trimming more than exists is refused",
+    /whole part/.test(parseFaceEdit("take 200mm off the right", box)?.error || ""),
+    JSON.stringify(parseFaceEdit("take 200mm off the right", box)));
+  check("an ambiguous face phrase falls through",
+    parseFaceEdit("the top looks nice", box) === null);
+  check("scale needs to be asked for by name",
+    parseScale("make it wider", box) === null);
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
