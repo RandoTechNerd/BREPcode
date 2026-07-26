@@ -989,6 +989,9 @@
         <label title="Draw measurement lines next to the model.">
           <input type="checkbox" id="dims" checked /> Dims
         </label>
+        <label class="opt" title="Drag a corner ball to move that corner on its own, skewing the shape. Converts the call to freeform() with 8 editable corners — cube() cannot hold a moved corner.">
+          <input type="checkbox" id="freeform" /> Free-form
+        </label>
         <span class="why">off = auto-close brackets &amp; quotes</span>
         <span id="fixnote"></span>
         <button id="neg-btn" title="Outline the negative (subtracted) shapes">
@@ -3963,7 +3966,8 @@
 
     function spawnHandles(fid) {
       clearHandles();
-      const site = (mapText === code.value && featureMap) ? featureMap[fid] : null;
+      const site = ((mapText === code.value && featureMap) ? featureMap[fid] : null)
+        || freeformSiteOf(code.value);
       if (!site) return;
       const bb = new THREE.Box3();
       for (const m of modelGroup.children) if (m.userData.featureId === fid) bb.expandByObject(m);
@@ -3997,7 +4001,8 @@
         }, { kind: "face", axis, sign, fid });
       }
       // corner handles — round beads, uniform scale when the shape has scale targets
-      if (findScaleTargets(code.value, site).length) {
+      // freeform always gets corner balls: its corners ARE the shape
+      if (site.kind === "freeform" || findScaleTargets(code.value, site).length) {
         for (const sx of [bb.min.x, bb.max.x]) for (const sy of [bb.min.y, bb.max.y]) for (const sz of [bb.min.z, bb.max.z]) {
           addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
             h.scale.setScalar(s * 0.38);
@@ -4007,6 +4012,51 @@
       }
       // raycasting needs fresh world matrices immediately, not at the next frame
       handleGroup.updateMatrixWorld(true);
+    }
+
+    // ------------------------------------------------------- free-form boxes
+    // The 8 corners of a box, in the SAME order spawnHandles walks them, so a
+    // handle's position identifies its corner.
+    function cornersOf(bb) {
+      const out = [];
+      for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) {
+        out.push([x, y, z]);
+      }
+      return out;
+    }
+    // If the selected call is ALREADY a freeform([...]), read its points back so
+    // a second drag edits them rather than flattening the shape to a box again.
+    function existingFreeformPoints(text, site) {
+      const src = text.slice(site.start, site.end);
+      if (!/^\s*freeform\s*\(/.test(src)) return null;
+      const pts = [];
+      for (const m of src.matchAll(/\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/g)) {
+        pts.push([+m[1], +m[2], +m[3]]);
+      }
+      return pts.length >= 4 ? pts : null;
+    }
+    // A freeform() compiles to a hull of 8 tiny spheres, so the source-to-feature
+    // mapping can't tie the result back to one call and no handles would spawn,
+    // leaving a shape you can convert once and then never touch again. When the
+    // document IS a single freeform call, synthesise the site directly.
+    function freeformSiteOf(text) {
+      const m = /freeform\s*\(\s*\[/.exec(text);
+      if (!m) return null;
+      // walk to the matching close paren so nested brackets don't fool us
+      let depth = 0, end = -1;
+      for (let i = m.index + m[0].length - 2; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === "(") depth++;
+        else if (ch === ")") { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      if (end < 0) return null;
+      const site = { kind: "freeform", start: m.index, end };
+      return existingFreeformPoints(text, site) ? site : null;
+    }
+
+    const fmtPt = (p) => `[${p.map((n) => +n.toFixed(2)).join(", ")}]`;
+    function freeformCall(points) {
+      return `freeform([\n  ${points.map(fmtPt).join(",\n  ")},\n])`;
     }
 
     // --------------------- click a shape to find its code / drag it to move it
@@ -4114,6 +4164,25 @@
                 delta: new THREE.Vector3(), amount: 0, moved: false,
               };
             }
+          } else if ($("freeform").checked) {
+            // Free-form wins over the box corner-stretch below: the whole point
+            // is that this corner moves alone instead of dragging two
+            // dimensions with it.
+            const fcorners = existingFreeformPoints(code.value, hSite) || cornersOf(fbb);
+            const at = hHit.object.position;
+            let best = 0, bestD = Infinity;
+            fcorners.forEach((p, i) => {
+              const d = (p[0] - at.x) ** 2 + (p[1] - at.y) ** 2 + (p[2] - at.z) ** 2;
+              if (d < bestD) { bestD = d; best = i; }
+            });
+            drag = {
+              mode: "freeform", fid: H.fid, site: hSite,
+              corners: fcorners.map((p) => p.slice()),
+              index: best, origin: fcorners[best].slice(),
+              start: at.clone(), planeZ: at.z,
+              meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
+              handle: hHit.object, delta: [0, 0, 0], moved: false,
+            };
           } else if (hSite.kind === "cube" || hSite.kind === "cuboid") {
             // boxes: corner STRETCH — width and depth follow the drag
             // independently, with the opposite corner staying planted
@@ -4133,6 +4202,26 @@
                 ax: 0, ay: 0, moved: false,
               };
             }
+          } else if ($("freeform").checked) {
+            // Free-form: this corner moves on its own instead of scaling the
+            // whole shape. The call becomes freeform([...8 corners...]) on
+            // release, because no primitive can record a corner that has moved.
+            const fcorners = existingFreeformPoints(code.value, hSite)
+              || cornersOf(fbb);
+            const at = hHit.object.position;
+            let best = 0, bestD = Infinity;
+            fcorners.forEach((p, i) => {
+              const d = (p[0] - at.x) ** 2 + (p[1] - at.y) ** 2 + (p[2] - at.z) ** 2;
+              if (d < bestD) { bestD = d; best = i; }
+            });
+            drag = {
+              mode: "freeform", fid: H.fid, site: hSite,
+              corners: fcorners.map((p) => p.slice()),
+              index: best, origin: fcorners[best].slice(),
+              start: at.clone(), planeZ: at.z,
+              meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
+              handle: hHit.object, delta: [0, 0, 0], moved: false,
+            };
           } else {
             const targets = findScaleTargets(code.value, hSite);
             if (targets.length) {
@@ -4157,7 +4246,11 @@
 
       const hit = raycaster.intersectObjects(modelGroup.children, false)[0];
       const mapFresh = featureMap && mapText === code.value;
-      const site = hit && mapFresh ? featureMap[hit.object.userData.featureId] : null;
+      // A freeform() has no one-to-one feature mapping (it compiles to a hull of
+      // markers), so fall back to its own site or clicking it would select
+      // nothing and its corners would be uneditable after the first drag.
+      const site = (hit && mapFresh ? featureMap[hit.object.userData.featureId] : null)
+        || (hit ? freeformSiteOf(code.value) : null);
       if (!hit) clearHandles();          // clicked empty space: drop the selection
       if (site) {
         const fid = hit.object.userData.featureId;
@@ -4264,6 +4357,28 @@
           m.position.set(drag.anchorX * (1 - fx), drag.anchorY * (1 - fy), 0);
         }
         hint.innerHTML = `<b>${drag.site.kind}</b>: ${drag.tx.value} &times; ${drag.ty.value} &rarr; <b>${(drag.tx.value + drag.ax).toFixed(1)} &times; ${(drag.ty.value + drag.ay).toFixed(1)}</b> — release to apply`;
+        return;
+      }
+
+      if (drag.mode === "freeform") {
+        // X/Y on the corner's own plane; hold Shift to raise or lower it
+        // instead, since a Z-plane ray gives nothing useful.
+        let d;
+        if (e.shiftKey) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          const per = (downAt ? (downAt[1] - e.clientY) : 0) / rect.height;
+          d = [0, 0, per * camera.position.distanceTo(controls.target) * 0.9];
+        } else {
+          const p = rayToPlane(e, drag.planeZ);
+          if (!p) return;
+          d = [p.x - drag.start.x, p.y - drag.start.y, 0];
+        }
+        drag.delta = d;
+        if (Math.hypot(d[0], d[1], d[2]) > 0.2) drag.moved = true;
+        const moved = drag.origin.map((v, i) => v + d[i]);
+        drag.handle.position.set(moved[0], moved[1], moved[2]);
+        hint.innerHTML = `Corner &rarr; <b>${fmtPt(moved)}</b>`
+          + ` &mdash; ${e.shiftKey ? "up/down" : "hold Shift for up/down"}, release to apply`;
         return;
       }
 
@@ -4409,6 +4524,13 @@
               + next.slice(span.end);
           }
         }
+      } else if (drag.mode === "freeform") {
+        // Replace the whole call. A primitive has no slot for a moved corner,
+        // so the shape is re-expressed as its 8 corners; a freeform() call just
+        // gets the one point rewritten.
+        const pts = drag.corners.map((p) => p.slice());
+        pts[drag.index] = drag.origin.map((v, i) => v + drag.delta[i]);
+        next = text.slice(0, drag.site.start) + freeformCall(pts) + text.slice(drag.site.end);
       } else if (drag.mode === "scale") {
         next = rewriteNumbers(text, drag.targets, (v) => v * drag.factor);
       } else if (drag.mode === "resize") {

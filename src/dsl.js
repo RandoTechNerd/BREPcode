@@ -371,6 +371,41 @@ export function hull(...children) {
   return node({ kind: "hull", children: kids, fix: IDENTITY });
 }
 
+// ------------------------------------------------------------- freeform
+//
+// A solid defined by its CORNERS rather than by width/depth/height. This is what
+// a primitive cannot be: cube([30,30,12]) is three numbers with nowhere to
+// record a corner that has moved, so skewing one is not expressible. Listing the
+// corners outright is, and each point stays an editable number in the source.
+//
+// Built as the convex hull of a tiny marker at each point, which is the only
+// route the kernel offers to an arbitrary polyhedron. `bead` is the marker
+// radius: small enough to ignore (0.01mm, well under a nozzle) but not zero,
+// since a hull needs volume to work with. Raise it deliberately for rounded
+// corners.
+//
+// Convex only, by construction. Points that fall inside the hull of the others
+// simply have no effect.
+export function freeform(points, opts = {}) {
+  const pts = Array.isArray(points) ? points.filter((p) => Array.isArray(p) && p.length >= 3
+    && p.every((n) => Number.isFinite(n))) : [];
+  if (pts.length < 4) {
+    throw new TypeError("freeform() needs at least 4 corner points, e.g. freeform([[0,0,0], [10,0,0], [10,10,0], [0,0,10]]) — press Free-form and drag a corner and the editor fills this in");
+  }
+  const bead = Math.max(0.001, opts.bead ?? opts.r ?? 0.01);
+  const fn = Math.max(3, Math.min(16, Math.round(opts.$fn ?? 6)));
+  return hull(...pts.map((p) => translate([p[0], p[1], p[2]], sphere({ r: bead, $fn: fn }))));
+}
+
+// The 8 corners of an axis-aligned box, in the order the viewer's corner
+// handles are spawned, so a dragged handle maps to a known index.
+export function boxCorners(min, max) {
+  const [x0, y0, z0] = min, [x1, y1, z1] = max;
+  const out = [];
+  for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) out.push([x, y, z]);
+  return out;
+}
+
 // A loose collection of solids kept SEPARATE (no boolean) — a scene/assembly.
 // This is what a JSCAD main() returning an array means, and it avoids the huge
 // cost of unioning dozens of parts just to display them (each stays its own
