@@ -191,11 +191,33 @@ export function colored3MF(groups, name = "brepcode-model", opts = {}) {
 
   const verts = [];
   const tris = [];                          // [v1, v2, v3, colorIndex]
+  // WELD. The groups come from the on-screen meshes, and those are one mesh per
+  // FACE — so every point on a face boundary arrives several times over, once
+  // per face that touches it. Writing them out as-is gives a mesh where
+  // triangles that share an edge reference DIFFERENT vertex indices: the
+  // surface looks right and is topologically full of cracks. A real export came
+  // back with 6585 vertices for 1719 distinct positions and would not reimport
+  // — "non-manifold" — while the single-colour path was fine, because that one
+  // goes through parseStlTriangles, which has always deduped.
+  //
+  // Colour is carried per TRIANGLE (p1), never per vertex, so welding a gold
+  // corner to the black one in the same place loses nothing.
+  const index = new Map();
+  const key = (v) => `${+(+v[0]).toFixed(5)},${+(+v[1]).toFixed(5)},${+(+v[2]).toFixed(5)}`;
+  const idOf = (v) => {
+    const k = key(v);
+    let i = index.get(k);
+    if (i === undefined) { i = verts.length; index.set(k, i); verts.push(v); }
+    return i;
+  };
   for (const g of groups) {
-    const base = verts.length;
     const ci = idxOf(g.color);
-    for (const v of g.verts) verts.push(v);
-    for (const t of g.tris) tris.push([base + t[0], base + t[1], base + t[2], ci]);
+    const local = g.verts.map(idOf);
+    for (const t of g.tris) {
+      const [a, b, c] = [local[t[0]], local[t[1]], local[t[2]]];
+      if (a === b || b === c || a === c) continue;   // collapsed by the weld
+      tris.push([a, b, c, ci]);
+    }
   }
   if (!tris.length) return stlTo3MF("", name, opts);
 

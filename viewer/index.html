@@ -511,6 +511,17 @@
       box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; min-width: 190px;
     }
     #export-menu.open { display: block; }
+    /* the fly-out tail — same skin, positioned beside the menu in JS */
+    #export-more {
+      position: absolute; z-index: 31; display: none;
+      background: var(--header); border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; min-width: 190px;
+    }
+    #export-more.open { display: block; }
+    #export-menu .exp-more { position: relative; }
+    #export-menu .exp-more b { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      font-size: 16px; opacity: .7; }
+    #export-menu .exp-more.on { background: var(--border); }
 
     /* editor header: the "more" (⋮) overflow menu. The ⋮ button and its menu
        stay hidden until the header can't fit its buttons (narrow / mobile),
@@ -958,6 +969,15 @@
     <div class="exp-group">CAD (solid)</div>
     <button data-fmt="step">STEP<small>interchange · faceted</small></button>
     <button data-fmt="step-curved">STEP — curved<small>true B-rep surfaces</small></button>
+    <button id="export-more-btn" class="exp-more">Drawing / Web<small>blueprint, GLB, embed page</small><b>&rsaquo;</b></button>
+  </div>
+
+  <!-- The tail of the export list, as a fly-out. The menu had grown tall enough
+       to run off the bottom of the screen when the window sits low, and these
+       four are the least-used entries — so they move sideways instead of down.
+       Kept OUTSIDE #export-menu because that has overflow:hidden for its
+       rounded corners, which would clip a nested pop-out. -->
+  <div id="export-more">
     <div class="exp-group">Drawing</div>
     <button data-fmt="svg">SVG blueprint<small>3-view engineering drawing</small></button>
     <div class="exp-group">Web / embed</div>
@@ -5895,6 +5915,7 @@ ${joined}`)(...vs);
     }
 
     const exportMenu = $("export-menu");
+    const exportMore = $("export-more");
     $("export-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       // Warm the exporter module + STEP generator while the user reads the menu,
@@ -5902,8 +5923,65 @@ ${joined}`)(...vs);
       getExporters().then((exp) => exp.loadGenerateSTEP().catch(() => {})).catch(() => {});
       const r = $("export-btn").getBoundingClientRect();
       exportMenu.style.left = `${Math.max(8, r.right - 190)}px`;
+      // Below the button by default, ABOVE it when there isn't room. The menu
+      // used to be placed at r.bottom unconditionally, so with the window sat
+      // low on screen its lower half was simply unreachable.
       exportMenu.style.top = `${r.bottom + 6}px`;
+      exportMenu.style.maxHeight = "";
       exportMenu.classList.toggle("open");
+      exportMore.classList.remove("open");
+      $("export-more-btn").classList.remove("on");
+      if (exportMenu.classList.contains("open")) placeMenu(r);
+    });
+
+    // Keep the whole menu on screen: prefer below, flip above when that would
+    // overflow, and only then fall back to scrolling.
+    function placeMenu(btnRect) {
+      const gap = 6, margin = 8;
+      const h = exportMenu.offsetHeight;
+      const below = window.innerHeight - btnRect.bottom - gap - margin;
+      const above = btnRect.top - gap - margin;
+      if (h <= below) {
+        exportMenu.style.top = `${btnRect.bottom + gap}px`;
+      } else if (h <= above) {
+        exportMenu.style.top = `${btnRect.top - gap - h}px`;
+      } else {
+        const room = Math.max(below, above);
+        exportMenu.style.top = below >= above
+          ? `${btnRect.bottom + gap}px` : `${margin}px`;
+        exportMenu.style.maxHeight = `${room}px`;
+        exportMenu.style.overflowY = "auto";
+      }
+    }
+
+    // The fly-out goes to whichever side has room, aligned with its trigger.
+    function placeMore() {
+      const m = exportMenu.getBoundingClientRect();
+      const t = $("export-more-btn").getBoundingClientRect();
+      exportMore.style.top = "0px";                       // measure at a known spot
+      exportMore.style.left = "0px";
+      const w = exportMore.offsetWidth, h = exportMore.offsetHeight;
+      const left = m.right + 6 + w <= window.innerWidth - 8
+        ? m.right + 6
+        : Math.max(8, m.left - 6 - w);
+      exportMore.style.left = `${left}px`;
+      exportMore.style.top = `${Math.max(8, Math.min(t.top, window.innerHeight - 8 - h))}px`;
+    }
+
+    $("export-more-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const on = !exportMore.classList.contains("open");
+      exportMore.classList.toggle("open", on);
+      $("export-more-btn").classList.toggle("on", on);
+      if (on) placeMore();
+    });
+    exportMore.addEventListener("click", (e) => {
+      const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
+      if (!fmt) return;
+      exportMore.classList.remove("open");
+      exportMenu.classList.remove("open");
+      $("export-more-btn").classList.remove("on");
+      exportAs(fmt);
     });
     exportMenu.addEventListener("click", (e) => {
       const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
@@ -5911,7 +5989,10 @@ ${joined}`)(...vs);
       if (fmt) exportAs(fmt);
     });
     addEventListener("pointerdown", (e) => {
-      if (!exportMenu.contains(e.target) && e.target !== $("export-btn")) {
+      if (!exportMenu.contains(e.target) && !exportMore.contains(e.target)
+        && e.target !== $("export-btn")) {
+        exportMore.classList.remove("open");
+        $("export-more-btn").classList.remove("on");
         exportMenu.classList.remove("open");
       }
     });

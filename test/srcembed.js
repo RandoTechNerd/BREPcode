@@ -103,6 +103,29 @@ console.log("\n3MF\n");
     tris: [[0, 1, 2]],
   });
   const cz = colored3MF([g("#d4af37", 0), g("#2b2b2b", 5)], "part", { source: CODE });
+  // A colour 3MF exported from BREPcode would not reimport into BREPcode:
+  // "non-manifold". The groups come from the on-screen meshes, which are one
+  // per FACE, so every boundary point arrived several times and triangles that
+  // share an edge referenced different vertices — a surface full of cracks.
+  // 6585 vertices for 1719 distinct positions on the file that reported it.
+  {
+    const A = { color: "#D4AF37", verts: [[0,0,0],[10,0,0],[10,10,0]], tris: [[0,1,2]] };
+    const B = { color: "#2B2B2B", verts: [[0,0,0],[10,10,0],[0,10,0]], tris: [[0,1,2]] };
+    const x = new TextDecoder().decode(await unzipEntry(colored3MF([A, B], "weld"), /\.model$/i));
+    const vs = [...x.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"/g)].map((m) => m.slice(1).join(","));
+    check("a shared edge is welded, not duplicated", vs.length === new Set(vs).size,
+      `${vs.length} written, ${new Set(vs).size} distinct`);
+    check("...and both triangles survive", (x.match(/<triangle /g) || []).length === 2);
+    check("...each keeping its own colour",
+      [...x.matchAll(/p1="(\d+)"/g)].map((m) => m[1]).join(",") === "0,1");
+    check("...with both colours still in the group", (x.match(/<m:color /g) || []).length === 2);
+    // Welding must not silently drop a face by collapsing it.
+    const degenerate = { color: "#FFFFFF", verts: [[0,0,0],[0,0,0],[1,1,1]], tris: [[0,1,2]] };
+    const y = new TextDecoder().decode(await unzipEntry(colored3MF([A, degenerate], "deg"), /\.model$/i));
+    check("a triangle collapsed by the weld is dropped, not written broken",
+      (y.match(/<triangle /g) || []).length === 1);
+  }
+
   check("the colour 3MF carries the source as well",
     new TextDecoder().decode(await unzipEntry(cz, /BREPcode\.source\.js$/i)).includes("difference("));
 }
