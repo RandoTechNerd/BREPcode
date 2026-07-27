@@ -2418,8 +2418,18 @@
     const negBtn = $("neg-btn");
     const negGroup = new THREE.Group();
     scene.add(negGroup);
+    // Invisible to the renderer, solid to the raycaster — see refreshNegatives.
+    const negPickMat = new THREE.MeshBasicMaterial({ visible: false });
     let lastShape = null;
     let negToken = 0;
+
+    // The pick-target meshes carry a featureId; the dashed outlines do not
+    // resolve reliably under a mouse, so only the solids answer.
+    function pickNegative(rc) {
+      if (!negGroup.children.length) return undefined;
+      return rc.intersectObjects(negGroup.children, false)
+        .find((h) => h.object.isMesh && h.object.userData.featureId);
+    }
 
     function clearNegatives() {
       for (const c of [...negGroup.children]) {
@@ -2454,7 +2464,20 @@
               const line = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 25), mat);
               line.computeLineDistances();
               line.renderOrder = 998;
+              line.userData.featureId = mesh.userData.featureId;
               negGroup.add(line);
+              // …and keep the SOLID form of the cutter as a pick target. The
+              // outline is what you see, but a dashed line is nearly impossible
+              // to hit with a mouse, and clicking one did nothing at all: the
+              // picker only ever raycast modelGroup, so the negatives were not
+              // in the pick set in the first place. A material with
+              // visible:false is skipped by the renderer but still raycasts,
+              // which is exactly what a click target for an invisible volume
+              // wants to be.
+              mesh.material = negPickMat;
+              mesh.renderOrder = 998;
+              negGroup.add(mesh);
+              continue;                       // its geometry is in use now
             }
             mesh.geometry.dispose();
           }
@@ -4845,7 +4868,12 @@
         }
       }
 
-      const hit = raycaster.intersectObjects(modelGroup.children, false)[0];
+      let hit = raycaster.intersectObjects(modelGroup.children, false)[0];
+      // Nothing solid under the cursor? Try the negative-shape ghosts. Solid
+      // always wins, so a cutter is only selectable where you can genuinely see
+      // it — the part of it standing outside the material — and clicking the
+      // block never selects the hole hiding behind it.
+      if (!hit) hit = pickNegative(raycaster);
       const mapFresh = featureMap && mapText === code.value;
       // A freeform() has no one-to-one feature mapping (it compiles to a hull of
       // markers), so fall back to its own site or clicking it would select
@@ -5301,19 +5329,31 @@
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(ndc, camera);
-      const hit = raycaster.intersectObjects(modelGroup.children, false)[0];
-      if (!hit) return;
+      let hit = raycaster.intersectObjects(modelGroup.children, false)[0];
 
-      // Drill tool armed: bore a hole at the clicked point, along the face's
-      // world-space normal, by wrapping the whole model in difference(…, drill(…)).
-      if (drillArmed) { drillAtHit(hit); return; }
-      if (codeArmed) { codeAtHit(hit); return; }
+      // The drill and code tools bore into real material at a real surface, so
+      // they only ever see modelGroup — a ghost has nothing to act on.
+      if (drillArmed || codeArmed) {
+        if (!hit) return;
+        // Drill: bore a hole at the clicked point, along the face's world-space
+        // normal, by wrapping the whole model in difference(…, drill(…)).
+        (drillArmed ? drillAtHit : codeAtHit)(hit);
+        return;
+      }
+
+      // Nothing solid under the cursor? Fall back to the negative-shape ghosts.
+      // Clicking a subtracted shape used to do nothing whatsoever: the outlines
+      // live in their own group and the picker only ever raycast modelGroup, so
+      // a cutter was never in the pick set — the click found no hit and this
+      // handler returned before it could say anything at all.
+      if (!hit) hit = pickNegative(raycaster);
+      if (!hit) return;
 
       // dimensions of everything that came from the same primitive
       const fid = hit.object.userData.featureId;
       const fbb = new THREE.Box3();
-      for (const m of modelGroup.children) {
-        if (m.userData.featureId === fid) fbb.expandByObject(m);
+      for (const m of [...modelGroup.children, ...negGroup.children]) {
+        if (m.isMesh && m.userData.featureId === fid) fbb.expandByObject(m);
       }
       const fdims = fbb.isEmpty() ? "" :
         ` (${["x", "y", "z"].map((a) => (fbb.max[a] - fbb.min[a]).toFixed(1)).join(" × ")} mm)`;
