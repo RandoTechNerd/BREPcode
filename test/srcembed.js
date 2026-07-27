@@ -103,27 +103,65 @@ console.log("\n3MF\n");
     tris: [[0, 1, 2]],
   });
   const cz = colored3MF([g("#d4af37", 0), g("#2b2b2b", 5)], "part", { source: CODE });
-  // A colour 3MF exported from BREPcode would not reimport into BREPcode:
-  // "non-manifold". The groups come from the on-screen meshes, which are one
-  // per FACE, so every boundary point arrived several times and triangles that
-  // share an edge referenced different vertices — a surface full of cracks.
-  // 6585 vertices for 1719 distinct positions on the file that reported it.
+  // Two things this has to get right, both found the hard way.
+  //
+  // 1. WELDING. A colour 3MF exported from BREPcode would not reimport into
+  //    BREPcode: "non-manifold". The groups come from the on-screen meshes,
+  //    which are one per FACE, so every boundary point arrived several times
+  //    and triangles sharing an edge referenced different vertices. The file
+  //    that reported it had 6585 vertices for 1719 distinct positions.
+  //
+  // 2. COLOUR STRUCTURE. OrcaSlicer ignores <m:colorgroup> entirely. Taking
+  //    apart a Bambu 4-colour Benchy that does work showed colour is per PART:
+  //    an object per colour, an assembly of components, and an extruder number
+  //    per part in Metadata/model_settings.config.
   {
-    const A = { color: "#D4AF37", verts: [[0,0,0],[10,0,0],[10,10,0]], tris: [[0,1,2]] };
-    const B = { color: "#2B2B2B", verts: [[0,0,0],[10,10,0],[0,10,0]], tris: [[0,1,2]] };
-    const x = new TextDecoder().decode(await unzipEntry(colored3MF([A, B], "weld"), /\.model$/i));
-    const vs = [...x.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"/g)].map((m) => m.slice(1).join(","));
-    check("a shared edge is welded, not duplicated", vs.length === new Set(vs).size,
+    const quad = (z) => ({
+      verts: [[0, 0, z], [10, 0, z], [10, 10, z], [0, 10, z]],
+      tris: [[0, 1, 2], [0, 2, 3]],          // two triangles sharing an edge
+    });
+    const gold = { ...quad(0), color: "#D4AF37" };
+    const black = { ...quad(5), color: "#2B2B2B" };
+    const zip = colored3MF([gold, black], "two-colour");
+    const model = new TextDecoder().decode(await unzipEntry(zip, /3dmodel\.model$/i));
+    const cfg = new TextDecoder().decode(await unzipEntry(zip, /model_settings\.config$/i));
+
+    // One object per colour, plus the assembly that holds them together.
+    check("an object per colour, plus an assembly", (model.match(/<object /g) || []).length === 3,
+      String((model.match(/<object /g) || []).length));
+    check("the assembly references both", (model.match(/<component /g) || []).length === 2);
+    check("...and the build points at the assembly", /<item objectid="4"\/>/.test(model));
+
+    // The part/extruder mapping is what Orca actually reads.
+    check("each colour becomes a part", (cfg.match(/<part /g) || []).length === 2);
+    check("...with its own extruder", /value="1"/.test(cfg) && /value="2"/.test(cfg));
+    check("...and part ids match the component objectids",
+      /<part id="2"/.test(cfg) && /<part id="3"/.test(cfg), cfg.match(/<part id="\d+"/g)?.join(" "));
+
+    // Welding happens WITHIN a colour: the shared edge of the two gold
+    // triangles must be one edge, not two.
+    const firstObj = model.slice(model.indexOf('<object id="2"'), model.indexOf('<object id="3"'));
+    const vs = [...firstObj.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"/g)]
+      .map((m) => m.slice(1).join(","));
+    check("a shared edge inside one colour is welded", vs.length === 4 && new Set(vs).size === 4,
       `${vs.length} written, ${new Set(vs).size} distinct`);
-    check("...and both triangles survive", (x.match(/<triangle /g) || []).length === 2);
-    check("...each keeping its own colour",
-      [...x.matchAll(/p1="(\d+)"/g)].map((m) => m[1]).join(",") === "0,1");
-    check("...with both colours still in the group", (x.match(/<m:color /g) || []).length === 2);
+    check("...and both its triangles survive", (firstObj.match(/<triangle /g) || []).length === 2);
+
+    // The spec-correct colorgroup rides along for tools that do read it.
+    check("the colorgroup is still there for other tools",
+      (model.match(/<m:color /g) || []).length === 2);
+
+    // None of the Bambu project furniture that produced four dialogs in a row.
+    check("no BambuStudio project marker", !/BambuStudio/.test(model));
+    check("no printer presets shipped", !Object.keys({}).length
+      && !/project_settings/.test(model));
+
     // Welding must not silently drop a face by collapsing it.
-    const degenerate = { color: "#FFFFFF", verts: [[0,0,0],[0,0,0],[1,1,1]], tris: [[0,1,2]] };
-    const y = new TextDecoder().decode(await unzipEntry(colored3MF([A, degenerate], "deg"), /\.model$/i));
+    const degenerate = { color: "#FFFFFF", verts: [[0, 0, 0], [0, 0, 0], [1, 1, 1]], tris: [[0, 1, 2]] };
+    const y = new TextDecoder().decode(
+      await unzipEntry(colored3MF([gold, degenerate], "deg"), /3dmodel\.model$/i));
     check("a triangle collapsed by the weld is dropped, not written broken",
-      (y.match(/<triangle /g) || []).length === 1);
+      (y.match(/<triangle /g) || []).length === 2);
   }
 
   check("the colour 3MF carries the source as well",

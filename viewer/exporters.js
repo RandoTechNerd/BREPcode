@@ -180,72 +180,120 @@ function storedZip(entries) {
 // OrcaSlicer read that as per-face paint and auto-assign a filament per colour —
 // so an embossed label or code prints in its own colour on a multi-material
 // printer. Consumers that ignore the extension still get correct geometry.
+// Colour that a slicer actually honours.
+//
+// The obvious reading of the spec — one object, a <m:colorgroup>, a colour
+// index per triangle — is what this used to do, and OrcaSlicer ignored it
+// completely: the model arrived in one colour. Taking apart a Bambu 4-colour
+// Benchy that DOES work showed why. There is no colorgroup in it anywhere.
+// Colour is per PART:
+//
+//   3D/3dmodel.model            one object per colour, plus an assembly object
+//                               whose <components> reference them
+//   Metadata/model_settings.config
+//                               <part id="N"> per component, each carrying
+//                               <metadata key="extruder" value="k"/>
+//
+// The extruder number is the colour. So each distinct colour becomes its own
+// part, and the slicer assigns it a filament.
+//
+// What that Benchy ALSO carries, and this deliberately does not: a 57KB
+// project_settings.config of printer presets, a BambuStudio:3mfVersion marker,
+// plate thumbnails, slice info. Opening it produced four dialogs in a row —
+// "Customized Preset", "configuration from a newer version", "BambuStudio
+// Project". None of that is needed to carry colour, and every piece of it is
+// another version to be wrong about. This writes the geometry, the parts, and
+// the extruder numbers. Nothing else.
+//
+// The colorgroup stays too. It costs a few bytes, it is the spec-correct answer,
+// and tools that are not Orca do read it.
 export function colored3MF(groups, name = "brepcode-model", opts = {}) {
   const palette = [];                       // distinct colours, in first-seen order
-  const idxOf = (c) => {
-    const hex = (c || "#cccccc").toUpperCase();
-    let i = palette.indexOf(hex);
-    if (i < 0) { i = palette.length; palette.push(hex); }
-    return i;
-  };
-
-  const verts = [];
-  const tris = [];                          // [v1, v2, v3, colorIndex]
-  // WELD. The groups come from the on-screen meshes, and those are one mesh per
-  // FACE — so every point on a face boundary arrives several times over, once
-  // per face that touches it. Writing them out as-is gives a mesh where
-  // triangles that share an edge reference DIFFERENT vertex indices: the
-  // surface looks right and is topologically full of cracks. A real export came
-  // back with 6585 vertices for 1719 distinct positions and would not reimport
-  // — "non-manifold" — while the single-colour path was fine, because that one
-  // goes through parseStlTriangles, which has always deduped.
-  //
-  // Colour is carried per TRIANGLE (p1), never per vertex, so welding a gold
-  // corner to the black one in the same place loses nothing.
-  const index = new Map();
-  const key = (v) => `${+(+v[0]).toFixed(5)},${+(+v[1]).toFixed(5)},${+(+v[2]).toFixed(5)}`;
-  const idOf = (v) => {
-    const k = key(v);
-    let i = index.get(k);
-    if (i === undefined) { i = verts.length; index.set(k, i); verts.push(v); }
-    return i;
-  };
+  const byColour = new Map();               // colour -> merged {verts, tris}
   for (const g of groups) {
-    const ci = idxOf(g.color);
+    const hex = (g.color || "#cccccc").toUpperCase();
+    if (!palette.includes(hex)) palette.push(hex);
+    let bucket = byColour.get(hex);
+    if (!bucket) { bucket = { verts: [], tris: [], index: new Map() }; byColour.set(hex, bucket); }
+    // WELD inside the colour. The groups come from the on-screen meshes, which
+    // are one mesh per FACE, so every point on a face boundary arrives once per
+    // face touching it. Written as-is, triangles that share an edge reference
+    // DIFFERENT vertices — a surface that looks right and is topologically full
+    // of cracks. A real export came back 6585 vertices for 1719 distinct
+    // positions and would not reimport: "non-manifold".
+    const idOf = (v) => {
+      const k = `${+(+v[0]).toFixed(5)},${+(+v[1]).toFixed(5)},${+(+v[2]).toFixed(5)}`;
+      let i = bucket.index.get(k);
+      if (i === undefined) { i = bucket.verts.length; bucket.index.set(k, i); bucket.verts.push(v); }
+      return i;
+    };
     const local = g.verts.map(idOf);
     for (const t of g.tris) {
       const [a, b, c] = [local[t[0]], local[t[1]], local[t[2]]];
-      if (a === b || b === c || a === c) continue;   // collapsed by the weld
-      tris.push([a, b, c, ci]);
+      if (a === b || b === c || a === c) continue;      // collapsed by the weld
+      bucket.tris.push([a, b, c]);
     }
   }
-  if (!tris.length) return stlTo3MF("", name, opts);
+
+  const used = palette.filter((hex) => byColour.get(hex)?.tris.length);
+  if (!used.length) return stlTo3MF("", name, opts);
 
   const M = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02";
-  const colorgroup = `  <m:colorgroup id="2">
-${palette.map((c) => `   <m:color color="${c}"/>`).join("\n")}
-  </m:colorgroup>`;
-  const model = `<?xml version="1.0" encoding="UTF-8"?>
-<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
- <resources>
-${colorgroup}
-  <object id="1" type="model" name="${name}" pid="2" pindex="0">
+  const COLOURS_ID = 1;
+  const firstObject = 2;                                   // ids 2 … 2+n-1
+  const assemblyId = firstObject + used.length;
+
+  const objects = used.map((hex, i) => {
+    const { verts, tris } = byColour.get(hex);
+    return `  <object id="${firstObject + i}" type="model" name="${name} — ${hex}" pid="${COLOURS_ID}" pindex="${i}">
    <mesh>
     <vertices>
 ${verts.map((v) => `     <vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join("\n")}
     </vertices>
     <triangles>
-${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}" p1="${t[3]}"/>`).join("\n")}
+${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("\n")}
     </triangles>
    </mesh>
+  </object>`;
+  }).join("\n");
+
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
+ <metadata name="Application">BREPcode-${APP_VERSION}</metadata>
+ <metadata name="Title">${name}</metadata>
+ <resources>
+  <m:colorgroup id="${COLOURS_ID}">
+${used.map((hex) => `   <m:color color="${hex}"/>`).join("\n")}
+  </m:colorgroup>
+${objects}
+  <object id="${assemblyId}" type="model" name="${name}">
+   <components>
+${used.map((_, i) => `    <component objectid="${firstObject + i}"/>`).join("\n")}
+   </components>
   </object>
  </resources>
  <build>
-  <item objectid="1"/>
+  <item objectid="${assemblyId}"/>
  </build>
 </model>
 `;
-  return threeMfPackage(model, name, opts.source);
+
+  // One <part> per component, in the same order, each naming its extruder.
+  // part id matches the component's objectid — that is the mapping the working
+  // file uses.
+  const settings = `<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="${assemblyId}">
+    <metadata key="name" value="${name}"/>
+    <metadata key="extruder" value="1"/>
+${used.map((hex, i) => `    <part id="${firstObject + i}" subtype="normal_part">
+      <metadata key="name" value="${name} — ${hex}"/>
+      <metadata key="extruder" value="${i + 1}"/>
+    </part>`).join("\n")}
+  </object>
+</config>
+`;
+  return threeMfPackage(model, name, opts.source, [["Metadata/model_settings.config", settings]]);
 }
 
 // Where the parametric source rides along inside an exported file. A mesh is a
@@ -268,7 +316,7 @@ const sourceHeader = (name) =>
 // declared content type, so the source brings its own Default. Slicers read
 // 3D/3dmodel.model and ignore the rest — Bambu and Orca both ship extra
 // Metadata/ parts of their own, so this is a well-trodden path, not a hack.
-function threeMfPackage(model, name, code) {
+function threeMfPackage(model, name, code, extra = []) {
   const source = code ? String(code).trim() : "";
   return storedZip([
     ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
@@ -284,6 +332,9 @@ ${source ? ` <Default Extension="js" ContentType="text/javascript"/>\n` : ""}</T
 `],
     ["3D/3dmodel.model", model],
     ...(source ? [[SOURCE_PART, sourceHeader(name) + source + "\n"]] : []),
+    // Slicer-side metadata, e.g. Metadata/model_settings.config — which is
+    // where OrcaSlicer actually reads per-part colour from.
+    ...extra,
   ]);
 }
 
