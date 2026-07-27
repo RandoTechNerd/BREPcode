@@ -48,6 +48,12 @@ function createWindow({ hidden = false } = {}) {
     minHeight: 600,
     backgroundColor: "#0b0f16",     // matches the viewer, so no white flash
     title: "BREPcode",
+    // Without this the window — and so the taskbar button — carries Electron's
+    // own icon, because a window with no icon of its own inherits the running
+    // executable's. In a packaged build electron-builder stamps the icon into
+    // BREPcode.exe and it would be right anyway; in a dev run the executable is
+    // electron.exe, so the window has to say what it is.
+    icon: path.join(__dirname, "icon.png"),
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -89,6 +95,14 @@ function createWindow({ hidden = false } = {}) {
 // Set before the window exists, so the frame is drawn dark from the first paint
 // rather than flashing light.
 nativeTheme.themeSource = "dark";
+
+// Windows groups taskbar buttons, and decides which icon and which name they
+// carry, by AppUserModelID. Left unset, every Electron app on the machine
+// shares Electron's default identity — so BREPcode's button could sit under
+// "Electron", and pinning it would pin the wrong thing. Matches the appId in
+// electron-builder.yml so the dev run and the installed app are one identity.
+// Must be set before any window exists.
+if (process.platform === "win32") app.setAppUserModelId("com.randotechnerd.brepcode");
 
 function serveBundle() {
   protocol.handle("app", (req) => {
