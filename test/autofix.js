@@ -1,7 +1,7 @@
 // Forgiving-mode repairs. autoFix must only ever append what's missing —
 // never rewrite or drop what the user actually typed.
 
-import { autoFix, addImplicitReturn, declaredNames } from "../viewer/assist.js";
+import { autoFix, addImplicitReturn, declaredNames, fixDanglingReturn, looseShapeCount, diagnose } from "../viewer/assist.js";
 
 let pass = 0, fail = 0;
 function check(label, ok, detail = "") {
@@ -148,6 +148,46 @@ check("output starts with the exact input", autoFix(messy).code.startsWith(messy
   check("...and now evaluates to the right shape",
     new Function(...keep, `"use strict";\n${src}`)(...vals.filter((_, i) => !drop.includes(all[i])))
       ?.join?.(",") === "4,6,2");
+}
+
+// --- the two ways a beginner loses their whole model -----------------------
+//
+// Both came from a real session: three primitives pasted out of the cheat
+// sheet, and a `return` left on its own line.
+{
+  const R = (s) => fixDanglingReturn(s);
+
+  // JavaScript inserts a semicolon after a bare `return`, so the shape on the
+  // next line is never reached. The code looks completely correct.
+  check("a return alone on its line is joined to the next expression",
+    /return torus/.test(R("return\ntorus({ r: 14 })") || ""), JSON.stringify(R("return\ntorus({ r: 14 })")));
+  check("...across blank lines too", /return cube/.test(R("return\n\n\ncube([1,1,1])") || ""));
+  check("...and the code before it is untouched",
+    (R("const w = 5;\nreturn\ncube([w,w,w])") || "").startsWith("const w = 5;\n"));
+
+  // It must not touch a return that is deliberately empty.
+  check("a deliberate bare return; is left alone", R("if (x) return;\nreturn cube([1,1,1]);") === null);
+  check("a return before a closing brace is left alone", R("function f() { return\n}") === null);
+  check("normal code is left alone", R("return cube([1, 1, 1]);") === null);
+  check("the word inside a string is not a dangling return",
+    R('return text({ text: "return\nnow" });') === null);
+
+  // The repaired source has to actually run and hand back the shape.
+  const fixed = R("return\ncube([3, 4, 5])");
+  check("the repair evaluates to the shape",
+    new Function("cube", `"use strict";\n${fixed}`)((d) => d)?.join?.(",") === "3,4,5");
+
+  // Several shapes in a row: only one can be the model.
+  check("three stacked shapes are counted",
+    looseShapeCount("cube([1,1,1])\ntorus({r:5})\ncylinder({r:2,h:3})", ["cube", "torus", "cylinder"]) === 3);
+  check("one shape is not a pile", looseShapeCount("cube([1,1,1])", ["cube"]) === 1);
+  check("a nested call is not a second top-level shape",
+    looseShapeCount("union(cube([1,1,1]), torus({r:5}))", ["cube", "torus", "union"]) === 1);
+  check("a declaration is not a loose shape",
+    looseShapeCount("const a = cube([1,1,1]);\nconst b = torus({r:5});", ["cube", "torus"]) === 0);
+  check("the advice names union and group",
+    /union/.test(diagnose("cube([1,1,1])\ntorus({r:5})", null, undefined))
+    && /group/.test(diagnose("cube([1,1,1])\ntorus({r:5})", null, undefined)));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

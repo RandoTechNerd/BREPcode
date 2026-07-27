@@ -1193,6 +1193,84 @@ export function autoFix(src) {
   return { code, notes };
 }
 
+// `return` alone at the end of a line throws the model away.
+//
+// JavaScript inserts a semicolon after a bare `return`, so
+//
+//     return
+//     torus({ r: 14, tube: 4 })
+//
+// is `return;` followed by an expression nobody reads — it evaluates to
+// undefined and the user is told their code "didn't make a shape", which is
+// true and completely unhelpful. Nothing else in the language does this, and it
+// is invisible: the code looks right.
+//
+// It also defeated the missing-return repair, because that refuses to act when
+// it sees the word `return` — so this had to be handled before it, not by it.
+// Returns the joined-up source, or null when there is no dangling return.
+export function fixDanglingReturn(src) {
+  let quote = null, masked = "";
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") { masked += "  "; i++; continue; }
+      if (c === quote) quote = null;
+      masked += c === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; masked += " "; continue; }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") { masked += " "; i++; }
+      masked += "\n";
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      const stop = end < 0 ? src.length : end + 2;
+      for (; i < stop; i++) masked += src[i] === "\n" ? "\n" : " ";
+      i--;
+      continue;
+    }
+    masked += c;
+  }
+
+  // A `return` with nothing after it on its line, and a real expression on a
+  // later one. Not `return;` (deliberate) and not `return }` (an empty exit).
+  const m = /\breturn[ \t]*\r?\n[\s\r\n]*(?=[^\s;})\]])/.exec(masked);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  return `${src.slice(0, m.index)}return ${src.slice(at)}`;
+}
+
+// How many top-level statements are bare shape expressions?
+//
+// Three shapes written one after another is the other half of the same
+// misunderstanding — people reasonably expect a list of shapes to BE the model,
+// and in BREPcode only the returned one counts. Knowing there are several lets
+// the error say "combine them" instead of "that didn't make a shape".
+export function looseShapeCount(src, vocabulary = NAMES) {
+  const known = new Set(vocabulary);
+  let depth = 0, quote = null, count = 0, stmt = "";
+  const take = () => {
+    const word = /^[\s;]*([A-Za-z_$][\w$]*)\s*\(/.exec(stmt)?.[1];
+    if (word && known.has(word) && !/^\s*(return|const|let|var)\b/.test(stmt)) count++;
+    stmt = "";
+  };
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) { if (c === "\\") i++; else if (c === quote) quote = null; stmt += c; continue; }
+    if (c === '"' || c === "'" || c === "`") { quote = c; stmt += c; continue; }
+    if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
+    if (c === "/" && src[i + 1] === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 1; continue; }
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) depth--;
+    if (depth === 0 && (c === ";" || c === "\n")) { stmt += c; take(); continue; }
+    stmt += c;
+  }
+  take();
+  return count;
+}
+
 // Which BREPcode words does this source declare as its own variable?
 //
 // The vocabulary reaches user code as function PARAMETERS, so `const fins = []`
@@ -1316,6 +1394,16 @@ export function diagnose(src, err, result) {
   // 4. Wrong argument type coming back out of the DSL.
   if (/Expected a shape/.test(msg)) {
     return `${msg} — shapes go inside shapes, e.g. translate([10, 0, 0], cube([10, 10, 10])).`;
+  }
+
+  // 5a. Several shapes written one after another. People reasonably expect a
+  //     list of shapes to BE the model; in BREPcode only the returned one
+  //     counts, so say how to join them rather than restating the symptom.
+  if (!err && result === undefined && looseShapeCount(src) > 1) {
+    return "That's several separate shapes — only one can be the model. "
+      + "Wrap them in union(…) to fuse them into one solid, or group(…) to keep them "
+      + "as separate parts, and return that. Give each a translate([x, y, z], …) "
+      + "or they'll all sit on top of each other at the origin.";
   }
 
   // 5. It ran but didn't hand back a shape.

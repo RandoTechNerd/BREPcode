@@ -1730,7 +1730,7 @@
     import {
       SPECS, RECIPES, DIALECTS, specOf, diagnose, enclosingCall, autoFix, stripFences, addImplicitReturn,
       swapTarget, wordAt, numberAt, primitiveSites, mapTraceToSites, convertPrimitiveCall,
-      isBrepscriptModule, prepareBrepscriptModule, declaredNames,
+      isBrepscriptModule, prepareBrepscriptModule, declaredNames, fixDanglingReturn, looseShapeCount,
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
     } from "./assist.js";
 
@@ -3454,11 +3454,57 @@
 
     // The current editor code as a single wrappable expression, or null if it's
     // empty or statement-form (has ; / return / const|let|var at the top level).
+    // The span of the expression that IS the model — what Drill, Fins and the
+    // "edit a part" snippets wrap.
+    //
+    // This used to demand that the whole editor be a single bare expression,
+    // and quietly returned null otherwise. An import gives you exactly that
+    // (`importedMesh("x.stl")`), but anything a person writes has a `const` or
+    // two and ends in `return`, so on their own models the tools armed, did
+    // nothing when clicked, and disarmed without a word. They looked like they
+    // only worked on imports because in practice they did.
+    //
+    // Statement-form code has a model in it too: whatever it returns. Wrapping
+    // that leaves every declaration above it untouched.
+    function modelExprSpan() {
+      const cur = code.value;
+      const trimmed = cur.trim();
+      if (!trimmed) return null;
+
+      // `… return <expr> ;` — take the expression, not the keyword or the
+      // semicolon. Last return wins; earlier ones are inside helpers.
+      const re = /\breturn\b/g;
+      let m, last = -1;
+      while ((m = re.exec(cur))) last = m.index;
+      if (last >= 0) {
+        let start = last + "return".length;
+        while (start < cur.length && /\s/.test(cur[start])) start++;
+        let end = cur.length;
+        while (end > start && /[\s;]/.test(cur[end - 1])) end--;
+        if (end <= start) return null;                 // `return;` — nothing to wrap
+        return { start, end, expr: cur.slice(start, end) };
+      }
+
+      // A bare expression: the whole thing, as before. A trailing semicolon is
+      // fine; several statements are not, since there is no single expression.
+      if (/\b(?:const|let|var)\b/.test(trimmed)) return null;
+      const body = trimmed.replace(/;\s*$/, "");
+      if (body.includes(";")) return null;
+      const start = cur.indexOf(body);
+      return { start, end: start + body.length, expr: body };
+    }
+
+    // Kept for the callers that only ask "is there a model to work on?".
     function currentModelExpr() {
-      const cur = code.value.trim();
-      if (!cur) return null;
-      if (/;|\breturn\b|\b(?:const|let|var)\b/.test(cur)) return null;
-      return cur;
+      return modelExprSpan()?.expr ?? null;
+    }
+
+    // Replace just the model expression, leaving everything around it alone.
+    function replaceModelExpr(next) {
+      const span = modelExprSpan();
+      if (!span) return false;
+      code.value = code.value.slice(0, span.start) + next + code.value.slice(span.end);
+      return true;
     }
 
     // Clicking a cheat-sheet item. "Edit a part" items carry a `wrap`: if there's
@@ -3470,7 +3516,7 @@
       if (!expr) return insertSnippet(spec);
       toggleCard(panel, openBtn, true);
       pushHistory(code.value);                       // snapshot for ◀
-      code.value = spec.wrap.replace("$MODEL$", expr);
+      replaceModelExpr(spec.wrap.replace("$MODEL$", expr));
       code.focus();
       // select the first number (hole size / stretch amount) so it's easy to tweak
       const firstNum = /-?\d+(?:\.\d+)?/.exec(code.value);
@@ -3787,6 +3833,17 @@
       // Statement code that just forgot `return` on its final shape: retry with
       // one inserted rather than making the user fix an AI's punctuation.
       if (out === undefined && statementForm) {
+        // A bare `return` at the end of a line is a semicolon in disguise, and
+        // it defeats addImplicitReturn (which stands down whenever it sees the
+        // word). Join it to what follows first, then let the normal repair run.
+        const joined = fixDanglingReturn(src);
+        if (joined) {
+          try {
+            const retry = new Function(...ns, `"use strict";
+${joined}`)(...vs);
+            if (retry !== undefined) { autoReturned = true; return retry; }
+          } catch { /* the join didn't parse — fall through */ }
+        }
         const withReturn = addImplicitReturn(src);
         if (withReturn) {
           try {
@@ -3931,6 +3988,15 @@
         const transLang = { openscad: "OpenSCAD", jscad: "JSCAD", build123d: "build123d", cadquery: "CadQuery" }[lastLang];
         if (transLang) parts.push(`⇄ translated from ${transLang} — a best-effort match, not the original engine`);
         if (autoReturned) parts.push("added the missing “return” before your final shape");
+        // A repair that quietly drops work is worse than an error. Several
+        // shapes written one after another look like a model to the person who
+        // typed them, and only the returned one is built — so when we have just
+        // rescued one of a pile, say what happened to the rest.
+        const loose = looseShapeCount(code.value);
+        if (loose > 1) {
+          parts.push(`only the returned shape was built — the other ${loose - 1} `
+            + `${loose === 2 ? "is" : "are"} ignored. Combine them with union(…) or group(…)`);
+        }
         if (notes.length) parts.push(`auto-fixed: ${notes.join("; ")}`);
         if (warns.length) parts.push(warns.join(" · "));
         fixnote.textContent = parts.join("  ·  ");
@@ -5296,8 +5362,8 @@
       const pt = `[${r1(p.x)}, ${r1(p.y)}, ${r1(p.z)}]`;
       const kind = codeArmedKind;
       pushHistory(code.value);
-      code.value = `union(\n  ${expr},\n  translate(${pt}, rotate(${rot},\n`
-        + `    ${kind}({ text: "BREPCODE", module: 1.6, base: 0.6, center: true }))),\n)`;
+      replaceModelExpr(`union(\n  ${expr},\n  translate(${pt}, rotate(${rot},\n`
+        + `    ${kind}({ text: "BREPCODE", module: 1.6, base: 0.6, center: true }))),\n)`);
       setCodeArmed(false);
       code.focus();
       // select the text so it can be typed over straight away
@@ -5326,7 +5392,8 @@
       const pt = `[${r1(p.x)}, ${r1(p.y)}, ${r1(p.z)}]`;
       const nv = `[${r1(n.x)}, ${r1(n.y)}, ${r1(n.z)}]`;
       pushHistory(code.value);
-      code.value = `difference(\n  ${expr},\n  drill(${pt}, ${nv}, { d: 4, depth: 20 })\n)`;
+      // Wrap only the model expression, so a const block above it stays put.
+      replaceModelExpr(`difference(\n  ${expr},\n  drill(${pt}, ${nv}, { d: 4, depth: 20 })\n)`);
       setDrillArmed(false);
       code.focus();
       // select the diameter so it's instantly tweakable
@@ -5703,13 +5770,9 @@
     // Straight into the slicer — the one thing the website genuinely cannot do,
     // because a web page can only ever hand you a file in your Downloads folder.
     //
-    // The version tag is the whole trick. Orca greets a plain 3MF with "an old
-    // OrcaSlicer version, loading geometry data only" and refuses to show
-    // anything, and the value it accepts is a WINDOW: too low is "old", too high
-    // is "newer", and only the installed build's own number opens silently. So
-    // ask the desktop what is installed and stamp THAT into the file. It is
-    // read from the config the slicer wrote about itself, which is what makes a
-    // dev fork with its own numbering work.
+    // The 3MF carries no slicer-specific metadata: a plain one opens silently,
+    // and the version tag we used to add was what invited Orca's version
+    // comparison in the first place. See the note in exporters.js.
     let slicerInfo = null;
     async function openInSlicer() {
       if (!window.brepcodeDesktop?.openInSlicer) return;
@@ -5721,17 +5784,15 @@
         slicerInfo = slicerInfo || await window.brepcodeDesktop.slicerInfo();
         const groups = colorGroupsForExport();
         const distinct = new Set(groups.map((g) => g.color)).size;
-        const opts = { source: code.value.trim(), orcaVersion: slicerInfo?.version || undefined };
+        const opts = { source: code.value.trim() };
         const bytes = distinct > 1 ? exp.colored3MF(groups, base, opts)
                                    : exp.stlTo3MF(exportSTL(), base, opts);
         const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
         if (!r?.ok) { setStatus("err", `Couldn't open the slicer: ${r?.error || "unknown error"}`); return; }
         setStatus("ok", `Opened ${base}.3mf in ${r.via === "orca" ? "OrcaSlicer" : "your default 3MF app"}.`);
         fixnote.innerHTML = `<span style="color:var(--muted3)">`
-          + (slicerInfo?.version
-            ? `Stamped for OrcaSlicer <b>${esc(slicerInfo.version)}</b>, so it opens without the “old version” dialog. `
-            : `Couldn't read the installed Orca version, so the file is left plainly spec-correct — Orca may show its “old version” notice. `)
-          + `The model carries its BREPcode too, so the 3MF can be reopened here as editable code.</span>`;
+          + `The model carries its BREPcode, so this 3MF can be dropped back on BREPcode `
+          + `and reopened as editable code rather than a frozen mesh.</span>`;
       } catch (e) {
         setStatus("err", `Couldn't open the slicer: ${String(e?.message || e).slice(0, 90)}`);
       }
@@ -5743,11 +5804,7 @@
         slicerInfo = info;
         const btn = $("slicer-btn");
         btn.style.display = "";
-        if (!info?.found) {
-          btn.querySelector("small").textContent = "opens in your default 3MF app";
-        } else if (info.version) {
-          btn.querySelector("small").textContent = `straight into OrcaSlicer ${info.version}`;
-        }
+        if (!info?.found) btn.querySelector("small").textContent = "opens in your default 3MF app";
       }).catch(() => { /* leave the button hidden */ });
     }
 
@@ -6638,11 +6695,11 @@
       const restore = () => { code.value = before; rebuild(); };
       if (bare) {
         expr = bare;
-        code.value = bare;
+        replaceModelExpr(bare);
         await rebuild();                 // measure the PART, not the old fins
       }
       if (!expr) {
-        hint.innerHTML = "To add support fins the editor needs a <b>single model expression</b> (e.g. straight after Import, or one <code>cube(…)</code>/<code>union(…)</code>). With statement code, call <code>fins({…}, yourShape)</code> in the text instead.";
+        hint.innerHTML = "To add support fins the editor needs a model to work on — a shape expression, or code that <code>return</code>s one. Build something first, then try again.";
         return;
       }
       const bb = new THREE.Box3().setFromObject(modelGroup);

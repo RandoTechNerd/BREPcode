@@ -186,35 +186,10 @@ app.whenReady().then(async () => {
       check("...it found the installed slicer", /\.exe$/i.test(info.exe || ""), info.exe);
       // Without a version the 3MF gets Orca's "old version" dialog, which is
       // the entire problem this was built to solve.
-      check("...and read its version, so the 3MF can be stamped",
-        /^\d+\.\d+\.\d+$/.test(info.version || ""), String(info.version));
-
-      // The version must be the SLICER's, not some other version number lying
-      // around. Reading "version" out of OrcaSlicer.conf looked right and was
-      // not — that field is the settings/data format version (02.05.01.52 on a
-      // machine running 2.4.0), so the 3MF got stamped 2.5.1 and Orca answered
-      // "The 3MF file version 2.5.1 is newer than Orca Slicer's version
-      // 2.4.0-Nanashi". Too high is the worse failure: too low still loads the
-      // geometry, too high reads as a file the slicer cannot open.
-      //
-      // Cross-check against what the slicer PRINTED about itself, which is the
-      // one source that has been right.
-      const logDir = path.join(process.env.APPDATA || "", "OrcaSlicer", "log");
-      let banner = null;
-      try {
-        for (const f of fs.readdirSync(logDir)
-          .map((n) => path.join(logDir, n))
-          .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
-          .slice(0, 5)) {
-          const m = /OrcaSlicer\s+Version\s+(\d+\.\d+\.\d+)/i.exec(
-            fs.readFileSync(f, "utf8").slice(0, 65536));
-          if (m) { banner = m[1]; break; }
-        }
-      } catch { /* no logs on this machine */ }
-      if (banner) {
-        check("...and it is the SLICER's version, not the config's",
-          info.version === banner, `detected ${info.version}, slicer says ${banner}`);
-      }
+      // No version check any more, deliberately: the 3MF carries no slicer
+      // metadata at all. Tested side by side in a real Orca, a plain file opens
+      // silently and the tag only ever invited a version comparison we could
+      // lose. See the note in exporters.js.
     } else {
       console.log("  ..    no slicer installed on this machine — detection skipped");
     }
