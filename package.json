@@ -1,6 +1,6 @@
 {
   "name": "brepscript",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "An OpenSCAD-style DSL and CLI for the BREP.io solid modeling kernel",
   "type": "module",
   "main": "./index.js",
