@@ -215,15 +215,22 @@ function applyTransform(p, t) {
   ];
 }
 
-// Flatten a 3MF to a triangle soup.
+// Read a 3MF as the SEPARATE SOLIDS it describes.
 //
 // This used to read the FIRST .model part in the zip and regex it for
 // <vertex>/<triangle>. On any file written by Bambu or Orca that part is
 // 3D/3dmodel.model, which holds nothing but <components> pointing into
-// 3D/Objects/*.model — so a real 4-colour Benchy imported as ZERO triangles and
-// simply appeared to fail. Now every .model part is read, components are
-// followed across files, and each one's transform is applied.
-export async function parse3MF(buf) {
+// 3D/Objects/*.model — so a real 4-colour Benchy read as ZERO triangles.
+//
+// Flattening everything into one soup was the second mistake. A multi-part
+// project is several closed solids that touch and interpenetrate; merged into a
+// single mesh the kernel is asked to manifoldize all of them at once, and a
+// 33k-triangle Benchy simply hung. Kept apart, each one is a clean closed solid
+// the kernel handles on its own — and the user gets parts they can move and
+// edit individually, which is what the file meant in the first place.
+//
+// Returns [{ name, positions }] in build order.
+export async function parse3MFObjects(buf) {
   const parts = await unzipEntries(buf, /\.model$/i);
   if (!parts.size) throw new Error("no model data in that 3MF");
 
@@ -232,27 +239,22 @@ export async function parse3MF(buf) {
   const norm = (p) => "/" + String(p || "").replace(/^\/+/, "");
   for (const [name, bytes] of parts) byPath.set(norm(name), parseModelPart(dec.decode(bytes)));
 
-  // The root is the part the package relationship points at; in practice it is
-  // always 3D/3dmodel.model, and falling back to "whichever part has a build"
-  // covers anything unusual.
   const rootPath = [...byPath.keys()].find((k) => /3dmodel\.model$/i.test(k)) || [...byPath.keys()][0];
   const rootXml = dec.decode(parts.get(rootPath.slice(1)) ?? [...parts.values()][0]);
 
-  const out = [];
-  const seen = new Set();                          // components can cycle in a broken file
-  const emit = (path, id, transform, depth) => {
-    const key = `${path}#${id}`;
-    if (depth > 12 || seen.has(key + transform)) return;
-    seen.add(key + transform);
+  // Collect the triangles of ONE mesh object, with every transform on the way
+  // down applied. Components can nest and, in a broken file, cycle.
+  const collect = (path, id, transform, depth, into, seen) => {
+    const key = `${path}#${id}#${transform}`;
+    if (depth > 12 || seen.has(key)) return;
+    seen.add(key);
     const obj = byPath.get(path)?.get(id);
     if (!obj) return;
     if (obj.components) {
       for (const c of obj.components) {
-        // A component's transform composes with its parent's. Nesting deeper
-        // than one level is rare, so compose by applying in turn rather than
-        // multiplying matrices.
-        emit(c.path ? norm(c.path) : path, c.objectid,
-          transform && c.transform ? `${c.transform}|${transform}` : (c.transform || transform), depth + 1);
+        collect(c.path ? norm(c.path) : path, c.objectid,
+          transform && c.transform ? `${c.transform}|${transform}` : (c.transform || transform),
+          depth + 1, into, seen);
       }
       return;
     }
@@ -261,9 +263,18 @@ export async function parse3MF(buf) {
         let v = obj.verts[i];
         if (!v) continue;
         for (const step of String(transform || "").split("|").filter(Boolean)) v = applyTransform(v, step);
-        out.push(v[0], v[1], v[2]);
+        into.push(v[0], v[1], v[2]);
       }
     }
+  };
+
+  // One entry per PART. An assembly's components are the parts — that is the
+  // granularity a slicer shows and the one worth editing.
+  const out = [];
+  const push = (path, id, transform, label) => {
+    const acc = [];
+    collect(path, id, transform, 0, acc, new Set());
+    if (acc.length) out.push({ name: label, positions: new Float32Array(acc) });
   };
 
   const items = [...rootXml.matchAll(/<item\b([^>]*)>/g)]
@@ -274,12 +285,36 @@ export async function parse3MF(buf) {
     .filter((i) => i.objectid);
 
   if (items.length) {
-    for (const it of items) emit(rootPath, it.objectid, it.transform, 0);
+    for (const it of items) {
+      const obj = byPath.get(rootPath)?.get(it.objectid);
+      if (obj?.components) {
+        obj.components.forEach((c, i) => {
+          push(c.path ? norm(c.path) : rootPath, c.objectid,
+            it.transform && c.transform ? `${c.transform}|${it.transform}` : (c.transform || it.transform),
+            `part ${out.length + 1}`);
+        });
+      } else {
+        push(rootPath, it.objectid, it.transform, `part ${out.length + 1}`);
+      }
+    }
   } else {
-    // No build section: take every mesh we found, wherever it lives.
-    for (const [path, objs] of byPath) for (const [id, o] of objs) if (o.verts) emit(path, id, null, 0);
+    // No build section: every mesh we found, wherever it lives.
+    for (const [path, objs] of byPath) {
+      for (const [id, o] of objs) if (o.verts) push(path, id, null, `part ${out.length + 1}`);
+    }
   }
-  return new Float32Array(out);
+  return out;
+}
+
+// The same file as ONE triangle soup — what a thumbnail wants.
+export async function parse3MF(buf) {
+  const objects = await parse3MFObjects(buf);
+  let n = 0;
+  for (const o of objects) n += o.positions.length;
+  const all = new Float32Array(n);
+  let at = 0;
+  for (const o of objects) { all.set(o.positions, at); at += o.positions.length; }
+  return all;
 }
 
 // Route by extension. Returns Float32Array positions (triangle soup).

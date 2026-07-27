@@ -6339,43 +6339,108 @@ ${joined}`)(...vs);
         } else if (isAsciiStl) {
           contents = new TextDecoder().decode(buf);          // ascii STL as text
         } else if (ext === "3mf") {
-          // Read it OURSELVES rather than handing it to the kernel.
+          // Read it OURSELVES, and keep the parts APART.
           //
-          // The kernel's 3MF reader does not follow the production extension:
-          // it reads 3D/3dmodel.model, which on every file Bambu or Orca writes
-          // contains only <components> pointing into 3D/Objects/*.model. A real
-          // 4-colour Benchy therefore imported as nothing at all. Our parser
-          // does follow those references, so convert here and hand the kernel
-          // plain triangles it cannot misread.
+          // Two separate reasons. The kernel's 3MF reader does not follow the
+          // production extension, so a file whose geometry lives in
+          // 3D/Objects/*.model imported as nothing at all. And flattening a
+          // multi-part project into one mesh asks the kernel to manifoldize
+          // several interpenetrating closed solids at once — a 33k-triangle
+          // Benchy hung the tab outright. Eight solids of a few thousand
+          // triangles each are eight easy problems instead of one impossible
+          // one, and the user gets parts they can move and edit separately,
+          // which is what the file described in the first place.
           setStatus("busy", `Reading ${file.name}…`);
           await new Promise((r) => setTimeout(r, 30));
           const inv = await getInventory();
-          const pos = await inv.parseModelFile(file.name, buf);
-          if (!pos.length) throw new Error("no geometry found in that 3MF");
+          const objects = await inv.parse3MFObjects(buf);
+          if (!objects.length) throw new Error("no geometry found in that 3MF");
 
-          // The triangle guards above never ran: stlTriangleCount() gives up on
-          // anything that is not an STL, so a 3MF walked straight past both of
-          // them. A 33k-triangle Benchy then locked the tab indefinitely — no
-          // warning, no refusal, nothing to read. We know the real count here,
-          // so apply the same limits rather than letting it through blind.
-          const n3mf = pos.length / 9;
-          if (n3mf > MESH_REFUSE) {
-            setStatus("err", `${file.name} has about ${(n3mf / 1000).toFixed(0)}k triangles — too dense to build in the browser (it would lock the tab). Decimate it to under ${MESH_REFUSE / 1000}k and re-import.`);
-            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(n3mf / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use “Simplify model”, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
+          // The size guards above never ran: stlTriangleCount() gives up on
+          // anything that is not an STL, so a 3MF walked past both of them and
+          // the tab just froze. Judge the WHOLE file, since that is what the
+          // kernel has to get through.
+          const total = objects.reduce((n, o) => n + o.positions.length / 9, 0);
+
+          // Warn with a real ESTIMATE, not a threshold nobody can interpret.
+          // Measured on this kernel, an 8-part 33k-triangle assembly takes 50s
+          // — about 1.5ms a triangle, and the whole time the main thread is
+          // blocked, so the tab looks hung. MESH_HEAVY is 80k, tuned for a
+          // single STL solid, so it never fired here and the user got a frozen
+          // window with nothing to read.
+          const guessSec = Math.round(total * 0.0015);
+          if (guessSec > 150) {
+            setStatus("err", `${file.name} is ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — roughly ${Math.round(guessSec / 60)} minutes to build, with the tab frozen throughout. Simplify it and re-import.`);
+            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(total / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use “Simplify model”, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
             return;
           }
-          if (n3mf > MESH_HEAVY) {
-            setStatus("busy", `${file.name}: ~${(n3mf / 1000).toFixed(0)}k triangles — this will take a while…`);
+          if (guessSec > 6) {
+            setStatus("busy", `${file.name}: ${objects.length} parts, ~${(total / 1000).toFixed(0)}k triangles — about ${guessSec}s. The window will be unresponsive until it finishes.`);
+            hint.innerHTML = `Building <b>${objects.length}</b> parts (~${(total / 1000).toFixed(0)}k triangles). This blocks the tab for roughly <b>${guessSec} seconds</b> — it hasn't crashed.`;
+            await new Promise((r) => setTimeout(r, 60));   // let that paint before we block
+          }
+          if (total > MESH_REFUSE) {
+            setStatus("err", `${file.name} has about ${(total / 1000).toFixed(0)}k triangles — too dense to build in the browser (it would lock the tab). Decimate it to under ${MESH_REFUSE / 1000}k and re-import.`);
+            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(total / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use \u201cSimplify model\u201d, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
+            return;
+          }
+          if (total > MESH_HEAVY) {
+            setStatus("busy", `${file.name}: ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — this will take a while…`);
             await new Promise((r) => setTimeout(r, 30));
           }
-          const out = [`solid ${file.name}`];
-          for (let i = 0; i < pos.length; i += 9) {
-            out.push("facet normal 0 0 0", "outer loop");
-            for (let k = 0; k < 9; k += 3) out.push(`vertex ${pos[i + k]} ${pos[i + k + 1]} ${pos[i + k + 2]}`);
-            out.push("endloop", "endfacet");
+
+          // ONE shared offset for every part. Recentring each on its own would
+          // stack them all at the origin and destroy the assembly.
+          let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity;
+          for (const o of objects) {
+            const p = o.positions;
+            for (let i = 0; i < p.length; i += 3) {
+              if (p[i] < mnx) mnx = p[i]; if (p[i] > mxx) mxx = p[i];
+              if (p[i + 1] < mny) mny = p[i + 1]; if (p[i + 1] > mxy) mxy = p[i + 1];
+              if (p[i + 2] < mnz) mnz = p[i + 2];
+            }
           }
-          out.push(`endsolid ${file.name}`);
-          contents = out.join("\n");
+          const off = [-(mnx + mxx) / 2, -(mny + mxy) / 2, -mnz];
+
+          const stem = file.name.replace(/\.3mf$/i, "");
+          const names = [];
+          for (const [i, o] of objects.entries()) {
+            const p = o.positions;
+            const lines = [`solid ${stem}-${i + 1}`];
+            for (let t = 0; t < p.length; t += 9) {
+              lines.push("facet normal 0 0 0", "outer loop");
+              for (let k = 0; k < 9; k += 3) {
+                lines.push(`vertex ${p[t + k] + off[0]} ${p[t + k + 1] + off[1]} ${p[t + k + 2] + off[2]}`);
+              }
+              lines.push("endloop", "endfacet");
+            }
+            lines.push(`endsolid ${stem}-${i + 1}`);
+            const partName = objects.length === 1 ? file.name : `${stem} (${i + 1}).stl`;
+            dsl.registerImport(partName, lines.join("\n"));
+            names.push(partName);
+          }
+
+          const hadCode3mf = !!code.value.trim();
+          if (hadCode3mf) pushHistory(code.value);
+          // group() keeps them as separate solids you can move and edit one at
+          // a time; union() would weld them back into the single mesh that
+          // could not be built.
+          code.value = names.length === 1
+            ? `importedMesh(${JSON.stringify(names[0])})`
+            : `return group(\n${names.map((n) => `  importedMesh(${JSON.stringify(n)}),`).join("\n")}\n);`;
+          toggleCard(panel, openBtn, true);
+          code.focus();
+          pushHistory();
+          setStatus("busy", `Building ${objects.length} part${objects.length === 1 ? "" : "s"}…`);
+          const mb3 = file.size / 1048576;
+          hint.innerHTML = `Imported <b>${esc(file.name)}</b> as <b>${objects.length}</b> separate `
+            + `part${objects.length === 1 ? "" : "s"} (${total.toLocaleString()} triangles). `
+            + `They are real solids: click one to select it, drag it, or wrap any of them in `
+            + `<code>difference(…)</code> to cut it. `
+            + (hadCode3mf ? "Your previous code is one \u25c0 tap away. " : "")
+            + "Files live for this session only; re-import after a reload.";
+          await rebuild();
+          return;
         } else {
           // binary STL arrives as a base64 data URL, which the kernel decodes —
           // then gets normalised to ASCII STL below
