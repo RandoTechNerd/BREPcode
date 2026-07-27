@@ -13,6 +13,10 @@ const { app, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 
+// Tell main.cjs not to boot itself: this test drives createWindow() directly
+// and registers the IPC handlers below. Must be set BEFORE the require.
+process.env.BREPCODE_EMBED = "1";
+
 // Required up here, not inside whenReady: loading it registers the app:// scheme
 // as privileged, and Electron only accepts that before the app is ready. It only
 // boots itself when it is the entry point, so this just hands over its exports.

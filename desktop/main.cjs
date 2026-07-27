@@ -98,9 +98,16 @@ function serveBundle() {
   });
 }
 
-// Only boot when this file is the entry point. test/desktop-smoke.cjs requires
-// it for createWindow() and does its own setup; without this guard that would
-// pop a second, visible window.
+// Boot only when we ARE the app — not when test/desktop-smoke.cjs has required
+// this file for createWindow() and is doing its own setup.
+//
+// This used to say `require.main === module`, and it silently stopped being
+// true: package.json is "type": "module", so Electron 43 loads even a .cjs
+// entry through the ESM loader and require.main is undefined. Every boot step
+// hung off that condition, so the app started, created no window, registered no
+// IPC, printed nothing, and sat there as three live processes with no error to
+// show for it. An explicit flag, set by the one caller that needs it, cannot
+// rot the same way.
 // A file the OS handed us — double-clicked in Explorer, "Open with", or
 // dropped on the exe. Windows passes it as a bare argv entry, so pick out the
 // one that is an existing .bcode path rather than trusting position: argv also
@@ -130,9 +137,11 @@ function sendFileToWindow(win, file) {
 
 // Without this, every double-click starts a whole new app. With it, the second
 // launch hands its file to the window that is already open and exits.
-if (require.main === module && !app.requestSingleInstanceLock()) app.quit();
+const EMBEDDED = process.env.BREPCODE_EMBED === "1";
 
-if (require.main === module) app.on("second-instance", (_e, argv) => {
+if (!EMBEDDED && !app.requestSingleInstanceLock()) app.quit();
+
+if (!EMBEDDED) app.on("second-instance", (_e, argv) => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return;
   if (win.isMinimized()) win.restore();
@@ -140,7 +149,7 @@ if (require.main === module) app.on("second-instance", (_e, argv) => {
   sendFileToWindow(win, fileFromArgv(argv));
 });
 
-if (require.main === module) app.whenReady().then(() => {
+if (!EMBEDDED) app.whenReady().then(() => {
   mail.register();          // SMTP over IPC; a browser cannot do this at all
   recovery.register();      // crash snapshots into the OS temp folder
   slicer.register();        // "open this in my slicer" — impossible from a web page
@@ -184,7 +193,7 @@ app.on("open-file", (e, file) => {
 });
 
 app.on("window-all-closed", () => {
-  if (require.main === module && process.platform !== "darwin") app.quit();
+  if (!EMBEDDED && process.platform !== "darwin") app.quit();
 });
 
 // Exported so test/desktop-smoke.cjs can open the REAL window — same sandbox
