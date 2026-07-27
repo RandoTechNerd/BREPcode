@@ -2228,8 +2228,8 @@
     // Always re-centre on the model. Keep whatever viewing angle and zoom the user
     // has set up, and only re-fit the distance on the first build or when the model's
     // size changes enough that the old distance would frame it badly.
-    function frameModel() {
-      const box = new THREE.Box3().setFromObject(modelGroup);
+    function frameModel(target = modelGroup) {
+      const box = new THREE.Box3().setFromObject(target);
       if (box.isEmpty()) return;
 
       const center = box.getCenter(new THREE.Vector3());
@@ -3978,6 +3978,10 @@ ${joined}`)(...vs);
 
     let token = 0;
     async function rebuild() {
+      // A preview is a placeholder for geometry that was never built. The
+      // moment anything real is built it has to go, or the two sit on screen
+      // together and the older one wins the argument visually.
+      if (previewGroup.children.length) clearMeshPreview();
       const typed = code.value.trim();
       if (!typed) {
         // A cleared editor must not leave a ghost model with a stale click-map.
@@ -6272,6 +6276,47 @@ ${joined}`)(...vs);
       rebuild();
     }
 
+    // A raw look at imported triangles, with no kernel involved.
+    //
+    // Drawing is cheap and building is not, so a heavy import shows this first
+    // and only pays for solids if the user asks. Cleared the moment anything
+    // real is built, so the two can never be on screen at once.
+    const previewGroup = new THREE.Group();
+    scene.add(previewGroup);
+
+    function clearMeshPreview() {
+      modelGroup.visible = true;          // the preview hid it; it comes back
+      for (const c of [...previewGroup.children]) {
+        c.geometry?.dispose?.();
+        c.material?.dispose?.();
+        previewGroup.remove(c);
+      }
+    }
+
+    function showMeshPreview(objects, colours, offset) {
+      clearMeshPreview();
+      modelGroup.visible = false;
+      objects.forEach((o, i) => {
+        const g = new THREE.BufferGeometry();
+        const p = new Float32Array(o.positions.length);
+        for (let k = 0; k < p.length; k += 3) {
+          p[k] = o.positions[k] + offset[0];
+          p[k + 1] = o.positions[k + 1] + offset[1];
+          p[k + 2] = o.positions[k + 2] + offset[2];
+        }
+        g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+        g.computeVertexNormals();
+        g.computeBoundingSphere();
+        const m = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(colours[i] || "#9fb4d6"),
+          roughness: 0.62, metalness: 0.03, flatShading: false,
+        });
+        previewGroup.add(new THREE.Mesh(g, m));
+      });
+      previewGroup.updateMatrixWorld(true);
+      frameModel(previewGroup);
+    }
+
     async function importMeshFile(file) {
       const mb = file.size / 1048576;
       // A mesh this size will freeze or crash a browser tab long before the
@@ -6355,39 +6400,17 @@ ${joined}`)(...vs);
           const inv = await getInventory();
           const objects = await inv.parse3MFObjects(buf);
           if (!objects.length) throw new Error("no geometry found in that 3MF");
+          // A slicer project records what the model should LOOK like, in two
+          // places that have to be read together: which extruder each part
+          // prints on, and what filament is loaded in each extruder. Without
+          // them a 4-colour Benchy arrives as eight identical grey slices.
+          const partColours = await inv.parse3MFPartColours(buf).catch(() => []);
 
           // The size guards above never ran: stlTriangleCount() gives up on
           // anything that is not an STL, so a 3MF walked past both of them and
           // the tab just froze. Judge the WHOLE file, since that is what the
           // kernel has to get through.
           const total = objects.reduce((n, o) => n + o.positions.length / 9, 0);
-
-          // Warn with a real ESTIMATE, not a threshold nobody can interpret.
-          // Measured on this kernel, an 8-part 33k-triangle assembly takes 50s
-          // — about 1.5ms a triangle, and the whole time the main thread is
-          // blocked, so the tab looks hung. MESH_HEAVY is 80k, tuned for a
-          // single STL solid, so it never fired here and the user got a frozen
-          // window with nothing to read.
-          const guessSec = Math.round(total * 0.0015);
-          if (guessSec > 150) {
-            setStatus("err", `${file.name} is ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — roughly ${Math.round(guessSec / 60)} minutes to build, with the tab frozen throughout. Simplify it and re-import.`);
-            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(total / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use “Simplify model”, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
-            return;
-          }
-          if (guessSec > 6) {
-            setStatus("busy", `${file.name}: ${objects.length} parts, ~${(total / 1000).toFixed(0)}k triangles — about ${guessSec}s. The window will be unresponsive until it finishes.`);
-            hint.innerHTML = `Building <b>${objects.length}</b> parts (~${(total / 1000).toFixed(0)}k triangles). This blocks the tab for roughly <b>${guessSec} seconds</b> — it hasn't crashed.`;
-            await new Promise((r) => setTimeout(r, 60));   // let that paint before we block
-          }
-          if (total > MESH_REFUSE) {
-            setStatus("err", `${file.name} has about ${(total / 1000).toFixed(0)}k triangles — too dense to build in the browser (it would lock the tab). Decimate it to under ${MESH_REFUSE / 1000}k and re-import.`);
-            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(total / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use \u201cSimplify model\u201d, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
-            return;
-          }
-          if (total > MESH_HEAVY) {
-            setStatus("busy", `${file.name}: ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — this will take a while…`);
-            await new Promise((r) => setTimeout(r, 30));
-          }
 
           // ONE shared offset for every part. Recentring each on its own would
           // stack them all at the origin and destroy the assembly.
@@ -6401,6 +6424,23 @@ ${joined}`)(...vs);
             }
           }
           const off = [-(mnx + mxx) / 2, -(mny + mxy) / 2, -mnz];
+
+          // Warn with a real ESTIMATE, not a threshold nobody can interpret.
+          // Measured on this kernel, an 8-part 33k-triangle assembly takes 50s
+          // — about 1.5ms a triangle, and the whole time the main thread is
+          // blocked, so the tab looks hung. MESH_HEAVY is 80k, tuned for a
+          // single STL solid, so it never fired here and the user got a frozen
+          // window with nothing to read.
+          const guessSec = Math.round(total * 0.0015);
+          if (guessSec > 150) {
+            setStatus("err", `${file.name} is ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — roughly ${Math.round(guessSec / 60)} minutes to build, with the tab frozen throughout. Simplify it and re-import.`);
+            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(total / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use “Simplify model”, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
+            return;
+          }
+          if (total > MESH_HEAVY) {
+            setStatus("busy", `${file.name}: ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — this will take a while…`);
+            await new Promise((r) => setTimeout(r, 30));
+          }
 
           const stem = file.name.replace(/\.3mf$/i, "");
           const names = [];
@@ -6425,12 +6465,46 @@ ${joined}`)(...vs);
           // group() keeps them as separate solids you can move and edit one at
           // a time; union() would weld them back into the single mesh that
           // could not be built.
+          // colorize() rather than the colour panel: it is visible in the
+          // code, editable by hand, survives a .bcode save, and exports back
+          // out to 3MF as real per-part colour.
+          const call = (n, i) => {
+            const c = partColours[i];
+            const mesh = `importedMesh(${JSON.stringify(n)})`;
+            return c ? `colorize(${JSON.stringify(c)}, ${mesh})` : mesh;
+          };
           code.value = names.length === 1
-            ? `importedMesh(${JSON.stringify(names[0])})`
-            : `return group(\n${names.map((n) => `  importedMesh(${JSON.stringify(n)}),`).join("\n")}\n);`;
+            ? (partColours[0] ? `return ${call(names[0], 0)};` : call(names[0], 0))
+            : `return group(\n${names.map((n, i) => `  ${call(n, i)},`).join("\n")}\n);`;
           toggleCard(panel, openBtn, true);
           code.focus();
           pushHistory();
+          // Anything slow comes in as a PREVIEW first.
+          //
+          // Building is what costs the time — the kernel has to turn triangles
+          // into real solids, and it blocks the main thread while it does. But
+          // SHOWING triangles is free: the GPU draws 33k of them without
+          // noticing. So draw them, say plainly that nothing is built yet, and
+          // let the user decide whether the wait is worth it. A model you can
+          // look at in half a second beats a frozen window for fifty.
+          if (guessSec > 6) {
+            showMeshPreview(objects, partColours, off);
+            setStatus("ok", `${file.name}: ${objects.length} parts, ${total.toLocaleString()} triangles — PREVIEW only.`);
+            hint.innerHTML = `<b>Preview.</b> Nothing is built yet, so you cannot edit, cut or export this — `
+              + `but it is the real geometry, at the real size. Building all ${objects.length} parts takes about `
+              + `<b>${guessSec}s</b> and freezes the window while it runs. `
+              + `<button id="build-for-real" style="font:inherit;padding:2px 9px;margin-left:4px;`
+              + `border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">`
+              + `Build it (~${guessSec}s)</button>`;
+            $("build-for-real").addEventListener("click", async () => {
+              clearMeshPreview();
+              setStatus("busy", `Building ${objects.length} parts — the window will be unresponsive for about ${guessSec}s…`);
+              hint.textContent = "Building… it hasn't crashed.";
+              await new Promise((r) => setTimeout(r, 60));   // let that paint before we block
+              await rebuild();
+            });
+            return;
+          }
           setStatus("busy", `Building ${objects.length} part${objects.length === 1 ? "" : "s"}…`);
           const mb3 = file.size / 1048576;
           hint.innerHTML = `Imported <b>${esc(file.name)}</b> as <b>${objects.length}</b> separate `

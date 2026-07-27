@@ -306,6 +306,34 @@ export async function parse3MFObjects(buf) {
   return out;
 }
 
+// What colour is each part?
+//
+// A slicer project says this in two places, and needs both: which EXTRUDER a
+// part prints on (Metadata/model_settings.config) and what colour is loaded in
+// each extruder (filament_colour in Metadata/project_settings.config). Neither
+// is standard 3MF — they are Bambu/Orca's own — but between them they are the
+// only record of what the model is supposed to look like, and without them a
+// 4-colour Benchy imports as eight identical grey slices.
+//
+// Returns hex strings positioned to match parse3MFObjects(), with null where a
+// part has no colour to report.
+export async function parse3MFPartColours(buf) {
+  let cfg = "", proj = "";
+  try { cfg = new TextDecoder().decode(await unzipEntry(buf, /model_settings\.config$/i)); } catch { return []; }
+  try { proj = new TextDecoder().decode(await unzipEntry(buf, /project_settings\.config$/i)); } catch { /* colours unknown */ }
+
+  const filaments = (/"filament_colour"\s*:\s*\[([^\]]*)\]/.exec(proj)?.[1] || "")
+    .split(",").map((t) => t.trim().replace(/^"|"$/g, "")).filter((t) => /^#[0-9a-f]{6}$/i.test(t));
+
+  // Parts appear in the same order as the components they describe.
+  const out = [];
+  for (const m of cfg.matchAll(/<part\b[\s\S]*?<\/part>/g)) {
+    const ex = +(/key="extruder"\s+value="(\d+)"/.exec(m[0])?.[1] || 0);
+    out.push(ex > 0 && filaments[ex - 1] ? filaments[ex - 1].toUpperCase() : null);
+  }
+  return out;
+}
+
 // The same file as ONE triangle soup — what a thumbnail wants.
 export async function parse3MF(buf) {
   const objects = await parse3MFObjects(buf);
