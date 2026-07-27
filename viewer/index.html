@@ -6338,9 +6338,47 @@ ${joined}`)(...vs);
           contents = objToStl(new TextDecoder().decode(buf), file.name);
         } else if (isAsciiStl) {
           contents = new TextDecoder().decode(buf);          // ascii STL as text
+        } else if (ext === "3mf") {
+          // Read it OURSELVES rather than handing it to the kernel.
+          //
+          // The kernel's 3MF reader does not follow the production extension:
+          // it reads 3D/3dmodel.model, which on every file Bambu or Orca writes
+          // contains only <components> pointing into 3D/Objects/*.model. A real
+          // 4-colour Benchy therefore imported as nothing at all. Our parser
+          // does follow those references, so convert here and hand the kernel
+          // plain triangles it cannot misread.
+          setStatus("busy", `Reading ${file.name}…`);
+          await new Promise((r) => setTimeout(r, 30));
+          const inv = await getInventory();
+          const pos = await inv.parseModelFile(file.name, buf);
+          if (!pos.length) throw new Error("no geometry found in that 3MF");
+
+          // The triangle guards above never ran: stlTriangleCount() gives up on
+          // anything that is not an STL, so a 3MF walked straight past both of
+          // them. A 33k-triangle Benchy then locked the tab indefinitely — no
+          // warning, no refusal, nothing to read. We know the real count here,
+          // so apply the same limits rather than letting it through blind.
+          const n3mf = pos.length / 9;
+          if (n3mf > MESH_REFUSE) {
+            setStatus("err", `${file.name} has about ${(n3mf / 1000).toFixed(0)}k triangles — too dense to build in the browser (it would lock the tab). Decimate it to under ${MESH_REFUSE / 1000}k and re-import.`);
+            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(n3mf / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use “Simplify model”, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
+            return;
+          }
+          if (n3mf > MESH_HEAVY) {
+            setStatus("busy", `${file.name}: ~${(n3mf / 1000).toFixed(0)}k triangles — this will take a while…`);
+            await new Promise((r) => setTimeout(r, 30));
+          }
+          const out = [`solid ${file.name}`];
+          for (let i = 0; i < pos.length; i += 9) {
+            out.push("facet normal 0 0 0", "outer loop");
+            for (let k = 0; k < 9; k += 3) out.push(`vertex ${pos[i + k]} ${pos[i + k + 1]} ${pos[i + k + 2]}`);
+            out.push("endloop", "endfacet");
+          }
+          out.push(`endsolid ${file.name}`);
+          contents = out.join("\n");
         } else {
-          // binary STL / 3MF arrive as base64 data URLs, which the kernel
-          // decodes — then get normalised to ASCII STL below
+          // binary STL arrives as a base64 data URL, which the kernel decodes —
+          // then gets normalised to ASCII STL below
           const bytes = new Uint8Array(buf);
           let bin = "";
           for (let i = 0; i < bytes.length; i += 32768) {
