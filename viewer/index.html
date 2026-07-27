@@ -949,7 +949,7 @@
 
   <div id="export-menu">
     <div class="exp-group">Project</div>
-    <button data-fmt="brepcode">BREPcode<small>the editable model — save your work</small></button>
+    <button data-fmt="bcode">BREPcode<small>the editable model — save your work</small></button>
     <div class="exp-group">Mesh</div>
     <button data-fmt="stl">STL<small>3D printing</small></button>
     <button data-fmt="obj">OBJ<small>DCC / game tools</small></button>
@@ -1039,7 +1039,7 @@
               <path d="M8 10.2V2.2M4.8 5.4L8 2.2l3.2 3.2M2.8 13.2h10.4" />
             </svg>
           </button>
-          <input type="file" id="import-file" accept=".brepcode,.stl,.3mf,.obj,.svg" style="display: none" />
+          <input type="file" id="import-file" accept=".bcode,.stl,.3mf,.obj,.svg" style="display: none" />
           <button id="export-btn" class="hist-btn ovf" title="Download STL">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
@@ -1248,6 +1248,15 @@
             right next to it so you can attach them with one drag. Nothing is uploaded anywhere.
             Set the address once here, then just tell the assistant e.g.
             “<i>send the model with an explainer to Sam</i>” or “<i>email the engineering drawing</i>”.
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--muted3)">
+              <b>Lost work?</b> BREPcode keeps a rolling snapshot of your model as you type,
+              so a closed tab or a crash doesn't take it with it.
+              <div class="row" style="gap:6px; margin-top:6px; flex-wrap:wrap">
+                <button id="recover-btn" class="hist-btn">Recovered files</button>
+                <button id="recover-folder-btn" class="hist-btn" style="display:none">Open the folder</button>
+              </div>
+              <div id="recover-list" style="margin-top:6px"></div>
+            </div>
           </div>
           <div class="row" style="gap:6px; flex-wrap:wrap">
             <button id="email-model-btn" class="hist-btn" style="font-size:12px">✉ Model + explainer</button>
@@ -4549,12 +4558,36 @@
       splitGroup.updateMatrixWorld(true);
     }
 
+    // The box that DESCRIBES a feature — what its handles and its reported
+    // dimensions should be measured against.
+    //
+    // A cutter's faces in modelGroup are only the hole it made: the sliver of it
+    // that intersects the solid. Measuring those describes the wrong shape.
+    // A cylinder({ h: 35.3 }) biting a 12mm plate measured 12 tall, so its
+    // handles sat down at the plate instead of at the cylinder's real ends, and
+    // dragging one computed a new height against a 12mm reference and wrote
+    // nonsense back into the code.
+    //
+    // The negative ghost IS the whole cutter, so when it is present it wins.
+    // With the overlay off there is nothing to measure but the hole, and
+    // behaviour falls back to what it always was.
+    function featureBox(fid) {
+      const bb = new THREE.Box3();
+      for (const m of negGroup.children) {
+        if (m.isMesh && m.userData.featureId === fid) bb.expandByObject(m);
+      }
+      if (!bb.isEmpty()) return bb;
+      for (const m of modelGroup.children) {
+        if (m.userData.featureId === fid) bb.expandByObject(m);
+      }
+      return bb;
+    }
+
     function spawnHandles(fid) {
       clearHandles();
       const site = (mapText === code.value && featureMap) ? featureMap[fid] : null;
       if (!site) return;
-      const bb = new THREE.Box3();
-      for (const m of modelGroup.children) if (m.userData.featureId === fid) bb.expandByObject(m);
+      const bb = featureBox(fid);
       if (bb.isEmpty()) return;
       selected = { fid };
       highlightMeshesOf(fid);
@@ -4776,7 +4809,7 @@
         const hSite = (mapText === code.value && featureMap) ? featureMap[H.fid] : null;
         if (hSite) {
           const fbb = new THREE.Box3();
-          for (const m of modelGroup.children) if (m.userData.featureId === H.fid) fbb.expandByObject(m);
+          fbb.copy(featureBox(H.fid));
           if (H.kind === "face") {
             const target = findResizeTarget(code.value, hSite, H.axis);
             if (target) {
@@ -4894,7 +4927,7 @@
           if (target) {
             const sign = [n.x, n.y, n.z][axis] >= 0 ? 1 : -1;
             const fbb = new THREE.Box3();
-            for (const m of modelGroup.children) if (m.userData.featureId === fid) fbb.expandByObject(m);
+            fbb.copy(featureBox(fid));
             drag = {
               mode: "resize", fid, site, target, axis, sign,
               radial: (site.kind !== "cube" && site.kind !== "cuboid" && axis !== 2),
@@ -5353,10 +5386,7 @@
 
       // dimensions of everything that came from the same primitive
       const fid = hit.object.userData.featureId;
-      const fbb = new THREE.Box3();
-      for (const m of [...modelGroup.children, ...negGroup.children]) {
-        if (m.isMesh && m.userData.featureId === fid) fbb.expandByObject(m);
-      }
+      const fbb = featureBox(fid);
       const fdims = fbb.isEmpty() ? "" :
         ` (${["x", "y", "z"].map((a) => (fbb.max[a] - fbb.min[a]).toFixed(1)).join(" × ")} mm)`;
 
@@ -5650,7 +5680,7 @@
       if (!src) { setStatus("err", "Nothing to save — the editor is empty."); return; }
       const exp = await getExporters();
       const base = safeModelName();
-      const text = exp.brepcodeFile(src, {
+      const text = exp.bcodeFile(src, {
         name: base,
         scene: {
           material: mat,
@@ -5661,10 +5691,10 @@
         },
         history: hist.stack,
       });
-      const size = download(`${base}.brepcode`, text, "text/plain");
+      const size = download(`${base}.bcode`, text, "text/plain");
       const built = lastSolids.length;
       setStatus("ok",
-        `Saved ${base}.brepcode — ${(size / 1024).toFixed(1)} KB`
+        `Saved ${base}.bcode — ${(size / 1024).toFixed(1)} KB`
         + (built ? "." : " (the model isn't building, but your work is safe)."));
       fixnote.innerHTML = `<span style="color:var(--muted3)">That file <b>is</b> the model — plain text, opens in any editor, and drops back onto BREPcode to restore the code, the view and your undo history. Unlike an STL it stays parametric, so every dimension is still editable.</span>`;
     }
@@ -5674,7 +5704,7 @@
       // does NOT build. A half-finished part you cannot get back is precisely
       // what you most need to keep, and refusing to save it would be the worst
       // possible moment to be strict.
-      if (fmt === "brepcode") return exportProject();
+      if (fmt === "bcode") return exportProject();
       if (!lastSolids.length) { setStatus("err", "Nothing to export — build a model first."); return; }
       const base = safeModelName();
       try {
@@ -5863,12 +5893,63 @@
       return { text, offset: off.map(r1) };
     }
 
-    // Open a .brepcode project: the source is the model, the rest is optional.
+    // ------------------------------------------------- drag a file onto it
+    //
+    // Every route in — the Import button, a double-clicked .bcode in Explorer,
+    // a file dropped on the window — lands on the SAME two handlers, so there
+    // is one behaviour to get right rather than three that drift apart.
+    //
+    // The default browser behaviour for a dropped file is to NAVIGATE to it,
+    // which throws away everything the user was working on. So dragover has to
+    // be prevented across the whole window, not just over a drop zone.
+    {
+      const OPENABLE = /\.(bcode|stl|3mf|obj|svg)$/i;
+      let depth = 0;                    // dragenter/leave fire per child element
+      const overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed; inset:0; z-index:9999; display:none;"
+        + "background:rgba(11,15,22,.72); backdrop-filter:blur(2px);"
+        + "align-items:center; justify-content:center; font:600 20px/1.5 system-ui;"
+        + "color:#eaf3ff; text-align:center; pointer-events:none";
+      overlay.innerHTML = `<div>Drop to open<div style="font:400 14px/1.6 system-ui; color:#bcd8f5; margin-top:6px">`
+        + `.bcode restores the editable model · .stl / .3mf / .obj / .svg import as a mesh</div></div>`;
+      document.body.appendChild(overlay);
+      const show = (on) => { overlay.style.display = on ? "flex" : "none"; };
+
+      window.addEventListener("dragover", (e) => { e.preventDefault(); }, false);
+      window.addEventListener("dragenter", (e) => {
+        if (![...(e.dataTransfer?.types || [])].includes("Files")) return;
+        if (++depth === 1) show(true);
+      });
+      window.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; show(false); } });
+      window.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        depth = 0; show(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (!file) return;
+        if (!OPENABLE.test(file.name)) {
+          setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .stl, .3mf, .obj or .svg.`);
+          return;
+        }
+        if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
+        await importMeshFile(file);
+      });
+    }
+
+    // The desktop app hands us a file the OS opened: double-clicked in
+    // Explorer, "Open with", or dropped on the exe itself. It arrives as text
+    // rather than a path, because the renderer has no filesystem access.
+    window.brepcodeDesktop?.onOpenFile?.(async ({ name, text }) => {
+      if (!text) return;
+      const file = new File([text], name || "model.bcode", { type: "text/plain" });
+      await openProject(file, new TextEncoder().encode(text).buffer);
+    });
+
+    // Open a .bcode project: the source is the model, the rest is optional.
     // Anything missing or corrupt is skipped rather than fatal — a file someone
     // hand-edited down to bare code must still open.
     async function openProject(file, buf) {
       const exp = await getExporters();
-      const { source, scene, history } = exp.parseBrepcodeFile(new TextDecoder().decode(buf));
+      const { source, scene, history } = exp.parseBcodeFile(new TextDecoder().decode(buf));
       if (!source) {
         setStatus("err", `${file.name} has no BREPcode in it.`);
         return;
@@ -5900,7 +5981,7 @@
         restored.push("negatives overlay");
       }
       // The name drives export filenames, so a reopened project exports as itself.
-      const stem = file.name.replace(/\.brepcode$/i, "");
+      const stem = file.name.replace(/\.bcode$/i, "");
       if (stem) { modelName = stem; localStorage.setItem("brepcode-modelname", modelName); }
 
       toggleCard(panel, openBtn, true);
@@ -5926,7 +6007,7 @@
 
         // A project file is not a mesh — it IS the model. Restore it whole and
         // stop; running it through the mesh path would import nothing.
-        if (ext === "brepcode") return openProject(file, buf);
+        if (ext === "bcode") return openProject(file, buf);
         // sniff only the head — decoding a 100 MB file twice just to check
         // "is it ascii?" stalls the page
         const head = new TextDecoder().decode(buf.slice(0, 4096));
@@ -6929,6 +7010,98 @@
     // an SMTP connection — there are no raw sockets. The desktop build has a
     // Node process behind it, so with the user's own mail account it can attach
     // the file and actually send. Everything below no-ops on the web.
+    // ---------------------------------------------------- crash recovery
+    //
+    // Everything else about the app was persisted — theme, material, grid,
+    // model name, AI settings — but the CODE never was, so a crash or a stray
+    // Ctrl+W took the work with no trace. The .bcode export answers "I want to
+    // keep this"; this answers "I didn't get the chance to".
+    //
+    // Desktop writes real .bcode files into a folder under the OS temp dir,
+    // because the ask was to be able to go and FIND the lost file. The browser
+    // has no filesystem, so it keeps the same snapshots in localStorage and
+    // hands them back as downloads. Same list, same restore, same button.
+    const RECOVER_KEY = "brepcode-recovery";
+    const RECOVER_KEEP = 20;
+    let lastSnapshot = "";
+
+    function webSnapshots() {
+      try { return JSON.parse(localStorage.getItem(RECOVER_KEY) || "[]"); }
+      catch { return []; }
+    }
+
+    async function saveSnapshot() {
+      const src = code.value.trim();
+      // Deduped: autosaving on every keystroke would bury the useful snapshot
+      // under a hundred identical ones.
+      if (!src || src === lastSnapshot) return;
+      lastSnapshot = src;
+      const name = safeModelName();
+      const exp = await getExporters();
+      const text = exp.bcodeFile(src, { name, scene: null, history: [] });
+      if (window.brepcodeDesktop?.recoverySave) {
+        try { await window.brepcodeDesktop.recoverySave(name, text); } catch { /* never break the app it protects */ }
+        return;
+      }
+      try {
+        const all = webSnapshots().filter((s) => s.name !== name);
+        all.unshift({ name, text, saved: Date.now() });
+        localStorage.setItem(RECOVER_KEY, JSON.stringify(all.slice(0, RECOVER_KEEP)));
+      } catch { /* quota, private mode — a missing safety net must not be fatal */ }
+    }
+
+    const ago = (ms) => {
+      const s = Math.max(0, (Date.now() - ms) / 1000);
+      if (s < 90) return "just now";
+      if (s < 5400) return `${Math.round(s / 60)} min ago`;
+      if (s < 172800) return `${Math.round(s / 3600)} h ago`;
+      return `${Math.round(s / 86400)} days ago`;
+    };
+
+    async function showRecovered() {
+      const box = $("recover-list");
+      const desk = window.brepcodeDesktop?.recoveryList;
+      let files = [];
+      if (desk) {
+        const r = await window.brepcodeDesktop.recoveryList();
+        files = (r?.files || []).map((f) => ({ name: f.name, saved: f.saved, path: f.path }));
+        $("recover-folder-btn").style.display = files.length ? "" : "none";
+      } else {
+        files = webSnapshots();
+      }
+      if (!files.length) {
+        box.innerHTML = `<span class="note">Nothing saved yet — snapshots start once you've typed a model.</span>`;
+        return;
+      }
+      box.innerHTML = files.map((f, i) =>
+        `<div class="row" style="gap:6px; align-items:center; margin-top:4px">`
+        + `<span style="flex:1">${esc(f.name)} <span class="note">— ${ago(f.saved)}</span></span>`
+        + `<button class="hist-btn" data-rec="${i}">Restore</button></div>`).join("");
+      for (const b of box.querySelectorAll("[data-rec]")) {
+        b.addEventListener("click", async () => {
+          const f = files[+b.dataset.rec];
+          let text = f.text;
+          if (!text && f.path) text = (await window.brepcodeDesktop.recoveryRead(f.path))?.text;
+          if (!text) { box.innerHTML = `<span class="note" style="color:var(--warn)">That snapshot could not be read — it may have been cleared from temp.</span>`; return; }
+          const exp = await getExporters();
+          const { source } = exp.parseBcodeFile(text);
+          if (!source) return;
+          if (code.value.trim()) pushHistory(code.value);   // ◀ still reaches what was open
+          code.value = source;
+          pushHistory();
+          hint.innerHTML = `Restored <b>${esc(f.name)}</b> from ${ago(f.saved)}. ◀ goes back to what was open.`;
+          rebuild();
+        });
+      }
+    }
+
+    $("recover-btn").addEventListener("click", showRecovered);
+    $("recover-folder-btn").addEventListener("click", () => window.brepcodeDesktop?.recoveryReveal?.());
+    // Snapshot on a timer rather than per keystroke: the dedupe makes a quiet
+    // period free, and a burst of typing costs one write instead of hundreds.
+    setInterval(saveSnapshot, 20000);
+    window.addEventListener("beforeunload", () => { try { saveSnapshot(); } catch { /* leaving anyway */ } });
+
     const DESK = window.brepcodeDesktop;
     let smtpReady = false;
     const smtpNote = (msg, bad) => {

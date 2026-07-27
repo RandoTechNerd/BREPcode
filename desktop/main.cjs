@@ -14,7 +14,9 @@
 const { app, BrowserWindow, protocol, net, shell, Menu, nativeTheme } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const fs = require("node:fs");
 const mail = require("./mail.cjs");
+const recovery = require("./recovery.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -98,8 +100,48 @@ function serveBundle() {
 // Only boot when this file is the entry point. test/desktop-smoke.cjs requires
 // it for createWindow() and does its own setup; without this guard that would
 // pop a second, visible window.
+// A file the OS handed us — double-clicked in Explorer, "Open with", or
+// dropped on the exe. Windows passes it as a bare argv entry, so pick out the
+// one that is an existing .bcode path rather than trusting position: argv also
+// carries Electron's own flags, and in a dev run the script path too.
+function fileFromArgv(argv) {
+  for (const a of (argv || []).slice(1)) {
+    if (typeof a !== "string" || a.startsWith("-")) continue;
+    if (!/\.bcode$/i.test(a)) continue;
+    try { if (fs.statSync(a).isFile()) return a; } catch { /* not a path */ }
+  }
+  return null;
+}
+
+// Hand it to the page, waiting for the load to finish if it is still starting —
+// a double-click launches the app and delivers the file in the same breath.
+function sendFileToWindow(win, file) {
+  if (!win || !file) return;
+  let text;
+  try { text = fs.readFileSync(file, "utf8"); } catch { return; }
+  const payload = { name: path.basename(file), text };
+  if (win.webContents.isLoading()) {
+    win.webContents.once("did-finish-load", () => win.webContents.send("open-file", payload));
+  } else {
+    win.webContents.send("open-file", payload);
+  }
+}
+
+// Without this, every double-click starts a whole new app. With it, the second
+// launch hands its file to the window that is already open and exits.
+if (require.main === module && !app.requestSingleInstanceLock()) app.quit();
+
+if (require.main === module) app.on("second-instance", (_e, argv) => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+  sendFileToWindow(win, fileFromArgv(argv));
+});
+
 if (require.main === module) app.whenReady().then(() => {
   mail.register();          // SMTP over IPC; a browser cannot do this at all
+  recovery.register();      // crash snapshots into the OS temp folder
   serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.
@@ -125,10 +167,18 @@ if (require.main === module) app.whenReady().then(() => {
     },
   ]));
 
-  createWindow();
+  const win = createWindow();
+  sendFileToWindow(win, fileFromArgv(process.argv));   // launched by double-click
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// macOS delivers an opened document through this event instead of argv.
+app.on("open-file", (e, file) => {
+  e.preventDefault();
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) sendFileToWindow(win, file);
 });
 
 app.on("window-all-closed", () => {

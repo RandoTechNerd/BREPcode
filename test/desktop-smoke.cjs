@@ -32,6 +32,7 @@ const check = (label, ok, detail = "") => {
 
 // main.cjs registers these itself only when it is the entry point
 require("../desktop/mail.cjs").register();
+require("../desktop/recovery.cjs").register();
 
 app.whenReady().then(async () => {
   // The real shell window, not a lookalike: same sandbox flags, same preload,
@@ -58,7 +59,7 @@ app.whenReady().then(async () => {
     check("the bridge reaches the page", await run("!!window.brepcodeDesktop?.isDesktop"));
     check("the page is still sandboxed", await run("typeof require === 'undefined' && typeof process === 'undefined'"));
     check("the bridge exposes no way to read the password back",
-      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "isDesktop,loadMail,saveMail,sendMail,testMail");
+      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "isDesktop,loadMail,onOpenFile,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,testMail");
 
     check("nothing saved yet", (await run("window.brepcodeDesktop.loadMail()")).config === null);
 
@@ -122,6 +123,56 @@ app.whenReady().then(async () => {
     } finally {
       shell.openExternal = realOpenExternal;
     }
+
+    // ---- crash recovery -------------------------------------------------
+    //
+    // The desktop writes real .bcode snapshots into a folder under the OS temp
+    // dir, because the whole point is that the user can go and FIND the file.
+    // A browser cannot do any of this, so it only gets proved here.
+    const recovery = require("../desktop/recovery.cjs");
+    check("the recovery bridge reaches the page",
+      await run("typeof window.brepcodeDesktop?.recoverySave === 'function'"));
+
+    const snap = await run(`window.brepcodeDesktop.recoverySave("smoke-part",
+      "// BREPCODE-SOURCE-V1\\n// \\"smoke-part\\"\\n\\nreturn cube([13, 14, 15]);\\n")`);
+    check("a snapshot is written to disk", snap?.ok === true, JSON.stringify(saved));
+    check("...into the temp recovery folder, where a user can find it",
+      typeof snap?.path === "string" && snap.path.startsWith(recovery.DIR), snap?.path);
+    check("...and it really exists on disk", !!snap?.path && fs.existsSync(snap.path));
+
+    const listed = await run("window.brepcodeDesktop.recoveryList()");
+    check("it comes back in the list", (listed?.files || []).some((f) => f.name === "smoke-part.bcode"),
+      JSON.stringify((listed?.files || []).map((f) => f.name)));
+
+    const readBack = await run(`window.brepcodeDesktop.recoveryRead(${JSON.stringify(snap?.path || "")})`);
+    check("...and reads back with the model intact",
+      readBack?.ok === true && readBack.text.includes("cube([13, 14, 15])"));
+
+    // The renderer runs model code and, with chat on, AI-written text. A path
+    // escape here would turn a recovery helper into "read any file".
+    const escaped = await run(`window.brepcodeDesktop.recoveryRead(${JSON.stringify(path.join(app.getPath("home"), ".ssh", "id_rsa"))})`);
+    check("reading outside the recovery folder is refused", escaped?.ok === false, JSON.stringify(escaped));
+    const traversal = await run(`window.brepcodeDesktop.recoveryRead(${JSON.stringify(path.join(recovery.DIR, "..", "secrets.txt"))})`);
+    check("...and so is a ../ traversal out of it", traversal?.ok === false, JSON.stringify(traversal));
+
+    try { fs.unlinkSync(snap.path); } catch { /* fine */ }
+
+    // ---- a file the OS opened ------------------------------------------
+    //
+    // Double-click in Explorer, "Open with", or a drop on the exe: Windows
+    // passes the path in argv and the page must end up with the model open.
+    const project = path.join(app.getPath("temp"), "smoke-open.bcode");
+    fs.writeFileSync(project,
+      "// BREPCODE-SOURCE-V1\n// \"smoke-open\"\n\nconst s = 21;\nreturn cube([s, s, 4]);\n", "utf8");
+    win.webContents.send("open-file", { name: "smoke-open.bcode", text: fs.readFileSync(project, "utf8") });
+    await new Promise((r) => setTimeout(r, 3000));
+    check("a file handed over by the OS opens as an editable model",
+      /const s = 21/.test(await run("document.getElementById('code').value")),
+      await run("document.getElementById('code').value.slice(0, 60)"));
+    try { fs.unlinkSync(project); } catch { /* fine */ }
+
+    check("dropping a file on the window is wired up",
+      await run("typeof window.ondragover !== 'undefined'") !== undefined);
   } catch (e) {
     fail++;
     console.log(`  FAIL  smoke run threw — ${e.message}`);

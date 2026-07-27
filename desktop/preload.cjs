@@ -27,4 +27,16 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
 
   // { to, subject, text, attachments:[{ filename, contentBase64 }] }
   sendMail: (msg) => ipcRenderer.invoke("mail:send", msg),
+
+  // Crash recovery. Snapshots live in a folder of our own under the OS temp
+  // directory; recoveryRead refuses any path outside it, so this cannot be
+  // turned into "read any file on this machine".
+  recoverySave: (name, text) => ipcRenderer.invoke("recovery:save", { name, text }),
+  recoveryList: () => ipcRenderer.invoke("recovery:list"),
+  recoveryRead: (file) => ipcRenderer.invoke("recovery:read", file),
+  recoveryReveal: () => ipcRenderer.invoke("recovery:reveal"),
+
+  // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
+  // The page registers a callback and gets { name, text } for each one.
+  onOpenFile: (cb) => ipcRenderer.on("open-file", (_e, payload) => cb(payload)),
 });

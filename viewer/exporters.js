@@ -259,7 +259,7 @@ ${source ? ` <Default Extension="js" ContentType="text/javascript"/>\n` : ""}</T
   ]);
 }
 
-// ---------------------------------------------------------------- .brepcode
+// ---------------------------------------------------------------- .bcode
 //
 // The project file: the one export that is the MODEL rather than a picture of
 // it. Everything else here throws the recipe away and keeps the triangles;
@@ -284,7 +284,7 @@ export const SCENE_CLOSE = "BREPCODE-SCENE-END */";
 // nobody scrolls back through. The most recent states are the useful ones.
 export const HISTORY_KEEP = 40;
 
-export function brepcodeFile(source, meta = {}) {
+export function bcodeFile(source, meta = {}) {
   const src = String(source || "").trim();
   const name = String(meta.name || "brepcode-model").replace(/[\r\n]/g, " ");
   const scene = {};
@@ -308,10 +308,10 @@ export function brepcodeFile(source, meta = {}) {
   return out;
 }
 
-// Split a .brepcode file back into its parts. A file that is nothing but bare
+// Split a .bcode file back into its parts. A file that is nothing but bare
 // BREPcode — someone's hand-written model, or ours with the comment deleted —
 // still parses: you get the source and no scene, which is the correct reading.
-export function parseBrepcodeFile(text) {
+export function parseBcodeFile(text) {
   const t = String(text || "").replace(/^﻿/, "");
   let scene = null;
   let body = t;

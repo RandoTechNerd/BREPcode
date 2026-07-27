@@ -31,6 +31,22 @@ files:
 extraMetadata:
   main: desktop/main.cjs
 
+# .bcode is the project file — the model itself rather than a mesh of it.
+#
+# NOTE this only takes effect for an INSTALLER target. A portable exe has no
+# installer, so nothing writes the registry keys and Windows will not offer
+# BREPcode on its own. What does work today, and what main.cjs is wired for, is
+# the manual route: right-click a .bcode -> Open with -> Choose another app ->
+# Browse to BREPcode.exe -> "Always use this app". Windows remembers it, and
+# the app reads the path out of argv and opens the model. Add an `nsis` target
+# and this block registers the type properly.
+fileAssociations:
+  - ext: bcode
+    name: BREPcode model
+    description: An editable, parametric BREPcode model
+    role: Editor
+    icon: desktop/icon.png
+
 # Nothing here is asar-hostile, and packing keeps the install small and the
 # file count sane.
 asar: true

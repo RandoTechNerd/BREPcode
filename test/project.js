@@ -1,4 +1,4 @@
-// The .brepcode project file — the one export that is the MODEL rather than a
+// The .bcode project file — the one export that is the MODEL rather than a
 // picture of it.
 //
 // It exists because nothing in BREPcode saved your work: theme, material, grid,
@@ -10,7 +10,7 @@
 // decoration. Every test below is a way of deleting or corrupting the
 // decoration and checking the source still comes back.
 import {
-  brepcodeFile, parseBrepcodeFile, SCENE_OPEN, SCENE_CLOSE, HISTORY_KEEP, SOURCE_MARKER,
+  bcodeFile, parseBcodeFile, SCENE_OPEN, SCENE_CLOSE, HISTORY_KEEP, SOURCE_MARKER,
 } from "../viewer/exporters.js";
 
 let pass = 0, fail = 0;
@@ -29,8 +29,8 @@ const HISTORY = ["return cube([1,1,1]);", "return cube([2,2,2]);", CODE];
 
 console.log("\nround trip\n");
 {
-  const f = brepcodeFile(CODE, { name: "bracket", scene: SCENE, history: HISTORY });
-  const r = parseBrepcodeFile(f);
+  const f = bcodeFile(CODE, { name: "bracket", scene: SCENE, history: HISTORY });
+  const r = parseBcodeFile(f);
   check("the source comes back byte-identical", r.source === CODE, JSON.stringify(r.source.slice(0, 50)));
   check("non-ASCII survives", r.source.includes("réglage"));
   check("the scene comes back", JSON.stringify(r.scene) === JSON.stringify(SCENE));
@@ -51,33 +51,33 @@ console.log("\nthe decoration is optional\n");
 {
   // Someone hand-edits the file down to just the model, or writes one from
   // scratch. It has to open.
-  const bare = parseBrepcodeFile(CODE);
+  const bare = parseBcodeFile(CODE);
   check("a file of bare BREPcode opens", bare.source === CODE);
   check("...with no scene", bare.scene === null);
   check("...and no history", bare.history.length === 0);
 
   // Someone deletes the comment block, or an editor mangles it.
-  const f = brepcodeFile(CODE, { name: "x", scene: SCENE, history: HISTORY });
+  const f = bcodeFile(CODE, { name: "x", scene: SCENE, history: HISTORY });
   const truncated = f.slice(0, f.indexOf(SCENE_CLOSE));       // block never closed
   check("an unterminated metadata block does not cost the source",
-    parseBrepcodeFile(truncated).source === CODE);
+    parseBcodeFile(truncated).source === CODE);
   const corrupt = f.replace(/"camera": \[/, '"camera": {{{');
-  const c = parseBrepcodeFile(corrupt);
+  const c = parseBcodeFile(corrupt);
   check("corrupt JSON does not cost the source", c.source === CODE);
   check("...and the scene is simply absent rather than half-read", c.scene === null);
 
   // No scene asked for at all.
-  const plain = brepcodeFile(CODE, { name: "x" });
+  const plain = bcodeFile(CODE, { name: "x" });
   check("no metadata means no comment block", !plain.includes(SCENE_OPEN));
-  check("...and it still round-trips", parseBrepcodeFile(plain).source === CODE);
+  check("...and it still round-trips", parseBcodeFile(plain).source === CODE);
 }
 
 console.log("\nthe hostile cases\n");
 {
   // The source is above the block so it cannot break out, but a SCENE value can
   // carry anything a user typed — a model name, a colour picker string.
-  const evil = brepcodeFile(CODE, { name: "x", scene: { note: `*/ return cube([9,9,9]); ${SCENE_CLOSE}` } });
-  const r = parseBrepcodeFile(evil);
+  const evil = bcodeFile(CODE, { name: "x", scene: { note: `*/ return cube([9,9,9]); ${SCENE_CLOSE}` } });
+  const r = parseBcodeFile(evil);
   check("a scene value cannot close the comment early", r.source === CODE, JSON.stringify(r.source.slice(-40)));
   check("...and the value itself survives intact",
     r.scene?.note === `*/ return cube([9,9,9]); ${SCENE_CLOSE}`);
@@ -85,14 +85,14 @@ console.log("\nthe hostile cases\n");
   // History is capped: 200 full copies of a real model is megabytes of
   // near-identical text nobody scrolls back through.
   const many = Array.from({ length: 500 }, (_, i) => `return cube([${i},1,1]);`);
-  const capped = parseBrepcodeFile(brepcodeFile(CODE, { name: "x", history: many }));
+  const capped = parseBcodeFile(bcodeFile(CODE, { name: "x", history: many }));
   check(`history is capped at ${HISTORY_KEEP}`, capped.history.length === HISTORY_KEEP,
     String(capped.history.length));
   check("...keeping the most RECENT states, not the oldest",
     capped.history[capped.history.length - 1] === many[many.length - 1]);
 
-  check("an empty file is handled", parseBrepcodeFile("").source === "");
-  check("a UTF-8 BOM is tolerated", parseBrepcodeFile("﻿" + CODE).source === CODE);
+  check("an empty file is handled", parseBcodeFile("").source === "");
+  check("a UTF-8 BOM is tolerated", parseBcodeFile("﻿" + CODE).source === CODE);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
