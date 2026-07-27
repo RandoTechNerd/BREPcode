@@ -1677,7 +1677,6 @@
     import * as dsl from "../src/dsl.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
-    import { LOCKED } from "./locked-key.js";
     // On-demand modules: the default shape never needs the curved-STEP kernel,
     // the image tracer, or the key-locker, so they load the first time you use
     // them (and get warmed in the background after the first render). Each
@@ -1722,6 +1721,15 @@
       isBrepscriptModule, prepareBrepscriptModule, declaredNames,
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
     } from "./assist.js";
+
+    // A password-locked API key (see lockbox.js) is OPTIONAL, and viewer/locked-key.js
+    // is gitignored — so a fresh clone of the public repo does not have one, and a
+    // public site build deliberately leaves it out. This used to be a static import,
+    // which means a missing file killed the entire script and the app never started:
+    // no editor, no viewport, no error a user could act on. Let it fail; the shared-key
+    // button simply stays off, which is exactly what "no key configured" should look like.
+    let LOCKED = { blob: "" };
+    try { ({ LOCKED } = await import("./locked-key.js")); } catch { /* none shipped */ }
 
     const $ = (id) => document.getElementById(id);
     // Escape text that gets dropped into innerHTML — imported file names are

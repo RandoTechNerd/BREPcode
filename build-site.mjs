@@ -44,8 +44,22 @@ const rewrites = [
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
+// locked-key.js is a password-locked API key meant to be handed to ONE person.
+// It is gitignored for that reason, and a public static host is a different
+// proposition entirely: the blob becomes downloadable by anyone, and PBKDF2 only
+// buys time against an offline guessing attack on the password. So a public
+// build leaves it out unless you say otherwise.
+//
+//   node build-site.mjs                    -> no key (deploy this to the web)
+//   node build-site.mjs --with-locked-key  -> key included (private hand-off)
+const WITH_KEY = process.argv.includes("--with-locked-key");
+const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
+  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js",
+  ...(WITH_KEY ? ["locked-key.js"] : [])];
+
 writeFileSync(join(OUT, "index.html"), rewrite(readFileSync("viewer/index.html", "utf8")));
-for (const f of ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js", "trace.js", "lockbox.js", "locked-key.js", "codes.js", "svg.js", "recipes.js"]) {
+for (const f of VIEWER_JS) {
+  if (!existsSync(`viewer/${f}`)) continue;      // locked-key.js is optional by design
   writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));
 }
 // ---- recipe library (markdown, fetched per-message by recipes.js) ----
