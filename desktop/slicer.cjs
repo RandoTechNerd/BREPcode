@@ -32,30 +32,47 @@ function tidyVersion(raw) {
   return parts.slice(0, 3).join(".");
 }
 
-// 1. What the running Orca wrote about itself — the only source that survives
-// a dev fork. The user's build reports 2.5.1 where upstream Orca is on 2.3.x,
-// so anything hardcoded, or read from a release you assume they installed,
-// would name the wrong version and produce the very popup this is avoiding.
+const appDataRoot = () =>
+  process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+const ORCA_DIRS = ["OrcaSlicer", "OrcaSlicer-nightly", "OrcaSlicer-dev", "OrcaSlicerNightly"];
+
+// 1. What the running slicer PRINTED about itself, which is the only source
+// that has ever been right.
 //
-// Two traps in this file, both hit on a real install:
-//   - it is NOT valid JSON end to end. Orca appends a "# MD5 checksum …" line
-//     after the closing brace, so parsing the whole file throws.
-//   - the version is nested under "app", not at the top level.
-function versionFromConfig() {
-  const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-  const dirs = ["OrcaSlicer", "OrcaSlicer-nightly", "OrcaSlicer-dev", "OrcaSlicerNightly"];
-  for (const name of dirs) {
-    const dir = path.join(appData, name);
-    let files = [];
-    try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".conf")); } catch { continue; }
-    for (const f of files) {
+// The obvious candidate — "version" in OrcaSlicer.conf — is a trap, and it cost
+// a wrong answer in front of the user. That field is the settings/data format
+// version: this machine's conf says 02.05.01.52 while the slicer is 2.4.0. We
+// stamped 2.5.1 into the file and Orca answered "The 3MF file version 2.5.1 is
+// newer than Orca Slicer's version 2.4.0-Nanashi", which is the WORSE of the
+// two failure modes — a version that is too low still loads the geometry, one
+// that is too high reads as a file the slicer cannot handle.
+//
+// The log says it plainly, on the first line of every run:
+//   OrcaSlicer Version 2.4.0-Nanashi
+// Only the numeric part goes into the 3MF; a fork's suffix is its own business.
+function versionFromLog() {
+  for (const name of ORCA_DIRS) {
+    const dir = path.join(appDataRoot(), name, "log");
+    let logs = [];
+    try {
+      logs = fs.readdirSync(dir)
+        .map((f) => path.join(dir, f))
+        .map((f) => { try { return { f, t: fs.statSync(f).mtimeMs }; } catch { return null; } })
+        .filter(Boolean)
+        .sort((a, b) => b.t - a.t)
+        .slice(0, 5)                       // newest few; older ones can predate an update
+        .map((x) => x.f);
+    } catch { continue; }
+    for (const file of logs) {
       try {
-        const raw = fs.readFileSync(path.join(dir, f), "utf8");
-        const end = raw.lastIndexOf("}");                    // drop the checksum tail
-        const j = JSON.parse(end > 0 ? raw.slice(0, end + 1) : raw);
-        const v = tidyVersion(j?.app?.version ?? j?.version);
-        if (v) return v;
-      } catch { /* a .conf we don't understand — try the next */ }
+        // The banner is at the very top, so don't read a 50MB debug log whole.
+        const fd = fs.openSync(file, "r");
+        const buf = Buffer.alloc(65536);
+        const n = fs.readSync(fd, buf, 0, buf.length, 0);
+        fs.closeSync(fd);
+        const m = /OrcaSlicer\s+Version\s+(\d+\.\d+\.\d+)/i.exec(buf.subarray(0, n).toString("utf8"));
+        if (m) return m[1];
+      } catch { /* locked or unreadable — try the next */ }
     }
   }
   return null;
@@ -106,11 +123,12 @@ function exeFromDisk() {
 
 function detect() {
   const reg = process.platform === "win32" ? fromRegistry() : {};
+  // When we cannot work it out, stamp NOTHING. Guessing too high is worse than
+  // saying nothing: too low (or absent) still loads the geometry with a notice,
+  // too high reads as a file this slicer is not equipped to open.
   return {
     exe: reg.exe || exeFromDisk() || null,
-    // Config first: it is what the installed build says about itself, and it is
-    // present even when nothing else is.
-    version: versionFromConfig() || reg.version || null,
+    version: versionFromLog() || reg.version || null,
   };
 }
 
