@@ -259,6 +259,84 @@ ${source ? ` <Default Extension="js" ContentType="text/javascript"/>\n` : ""}</T
   ]);
 }
 
+// ---------------------------------------------------------------- .brepcode
+//
+// The project file: the one export that is the MODEL rather than a picture of
+// it. Everything else here throws the recipe away and keeps the triangles;
+// this keeps the recipe and can regenerate the triangles at any size.
+//
+// It exists because nothing in BREPcode saved your work. Theme, material,
+// grid, model name and AI settings were all persisted — the CODE never was.
+// Close the tab and it was gone.
+//
+// Deliberately PLAIN TEXT, not JSON. The source sits at the top exactly as you
+// wrote it, so the file opens in Notepad and is directly editable, diffs
+// cleanly in git, and can be pasted straight into the app. The scene and the
+// undo history ride underneath in a block comment, which the app reads and
+// everything else ignores. Hand-edit the source, mangle the comment, delete it
+// entirely — the file still loads, because the source is the part that matters
+// and the rest is decoration.
+export const SCENE_OPEN = "/* BREPCODE-SCENE-V1";
+export const SCENE_CLOSE = "BREPCODE-SCENE-END */";
+
+// Undo history is capped: the in-app stack holds 200 full copies of the source,
+// which on a real model is megabytes of near-identical text for something
+// nobody scrolls back through. The most recent states are the useful ones.
+export const HISTORY_KEEP = 40;
+
+export function brepcodeFile(source, meta = {}) {
+  const src = String(source || "").trim();
+  const name = String(meta.name || "brepcode-model").replace(/[\r\n]/g, " ");
+  const scene = {};
+  if (meta.scene) scene.scene = meta.scene;
+  if (Array.isArray(meta.history) && meta.history.length) {
+    scene.history = meta.history.slice(-HISTORY_KEEP).map((h) => String(h));
+  }
+
+  let out = `// ${SOURCE_MARKER}\n`
+    + `// "${name}" — a BREPcode model, saved by BREPcode-${APP_VERSION}.\n`
+    + `// This is plain text: edit the model below in any editor, or paste it\n`
+    + `// into BREPcode.com. Opening this file in BREPcode restores it exactly.\n\n`
+    + `${src}\n`;
+  if (Object.keys(scene).length) {
+    // Guard the delimiters: source containing the closing token would end the
+    // comment early and spill JSON into the model. It cannot happen from the
+    // source side (it sits above), but a scene value could carry anything.
+    const json = JSON.stringify(scene, null, 1).split("*/").join("*\\/");
+    out += `\n${SCENE_OPEN}\n${json}\n${SCENE_CLOSE}\n`;
+  }
+  return out;
+}
+
+// Split a .brepcode file back into its parts. A file that is nothing but bare
+// BREPcode — someone's hand-written model, or ours with the comment deleted —
+// still parses: you get the source and no scene, which is the correct reading.
+export function parseBrepcodeFile(text) {
+  const t = String(text || "").replace(/^﻿/, "");
+  let scene = null;
+  let body = t;
+
+  const open = t.indexOf(SCENE_OPEN);
+  if (open >= 0) {
+    // Cut the body at the marker whether or not the block ever closes. A file
+    // truncated mid-write — interrupted download, full disk — has an opening
+    // marker and no end, and keeping the whole text would have dropped raw JSON
+    // into the editor as if it were part of the model.
+    body = t.slice(0, open);
+    const close = t.indexOf(SCENE_CLOSE, open);
+    if (close > open) {
+      try {
+        scene = JSON.parse(t.slice(open + SCENE_OPEN.length, close).split("*\\/").join("*/"));
+      } catch { scene = null; }      // a corrupted block must not cost the source
+    }
+  }
+  return {
+    source: stripSourceHeader(body),
+    scene: scene?.scene ?? null,
+    history: Array.isArray(scene?.history) ? scene.history : [],
+  };
+}
+
 // The same idea for STL, which has no container at all — the source goes after
 // `endsolid`, where a well-behaved reader stops.
 //

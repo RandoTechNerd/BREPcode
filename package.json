@@ -15,7 +15,7 @@
     "brepscript": "./src/cli.js"
   },
   "scripts": {
-    "test": "node test/run.js && node test/translate.js && node test/docs.js && node test/autofix.js && node test/paste.js && node test/mapper.js && node test/libs.js && node test/adjust.js && node test/extrude2d.js && node test/exportfmt.js && node test/srcembed.js && node test/stlcompat.js && node test/importmesh.js && node test/inventory.js && node test/py123d.js && node test/curvedstep.js && node test/edgeops.js && node test/trace.js && node test/codes.js && node test/recipes.js && node test/vocab.js && node test/recipecode.js && node test/mail.js && node test/chatbot.js && node test/stretch.js && node test/fins.js && node test/openscad_ops.js && node test/forgiving.js && node test/jscad_colors.js && node test/jscad_prims.js",
+    "test": "node test/run.js && node test/translate.js && node test/docs.js && node test/autofix.js && node test/paste.js && node test/mapper.js && node test/libs.js && node test/adjust.js && node test/extrude2d.js && node test/exportfmt.js && node test/srcembed.js && node test/stlcompat.js && node test/project.js && node test/importmesh.js && node test/inventory.js && node test/py123d.js && node test/curvedstep.js && node test/edgeops.js && node test/trace.js && node test/codes.js && node test/recipes.js && node test/vocab.js && node test/recipecode.js && node test/mail.js && node test/chatbot.js && node test/stretch.js && node test/fins.js && node test/openscad_ops.js && node test/forgiving.js && node test/jscad_colors.js && node test/jscad_prims.js",
     "serve": "node serve.js 5320",
     "example": "node src/cli.js examples/bracket.js --info",
     "desktop": "electron desktop/main.cjs",

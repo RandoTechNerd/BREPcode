@@ -948,6 +948,8 @@
   </div>
 
   <div id="export-menu">
+    <div class="exp-group">Project</div>
+    <button data-fmt="brepcode">BREPcode<small>the editable model — save your work</small></button>
     <div class="exp-group">Mesh</div>
     <button data-fmt="stl">STL<small>3D printing</small></button>
     <button data-fmt="obj">OBJ<small>DCC / game tools</small></button>
@@ -1037,7 +1039,7 @@
               <path d="M8 10.2V2.2M4.8 5.4L8 2.2l3.2 3.2M2.8 13.2h10.4" />
             </svg>
           </button>
-          <input type="file" id="import-file" accept=".stl,.3mf,.obj,.svg" style="display: none" />
+          <input type="file" id="import-file" accept=".brepcode,.stl,.3mf,.obj,.svg" style="display: none" />
           <button id="export-btn" class="hist-btn ovf" title="Download STL">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
@@ -5640,7 +5642,39 @@
 </html>`;
     }
 
+    // Save the project: the source, the scene it was being viewed in, and the
+    // recent undo history. Scene and history are conveniences — the source is
+    // the model, and a file stripped down to just that still opens perfectly.
+    async function exportProject() {
+      const src = code.value.trim();
+      if (!src) { setStatus("err", "Nothing to save — the editor is empty."); return; }
+      const exp = await getExporters();
+      const base = safeModelName();
+      const text = exp.brepcodeFile(src, {
+        name: base,
+        scene: {
+          material: mat,
+          camera: camera.position.toArray().map((n) => +n.toFixed(3)),
+          target: controls.target.toArray().map((n) => +n.toFixed(3)),
+          up: camera.up.toArray(),
+          negatives: negBtn.classList.contains("active"),
+        },
+        history: hist.stack,
+      });
+      const size = download(`${base}.brepcode`, text, "text/plain");
+      const built = lastSolids.length;
+      setStatus("ok",
+        `Saved ${base}.brepcode — ${(size / 1024).toFixed(1)} KB`
+        + (built ? "." : " (the model isn't building, but your work is safe)."));
+      fixnote.innerHTML = `<span style="color:var(--muted3)">That file <b>is</b> the model — plain text, opens in any editor, and drops back onto BREPcode to restore the code, the view and your undo history. Unlike an STL it stays parametric, so every dimension is still editable.</span>`;
+    }
+
     async function exportAs(fmt) {
+      // Saving the project is the one export that must work on a model that
+      // does NOT build. A half-finished part you cannot get back is precisely
+      // what you most need to keep, and refusing to save it would be the worst
+      // possible moment to be strict.
+      if (fmt === "brepcode") return exportProject();
       if (!lastSolids.length) { setStatus("err", "Nothing to export — build a model first."); return; }
       const base = safeModelName();
       try {
@@ -5829,6 +5863,53 @@
       return { text, offset: off.map(r1) };
     }
 
+    // Open a .brepcode project: the source is the model, the rest is optional.
+    // Anything missing or corrupt is skipped rather than fatal — a file someone
+    // hand-edited down to bare code must still open.
+    async function openProject(file, buf) {
+      const exp = await getExporters();
+      const { source, scene, history } = exp.parseBrepcodeFile(new TextDecoder().decode(buf));
+      if (!source) {
+        setStatus("err", `${file.name} has no BREPcode in it.`);
+        return;
+      }
+      if (code.value.trim()) pushHistory(code.value);    // ◀ still reaches what was open
+      // Its own undo history first, so ◀ walks back through how it was built.
+      for (const step of history) pushHistory(step);
+      code.value = source;
+      pushHistory();
+      code.focus();
+
+      let restored = [];
+      if (scene?.material) {
+        Object.assign(mat, scene.material);
+        applyMaterial?.();
+        saveMat?.();
+        restored.push("material");
+      }
+      if (Array.isArray(scene?.camera) && Array.isArray(scene?.target)) {
+        camera.position.fromArray(scene.camera);
+        if (Array.isArray(scene.up)) camera.up.fromArray(scene.up);
+        controls.target.fromArray(scene.target);
+        controls.update();
+        restored.push("view");
+      }
+      if (typeof scene?.negatives === "boolean"
+        && scene.negatives !== negBtn.classList.contains("active")) {
+        negBtn.click();
+        restored.push("negatives overlay");
+      }
+      // The name drives export filenames, so a reopened project exports as itself.
+      const stem = file.name.replace(/\.brepcode$/i, "");
+      if (stem) { modelName = stem; localStorage.setItem("brepcode-modelname", modelName); }
+
+      toggleCard(panel, openBtn, true);
+      hint.innerHTML = `Opened <b>${esc(file.name)}</b> — this is the real model, not a mesh, so every dimension is still editable.`
+        + (restored.length ? ` Restored its ${restored.join(", ")}.` : "")
+        + (history.length ? ` ◀ walks back through <b>${history.length}</b> earlier step${history.length === 1 ? "" : "s"}.` : "");
+      rebuild();
+    }
+
     async function importMeshFile(file) {
       const mb = file.size / 1048576;
       // A mesh this size will freeze or crash a browser tab long before the
@@ -5842,6 +5923,10 @@
       try {
         const buf = await file.arrayBuffer();
         const ext = file.name.toLowerCase().split(".").pop();
+
+        // A project file is not a mesh — it IS the model. Restore it whole and
+        // stop; running it through the mesh path would import nothing.
+        if (ext === "brepcode") return openProject(file, buf);
         // sniff only the head — decoding a 100 MB file twice just to check
         // "is it ascii?" stalls the page
         const head = new TextDecoder().decode(buf.slice(0, 4096));
