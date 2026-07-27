@@ -1193,6 +1193,84 @@ export function autoFix(src) {
   return { code, notes };
 }
 
+// Which BREPcode words does this source declare as its own variable?
+//
+// The vocabulary reaches user code as function PARAMETERS, so `const fins = []`
+// is not a shadowing warning — it is `Identifier 'fins' has already been
+// declared`, a SyntaxError thrown before a single line runs. Nothing downstream
+// can recover from it: addImplicitReturn never gets to look at the code, and the
+// user sees a raw JS error for what is, from their side, a perfectly ordinary
+// variable name. It cost a real generation ("a bracket with support fins" — the
+// model called its array `fins`, which is also a support operator).
+//
+// Rather than forbid ~200 words, drop the ones the author claimed. Their own
+// declaration wins, which is what they meant by writing it.
+export function declaredNames(src, vocabulary = NAMES) {
+  let quote = null;
+  let masked = "";                     // src with comments/strings blanked out
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") { masked += "  "; i++; continue; }
+      if (c === quote) quote = null;
+      masked += c === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; masked += " "; continue; }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") { masked += " "; i++; }
+      masked += "\n";
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      const stop = end < 0 ? src.length : end + 2;
+      for (; i < stop; i++) masked += src[i] === "\n" ? "\n" : " ";
+      i--;
+      continue;
+    }
+    masked += c;
+  }
+
+  const found = new Set();
+  const known = new Set(vocabulary);
+  // `const a = 1, fins = [...]` declares both, so read the whole binding list up
+  // to the statement end. Destructuring counts too: `const { text } = opts`.
+  const DECL = /\b(const|let|var|function|class)\s+([^;\n]*)/g;
+  for (const m of masked.matchAll(DECL)) {
+    // `function makeFin(cube)` declares makeFin — `cube` is a PARAMETER, bound
+    // only inside that function. Dropping it would leave the rest of the file
+    // calling a word we no longer inject. Same for `class Foo extends Bar`.
+    if (m[1] === "function" || m[1] === "class") {
+      const first = m[2].match(/[A-Za-z_$][\w$]*/);
+      if (first && known.has(first[0])) found.add(first[0]);
+      continue;
+    }
+
+    // Split the binding list on commas at depth 0, so a comma inside the VALUE
+    // (`cube([1, 2, 3])`) doesn't look like the start of another binding.
+    const parts = [];
+    let depth = 0, part = "";
+    for (const c of m[2]) {
+      if ("([{".includes(c)) depth++;
+      else if (")]}".includes(c)) depth--;
+      if (c === "," && depth === 0) { parts.push(part); part = ""; continue; }
+      part += c;
+    }
+    parts.push(part);
+
+    for (const binding of parts) {
+      // Everything after the first `=` is the value, where a mention of `cube`
+      // is a legitimate CALL rather than a declaration.
+      const target = binding.split("=")[0];
+      for (const word of target.matchAll(/[A-Za-z_$][\w$]*/g)) {
+        if (known.has(word[0])) found.add(word[0]);
+      }
+    }
+  }
+  return [...found];
+}
+
 // Turn a raw JS error into something that says what to do next.
 export function diagnose(src, err, result) {
   const msg = String(err?.message ?? err ?? "");

@@ -1719,7 +1719,7 @@
     import {
       SPECS, RECIPES, DIALECTS, specOf, diagnose, enclosingCall, autoFix, stripFences, addImplicitReturn,
       swapTarget, wordAt, numberAt, primitiveSites, mapTraceToSites, convertPrimitiveCall,
-      isBrepscriptModule, prepareBrepscriptModule,
+      isBrepscriptModule, prepareBrepscriptModule, declaredNames,
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
     } from "./assist.js";
 
@@ -3722,21 +3722,32 @@
         return new Function(...names, `"use strict";\n${body}`)(...values);
       }
       lastLang = "brepscript";
+      // The vocabulary arrives as function parameters, so code that declares its
+      // own `const fins = [...]` is a SyntaxError, not a shadowed name — it dies
+      // before anything can run or be repaired. Hand back the words the author
+      // claimed for themselves; their declaration is what they meant.
+      // Pass the LIVE parameter list, not the DSL's static NAMES: the viewer
+      // folds in its own operators (text, qrcode, fins…) and those are exactly
+      // the words a model is most likely to reuse as a variable.
+      const shadowed = declaredNames(src, names);
+      const [ns, vs] = shadowed.length
+        ? [names.filter((n) => !shadowed.includes(n)), values.filter((_, i) => !shadowed.includes(names[i]))]
+        : [names, values];
       let fn, statementForm = false;
       try {
-        fn = new Function(...names, `"use strict"; return (\n${src}\n);`);  // expression form
+        fn = new Function(...ns, `"use strict"; return (\n${src}\n);`);  // expression form
       } catch {
-        fn = new Function(...names, `"use strict";\n${src}`);                // statement form
+        fn = new Function(...ns, `"use strict";\n${src}`);                // statement form
         statementForm = true;
       }
-      const out = fn(...values);
+      const out = fn(...vs);
       // Statement code that just forgot `return` on its final shape: retry with
       // one inserted rather than making the user fix an AI's punctuation.
       if (out === undefined && statementForm) {
         const withReturn = addImplicitReturn(src);
         if (withReturn) {
           try {
-            const retry = new Function(...names, `"use strict";\n${withReturn}`)(...values);
+            const retry = new Function(...ns, `"use strict";\n${withReturn}`)(...vs);
             if (retry !== undefined) { autoReturned = true; return retry; }
           } catch { /* the guess didn't parse or threw — keep the honest error */ }
         }
@@ -5586,8 +5597,13 @@
       const base = safeModelName();
       try {
         let size;
+        // The recipe travels with the part. A mesh is a dead end — "make it 3mm
+        // taller" a year later means starting over — so both mesh formats carry
+        // the source that built them and the importer offers it straight back.
+        const src = code.value.trim();
         if (fmt === "stl") {
-          size = download(`${base}.stl`, exportSTL(), "model/stl");
+          const exp = await getExporters();
+          size = download(`${base}.stl`, exp.stlWithSource(exportSTL(), src), "model/stl");
         } else if (fmt === "obj") {
           const exp = await getExporters();
           size = download(`${base}.obj`, exp.stlToObj(exportSTL(), base), "text/plain");
@@ -5606,7 +5622,8 @@
           const groups = colorGroupsForExport();
           const distinct = new Set(groups.map((g) => g.color)).size;
           size = download(`${base}.3mf`,
-            distinct > 1 ? exp.colored3MF(groups, base) : exp.stlTo3MF(exportSTL(), base),
+            distinct > 1 ? exp.colored3MF(groups, base, { source: src })
+                         : exp.stlTo3MF(exportSTL(), base, { source: src }),
             "model/3mf");
           if (distinct > 1) fixnote.innerHTML = `<span style="color:var(--muted3)">${distinct} colours written as a 3MF colour group — a multi-material slicer (Bambu, Prusa, Orca) will offer a filament per colour.</span>`;
         } else if (fmt === "step-curved") {
@@ -5627,7 +5644,12 @@
           await curved.loadReplicad();
           setStatus("busy", "Projecting the engineering drawing…");
           await new Promise((r) => setTimeout(r, 30));
-          const svg = await curved.curvedDrawingSVG(lastShape, { title: base });
+          // Hand it the size the user can see in the status bar — OCCT's own
+          // bounding box overstates curved solids (see curvedDrawingSVG).
+          const bb = new THREE.Box3().setFromObject(modelGroup);
+          const size = bb.isEmpty() ? null
+            : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
+          const svg = await curved.curvedDrawingSVG(lastShape, { title: base, size });
           size = download(`${base}-drawing.svg`, svg, "image/svg+xml");
         } else if (fmt === "glb") {
           setStatus("busy", "Packing GLB for the web…");
@@ -5780,6 +5802,23 @@
         // too is what keeps those on the binary path.
         const isAsciiStl = ext === "stl" && /^\s*solid/.test(head) && head.includes("facet");
 
+        // Did WE write this file? Both mesh exports carry the source that built
+        // them, so a part coming home can be reopened as editable code instead
+        // of frozen triangles. Offered rather than applied: the user asked to
+        // import a mesh, and swapping their editor out from under them on a
+        // guess is not our call.
+        let embedded = "";
+        try {
+          const exp = await getExporters();
+          if (ext === "3mf") {
+            const inv = await getInventory();
+            const part = await inv.unzipEntry(new Uint8Array(buf), /BREPcode\.source\.js$/i);
+            embedded = exp.stripSourceHeader(new TextDecoder().decode(part));
+          } else if (isAsciiStl) {
+            embedded = exp.extractSourceFromStl(new TextDecoder().decode(buf));
+          }
+        } catch { /* no source in there — the overwhelmingly normal case */ }
+
         const triCount = stlTriangleCount(buf, ext, isAsciiStl);
         if (triCount && triCount > MESH_REFUSE) {
           const k = (triCount / 1000).toFixed(0);
@@ -5863,7 +5902,22 @@
             : "")
           + (wasMoved ? ` Recentred it on the origin (it was offset by [${centered.offset.join(", ")}]) so <b>split</b>, <b>drill</b> and <b>stretch</b> land on the part.` : "")
           + (mb > 15 ? " <b>Large mesh</b> — the first build can take a while." : "")
-          + " Files live for this session only; re-import after a reload.";
+          + " Files live for this session only; re-import after a reload."
+          + (embedded ? ` <b>This file was made in BREPcode and still carries its source.</b> `
+              + `<button id="restore-src-btn" style="font:inherit;padding:2px 9px;margin:0 2px;`
+              + `border:1px solid var(--muted3);border-radius:6px;background:transparent;`
+              + `color:inherit;cursor:pointer">Reopen as editable code</button>`
+              + `— you get the parameters back instead of a frozen mesh.` : "");
+        if (embedded) {
+          $("restore-src-btn").addEventListener("click", () => {
+            pushHistory(code.value);            // ◀ still gets the mesh import back
+            code.value = embedded;
+            code.focus();
+            pushHistory();
+            hint.innerHTML = `Restored the original BREPcode for <b>${esc(file.name)}</b> — every dimension is editable again. ◀ goes back to the imported mesh.`;
+            rebuild();
+          });
+        }
         rebuild();
       } catch (err) {
         setStatus("err", `Import failed: ${String(err?.message || err).slice(0, 100)}`);
@@ -7167,9 +7221,22 @@
       }, 1000);
 
       try {
-        // include the current model code so "make the holes bigger" works
+        // Include the current model code so "make the holes bigger" works — and
+        // the MEASURED size with it. The code alone is not enough the moment an
+        // import is on screen: `importedMesh("frame.stl")` tells the model a
+        // file exists and nothing about how big it is, so "make it 30%
+        // narrower" had no choice but to invent a width. The bounding box is
+        // already computed for the status bar; sending it turns a guess into
+        // arithmetic.
+        const cbb = new THREE.Box3().setFromObject(modelGroup);
+        const measured = cbb.isEmpty() ? "" :
+          `\n\nMeasured size of the model as it stands (mm), from the viewer — `
+          + `use these numbers rather than estimating:\n`
+          + ["x", "y", "z"].map((a) =>
+              `  ${a.toUpperCase()}: ${(cbb.max[a] - cbb.min[a]).toFixed(2)} `
+              + `(from ${cbb.min[a].toFixed(2)} to ${cbb.max[a].toFixed(2)})`).join("\n");
         const context = code.value.trim()
-          ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`\n\nRequest: ${text}` : text;
+          ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}\n\nRequest: ${text}` : text;
         const msgs = [...chatLog.slice(-8, -1), { role: "user", text: context }];
         const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim() };
 

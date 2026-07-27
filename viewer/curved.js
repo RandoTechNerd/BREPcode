@@ -164,6 +164,17 @@ export async function buildCurved(root) {
       }
       return acc;
     }
+    // group() keeps parts SEPARATE in the viewer, which OCCT has no direct
+    // equivalent for on this path — so an assembly used to fail the blueprint
+    // and STEP exports outright with "unknown node kind". Fusing is the right
+    // trade: on a drawing the result is pixel-identical, and disjoint solids
+    // stay disjoint (OCCT returns them as a compound). The only thing lost is
+    // part separation where two members actually touch, which beats no export.
+    if (n.kind === "group") {
+      const parts = (n.children || []).map((c) => build(c, matrix));
+      if (!parts.length) throw new Error("curved export: group() is empty — there is nothing to draw");
+      return parts.reduce((acc, p) => acc.fuse(p));
+    }
     if (n.kind === "prim") return applyMatrix(buildPrim(r, n), matrix);
     if (n.kind === "prism") {
       const pts = cleanProfile(n.pts, "linearExtrude() profile");
@@ -262,10 +273,23 @@ export async function curvedDrawingSVG(root, opts = {}) {
   const shape = await buildCurved(root);
 
   const pathsOf = (svg) => (svg.match(/<path[\s\S]*?\/>/g) || []).join("\n");
+  // A projection can legitimately come back with nothing in it — a sphere seen
+  // down its own axis hides no edges at all — and replicad throws
+  // "Unpexpected numItems value: 0" rather than handing back an empty drawing.
+  // That killed the whole blueprint for a sphere+torus union, so an empty layer
+  // has to read as empty rather than as a failed export.
+  const toSvgOrEmpty = (drawing) => {
+    if (!drawing?.toSVG) return "";
+    try { return drawing.toSVG(); } catch { return ""; }
+  };
   const project = (view) => {
-    const { visible, hidden } = r.drawProjection(shape, view);
-    const vis = visible.toSVG();
-    const hid = hidden?.toSVG ? hidden.toSVG() : "";
+    let visible = null, hidden = null;
+    // …and drawProjection itself throws the same way on some shapes, so one
+    // awkward view must not cost the user the other three.
+    try { ({ visible, hidden } = r.drawProjection(shape, view)); }
+    catch { return { x: 0, y: 0, w: 10, h: 10, vis: "", hid: "" }; }
+    const vis = toSvgOrEmpty(visible);
+    const hid = toSvgOrEmpty(hidden);
     const [x, y, w, h] = (vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 10 10").split(/\s+/).map(Number);
     return { x, y, w: w || 10, h: h || 10, vis: pathsOf(vis), hid: pathsOf(hid) };
   };
@@ -348,7 +372,22 @@ export async function curvedDrawingSVG(root, opts = {}) {
   // each projection by a unit of drawing margin, so the viewBox reads 2mm over
   // on every axis. The same padding is why the dimension line is inset: `span`
   // trims it back to where the part's silhouette actually starts and ends.
-  const [bmin, bmax] = shape.boundingBox.bounds;
+  // OCCT's bounding box is a LOOSE bound on curved solids — it wraps the
+  // surface control hull, not the surface. A sphere+torus measuring 72mm across
+  // in the viewer had its blueprint stamped 77.9, which is the one thing on a
+  // drawing that must never be wrong. When the caller knows the real size (the
+  // viewer does — it is the figure in the status bar) that wins, and the
+  // drawing agrees with the app instead of contradicting it. Kept centred on
+  // the same box so the projected silhouette and the dimension lines still line
+  // up. Flat/faceted parts are unaffected: there the two agree exactly.
+  let [bmin, bmax] = shape.boundingBox.bounds;
+  const known = Array.isArray(opts.size) && opts.size.length === 3
+    && opts.size.every((v) => Number.isFinite(v) && v > 0);
+  if (known) {
+    const mid = [0, 1, 2].map((i) => (bmin[i] + bmax[i]) / 2);
+    bmin = mid.map((c, i) => c - opts.size[i] / 2);
+    bmax = mid.map((c, i) => c + opts.size[i] / 2);
+  }
   const sizeX = bmax[0] - bmin[0], sizeY = bmax[1] - bmin[1], sizeZ = bmax[2] - bmin[2];
   // p: the projection, len: its true model-unit length along that axis
   const span = (p, axis, px, len) => {

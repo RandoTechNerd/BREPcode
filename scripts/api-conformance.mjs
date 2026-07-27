@@ -16,7 +16,20 @@
 // cannot catch the prompt leading a model somewhere the examples never went —
 // which is exactly how "colorize isn't a BREPcode word" reached a user.
 
+// IMPORTANT: this has to do what the VIEWER does, not something stricter. The
+// first run scored 7/15 and eight of the failures were this script's fault:
+//
+//   - Five "missing return" — the app repairs that automatically via
+//     addImplicitReturn(), so the user never sees it. Judging without the repair
+//     measured a bug that does not exist.
+//   - Two "text/qrcode is not defined" — those live in the viewer's lazily
+//     loaded vocabulary, not in the DSL, so the script simply hadn't given the
+//     model the words the prompt promises it.
+//
+// Only one failure was real. A test that cries wolf about its own harness is
+// worse than no test, so every gap below is now closed against the viewer.
 import { composeSystem } from "../viewer/chatbot.js";
+import { addImplicitReturn, declaredNames } from "../viewer/assist.js";
 import * as dsl from "../index.js";
 import { build, toSTL } from "../index.js";
 
@@ -53,8 +66,21 @@ const PROMPTS = [
   "make a cylinder 40mm across and twice as tall as it is wide",
 ];
 
-const names = Object.keys(dsl).filter((k) => typeof dsl[k] === "function");
-const values = names.map((n) => dsl[n]);
+// The viewer folds the 2D code operators into the vocabulary after its lazy
+// import lands, and the prompt tells the model it may use them. They need real
+// geometry so a nameplate or a QR tag can be judged on whether it BUILDS — a
+// stub returning a plate of the right footprint does that without dragging the
+// browser-only code generator into node.
+const vocab = { ...dsl };
+for (const op of ["text", "qrcode", "datamatrix", "barcode", "stencil"]) {
+  vocab[op] = (o = {}) => {
+    const size = Number(o.size ?? o.height ?? 10) || 10;
+    const chars = String(o.text ?? o.data ?? o.value ?? "").length || 4;
+    return dsl.cube([size * chars * 0.6, size, Number(o.depth ?? o.h ?? 1) || 1]);
+  };
+}
+const names = Object.keys(vocab).filter((k) => typeof vocab[k] === "function");
+const values = names.map((n) => vocab[n]);
 
 // The same gate the app applies before it will run a reply.
 const UNSAFE = /\b(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage|indexedDB|document|window|globalThis|navigator|eval|atob|btoa|sendBeacon)\b|\bimport\s*\(|\bFunction\s*\(|\.cookie/;
@@ -71,11 +97,30 @@ function unsafe(src) {
   return UNSAFE.test(masked);
 }
 
-const evalCode = (src) => {
-  let fn;
-  try { fn = new Function(...names, `"use strict"; return (\n${src}\n);`); }
-  catch { fn = new Function(...names, `"use strict";\n${src}`); }
-  return fn(...values);
+// Mirrors evaluate() in viewer/index.html, repairs and all. `repaired` records
+// what the app had to fix, so a pass that needed help still reports it — the
+// prompt is doing worse than a bare pass count suggests when this fills up.
+const evalCode = (src, repaired) => {
+  const shadowed = declaredNames(src, names);
+  if (shadowed.length) repaired.push(`dropped shadowed ${shadowed.join(", ")}`);
+  const ns = names.filter((n) => !shadowed.includes(n));
+  const vs = values.filter((_, i) => !shadowed.includes(names[i]));
+
+  let fn, statementForm = false;
+  try { fn = new Function(...ns, `"use strict"; return (\n${src}\n);`); }
+  catch { fn = new Function(...ns, `"use strict";\n${src}`); statementForm = true; }
+  const out = fn(...vs);
+
+  if (out === undefined && statementForm) {
+    const withReturn = addImplicitReturn(src);
+    if (withReturn) {
+      try {
+        const retry = new Function(...ns, `"use strict";\n${withReturn}`)(...vs);
+        if (retry !== undefined) { repaired.push("inserted the missing return"); return retry; }
+      } catch { /* the guess didn't parse — keep the honest failure */ }
+    }
+  }
+  return out;
 };
 
 async function ask(prompt) {
@@ -108,15 +153,17 @@ for (let run = 0; run < RUNS; run++) {
       if (!fence) { row.why = "no code block"; results.push(row); report(row); continue; }
       const code = fence[1].trim();
       if (unsafe(code)) { row.why = "blocked by the safety gate"; results.push(row); report(row); continue; }
+      const repaired = [];
       let shape;
-      try { shape = evalCode(code); }
+      try { shape = evalCode(code, repaired); }
       catch (e) { row.why = `did not evaluate: ${e.message.slice(0, 70)}`; results.push(row); report(row); continue; }
-      if (!shape || !shape.__brepscript) { row.why = "evaluated but produced no shape (missing return?)"; results.push(row); report(row); continue; }
+      if (!shape || !shape.__brepscript) { row.why = "evaluated but produced no shape, and no repair could recover one"; results.push(row); report(row); continue; }
       const stl = toSTL(await build(shape), "t");
       const tris = (stl.match(/facet normal/g) || []).length;
       if (!tris) { row.why = "built with no geometry"; results.push(row); report(row); continue; }
       row.ok = true;
-      row.why = `${tris} triangles`;
+      row.repaired = repaired;
+      row.why = `${tris} triangles${repaired.length ? ` (app ${repaired.join("; ")})` : ""}`;
     } catch (e) {
       row.why = e.message.slice(0, 90);
     }
@@ -134,5 +181,13 @@ console.log(`\n${results.length - failed.length}/${results.length} produced a mo
 if (failed.length) {
   console.log("\nwhat the prompt failed to carry:");
   for (const f of failed) console.log(`  - "${f.prompt}" -> ${f.why}`);
+}
+// Passes that needed repairing are the early warning. They cost the user
+// nothing today, but each one is the prompt failing to say something clearly,
+// and the repairs only cover the cases we already thought of.
+const helped = results.filter((r) => r.ok && r.repaired?.length);
+if (helped.length) {
+  console.log(`\n${helped.length}/${results.length} only passed because the app repaired them:`);
+  for (const h of helped) console.log(`  - "${h.prompt}" -> ${h.repaired.join("; ")}`);
 }
 process.exit(failed.length ? 1 : 0);

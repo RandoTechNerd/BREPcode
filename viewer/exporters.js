@@ -174,7 +174,7 @@ function storedZip(entries) {
 // OrcaSlicer read that as per-face paint and auto-assign a filament per colour —
 // so an embossed label or code prints in its own colour on a multi-material
 // printer. Consumers that ignore the extension still get correct geometry.
-export function colored3MF(groups, name = "brepcode-model") {
+export function colored3MF(groups, name = "brepcode-model", opts = {}) {
   const palette = [];                       // distinct colours, in first-seen order
   const idxOf = (c) => {
     const hex = (c || "#cccccc").toUpperCase();
@@ -191,7 +191,7 @@ export function colored3MF(groups, name = "brepcode-model") {
     for (const v of g.verts) verts.push(v);
     for (const t of g.tris) tris.push([base + t[0], base + t[1], base + t[2], ci]);
   }
-  if (!tris.length) return stlTo3MF("", name);
+  if (!tris.length) return stlTo3MF("", name, opts);
 
   const M = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02";
   const colorgroup = `  <m:colorgroup id="2">
@@ -217,12 +217,37 @@ ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}" p1="${t
  </build>
 </model>
 `;
+  return threeMfPackage(model, name, opts.source);
+}
+
+// Where the parametric source rides along inside an exported file. A mesh is a
+// dead end — once a part leaves as triangles the recipe that made it is gone,
+// and "I printed this a year ago and want it 3mm taller" means starting over.
+// 3MF is a zip, so the source travels as its own plain-text part: readable with
+// any unzip tool, ignored by every slicer, and enough to reopen the part as
+// editable code. Keep the part name and marker stable — older files must keep
+// loading.
+export const SOURCE_PART = "Metadata/BREPcode.source.js";
+export const SOURCE_MARKER = "BREPCODE-SOURCE-V1";
+
+const sourceHeader = (name) =>
+  `// ${SOURCE_MARKER}\n`
+  + `// The BREPcode that generated "${name}". Paste it into BREPcode.com to get\n`
+  + `// the editable, parametric model back — or just read it to see how it was made.\n`
+  + `// Exported by BREPcode-${APP_VERSION}.\n\n`;
+
+// The OPC wrapper both 3MF writers share. Every part in the package needs a
+// declared content type, so the source brings its own Default. Slicers read
+// 3D/3dmodel.model and ignore the rest — Bambu and Orca both ship extra
+// Metadata/ parts of their own, so this is a well-trodden path, not a hack.
+function threeMfPackage(model, name, code) {
+  const source = code ? String(code).trim() : "";
   return storedZip([
     ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
-</Types>
+${source ? ` <Default Extension="js" ContentType="text/javascript"/>\n` : ""}</Types>
 `],
     ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -230,7 +255,47 @@ ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}" p1="${t
 </Relationships>
 `],
     ["3D/3dmodel.model", model],
+    ...(source ? [[SOURCE_PART, sourceHeader(name) + source + "\n"]] : []),
   ]);
+}
+
+// The same idea for STL, which has no container at all — the source goes after
+// `endsolid`, where a well-behaved reader stops.
+//
+// It is BASE64, not plain text, and that is deliberate: three.js's ASCII STL
+// loader regex-scans the WHOLE file for `facet normal` blocks rather than
+// stopping at endsolid. Source that happened to contain those words — a
+// comment, a string, one of our own generated-STL examples — would inject
+// phantom triangles into anything that reimported it. Base64 cannot collide
+// with the grammar. The plain-English header above it says what it is.
+export function stlWithSource(stl, code) {
+  const source = code ? String(code).trim() : "";
+  if (!source) return stl;
+  const b64 = btoa(unescape(encodeURIComponent(source)));
+  return `${stl.trimEnd()}\n${SOURCE_MARKER}\n`
+    + "The BREPcode that generated this part, as base64 of UTF-8. Decode it and\n"
+    + "paste it into BREPcode.com to get the editable, parametric model back.\n"
+    + `${(b64.match(/.{1,76}/g) || []).join("\n")}\nEND-${SOURCE_MARKER}\n`;
+}
+
+// Take our own header off the 3MF source part, and nothing else. Stripping
+// every `//` line instead — the obvious shortcut — silently ate the author's
+// own comments on the way back in, which is a worse loss than the header.
+export function stripSourceHeader(text) {
+  const t = String(text || "").replace(/^﻿/, "");
+  if (!t.startsWith(`// ${SOURCE_MARKER}`)) return t.trim();
+  const gap = t.indexOf("\n\n");
+  return (gap < 0 ? "" : t.slice(gap + 2)).trim();
+}
+
+// Pull it back out of an STL. Returns "" when there is none, which is the
+// normal case for a file from anywhere else.
+export function extractSourceFromStl(text) {
+  const m = new RegExp(
+    `${SOURCE_MARKER}\\n[\\s\\S]*?\\n((?:[A-Za-z0-9+/=]+\\n)+)END-${SOURCE_MARKER}`).exec(text);
+  if (!m) return "";
+  try { return decodeURIComponent(escape(atob(m[1].replace(/\s/g, "")))); }
+  catch { return ""; }
 }
 
 export function stlTo3MF(stl, name = "brepcode-model", opts = {}) {
@@ -268,18 +333,5 @@ ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).joi
  </build>
 </model>
 `;
-  return storedZip([
-    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
- <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
- <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
-</Types>
-`],
-    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
- <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
-</Relationships>
-`],
-    ["3D/3dmodel.model", model],
-  ]);
+  return threeMfPackage(model, name, opts.source);
 }

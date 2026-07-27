@@ -1,7 +1,7 @@
 // Forgiving-mode repairs. autoFix must only ever append what's missing —
 // never rewrite or drop what the user actually typed.
 
-import { autoFix, addImplicitReturn } from "../viewer/assist.js";
+import { autoFix, addImplicitReturn, declaredNames } from "../viewer/assist.js";
 
 let pass = 0, fail = 0;
 function check(label, ok, detail = "") {
@@ -104,6 +104,51 @@ check("output starts with the exact input", autoFix(messy).code.startsWith(messy
     JSON.stringify(fixed));
 }
 
+
+// --- declaredNames: names the author took for themselves -------------------
+//
+// A live API run failed on "a bracket with support fins": the model wrote
+// `const fins = [...]`, and because the vocabulary is injected as function
+// PARAMETERS that is a SyntaxError before a single line runs — unrecoverable,
+// and invisible in every offline suite because our own examples never do it.
+{
+  const D = (src) => declaredNames(src, ["cube", "fins", "text", "union", "translate"]).sort();
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  check("catches the failure that started this", eq(D("const fins = [1,2];\nreturn cube([1,1,1]);"), ["fins"]));
+  check("let and var too", eq(D("let text = 'HI';\nvar fins = 2;"), ["fins", "text"]));
+  check("function declarations", eq(D("function fins(n) { return n; }"), ["fins"]));
+  check("second binding in a list", eq(D("const w = 20, fins = [1,2];"), ["fins"]));
+  check("a comma inside the VALUE isn't a new binding",
+    eq(D("const a = cube([1, 2, 3]), text = 'x';"), ["text"]));
+  check("destructuring counts", eq(D("const { text } = opts;"), ["text"]));
+  // A parameter is bound inside its own function; dropping it would leave the
+  // rest of the file calling a word we stopped injecting.
+  check("a function PARAMETER is not a top-level declaration",
+    eq(D("function makeFin(cube) { return cube; }\nreturn cube([1,1,1]);"), []));
+  check("...but the function's own name still counts", eq(D("function fins(n) { return n; }"), ["fins"]));
+  check("an arrow's parameter is not one either",
+    eq(D("const f = (cube) => cube;\nreturn cube([1,1,1]);"), []));
+
+  // The other half: a word merely USED must never be dropped, or the code loses
+  // the function it was calling and fails with "cube is not defined".
+  check("a plain call is not a declaration", eq(D("return cube([10, 10, 10]);"), []));
+  check("a call on the value side is not a declaration",
+    eq(D("const part = union(cube([1,1,1]), translate([1,0,0], cube([1,1,1])));"), []));
+  check("the word inside a string is not a declaration", eq(D('return text({ text: "const fins = 1" });'), []));
+  check("the word inside a comment is not a declaration", eq(D("// const fins = 1\nreturn cube([1,1,1]);"), []));
+
+  // End to end: dropping the claimed word makes the once-fatal source run.
+  const src = "const fins = [4, 6];\nreturn cube([fins[0], fins[1], 2]);";
+  const all = ["cube", "fins"], vals = [(d) => d, () => "the operator"];
+  const drop = declaredNames(src, all);
+  const keep = all.filter((n) => !drop.includes(n));
+  check("the source was fatal before the fix",
+    (() => { try { new Function(...all, src); return false; } catch { return true; } })());
+  check("...and now evaluates to the right shape",
+    new Function(...keep, `"use strict";\n${src}`)(...vals.filter((_, i) => !drop.includes(all[i])))
+      ?.join?.(",") === "4,6,2");
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
