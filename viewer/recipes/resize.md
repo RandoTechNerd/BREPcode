@@ -11,7 +11,7 @@ changes nothing.
 **Narrower / shorter — a NEGATIVE `by`:**
 
 ```js
-stretch({ axis: "x", by: -60, at: 0 }, importedMesh("frame.stl"))
+return stretch({ axis: "x", by: -60, at: 0 }, importedMesh("frame.stl"));
 ```
 
 That deletes a 60mm slab from the middle and slides the two halves together. A
@@ -22,7 +22,7 @@ the height and depth completely untouched.
 the part's own cross-section.
 
 ```js
-stretch({ axis: "x", by: 25, at: 0 }, importedMesh("tray.stl"))
+return stretch({ axis: "x", by: 25, at: 0 }, importedMesh("tray.stl"));
 ```
 
 ### One-sided work is a different operation
@@ -35,9 +35,15 @@ the centre of the part.
 other two axes so the cut is unambiguous.
 
 ```js
-// 0.2mm off the top of a part whose box is known
-difference(part,
-  translate([minX - 5, minY - 5, maxZ - 0.2], cube([w + 10, d + 10, 0.2 + 5])))
+// Read the box off the status bar and name it, so every number below follows
+// from it. A part 100 x 70 x 14 sitting corner-at-origin:
+const w = 100, d = 70, h = 14;
+const off = 0.2;                       // how much to take off the top
+
+return difference(
+  cube([w, d, h]),
+  // covers the whole top face and overshoots the other two axes
+  translate([-5, -5, h - off], cube([w + 10, d + 10, off + 5])));
 ```
 
 Taking material off the **bottom** leaves the part floating — add
@@ -48,8 +54,12 @@ z = 0.
 *inside* that face, so the slice being extruded is real material.
 
 ```js
-// push the right face out by 7mm
-stretch({ axis: "x", by: 7, at: maxX - 2 }, part)
+const w = 100, d = 70, h = 14;
+const grow = 7;
+
+// split 2mm inside the right face, so the slice being extruded is real
+// material, and push everything beyond it outward
+return stretch({ axis: "x", by: grow, at: w - 2 }, cube([w, d, h]));
 ```
 
 To push a **low** face out (left / front / bottom), stretch by the same positive
@@ -82,8 +92,9 @@ by **half** of what you removed. Add the translate back:
 
 ```js
 const remove = 60;
-translate([remove / 2, 0, 0],
-  stretch({ axis: "x", by: -remove, at: 0 }, importedMesh("frame.stl")))
+
+return translate([remove / 2, 0, 0],
+  stretch({ axis: "x", by: -remove, at: 0 }, importedMesh("frame.stl")));
 ```
 
 Use `[0, remove/2, 0]` for the y axis and `[0, 0, remove/2]` for z. Skip it only

@@ -29,7 +29,7 @@ which is the worst kind of wrong.
 const EPS = 0.01;                    // enough to break the tie, too small to see
 const plate = 10;
 
-difference(
+return difference(
   cube([40, 40, plate]),
   // starts EPS BELOW the bottom, runs EPS PAST the top
   translate([20, 20, -EPS], cylinder({ r: 4, h: plate + EPS * 2, $fn: 64 })));
@@ -45,8 +45,10 @@ BREPcode has no shell operator, so hollow is a subtraction and the wall thicknes
 is yours to state:
 
 ```js
+const EPS = 0.01;
 const wall = 2.4, w = 60, d = 40, h = 30;
-difference(
+
+return difference(
   cube([w, d, h]),
   // inset by `wall` on all four sides and the floor; open at the top, so the
   // inner box overshoots the top face by EPS
@@ -64,7 +66,8 @@ Prefer measuring the part you already have over inventing coordinates:
 
 ```js
 const baseW = 40, baseH = 12;
-union(
+
+return union(
   cube([baseW, baseW, baseH]),
   // ON TOP means starting exactly where the base ends
   translate([baseW / 2, baseW / 2, baseH], cone({ r1: 12, r2: 0, h: 20 })));
