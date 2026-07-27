@@ -1463,6 +1463,7 @@
         <div class="mat-pane" data-pane="material">
           <div class="mat-group">Material preset</div>
           <div id="mat-presets"></div>
+          <div class="note" id="mat-override-note" style="display:none; color: var(--warn); padding: 2px 0 5px"></div>
           <div class="mat-group">Surface</div>
           <label class="mat-row"><span>Color</span>
             <span class="swatches" id="mat-swatches"></span>
@@ -1572,10 +1573,17 @@
 
           <div class="mat-group">Per-shape colour</div>
           <div class="mat-row" style="gap: 8px">
+            <label style="flex:0 0 auto">Shade</label>
+            <input type="range" id="mat-shade" min="0" max="7" step="1" value="4" style="flex:1" />
+            <span id="mat-shade-o" style="flex:0 0 84px; text-align:right">Medium</span>
+          </div>
+          <div id="mat-shade-strip" style="display:flex; height:12px; border-radius:6px;
+               overflow:hidden; margin:2px 0 6px"></div>
+          <div class="mat-row" style="gap: 8px">
             <button id="mat-autocolor" class="hist-btn" style="font-size:12px">Auto-colour shapes</button>
             <button id="mat-clearcolor" class="hist-btn" style="font-size:12px">Reset</button>
           </div>
-          <div class="note" style="color: var(--muted3); padding: 0 0 4px">Or right-click any shape to colour just that one.</div>
+          <div class="note" style="color: var(--muted3); padding: 0 0 4px">Colours are spread across the shade you pick, so a QR code or a row of parts comes out multi-coloured but all in the same family. With a shape <b>selected</b> only that one is recoloured — so one part can be dark and the next glow. Or right-click any shape to colour just that one.</div>
         </div>
 
         <!-- LIGHTING TAB -->
@@ -2738,7 +2746,11 @@
       // same reasoning for the selection highlight — pick a colour, get the thing
       if (key === "selOutlineCol") { mat.selOutline = true; refreshHighlight(); }
       // handle colours are chrome, not part of the material preset
-      if (!["bg", "lightcol", "outlineCol", "selOutlineCol", "grabCol", "ballCol"].includes(key)) clearPreset();
+      // A colour change does NOT take you off a preset: concrete in another
+      // colour is still concrete, and dropping the highlight made it look as
+      // though the preset had been cancelled. Only surface edits clear it.
+      if (!["bg", "lightcol", "outlineCol", "selOutlineCol", "grabCol", "ballCol", "color"].includes(key)) clearPreset();
+      if (key === "color") noteColourOverride();
       applyMaterial(); saveMat();          // applyMaterial reflects the widgets
     }
 
@@ -2784,6 +2796,24 @@
     // manually tweaking the surface means you're off-preset — drop the highlight
     const clearPreset = () => document.querySelectorAll(".mat-preset.active").forEach((e) => e.classList.remove("active"));
     // material presets — one click sets colour + surface (+ glow emissive/lights)
+    // The base colour is only ever a FALLBACK: matForFeature() prefers a
+    // per-shape colour, whether from Auto-colour or from colorize() in the code.
+    // So once anything has its own colour, choosing a preset or a base swatch
+    // changes the SURFACE and nothing visible happens to the colour — silently.
+    // That reads as "presets stopped working", which is exactly how it was
+    // reported, and is why this note exists.
+    function noteColourOverride() {
+      const box = $("mat-override-note");
+      if (!box) return;
+      const n = new Set([...Object.keys(featureColors), ...Object.keys(codeColors)]).size;
+      if (!n) { box.style.display = "none"; return; }
+      box.style.display = "";
+      box.innerHTML = `Surface applied \u2014 but <b>${n}</b> shape${n === 1 ? " has its" : "s have their"} `
+        + `own colour, so the colour here is hidden. `
+        + `<button id="mat-override-reset" class="hist-btn" style="font-size:11px; padding:1px 7px">Clear those</button>`;
+      $("mat-override-reset").addEventListener("click", () => $("mat-clearcolor").click());
+    }
+
     function applyPreset(p) {
       Object.assign(mat, {
         color: p.color, metal: p.metal, rough: p.rough, opacity: p.opacity,
@@ -2793,6 +2823,7 @@
       if (p.lights) Object.assign(mat, p.lights);        // glow dims the scene
       if (p.bg) { mat.bg = p.bg; matUserBg = true; }      // glow darkens the background
       applyMaterial(); saveMat();
+      noteColourOverride();
       for (const el of document.querySelectorAll(".mat-preset")) el.classList.toggle("active", el.dataset.name === p.name);
     }
     for (const p of MATERIAL_PRESETS) {
@@ -2878,15 +2909,73 @@
     function setShapeColor(fid, hex) {
       if (hex) featureColors[fid] = hex; else delete featureColors[fid];
       recolorMeshes();
+      noteColourOverride();
     }
+    // Auto-colour within a SHADE, not across the whole colour space.
+    //
+    // One golden-angle sweep at a fixed 70%/60% gave every model the same
+    // primary-school palette. What people actually want is a family: a QR code
+    // in half a dozen darks, a bracket in glow-green, one part light and the
+    // next neon. So the hue still spreads (that is what makes it read as
+    // multi-colour) and the saturation/lightness stay inside a band.
+    //
+    // Glow-in-the-dark is a real filament with a real look — pale yellow-green,
+    // desaturated, very bright — so it gets its own narrow hue window rather
+    // than a lightness band. Neon is the opposite: full saturation, mid
+    // lightness, any hue.
+    const SHADES = [
+      { name: "Neon",       hue: [0, 360], sat: [96, 100], lit: [54, 62] },
+      { name: "Glow",       hue: [70, 145], sat: [55, 78], lit: [70, 84] },
+      { name: "Very light", hue: [0, 360], sat: [30, 52], lit: [82, 90] },
+      { name: "Light",      hue: [0, 360], sat: [45, 66], lit: [70, 79] },
+      { name: "Medium",     hue: [0, 360], sat: [60, 78], lit: [52, 62] },
+      { name: "Dark",       hue: [0, 360], sat: [55, 76], lit: [32, 42] },
+      { name: "Very dark",  hue: [0, 360], sat: [45, 70], lit: [17, 26] },
+      { name: "All",        hue: [0, 360], sat: [45, 95], lit: [22, 86] },
+    ];
+    const shadeIdx = () => Math.min(SHADES.length - 1, Math.max(0, +$("mat-shade").value || 0));
+
+    // `t` walks 0..1 across the shapes so a run of parts sweeps the band rather
+    // than all landing on the same value.
+    function shadeColor(i, n, shade) {
+      const t = n > 1 ? i / (n - 1) : 0;
+      const span = shade.hue[1] - shade.hue[0];
+      const hue = span >= 360
+        ? (i * 137.508) % 360                        // golden angle: no two adjacent alike
+        : shade.hue[0] + span * t;
+      const mix = (a, b) => a + (b - a) * (n > 1 ? t : 0.5);
+      return `hsl(${hue.toFixed(0)}, ${mix(shade.sat[0], shade.sat[1]).toFixed(0)}%, `
+        + `${mix(shade.lit[0], shade.lit[1]).toFixed(0)}%)`;
+    }
+
     function autoColorAll() {
+      const shade = SHADES[shadeIdx()];
       const fids = [...new Set(modelGroup.children.map((m) => m.userData.featureId).filter(Boolean))];
-      fids.forEach((fid, i) => {
-        const hue = (i * 137.508) % 360;             // golden-angle spread
-        featureColors[fid] = `hsl(${hue.toFixed(0)}, 70%, 60%)`;
+      // With a shape selected, recolour only that one — that is what makes
+      // "this part dark, that part glow" possible without hand-picking swatches.
+      const target = selected?.fid && fids.includes(selected.fid) ? [selected.fid] : fids;
+      const n = target.length;
+      target.forEach((fid, i) => {
+        featureColors[fid] = n === 1 && target !== fids
+          ? shadeColor(fids.indexOf(fid), fids.length, shade)   // keep its place in the sweep
+          : shadeColor(i, n, shade);
       });
       recolorMeshes();
+      noteColourOverride();
+      hint.innerHTML = target === fids
+        ? `Coloured <b>${n}</b> shape${n === 1 ? "" : "s"} across the <b>${shade.name}</b> range.`
+        : `Coloured the selected shape from the <b>${shade.name}</b> range. Pick another shape and a different shade to mix families.`;
     }
+
+    // The strip under the slider previews the band you are about to get.
+    function paintShadeStrip() {
+      const shade = SHADES[shadeIdx()];
+      $("mat-shade-o").textContent = shade.name;
+      $("mat-shade-strip").innerHTML = Array.from({ length: 8 }, (_, i) =>
+        `<span style="flex:1; background:${shadeColor(i, 8, shade)}"></span>`).join("");
+    }
+    $("mat-shade").addEventListener("input", paintShadeStrip);
+    paintShadeStrip();
 
     const shapeMenu = $("shape-menu");
     let shapeMenuFid = null;
@@ -2902,6 +2991,7 @@
     $("mat-clearcolor").addEventListener("click", () => {
       for (const k of Object.keys(featureColors)) delete featureColors[k];
       recolorMeshes();
+      noteColourOverride();          // the warning has to go away with them
     });
     $("sm-clear").addEventListener("click", () => { if (shapeMenuFid) setShapeColor(shapeMenuFid, null); shapeMenu.classList.remove("open"); });
     $("sm-clearall").addEventListener("click", () => {
