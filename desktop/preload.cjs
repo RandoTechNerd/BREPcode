@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   recoveryRead: (file) => ipcRenderer.invoke("recovery:read", file),
   recoveryReveal: () => ipcRenderer.invoke("recovery:reveal"),
 
+  // Which slicer is installed, and what version — the renderer asks BEFORE
+  // exporting so it can stamp the right version into the 3MF it is about to
+  // build, which is what stops OrcaSlicer showing its "old version" dialog.
+  slicerInfo: () => ipcRenderer.invoke("slicer:info"),
+  openInSlicer: (name, base64) => ipcRenderer.invoke("slicer:open", { name, base64 }),
+
   // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
   // The page registers a callback and gets { name, text } for each one.
   onOpenFile: (cb) => ipcRenderer.on("open-file", (_e, payload) => cb(payload)),

@@ -950,6 +950,7 @@
   <div id="export-menu">
     <div class="exp-group">Project</div>
     <button data-fmt="bcode">BREPcode<small>the editable model — save your work</small></button>
+    <button data-fmt="slicer" id="slicer-btn" style="display:none">Open in slicer<small>straight into OrcaSlicer</small></button>
     <div class="exp-group">Mesh</div>
     <button data-fmt="stl">STL<small>3D printing</small></button>
     <button data-fmt="obj">OBJ<small>DCC / game tools</small></button>
@@ -5699,12 +5700,64 @@
       fixnote.innerHTML = `<span style="color:var(--muted3)">That file <b>is</b> the model — plain text, opens in any editor, and drops back onto BREPcode to restore the code, the view and your undo history. Unlike an STL it stays parametric, so every dimension is still editable.</span>`;
     }
 
+    // Straight into the slicer — the one thing the website genuinely cannot do,
+    // because a web page can only ever hand you a file in your Downloads folder.
+    //
+    // The version tag is the whole trick. Orca greets a plain 3MF with "an old
+    // OrcaSlicer version, loading geometry data only" and refuses to show
+    // anything, and the value it accepts is a WINDOW: too low is "old", too high
+    // is "newer", and only the installed build's own number opens silently. So
+    // ask the desktop what is installed and stamp THAT into the file. It is
+    // read from the config the slicer wrote about itself, which is what makes a
+    // dev fork with its own numbering work.
+    let slicerInfo = null;
+    async function openInSlicer() {
+      if (!window.brepcodeDesktop?.openInSlicer) return;
+      if (!lastSolids.length) { setStatus("err", "Nothing to send — build a model first."); return; }
+      setStatus("busy", "Packing the model for the slicer…");
+      try {
+        const exp = await getExporters();
+        const base = safeModelName();
+        slicerInfo = slicerInfo || await window.brepcodeDesktop.slicerInfo();
+        const groups = colorGroupsForExport();
+        const distinct = new Set(groups.map((g) => g.color)).size;
+        const opts = { source: code.value.trim(), orcaVersion: slicerInfo?.version || undefined };
+        const bytes = distinct > 1 ? exp.colored3MF(groups, base, opts)
+                                   : exp.stlTo3MF(exportSTL(), base, opts);
+        const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
+        if (!r?.ok) { setStatus("err", `Couldn't open the slicer: ${r?.error || "unknown error"}`); return; }
+        setStatus("ok", `Opened ${base}.3mf in ${r.via === "orca" ? "OrcaSlicer" : "your default 3MF app"}.`);
+        fixnote.innerHTML = `<span style="color:var(--muted3)">`
+          + (slicerInfo?.version
+            ? `Stamped for OrcaSlicer <b>${esc(slicerInfo.version)}</b>, so it opens without the “old version” dialog. `
+            : `Couldn't read the installed Orca version, so the file is left plainly spec-correct — Orca may show its “old version” notice. `)
+          + `The model carries its BREPcode too, so the 3MF can be reopened here as editable code.</span>`;
+      } catch (e) {
+        setStatus("err", `Couldn't open the slicer: ${String(e?.message || e).slice(0, 90)}`);
+      }
+    }
+
+    // Desktop only — and only worth offering once we know something can open it.
+    if (window.brepcodeDesktop?.slicerInfo) {
+      window.brepcodeDesktop.slicerInfo().then((info) => {
+        slicerInfo = info;
+        const btn = $("slicer-btn");
+        btn.style.display = "";
+        if (!info?.found) {
+          btn.querySelector("small").textContent = "opens in your default 3MF app";
+        } else if (info.version) {
+          btn.querySelector("small").textContent = `straight into OrcaSlicer ${info.version}`;
+        }
+      }).catch(() => { /* leave the button hidden */ });
+    }
+
     async function exportAs(fmt) {
       // Saving the project is the one export that must work on a model that
       // does NOT build. A half-finished part you cannot get back is precisely
       // what you most need to keep, and refusing to save it would be the worst
       // possible moment to be strict.
       if (fmt === "bcode") return exportProject();
+      if (fmt === "slicer") return openInSlicer();
       if (!lastSolids.length) { setStatus("err", "Nothing to export — build a model first."); return; }
       const base = safeModelName();
       try {

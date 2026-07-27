@@ -33,6 +33,7 @@ const check = (label, ok, detail = "") => {
 // main.cjs registers these itself only when it is the entry point
 require("../desktop/mail.cjs").register();
 require("../desktop/recovery.cjs").register();
+require("../desktop/slicer.cjs").register();
 
 app.whenReady().then(async () => {
   // The real shell window, not a lookalike: same sandbox flags, same preload,
@@ -59,7 +60,7 @@ app.whenReady().then(async () => {
     check("the bridge reaches the page", await run("!!window.brepcodeDesktop?.isDesktop"));
     check("the page is still sandboxed", await run("typeof require === 'undefined' && typeof process === 'undefined'"));
     check("the bridge exposes no way to read the password back",
-      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "isDesktop,loadMail,onOpenFile,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,testMail");
+      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "isDesktop,loadMail,onOpenFile,openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail");
 
     check("nothing saved yet", (await run("window.brepcodeDesktop.loadMail()")).config === null);
 
@@ -170,6 +171,22 @@ app.whenReady().then(async () => {
       /const s = 21/.test(await run("document.getElementById('code').value")),
       await run("document.getElementById('code').value.slice(0, 60)"));
     try { fs.unlinkSync(project); } catch { /* fine */ }
+
+    // ---- open in slicer -------------------------------------------------
+    //
+    // The website can only ever drop a .3mf in Downloads. This is the one
+    // capability the desktop build exists for, so it has to actually resolve.
+    const info = await run("window.brepcodeDesktop.slicerInfo()");
+    check("the slicer bridge answers", info?.ok === true, JSON.stringify(info));
+    if (info?.found) {
+      check("...it found the installed slicer", /\.exe$/i.test(info.exe || ""), info.exe);
+      // Without a version the 3MF gets Orca's "old version" dialog, which is
+      // the entire problem this was built to solve.
+      check("...and read its version, so the 3MF can be stamped",
+        /^\d+\.\d+\.\d+$/.test(info.version || ""), String(info.version));
+    } else {
+      console.log("  ..    no slicer installed on this machine — detection skipped");
+    }
 
     check("dropping a file on the window is wired up",
       await run("typeof window.ondragover !== 'undefined'") !== undefined);

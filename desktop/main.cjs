@@ -17,6 +17,7 @@ const { pathToFileURL } = require("node:url");
 const fs = require("node:fs");
 const mail = require("./mail.cjs");
 const recovery = require("./recovery.cjs");
+const slicer = require("./slicer.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -142,6 +143,7 @@ if (require.main === module) app.on("second-instance", (_e, argv) => {
 if (require.main === module) app.whenReady().then(() => {
   mail.register();          // SMTP over IPC; a browser cannot do this at all
   recovery.register();      // crash snapshots into the OS temp folder
+  slicer.register();        // "open this in my slicer" — impossible from a web page
   serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.
