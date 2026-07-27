@@ -125,19 +125,159 @@ export async function unzipEntry(buf, namePattern) {
   throw new Error("entry not found in zip");
 }
 
-export async function parse3MF(buf) {
-  const xmlBytes = await unzipEntry(buf, /\.model$/i);
-  const xml = new TextDecoder().decode(xmlBytes);
-  const verts = [];
-  for (const m of xml.matchAll(/<vertex[^>]*\bx="([^"]+)"[^>]*\by="([^"]+)"[^>]*\bz="([^"]+)"/g)) {
-    verts.push([+m[1], +m[2], +m[3]]);
+// Every entry whose name matches, not just the first — a 3MF that uses the
+// production extension keeps its geometry in separate part files.
+export async function unzipEntries(buf, namePattern) {
+  const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65535); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
-  const out = [];
-  for (const m of xml.matchAll(/<triangle[^>]*\bv1="(\d+)"[^>]*\bv2="(\d+)"[^>]*\bv3="(\d+)"/g)) {
-    for (const i of [+m[1], +m[2], +m[3]]) {
-      const v = verts[i];
-      if (v) out.push(v[0], v[1], v[2]);
+  if (eocd < 0) throw new Error("not a zip (no central directory)");
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const dec = new TextDecoder();
+  const out = new Map();
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOff = dv.getUint32(p + 42, true);
+    const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (!namePattern.test(name)) continue;
+    const lNameLen = dv.getUint16(localOff + 26, true);
+    const lExtraLen = dv.getUint16(localOff + 28, true);
+    const startAt = localOff + 30 + lNameLen + lExtraLen;
+    const data = bytes.subarray(startAt, startAt + compSize);
+    if (method === 0) out.set(name, data);
+    else if (method === 8) out.set(name, await inflateRaw(data));
+  }
+  return out;
+}
+
+// A 3MF's objects, by id, from one .model part.
+//
+// An object is EITHER a mesh or a list of components pointing at other objects
+// — possibly in a different part file. That second form is the 3MF "production
+// extension", and it is what every multi-part Bambu/Orca project uses.
+function parseModelPart(xml) {
+  const objects = new Map();
+  // Split on object boundaries rather than regexing across the whole document:
+  // a 2.6MB part with 100k vertices makes any backtracking regex miserable.
+  const chunks = xml.split(/<object\b/).slice(1);
+  for (const chunk of chunks) {
+    const id = /^[^>]*\bid="([^"]+)"/.exec(chunk)?.[1];
+    if (!id) continue;
+    const body = chunk.slice(0, chunk.indexOf("</object>") + 1 || undefined);
+
+    const components = [];
+    for (const m of body.matchAll(/<component\b([^>]*)\/?>/g)) {
+      const attrs = m[1];
+      const objectid = /\bobjectid="([^"]+)"/.exec(attrs)?.[1];
+      if (!objectid) continue;
+      components.push({
+        objectid,
+        path: /\bp:path="([^"]+)"/.exec(attrs)?.[1] || null,
+        transform: /\btransform="([^"]+)"/.exec(attrs)?.[1] || null,
+      });
     }
+    if (components.length) { objects.set(id, { components }); continue; }
+
+    const verts = [];
+    for (const m of body.matchAll(/<vertex[^>]*\bx="([^"]+)"[^>]*\by="([^"]+)"[^>]*\bz="([^"]+)"/g)) {
+      verts.push([+m[1], +m[2], +m[3]]);
+    }
+    const tris = [];
+    for (const m of body.matchAll(/<triangle[^>]*\bv1="(\d+)"[^>]*\bv2="(\d+)"[^>]*\bv3="(\d+)"/g)) {
+      tris.push([+m[1], +m[2], +m[3]]);
+    }
+    if (verts.length) objects.set(id, { verts, tris });
+  }
+  return objects;
+}
+
+// 3MF transform: "m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32", row-major
+// with the translation last — so a point goes x*m00 + y*m10 + z*m20 + m30.
+function applyTransform(p, t) {
+  if (!t) return p;
+  const n = t.trim().split(/\s+/).map(Number);
+  if (n.length < 12 || n.some((v) => !Number.isFinite(v))) return p;
+  const [x, y, z] = p;
+  return [
+    x * n[0] + y * n[3] + z * n[6] + n[9],
+    x * n[1] + y * n[4] + z * n[7] + n[10],
+    x * n[2] + y * n[5] + z * n[8] + n[11],
+  ];
+}
+
+// Flatten a 3MF to a triangle soup.
+//
+// This used to read the FIRST .model part in the zip and regex it for
+// <vertex>/<triangle>. On any file written by Bambu or Orca that part is
+// 3D/3dmodel.model, which holds nothing but <components> pointing into
+// 3D/Objects/*.model — so a real 4-colour Benchy imported as ZERO triangles and
+// simply appeared to fail. Now every .model part is read, components are
+// followed across files, and each one's transform is applied.
+export async function parse3MF(buf) {
+  const parts = await unzipEntries(buf, /\.model$/i);
+  if (!parts.size) throw new Error("no model data in that 3MF");
+
+  const dec = new TextDecoder();
+  const byPath = new Map();                       // "/3D/x.model" -> Map(id -> object)
+  const norm = (p) => "/" + String(p || "").replace(/^\/+/, "");
+  for (const [name, bytes] of parts) byPath.set(norm(name), parseModelPart(dec.decode(bytes)));
+
+  // The root is the part the package relationship points at; in practice it is
+  // always 3D/3dmodel.model, and falling back to "whichever part has a build"
+  // covers anything unusual.
+  const rootPath = [...byPath.keys()].find((k) => /3dmodel\.model$/i.test(k)) || [...byPath.keys()][0];
+  const rootXml = dec.decode(parts.get(rootPath.slice(1)) ?? [...parts.values()][0]);
+
+  const out = [];
+  const seen = new Set();                          // components can cycle in a broken file
+  const emit = (path, id, transform, depth) => {
+    const key = `${path}#${id}`;
+    if (depth > 12 || seen.has(key + transform)) return;
+    seen.add(key + transform);
+    const obj = byPath.get(path)?.get(id);
+    if (!obj) return;
+    if (obj.components) {
+      for (const c of obj.components) {
+        // A component's transform composes with its parent's. Nesting deeper
+        // than one level is rare, so compose by applying in turn rather than
+        // multiplying matrices.
+        emit(c.path ? norm(c.path) : path, c.objectid,
+          transform && c.transform ? `${c.transform}|${transform}` : (c.transform || transform), depth + 1);
+      }
+      return;
+    }
+    for (const t of obj.tris) {
+      for (const i of t) {
+        let v = obj.verts[i];
+        if (!v) continue;
+        for (const step of String(transform || "").split("|").filter(Boolean)) v = applyTransform(v, step);
+        out.push(v[0], v[1], v[2]);
+      }
+    }
+  };
+
+  const items = [...rootXml.matchAll(/<item\b([^>]*)>/g)]
+    .map((m) => ({
+      objectid: /\bobjectid="([^"]+)"/.exec(m[1])?.[1],
+      transform: /\btransform="([^"]+)"/.exec(m[1])?.[1] || null,
+    }))
+    .filter((i) => i.objectid);
+
+  if (items.length) {
+    for (const it of items) emit(rootPath, it.objectid, it.transform, 0);
+  } else {
+    // No build section: take every mesh we found, wherever it lives.
+    for (const [path, objs] of byPath) for (const [id, o] of objs) if (o.verts) emit(path, id, null, 0);
   }
   return new Float32Array(out);
 }

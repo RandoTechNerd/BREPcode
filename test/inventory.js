@@ -88,5 +88,84 @@ const asciiStl = toSTL(await build(cube([10, 10, 10])), "c");
   check("unknown extension errors clearly", threw);
 }
 
+// --- the 3MF production extension -----------------------------------------
+//
+// A real 4-colour Benchy would not import: zero triangles, no error anyone
+// could act on. parse3MF read the FIRST .model part in the zip, and on every
+// file Bambu or Orca writes that part is 3D/3dmodel.model, which contains
+// nothing but <components> pointing into 3D/Objects/*.model. The geometry was
+// in another file the whole time.
+{
+  const { default: JSZip } = await import("jszip");
+
+  // Two unit cubes in a SEPARATE part file, referenced by an assembly in the
+  // root, each moved by its own component transform — the exact shape of a
+  // multi-part slicer project.
+  const cube = (id) => `  <object id="${id}" type="model">
+   <mesh>
+    <vertices>
+     <vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="1" y="1" z="0"/>
+     <vertex x="0" y="1" z="0"/><vertex x="0" y="0" z="1"/><vertex x="1" y="0" z="1"/>
+     <vertex x="1" y="1" z="1"/><vertex x="0" y="1" z="1"/>
+    </vertices>
+    <triangles>
+     <triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="3" v3="2"/>
+     <triangle v1="4" v2="5" v3="6"/><triangle v1="4" v2="6" v3="7"/>
+     <triangle v1="0" v2="1" v3="5"/><triangle v1="0" v2="5" v3="4"/>
+     <triangle v1="1" v2="2" v3="6"/><triangle v1="1" v2="6" v3="5"/>
+     <triangle v1="2" v2="3" v3="7"/><triangle v1="2" v2="7" v3="6"/>
+     <triangle v1="3" v2="0" v3="4"/><triangle v1="3" v2="4" v3="7"/>
+    </triangles>
+   </mesh>
+  </object>`;
+
+  const objects = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+ <resources>
+${cube(1)}
+${cube(2)}
+ </resources>
+</model>`;
+
+  const root = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p">
+ <resources>
+  <object id="9" type="model">
+   <components>
+    <component p:path="/3D/Objects/object_1.model" objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>
+    <component p:path="/3D/Objects/object_1.model" objectid="2" transform="1 0 0 0 1 0 0 0 1 10 0 0"/>
+   </components>
+  </object>
+ </resources>
+ <build><item objectid="9"/></build>
+</model>`;
+
+  const z = new JSZip();
+  z.file("3D/3dmodel.model", root);
+  z.file("3D/Objects/object_1.model", objects);
+  const bytes = await z.generateAsync({ type: "uint8array" });
+
+  const pos = await parse3MF(bytes);
+  check("geometry in a separate part file is followed", pos.length / 9 === 24,
+    `${pos.length / 9} triangles`);
+
+  const xs = [...pos].filter((_, i) => i % 3 === 0);
+  check("...and each component's transform is applied",
+    Math.min(...xs) === 0 && Math.max(...xs) === 11,
+    `x spans ${Math.min(...xs)}..${Math.max(...xs)}`);
+
+  // The root on its own carries no mesh — reading only that is the old bug.
+  const rootOnly = new JSZip();
+  rootOnly.file("3D/3dmodel.model", root);
+  const orphan = await parse3MF(await rootOnly.generateAsync({ type: "uint8array" }));
+  check("a dangling component reference yields nothing rather than throwing",
+    orphan.length === 0);
+
+  // and the ordinary single-file 3MF must still work
+  const plain = stlTo3MF(asciiStl, "cube");
+  check("a plain single-part 3MF still parses",
+    (await parse3MF(plain.buffer ?? plain)).length === 12 * 9);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
