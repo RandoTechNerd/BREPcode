@@ -7041,7 +7041,38 @@
     // (fetch, localStorage, document…). Real BREPcode/OpenSCAD/JSCAD never needs
     // those; a response that does is more likely a prompt-injection payload than
     // a shape, so we refuse to run it and tell the user why.
-    const AI_CODE_UNSAFE = /\b(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage|indexedDB|document|window|globalThis|navigator|eval|atob|btoa|sendBeacon)\b|\bimport\s*\(|\bFunction\s*\(|\.cookie/;
+    // The model the assistant writes is evaluated in this page, so a reply that
+    // reaches for the network or the DOM must never run. This is the gate.
+    const AI_CODE_UNSAFE_RE = /\b(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage|indexedDB|document|window|globalThis|navigator|eval|atob|btoa|sendBeacon)\b|\bimport\s*\(|\bFunction\s*\(|\.cookie/;
+
+    // …but only against real CODE. Those words are ordinary English, and a
+    // model is allowed to contain English: text({ text: "window" }) for a sign,
+    // or "document tray" on a label, were both refused with a security warning
+    // and no model. Browser code needs these as identifiers, never as letters
+    // inside a quoted string, so blank the strings and comments first and test
+    // what is left.
+    function aiCodeUnsafe(src) {
+      let masked = "", quote = null;
+      for (let i = 0; i < src.length; i++) {
+        const c = src[i], prev = src[i - 1];
+        if (quote) {
+          if (c === quote && prev !== "\\") quote = null;
+          masked += " ";
+          continue;
+        }
+        if (c === '"' || c === "'" || c === "`") { quote = c; masked += " "; continue; }
+        if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; masked += "\n"; continue; }
+        if (c === "/" && src[i + 1] === "*") {
+          const end = src.indexOf("*/", i);
+          if (end < 0) { masked += " ".repeat(src.length - i); break; }
+          masked += " ".repeat(end + 2 - i);
+          i = end + 1;
+          continue;
+        }
+        masked += c;
+      }
+      return AI_CODE_UNSAFE_RE.test(masked);
+    }
 
     async function sendChat() {
       const text = chatInput.value.trim();
@@ -7202,7 +7233,7 @@
           th.style.color = "var(--muted3)";
           th.style.fontSize = "12px";
         }
-        const unsafe = fence && AI_CODE_UNSAFE.test(fence[1]);
+        const unsafe = fence && aiCodeUnsafe(fence[1]);
         addMsg("bot", unsafe
           ? "⚠️ That reply contained browser code, not a CAD model, so I didn't run it. If you actually trust it, review and paste it in yourself."
           : (prose || (fence ? "Here you go — building it now." : answer)));
