@@ -7074,10 +7074,17 @@
       return AI_CODE_UNSAFE_RE.test(masked);
     }
 
+    // How many times a failed build is silently handed back to the model before
+    // the user is asked to intervene. Reset on every new request from them.
+    const RETRY_TEXT = "That code failed to build. Fix it and return the corrected complete model.";
+    const MAX_AUTOFIX = 2;
+    let autoFixTries = 0;
+
     async function sendChat() {
       const text = chatInput.value.trim();
       if (!text) return;
       chatInput.value = "";
+      if (text !== RETRY_TEXT) autoFixTries = 0;   // a real request, fresh budget
       addMsg("user", text);
       chatLog.push({ role: "user", text });
       const { respond: botRespond, buildApiRequest, extractApiText, extractApiThinking } = await ensureChat();
@@ -7241,10 +7248,24 @@
         if (fence && !unsafe) {
           const r = await applyGeneratedCode(fence[1].trim());
           if (!r.ok) {
-            // hand the failure straight back so the next turn can repair it
-            addMsg("bot", `⚠️ That didn't build: ${r.detail}`);
+            // Hand the failure back and RETRY IT OURSELVES. A build error is
+            // something the model can almost always repair from the message
+            // alone — a wrong word, a missing return, a bad argument — so
+            // making the user read the error, understand it, and click a button
+            // is asking them to be the error handler for a mistake they did not
+            // make. Two attempts, then it is genuinely stuck and they should see
+            // it rather than watch us burn their API quota in a loop.
+            autoFixTries++;
+            if (autoFixTries <= MAX_AUTOFIX) {
+              addMsg("bot", `That didn't build — ${r.detail} Fixing it (attempt ${autoFixTries} of ${MAX_AUTOFIX})…`);
+              chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
+              chatInput.value = RETRY_TEXT;
+              await sendChat();
+              return;
+            }
+            addMsg("bot", `⚠️ Still not building after ${MAX_AUTOFIX} tries: ${r.detail}`);
             chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
-            quickReplies(["That code failed to build. Fix it and return the corrected complete model."], ["⚠ Ask it to fix"]);
+            quickReplies([RETRY_TEXT], ["⚠ Try once more"]);
           } else if (r.warned) {
             addMsg("bot", `Built — but note: ${r.warned}`);
           }

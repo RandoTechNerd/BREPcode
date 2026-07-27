@@ -412,6 +412,51 @@ export function boxCorners(min, max) {
   return out;
 }
 
+// Tag a shape with a colour. The compiler has always threaded `n.color` down
+// the tree and recorded it against every feature it reaches — the viewer paints
+// from it, and two or more colours export as a 3MF colour group so a
+// multi-material printer assigns a filament per colour. What was missing was
+// the way to SET it: the prompt and a comment in this file both referred to
+// colorize() as though it existed, so every model that tried to colour anything
+// failed with "colorize isn't a BREPcode word". This is that function.
+//
+// Accepts what people actually write: colorize([1, 0.84, 0], part) with 0–1
+// components, [255, 215, 0] with 0–255, or a "#rrggbb" string.
+export function colorize(color, ...children) {
+  const kids = collect(children);
+  if (!kids.length) throw new Error('colorize() needs a shape, e.g. colorize("#d4af37", cube([10, 10, 10]))');
+  const shape = kids.length === 1 ? kids[0] : group(...kids);
+  return node({ ...shape, color: normaliseColor(color) });
+}
+
+// Emissive tag — the same threading, for a part that should glow.
+export function glow(color, intensity, ...children) {
+  const kids = collect(children);
+  if (!kids.length) throw new Error('glow() needs a shape, e.g. glow("#39ff14", 2, sphere({ r: 10 }))');
+  const shape = kids.length === 1 ? kids[0] : group(...kids);
+  const em = normaliseColor(color);
+  return node({ ...shape, color: shape.color ?? em, emissive: em, emissiveInt: Number(intensity) || 1 });
+}
+
+function normaliseColor(c) {
+  if (typeof c === "string") {
+    const s = c.trim();
+    if (/^#?[0-9a-f]{6}$/i.test(s)) return "#" + s.replace("#", "").toLowerCase();
+    if (/^#?[0-9a-f]{3}$/i.test(s)) {
+      const h = s.replace("#", "");
+      return "#" + [...h].map((ch) => ch + ch).join("").toLowerCase();
+    }
+    throw new TypeError(`colorize(): "${c}" isn't a colour — use "#d4af37" or [r, g, b]`);
+  }
+  if (Array.isArray(c) && c.length >= 3) {
+    // 0–1 floats and 0–255 bytes are both common; anything above 1 means bytes
+    const max = Math.max(c[0], c[1], c[2]);
+    const to255 = (v) => Math.max(0, Math.min(255, Math.round(max <= 1 ? v * 255 : v)));
+    return "#" + c.slice(0, 3).map((v) => to255(v).toString(16).padStart(2, "0")).join("");
+  }
+  throw new TypeError('colorize(): give a colour as "#d4af37" or [r, g, b]');
+}
+
 // A loose collection of solids kept SEPARATE (no boolean) — a scene/assembly.
 // This is what a JSCAD main() returning an array means, and it avoids the huge
 // cost of unioning dozens of parts just to display them (each stays its own
