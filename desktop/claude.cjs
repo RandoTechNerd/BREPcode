@@ -64,6 +64,25 @@ function detect() {
       path.join(home, ".local", "bin", "claude"),
       process.env.APPDATA && path.join(process.env.APPDATA, "npm", "claude.cmd"),
     ].filter(Boolean);
+    // The Claude DESKTOP APP bundles the CLI too, versioned under its own
+    // AppData — found by tracing what was actually running this integration's
+    // own development session. Anyone with the Claude app already has the CLI
+    // and should never be told to install one. Newest version wins.
+    if (process.env.APPDATA) {
+      const root = path.join(process.env.APPDATA, "Claude", "claude-code");
+      try {
+        const versions = fs.readdirSync(root)
+          .filter((d) => /^\d+[\d.]*$/.test(d))
+          .sort((a, b) => {
+            const A = a.split(".").map(Number), B = b.split(".").map(Number);
+            for (let i = 0; i < Math.max(A.length, B.length); i++) {
+              if ((A[i] || 0) !== (B[i] || 0)) return (B[i] || 0) - (A[i] || 0);
+            }
+            return 0;
+          });
+        for (const v of versions) candidates.push(path.join(root, v, "claude.exe"));
+      } catch { /* no desktop app */ }
+    }
     exe = candidates.find((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } }) || null;
   }
   if (exe) {
@@ -187,6 +206,21 @@ function register() {
   ipcMain.handle("claude:saveImage", (_e, { ext, base64 } = {}) => {
     try { return saveImage(ext, base64); }
     catch (e) { return { ok: false, error: String(e?.message || e) }; }
+  });
+  // One-click sign-in: open the CLI in its own console so the user can run
+  // /login there. We never see or touch the credentials — the CLI owns them.
+  ipcMain.handle("claude:login", () => {
+    const d = detect();
+    if (!d.found) return { ok: false, error: "no CLI found" };
+    try {
+      const { spawn } = require("node:child_process");
+      spawn("cmd.exe", ["/c", "start", "Claude sign-in", d.path], {
+        detached: true, stdio: "ignore", windowsHide: false,
+      }).unref();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(e?.message || e) };
+    }
   });
 }
 

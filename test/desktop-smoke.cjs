@@ -89,7 +89,7 @@ app.whenReady().then(async () => {
     check("the bridge reaches the page", await run("!!window.brepcodeDesktop?.isDesktop"));
     check("the page is still sandboxed", await run("typeof require === 'undefined' && typeof process === 'undefined'"));
     check("the bridge exposes no way to read the password back",
-      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "claudeAsk,claudeInfo,claudeSaveImage,isDesktop,loadMail,onOpenFile,openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail");
+      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,isDesktop,loadMail,onOpenFile,openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail");
 
     check("nothing saved yet", (await run("window.brepcodeDesktop.loadMail()")).config === null);
 

@@ -8212,7 +8212,7 @@ ${joined}`)(...vs);
           return;
         }
         if (!ccFound) {
-          addMsg("bot", "Almost there — Claude Code isn't installed on this computer yet. One-time setup:  1. In a terminal: npm install -g @anthropic-ai/claude-code   2. Run `claude` once and sign in with your Claude account   3. Restart BREPcode. After that you just type here and it answers on your subscription — no key, nothing else to configure.");
+          addMsg("bot", "Claude Code wasn't found on this computer. If you have the Claude desktop app, update it (recent versions include Claude Code) and restart BREPcode. Otherwise, one-time setup: npm install -g @anthropic-ai/claude-code, run `claude` once to sign in, then restart BREPcode.");
           return;
         }
       }
@@ -8424,7 +8424,21 @@ ${joined}`)(...vs);
       } catch (e) {
         clearInterval(tick);
         busy.remove();
-        addMsg("bot", `That didn't work: ${String(e?.message || e).slice(0, 140)}`);
+        const msg = String(e?.message || e);
+        const el = addMsg("bot", `That didn't work: ${msg.slice(0, 140)}`);
+        // The CLI is there but has no standalone login yet — the one situation
+        // a button genuinely fixes. It opens the CLI in its own console; type
+        // /login there, sign in in the browser, come back and just send again.
+        if (/sign(ed)? ?in|log ?in/i.test(msg) && window.brepcodeDesktop?.claudeLogin) {
+          const b = document.createElement("button");
+          b.textContent = "Sign in to Claude";
+          b.style.cssText = "font:inherit;padding:2px 10px;margin-left:8px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer";
+          b.addEventListener("click", async () => {
+            await window.brepcodeDesktop.claudeLogin();
+            addMsg("bot", "Opened a Claude console — type /login there, finish in the browser, then come back and send your message again.");
+          });
+          el.appendChild(b);
+        }
       }
     }
     $("chat-send").addEventListener("click", sendChat);

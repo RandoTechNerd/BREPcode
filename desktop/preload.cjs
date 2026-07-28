@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   claudeInfo: () => ipcRenderer.invoke("claude:info"),
   claudeAsk: (opts) => ipcRenderer.invoke("claude:ask", opts),
   claudeSaveImage: (ext, base64) => ipcRenderer.invoke("claude:saveImage", { ext, base64 }),
+  // opens the CLI in its own console for /login — we never see credentials
+  claudeLogin: () => ipcRenderer.invoke("claude:login"),
 
   // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
   // The page registers a callback and gets { name, text } for each one.
