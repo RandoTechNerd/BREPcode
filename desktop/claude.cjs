@@ -55,6 +55,10 @@ function detectAsync() {
 }
 
 async function probe() {
+  // Every step writes its evidence here, and claude:info carries it out — so
+  // when a machine we cannot reach says "not found", the message itself shows
+  // why instead of another round of guessing.
+  const log = [];
   let exe = null, version = null;
   try {
     const out = execFileSync(process.platform === "win32" ? "where" : "which",
@@ -63,7 +67,7 @@ async function probe() {
     // prefer the .cmd shim on Windows, since that is what a spawn can run.
     const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     exe = lines.find((l) => /\.cmd$/i.test(l)) || lines[0] || null;
-  } catch { /* not on PATH; try the known install spots */ }
+  } catch (e) { log.push(`where claude: ${String(e?.message || e).slice(0, 80)}`); }
   // (`where` is near-instant; the expensive step is the version probe below.)
   if (!exe) {
     // PATH is where a CLI should be, but real installs miss it: the native
@@ -94,9 +98,14 @@ async function probe() {
             return 0;
           });
         for (const v of versions) candidates.push(path.join(root, v, "claude.exe"));
-      } catch { /* no desktop app */ }
+      } catch (e) { log.push(`desktop-app dir: ${String(e?.message || e).slice(0, 80)}`); }
     }
-    exe = candidates.find((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } }) || null;
+    for (const c of candidates) {
+      let hit = false;
+      try { hit = fs.statSync(c).isFile(); } catch { /* absent */ }
+      log.push(`${hit ? "FOUND" : "no"}: ${c}`);
+      if (hit && !exe) exe = c;
+    }
   }
   // EXISTENCE IS A FILE CHECK, nothing more. The version probe used to gate
   // found — spawn claude.exe --version, and on a timeout declare the whole
@@ -111,7 +120,8 @@ async function probe() {
       .then((out) => { if (cached) cached.version = out.stdout.trim(); })
       .catch(() => { /* version stays unknown; existence already answered */ });
   }
-  return { found: !!exe, path: exe, version };
+  log.push(`APPDATA=${process.env.APPDATA || "(unset)"}`);
+  return { found: !!exe, path: exe, version, probeLog: log };
 }
 
 // Legacy sync view for callers that only want the cached answer.
@@ -236,7 +246,9 @@ function register() {
     if (!d.found) return { ok: false, error: "no CLI found" };
     try {
       const { spawn } = require("node:child_process");
-      spawn("cmd.exe", ["/c", "start", "Claude sign-in", d.path], {
+      // cmd /k keeps the console open no matter what claude does — an instant
+      // exit used to flash a window shut before anyone could read the reason.
+      spawn("cmd.exe", ["/c", "start", "Claude sign-in", "cmd.exe", "/k", d.path], {
         detached: true, stdio: "ignore", windowsHide: false,
       }).unref();
       return { ok: true };

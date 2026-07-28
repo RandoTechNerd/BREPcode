@@ -8229,18 +8229,24 @@ ${joined}`)(...vs);
           return;
         }
         if (!ccFound) {
-          // Ask AGAIN, live. The boot-time snapshot lost a race on real
-          // machines: the version probe takes a few seconds cold, the user
-          // types faster than that, and a perfectly good install was reported
-          // missing. The probe is cached in the main process, so this costs
-          // nothing once it has ever finished.
-          const live = await window.brepcodeDesktop.claudeInfo().catch(() => null);
+          // Ask AGAIN, live — the boot snapshot can lose a race on a cold
+          // machine. The probe is cached in the main process, so this is free
+          // once it has ever finished.
+          const live = await window.brepcodeDesktop.claudeInfo().catch((e) => ({ error: String(e) }));
           ccFound = !!live?.found;
           ccVersion = live?.version || null;
-        }
-        if (!ccFound) {
-          addMsg("bot", "Claude Code wasn't found on this computer. If you have the Claude desktop app, update it (recent versions include Claude Code) and restart BREPcode. Otherwise, one-time setup: npm install -g @anthropic-ai/claude-code, run `claude` once to sign in, then restart BREPcode.");
-          return;
+          if (!ccFound) {
+            // Not-found SHOWS ITS EVIDENCE. Several rounds of "wasn't found"
+            // on a machine that plainly had it taught this: a bare verdict is
+            // undebuggable from a screenshot, the probe log is not.
+            const log = (live?.probeLog || [live?.error || "the desktop bridge did not answer"]).join("\n");
+            const el = addMsg("bot", "Claude Code wasn't found. Here is exactly what was checked — send a screenshot of this if it looks wrong:");
+            const pre = document.createElement("pre");
+            pre.style.cssText = "font-size:10.5px; white-space:pre-wrap; opacity:.8; margin:6px 0 0";
+            pre.textContent = log;
+            el.appendChild(pre);
+            return;
+          }
         }
       }
       const useApi = aiProvider.value === "claude-code"
