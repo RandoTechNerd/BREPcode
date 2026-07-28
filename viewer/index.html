@@ -4892,7 +4892,26 @@ ${joined}`)(...vs);
     let drag = null;   // {fid, site, start:Vector3, planeZ, meshes, delta, moved}
     let drillArmed = false;   // "Drill" tool: next click on a face bores a hole there
 
+    // A preview is pictures, not geometry: there is nothing to cut, measure or
+    // select until it is built.
+    const inPreview = () => previewGroup.children.length > 0;
+
+    function refusePreviewTool(name) {
+      hint.innerHTML = `<b>${name}</b> needs the model built first — what is on screen is a preview, `
+        + `which is triangles for looking at rather than solids to cut. `
+        + `<button id="preview-build-now" style="font:inherit;padding:2px 9px;margin-left:4px;`
+        + `border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">`
+        + `Build it now</button>`;
+      $("preview-build-now").addEventListener("click", async () => {
+        clearMeshPreview();
+        setStatus("busy", "Building… the window will be unresponsive while it runs.");
+        await new Promise((r) => setTimeout(r, 60));
+        await rebuild();
+      });
+    }
+
     function setDrillArmed(on) {
+      if (on && inPreview()) { refusePreviewTool("Drill"); return; }
       drillArmed = on && !!currentModelExpr();
       $("drill-btn").classList.toggle("active", drillArmed);
       renderer.domElement.style.cursor = drillArmed ? "crosshair" : "";
@@ -4904,6 +4923,7 @@ ${joined}`)(...vs);
     // Same arming pattern as Drill: the next face click is consumed by the tool.
     let codeArmed = false, codeArmedKind = "datamatrix";
     function setCodeArmed(on, kind) {
+      if (on && inPreview()) { refusePreviewTool("Code stamp"); return; }
       if (kind) codeArmedKind = kind;
       codeArmed = on && !!currentModelExpr();
       if (codeArmed) setDrillArmed(false);           // only one tool armed at a time
@@ -6347,6 +6367,19 @@ ${joined}`)(...vs);
 
     function showMeshPreview(objects, colours, offset) {
       clearMeshPreview();
+      // EMPTY the real model, don't just hide it. The picker raycasts
+      // modelGroup.children directly and three.js does not skip invisible
+      // objects, so a hidden previous model stays fully clickable — drilling
+      // an imported Benchy bored into whatever had been on screen before,
+      // invisibly. Nothing there means nothing to hit by mistake.
+      for (const m of [...modelGroup.children]) {
+        m.geometry?.dispose?.();
+        modelGroup.remove(m);
+      }
+      selected = null;
+      clearHandles();
+      lastSolids = [];
+      lastShape = null;
       modelGroup.visible = false;
       objects.forEach((o, i) => {
         const g = new THREE.BufferGeometry();
