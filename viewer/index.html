@@ -8212,6 +8212,16 @@ ${joined}`)(...vs);
           return;
         }
         if (!ccFound) {
+          // Ask AGAIN, live. The boot-time snapshot lost a race on real
+          // machines: the version probe takes a few seconds cold, the user
+          // types faster than that, and a perfectly good install was reported
+          // missing. The probe is cached in the main process, so this costs
+          // nothing once it has ever finished.
+          const live = await window.brepcodeDesktop.claudeInfo().catch(() => null);
+          ccFound = !!live?.found;
+          ccVersion = live?.version || null;
+        }
+        if (!ccFound) {
           addMsg("bot", "Claude Code wasn't found on this computer. If you have the Claude desktop app, update it (recent versions include Claude Code) and restart BREPcode. Otherwise, one-time setup: npm install -g @anthropic-ai/claude-code, run `claude` once to sign in, then restart BREPcode.");
           return;
         }

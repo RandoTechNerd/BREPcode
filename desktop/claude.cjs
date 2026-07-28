@@ -20,6 +20,8 @@
 //     scoped to our own temp directory with --add-dir
 
 const { execFile, execFileSync } = require("node:child_process");
+const { promisify } = require("node:util");
+const execFileP = promisify(execFile);
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -39,10 +41,20 @@ function runnerFor(exe, args) {
   return { file: exe, args };
 }
 
-let cached = null;                     // { found, path, version } — probe once
+let cached = null;                     // resolved { found, path, version }
+let cachedP = null;                    // in-flight probe, shared by all callers
 
-function detect() {
-  if (cached) return cached;
+// ASYNC on purpose. The version probe spawns claude.exe, and a cold start of
+// a node-based CLI can take seconds — done synchronously it blocked Electron's
+// MAIN process, so the renderer's startup claudeInfo() sat unresolved while
+// the user typed their first message and was told "not found". Detection now
+// never blocks anything, and everyone awaits the same probe.
+function detectAsync() {
+  cachedP ??= probe().then((r) => (cached = r));
+  return cachedP;
+}
+
+async function probe() {
   let exe = null, version = null;
   try {
     const out = execFileSync(process.platform === "win32" ? "where" : "which",
@@ -52,6 +64,7 @@ function detect() {
     const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     exe = lines.find((l) => /\.cmd$/i.test(l)) || lines[0] || null;
   } catch { /* not on PATH; try the known install spots */ }
+  // (`where` is near-instant; the expensive step is the version probe below.)
   if (!exe) {
     // PATH is where a CLI should be, but real installs miss it: the native
     // installer lands in ~/.local/bin, and npm's global bin is often absent
@@ -88,24 +101,29 @@ function detect() {
   if (exe) {
     try {
       const r = runnerFor(exe, ["--version"]);
-      version = execFileSync(r.file, r.args,
-        { encoding: "utf8", timeout: 15000, windowsHide: true }).trim();
+      version = (await execFileP(r.file, r.args,
+        { encoding: "utf8", timeout: 20000, windowsHide: true })).stdout.trim();
     } catch { /* found but won't run — report found:false, it can't be driven */
       exe = null;
     }
   }
-  cached = { found: !!exe, path: exe, version };
-  return cached;
+  return { found: !!exe, path: exe, version };
+}
+
+// Legacy sync view for callers that only want the cached answer.
+function detect() {
+  detectAsync();
+  return cached || { found: false, path: null, version: null };
 }
 
 // One in flight at a time. The renderer's chat is serial anyway, and two
 // concurrent CLI sessions writing the same session id would interleave badly.
 let inflight = null;
 
-function ask({ system, prompt, model, effort, resume, imagePath } = {}) {
-  const d = detect();
-  if (!d.found) return Promise.resolve({ ok: false, error: "Claude Code isn't installed (or isn't on PATH). Install it from claude.com/code, sign in once, and restart BREPcode." });
-  if (inflight) return Promise.resolve({ ok: false, error: "Still working on the previous message." });
+async function ask({ system, prompt, model, effort, resume, imagePath } = {}) {
+  const d = await detectAsync();
+  if (!d.found) return { ok: false, error: "Claude Code isn't installed (or isn't on PATH). Install it from claude.com/code, sign in once, and restart BREPcode." };
+  if (inflight) return { ok: false, error: "Still working on the previous message." };
 
   const args = ["-p", "--output-format", "json"];
   // Allowlists, because these become argv — and argv may pass through cmd.exe
@@ -198,8 +216,8 @@ function saveImage(ext, base64) {
 
 function register() {
   const { ipcMain } = require("electron");
-  ipcMain.handle("claude:info", () => {
-    try { return { ok: true, ...detect() }; }
+  ipcMain.handle("claude:info", async () => {
+    try { return { ok: true, ...(await detectAsync()) }; }
     catch (e) { return { ok: false, found: false, error: String(e?.message || e) }; }
   });
   ipcMain.handle("claude:ask", (_e, opts) => ask(opts || {}));
@@ -209,8 +227,8 @@ function register() {
   });
   // One-click sign-in: open the CLI in its own console so the user can run
   // /login there. We never see or touch the credentials — the CLI owns them.
-  ipcMain.handle("claude:login", () => {
-    const d = detect();
+  ipcMain.handle("claude:login", async () => {
+    const d = await detectAsync();
     if (!d.found) return { ok: false, error: "no CLI found" };
     try {
       const { spawn } = require("node:child_process");
@@ -224,4 +242,4 @@ function register() {
   });
 }
 
-module.exports = { register, detect, saveImage, IMG_DIR };
+module.exports = { register, detect, detectAsync, saveImage, IMG_DIR };
