@@ -686,6 +686,45 @@ function childShape(stmt, scope) {
   return shapesToOne(evalStatement(stmt.child, scope));
 }
 
+// OpenSCAD's color() takes CSS colour names. The common ones people actually
+// type — the full CSS list is 140+, and an unknown name degrades gracefully
+// (shape kept, warning shown) rather than failing the build.
+const SCAD_COLORS = {
+  red: "#ff0000", green: "#008000", blue: "#0000ff", yellow: "#ffff00",
+  cyan: "#00ffff", magenta: "#ff00ff", black: "#000000", white: "#ffffff",
+  gray: "#808080", grey: "#808080", silver: "#c0c0c0", orange: "#ffa500",
+  purple: "#800080", pink: "#ffc0cb", brown: "#a52a2a", lime: "#00ff00",
+  navy: "#000080", teal: "#008080", olive: "#808000", maroon: "#800000",
+  aqua: "#00ffff", fuchsia: "#ff00ff", gold: "#ffd700", salmon: "#fa8072",
+  coral: "#ff7f50", tomato: "#ff6347", orangered: "#ff4500", crimson: "#dc143c",
+  indigo: "#4b0082", violet: "#ee82ee", lavender: "#e6e6fa", khaki: "#f0e68c",
+  tan: "#d2b48c", beige: "#f5f5dc", ivory: "#fffff0", snow: "#fffafa",
+  chocolate: "#d2691e", sienna: "#a0522d", peru: "#cd853f", orchid: "#da70d6",
+  plum: "#dda0dd", skyblue: "#87ceeb", steelblue: "#4682b4", royalblue: "#4169e1",
+  dodgerblue: "#1e90ff", cornflowerblue: "#6495ed", slateblue: "#6a5acd",
+  seagreen: "#2e8b57", forestgreen: "#228b22", darkgreen: "#006400",
+  springgreen: "#00ff7f", turquoise: "#40e0d0", hotpink: "#ff69b4",
+  deeppink: "#ff1493", lightblue: "#add8e6", lightgreen: "#90ee90",
+  lightgray: "#d3d3d3", lightgrey: "#d3d3d3", darkgray: "#a9a9a9",
+  darkgrey: "#a9a9a9", dimgray: "#696969", dimgrey: "#696969",
+  darkblue: "#00008b", darkred: "#8b0000", goldenrod: "#daa520",
+  wheat: "#f5deb3", lightyellow: "#ffffe0", limegreen: "#32cd32",
+  mediumblue: "#0000cd", darkorange: "#ff8c00", darkviolet: "#9400d3",
+  slategray: "#708090", slategrey: "#708090",
+};
+function scadColor(c) {
+  if (typeof c === "string") {
+    const s = c.trim().toLowerCase();
+    if (SCAD_COLORS[s]) return SCAD_COLORS[s];
+    // #rgb / #rrggbb, with any alpha nibbles/bytes dropped (nothing prints translucent)
+    if (/^#[0-9a-f]{3,4}$/.test(s)) return s.slice(0, 4);
+    if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(s)) return s.slice(0, 7);
+    return null;
+  }
+  if (Array.isArray(c) && c.length >= 3) return c.slice(0, 3);  // 0–1 floats; colorize() normalises
+  return null;
+}
+
 function evalCall(stmt, scope) {
   const { name, args } = stmt;
 
@@ -750,7 +789,22 @@ function evalCall(stmt, scope) {
       if (rmaj === undefined && I !== undefined && rmin !== undefined) rmaj = I + rmin;
       return dsl.torus({ r: rmaj ?? 1, tube: rmin ?? 0.25, $fn: fnOf(args, scope) });
     }
-    case "color": case "render": return childShape(stmt, scope);
+    case "color": {
+      // Real colour, not a pass-through: the tag threads through to the viewer
+      // and out again as a colour-grouped 3MF, one filament per colour.
+      const child = childShape(stmt, scope);
+      if (!child) return null;
+      const c = arg(args, scope, 0, "c");
+      const hex = scadColor(c);
+      if (!hex) {
+        warn(`color(${JSON.stringify(c)}): not a colour I recognise — shape kept, colour dropped`);
+        return child;
+      }
+      // OpenSCAD's alpha (4th component / second arg) is a screen effect —
+      // nothing prints translucent, so it is deliberately ignored.
+      return dsl.colorize(hex, child);
+    }
+    case "render": return childShape(stmt, scope);
     case "group": return childShape(stmt, scope);
 
     case "cube": {
@@ -1094,7 +1148,21 @@ export function fromOpenSCAD(source) {
   scope.set("$t", 0); scope.set("$fn", 0); scope.set("$fa", 12); scope.set("$fs", 2);
   scope.set("$vpr", [55, 0, 25]); scope.set("$vpt", [0, 0, 0]); scope.set("$vpd", 140); scope.set("$vpf", 22);
   scope.set("$preview", true); scope.set("$children", 0);
-  const shape = shapesToOne(evalStatements(stmts, scope));
+  const shapes = evalStatements(stmts, scope).filter(Boolean);
+  // Multicolour designs: top-level siblings carrying two or more DIFFERENT
+  // colour() tags stay a group() — separate solids, one filament per colour in
+  // the 3MF — instead of strict OpenSCAD's implicit union, which welds them
+  // into one solid wearing one colour. Same-colour/uncoloured siblings keep
+  // union semantics, and an explicit union() still welds regardless.
+  let shape;
+  const solids3d = shapes.filter((s) => !isProfile(s));
+  const tags = new Set(solids3d.map((s) => s.color).filter(Boolean));
+  if (shapes.length > 1 && solids3d.length === shapes.length && tags.size > 1) {
+    warn("multiple colours at top level — parts kept separate so each keeps its colour; wrap everything in union() to weld them into one");
+    shape = dsl.group(...shapes);
+  } else {
+    shape = shapesToOne(shapes);
+  }
   if (!shape) throw new Error("That OpenSCAD produced no solids.");
   // Forgiving: a top-level 2D result (a bare square/circle/polygon design) gets
   // a thin auto-extrude so it shows as a solid instead of erroring — the user

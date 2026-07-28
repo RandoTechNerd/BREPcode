@@ -252,6 +252,19 @@ app.whenReady().then(async () => {
     const ccBad = await run('window.brepcodeDesktop.claudeSaveImage("png", "")');
     check("an empty image is refused", ccBad?.ok === false);
 
+    // several images ride one message (Ctrl+V × up to 5)
+    const ccImg2 = await run(`window.brepcodeDesktop.claudeSaveImage("png", "${png1x1}")`);
+    const multi = await run(`window.brepcodeDesktop.claudeAsk({
+      system: "you are a test", prompt: "compare the two photos",
+      imagePaths: [${JSON.stringify(ccImg?.path || "")}, ${JSON.stringify(ccImg2?.path || "")}],
+    })`);
+    check("a message with several images still round-trips", multi?.ok === true, JSON.stringify(multi).slice(0, 140));
+    const outside = await run(`window.brepcodeDesktop.claudeAsk({
+      system: "you are a test", prompt: "read my secrets",
+      imagePaths: ["C:/Windows/System32/config/SAM"],
+    })`);
+    check("...but a path outside the image dir is ignored, not read", outside?.ok === true);
+
     check("dropping a file on the window is wired up",
       await run("typeof window.ondragover !== 'undefined'") !== undefined);
   } catch (e) {

@@ -115,6 +115,7 @@ export function feature(code, params = {}) {
 // references files by name so the model stays readable.
 const IMPORTS = new Map();
 let hullSeq = 0;          // unique names for hull() result meshes
+let texSeq = 0;           // unique names for texture()/heightmap() result meshes
 export function registerImport(name, contents) {
   // The viewer converts binary STL to ASCII through the kernel before it gets
   // here, but the CLI has no such step — and a binary STL is what every slicer
@@ -459,6 +460,310 @@ export function glow(color, intensity, ...children) {
   const shape = kids.length === 1 ? kids[0] : group(...kids);
   const em = normaliseColor(color);
   return node({ ...shape, color: shape.color ?? em, emissive: em, emissiveInt: Number(intensity) || 1 });
+}
+
+// ------------------------------------------------------------- textures
+//
+// REAL surface texture — displaced geometry, not a shader. The child is built,
+// tessellated by the kernel, subdivided until the triangles are finer than the
+// pattern, and every vertex is pushed OUTWARD along its (welded, averaged)
+// normal by depth × pattern(point). Because the offset is a pure function of
+// the welded world position, shared vertices move identically and the mesh
+// stays watertight. The result is a mesh solid — it exports, booleans, prints.
+//
+//   texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, shape)
+//
+// patterns: "knurl" (diamond grip), "fuzzy" (fuzzy-skin noise), "layers"
+// (proud layer-lines), "bumps" (round grip dots), "waffle" (square grid).
+// faces: "sides" (default — walls only), "top", "bottom", "all".
+export const TEXTURE_PATTERNS = ["knurl", "fuzzy", "layers", "bumps", "waffle"];
+export function texture(opts, ...children) {
+  const o = opts || {};
+  const kids = collect(children);
+  if (!kids.length) throw new Error('texture() needs a shape, e.g. texture({ pattern: "knurl" }, cube([30, 30, 12]))');
+  const pattern = String(o.pattern ?? "knurl").toLowerCase();
+  if (!TEXTURE_PATTERNS.includes(pattern)) {
+    throw new Error(`texture(): unknown pattern "${o.pattern}" — pick one of ${TEXTURE_PATTERNS.join(", ")}`);
+  }
+  return node({
+    kind: "texture", children: kids, fix: IDENTITY,
+    opts: {
+      pattern,
+      depth: Number(o.depth) || 0.6,
+      scale: Math.max(0.2, Number(o.scale) || 3),
+      faces: ["all", "top", "bottom", "sides"].includes(o.faces) ? o.faces : "sides",
+      // The kernel's mesh import goes SUPERLINEAR with triangle count —
+      // measured: 768 tris ≈ 0.15s, 3k ≈ 2s, 12k ≈ half a minute of frozen
+      // UI. 6k keeps the build interactive; raise maxTris for a finer
+      // pattern when you're about to export and can wait.
+      maxTris: Number(o.maxTris) || 6000,
+    },
+  });
+}
+
+// A greyscale image as relief on one side of the model — think a face photo
+// embossed on a box, or a logo raised out of a lid. The image arrives as a
+// small raw-luminance grid (base64), which the viewer's Photo emboss tool
+// makes from any PNG/JPG; that keeps this file canvas-free and testable.
+//
+//   heightmap({ map, w, h, side: "+x", depth: 1.5 }, shape)
+//
+// Darker pixels stand OUT further by default (like a stamped relief);
+// invert: true flips that.
+export function heightmap(opts, ...children) {
+  const o = opts || {};
+  const kids = collect(children);
+  if (!kids.length) throw new Error('heightmap() needs a shape, e.g. heightmap({ map, w: 64, h: 64, side: "+x" }, cube([40, 40, 40]))');
+  const side = String(o.side ?? "+x");
+  if (!/^[+-][xyz]$/.test(side)) throw new Error(`heightmap(): side must be "+x", "-x", "+y", "-y", "+z" or "-z" — got ${JSON.stringify(o.side)}`);
+  const w = Math.round(Number(o.w) || 0), h = Math.round(Number(o.h) || 0);
+  if (!w || !h || typeof o.map !== "string" || !o.map) {
+    throw new Error("heightmap() needs { map (base64 luminance), w, h } — use the Photo emboss tool to generate them from an image");
+  }
+  const grid = b64Bytes(o.map);
+  if (grid.length < w * h) throw new Error(`heightmap(): map has ${grid.length} pixels but w×h says ${w * h}`);
+  return node({
+    kind: "texture", children: kids, fix: IDENTITY,
+    opts: {
+      map: grid, mapW: w, mapH: h, side,
+      invert: !!o.invert,
+      depth: Number(o.depth) || 1.5,
+      // relief wants more resolution than a repeating pattern; ~12k tris is
+      // roughly half a minute of build — a one-off bake, not a typing loop
+      maxTris: Number(o.maxTris) || 12000,
+    },
+  });
+}
+
+// base64 -> bytes, in both the browser and node (tests)
+function b64Bytes(s) {
+  if (typeof Buffer !== "undefined") return Buffer.from(s, "base64");
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+const triWave = (t) => Math.abs(t - Math.floor(t) - 0.5) * 2;   // [0,1], peaks on integers
+function hash3(x, y, z) {
+  const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+  return s - Math.floor(s);
+}
+// smooth value noise: trilinear blend of lattice hashes, [0,1]
+function vnoise(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const sm = (t) => t * t * (3 - 2 * t);
+  const u = sm(x - xi), v = sm(y - yi), w = sm(z - zi);
+  let acc = 0;
+  for (let dx = 0; dx <= 1; dx++) {
+    for (let dy = 0; dy <= 1; dy++) {
+      for (let dz = 0; dz <= 1; dz++) {
+        acc += hash3(xi + dx, yi + dy, zi + dz)
+          * (dx ? u : 1 - u) * (dy ? v : 1 - v) * (dz ? w : 1 - w);
+      }
+    }
+  }
+  return acc;
+}
+
+// pattern value in [0,1] at a world point. Everything is a function of the
+// welded position (+ smoothed normal for knurl's tangent frame), which is what
+// keeps shared vertices in lockstep and the shell closed.
+function texAmp(o, px, py, pz, nx, ny, nz) {
+  const s = o.scale;
+  switch (o.pattern) {
+    case "fuzzy": return vnoise(px / s, py / s, pz / s);
+    case "layers": return triWave(pz / s);
+    case "bumps": {
+      const c = (t) => 0.5 + 0.5 * Math.cos(2 * Math.PI * t);
+      // product of three lobes -> isolated round dots rather than ridges
+      return Math.max(0, c(px / s) * c(py / s) * c(pz / s) * 2 - 1);
+    }
+    case "waffle": {
+      const rx = Math.max(0, triWave(px / s) * 2 - 1);
+      const ry = Math.max(0, triWave(py / s) * 2 - 1);
+      return Math.max(rx, ry);
+    }
+    case "knurl": {
+      // tangent frame from the smoothed normal: t1 runs horizontally around
+      // the surface (arc length on a cylinder, straight on a wall), t2 is its
+      // uphill partner. Diamonds are two triangle waves at ±45° in that frame.
+      let tx = -ny, ty = nx;
+      const tl = Math.hypot(tx, ty);
+      if (tl < 1e-6) { tx = 1; ty = 0; } else { tx /= tl; ty /= tl; }
+      const bx = -nz * ty, by = nz * tx, bz = nx * ty - ny * tx;
+      const u = (px * tx + py * ty) / s;
+      const w = (px * bx + py * by + pz * bz) / s;
+      return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
+    }
+    default: return 0;
+  }
+}
+
+// One uniform midpoint-subdivision pass: every triangle -> 4. Uniform levels
+// mean shared edges split at bit-identical midpoints, so the weld that follows
+// re-closes the shell with no T-junction cracks.
+function subdivideSoup(soup) {
+  const out = new Float64Array(soup.length * 4);
+  let at = 0;
+  const put = (ax, ay, az, bx, by, bz, cx, cy, cz) => {
+    out[at++] = ax; out[at++] = ay; out[at++] = az;
+    out[at++] = bx; out[at++] = by; out[at++] = bz;
+    out[at++] = cx; out[at++] = cy; out[at++] = cz;
+  };
+  for (let i = 0; i < soup.length; i += 9) {
+    const ax = soup[i], ay = soup[i + 1], az = soup[i + 2];
+    const bx = soup[i + 3], by = soup[i + 4], bz = soup[i + 5];
+    const cx = soup[i + 6], cy = soup[i + 7], cz = soup[i + 8];
+    const abx = (ax + bx) / 2, aby = (ay + by) / 2, abz = (az + bz) / 2;
+    const bcx = (bx + cx) / 2, bcy = (by + cy) / 2, bcz = (bz + cz) / 2;
+    const cax = (cx + ax) / 2, cay = (cy + ay) / 2, caz = (cz + az) / 2;
+    put(ax, ay, az, abx, aby, abz, cax, cay, caz);
+    put(abx, aby, abz, bx, by, bz, bcx, bcy, bcz);
+    put(cax, cay, caz, bcx, bcy, bcz, cx, cy, cz);
+    put(abx, aby, abz, bcx, bcy, bcz, cax, cay, caz);
+  }
+  return out;
+}
+
+// The whole displacement pipeline on a flat triangle soup. Exported for tests.
+export function displacedPositions(soupIn, o) {
+  let soup = Float64Array.from(soupIn);
+  const triCount = soup.length / 9;
+  if (!triCount) return soup;
+
+  // subdivision level: fine enough for the pattern, capped by a triangle
+  // budget the kernel can actually rebuild in reasonable time
+  let maxEdge = 0;
+  for (let i = 0; i < soup.length; i += 9) {
+    for (let e = 0; e < 3; e++) {
+      const a = i + e * 3, b = i + ((e + 1) % 3) * 3;
+      const d = Math.hypot(soup[a] - soup[b], soup[a + 1] - soup[b + 1], soup[a + 2] - soup[b + 2]);
+      if (d > maxEdge) maxEdge = d;
+    }
+  }
+  const spacing = o.map
+    ? Math.max(0.4, mapSpacing(soup, o))
+    : Math.max(0.4, o.scale / 2);
+  let levels = Math.ceil(Math.log2(Math.max(1, maxEdge / spacing)));
+  const budgetLevels = Math.floor(Math.log(Math.max(1, (o.maxTris || 24000) / triCount)) / Math.log(4));
+  levels = Math.max(0, Math.min(levels, budgetLevels, 6));
+  for (let l = 0; l < levels; l++) soup = subdivideSoup(soup);
+
+  // weld by rounded position -> indexed mesh
+  const key2idx = new Map();
+  const verts = [];
+  const faces = new Uint32Array(soup.length / 3);
+  for (let i = 0; i < soup.length; i += 3) {
+    const x = soup[i], y = soup[i + 1], z = soup[i + 2];
+    const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+    let idx = key2idx.get(k);
+    if (idx === undefined) {
+      idx = verts.length / 3;
+      key2idx.set(k, idx);
+      verts.push(x, y, z);
+    }
+    faces[i / 3] = idx;
+  }
+
+  // area-weighted vertex normals (the raw cross product IS area-weighted)
+  const nrm = new Float64Array(verts.length);
+  for (let f = 0; f < faces.length; f += 3) {
+    const a = faces[f] * 3, b = faces[f + 1] * 3, c = faces[f + 2] * 3;
+    const ux = verts[b] - verts[a], uy = verts[b + 1] - verts[a + 1], uz = verts[b + 2] - verts[a + 2];
+    const vx = verts[c] - verts[a], vy = verts[c + 1] - verts[a + 1], vz = verts[c + 2] - verts[a + 2];
+    const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+    for (const vi of [a, b, c]) { nrm[vi] += cx; nrm[vi + 1] += cy; nrm[vi + 2] += cz; }
+  }
+  for (let i = 0; i < nrm.length; i += 3) {
+    const l = Math.hypot(nrm[i], nrm[i + 1], nrm[i + 2]) || 1;
+    nrm[i] /= l; nrm[i + 1] /= l; nrm[i + 2] /= l;
+  }
+
+  // bounding box (heightmap uv space + nothing else)
+  const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (let i = 0; i < verts.length; i += 3) {
+    for (let a = 0; a < 3; a++) {
+      if (verts[i + a] < bb.min[a]) bb.min[a] = verts[i + a];
+      if (verts[i + a] > bb.max[a]) bb.max[a] = verts[i + a];
+    }
+  }
+
+  // displace every welded vertex outward. Patterns push along the vertex
+  // normal; a heightmap pushes along the FACE AXIS — a corner vertex's
+  // averaged normal points diagonally, and relief that smears sideways off
+  // its face would fatten the whole part by a millimetre.
+  const axisVec = [0, 0, 0];
+  if (o.map) axisVec[SIDE_AXIS[o.side[1]]] = o.side[0] === "+" ? 1 : -1;
+  const out = new Float64Array(verts.length);
+  for (let i = 0; i < verts.length; i += 3) {
+    const px = verts[i], py = verts[i + 1], pz = verts[i + 2];
+    const nx = nrm[i], ny = nrm[i + 1], nz = nrm[i + 2];
+    let amp, dx = nx, dy = ny, dz = nz;
+    if (o.map) {
+      amp = mapAmp(o, px, py, pz, nx, ny, nz, bb);
+      [dx, dy, dz] = axisVec;
+    } else {
+      const w = o.faces === "all" ? 1
+        : o.faces === "top" ? Math.max(0, nz)
+        : o.faces === "bottom" ? Math.max(0, -nz)
+        : Math.min(1, Math.max(0, (1 - Math.abs(nz)) * 2));    // "sides"
+      amp = w ? texAmp(o, px, py, pz, nx, ny, nz) * w : 0;
+    }
+    const d = o.depth * amp;
+    out[i] = px + dx * d; out[i + 1] = py + dy * d; out[i + 2] = pz + dz * d;
+  }
+
+  // back to a soup
+  const soupOut = new Float64Array(faces.length * 3);
+  for (let f = 0; f < faces.length; f++) {
+    const v = faces[f] * 3;
+    soupOut[f * 3] = out[v]; soupOut[f * 3 + 1] = out[v + 1]; soupOut[f * 3 + 2] = out[v + 2];
+  }
+  return soupOut;
+}
+
+const SIDE_AXIS = { x: 0, y: 1, z: 2 };
+// pixel pitch of the map on the model face — the subdivision target
+function mapSpacing(soup, o) {
+  const ax = SIDE_AXIS[o.side[1]];
+  const [u, v] = [0, 1, 2].filter((a) => a !== ax);
+  let mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+  for (let i = 0; i < soup.length; i += 3) {
+    const uu = soup[i + u], vv = soup[i + v];
+    if (uu < mn[0]) mn[0] = uu; if (uu > mx[0]) mx[0] = uu;
+    if (vv < mn[1]) mn[1] = vv; if (vv > mx[1]) mx[1] = vv;
+  }
+  return Math.min((mx[0] - mn[0]) / o.mapW, (mx[1] - mn[1]) / o.mapH);
+}
+
+function mapAmp(o, px, py, pz, nx, ny, nz, bb) {
+  const sign = o.side[0] === "+" ? 1 : -1;
+  const ax = SIDE_AXIS[o.side[1]];
+  const facing = [nx, ny, nz][ax] * sign;
+  if (facing <= 0) return 0;
+  const [ua, va] = [0, 1, 2].filter((a) => a !== ax);
+  const p = [px, py, pz];
+  const uSpan = bb.max[ua] - bb.min[ua] || 1;
+  const vSpan = bb.max[va] - bb.min[va] || 1;
+  let u = (p[ua] - bb.min[ua]) / uSpan;
+  // v runs UP the model; image rows run down — flip so the photo is upright
+  let v = 1 - (p[va] - bb.min[va]) / vSpan;
+  // mirror u on the sides where looking AT the face flips left/right
+  if ((ax === 0 && sign < 0) || (ax === 1 && sign > 0)) u = 1 - u;
+  const g = sampleGrid(o.map, o.mapW, o.mapH, u, v);
+  const lum = o.invert ? g / 255 : 1 - g / 255;
+  return lum * facing;      // feather by how squarely the surface faces the map
+}
+
+function sampleGrid(grid, w, h, u, v) {
+  const x = Math.max(0, Math.min(w - 1.001, u * (w - 1)));
+  const y = Math.max(0, Math.min(h - 1.001, v * (h - 1)));
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const at = (xx, yy) => grid[yy * w + xx];
+  return at(x0, y0) * (1 - fx) * (1 - fy) + at(x0 + 1, y0) * fx * (1 - fy)
+    + at(x0, y0 + 1) * (1 - fx) * fy + at(x0 + 1, y0 + 1) * fx * fy;
 }
 
 function normaliseColor(c) {
@@ -1071,6 +1376,46 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // to the origin: the STL above already carries the shape's real position,
       // so hull(a, b) rendered somewhere other than where a and b were. It also
       // put freeform()'s corner handles nowhere near the solid they belong to.
+      f.inputParams.centerMesh = false;
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi });
+      return f.inputParams.id;
+    }
+
+    if (n.kind === "texture") {
+      // Same shape as hull(): build the children in a throwaway history, read
+      // the kernel's own tessellation via toSTL, run the displacement pipeline,
+      // and import the result as a mesh solid.
+      const scratch = new partHistory.constructor();
+      for (const child of n.children) await compile(child, scratch);
+      await scratch.runHistory({ throwOnFeatureError: true });
+      const flat = [];
+      for (const s of (scratch.scene?.children || [])) {
+        if (s?.type !== "SOLID" || typeof s.toSTL !== "function") continue;
+        for (const m of s.toSTL("t", 6).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) {
+          flat.push(+m[1], +m[2], +m[3]);
+        }
+      }
+      if (flat.length < 9) throw new Error("texture(): the shape produced no surface to texture");
+      const pos = displacedPositions(flat, n.opts);
+
+      let stl = "solid tex\n";
+      for (let i = 0; i < pos.length; i += 9) {
+        stl += "facet normal 0 0 0\nouter loop\n";
+        for (let k = 0; k < 9; k += 3) stl += `vertex ${pos[i + k]} ${pos[i + k + 1]} ${pos[i + k + 2]}\n`;
+        stl += "endloop\nendfacet\n";
+      }
+      stl += "endsolid tex\n";
+
+      await ensureImportClonePatch(partHistory);
+      const name = `__tex${texSeq++}`;
+      let data = stl;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+      if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
+      IMPORTS.set(name, data);
+      const f = await partHistory.newFeature("IMPORT3D");
+      f.inputParams.fileToImport = data;
+      f.inputParams.meshRepairLevel = "NONE";
+      // like hull(): the STL already sits at its real position — never re-centre
       f.inputParams.centerMesh = false;
       trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi });
       return f.inputParams.id;

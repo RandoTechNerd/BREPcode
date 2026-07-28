@@ -345,6 +345,16 @@ export async function parse3MF(buf) {
   return all;
 }
 
+// The same file as COLOURED groups — what a thumbnail of a multicolour print
+// wants. Positions per part with that part's filament colour (null = uncoloured).
+// Falls back to [] when the file carries no colour information at all, so the
+// caller can keep the cheap single-soup path.
+export async function parse3MFColourGroups(buf) {
+  const [objects, colours] = await Promise.all([parse3MFObjects(buf), parse3MFPartColours(buf)]);
+  if (!colours.some(Boolean)) return [];
+  return objects.map((o, i) => ({ positions: o.positions, color: colours[i] || null }));
+}
+
 // Route by extension. Returns Float32Array positions (triangle soup).
 export async function parseModelFile(name, buf) {
   const ext = name.toLowerCase().split(".").pop();
@@ -376,22 +386,48 @@ export function makeThumbnailer(THREE, size = 176) {
   });
 
   return {
-    snapshot(positions) {
-      if (!positions?.length) return null;
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      g.computeVertexNormals();
-      g.computeBoundingSphere();
-      const bs = g.boundingSphere;
+    // `groups` (optional): [{ positions, color }] — a multicolour 3MF renders
+    // one mesh per part in its filament colour, so the tile looks like the
+    // print. Without it, the whole soup renders in the house grey.
+    snapshot(positions, groups = null) {
+      const parts = groups?.length
+        ? groups.filter((gr) => gr.positions?.length)
+        : (positions?.length ? [{ positions, color: null }] : []);
+      if (!parts.length) return null;
+      const meshes = [], extraMats = [];
+      const bounds = new THREE.Box3();
+      for (const part of parts) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(part.positions, 3));
+        g.computeVertexNormals();
+        g.computeBoundingBox();
+        const bb = g.boundingBox;
+        if (!bb || !Number.isFinite(bb.min.x) || !Number.isFinite(bb.max.x)) { g.dispose(); continue; }
+        let m = material;
+        if (part.color) {
+          m = material.clone();
+          m.color.set(part.color);
+          extraMats.push(m);
+        }
+        const mesh = new THREE.Mesh(g, m);
+        meshes.push(mesh);
+        scene.add(mesh);
+        bounds.union(bb);
+      }
       // guard against NaN/degenerate geometry — that's what rendered blank
-      if (!bs || !Number.isFinite(bs.radius) || bs.radius <= 0
-          || !Number.isFinite(bs.center.x) || !Number.isFinite(bs.center.y) || !Number.isFinite(bs.center.z)) {
-        g.dispose();
+      if (!meshes.length || bounds.isEmpty()) {
+        for (const mesh of meshes) { scene.remove(mesh); mesh.geometry.dispose(); }
+        for (const m of extraMats) m.dispose();
         return null;
       }
-      const mesh = new THREE.Mesh(g, material);
-      scene.add(mesh);
-      const { center, radius } = bs;
+      const center = bounds.getCenter(new THREE.Vector3());
+      const radius = bounds.getSize(new THREE.Vector3()).length() / 2;
+      if (!Number.isFinite(radius) || radius <= 0
+          || !Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(center.z)) {
+        for (const mesh of meshes) { scene.remove(mesh); mesh.geometry.dispose(); }
+        for (const m of extraMats) m.dispose();
+        return null;
+      }
       const r = Math.max(radius, 0.001);
       const dir = new THREE.Vector3(1, -1, 0.75).normalize();
       camera.position.copy(center).addScaledVector(dir, r * 3.1);
@@ -401,8 +437,8 @@ export function makeThumbnailer(THREE, size = 176) {
       camera.updateProjectionMatrix();
       renderer.render(scene, camera);
       const url = renderer.domElement.toDataURL("image/png");
-      scene.remove(mesh);
-      g.dispose();
+      for (const mesh of meshes) { scene.remove(mesh); mesh.geometry.dispose(); }
+      for (const m of extraMats) m.dispose();
       return url;
     },
     dispose() {
@@ -451,9 +487,9 @@ export async function idbSet(store, key, value) {
   });
 }
 
-// v2: bumping the version bypasses any blank thumbnails cached by the old
-// (unreliable) binary/ASCII detection, so they regenerate correctly.
-export const thumbKey = (f) => `v2|${f.name}|${f.size}|${f.lastModified}`;
+// v3: colour-aware 3MF thumbnails — the bump regenerates the all-grey tiles.
+// (v2 bypassed blanks cached by the old unreliable binary/ASCII detection.)
+export const thumbKey = (f) => `v3|${f.name}|${f.size}|${f.lastModified}`;
 
 // --------------------------------------------------------------- scanning
 

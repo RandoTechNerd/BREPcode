@@ -161,7 +161,7 @@ function detect() {
 // concurrent CLI sessions writing the same session id would interleave badly.
 let inflight = null;
 
-async function ask({ system, prompt, model, effort, resume, imagePath } = {}, onProgress) {
+async function ask({ system, prompt, model, effort, resume, imagePath, imagePaths } = {}, onProgress) {
   const d = await detectAsync();
   if (!d.found) return { ok: false, error: "Claude Code isn't installed (or isn't on PATH). Install it from claude.com/code, sign in once, and restart BREPcode." };
   if (inflight) return { ok: false, error: "Still working on the previous message." };
@@ -177,16 +177,13 @@ async function ask({ system, prompt, model, effort, resume, imagePath } = {}, on
   // anything else is refused rather than sanitised.
   if (model && /^[\w.-]{1,64}$/.test(String(model))) args.push("--model", String(model));
   if (resume && /^[\w-]{1,64}$/.test(String(resume))) args.push("--resume", String(resume));
-  if (imagePath) {
-    // Only a path WE minted (see saveImage) is accepted — the renderer cannot
-    // point Read at an arbitrary directory.
-    const full = path.resolve(String(imagePath));
-    if (full.startsWith(IMG_DIR + path.sep) && fs.existsSync(full)) {
-      args.push("--add-dir", IMG_DIR, "--allowedTools", "Read");
-    } else {
-      imagePath = null;
-    }
-  }
+  // Up to five images per message. Only paths WE minted (see saveImage) are
+  // accepted — the renderer cannot point Read at an arbitrary directory. One
+  // --add-dir covers them all; they live in the same folder by construction.
+  const wanted = [...(Array.isArray(imagePaths) ? imagePaths : []), ...(imagePath ? [imagePath] : [])];
+  const okPaths = wanted.slice(0, 5).map((p) => path.resolve(String(p)))
+    .filter((full) => full.startsWith(IMG_DIR + path.sep) && fs.existsSync(full));
+  if (okPaths.length) args.push("--add-dir", IMG_DIR, "--allowedTools", "Read");
 
   const env = { ...process.env };
   // Effort maps to the thinking budget. Medium is Claude Code's own default,

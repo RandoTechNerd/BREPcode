@@ -598,13 +598,17 @@
       #editor-tools .ovf { display: none; }
       #more-btn { display: inline-grid; place-items: center; }
     }
-    #export-menu button {
+    /* #export-more holds the fly-out tail of this menu — it lives OUTSIDE
+       #export-menu in the DOM (overflow:hidden there would clip it), so every
+       rule for the menu's innards has to name both or the fly-out renders as
+       stock white buttons. That is exactly how it shipped once. */
+    #export-menu button, #export-more button {
       display: block; width: 100%; text-align: left; background: none; border: 0;
       padding: 8px 14px; cursor: pointer; color: var(--text); font: 13px system-ui, sans-serif;
     }
-    #export-menu button:hover { background: var(--hover-strong); }
-    #export-menu small { color: var(--muted4); margin-left: 8px; }
-    #export-menu .exp-group {
+    #export-menu button:hover, #export-more button:hover { background: var(--hover-strong); }
+    #export-menu small, #export-more small { color: var(--muted4); margin-left: 8px; }
+    #export-menu .exp-group, #export-more .exp-group {
       padding: 7px 14px 3px; font-size: 10px; letter-spacing: .09em;
       text-transform: uppercase; color: var(--muted2);
     }
@@ -635,7 +639,7 @@
       font: 12px system-ui, sans-serif; padding: 4px 9px; border-radius: 999px; cursor: pointer;
     }
     #sm-swaps button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-    #export-menu .exp-group:first-child { padding-top: 9px; }
+    #export-menu .exp-group:first-child, #export-more .exp-group:first-child { padding-top: 9px; }
 
     /* ---------- feature history ---------- */
     #history-body { overflow-y: auto; max-height: min(46vh, 420px); padding: 6px 0 8px; }
@@ -1063,6 +1067,9 @@
           <button id="code-qr-btn" hidden></button>
           <button id="fins-btn" hidden></button>
           <button id="fins-noskirt-btn" hidden></button>
+          <button id="texture-btn" hidden></button>
+          <button id="emboss-btn" hidden></button>
+          <input type="file" id="emboss-file" accept="image/png,image/jpeg,image/webp" style="display:none" />
           <button id="trace-btn" class="hist-btn ovf" title="Trace an image (PNG / JPG) into an extrudable outline">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
@@ -1115,6 +1122,21 @@
               <path d="M4 13.5V4l7 9.5z" /><path d="M6 6.6h1.4M7.2 9h1.4" />
             </svg>
             <span><b>Fin supports — no skirt</b><small>same, without the foot</small></span>
+          </button>
+          <button data-act="texture-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 6l4-4 4 4-4 4z" /><path d="M6 10l4-4 4 4-4 4z" />
+            </svg>
+            <span><b>Surface texture</b><small>real knurl/fuzzy/bumps — it exports</small></span>
+          </button>
+          <button data-act="emboss-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="12" height="12" rx="1.5" /><circle cx="6" cy="6.4" r="1.5" />
+              <path d="M2 12l3.4-3.4 2.4 2.4 3.4-3.6L14 10.5" />
+            </svg>
+            <span><b>Photo emboss</b><small>image → relief on a clicked face</small></span>
           </button>
           <button data-act="code-dm-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none">
@@ -1368,7 +1390,7 @@
         <input id="chat-input" placeholder="e.g. make a box with a cone on top" />
         <button id="chat-send">Send</button>
       </div>
-      <input type="file" id="chat-img-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" />
+      <input type="file" id="chat-img-file" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none" />
     </section>
 
     <!-- about -->
@@ -3346,6 +3368,13 @@
     // drag only starts on the header surface itself. Double-click snaps the
     // card back into the dock.
     let cardZ = 30;
+    // Clicking ANYWHERE on a card brings it to the front — raising only on a
+    // header drag meant a buried window had to be moved before it could be read.
+    for (const card of document.querySelectorAll(".card")) {
+      card.addEventListener("pointerdown", () => {
+        if (card.classList.contains("floating")) card.style.zIndex = ++cardZ;
+      }, true);
+    }
     for (const headerEl of document.querySelectorAll(".card > header")) {
       const card = headerEl.closest(".card");
       headerEl.addEventListener("pointerdown", (e) => {
@@ -3384,6 +3413,14 @@
               card.style.left = `${Math.max(8, btns.left - r.width - RECT_PAD)}px`;
             }
           }
+          // Near a screen edge? Snap flush to it — released-close-to reads as
+          // "I wanted it against the edge", and tidy beats 6px of daylight.
+          const SNAP = 14;
+          const r2 = card.getBoundingClientRect();
+          if (r2.left > 0 && r2.left <= SNAP) card.style.left = "8px";
+          else if (innerWidth - r2.right > 0 && innerWidth - r2.right <= SNAP) card.style.left = `${innerWidth - r2.width - 8}px`;
+          if (r2.top > 0 && r2.top <= SNAP) card.style.top = "8px";
+          else if (innerHeight - r2.bottom > 0 && innerHeight - r2.bottom <= SNAP) card.style.top = `${innerHeight - r2.height - 8}px`;
         };
         headerEl.addEventListener("pointermove", move);
         headerEl.addEventListener("pointerup", up);
@@ -3397,6 +3434,23 @@
         if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
       });
     }
+
+    // Shrinking the browser window used to strand floating cards off-screen —
+    // their fixed left/top pointed at pixels that no longer exist. Re-clamp
+    // them (debounced; resize fires in bursts).
+    let reclampT = null;
+    addEventListener("resize", () => {
+      clearTimeout(reclampT);
+      reclampT = setTimeout(() => {
+        for (const card of document.querySelectorAll(".card.floating.open:not(.maxed)")) {
+          const r = card.getBoundingClientRect();
+          const l = Math.min(Math.max(parseFloat(card.style.left) || 0, 70 - r.width), innerWidth - 70);
+          const t = Math.min(Math.max(parseFloat(card.style.top) || 0, 0), innerHeight - 44);
+          card.style.left = `${l}px`;
+          card.style.top = `${t}px`;
+        }
+      }, 150);
+    });
 
     // ---- resizable cards: drag the corner grip -----------------------------
     // The tallest scrollable child grows to fill, so resizing feels natural on
@@ -3587,6 +3641,22 @@
         s2.className = "dia-sub"; s2.textContent = "Not supported";
         body.appendChild(s2);
         body.appendChild(bullets(d.limits, "limits"));
+
+        if (d.docs?.length) {
+          const s3 = document.createElement("div");
+          s3.className = "dia-sub"; s3.textContent = "Full language docs";
+          body.appendChild(s3);
+          const wrap = document.createElement("div");
+          wrap.className = "dia-blurb";
+          for (const doc of d.docs) {
+            const a = document.createElement("a");
+            a.href = doc.url; a.target = "_blank"; a.rel = "noopener";
+            a.textContent = doc.label;
+            a.style.cssText = "display:block; color:var(--accent-soft); margin:2px 0";
+            wrap.appendChild(a);
+          }
+          body.appendChild(wrap);
+        }
 
         if (d.sample) {
           body.appendChild(groupHead("Try it"));
@@ -4989,6 +5059,7 @@ ${joined}`)(...vs);
       if (on && inPreview()) { refusePreviewTool("Drill"); return; }
       drillArmed = on && !!currentModelExpr();
       if (drillArmed && finsArmed) setFinsArmed(false);   // one tool armed at a time
+      if (drillArmed && embossArmed) setEmbossArmed(false);
       $("drill-btn").classList.toggle("active", drillArmed);
       renderer.domElement.style.cursor = drillArmed ? "crosshair" : "";
       if (drillArmed) {
@@ -5004,6 +5075,7 @@ ${joined}`)(...vs);
       codeArmed = on && !!currentModelExpr();
       if (codeArmed) setDrillArmed(false);           // only one tool armed at a time
       if (codeArmed && finsArmed) setFinsArmed(false);
+      if (codeArmed && embossArmed) setEmbossArmed(false);
       renderer.domElement.style.cursor = codeArmed ? "crosshair" : "";
       for (const id of ["code-dm-btn", "code-qr-btn"]) {
         const b = $(id);
@@ -5033,7 +5105,7 @@ ${joined}`)(...vs);
       // never rebuilding mid-drag). Dragging empty space still orbits. Drill mode
       // and a plain click are handled on pointerup.
       if (modelIsImport) {
-        if (drillArmed || codeArmed || finsArmed) return;
+        if (drillArmed || codeArmed || finsArmed || embossArmed) return;
         const rect = renderer.domElement.getBoundingClientRect();
         raycaster.setFromCamera(new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -5647,12 +5719,13 @@ ${joined}`)(...vs);
 
       // The drill and code tools bore into real material at a real surface, so
       // they only ever see modelGroup — a ghost has nothing to act on.
-      if (drillArmed || codeArmed || finsArmed) {
+      if (drillArmed || codeArmed || finsArmed || embossArmed) {
         if (!hit) return;
         // Drill: bore a hole at the clicked point, along the face's world-space
         // normal, by wrapping the whole model in difference(…, drill(…)).
         // Fins: the clicked face picks the side and the lean angle.
-        (drillArmed ? drillAtHit : finsArmed ? finsAtHit : codeAtHit)(hit);
+        // Emboss: the clicked face carries the photo relief.
+        (drillArmed ? drillAtHit : finsArmed ? finsAtHit : embossArmed ? embossAtHit : codeAtHit)(hit);
         return;
       }
 
@@ -6892,8 +6965,15 @@ ${joined}`)(...vs);
           if (!url) {
             // very large meshes are too slow to preview — show the icon instead
             if (file.size > 60 * 1048576) { placeholder(); await tick(); continue; }
-            const pos = await inv.parseModelFile(file.name, await file.arrayBuffer());
-            url = thumbnailer.snapshot(pos);
+            const buf = await file.arrayBuffer();
+            // A multicolour 3MF gets a tile that looks like the print — one
+            // mesh per part in its filament colour. Anything else: grey soup.
+            let groups = null;
+            if (/\.3mf$/i.test(file.name)) {
+              groups = await inv.parse3MFColourGroups(new Uint8Array(buf)).catch(() => null);
+            }
+            const pos = groups?.length ? null : await inv.parseModelFile(file.name, buf);
+            url = thumbnailer.snapshot(pos, groups);
             if (url) inv.idbSet("thumbs", key, url).catch(() => {});
           }
           if (mine !== invToken) return;
@@ -7330,7 +7410,7 @@ ${joined}`)(...vs);
       if (on && inPreview()) { refusePreviewTool("Fin supports"); return; }
       finsOpts = opts;
       finsArmed = on && !!currentModelExpr();
-      if (finsArmed) { setDrillArmed(false); setCodeArmed(false); }
+      if (finsArmed) { setDrillArmed(false); setCodeArmed(false); setEmbossArmed(false); }
       $("fins-btn").classList.toggle("active", finsArmed);
       renderer.domElement.style.cursor = finsArmed ? "crosshair" : "";
       if (finsArmed) {
@@ -7377,6 +7457,106 @@ ${joined}`)(...vs);
       }
       setFinsArmed(true, { skirt: 0 });
     });
+
+    // ---- surface texture: REAL displaced geometry, straight into the code --
+    $("texture-btn").addEventListener("click", () => {
+      const expr = currentModelExpr();
+      if (!expr) {
+        hint.innerHTML = "To texture a surface the editor needs a <b>single model expression</b>. Build something first, then try again.";
+        return;
+      }
+      if (inPreview()) { refusePreviewTool("Surface texture"); return; }
+      pushHistory(code.value);
+      replaceModelExpr(`texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, ${expr})`);
+      code.focus();
+      const m = /pattern:\s*"(\w+)"/.exec(code.value);
+      if (m) code.setSelectionRange(m.index + m[0].length - m[1].length - 1, m.index + m[0].length - 1);
+      pushHistory();
+      setStatus("busy", "…");
+      rebuild();
+      hint.innerHTML = `Wrapped the model in <code>texture()</code> — REAL geometry, so it survives into the STL/3MF. `
+        + `Patterns: <code>knurl</code> (diamond grip), <code>fuzzy</code> (fuzzy skin), <code>layers</code>, <code>bumps</code>, <code>waffle</code>. `
+        + `Tune <code>depth</code> (mm), <code>scale</code> (pattern size), <code>faces</code> ("sides", "top", "bottom", "all"). `
+        + `Want it finer for the final export? Add <code>maxTris: 12000</code> — sharper, but the build takes noticeably longer.`;
+    });
+
+    // ---- photo emboss: greyscale image -> relief on the face you click ----
+    // The image is downsampled to a small luminance grid IN the code (base64),
+    // so the .bcode stays self-contained and the build is reproducible.
+    let embossArmed = false, embossGrid = null;   // { map, w, h, name }
+    function setEmbossArmed(on) {
+      if (on && inPreview()) { refusePreviewTool("Photo emboss"); return; }
+      embossArmed = on && !!currentModelExpr() && !!embossGrid;
+      if (embossArmed) { setDrillArmed(false); setCodeArmed(false); setFinsArmed(false); }
+      renderer.domElement.style.cursor = embossArmed ? "crosshair" : "";
+      if (embossArmed) {
+        hint.innerHTML = `🖼 <b>Emboss armed</b> — click the face that should carry <b>${esc(embossGrid.name)}</b>. Darker parts of the image stand out further. <b>Esc</b> cancels.`;
+      }
+    }
+    $("emboss-btn").addEventListener("click", () => {
+      if (embossArmed) return setEmbossArmed(false);
+      if (!currentModelExpr()) {
+        hint.innerHTML = "To emboss a photo the editor needs a <b>single model expression</b>. Build something first, then try again.";
+        return;
+      }
+      if (inPreview()) { refusePreviewTool("Photo emboss"); return; }
+      $("emboss-file").click();
+    });
+    $("emboss-file").addEventListener("change", () => {
+      const f = $("emboss-file").files?.[0];
+      $("emboss-file").value = "";
+      if (!f) return;
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(img.src);
+        // ≤96px on the long side: plenty for relief, and the base64 grid stays
+        // a few KB so the code (and the .bcode it saves to) stays readable
+        const scale = Math.min(1, 96 / Math.max(img.width, img.height));
+        const w = Math.max(2, Math.round(img.width * scale));
+        const h = Math.max(2, Math.round(img.height * scale));
+        const cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const px = ctx.getImageData(0, 0, w, h).data;
+        const grid = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) {
+          grid[i] = Math.round(0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]);
+        }
+        let bin = "";
+        for (const b of grid) bin += String.fromCharCode(b);
+        embossGrid = { map: btoa(bin), w, h, name: f.name || "image" };
+        setEmbossArmed(true);
+      };
+      img.onerror = () => { hint.innerHTML = "Couldn't read that image — PNG/JPG/WebP work."; };
+      img.src = URL.createObjectURL(f);
+    });
+    function embossAtHit(hit) {
+      const grid = embossGrid;
+      setEmbossArmed(false);
+      const expr = currentModelExpr();
+      if (!expr || !grid) return;
+      let n = new THREE.Vector3(1, 0, 0);
+      if (hit.face) {
+        n = hit.face.normal.clone()
+          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+      }
+      const ax = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+      const dom = ax.indexOf(Math.max(...ax));
+      const side = (["x", "y", "z"][dom] === "x" ? (n.x >= 0 ? "+x" : "-x")
+        : ["x", "y", "z"][dom] === "y" ? (n.y >= 0 ? "+y" : "-y")
+        : (n.z >= 0 ? "+z" : "-z"));
+      pushHistory(code.value);
+      replaceModelExpr(`heightmap({\n  // ${grid.name} — ${grid.w}×${grid.h} luminance grid\n  map: "${grid.map}",\n  w: ${grid.w}, h: ${grid.h}, side: "${side}", depth: 1.5,\n}, ${expr})`);
+      code.focus();
+      const m = /depth:\s*(\d+(?:\.\d+)?)/.exec(code.value);
+      if (m) code.setSelectionRange(m.index + m[0].length - m[1].length, m.index + m[0].length);
+      pushHistory();
+      setStatus("busy", "…");
+      rebuild();
+      hint.innerHTML = `Embossing <b>${esc(grid.name)}</b> onto the <b>${side}</b> face — give it a moment, relief is a heavier build. Darker pixels stand out further (add <code>invert: true</code> to flip). Tune <code>depth</code>; the relief is real geometry, so it exports.`;
+    }
 
     // Toolbox dropdown — the model-editing tools in one place. Rows click the
     // real (hidden) buttons, so each tool has exactly one implementation.
@@ -7591,52 +7771,72 @@ ${joined}`)(...vs);
       }).catch(() => {});
     }
 
-    // One image can ride along with the next message: a sketch, a photo of
-    // the broken part, a screenshot of a dimension drawing.
-    let pendingImg = null;   // { ext, b64, mediaType, name, dataUrl }
+    // Up to five images can ride along with the next message: a sketch, photos
+    // of the broken part from a couple of angles, a dimension drawing.
+    const MAX_CHAT_IMGS = 5;
+    let pendingImgs = [];    // [{ ext, b64, mediaType, name, dataUrl }]
     $("chat-img-btn").addEventListener("click", () => $("chat-img-file").click());
     // Screenshot -> Ctrl+V into the message box. The paste event carries the
-    // image as a file; text pastes fall through untouched.
+    // image(s) as files; text pastes fall through untouched.
     $("chat-input").addEventListener("paste", (e) => {
-      const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
-      if (!item) return;
+      const items = [...(e.clipboardData?.items || [])].filter((i) => i.type.startsWith("image/"));
+      if (!items.length) return;
       e.preventDefault();
-      const f = item.getAsFile();
-      if (f) attachChatImage(f);
+      for (const item of items) {
+        const f = item.getAsFile();
+        if (f) attachChatImage(f);
+      }
     });
     $("chat-img-file").addEventListener("change", () => {
-      const f = $("chat-img-file").files?.[0];
+      const files = [...($("chat-img-file").files || [])];
       $("chat-img-file").value = "";
-      if (!f) return;
-      attachChatImage(f);
+      for (const f of files) attachChatImage(f);
     });
     function attachChatImage(f) {
+      if (pendingImgs.length >= MAX_CHAT_IMGS) {
+        hint.innerHTML = `That's the limit — <b>${MAX_CHAT_IMGS} images</b> per message. Send these, then attach more.`;
+        return;
+      }
       const rd = new FileReader();
       rd.onload = () => {
         const dataUrl = String(rd.result || "");
         const b64 = dataUrl.split(",")[1] || "";
         if (!b64) return;
-        pendingImg = {
+        if (pendingImgs.length >= MAX_CHAT_IMGS) return;   // a paste burst can race the cap
+        pendingImgs.push({
           ext: (f.name.split(".").pop() || "png").toLowerCase(),
           b64, mediaType: f.type || "image/png", name: f.name, dataUrl,
-        };
-        const chip = $("chat-img-chip");
-        chip.style.display = "flex";
-        chip.innerHTML = "";
-        const img = document.createElement("img"); img.src = dataUrl;
-        const label = document.createElement("span");
-        label.textContent = `${f.name || "pasted image"} — attached to your next message`;
-        const x = document.createElement("button"); x.textContent = "✕"; x.title = "Remove";
-        x.addEventListener("click", clearPendingImg);
-        chip.append(img, label, x);
+        });
+        renderImgChips();
       };
       rd.readAsDataURL(f);
     }
-    function clearPendingImg() {
-      pendingImg = null;
+    // The chip strip shows EVERY pending image, each with its own remove — so
+    // "wrong screenshot" costs one click, not re-attaching the other four.
+    function renderImgChips() {
       const chip = $("chat-img-chip");
-      chip.style.display = "none";
       chip.innerHTML = "";
+      if (!pendingImgs.length) { chip.style.display = "none"; return; }
+      chip.style.display = "flex";
+      pendingImgs.forEach((p, i) => {
+        const img = document.createElement("img");
+        img.src = p.dataUrl;
+        img.title = p.name || "pasted image";
+        const x = document.createElement("button"); x.textContent = "✕";
+        x.title = `Remove ${p.name || "this image"}`;
+        x.addEventListener("click", () => { pendingImgs.splice(i, 1); renderImgChips(); });
+        const cell = document.createElement("span");
+        cell.style.cssText = "display:inline-flex; align-items:center; gap:2px";
+        cell.append(img, x);
+        chip.appendChild(cell);
+      });
+      const label = document.createElement("span");
+      label.textContent = `${pendingImgs.length}/${MAX_CHAT_IMGS} — attached to your next message`;
+      chip.appendChild(label);
+    }
+    function clearPendingImg() {
+      pendingImgs = [];
+      renderImgChips();
     }
     const botState = {};
     const chatLog = [];   // {role, text} for API context
@@ -8315,14 +8515,19 @@ ${joined}`)(...vs);
       chatInput.value = "";
       if (text !== RETRY_TEXT) autoFixTries = 0;   // a real request, fresh budget
       const userEl = addMsg("user", text);
-      // The attached image appears IN the sent bubble. It used to vanish from
-      // the chip on send with nothing to show it went — the model would answer
+      // The attached images appear IN the sent bubble. They used to vanish from
+      // the chip on send with nothing to show they went — the model would answer
       // about "the photo" while the user wondered if it ever saw one.
-      if (pendingImg && userEl) {
-        const im = document.createElement("img");
-        im.src = pendingImg.dataUrl;
-        im.style.cssText = "display:block; max-width:130px; max-height:100px; border-radius:6px; margin-top:6px";
-        userEl.appendChild(im);
+      if (pendingImgs.length && userEl) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; flex-wrap:wrap; gap:4px; margin-top:6px";
+        for (const p of pendingImgs) {
+          const im = document.createElement("img");
+          im.src = p.dataUrl;
+          im.style.cssText = "max-width:130px; max-height:100px; border-radius:6px";
+          row.appendChild(im);
+        }
+        userEl.appendChild(row);
       }
       chatLog.push({ role: "user", text });
       const { respond: botRespond, buildApiRequest, extractApiText, extractApiThinking } = await ensureChat();
@@ -8477,12 +8682,12 @@ ${joined}`)(...vs);
           logLine(`reference lookup skipped — ${e.message}`);
         }
 
-        // An attached image rides on THIS message only.
-        const img = pendingImg;
+        // Attached images ride on THIS message only.
+        const imgs = pendingImgs.slice();
         clearPendingImg();
-        if (img && cfg.provider !== "claude-code") {
-          // API providers take it inline as base64 content blocks.
-          msgs[msgs.length - 1].images = [{ media_type: img.mediaType, data: img.b64 }];
+        if (imgs.length && cfg.provider !== "claude-code") {
+          // API providers take them inline as base64 content blocks.
+          msgs[msgs.length - 1].images = imgs.map((im) => ({ media_type: im.mediaType, data: im.b64 }));
         }
 
         let answer, reasoning = null;
@@ -8490,21 +8695,25 @@ ${joined}`)(...vs);
           // Their own Claude Code, headless: prompt on stdin, JSON out. The
           // session id makes it a real conversation on the CLI side, so only
           // the new message goes over — no 8-message replay.
-          let imagePath = null;
-          if (img) {
-            const saved = await window.brepcodeDesktop.claudeSaveImage(img.ext, img.b64);
-            if (saved?.ok) imagePath = saved.path;
-            else addMsg("bot", `Couldn't attach the image (${saved?.error || "unknown"}) — sending without it.`);
+          const imagePaths = [];
+          for (const im of imgs) {
+            const saved = await window.brepcodeDesktop.claudeSaveImage(im.ext, im.b64);
+            if (saved?.ok) imagePaths.push(saved.path);
+            else addMsg("bot", `Couldn't attach ${im.name || "an image"} (${saved?.error || "unknown"}) — sending without it.`);
           }
           const system = CHAT.composeSystem({ reference, ...harnessOpts() });
           ccProgress = logLine;
           const r = await window.brepcodeDesktop.claudeAsk({
             system,
-            prompt: context + (imagePath ? `\n\nThe user attached an image. Read it at this exact path before answering: ${imagePath}` : ""),
+            prompt: context + (imagePaths.length
+              ? `\n\nThe user attached ${imagePaths.length === 1 ? "an image" : imagePaths.length + " images"}.`
+                + ` Read ${imagePaths.length === 1 ? "it" : "each one"} at ${imagePaths.length === 1 ? "this exact path" : "these exact paths"} before answering:\n`
+                + imagePaths.join("\n")
+              : ""),
             model: aiModel.value === "default" ? "" : aiModel.value,
             effort: $("cc-effort").value,
             resume: ccSession,
-            imagePath,
+            imagePaths,
           });
           ccProgress = null;
           if (!r?.ok) throw new Error(r?.error || "Claude Code didn't answer");
@@ -8656,7 +8865,7 @@ ${joined}`)(...vs);
       else if (e.key === "ArrowUp") snapView("up");
       else if (e.key === "ArrowDown") snapView("down");
       else if (e.key === "Home") snapView("home");
-      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
+      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); if (embossArmed) setEmbossArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
       else return;
       e.preventDefault();
     });

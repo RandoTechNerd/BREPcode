@@ -37,6 +37,9 @@ const NOT_VOCAB = new Set([
   "if", "for", "while", "return", "function", "const", "let", "var", "switch",
   "catch", "typeof", "Math", "Number", "String", "Array", "Object", "JSON",
   "e.g", "eg", "i.e", "ie", "etc",
+  // the #languages section talks ABOUT OpenSCAD/JSCAD — their words are not
+  // claims that BREPcode's evaluator has them
+  "main", "color",
 ]);
 
 // No space before the paren. Prose puts one there — "a colour (great for…)",

@@ -203,6 +203,48 @@ try {
   check("minkowski() degrades to a solid instead of failing", false, e.message);
 }
 
+// ---- color() — asserted on the tree, where the tag lives -----------------
+{
+  const t = fromOpenSCAD('color("red") cube(10);');
+  check('color("red") tags the shape', t.color === "#ff0000", String(t.color));
+}
+{
+  const t = fromOpenSCAD("color([0, 1, 0]) cube(10);");
+  check("color([0,1,0]) takes 0–1 floats", t.color === "#00ff00", String(t.color));
+}
+{
+  const t = fromOpenSCAD('color("#ff880044") cube(10);');
+  check("hex-with-alpha keeps rgb, drops alpha", t.color === "#ff8800", String(t.color));
+}
+{
+  const t = fromOpenSCAD('color("SkyBlue") cube(10);');
+  check("names are case-insensitive", t.color === "#87ceeb", String(t.color));
+}
+{
+  const t = fromOpenSCAD('color("nonsensecolour") cube(10);');
+  check("an unknown name keeps the shape uncoloured", t.color === undefined && t.code === "P.CU",
+    JSON.stringify({ color: t.color, code: t.code }));
+}
+{
+  const t = fromOpenSCAD('union() { color("red") cube(5); color("blue") translate([9,0,0]) cube(5); }');
+  const r = await build(t);
+  check("two coloured parts still build", facetsOf(r) > 0);
+}
+{
+  // top-level siblings in different colours stay a GROUP so each part keeps
+  // its colour into the 3MF — explicit union() still welds (test above)
+  const t = fromOpenSCAD('color("red") cube(5); color("blue") translate([9,0,0]) cube(5);');
+  check("multicolour top level stays separate parts", t.kind === "group"
+    && t.children?.length === 2, JSON.stringify({ kind: t.kind, n: t.children?.length }));
+  const cols = (t.children || []).map((c) => c.color).sort();
+  check("...and both colours survive", cols.join() === "#0000ff,#ff0000", cols.join());
+}
+{
+  // same colour twice = no reason to keep them apart — plain union as always
+  const t = fromOpenSCAD('color("red") cube(5); color("red") translate([9,0,0]) cube(5);');
+  check("same-colour top level still unions", t.kind !== "group", String(t.kind));
+}
+
 // a bare 2D shape now auto-extrudes instead of erroring
 {
   const r = await build(fromOpenSCAD("circle(5);"));

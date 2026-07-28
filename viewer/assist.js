@@ -109,6 +109,17 @@ export const SPECS = [
     hint: "Removable print supports: 45° buttress fins that DON'T touch the part. Each carries level sprues — bars the same width as the fin, rooted INSIDE the plate (so no lean or angle can ever leave one floating), flat on top, running out to a tip that stops `clearance` (0.2mm default) short of the surface. A clean print leaves daylight and nothing fuses; the part only rests on a sprue if it shifts. Easiest way: press the fin icon in the editor header (or ⋮ → “Add support fins”): it probes the model with rays, puts the fins where there's the most material to brace against, and places each tooth only where the part actually is — so a frame or bracket doesn't get teeth poking into its holes, and a recessed face still gets a longer tooth. Then edit angle (slope, 45° default), height, clearance, tooth (tooth size), count/sprues/side/skirt — or take full control with positions: [x1, x2, x3] and sprueAt: [[z…], [z…]] (one list per fin; { z, reach } sets a tooth's exact length). Knobs worth knowing: nozzle: 0.6 rescales the fin width, teeth and clearance in one go for a bigger nozzle; lean slopes the contact edge to match a part printed on a slant (it DEFAULTS to 45 — pass lean: 0 for a plumb wall, and the tool measures the real angle for you); maxDepth stops the fins spilling outside the part's own footprint; and a deliberately long reach turns a tooth into a finger that pokes in to hold a recessed pocket. Move the model afterwards? Press the tool again — it re-probes and re-fits instead of nesting.",
   },
   {
+    name: "surface texture", group: "Edit a part", sig: "texture({ pattern, depth, scale, faces }, model)",
+    wrap: 'texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, $MODEL$)',
+    snippet: 'texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, cube([30, 30, 12]))', argStart: 9,
+    hint: 'REAL displaced geometry — the pattern survives into the exported STL/3MF and prints. Patterns: "knurl" (diamond grip), "fuzzy" (fuzzy skin), "layers" (proud layer lines), "bumps" (grip dots), "waffle". faces: "sides" / "top" / "bottom" / "all". depth in mm, scale = pattern size.',
+  },
+  {
+    name: "photo emboss", group: "Edit a part", sig: "heightmap({ map, w, h, side, depth }, model)",
+    snippet: "// Toolbox ▸ Photo emboss: pick an image, click a face — it writes heightmap({...}) here",
+    hint: "A greyscale photo as relief on one face — use the Toolbox ▸ Photo emboss tool: it converts your image to the embedded luminance grid, you click the face, done. Darker pixels stand out further; invert: true flips that.",
+  },
+  {
     name: "importedMesh", group: "Edit a part", sig: 'importedMesh("file.stl", { split })',
     snippet: 'importedMesh("mount.stl", { split: true })', argStart: 13,
     hint: "Brings in an STL/OBJ/3MF mesh you imported (use the Import button first). { split: true } splits a multi-body file into separate solids. Wrap it in difference() to drill, union() to add, or stretch() to lengthen. Note: mesh geometry, not editable CAD parameters.",
@@ -194,6 +205,10 @@ export const DIALECTS = [
     id: "openscad",
     label: "OpenSCAD",
     blurb: "Paste .scad source and it's translated to BREPcode — a best-effort match, not the real OpenSCAD engine. Anything it can't do warns in the status bar and passes the contents through unchanged rather than failing.",
+    docs: [
+      { label: "OpenSCAD cheat sheet", url: "https://openscad.org/cheatsheet/" },
+      { label: "OpenSCAD manual", url: "https://en.wikibooks.org/wiki/OpenSCAD_User_Manual" },
+    ],
     works: [
       "cube, sphere, cylinder, square, circle, polygon",
       "linear_extrude, offset, hull",
@@ -219,6 +234,10 @@ export const DIALECTS = [
     id: "jscad",
     label: "JSCAD",
     blurb: "Paste a whole @jscad/modeling module — require, main(), module.exports and all. The module skeleton is rewritten and run. Returning an ARRAY from main() keeps the parts as separate solids (fast, and each keeps its own colour).",
+    docs: [
+      { label: "JSCAD user guide", url: "https://openjscad.xyz/dokuwiki/doku.php" },
+      { label: "@jscad/modeling API", url: "https://openjscad.xyz/docs/" },
+    ],
     works: [
       "3D primitives: cube, cuboid, roundedCuboid, sphere, ellipsoid, geodesicSphere, cylinder, cylinderElliptic, roundedCylinder, torus, polyhedron",
       "2D primitives: polygon, rectangle, roundedRectangle, square, circle, ellipse, star, triangle",
@@ -262,19 +281,26 @@ module.exports = { main };`,
   {
     id: "py",
     label: "build123d",
-    blurb: "Paste build123d or CadQuery Python. Watch the origin difference: build123d primitives are CENTRED, while BREPcode's cube() sits corner-at-origin — the translation accounts for it, but keep it in mind when reading numbers.",
+    blurb: "Paste build123d or CadQuery Python — ALGEBRA MODE only (flat assignments, no with-blocks). Watch the origin difference: build123d primitives are CENTRED, while BREPcode's cube() sits corner-at-origin — the translation accounts for it, but keep it in mind when reading numbers.",
     works: [
-      "from build123d import *",
-      "Box, Cylinder, Sphere, Cone, Torus (all centred)",
-      "Pos(...) * shape and Rot(...) * shape",
-      "+= / -= / &= compound booleans on a part",
-      "tuple unpacking (l, w, t = 40, 60, 10)",
-      "basic cq.Workplane(\"XY\").box(...).cut(...)",
+      "from build123d import *  (the import line is ignored, not required)",
+      "Box(l, w, h) · Cylinder(r, h) · Cone(r_bottom, r_top, h) · Sphere(r) · Torus(major_r, minor_r) — all centred",
+      "Pos(x, y, z) * shape moves it · Rot(x°, y°, z°) * shape rotates it",
+      "part = A - B, A + B, A & B  (cut / join / intersect)",
+      "part -= …, part += …, part &= … compound assignment, chained freely",
+      "plain math on variables and tuple unpacking (l, w, t = 40, 60, 10)",
+      "CadQuery basics: cq.Workplane(\"XY\").box(…).union(…).cut(…).translate(…)",
     ],
     limits: [
-      "builder mode — with BuildPart() as …:",
-      "CadQuery selectors — .faces(\">Z\"), .edges(), .workplane()",
-      "sketch//algebra features beyond the primitives above",
+      "builder mode — with BuildPart() as …: (rewrite in algebra mode, it is usually shorter)",
+      "indented blocks — if / for / def / with",
+      "CadQuery selectors & sketching — .faces(\">Z\"), .edges(), .workplane(), .fillet(), .extrude()",
+      "sketch/algebra features beyond the primitives above (Text, sweep, loft…)",
+    ],
+    docs: [
+      { label: "build123d docs (readthedocs)", url: "https://build123d.readthedocs.io/en/latest/" },
+      { label: "build123d cheat sheet", url: "https://build123d.readthedocs.io/en/latest/cheat_sheet.html" },
+      { label: "CadQuery docs", url: "https://cadquery.readthedocs.io/en/latest/" },
     ],
     sample: `from build123d import *
 
