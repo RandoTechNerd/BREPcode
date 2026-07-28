@@ -511,14 +511,20 @@
       box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; min-width: 190px;
     }
     #export-menu.open { display: block; }
-    #cc-spark { display: none; }
-    #chat-img-btn svg { width: 17px; height: 17px; opacity: .6; }
-    #chat-img-btn:hover svg { opacity: 1; }
-    #cc-spark svg { width: 18px; height: 18px; fill: #7f8ea3; opacity: .45;
-      transition: fill .5s, opacity .5s, filter .5s; }
-    #cc-spark:hover svg { opacity: .8; }
-    #cc-spark.on svg { fill: #D97757; opacity: 1;
-      filter: drop-shadow(0 0 5px rgba(217, 119, 87, .45)); }
+    /* The attach-image button follows the app's icon-button convention
+       (#anchor-btn and friends): transparent, coloured by the theme through
+       currentColor, hover ring. Removing the spark button took the shared
+       base rule with it, and this fell back to a stock white <button> —
+       glaring in every theme. Styled in its own right now, so no future
+       neighbour's deletion can undress it again. */
+    #chat-img-btn {
+      flex: none; align-self: center; display: grid; place-items: center;
+      width: 26px; height: 26px; padding: 0;
+      background: transparent; border: 0; border-radius: 6px;
+      color: var(--muted3); cursor: pointer;
+    }
+    #chat-img-btn:hover { color: var(--icon-hover); background: rgba(255, 255, 255, .07); }
+    #chat-img-btn svg { width: 17px; height: 17px; display: block; }
     #chat-img-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px;
       font-size: 12px; color: var(--muted3); }
     #chat-img-chip img { height: 26px; border-radius: 4px; }
@@ -7543,7 +7549,7 @@ ${joined}`)(...vs);
       claude: ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
       // Aliases the CLI resolves itself, so this list never goes stale;
       // "default" means "whatever the user's Claude Code is set to".
-      "claude-code": ["default", "opus", "sonnet", "haiku"],
+      "claude-code": ["default", "fable", "opus", "sonnet", "haiku"],
     };
     // Best-for-modelling models float to the top with a ROYGBIV tint:
     // violet = strongest pick, sliding down to red for the weakest.
