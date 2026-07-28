@@ -4,7 +4,7 @@
 import {
   respond, buildModelsRequest, extractModels, modelScore,
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
-  parseOp, opCode, EPS, buildApiRequest,
+  parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -487,6 +487,27 @@ console.log("\nmodel ranking\n");
   const plain = JSON.parse(buildApiRequest({ provider: "claude", model: "m", key: "k" },
     [{ role: "user", text: "no image" }]).options.body);
   check("no image means the plain string shape, unchanged", plain.messages[0].content === "no image");
+}
+
+// --- optional #sections in the mission --------------------------------------
+//
+// One harness, several dialects: a `#name` line starts a named block, a chip
+// turns it off, and the model never sees markers or disabled text.
+{
+  const NL = String.fromCharCode(10);
+  const H = ["Core mission.", "#openscad", "Scad rule A.", "#jscad", "Jscad rule.", "#openscad", "Scad rule B."].join(NL);
+  check("tags found once each", harnessTags(H).join(",") === "openscad,jscad");
+  const scadOnly = filterHarness(H, ["jscad"]);
+  check("a disabled section is gone", !scadOnly.includes("Jscad rule"));
+  check("...both blocks of the SAME tag survive together",
+    scadOnly.includes("Scad rule A.") && scadOnly.includes("Scad rule B."));
+  check("the preamble is always sent", scadOnly.startsWith("Core mission."));
+  check("marker lines are never sent", !filterHarness(H, []).includes("#openscad"));
+  check("no tags means text passes through", filterHarness("plain text", []) === "plain text");
+  // and the composed system honours it, since that is what actually ships
+  const sys = composeSystem({ harness: filterHarness(H, ["openscad"]) });
+  check("composeSystem carries the filtered mission",
+    sys.includes("Jscad rule.") && !sys.includes("Scad rule A."));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

@@ -977,6 +977,46 @@ DIMENSIONS POLICY: Never ask about sizes. Use the reference table or a stated es
 // gemWantsLocalFirst in index.html.)
 export const DEFAULT_GEM = `When a request references a real-world object with unknown sizing (a GoPro, an AA battery, a phone stand), don't silently guess: state the standard dimensions you're assuming, encourage the user to verify or research the exact measurements, and put every size in a clearly named variable so it's easy to adjust. Say it in ONE sentence and still deliver the complete model in the same reply — never withhold the code waiting for confirmation.`;
 
+// ---- optional harness sections -------------------------------------------
+//
+// A line that is just `#name` starts a named section of the mission, running
+// until the next `#name` line or the end. Each named section gets a toggle in
+// the settings, so one harness can hold OpenSCAD guidance AND JSCAD guidance
+// and the user flips between them by unticking a chip instead of maintaining
+// two copies of the text. Everything before the first marker is always sent.
+// Marker lines themselves are never sent — they are metadata, not prompt.
+const SECTION_RE = /^#([A-Za-z][\w-]{0,24})\s*$/;
+
+export function harnessSections(text) {
+  const out = [];                       // [{ tag|null, lines }]
+  let cur = { tag: null, lines: [] };
+  for (const line of String(text || "").split("\n")) {
+    const m = SECTION_RE.exec(line);
+    if (m) {
+      out.push(cur);
+      cur = { tag: m[1], lines: [] };
+    } else {
+      cur.lines.push(line);
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+export function harnessTags(text) {
+  return [...new Set(harnessSections(text).map((s) => s.tag).filter(Boolean))];
+}
+
+export function filterHarness(text, disabled = []) {
+  const off = new Set(disabled);
+  return harnessSections(text)
+    .filter((s) => !s.tag || !off.has(s.tag))
+    .map((s) => s.lines.join("\n"))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // Compose the full system string: (possibly user-edited) harness + dimensions
 // policy + assistant name + gem. One function so Gemini and Claude are
 // guaranteed to receive the exact same instructions.

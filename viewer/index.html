@@ -1285,7 +1285,11 @@
         <div class="note" id="harness-note" style="display: none">
           This is the model's whole job description — mission, language, reference sizes, holder recipe.
           Edit freely; clear it to restore the default. Applies to every provider.
+          <b>Sections:</b> a line that is just <code>#name</code> starts a named block (until the
+          next <code>#name</code> or the end) — each becomes a toggle below, so one mission can hold
+          e.g. OpenSCAD rules AND JSCAD rules and you tick whichever applies. Marker lines are never sent.
         </div>
+        <div id="harness-tags" style="display:none; flex-wrap:wrap; gap:6px; padding:4px 0 6px"></div>
         <div class="row" id="unlock-row" style="display: none">
           <label>Password</label>
           <input id="unlock-pw" type="password" placeholder="unlock the shared key" />
@@ -7586,14 +7590,50 @@ ${joined}`)(...vs);
         fillModelOptions(aiProvider.value, aiCfg.model);
         // show the real default mission in the editor once it's available
         if (!aiHarness.value.trim()) aiHarness.value = CHAT.DEFAULT_HARNESS;
+        refreshHarnessTags();          // chips need CHAT loaded to parse tags
         verifyConnection(false);                     // re-verify a stored key quietly
       }
       return CHAT;
     }
+    // Named #sections the user has switched OFF — their blocks are stripped
+    // from the mission before it is sent, which is how one harness can carry
+    // OpenSCAD guidance and JSCAD guidance without maintaining two copies.
+    // Populated from aiCfg just below — reading aiCfg HERE was a TDZ crash
+    // that silently killed everything after it in the module: no greeting, no
+    // chat, no model list, while the 3D viewer (earlier in the file) ran fine.
+    const harnessOff = new Set();
+
+    function refreshHarnessTags() {
+      const box = $("harness-tags");
+      if (!box) return;
+      const tags = CHAT ? CHAT.harnessTags(aiHarness.value) : [];
+      box.style.display = tags.length ? "flex" : "none";
+      box.innerHTML = "";
+      for (const t of tags) {
+        const on = !harnessOff.has(t);
+        const b = document.createElement("button");
+        b.className = "hist-btn";
+        b.textContent = `${on ? "\u2713" : "\u2715"} #${t}`;
+        if (!on) b.style.cssText = "opacity:.45; text-decoration:line-through";
+        b.title = on
+          ? `The #${t} block is sent with every AI request — click to leave it out`
+          : `The #${t} block is NOT being sent — click to include it`;
+        b.addEventListener("click", () => {
+          if (on) harnessOff.add(t); else harnessOff.delete(t);
+          saveAiCfg();
+          refreshHarnessTags();
+        });
+        box.appendChild(b);
+      }
+    }
+
     // everything the harness needs from the settings, in one place
     const harnessOpts = () => ({
       gem: aiGem.value.trim(),
-      harness: aiCfg.harness?.trim() ? aiCfg.harness : (aiHarness.value.trim() || undefined),
+      harness: (() => {
+        const raw = aiCfg.harness?.trim() ? aiCfg.harness : (aiHarness.value.trim() || undefined);
+        return raw && CHAT ? CHAT.filterHarness(raw, [...harnessOff]) : raw;
+      })(),
       askDims: aiAskDims.checked,
       botName: aiBotName.value,
     });
@@ -7626,6 +7666,7 @@ ${joined}`)(...vs);
     const aiCfg = JSON.parse(localStorage.getItem("brepcode-ai") || "{}");
     if (aiCfg.fixTries != null && $("ai-fixtries")) $("ai-fixtries").value = String(aiCfg.fixTries);
     if (aiCfg.ccEffort && $("cc-effort")) $("cc-effort").value = aiCfg.ccEffort;
+    for (const t of aiCfg.harnessOff || []) harnessOff.add(t);
     if (aiCfg.provider) aiProvider.value = aiCfg.provider;
     aiKey.value = aiCfg.key || "";
     const aiGem = $("ai-gem");
@@ -7686,6 +7727,13 @@ ${joined}`)(...vs);
     });
     aiAskDims.addEventListener("change", saveAiCfg);
     aiBotName.addEventListener("change", saveAiCfg);
+    // Chip refresh on typing — attached here, BELOW aiHarness's declaration.
+    // Two earlier placements up among the chip definitions were both TDZ
+    // crashes that killed the whole module at load.
+    aiHarness.addEventListener("input", () => {
+      if (CHAT) { refreshHarnessTags(); return; }
+      ensureChat().then(refreshHarnessTags).catch(() => {});
+    });
 
     // ---- email: mailto drafts + file downloads (client-side only) ----------
     const emailTo = $("email-to");
@@ -7943,6 +7991,7 @@ ${joined}`)(...vs);
         harness, askDims: aiAskDims.checked, botName: aiBotName.value,
         emailTo: $("email-to").value,
         fixTries: $("ai-fixtries").value, ccEffort: $("cc-effort").value,
+        harnessOff: [...harnessOff],
       }));
       $("chat-mode").textContent = aiProvider.value === "builtin" ? "built-in"
         : aiProvider.value === "claude-code"
