@@ -7984,17 +7984,25 @@ ${joined}`)(...vs);
       saveAiCfg();
       verifyConnection(true);
     });
-    aiProvider.addEventListener("change", () => {
-      fillModelOptions(aiProvider.value);
+    // Everything about the settings panel that depends on WHICH provider is
+    // chosen, in one place — called on change and once at restore, because a
+    // saved claude-code config used to come back with the key field live and
+    // the effort row hidden.
+    function reflectProviderUI() {
       const cc = aiProvider.value === "claude-code";
       // Claude Code needs no key — greying the field says so louder than help
       // text would, and stops "do I paste my key here?" before it is asked.
       aiKey.disabled = cc;
       aiKey.placeholder = cc ? "not needed — uses your Claude login" : "paste your key";
       $("cc-effort-row").style.display = cc ? "" : "none";
+    }
+    aiProvider.addEventListener("change", () => {
+      fillModelOptions(aiProvider.value);
+      reflectProviderUI();
       saveAiCfg();
       verifyConnection(true);
     });
+    reflectProviderUI();
     aiModel.addEventListener("change", saveAiCfg);
     saveAiCfg();
     // (model list + stored-key re-verify happen in ensureChat on first open)
@@ -8195,7 +8203,21 @@ ${joined}`)(...vs);
         return { min: [bb.min.x, bb.min.y, bb.min.z], max: [bb.max.x, bb.max.y, bb.max.z] };
       })();
 
-      const useApi = aiProvider.value !== "builtin" && aiKey.value.trim();
+      // Claude Code needs no key, so it must not fall through the key test
+      // into the built-in bot. And when it is selected but not yet installed,
+      // the honest answer is the CONNECTION steps — not a shape parser's shrug.
+      if (aiProvider.value === "claude-code") {
+        if (!window.brepcodeDesktop) {
+          addMsg("bot", "Claude Code chat works in the desktop app — a web page can't run programs. Download BREPcode.exe, or pick Gemini/Claude with an API key here.");
+          return;
+        }
+        if (!ccFound) {
+          addMsg("bot", "Almost there — Claude Code isn't installed on this computer yet. One-time setup:  1. In a terminal: npm install -g @anthropic-ai/claude-code   2. Run `claude` once and sign in with your Claude account   3. Restart BREPcode. After that you just type here and it answers on your subscription — no key, nothing else to configure.");
+          return;
+        }
+      }
+      const useApi = aiProvider.value === "claude-code"
+        || (aiProvider.value !== "builtin" && aiKey.value.trim());
       if (!useApi) {
         const r = botRespond(text, botState, code.value, modelDims);
         if (r.pending) botState.pending = r.pending;
