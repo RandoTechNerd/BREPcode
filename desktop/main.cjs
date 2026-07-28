@@ -154,13 +154,35 @@ function sendFileToWindow(win, file) {
 // launch hands its file to the window that is already open and exits.
 const EMBEDDED = process.env.BREPCODE_EMBED === "1";
 
-if (!EMBEDDED && !app.requestSingleInstanceLock()) app.quit();
+// The lock carries our exe path, so the FIRST instance can tell whether the
+// second launch was the same program or a different build — double-clicking a
+// new BREPcode.exe while an old one runs silently fronts the OLD window, and
+// during testing that reads as "the new build doesn't work". It cost a real
+// evening of chasing a bug that was fixed three builds earlier.
+if (!EMBEDDED && !app.requestSingleInstanceLock({ execPath: process.execPath })) app.quit();
 
-if (!EMBEDDED) app.on("second-instance", (_e, argv) => {
+if (!EMBEDDED) app.on("second-instance", (_e, argv, _cwd, extra) => {
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return;
   if (win.isMinimized()) win.restore();
   win.focus();
+  const otherExe = extra?.execPath;
+  if (otherExe && path.resolve(otherExe) !== path.resolve(process.execPath)) {
+    const { dialog } = require("electron");
+    dialog.showMessageBox(win, {
+      type: "warning",
+      title: "You're still in the old BREPcode",
+      message: "A different BREPcode.exe was just launched, but this older one was already running — so you're looking at the OLD build.",
+      detail: `Running now:
+${process.execPath}
+
+You launched:
+${otherExe}
+
+Close this window, then start the new one again. (Check ⓘ About — the version tooltip names the exact build.)`,
+    });
+    return;                       // don't route a file into the wrong build
+  }
   sendFileToWindow(win, fileFromArgv(argv));
 });
 
