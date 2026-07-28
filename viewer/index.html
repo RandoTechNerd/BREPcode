@@ -7959,7 +7959,7 @@ ${joined}`)(...vs);
         aiCheck.textContent = ccFound ? "✓" : "✗";
         aiCheck.className = ccFound ? "ok" : "bad";
         updateSpark();
-        if (announce && ccFound) addMsg("bot", `✓ Connected to Claude Code (${ccVersion || "installed"}) — chatting on your Claude subscription. Attach images with the 🖼 button, pick effort and model in ⚙.`);
+        if (announce && ccFound) addMsg("bot", `✓ Claude Code found (${ccVersion || "installed"}) — you'll chat on your own Claude subscription, no API key. First message may ask you to sign in once (a button will walk you through it). Paste images with Ctrl+V. Speed tip: <b>fable</b> is the deepest and slowest model — pick <b>sonnet</b> in ⚙ for quick drafts, and Effort: Low for snappier replies.`);
         if (announce && !ccFound) addMsg("bot", "Claude Code isn't installed on this computer (or isn't signed in). Install it from claude.com/code, run `claude` once to sign in, then restart BREPcode.");
         return;
       }
@@ -8468,7 +8468,7 @@ ${joined}`)(...vs);
           b.style.cssText = "font:inherit;padding:2px 10px;margin-left:8px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer";
           b.addEventListener("click", async () => {
             await window.brepcodeDesktop.claudeLogin();
-            addMsg("bot", "Opened a Claude console — type /login there, finish in the browser, then come back and send your message again.");
+            addMsg("bot", "A black Claude window just opened. One-time setup, three steps:  1️⃣ In that window, type /login and press Enter.  2️⃣ Your browser opens — sign in with your Claude account and approve (it may ask twice; that's normal).  3️⃣ Close the black window, come back here, and send your message again. You never have to do this again on this computer.");
           });
           el.appendChild(b);
         }
