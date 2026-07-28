@@ -116,8 +116,8 @@ export const SPECS = [
   },
   {
     name: "photo emboss", group: "Edit a part", sig: "heightmap({ map, w, h, side, depth }, model)",
-    snippet: "// Toolbox ▸ Photo emboss: pick an image, click a face — it writes heightmap({...}) here",
-    hint: "A greyscale photo as relief on one face — use the Toolbox ▸ Photo emboss tool: it converts your image to the embedded luminance grid, you click the face, done. Darker pixels stand out further; invert: true flips that.",
+    act: "emboss-btn",
+    hint: "A greyscale photo as relief on one face — clicking this OPENS the tool: pick an image, then click the face that should carry it. Darker pixels stand out further; invert: true flips that. The image grid is embedded in the code, so you never type it by hand.",
   },
   {
     name: "importedMesh", group: "Edit a part", sig: 'importedMesh("file.stl", { split })',

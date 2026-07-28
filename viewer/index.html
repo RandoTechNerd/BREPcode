@@ -3767,6 +3767,9 @@
     // rebuild — so "import → click 'add a hole' / 'split & fill'" just works. With
     // an empty/statement editor, fall back to inserting the example snippet.
     function clickCheat(spec) {
+      // Some entries ARE a tool, not a snippet — clicking "photo emboss"
+      // should open the image picker, not paste text about opening it.
+      if (spec.act) { $(spec.act)?.click(); return; }
       const expr = spec.wrap ? currentModelExpr() : null;
       if (!expr) return insertSnippet(spec);
       toggleCard(panel, openBtn, true);
