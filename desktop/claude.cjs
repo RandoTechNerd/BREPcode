@@ -67,7 +67,7 @@ async function probe() {
     // prefer the .cmd shim on Windows, since that is what a spawn can run.
     const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     exe = lines.find((l) => /\.cmd$/i.test(l)) || lines[0] || null;
-  } catch (e) { log.push(`where claude: ${String(e?.message || e).slice(0, 80)}`); }
+  } catch (e) { log.push(`where claude: ${String(e?.message || e).slice(0, 160)}`); }
   // (`where` is near-instant; the expensive step is the version probe below.)
   if (!exe) {
     // PATH is where a CLI should be, but real installs miss it: the native
@@ -98,7 +98,34 @@ async function probe() {
             return 0;
           });
         for (const v of versions) candidates.push(path.join(root, v, "claude.exe"));
-      } catch (e) { log.push(`desktop-app dir: ${String(e?.message || e).slice(0, 80)}`); }
+      } catch (e) { log.push(`desktop-app dir: ${String(e?.message || e).slice(0, 160)}`); }
+    }
+    // The Claude desktop app can be an MSIX / Store install, and then Windows
+    // VIRTUALIZES its AppData: inside the app's own container,
+    // Roaming\Claude\claude-code appears to exist — outside it, the real files
+    // live in the package sandbox store. Every dev-side probe here ran inside
+    // that container and saw the mirage; the packaged app saw the honest disk
+    // and reported ENOENT. Both were right. So scan the sandbox too.
+    if (process.env.LOCALAPPDATA) {
+      const pkgs = path.join(process.env.LOCALAPPDATA, "Packages");
+      try {
+        for (const d of fs.readdirSync(pkgs)) {
+          if (!/^(Anthropic)?Claude_/i.test(d)) continue;
+          const root = path.join(pkgs, d, "LocalCache", "Roaming", "Claude", "claude-code");
+          try {
+            const versions = fs.readdirSync(root)
+              .filter((v) => /^\d+[\d.]*$/.test(v))
+              .sort((a, b) => {
+                const A = a.split(".").map(Number), B = b.split(".").map(Number);
+                for (let i = 0; i < Math.max(A.length, B.length); i++) {
+                  if ((A[i] || 0) !== (B[i] || 0)) return (B[i] || 0) - (A[i] || 0);
+                }
+                return 0;
+              });
+            for (const v of versions) candidates.push(path.join(root, v, "claude.exe"));
+          } catch (e) { log.push(`sandbox ${d}: ${String(e?.message || e).slice(0, 120)}`); }
+        }
+      } catch (e) { log.push(`Packages scan: ${String(e?.message || e).slice(0, 120)}`); }
     }
     for (const c of candidates) {
       let hit = false;
