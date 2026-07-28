@@ -84,5 +84,20 @@ check("no plaintext API key", !readFileSync(join(OUT, "index.html"), "utf8").inc
   check("recipes.js shipped", existsSync(join(OUT, "recipes.js")));
 }
 
+// The version shown in the About card is a hand-written literal, which is to
+// say a lie waiting to happen. "Which build am I running?" was the first
+// question of a real bug hunt, so the displayed number is pinned to
+// package.json here.
+{
+  const pkg = JSON.parse(readFileSync("package.json", "utf8")).version;
+  const html = readFileSync("viewer/index.html", "utf8");
+  const shown = /id="app-version"[^>]*>v([\d.]+)</.exec(html)?.[1];
+  check("the About card shows the real version", shown === pkg,
+    `About says v${shown}, package.json says v${pkg}`);
+  const appv = /APP_VERSION = "([\d.]+)"/.exec(readFileSync("viewer/exporters.js", "utf8"))?.[1];
+  check("...and APP_VERSION in the exporters matches too", appv === pkg,
+    `exporters say ${appv}, package.json says ${pkg}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

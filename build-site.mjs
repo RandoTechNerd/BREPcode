@@ -57,7 +57,16 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js",
   ...(WITH_KEY ? ["locked-key.js"] : [])];
 
-writeFileSync(join(OUT, "index.html"), rewrite(readFileSync("viewer/index.html", "utf8")));
+// Stamp the build into the version tooltip: hovering the version in About
+// answers "is this the build I think it is" — the question every stale-exe
+// mystery starts with.
+let stamp = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
+try {
+  const { execSync } = await import("node:child_process");
+  stamp += " · " + execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
+} catch { /* not a git checkout — the date alone still answers the question */ }
+writeFileSync(join(OUT, "index.html"),
+  rewrite(readFileSync("viewer/index.html", "utf8")).replace("BUILDSTAMP", `built ${stamp}`));
 for (const f of VIEWER_JS) {
   if (!existsSync(`viewer/${f}`)) continue;      // locked-key.js is optional by design
   writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));
