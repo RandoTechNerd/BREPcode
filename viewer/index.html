@@ -1370,7 +1370,14 @@
     <!-- about -->
     <section id="about" class="card" aria-label="About">
       <header>
-        <div><strong>RandoTechNerd</strong><span class="sub">BREPcode.com · <span id="app-version" title="BUILDSTAMP">v0.2.0</span></span></div>
+        <div><strong>RandoTechNerd</strong><span class="sub">BREPcode.com · <span id="app-version" title="BUILDSTAMP">v0.2.0</span> <span id="app-stamp" style="opacity:.65"></span></span>
+      <script>
+        addEventListener("DOMContentLoaded", () => {
+          const v = document.getElementById("app-version");
+          const st = document.getElementById("app-stamp");
+          if (v && st && /built/.test(v.title)) st.textContent = "· " + v.title.replace("built ", "");
+        });
+      </script></div>
         <button id="about-docs-btn" class="hist-btn" title="What can it do?">Docs</button>
         <button class="close-btn" data-close="about" title="Close">&times;</button>
       </header>
@@ -1737,6 +1744,16 @@
         </svg>
       </button>
       <button id="about-btn" title="About / links" aria-label="About">&#9432;</button>
+      <script>
+        // "Which build am I running?" must cost ONE hover, not a hunt. The
+        // version element carries the build stamp in its tooltip; copy both
+        // onto the ⓘ button people actually point at.
+        addEventListener("DOMContentLoaded", () => {
+          const v = document.getElementById("app-version");
+          const b = document.getElementById("about-btn");
+          if (v && b) b.title = `About / links — ${v.textContent} · ${v.title}`;
+        });
+      </script>
     </div>
   </div>
 
