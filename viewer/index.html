@@ -7482,6 +7482,10 @@ ${joined}`)(...vs);
     // the message box is the whole onboarding: grey means "this could work",
     // terracotta means "connected". State lives here; detection is async.
     let ccFound = false, ccVersion = null, ccSession = null;
+    // Live progress from the CLI lands in whichever request is in flight —
+    // registered once; sendChat points it at its own log for the duration.
+    let ccProgress = null;
+    window.brepcodeDesktop?.onClaudeProgress?.((text) => { try { ccProgress?.(text); } catch { /* bubble gone */ } });
 
     function updateSpark() {
       const spark = $("cc-spark");
@@ -8184,7 +8188,16 @@ ${joined}`)(...vs);
       if (!text) return;
       chatInput.value = "";
       if (text !== RETRY_TEXT) autoFixTries = 0;   // a real request, fresh budget
-      addMsg("user", text);
+      const userEl = addMsg("user", text);
+      // The attached image appears IN the sent bubble. It used to vanish from
+      // the chip on send with nothing to show it went — the model would answer
+      // about "the photo" while the user wondered if it ever saw one.
+      if (pendingImg && userEl) {
+        const im = document.createElement("img");
+        im.src = pendingImg.dataUrl;
+        im.style.cssText = "display:block; max-width:130px; max-height:100px; border-radius:6px; margin-top:6px";
+        userEl.appendChild(im);
+      }
       chatLog.push({ role: "user", text });
       const { respond: botRespond, buildApiRequest, extractApiText, extractApiThinking } = await ensureChat();
 
@@ -8358,6 +8371,7 @@ ${joined}`)(...vs);
             else addMsg("bot", `Couldn't attach the image (${saved?.error || "unknown"}) — sending without it.`);
           }
           const system = CHAT.composeSystem({ reference, ...harnessOpts() });
+          ccProgress = logLine;
           const r = await window.brepcodeDesktop.claudeAsk({
             system,
             prompt: context + (imagePath ? `\n\nThe user attached an image. Read it at this exact path before answering: ${imagePath}` : ""),
@@ -8366,6 +8380,7 @@ ${joined}`)(...vs);
             resume: ccSession,
             imagePath,
           });
+          ccProgress = null;
           if (!r?.ok) throw new Error(r?.error || "Claude Code didn't answer");
           ccSession = r.sessionId || ccSession;
           answer = r.text;

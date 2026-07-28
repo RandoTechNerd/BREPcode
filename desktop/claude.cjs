@@ -19,7 +19,7 @@
 //   - no tools are granted except Read, and only when an image is attached,
 //     scoped to our own temp directory with --add-dir
 
-const { execFile, execFileSync } = require("node:child_process");
+const { execFile, execFileSync, spawn } = require("node:child_process");
 const { promisify } = require("node:util");
 const execFileP = promisify(execFile);
 const fs = require("node:fs");
@@ -161,12 +161,17 @@ function detect() {
 // concurrent CLI sessions writing the same session id would interleave badly.
 let inflight = null;
 
-async function ask({ system, prompt, model, effort, resume, imagePath } = {}) {
+async function ask({ system, prompt, model, effort, resume, imagePath } = {}, onProgress) {
   const d = await detectAsync();
   if (!d.found) return { ok: false, error: "Claude Code isn't installed (or isn't on PATH). Install it from claude.com/code, sign in once, and restart BREPcode." };
   if (inflight) return { ok: false, error: "Still working on the previous message." };
 
-  const args = ["-p", "--output-format", "json"];
+  // stream-json instead of json: the CLI then reports events AS THEY HAPPEN
+  // — model chosen, text being written — and the chat can show a wait that is
+  // evidence rather than a spinner. A three-minute fable reply with nothing
+  // moving on screen reads as a hang; the same wait watching the character
+  // count climb reads as work.
+  const args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"];
   // Allowlists, because these become argv — and argv may pass through cmd.exe
   // (see runnerFor). A model name is letters, digits, dots and dashes;
   // anything else is refused rather than sanitised.
@@ -200,37 +205,69 @@ async function ask({ system, prompt, model, effort, resume, imagePath } = {}) {
 
   const r = runnerFor(d.path, args);
   inflight = new Promise((resolve) => {
-    const child = execFile(r.file, r.args, {
-      encoding: "utf8",
-      timeout: 300000,                 // five minutes, then a clean kill
-      maxBuffer: 32 * 1024 * 1024,
-      windowsHide: true,
-      env,
-    }, (err, stdout, stderr) => {
+    const friendly = (raw) => {
+      const t = String(raw || "");
+      if (/log\s*in|login|authenticat|OAuth|API key/i.test(t)) {
+        return "Claude Code isn't signed in. Open a terminal, run `claude`, sign in once, then try again.";
+      }
+      if (/usage limit|rate limit|overloaded/i.test(t)) {
+        return "Claude is at its usage limit right now — try again in a little while.";
+      }
+      return t.slice(0, 300) || "Claude Code returned nothing.";
+    };
+
+    const child = spawn(r.file, r.args, { windowsHide: true, env });
+    const killer = setTimeout(() => { try { child.kill(); } catch { /* already gone */ } }, 300000);
+
+    let result = null, stderr = "", lineBuf = "", chars = 0, lastNote = 0;
+    const note = (text) => {
+      if (typeof onProgress !== "function") return;
+      try { onProgress(text); } catch { /* the page navigated — irrelevant */ }
+    };
+    const handleLine = (line) => {
+      if (!line.trim()) return;
+      let j = null;
+      try { j = JSON.parse(line); } catch { return; }        // banner noise
+      if (j.type === "system" && j.subtype === "init") {
+        note(`Claude is on it — model ${j.model || "?"}`);
+      } else if (j.type === "stream_event") {
+        const d = j.event?.delta;
+        if (d?.type === "text_delta") {
+          chars += d.text.length;
+          const now = Date.now();
+          if (now - lastNote > 700) { lastNote = now; note(`writing… ${chars.toLocaleString()} characters`); }
+        } else if (d?.type === "thinking_delta") {
+          const now = Date.now();
+          if (now - lastNote > 2000) { lastNote = now; note("thinking through the geometry…"); }
+        }
+      } else if (j.type === "result") {
+        result = j;
+      }
+    };
+    child.stdout.on("data", (dta) => {
+      lineBuf += dta;
+      let i;
+      while ((i = lineBuf.indexOf("\n")) >= 0) { handleLine(lineBuf.slice(0, i)); lineBuf = lineBuf.slice(i + 1); }
+    });
+    child.stderr.on("data", (dta) => { stderr += dta; });
+    child.on("error", (e) => {
+      clearTimeout(killer);
       inflight = null;
-      const friendly = (raw) => {
-        const t = String(raw || "");
-        if (/log\s*in|login|authenticat|OAuth|API key/i.test(t)) {
-          return "Claude Code isn't signed in. Open a terminal, run `claude`, sign in once, then try again.";
-        }
-        if (/usage limit|rate limit|overloaded/i.test(t)) {
-          return "Claude is at its usage limit right now — try again in a little while.";
-        }
-        return t.slice(0, 300) || "Claude Code returned nothing.";
-      };
-      // The CLI prints a JSON envelope even for many failures — prefer it.
-      let json = null;
-      try { json = JSON.parse(stdout); } catch { /* not JSON — fall through */ }
-      if (json && typeof json.result === "string" && !json.is_error) {
-        resolve({ ok: true, text: json.result, sessionId: json.session_id || null,
-          costUsd: json.total_cost_usd ?? null });
+      resolve({ ok: false, error: friendly(String(e?.message || e)) });
+    });
+    child.on("close", () => {
+      clearTimeout(killer);
+      inflight = null;
+      if (lineBuf.trim()) handleLine(lineBuf);
+      if (result && typeof result.result === "string" && !result.is_error) {
+        resolve({ ok: true, text: result.result, sessionId: result.session_id || null,
+          costUsd: result.total_cost_usd ?? null });
         return;
       }
-      if (json && json.is_error) { resolve({ ok: false, error: friendly(json.result || stderr) }); return; }
-      if (err) { resolve({ ok: false, error: friendly(stderr || err.message) }); return; }
-      resolve({ ok: false, error: friendly(stderr || stdout) });
+      if (result && result.is_error) { resolve({ ok: false, error: friendly(result.result || stderr) }); return; }
+      resolve({ ok: false, error: friendly(stderr || "Claude Code returned nothing.") });
     });
-    child.stdin.on("error", () => { /* EPIPE if it died instantly — the callback reports it */ });
+    child.stdin.on("error", () => { /* EPIPE if it died instantly — close reports it */ });
     child.stdin.end(stdinPayload);
   });
   return inflight;
@@ -261,7 +298,8 @@ function register() {
     try { return { ok: true, ...(await detectAsync()) }; }
     catch (e) { return { ok: false, found: false, error: String(e?.message || e) }; }
   });
-  ipcMain.handle("claude:ask", (_e, opts) => ask(opts || {}));
+  ipcMain.handle("claude:ask", (e, opts) => ask(opts || {},
+    (text) => { try { e.sender.send("claude-progress", text); } catch { /* window gone */ } }));
   ipcMain.handle("claude:saveImage", (_e, { ext, base64 } = {}) => {
     try { return saveImage(ext, base64); }
     catch (e) { return { ok: false, error: String(e?.message || e) }; }
@@ -285,4 +323,4 @@ function register() {
   });
 }
 
-module.exports = { register, detect, detectAsync, saveImage, IMG_DIR };
+module.exports = { register, detect, detectAsync, ask, saveImage, IMG_DIR };
