@@ -18,6 +18,7 @@ const fs = require("node:fs");
 const mail = require("./mail.cjs");
 const recovery = require("./recovery.cjs");
 const slicer = require("./slicer.cjs");
+const claude = require("./claude.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -167,6 +168,7 @@ if (!EMBEDDED) app.whenReady().then(() => {
   mail.register();          // SMTP over IPC; a browser cannot do this at all
   recovery.register();      // crash snapshots into the OS temp folder
   slicer.register();        // "open this in my slicer" — impossible from a web page
+  claude.register();        // chat via the user's own Claude Code login
   serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.

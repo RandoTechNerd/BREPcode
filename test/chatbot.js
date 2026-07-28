@@ -4,7 +4,7 @@
 import {
   respond, buildModelsRequest, extractModels, modelScore,
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
-  parseOp, opCode, EPS,
+  parseOp, opCode, EPS, buildApiRequest,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -468,5 +468,27 @@ console.log("\nmodel ranking\n");
   check("no dims means no local op", parseOp("punch a hole in it", null) === null);
 }
 
+// --- an attached image reaches the wire --------------------------------
+//
+// sendChat sets msg.images and this builder is the only thing between that
+// and the provider — if it drops them, the user attaches a sketch and the
+// model silently never sees it.
+{
+  const msgs = [{ role: "user", text: "match this sketch",
+    images: [{ media_type: "image/png", data: "AAAA" }] }];
+  const c = JSON.parse(buildApiRequest({ provider: "claude", model: "m", key: "k" }, msgs).options.body);
+  check("claude: the image is a content block", Array.isArray(c.messages[0].content)
+    && c.messages[0].content[0].type === "image"
+    && c.messages[0].content[0].source.data === "AAAA");
+  check("claude: the text still arrives", c.messages[0].content[1].text === "match this sketch");
+  const g = JSON.parse(buildApiRequest({ provider: "gemini", model: "m", key: "k" }, msgs).options.body);
+  check("gemini: the image is inline_data", g.contents[0].parts[0].inline_data.data === "AAAA");
+  check("gemini: the text still arrives", g.contents[0].parts[1].text === "match this sketch");
+  const plain = JSON.parse(buildApiRequest({ provider: "claude", model: "m", key: "k" },
+    [{ role: "user", text: "no image" }]).options.body);
+  check("no image means the plain string shape, unchanged", plain.messages[0].content === "no image");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
+

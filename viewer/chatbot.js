@@ -1001,7 +1001,11 @@ export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
       systemInstruction: { parts: [{ text: system }] },
       contents: messages.map((m) => ({
         role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.text }],
+        // an attached image (a sketch, a photo of the part) rides inline
+        parts: [
+          ...(m.images ?? []).map((im) => ({ inline_data: { mime_type: im.media_type, data: im.data } })),
+          { text: m.text },
+        ],
       })),
     };
     // Ask thinking models to return their thoughts so the viewer can show
@@ -1037,7 +1041,16 @@ export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
           // preamble needs room.
           max_tokens: 8000,
           system,
-          messages: messages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.text })),
+          messages: messages.map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            // an attached image becomes a content block ahead of the text
+            content: m.images?.length
+              ? [
+                ...m.images.map((im) => ({ type: "image", source: { type: "base64", media_type: im.media_type, data: im.data } })),
+                { type: "text", text: m.text },
+              ]
+              : m.text,
+          })),
         }),
       },
     };

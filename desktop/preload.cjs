@@ -42,6 +42,13 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   slicerInfo: () => ipcRenderer.invoke("slicer:info"),
   openInSlicer: (name, base64) => ipcRenderer.invoke("slicer:open", { name, base64 }),
 
+  // Chat through the user's own Claude Code install — their subscription, no
+  // key. Detection only says whether it exists; ask() streams nothing back to
+  // the page except the finished reply.
+  claudeInfo: () => ipcRenderer.invoke("claude:info"),
+  claudeAsk: (opts) => ipcRenderer.invoke("claude:ask", opts),
+  claudeSaveImage: (ext, base64) => ipcRenderer.invoke("claude:saveImage", { ext, base64 }),
+
   // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
   // The page registers a callback and gets { name, text } for each one.
   onOpenFile: (cb) => ipcRenderer.on("open-file", (_e, payload) => cb(payload)),

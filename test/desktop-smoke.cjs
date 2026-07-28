@@ -17,6 +17,30 @@ const fs = require("node:fs");
 // and registers the IPC handlers below. Must be set BEFORE the require.
 process.env.BREPCODE_EMBED = "1";
 
+// A fake `claude` CLI ahead of the PATH, so the Claude Code bridge is testable
+// on a machine with no Claude Code installed. It answers the same JSON
+// envelope the real CLI prints, with a marker proving stdin arrived intact.
+// ELECTRON_RUN_AS_NODE makes the Electron binary act as plain node for the
+// stub — process.execPath here IS electron.exe.
+const stubDir = path.join(require("node:os").tmpdir(), "brepcode-claude-stub");
+fs.mkdirSync(stubDir, { recursive: true });
+fs.writeFileSync(path.join(stubDir, "stub.js"), [
+  'let d = "";',
+  'process.stdin.on("data", (c) => d += c);',
+  'process.stdin.on("end", () => {',
+  '  console.log(JSON.stringify({ type: "result", is_error: false,',
+  '    session_id: "stub-session-1",',
+  '    result: "STUB-REPLY got " + d.length + " chars: " + d.slice(0, 300) }));',
+  '});',
+].join("\n"));
+fs.writeFileSync(path.join(stubDir, "claude.cmd"), [
+  "@echo off",
+  'if "%1"=="--version" ( echo 9.9.9-stub & exit /b 0 )',
+  "set ELECTRON_RUN_AS_NODE=1",
+  `"${process.execPath}" "${path.join(stubDir, "stub.js")}"`,
+].join("\r\n"));
+process.env.PATH = stubDir + path.delimiter + process.env.PATH;
+
 // Required up here, not inside whenReady: loading it registers the app:// scheme
 // as privileged, and Electron only accepts that before the app is ready. It only
 // boots itself when it is the entry point, so this just hands over its exports.
@@ -38,6 +62,7 @@ const check = (label, ok, detail = "") => {
 require("../desktop/mail.cjs").register();
 require("../desktop/recovery.cjs").register();
 require("../desktop/slicer.cjs").register();
+require("../desktop/claude.cjs").register();
 
 app.whenReady().then(async () => {
   // The real shell window, not a lookalike: same sandbox flags, same preload,
@@ -64,7 +89,7 @@ app.whenReady().then(async () => {
     check("the bridge reaches the page", await run("!!window.brepcodeDesktop?.isDesktop"));
     check("the page is still sandboxed", await run("typeof require === 'undefined' && typeof process === 'undefined'"));
     check("the bridge exposes no way to read the password back",
-      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "isDesktop,loadMail,onOpenFile,openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail");
+      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "claudeAsk,claudeInfo,claudeSaveImage,isDesktop,loadMail,onOpenFile,openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail");
 
     check("nothing saved yet", (await run("window.brepcodeDesktop.loadMail()")).config === null);
 
@@ -193,6 +218,31 @@ app.whenReady().then(async () => {
     } else {
       console.log("  ..    no slicer installed on this machine — detection skipped");
     }
+
+    // ---- Claude Code bridge --------------------------------------------
+    //
+    // Driven against the stub CLI installed at the top of this file, so what
+    // is proven is OUR side of the contract: detection, a shell-free spawn,
+    // the prompt travelling on stdin, the JSON envelope parsed, the session
+    // id surfaced, and attached images confined to our own temp directory.
+    const ccInfo = await run("window.brepcodeDesktop.claudeInfo()");
+    check("claude detection finds a CLI", ccInfo?.found === true, JSON.stringify(ccInfo));
+    check("...and reads its version", /stub/.test(ccInfo?.version || ""), ccInfo?.version);
+
+    const ccAsk = await run(`window.brepcodeDesktop.claudeAsk({
+      system: "you are a test", prompt: "make a cube please", model: "sonnet", effort: "low"
+    })`);
+    check("a prompt round-trips through the CLI", ccAsk?.ok === true, JSON.stringify(ccAsk).slice(0, 140));
+    check("...arriving on stdin intact", /make a cube please/.test(ccAsk?.text || ""), ccAsk?.text);
+    check("...with the session id surfaced", ccAsk?.sessionId === "stub-session-1");
+
+    const png1x1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const ccImg = await run(`window.brepcodeDesktop.claudeSaveImage("png", "${png1x1}")`);
+    check("an attached image is parked in our temp dir",
+      ccImg?.ok === true && /BREPcode-chat-images/.test(ccImg?.path || ""), JSON.stringify(ccImg));
+    check("...and really exists on disk", !!ccImg?.path && fs.existsSync(ccImg.path));
+    const ccBad = await run('window.brepcodeDesktop.claudeSaveImage("png", "")');
+    check("an empty image is refused", ccBad?.ok === false);
 
     check("dropping a file on the window is wired up",
       await run("typeof window.ondragover !== 'undefined'") !== undefined);
