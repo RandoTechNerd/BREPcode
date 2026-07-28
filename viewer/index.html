@@ -511,12 +511,7 @@
       box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; min-width: 190px;
     }
     #export-menu.open { display: block; }
-    /* the Claude spark: grey until Claude Code is connected, then Claude's
-       terracotta. The state IS the hint — no copy needed. */
-    #cc-spark, #chat-img-btn {
-      background: none; border: none; cursor: pointer; padding: 3px 4px;
-      display: flex; align-items: center; color: var(--muted3);
-    }
+    #cc-spark { display: none; }
     #chat-img-btn svg { width: 17px; height: 17px; opacity: .6; }
     #chat-img-btn:hover svg { opacity: 1; }
     #cc-spark svg { width: 18px; height: 18px; fill: #7f8ea3; opacity: .45;
@@ -1355,18 +1350,6 @@
       </div>
       <div id="chat-img-chip" style="display:none"></div>
       <div id="chat-input-row">
-        <button id="cc-spark" title="Claude">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><g>
-            <rect x="11" y="1.5" width="2" height="8" rx="1"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(45 12 12)"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(90 12 12)"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(135 12 12)"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(180 12 12)"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(225 12 12)"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(270 12 12)"/>
-            <rect x="11" y="1.5" width="2" height="8" rx="1" transform="rotate(315 12 12)"/>
-          </g></svg>
-        </button>
         <button id="chat-img-btn" title="Attach an image (a sketch, a photo of the part, a screenshot)">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 15l-5-5-9 9"/>
@@ -7491,35 +7474,35 @@ ${joined}`)(...vs);
             : "In the desktop app, this lights up when Claude Code is installed — chat on your Claude subscription, no API key";
     }
 
-    $("cc-spark")?.addEventListener("click", async () => {
-      if (ccFound && aiProvider.value !== "claude-code") {
-        aiProvider.value = "claude-code";
-        await ensureChat();
-        fillModelOptions("claude-code", "default");
-        aiProvider.dispatchEvent(new Event("change"));
-        addMsg("bot", "Switched to Claude Code — you're chatting on your own Claude subscription now.");
-        return;
-      }
-      $("chat-settings").classList.add("open");   // show where the choice lives
-    });
-
-    window.brepcodeDesktop?.claudeInfo?.().then((i) => {
-      if (i?.found) {
-        ccFound = true;
-        ccVersion = i.version;
-        $("opt-claude-code").hidden = false;
-      }
-      updateSpark();
-    }).catch(() => updateSpark());
+    if (window.brepcodeDesktop) {
+      $("opt-claude-code").hidden = false;   // discoverable even before install
+      window.brepcodeDesktop.claudeInfo?.().then((i) => {
+        ccFound = !!i?.found;
+        ccVersion = i?.version || null;
+        if (!ccFound) $("opt-claude-code").textContent = "Claude Code — install to enable (claude.com/code)";
+      }).catch(() => {});
+    }
 
     // One image can ride along with the next message: a sketch, a photo of
     // the broken part, a screenshot of a dimension drawing.
     let pendingImg = null;   // { ext, b64, mediaType, name, dataUrl }
     $("chat-img-btn").addEventListener("click", () => $("chat-img-file").click());
+    // Screenshot -> Ctrl+V into the message box. The paste event carries the
+    // image as a file; text pastes fall through untouched.
+    $("chat-input").addEventListener("paste", (e) => {
+      const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
+      if (!item) return;
+      e.preventDefault();
+      const f = item.getAsFile();
+      if (f) attachChatImage(f);
+    });
     $("chat-img-file").addEventListener("change", () => {
       const f = $("chat-img-file").files?.[0];
       $("chat-img-file").value = "";
       if (!f) return;
+      attachChatImage(f);
+    });
+    function attachChatImage(f) {
       const rd = new FileReader();
       rd.onload = () => {
         const dataUrl = String(rd.result || "");
@@ -7533,13 +7516,14 @@ ${joined}`)(...vs);
         chip.style.display = "flex";
         chip.innerHTML = "";
         const img = document.createElement("img"); img.src = dataUrl;
-        const label = document.createElement("span"); label.textContent = `${f.name} — attached to your next message`;
+        const label = document.createElement("span");
+        label.textContent = `${f.name || "pasted image"} — attached to your next message`;
         const x = document.createElement("button"); x.textContent = "✕"; x.title = "Remove";
         x.addEventListener("click", clearPendingImg);
         chip.append(img, label, x);
       };
       rd.readAsDataURL(f);
-    });
+    }
     function clearPendingImg() {
       pendingImg = null;
       const chip = $("chat-img-chip");

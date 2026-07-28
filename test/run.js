@@ -3,7 +3,7 @@
 // so it validates the kernel output rather than trusting our own bookkeeping.
 
 import {
-  cube, cylinder, sphere, union, difference, intersection,
+  cube, cylinder, sphere, union, difference, intersection, group,
   translate, rotate, build, toSTL,
 } from "../index.js";
 
@@ -155,6 +155,27 @@ await test("nested boolean: difference inside a union",
     const expected = 2000 - Math.PI * 4 * 10;
     check(l, near(v, expected, 12), `got ${v.toFixed(1)}, expected ~${expected.toFixed(1)}`);
   });
+
+// --- booleans distribute over a group --------------------------------------
+//
+// A group is several separate solids, and the old op() handed the boolean only
+// the LAST member — so drilling an imported multi-part Benchy subtracted from
+// one slice and left the drill sitting on deck as its own solid, which then
+// exported as a fifth colour.
+{
+  const g = group(cube([20, 20, 10]), translate([30, 0, 0], cube([20, 20, 10])));
+  const cut = translate([10, 10, -1], cylinder({ r: 4, h: 14, $fn: 24 }));
+  const r = await build(difference(g, cut));
+  check("difference over a group keeps every member (and eats the cutter)",
+    r.solids.length === 2, `${r.solids.length} solids`);
+  const tris = r.solids.map((s) => (s.toSTL("x", 6).match(/facet normal/g) || []).length).sort((a, b) => a - b);
+  check("...the member it touches gains the hole", tris[1] > 12, `${tris[1]} tris`);
+  check("...the member it misses is untouched", tris[0] === 12, `${tris[0]} tris`);
+  const u = await build(union(g, translate([60, 0, 0], cube([5, 5, 5]))));
+  check("union over a group adds a member instead of welding the assembly",
+    u.solids.length === 3, `${u.solids.length} solids`);
+}
+
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

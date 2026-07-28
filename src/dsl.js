@@ -351,6 +351,29 @@ const op = (operation) => (...children) => {
   const kids = collect(children);
   if (!kids.length) throw new Error(`${operation.toLowerCase()}() needs at least one shape`);
   if (kids.length === 1) return kids[0];
+
+  // Booleans DISTRIBUTE over a group. A group is several separate solids, and
+  // the compiler emits it that way — so before this, difference(group(...),
+  // cutter) subtracted the cutter from whichever member happened to be emitted
+  // LAST, and when the cutter never even touched that member, it survived as a
+  // free solid. Drill a hole in an imported multi-part Benchy and a grey
+  // drill-bit sat proudly on the deck; the exported 3MF carried it as a fifth
+  // colour. The honest semantics:
+  //   difference(group(a, b), c)   -> group(difference(a, c), difference(b, c))
+  //   intersection(group(a, b), c) -> group(intersection(a, c), ...)
+  //   union(group(a, b), c)        -> group(a, b, c)   — adding to an assembly
+  //                                    just makes it one part bigger; fusing
+  //                                    would weld the assembly into a lump.
+  // Tool nodes are deliberately REUSED across members: every appearance in the
+  // tree compiles to its own fresh solid, so each member gets its own cutter.
+  const [head, ...rest] = kids;
+  if (head?.kind === "group" && rest.length) {
+    if (operation === "UNION") return node({ kind: "group", children: [...head.children, ...rest] });
+    return node({
+      kind: "group",
+      children: head.children.map((m) => node({ kind: "op", operation, children: [m, ...rest] })),
+    });
+  }
   return node({ kind: "op", operation, children: kids });
 };
 
