@@ -7612,6 +7612,11 @@ ${joined}`)(...vs);
       if (sorted.length) aiModel.value = keep && sorted.includes(keep) ? keep : sorted[0];
     }
     function fillModelOptions(provider, keep) {
+      // The dropdown ranks by CAPABILITY, which made fable the natural pick —
+      // and fable takes minutes per reply. For interactive chat the right
+      // default is the fast-and-good one; the deep ones are a deliberate
+      // choice, not a landing spot.
+      if (provider === "claude-code" && !keep) keep = "sonnet";
       populateModels(AI_MODELS[provider] ?? [], keep);
     }
     const aiCfg = JSON.parse(localStorage.getItem("brepcode-ai") || "{}");
