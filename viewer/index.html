@@ -1107,7 +1107,7 @@
                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3.5 13.5V3l7.5 10.5z" /><path d="M5.6 5.9h1.6M7 8.4h1.6M8.4 10.9h1.6" />
             </svg>
-            <span><b>Fin supports</b><small>probed teeth + bed skirt</small></span>
+            <span><b>Fin supports</b><small>click a face — fins match its angle</small></span>
           </button>
           <button data-act="fins-noskirt-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
@@ -2462,7 +2462,14 @@
       if (m.userData.codeGlow) {                         // a glow() shape keeps its own emissive
         m.emissive.set(m.userData.codeGlow.hex);
         m.emissiveIntensity = m.userData.codeGlow.int;
-      } else {                                           // others follow the Material panel
+      } else if (solidMaterial.emissiveIntensity > 0
+          && (solidMaterial.emissive.r || solidMaterial.emissive.g || solidMaterial.emissive.b)) {
+        // Glow is ON and this shape has its own colour (override mats only exist
+        // for coloured shapes): it glows THAT colour. Copying the panel's single
+        // emissive here made an auto-coloured rainbow all glow the same green.
+        m.emissiveIntensity = solidMaterial.emissiveIntensity;
+        m.emissive.copy(m.color);
+      } else {                                           // glow off — follow the Material panel
         m.emissiveIntensity = solidMaterial.emissiveIntensity;
         m.emissive.copy(solidMaterial.emissive);
       }
@@ -2987,13 +2994,13 @@
     // next neon. So the hue still spreads (that is what makes it read as
     // multi-colour) and the saturation/lightness stay inside a band.
     //
-    // Glow-in-the-dark is a real filament with a real look — pale yellow-green,
-    // desaturated, very bright — so it gets its own narrow hue window rather
-    // than a lightness band. Neon is the opposite: full saturation, mid
-    // lightness, any hue.
+    // Glow spans the whole wheel like the others: with the glow preset on, each
+    // shape emits its own colour (see syncMatProps), so the sweep reads as
+    // green / red / yellow / magenta phosphors — not one green. Kept pale and
+    // bright so the diffuse still looks like glow filament under the lights.
     const SHADES = [
       { name: "Neon",       hue: [0, 360], sat: [96, 100], lit: [54, 62] },
-      { name: "Glow",       hue: [70, 145], sat: [55, 78], lit: [70, 84] },
+      { name: "Glow",       hue: [0, 360], sat: [68, 88], lit: [64, 76] },
       { name: "Very light", hue: [0, 360], sat: [30, 52], lit: [82, 90] },
       { name: "Light",      hue: [0, 360], sat: [45, 66], lit: [70, 79] },
       { name: "Medium",     hue: [0, 360], sat: [60, 78], lit: [52, 62] },
@@ -4981,6 +4988,7 @@ ${joined}`)(...vs);
     function setDrillArmed(on) {
       if (on && inPreview()) { refusePreviewTool("Drill"); return; }
       drillArmed = on && !!currentModelExpr();
+      if (drillArmed && finsArmed) setFinsArmed(false);   // one tool armed at a time
       $("drill-btn").classList.toggle("active", drillArmed);
       renderer.domElement.style.cursor = drillArmed ? "crosshair" : "";
       if (drillArmed) {
@@ -4995,6 +5003,7 @@ ${joined}`)(...vs);
       if (kind) codeArmedKind = kind;
       codeArmed = on && !!currentModelExpr();
       if (codeArmed) setDrillArmed(false);           // only one tool armed at a time
+      if (codeArmed && finsArmed) setFinsArmed(false);
       renderer.domElement.style.cursor = codeArmed ? "crosshair" : "";
       for (const id of ["code-dm-btn", "code-qr-btn"]) {
         const b = $(id);
@@ -5024,7 +5033,7 @@ ${joined}`)(...vs);
       // never rebuilding mid-drag). Dragging empty space still orbits. Drill mode
       // and a plain click are handled on pointerup.
       if (modelIsImport) {
-        if (drillArmed || codeArmed) return;
+        if (drillArmed || codeArmed || finsArmed) return;
         const rect = renderer.domElement.getBoundingClientRect();
         raycaster.setFromCamera(new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -5638,11 +5647,12 @@ ${joined}`)(...vs);
 
       // The drill and code tools bore into real material at a real surface, so
       // they only ever see modelGroup — a ghost has nothing to act on.
-      if (drillArmed || codeArmed) {
+      if (drillArmed || codeArmed || finsArmed) {
         if (!hit) return;
         // Drill: bore a hole at the clicked point, along the face's world-space
         // normal, by wrapping the whole model in difference(…, drill(…)).
-        (drillArmed ? drillAtHit : codeAtHit)(hit);
+        // Fins: the clicked face picks the side and the lean angle.
+        (drillArmed ? drillAtHit : finsArmed ? finsAtHit : codeAtHit)(hit);
         return;
       }
 
@@ -7123,9 +7133,12 @@ ${joined}`)(...vs);
     // parked at the bounding box can still sit centimetres away from a part that
     // leans. Teeth are allowed to stay long where the surface genuinely recedes
     // — that's the finger reaching a set-back feature.
-    function detectLean(li, face, side, alongX, zTop, gap, clearance, maxReach) {
+    function detectLean(li, face, side, alongX, zTop, gap, clearance, maxReach, candidates) {
+      // With a clicked face, `candidates` arrives seeded on that face's own
+      // angle (target first, so ties go to it) — the probe then only fine-tunes
+      // around what the user pointed at instead of sweeping blind.
       let best = { lean: 0, shift: 0, spread: Infinity };
-      for (const lean of [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]) {
+      for (const lean of candidates ?? [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]) {
         const hits = probeColumn(li, face, side, alongX, zTop, gap, clearance, lean, 400);
         if (hits.length < 4) continue;
         const reaches = hits.map((h) => h.reach);
@@ -7133,6 +7146,8 @@ ${joined}`)(...vs);
         const spread = max - min;
         if (spread < best.spread - 0.05) best = { lean, shift: Math.max(0, min - 0.4), spread };
       }
+      // nothing probeable at any angle: still honour the face the user clicked
+      if (!Number.isFinite(best.spread) && candidates) best.lean = candidates[0];
       return best;
     }
 
@@ -7217,10 +7232,11 @@ ${joined}`)(...vs);
         return;
       }
       const r1 = (n) => Math.round(n * 10) / 10;
-      // lean them on whichever face points most toward the camera, so the
-      // supports land where you're looking rather than hidden behind the part
+      // The clicked face picks the side. Fallback (nothing clicked — e.g. an
+      // old saved flow): whichever face points most toward the camera.
       const dir = camera.position.clone().sub(bb.getCenter(new THREE.Vector3()));
-      const side = Math.abs(dir.x) >= Math.abs(dir.y) ? (dir.x >= 0 ? "+x" : "-x") : (dir.y >= 0 ? "+y" : "-y");
+      const side = opts.side
+        ?? (Math.abs(dir.x) >= Math.abs(dir.y) ? (dir.x >= 0 ? "+x" : "-x") : (dir.y >= 0 ? "+y" : "-y"));
       const alongX = side === "+y" || side === "-y";
       const face = side === "+x" ? bb.max.x : side === "-x" ? bb.min.x : side === "+y" ? bb.max.y : bb.min.y;
       const s0 = alongX ? bb.min.x : bb.min.y, s1 = alongX ? bb.max.x : bb.max.y;
@@ -7251,11 +7267,18 @@ ${joined}`)(...vs);
         }
         if (best) zones.push(best);
       }
-      // the part's slope, measured on whichever column saw the most of it
+      // the part's slope: the CLICKED face's own angle when we have one (probe
+      // only fine-tunes ±6° around it, target first so ties keep it), else
+      // measured blind on whichever column saw the most of the part
+      const target = opts.faceAngle;
+      const seeded = target != null
+        ? [...new Set([target, Math.max(0, target - 3), Math.min(60, target + 3),
+                       Math.max(0, target - 6), Math.min(60, target + 6)])]
+        : undefined;
       const leanSrc = zones.reduce((p, c) => (!p || c.hits.length > p.hits.length ? c : p), null);
       const fit = leanSrc
-        ? detectLean(leanSrc.li, face, side, alongX, h, gap, clearance, MAX_REACH)
-        : { lean: 0, shift: 0 };
+        ? detectLean(leanSrc.li, face, side, alongX, h, gap, clearance, MAX_REACH, seeded)
+        : { lean: target ?? 0, shift: 0 };
       const lean = fit.lean;
       // slide the fin plane in by whatever slack the fit found
       const outward = (side === "+x" || side === "+y") ? 1 : -1;
@@ -7276,7 +7299,7 @@ ${joined}`)(...vs);
       if (!positions.length) {
         // never leave the user worse off than before they pressed the tool
         if (refit) restore();
-        hint.innerHTML = `Couldn't find anything to attach to on the <b>${side}</b> side${refit ? " — your existing fins are untouched" : ""}. Spin the view so a solid face points at you and press the tool again, or write <code>fins({…})</code> by hand with your own <code>positions</code> and <code>sprueAt</code>.`;
+        hint.innerHTML = `Couldn't find anything to attach to on the <b>${side}</b> side${refit ? " — your existing fins are untouched" : ""}. Press the tool and click a more solid face, or write <code>fins({…})</code> by hand with your own <code>positions</code> and <code>sprueAt</code>.`;
         return;
       }
       const posStr = positions.join(", ");
@@ -7298,8 +7321,62 @@ ${joined}`)(...vs);
       const nubTotal = sprueAt.reduce((n, l) => n + l.length, 0);
       hint.innerHTML = `${refit ? "<b>Re-fitted</b> the supports to the model's new position — " : ""}${positions.length} fin${positions.length === 1 ? "" : "s"} on the <b>${side}</b> side with <b>${nubTotal} teeth</b>${skirt ? "" : " and <b>no skirt</b>"}. Each tooth was probed against the part and ends in a point <b>${clearance}mm short</b> of it, so a clean print never fuses — the part only rests on them if it shifts. Edit <code>positions</code>, <code>sprueAt</code>, <code>height</code>, <code>angle</code>, <code>nozzle</code>, <code>clearance</code>, <code>skirt</code>. Moved the model since? Press the tool again and it re-probes.`;
     }
-    $("fins-btn").addEventListener("click", () => addFins());
-    $("fins-noskirt-btn").addEventListener("click", () => addFins({ skirt: 0 }));
+    // Fins arm like Drill: the button asks for a face, and the CLICK supplies
+    // what the camera used to guess — which side the fins go on and the angle
+    // the part leans there — so the fins sit parallel to the face and every
+    // finger stays a short poke.
+    let finsArmed = false, finsOpts = {};
+    function setFinsArmed(on, opts = {}) {
+      if (on && inPreview()) { refusePreviewTool("Fin supports"); return; }
+      finsOpts = opts;
+      finsArmed = on && !!currentModelExpr();
+      if (finsArmed) { setDrillArmed(false); setCodeArmed(false); }
+      $("fins-btn").classList.toggle("active", finsArmed);
+      renderer.domElement.style.cursor = finsArmed ? "crosshair" : "";
+      if (finsArmed) {
+        hint.innerHTML = "🛟 <b>Fins armed</b> — click the model face you want supported. The fins land on that side, leaning at the face's own angle, so the teeth stay short and close. <b>Esc</b> cancels.";
+      }
+    }
+    function finsAtHit(hit) {
+      const opts = { ...finsOpts };
+      setFinsArmed(false);
+      let n = new THREE.Vector3(1, 0, 0);
+      if (hit.face) {
+        n = hit.face.normal.clone()
+          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+      }
+      const nh = Math.hypot(n.x, n.y);
+      if (nh < 0.1) {
+        hint.innerHTML = "That face points straight up or down — fins lean on a <b>side</b>. Click a side face (one facing ±X or ±Y) and press the tool again.";
+        return;
+      }
+      opts.side = Math.abs(n.x) >= Math.abs(n.y) ? (n.x >= 0 ? "+x" : "-x") : (n.y >= 0 ? "+y" : "-y");
+      // The face's tilt from vertical, seen in the fin's probe plane. fins()
+      // lean hugs an OVERHANG (contact edge slopes away with height, plate
+      // shifts in), which is exactly the face that needs support — the normal
+      // pointing downhill (n.z < 0) is the positive-lean case. A face tipping
+      // the other way can't be leaned into, so it clamps to plumb.
+      const horiz = opts.side[1] === "x" ? Math.abs(n.x) : Math.abs(n.y);
+      opts.faceAngle = Math.max(0, Math.min(60, Math.round(Math.atan2(-n.z, horiz) * 180 / Math.PI)));
+      addFins(opts);
+    }
+    $("fins-btn").addEventListener("click", () => {
+      if (finsArmed && finsOpts.skirt !== 0) return setFinsArmed(false);
+      if (!currentModelExpr()) {
+        hint.innerHTML = "To add support fins the editor needs a <b>single model expression</b> (e.g. straight after Import, or one <code>cube(…)</code>/<code>union(…)</code>). Build something first, then try again.";
+        return;
+      }
+      setFinsArmed(true);
+    });
+    $("fins-noskirt-btn").addEventListener("click", () => {
+      if (finsArmed && finsOpts.skirt === 0) return setFinsArmed(false);
+      if (!currentModelExpr()) {
+        hint.innerHTML = "To add support fins the editor needs a <b>single model expression</b> (e.g. straight after Import, or one <code>cube(…)</code>/<code>union(…)</code>). Build something first, then try again.";
+        return;
+      }
+      setFinsArmed(true, { skirt: 0 });
+    });
 
     // Toolbox dropdown — the model-editing tools in one place. Rows click the
     // real (hidden) buttons, so each tool has exactly one implementation.
@@ -8579,7 +8656,7 @@ ${joined}`)(...vs);
       else if (e.key === "ArrowUp") snapView("up");
       else if (e.key === "ArrowDown") snapView("down");
       else if (e.key === "Home") snapView("home");
-      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
+      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
       else return;
       e.preventDefault();
     });
