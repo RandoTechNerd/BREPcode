@@ -2207,14 +2207,17 @@
       }
     }
 
-    function updateDims() {
+    // `target` lets a preview measure itself: the ruler used to read only
+    // modelGroup, so importing a Benchy as a preview left the PREVIOUS model's
+    // dimension lines on screen — a 30mm ruler floating beside a 55mm boat.
+    function updateDims(target = modelGroup) {
       for (const c of [...dimsGroup.children]) {
         c.geometry?.dispose?.();
         c.material?.map?.dispose?.();
         dimsGroup.remove(c);
       }
       if (!$("dims").checked) return;
-      const bb = new THREE.Box3().setFromObject(modelGroup);
+      const bb = new THREE.Box3().setFromObject(target);
       if (bb.isEmpty()) return;
       const size = bb.getSize(new THREE.Vector3());
       const s = Math.max(size.x, size.y, size.z) * 0.06;   // tick/label scale
@@ -6413,6 +6416,7 @@ ${joined}`)(...vs);
 
     function clearMeshPreview() {
       modelGroup.visible = true;          // the preview hid it; it comes back
+      updateDims();                       // ...and the ruler goes back to measuring it
       for (const c of [...previewGroup.children]) {
         c.geometry?.dispose?.();
         c.material?.dispose?.();
@@ -6455,6 +6459,7 @@ ${joined}`)(...vs);
       });
       previewGroup.updateMatrixWorld(true);
       frameModel(previewGroup);
+      updateDims(previewGroup);      // the ruler measures what is on screen
     }
 
     async function importMeshFile(file) {
