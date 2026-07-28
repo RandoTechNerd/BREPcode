@@ -1,7 +1,7 @@
 ---
 tag: sizes
 title: Reference sizes for everyday objects
-match: gopro, credit card, sd card, microsd, usb, hdmi, phone, pencil, toothbrush, broom, wine bottle, soda can, mason jar, bearing, coin, quarter, golf ball, tennis ball, airtag, raspberry pi, arduino, m3, m4, m5, bolt, screw
+match: gopro, credit card, sd card, microsd, usb, hdmi, phone, pencil, toothbrush, broom, wine bottle, soda can, mason jar, coin, quarter, golf ball, tennis ball, airtag
 ---
 
 Use these when the user names a real object without measurements. **State what

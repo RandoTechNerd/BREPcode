@@ -72,6 +72,83 @@
       "ask": "Which cell — AA, AAA, 18650, CR2032 or 9V? And how many, in what arrangement (a row, a 2x3 block…)?"
     },
     {
+      "tag": "bearing",
+      "title": "Ball bearings",
+      "file": "bearing.md",
+      "match": [
+        "bearing",
+        "bearings",
+        "608",
+        "608zz",
+        "625",
+        "626",
+        "688",
+        "623",
+        "6001",
+        "6201",
+        "6800",
+        "6802",
+        "skate bearing"
+      ]
+    },
+    {
+      "tag": "devboard",
+      "title": "Dev boards — Raspberry Pi, Pico, Arduino",
+      "file": "board.md",
+      "match": [
+        "raspberry pi",
+        "raspberry",
+        "rpi",
+        "pi zero",
+        "pi 4",
+        "pi 5",
+        "pi pico",
+        "pico",
+        "arduino",
+        "arduino uno",
+        "uno",
+        "esp32",
+        "devkit",
+        "nodemcu"
+      ]
+    },
+    {
+      "tag": "extrusion",
+      "title": "Aluminium T-slot / V-slot extrusion",
+      "file": "extrusion.md",
+      "match": [
+        "extrusion",
+        "2020",
+        "2040",
+        "3030",
+        "4040",
+        "v-slot",
+        "vslot",
+        "t-slot",
+        "tslot",
+        "t-nut",
+        "tnut",
+        "aluminium profile",
+        "aluminum profile"
+      ]
+    },
+    {
+      "tag": "fan",
+      "title": "Axial PC fans & grills",
+      "file": "fan.md",
+      "match": [
+        "fan",
+        "fans",
+        "cooling fan",
+        "case fan",
+        "fan mount",
+        "fan grill",
+        "fan guard",
+        "blower",
+        "noctua"
+      ]
+    },
+    {
       "tag": "frame",
       "title": "Picture frames",
       "file": "frame.md",
@@ -80,6 +157,17 @@
         "picture frame",
         "photo frame",
         "rabbet"
+      ]
+    },
+    {
+      "tag": "gridfinity",
+      "title": "Gridfinity bins & baseplates",
+      "file": "gridfinity.md",
+      "match": [
+        "gridfinity",
+        "grid finity",
+        "gridfinity bin",
+        "gridfinity baseplate"
       ]
     },
     {
@@ -122,6 +210,22 @@
       ]
     },
     {
+      "tag": "insert",
+      "title": "Heat-set threaded inserts",
+      "file": "insert.md",
+      "match": [
+        "heat set",
+        "heatset",
+        "heat-set",
+        "threaded insert",
+        "threaded inserts",
+        "brass insert",
+        "brass inserts",
+        "ruthex",
+        "voron insert"
+      ]
+    },
+    {
       "tag": "lexicon",
       "title": "Plain English to geometry",
       "file": "lexicon.md",
@@ -156,6 +260,17 @@
       ]
     },
     {
+      "tag": "magnet",
+      "title": "Neodymium magnets & pockets",
+      "file": "magnet.md",
+      "match": [
+        "magnet",
+        "magnets",
+        "neodymium",
+        "magnetic"
+      ]
+    },
+    {
       "tag": "mount",
       "title": "Brackets and wall mounts",
       "file": "mount.md",
@@ -169,6 +284,23 @@
         "shelf",
         "l-bracket",
         "angle bracket"
+      ]
+    },
+    {
+      "tag": "stepper",
+      "title": "NEMA stepper motors",
+      "file": "nema.md",
+      "match": [
+        "nema",
+        "nema17",
+        "nema 17",
+        "nema23",
+        "nema 23",
+        "nema14",
+        "nema 14",
+        "stepper",
+        "stepper motor",
+        "stepper mount"
       ]
     },
     {
@@ -199,6 +331,49 @@
       ]
     },
     {
+      "tag": "screw",
+      "title": "Metric screws, nuts & printed holes (ISO)",
+      "file": "screw.md",
+      "match": [
+        "screw",
+        "screws",
+        "bolt",
+        "bolts",
+        "m2",
+        "m2.5",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m8",
+        "countersunk",
+        "counterbore",
+        "cap head",
+        "socket head",
+        "hex nut",
+        "nut pocket",
+        "captive nut",
+        "tap",
+        "clearance hole",
+        "threaded hole"
+      ]
+    },
+    {
+      "tag": "servo",
+      "title": "Hobby servos (SG90 / MG90S / standard)",
+      "file": "servo.md",
+      "match": [
+        "servo",
+        "servos",
+        "sg90",
+        "mg90",
+        "mg90s",
+        "mg996",
+        "mg996r",
+        "micro servo"
+      ]
+    },
+    {
       "tag": "sizes",
       "title": "Reference sizes for everyday objects",
       "file": "sizes.md",
@@ -216,19 +391,11 @@
         "wine bottle",
         "soda can",
         "mason jar",
-        "bearing",
         "coin",
         "quarter",
         "golf ball",
         "tennis ball",
-        "airtag",
-        "raspberry pi",
-        "arduino",
-        "m3",
-        "m4",
-        "m5",
-        "bolt",
-        "screw"
+        "airtag"
       ]
     },
     {
