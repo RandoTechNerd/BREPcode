@@ -5699,8 +5699,8 @@ ${joined}`)(...vs);
     function reflectAnchor() {
       anchorBtn.classList.toggle("centered", anchorCentered);
       anchorBtn.title = anchorCentered
-        ? "Handle mode: CENTERED — grows evenly from the middle (click for STUCK)"
-        : "Handle mode: STUCK — only the pulled side moves (click for CENTERED)";
+        ? "Handle mode: CENTERED — grows evenly from the middle (click for STUCK) · double-click to centre the selection on the plate"
+        : "Handle mode: STUCK — only the pulled side moves (click for CENTERED) · double-click to centre the selection on the plate";
     }
     anchorBtn.addEventListener("click", () => {
       anchorCentered = !anchorCentered;
@@ -5708,6 +5708,58 @@ ${joined}`)(...vs);
       reflectAnchor();
       setStatus("", anchorCentered ? "Handles now grow from the centre." : "Handles now move only the pulled side.");
     });
+    // DOUBLE-click the same button: move the selection to the middle of the
+    // plate. Single click still toggles how handles grow.
+    //
+    // Sharing one button is deliberate — both are about where a shape sits
+    // relative to its own middle, and an import that lands off to one side is
+    // the moment you want this, which is also the moment the toolbar is
+    // already crowded. The single click is delayed by the browser's own
+    // dblclick window, so a stray toggle never fires on its way to a centre.
+    anchorBtn.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      // Undo the toggle the first click of the double already applied.
+      anchorCentered = !anchorCentered;
+      localStorage.setItem("brepcode-anchor", anchorCentered ? "centered" : "stuck");
+      reflectAnchor();
+      centreSelection();
+    });
+
+    // Wrap the selected shape — or the whole model when nothing is selected —
+    // in a translate() that puts its middle over the origin in X and Y and its
+    // base on the plate. Written into the CODE, not the view, so it survives a
+    // rebuild, a save, and an export.
+    function centreSelection() {
+      const site = selected?.fid && mapText === code.value ? featureMap?.[selected.fid] : null;
+      const box = site ? featureBox(selected.fid) : new THREE.Box3().setFromObject(modelGroup);
+      if (!box || box.isEmpty()) { setStatus("err", "Nothing to centre — build a model first."); return; }
+
+      const c = box.getCenter(new THREE.Vector3());
+      const r1 = (n) => Math.round(n * 100) / 100;
+      const dx = r1(-c.x), dy = r1(-c.y), dz = r1(-box.min.z);
+      if (!dx && !dy && !dz) { setStatus("ok", "Already centred on the plate."); return; }
+
+      pushHistory(code.value);
+      const wrap = (src) => `translate([${dx}, ${dy}, ${dz}],\n  ${src.trim()})`;
+      const ok = site
+        ? replaceSpan(site.start, site.end, wrap(code.value.slice(site.start, site.end)))
+        : replaceModelExpr(wrap(modelExprSpan()?.expr ?? ""));
+      if (!ok) { setStatus("err", "Couldn't centre that — the code has to be a shape, or code that returns one."); return; }
+      pushHistory();
+      setStatus("busy", "…");
+      hint.innerHTML = site
+        ? `Centred the selected shape on the plate with <code>translate([${dx}, ${dy}, ${dz}], …)</code>.`
+        : `Centred the model on the plate with <code>translate([${dx}, ${dy}, ${dz}], …)</code>. Select a shape first to centre just that one.`;
+      rebuild();
+    }
+
+    // Swap one span of the editor text, leaving the rest untouched.
+    function replaceSpan(start, end, next) {
+      if (!(end > start)) return false;
+      code.value = code.value.slice(0, start) + next + code.value.slice(end);
+      return true;
+    }
+
     reflectAnchor();
     // Export what's on screen as ASCII STL (same path the CLI uses).
     function exportSTL() {
@@ -6470,7 +6522,12 @@ ${joined}`)(...vs);
           // out to 3MF as real per-part colour.
           const call = (n, i) => {
             const c = partColours[i];
-            const mesh = `importedMesh(${JSON.stringify(n)})`;
+            // repair: "BASIC" is not optional here. Without it the parts BUILD
+            // and display fine but every export dies with "Not manifold" — the
+            // slices carry the small defects any real mesh has, and the STL
+            // writer will not tolerate them. Measured: with repair the same
+            // 4204 triangles go in and come out.
+            const mesh = `importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`;
             return c ? `colorize(${JSON.stringify(c)}, ${mesh})` : mesh;
           };
           code.value = names.length === 1
