@@ -98,14 +98,18 @@ async function probe() {
     }
     exe = candidates.find((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } }) || null;
   }
+  // EXISTENCE IS A FILE CHECK, nothing more. The version probe used to gate
+  // found — spawn claude.exe --version, and on a timeout declare the whole
+  // install missing. Every warm test passed; the user's cold real-world runs
+  // failed, because a first spawn of a node CLI under Defender inspection can
+  // outlast any polite timeout. Now the file on disk decides, immediately;
+  // the version fills in behind, and if the exe truly cannot run, ask() will
+  // say so with the actual error instead of detection quietly lying.
   if (exe) {
-    try {
-      const r = runnerFor(exe, ["--version"]);
-      version = (await execFileP(r.file, r.args,
-        { encoding: "utf8", timeout: 20000, windowsHide: true })).stdout.trim();
-    } catch { /* found but won't run — report found:false, it can't be driven */
-      exe = null;
-    }
+    const r = runnerFor(exe, ["--version"]);
+    execFileP(r.file, r.args, { encoding: "utf8", timeout: 60000, windowsHide: true })
+      .then((out) => { if (cached) cached.version = out.stdout.trim(); })
+      .catch(() => { /* version stays unknown; existence already answered */ });
   }
   return { found: !!exe, path: exe, version };
 }

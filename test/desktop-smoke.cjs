@@ -227,7 +227,15 @@ app.whenReady().then(async () => {
     // id surfaced, and attached images confined to our own temp directory.
     const ccInfo = await run("window.brepcodeDesktop.claudeInfo()");
     check("claude detection finds a CLI", ccInfo?.found === true, JSON.stringify(ccInfo));
-    check("...and reads its version", /stub/.test(ccInfo?.version || ""), ccInfo?.version);
+    // The version fills in BEHIND the existence answer now — gating found on a
+    // spawn is what made cold machines report a real install missing. So poll
+    // briefly for the async fill rather than expecting it on the first reply.
+    let ccVer = ccInfo?.version;
+    for (let i = 0; i < 20 && !ccVer; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      ccVer = (await run("window.brepcodeDesktop.claudeInfo()"))?.version;
+    }
+    check("...and the version fills in shortly after", /stub/.test(ccVer || ""), String(ccVer));
 
     const ccAsk = await run(`window.brepcodeDesktop.claudeAsk({
       system: "you are a test", prompt: "make a cube please", model: "sonnet", effort: "low"
