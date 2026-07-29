@@ -82,12 +82,45 @@ try {
 } catch (e) {
   check("non-uniform scale errors clearly", /non-uniform/.test(e.message), e.message.slice(0, 60));
 }
+{
+  // imported meshes now go THROUGH OCCT (importSTL sews the triangles), so
+  // drawings and STEP work on imports too — faceted surfaces, correct shape
+  const asciiCube = (s) => {
+    const P = [[0, 0, 0], [s, 0, 0], [s, s, 0], [0, s, 0], [0, 0, 6], [s, 0, 6], [s, s, 6], [0, s, 6]];
+    const q = (a, b, c, d) => [[a, b, c], [a, c, d]];
+    const tris = [...q(0, 3, 2, 1), ...q(4, 5, 6, 7), ...q(0, 1, 5, 4), ...q(2, 3, 7, 6), ...q(0, 4, 7, 3), ...q(1, 2, 6, 5)];
+    const lines = ["solid c"];
+    for (const t of tris) {
+      lines.push("facet normal 0 0 0", "outer loop");
+      for (const i of t) lines.push(`vertex ${P[i][0]} ${P[i][1]} ${P[i][2]}`);
+      lines.push("endloop", "endfacet");
+    }
+    lines.push("endsolid c");
+    return lines.join("\n");
+  };
+  registerImport("part.stl", asciiCube(12));
+  const step = await stepOf(translate([5, 0, 0], importedMesh("part.stl")));
+  check("an imported mesh exports as real STEP now", /ADVANCED_FACE|MANIFOLD_SOLID_BREP/.test(step));
+  const back = await stepToStl(step, "back");
+  const xs = [...back.matchAll(/vertex\s+(\S+)/g)].map((m) => +m[1]);
+  check("...transformed to where the code put it",
+    Math.abs(Math.min(...xs) - 5) < 0.2 && Math.abs(Math.max(...xs) - 17) < 0.2,
+    `x ${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}`);
+}
 try {
-  registerImport("m.stl", "solid m\nendsolid m\n");
-  await stepOf(importedMesh("m.stl"));
-  check("mesh import errors clearly", false, "no error");
+  // a mesh too dense for hidden-line removal still refuses, with a number
+  const big = ["solid big"];
+  for (let i = 0; i < 20001; i++) {
+    big.push("facet normal 0 0 0", "outer loop",
+      `vertex ${i % 100} ${i / 100} 0`, `vertex ${i % 100 + 1} ${i / 100} 0`, `vertex ${i % 100} ${i / 100 + 1} 1`,
+      "endloop", "endfacet");
+  }
+  big.push("endsolid big");
+  registerImport("big.stl", big.join("\n"));
+  await stepOf(importedMesh("big.stl"));
+  check("a too-dense import refuses with guidance", false, "no error");
 } catch (e) {
-  check("mesh import errors clearly", /triangles/.test(e.message), e.message.slice(0, 60));
+  check("a too-dense import refuses with guidance", /[Dd]ecimate/.test(e.message), e.message.slice(0, 70));
 }
 
 // hull() has no analytic form and OCCT has no hull operation, so the exporter

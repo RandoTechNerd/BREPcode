@@ -3679,7 +3679,18 @@
       if (on) $("about-body").scrollTop = 0;
     });
     histBtn.addEventListener("click", () => { if (toggleCard(histCard, histBtn)) renderHistory(); });
-    chatBtn.addEventListener("click", () => { if (toggleCard(chatCard, chatBtn)) { ensureChat(); $("chat-input").focus(); } });
+    chatBtn.addEventListener("click", () => {
+      if (toggleCard(chatCard, chatBtn)) {
+        ensureChat();
+        // Land where the conversation IS: latest messages in view, caret at
+        // the END of any half-typed message — reopening used to leave the
+        // caret at the start, so typing prepended into your own sentence.
+        const msgs = $("chat-msgs"), inp = $("chat-input");
+        msgs.scrollTop = msgs.scrollHeight;
+        inp.focus();
+        inp.setSelectionRange(inp.value.length, inp.value.length);
+      }
+    });
     for (const b of document.querySelectorAll("[data-close]")) {
       b.addEventListener("click", () => {
         toggleCard($(b.dataset.close), cardButtons[b.dataset.close], false);
@@ -7984,6 +7995,17 @@ ${joined}`)(...vs);
     // ------------------------------------------------------------- assistant
     const chatMsgs = $("chat-msgs"), chatInput = $("chat-input");
     const aiProvider = $("ai-provider"), aiModel = $("ai-model"), aiKey = $("ai-key");
+    // Any focus that lands with the caret parked at 0,0 (tab, programmatic)
+    // jumps to the end of the draft. Deferred a frame so a real mid-text CLICK
+    // — whose selection lands after focus — is left exactly where it was aimed.
+    chatInput.addEventListener("focus", () => {
+      requestAnimationFrame(() => {
+        if (document.activeElement === chatInput && chatInput.value
+            && chatInput.selectionStart === 0 && chatInput.selectionEnd === 0) {
+          chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+        }
+      });
+    });
 
     // ---- Claude Code: chat on the user's own subscription -----------------
     // Desktop-only by nature (a web page cannot run programs). The spark in

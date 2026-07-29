@@ -156,6 +156,8 @@ function decodeStlBytes(bytes) {
   return out.join("\n");
 }
 export function listImports() { return [...IMPORTS.keys()]; }
+// curved.js hands imported meshes to OCCT (importSTL) for blueprints/STEP
+export const getImport = (name) => IMPORTS.get(name) ?? null;
 
 // Baked-transform cache: rebuilds re-run compile constantly, and transforming
 // a large STL's every vertex each keystroke would hurt.

@@ -12,6 +12,7 @@
 // equivalent — both fail with a clear message instead of a faceted lie.
 
 import { Matrix4, Vector3, Quaternion } from "three";
+import { getImport } from "../src/dsl.js";
 
 let replicadReady = null;
 
@@ -132,6 +133,25 @@ export async function buildCurved(root) {
     hullShapes.set(n, await r.importSTL(new Blob([out.join("\n")], { type: "model/stl" })));
   };
 
+  // Imported meshes have no analytic surfaces to recover, but OCCT can still
+  // SEW their triangles into a real (faceted) shape — which projects proper
+  // hidden-line drawings, joins booleans, and writes valid STEP. Guarded by
+  // facet count: hidden-line removal over a slicer-sized mesh takes minutes.
+  // Resolved BEFORE hulls so hull(importedMesh(...), …) works too.
+  const importShapes = new Map();
+  const resolveImports = async (n) => {
+    if (!n || typeof n !== "object") return;
+    for (const c of kids(n)) await resolveImports(c);
+    if (n.kind !== "import" || importShapes.has(n)) return;
+    const text = getImport(n.name);
+    if (!text) throw new Error(`importedMesh("${n.name}"): no imported file by that name — use the Import button first`);
+    const facets = (text.match(/endfacet/g) || []).length;
+    if (facets > 20000) {
+      throw new Error(`importedMesh("${n.name}") is ~${(facets / 1000).toFixed(0)}k triangles — too dense for a drawing or curved STEP (hidden-line removal would take minutes). Decimate to under 20k triangles and re-import, or use the mesh exports (STL/3MF).`);
+    }
+    importShapes.set(n, await r.importSTL(new Blob([text], { type: "model/stl" })));
+  };
+
   // OCCT refuses a wire containing a zero-length edge, while the BREP.io kernel
   // quietly ignores one — so a profile that builds fine in the viewer can fail
   // the STEP/blueprint export with nothing but an emscripten pointer to show for
@@ -206,7 +226,9 @@ export async function buildCurved(root) {
       return applyMatrix(shape, matrix);
     }
     if (n.kind === "import") {
-      throw new Error("importedMesh() is triangles all the way down — there are no curved surfaces to recover. Export meshes as STL/3MF instead.");
+      const shape = importShapes.get(n);
+      if (!shape) throw new Error("curved export: import was not resolved before the build");
+      return applyMatrix(shape, new Matrix4().multiplyMatrices(matrix, n.fix));
     }
     throw new Error(`curved export: unknown node kind "${n.kind}"`);
   };
@@ -216,6 +238,7 @@ export async function buildCurved(root) {
   // real Error gets turned into something a user can act on. Try to recover the
   // real message first — some OCCT builds expose a decoder.
   try {
+    await resolveImports(root);
     await resolveHulls(root);
     return build(root, new Matrix4());
   } catch (e) {
