@@ -7851,13 +7851,25 @@ ${joined}`)(...vs);
     // network, blocked CORS, bad key). Enter a working key and the dropdown is
     // replaced by the models that key can actually call, so this list never
     // decides what you can use — it just stops the dropdown being empty.
+    // These must be REAL model ids: this list once carried a made-up
+    // "claude-opus-5" and no fable — so one failed re-verify made fable
+    // vanish and offered a model that 404s. The Claude 5 family is fable-5
+    // and sonnet-5; opus tops out at 4.8.
     const AI_MODELS = {
       builtin: [],
       gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-      claude: ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
+      claude: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
       // Aliases the CLI resolves itself, so this list never goes stale;
       // "default" means "whatever the user's Claude Code is set to".
       "claude-code": ["default", "fable", "opus", "sonnet", "haiku"],
+    };
+    // The last list a WORKING key actually returned, per provider — a network
+    // blip on a later page load must not shrink the dropdown to the curated
+    // guess above (that is how "fable disappeared").
+    const modelCacheKey = (p) => `brepcode-models-${p}`;
+    const cachedModels = (p) => {
+      try { return JSON.parse(localStorage.getItem(modelCacheKey(p)) || "[]"); }
+      catch { return []; }
     };
     // Best-for-modelling models float to the top with a ROYGBIV tint:
     // violet = strongest pick, sliding down to red for the weakest.
@@ -7944,7 +7956,8 @@ ${joined}`)(...vs);
       // default is the fast-and-good one; the deep ones are a deliberate
       // choice, not a landing spot.
       if (provider === "claude-code" && !keep) keep = "sonnet";
-      populateModels(AI_MODELS[provider] ?? [], keep);
+      const cached = cachedModels(provider);
+      populateModels(cached.length ? cached : (AI_MODELS[provider] ?? []), keep);
     }
     const aiCfg = JSON.parse(localStorage.getItem("brepcode-ai") || "{}");
     if (aiCfg.fixTries != null && $("ai-fixtries")) $("ai-fixtries").value = String(aiCfg.fixTries);
@@ -8318,6 +8331,9 @@ ${joined}`)(...vs);
           models.includes(keep) ? keep
             : models.find((m) => AI_MODELS[provider]?.includes(m)));
         aiCheck.textContent = "✓"; aiCheck.className = "ok";
+        // remember what this key can really call — offline/blipped page loads
+        // reuse it instead of downgrading to the curated guess
+        try { localStorage.setItem(modelCacheKey(provider), JSON.stringify(models)); } catch { /* full */ }
         saveAiCfg();
         if (announce) {
           addMsg("bot", `✓ Connected to ${provider === "gemini" ? "Gemini" : "Claude"} — ${models.length} models available. Using ${aiModel.value}. Ask me anything!`);
