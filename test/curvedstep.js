@@ -76,11 +76,11 @@ console.log("\ncurved STEP\n");
   const s = await stepOf(scale([2, 2, 2], sphere({ r: 5 })));
   check("uniform scale works", count(s, /SPHERICAL_SURFACE/g) >= 1);
 }
-try {
-  await stepOf(scale([1, 2, 1], cylinder({ r: 5, h: 10 })));
-  check("non-uniform scale errors clearly", false, "no error");
-} catch (e) {
-  check("non-uniform scale errors clearly", /non-uniform/.test(e.message), e.message.slice(0, 60));
+{
+  // used to refuse outright; now the stretched subtree is baked to a sewn mesh
+  // (deeper coverage in the "non-uniform scale" block at the end)
+  const s = await stepOf(scale([1, 2, 1], cylinder({ r: 5, h: 10 })));
+  check("non-uniform scale exports instead of refusing", s.includes("ISO-10303"));
 }
 {
   // imported meshes now go THROUGH OCCT (importSTL sews the triangles), so
@@ -264,6 +264,54 @@ console.log("\nSTEP import\n");
   } catch (e) {
     check("junk STEP fails with a readable error", /STEP/i.test(e.message), e.message.slice(0, 80));
   }
+}
+
+// ---- non-uniform scale: baked to a mesh, not a refusal ----------------------
+//
+// scale([x, y, z], sphere(...)) used to fail the WHOLE export — the
+// dash-goggles blueprint died on one squashed sphere in a 21-part assembly.
+// A stretched sphere genuinely has no analytic surface, so the subtree is
+// tessellated, stretched and sewn back in via importSTL: the rest of the
+// model keeps its true surfaces, and the export succeeds.
+console.log("\nnon-uniform scale\n");
+{
+  const model = union(
+    cube([40, 20, 6]),
+    translate([20, 10, 6], scale([1, 1.6, 0.7], sphere({ r: 8, $fn: 48 }))),
+  );
+  const step = await stepOf(model);
+  check("an ellipsoid no longer sinks the export", step.includes("ISO-10303"));
+  check("...the analytic parts keep their surfaces", count(step, /PLANE/) > 0);
+
+  const stl = await stepToStl(step, "ellip");
+  const verts = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  const ax = (i) => [Math.min(...verts.map((p) => p[i])), Math.max(...verts.map((p) => p[i]))];
+  const [y0, y1] = ax(1), [z0, z1] = ax(2);
+  // y spans the stretched sphere: 10 ± 8*1.6 -> -2.8 … 22.8; z tops at 6 + 8*0.7
+  check("...and the stretch really happened", Math.abs(y1 - 22.8) < 0.4 && Math.abs(y0 + 2.8) < 0.4,
+    `y ${y0.toFixed(1)}..${y1.toFixed(1)}`);
+  check("...in every axis it names", Math.abs(z1 - 11.6) < 0.4, `z max ${z1.toFixed(1)}`);
+}
+{
+  // a mirrored (negative-determinant) stretch must keep its normals outward,
+  // or the sewn solid is inside-out and booleans with it invert
+  const model = difference(
+    cube([30, 30, 10]),
+    translate([15, 15, 10], scale([-1, 1.4, 0.8], sphere({ r: 6, $fn: 48 }))),
+  );
+  const step = await stepOf(model);
+  check("a mirrored stretch still exports", step.includes("ISO-10303"));
+  const stl = await stepToStl(step, "mirror");
+  const verts = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  let vol = 0;
+  for (let i = 0; i < verts.length; i += 3) {
+    const [a, b, c] = verts.slice(i, i + 3);
+    vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+  }
+  vol = Math.abs(vol);
+  // 30*30*10 minus roughly half an ellipsoid bite from the top face
+  check("...and the boolean removed material rather than adding it",
+    vol > 8000 && vol < 8950, vol.toFixed(0));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

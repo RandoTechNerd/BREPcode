@@ -180,6 +180,49 @@ export async function buildCurved(root) {
     textureShapes.set(n, await r.importSTL(new Blob([out.join("\n")], { type: "model/stl" })));
   };
 
+  // Non-uniform scale: OCCT B-rep surfaces cannot stretch anisotropically, so
+  // an ellipsoid — scale([1, 1.4, 0.8], sphere(...)) — used to fail the WHOLE
+  // export (the dash-goggles blueprint died on one squashed sphere in a
+  // 21-part assembly). The shape genuinely stops being analytic at that point:
+  // a stretched sphere is not a SPHERICAL_SURFACE and there is nothing curved
+  // to preserve. So do what hulls and textures already do — tessellate the
+  // subtree, stretch the triangles, and sew them back in with importSTL. The
+  // rest of the model keeps its analytic surfaces; only the stretched part is
+  // mesh-backed, which is what it really is.
+  //
+  // Innermost-first (the recursion visits children before the node), so a
+  // stretch inside a stretch bakes correctly.
+  const stretchedShapes = new Map();
+  const isNonUniform = (m) => {
+    const p = new Vector3(), q = new Quaternion(), s = new Vector3();
+    m.decompose(p, q, s);
+    return Math.abs(s.x - s.y) > 1e-9 || Math.abs(s.x - s.z) > 1e-9;
+  };
+  const resolveStretched = async (n) => {
+    if (!n || typeof n !== "object") return;
+    for (const c of kids(n)) await resolveStretched(c);
+    if (n.kind !== "xform" || stretchedShapes.has(n) || !isNonUniform(n.matrix)) return;
+    // a hull nested INSIDE the stretched subtree must resolve before build()
+    await resolveHulls(n.child);
+    const base = build(n.child, new Matrix4());
+    const mesh = base.mesh({ tolerance: 0.08, angularTolerance: 10 });
+    const det = n.matrix.determinant();
+    const out = ["solid stretched"];
+    for (let i = 0; i < mesh.triangles.length; i += 3) {
+      const tri = [0, 1, 2].map((k) => {
+        const p = mesh.triangles[i + k] * 3;
+        return new Vector3(mesh.vertices[p], mesh.vertices[p + 1], mesh.vertices[p + 2])
+          .applyMatrix4(n.matrix);
+      });
+      if (det < 0) tri.reverse();          // a mirror flips winding — keep normals outward
+      out.push("facet normal 0 0 0", "outer loop");
+      for (const t of tri) out.push(`vertex ${t.x} ${t.y} ${t.z}`);
+      out.push("endloop", "endfacet");
+    }
+    out.push("endsolid stretched");
+    stretchedShapes.set(n, await r.importSTL(new Blob([out.join("\n")], { type: "model/stl" })));
+  };
+
   // OCCT refuses a wire containing a zero-length edge, while the BREP.io kernel
   // quietly ignores one — so a profile that builds fine in the viewer can fail
   // the STEP/blueprint export with nothing but an emscripten pointer to show for
@@ -200,6 +243,10 @@ export async function buildCurved(root) {
 
   const build = (n, matrix) => {
     if (n.kind === "xform") {
+      // a stretched subtree was baked to a mesh in the pre-pass — its own
+      // matrix is already in the vertices, only the OUTER matrix still applies
+      const pre = stretchedShapes.get(n);
+      if (pre) return applyMatrix(pre, matrix);
       return build(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix));
     }
     if (n.kind === "op") {
@@ -219,7 +266,32 @@ export async function buildCurved(root) {
     // stay disjoint (OCCT returns them as a compound). The only thing lost is
     // part separation where two members actually touch, which beats no export.
     if (n.kind === "group") {
-      const parts = (n.children || []).map((c) => build(c, matrix));
+      // Build members one at a time and say WHICH one OCCT rejected — "the CAD
+      // kernel rejected this model" on a 21-part assembly gives the user
+      // nothing to act on; "part 8 of 21" narrows it to one shape in the code.
+      const parts = (n.children || []).map((c, i) => {
+        try {
+          return build(c, matrix);
+        } catch (e) {
+          const where = `part ${i + 1} of ${n.children.length} in the assembly`;
+          if (e instanceof Error) {
+            if (!e.__partTagged) { e.message = `${where}: ${e.message}`; e.__partTagged = true; }
+            throw e;
+          }
+          // a raw OCCT exception (an emscripten heap pointer) — decode what we
+          // can and, above all, keep the part number attached
+          let detail = "";
+          try {
+            const oc = r.getOC?.();
+            const msg = oc?.getExceptionMessage?.(e) ?? oc?.OCJS?.getExceptionMessage?.(e);
+            if (msg) detail = ` (${String(msg).slice(0, 100)})`;
+          } catch { /* no decoder in this build */ }
+          const err = new Error(`${where} was rejected by the CAD kernel${detail}. `
+            + "Try exporting that part alone to inspect it, or use the mesh exports (STL/3MF).");
+          err.__partTagged = true;
+          throw err;
+        }
+      });
       if (!parts.length) throw new Error("curved export: group() is empty — there is nothing to draw");
       return parts.reduce((acc, p) => acc.fuse(p));
     }
@@ -273,6 +345,8 @@ export async function buildCurved(root) {
   try {
     await resolveImports(root);
     await resolveTextures(root);   // after imports (a texture's child may be one)
+    await resolveStretched(root);  // before hulls (a hull's child may be stretched;
+                                   // a stretch's inner hull is handled inside)
     await resolveHulls(root);      // after textures (a hull's child may be one)
     return build(root, new Matrix4());
   } catch (e) {
