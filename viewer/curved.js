@@ -238,6 +238,38 @@ export async function curvedStepBlob(root) {
   return shape.blobSTEP();
 }
 
+// STEP IMPORT — the real thing, via OCCT's own reader. The analytic shape is
+// tessellated here (that is what the mesh kernel downstream can hold), so
+// edits behave exactly like an STL import: drill, union, stretch all work.
+// `tolerance` is the chord error in mm — 0.05 keeps a curvy part accurate to
+// a twentieth of a millimetre while staying well under mesh-import budgets.
+export async function stepToStl(buf, name = "step-import", opts = {}) {
+  const r = await loadReplicad();
+  let shape;
+  try {
+    shape = await r.importSTEP(new Blob([buf]));
+  } catch (e) {
+    throw new Error(`Couldn't read that STEP file (${String(e?.message || e).slice(0, 80)}) — is it a valid AP203/AP214/AP242 export?`);
+  }
+  const mesh = shape.mesh({
+    tolerance: opts.tolerance ?? 0.05,
+    angularTolerance: opts.angularTolerance ?? 15,
+  });
+  const v = mesh.vertices, t = mesh.triangles;
+  if (!t?.length) throw new Error("That STEP file contained no solid geometry.");
+  let stl = `solid ${name}\n`;
+  for (let i = 0; i < t.length; i += 3) {
+    stl += "facet normal 0 0 0\nouter loop\n";
+    for (let k = 0; k < 3; k++) {
+      const p = t[i + k] * 3;
+      stl += `vertex ${v[p]} ${v[p + 1]} ${v[p + 2]}\n`;
+    }
+    stl += "endloop\nendfacet\n";
+  }
+  stl += `endsolid ${name}\n`;
+  return stl;
+}
+
 // A 2D vector drawing: the model projected onto a viewing plane, visible
 // edges solid and hidden edges dashed — a proper draughting SVG, not a
 // screenshot. `view` is one of front/back/top/bottom/left/right.

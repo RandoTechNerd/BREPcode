@@ -11,11 +11,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 
-import { buildCurved, _setReplicad } from "../viewer/curved.js";
+import { buildCurved, stepToStl, _setReplicad } from "../viewer/curved.js";
 import {
   cube, cylinder, cone, sphere, torus, polygon, linearExtrude,
   difference, union, translate, rotate, scale, importedMesh, registerImport,
-  hull, freeform,
+  hull, freeform, fillet,
 } from "../src/dsl.js";
 
 let pass = 0, fail = 0;
@@ -182,6 +182,44 @@ console.log("\nblueprint dimensions\n");
   check("no dimension leaves the sheet",
     Math.min(...coords) > 0 && Math.max(...coords) < Math.max(W, H),
     `${Math.min(...coords).toFixed(0)}..${Math.max(...coords).toFixed(0)}`);
+}
+
+// ---- STEP IMPORT: OCCT's own reader, round-tripped --------------------------
+console.log("\nSTEP import\n");
+{
+  // a filleted, drilled block: curves everywhere, then read back in
+  const model = fillet(2, difference(
+    cube([30, 30, 12]),
+    translate([15, 15, -1], cylinder({ r: 5, h: 14, $fn: 48 })),
+  ));
+  const step = await stepOf(model);
+  check("R-all-edges emits real toroidal fillets", count(step, /TOROIDAL_SURFACE/) > 0);
+  check("...and the drilled hole stays cylindrical", count(step, /CYLINDRICAL_SURFACE/) > 0);
+
+  const stl = await stepToStl(step, "roundtrip");
+  const verts = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  check("the STEP reads back through OCCT", verts.length > 300, `${verts.length} verts`);
+  const ax = (i) => [Math.min(...verts.map((p) => p[i])), Math.max(...verts.map((p) => p[i]))];
+  const [x0, x1] = ax(0), [z0, z1] = ax(2);
+  check("...at its true size", Math.abs(x1 - x0 - 30) < 0.2 && Math.abs(z1 - z0 - 12) < 0.2,
+    `x ${(x1 - x0).toFixed(2)}, z ${(z1 - z0).toFixed(2)}`);
+  let vol = 0;
+  for (let i = 0; i < verts.length; i += 3) {
+    const [a, b, c] = verts.slice(i, i + 3);
+    vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+  }
+  vol = Math.abs(vol);
+  // block minus hole minus fillet trim: between "hole only" and "hole + generous fillets"
+  check("...with a sane volume", vol > 8600 && vol < 9930, vol.toFixed(0));
+}
+{
+  // garbage in -> a sentence out, not an OCCT hex code
+  try {
+    await stepToStl("this is not a step file", "junk");
+    check("junk STEP fails with a readable error", false, "no error");
+  } catch (e) {
+    check("junk STEP fails with a readable error", /STEP/i.test(e.message), e.message.slice(0, 80));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

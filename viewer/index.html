@@ -1169,7 +1169,7 @@
               <path d="M8 10.2V2.2M4.8 5.4L8 2.2l3.2 3.2M2.8 13.2h10.4" />
             </svg>
           </button>
-          <input type="file" id="import-file" accept=".bcode,.stl,.3mf,.obj,.svg" style="display: none" />
+          <input type="file" id="import-file" accept=".bcode,.stl,.3mf,.obj,.svg,.step,.stp" style="display: none" />
           <button id="export-btn" class="hist-btn ovf" title="Download STL">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
@@ -6591,7 +6591,7 @@ ${joined}`)(...vs);
     // which throws away everything the user was working on. So dragover has to
     // be prevented across the whole window, not just over a drop zone.
     {
-      const OPENABLE = /\.(bcode|stl|3mf|obj|svg)$/i;
+      const OPENABLE = /\.(bcode|stl|3mf|obj|svg|step|stp)$/i;
       let depth = 0;                    // dragenter/leave fire per child element
       const overlay = document.createElement("div");
       overlay.style.cssText = "position:fixed; inset:0; z-index:9999; display:none;"
@@ -6599,7 +6599,7 @@ ${joined}`)(...vs);
         + "align-items:center; justify-content:center; font:600 20px/1.5 system-ui;"
         + "color:#eaf3ff; text-align:center; pointer-events:none";
       overlay.innerHTML = `<div>Drop to open<div style="font:400 14px/1.6 system-ui; color:#bcd8f5; margin-top:6px">`
-        + `.bcode restores the editable model · .stl / .3mf / .obj / .svg import as a mesh</div></div>`;
+        + `.bcode restores the editable model · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
       document.body.appendChild(overlay);
       const show = (on) => { overlay.style.display = on ? "flex" : "none"; };
 
@@ -6615,7 +6615,7 @@ ${joined}`)(...vs);
         const file = e.dataTransfer?.files?.[0];
         if (!file) return;
         if (!OPENABLE.test(file.name)) {
-          setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .stl, .3mf, .obj or .svg.`);
+          setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .stl, .3mf, .obj, .svg, or .step.`);
           return;
         }
         if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
@@ -6796,6 +6796,13 @@ ${joined}`)(...vs);
           await new Promise((r) => setTimeout(r, 30));
           const { svgToStl } = await import("./svg.js");
           contents = await svgToStl(new TextDecoder().decode(buf), { height: 3, maxSize: 60, name: file.name });
+        } else if (ext === "step" || ext === "stp") {
+          // real OCCT reader (replicad, lazy ~11MB) — analytic surfaces come
+          // in and are tessellated at 0.05mm chord error for the mesh kernel
+          setStatus("busy", "Reading STEP — loading the CAD kernel…");
+          await new Promise((r) => setTimeout(r, 30));
+          const cv = await getCurved();
+          contents = await cv.stepToStl(buf, file.name);
         } else if (ext === "obj") {
           const { objToStl } = await getExporters();
           contents = objToStl(new TextDecoder().decode(buf), file.name);
