@@ -5,7 +5,8 @@ import {
   respond, buildModelsRequest, extractModels, modelScore,
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
   parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem,
-  readClaudeStream, emptyReplyReason, extractApiText, extractApiThinking,
+  readClaudeStream, readOpenAIStream, emptyReplyReason, extractApiText, extractApiThinking,
+  localBase,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -551,6 +552,41 @@ console.log("\nmodel ranking\n");
   check("claude requests stream with a 32k budget", body.stream === true && body.max_tokens === 32000);
   const req2 = buildApiRequest({ provider: "claude", model: "m", key: "k" }, [{ role: "user", text: "hi" }]);
   check("...and stream stays off unless asked", JSON.parse(req2.options.body).stream === undefined);
+}
+
+// ---- local (OpenAI-compatible) provider ------------------------------------
+{
+  check("blank URL means the llama.cpp default", localBase("") === "http://localhost:8080/v1");
+  check("bare host:port gets scheme + /v1", localBase("localhost:11434") === "http://localhost:11434/v1");
+  check("trailing slash and existing /v1 are respected", localBase("http://localhost:1234/v1/") === "http://localhost:1234/v1");
+  const req = buildApiRequest({ provider: "local", model: "bonsai-27b", key: "" },
+    [{ role: "user", text: "a cube" }], { stream: true });
+  const body = JSON.parse(req.options.body);
+  check("local request is OpenAI-shaped", req.url === "http://localhost:8080/v1/chat/completions"
+    && body.stream === true && body.messages[0].role === "system" && body.messages[1].content === "a cube");
+  const models = extractModels("local", { data: [{ id: "bonsai-27b" }, { id: "qwen2.5" }] });
+  check("local model list extracts", models.join() === "bonsai-27b,qwen2.5");
+}
+{
+  const events = [
+    { choices: [{ delta: { reasoning_content: "two tubes, " } }] },
+    { choices: [{ delta: { reasoning_content: "a bridge" } }] },
+    { choices: [{ delta: { content: "Here.\n```js\nreturn cube([5,5,5]);\n```" }, finish_reason: null }] },
+    { choices: [{ delta: {}, finish_reason: "stop" }] },
+  ];
+  const sse = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") + "data: [DONE]\n\n";
+  const seen = [];
+  const json = await readOpenAIStream({ body: new Blob([sse]).stream() }, (p) => seen.push(p.phase));
+  check("openai stream reassembles", extractApiText("local", json).includes("return cube"));
+  check("...reasoning lands in the thinking bubble", extractApiThinking("local", json) === "two tubes, a bridge");
+  check("...both phases reported", seen.includes("thinking") && seen.includes("writing"));
+}
+{
+  // Qwen-style inline <think> is split out of the reply
+  const json = { choices: [{ message: { content: "<think>hmm sizes</think>Here.\n```js\nreturn cube([5,5,5]);\n```" } }] };
+  check("<think> block is stripped from the reply", !extractApiText("local", json).includes("hmm sizes"));
+  check("...and surfaces as thinking", extractApiThinking("local", json) === "hmm sizes");
+  check("empty local reply explains itself", /local server|model loaded/i.test(emptyReplyReason("local", {})));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

@@ -1044,8 +1044,43 @@ export function composeSystem(opts = {}) {
     + (opts.gem ? `\n\nUser preferences (their "gem"):\n${opts.gem}` : "");
 }
 
+// The "local" provider talks OpenAI-compatible chat completions — the lingua
+// franca of llama.cpp, Ollama and LM Studio, which is how PrismML's own Bonsai
+// demo serves the model (Apache-2.0, one setup script). The `key` slot carries
+// the server URL; localhost is exempt from mixed-content blocking, so this
+// works from brepcode.com too.
+export const LOCAL_DEFAULT_URL = "http://localhost:8080/v1";
+export function localBase(key) {
+  let u = String(key || "").trim() || LOCAL_DEFAULT_URL;
+  if (!/^https?:\/\//.test(u)) u = "http://" + u;
+  u = u.replace(/\/+$/, "");
+  if (!/\/v\d+$/.test(u)) u += "/v1";
+  return u;
+}
+
 export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
   const system = composeSystem(opts);
+  if (provider === "local") {
+    return {
+      url: `${localBase(key)}/chat/completions`,
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: model || "default",
+          ...(opts.stream ? { stream: true } : {}),
+          max_tokens: 8000,
+          messages: [
+            { role: "system", content: system },
+            ...messages.map((m) => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              content: m.text,
+            })),
+          ],
+        }),
+      },
+    };
+  }
   if (provider === "gemini") {
     const body = {
       systemInstruction: { parts: [{ text: system }] },
@@ -1114,6 +1149,9 @@ export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
 
 // List the models a key can actually use, so the dropdown reflects reality.
 export function buildModelsRequest({ provider, key }) {
+  if (provider === "local") {
+    return { url: `${localBase(key)}/models`, options: { method: "GET" } };
+  }
   if (provider === "gemini") {
     return {
       url: `https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${encodeURIComponent(key)}`,
@@ -1148,8 +1186,8 @@ export function extractModels(provider, json) {
       .sort()
       .reverse();
   }
-  if (provider === "claude") {
-    return (json?.data ?? []).map((m) => m.id);
+  if (provider === "claude" || provider === "local") {
+    return (json?.data ?? []).map((m) => m.id).filter(Boolean);
   }
   return [];
 }
@@ -1164,6 +1202,14 @@ export function extractApiText(provider, json) {
   if (provider === "claude") {
     const t = (json?.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
     if (!t && json?.error) throw new Error(json.error.message || "Claude error");
+    return t;
+  }
+  if (provider === "local") {
+    let t = json?.choices?.[0]?.message?.content ?? "";
+    // Qwen-lineage models (Bonsai included) may inline their reasoning as a
+    // <think> block — that belongs in the thinking bubble, not the reply.
+    t = t.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*?<\/think>/, "").trim();
+    if (!t && json?.error) throw new Error(json.error.message || json.error || "local server error");
     return t;
   }
   return "";
@@ -1233,6 +1279,9 @@ export function emptyReplyReason(provider, json) {
   if (provider === "gemini" && json?.candidates?.[0]?.finishReason) {
     return `No text in the reply (finishReason: ${json.candidates[0].finishReason}).`;
   }
+  if (provider === "local") {
+    return "The local server returned no text — is a model loaded? Check the server window, and that the URL in ⚙ points at it (default http://localhost:8080/v1).";
+  }
   return "The provider returned no reply text. Try again — and if it repeats, check the request log above.";
 }
 
@@ -1247,7 +1296,48 @@ export function extractApiThinking(provider, json) {
     return (json?.content ?? []).filter((b) => b.type === "thinking")
       .map((b) => b.thinking).filter(Boolean).join("\n");
   }
+  if (provider === "local") {
+    const m = json?.choices?.[0]?.message;
+    if (m?.reasoning_content) return m.reasoning_content;          // llama.cpp --jinja
+    const think = /<think>([\s\S]*?)<\/think>/.exec(m?.content || "");
+    return think ? think[1].trim() : "";
+  }
   return "";
+}
+
+// Read an OpenAI-compatible SSE stream (llama.cpp, Ollama, LM Studio) back
+// into the non-streaming response shape, reporting progress like the Claude
+// reader — same contract, different wire format.
+export async function readOpenAIStream(resp, onProgress) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let content = "", reasoning = "", finish = null, error = null, buf = "";
+  const note = (phase, chars) => { try { onProgress?.({ phase, chars }); } catch { /* UI gone */ } };
+  const handle = (data) => {
+    if (data === "[DONE]") return;
+    let ev = null;
+    try { ev = JSON.parse(data); } catch { return; }
+    if (ev.error) { error = ev.error; return; }
+    const d = ev.choices?.[0]?.delta || {};
+    if (d.reasoning_content) { reasoning += d.reasoning_content; note("thinking", reasoning.length); }
+    if (d.content) { content += d.content; note("writing", content.length); }
+    finish = ev.choices?.[0]?.finish_reason ?? finish;
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line.startsWith("data:")) handle(line.slice(5).trim());
+    }
+  }
+  return {
+    choices: [{ message: { content, ...(reasoning ? { reasoning_content: reasoning } : {}) }, finish_reason: finish }],
+    ...(error ? { error } : {}),
+  };
 }
 
 // ------------------------------------------------- model ranking for the UI

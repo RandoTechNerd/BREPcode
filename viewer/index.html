@@ -1335,6 +1335,7 @@
             <option value="gemini">Google Gemini</option>
             <option value="claude">Anthropic Claude</option>
             <option value="claude-code" id="opt-claude-code" hidden>Claude Code — this computer, no key</option>
+            <option value="local">Local model — llama.cpp / Ollama (experimental)</option>
           </select>
         </div>
         <div class="row"><label>Model</label><select id="ai-model"></select></div>
@@ -8028,6 +8029,7 @@ ${joined}`)(...vs);
     // and sonnet-5; opus tops out at 4.8.
     const AI_MODELS = {
       builtin: [],
+      local: [],          // filled by asking the server what it has loaded
       gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
       claude: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
       // Aliases the CLI resolves itself, so this list never goes stale;
@@ -8463,6 +8465,8 @@ ${joined}`)(...vs);
       $("chat-mode").textContent = aiProvider.value === "builtin" ? "built-in"
         : aiProvider.value === "claude-code"
           ? `Claude Code${model && model !== "default" ? " · " + model : ""}`
+        : aiProvider.value === "local"
+          ? `local${model ? " · " + model : ""}`
           : `${aiProvider.value} · ${model}`;
       updateSpark();
     }
@@ -8488,7 +8492,9 @@ ${joined}`)(...vs);
         if (announce && !ccFound) addMsg("bot", "Claude Code isn't installed on this computer (or isn't signed in). Install it from claude.com/code, run `claude` once to sign in, then restart BREPcode.");
         return;
       }
-      if (provider === "builtin" || !key) { aiCheck.textContent = ""; aiCheck.className = ""; return; }
+      // Local needs no key — a blank URL means the llama.cpp default, so it
+      // still gets a real connection check.
+      if (provider === "builtin" || (!key && provider !== "local")) { aiCheck.textContent = ""; aiCheck.className = ""; return; }
       aiCheck.textContent = "…"; aiCheck.className = "busy";
       try {
         const { url, options } = CHAT.buildModelsRequest({ provider, key });
@@ -8507,14 +8513,22 @@ ${joined}`)(...vs);
         try { localStorage.setItem(modelCacheKey(provider), JSON.stringify(models)); } catch { /* full */ }
         saveAiCfg();
         if (announce) {
-          addMsg("bot", `✓ Connected to ${provider === "gemini" ? "Gemini" : "Claude"} — ${models.length} models available. Using ${aiModel.value}. Ask me anything!`);
+          addMsg("bot", provider === "local"
+            ? `✓ Connected to your local server — ${models.length} model${models.length === 1 ? "" : "s"} loaded. Using ${aiModel.value}. Free, private, no key — ask me anything!`
+            : `✓ Connected to ${provider === "gemini" ? "Gemini" : "Claude"} — ${models.length} models available. Using ${aiModel.value}. Ask me anything!`);
         }
       } catch (e) {
         if (mine !== checkToken) return;
         aiCheck.textContent = "✗"; aiCheck.className = "bad";
         fillModelOptions(provider, aiModel.value);   // fall back to the curated list
         if (announce) {
-          addMsg("bot", `Couldn't connect to ${provider}: ${String(e?.message || e).slice(0, 120)}`);
+          addMsg("bot", provider === "local"
+            ? `Couldn't reach a local model server (${String(e?.message || e).slice(0, 80)}). Start one, then re-pick the provider:\n`
+              + `• llama.cpp: \`llama-server -m model.gguf --port 8080\`\n`
+              + `• Bonsai 27B (free 27B, 3.9GB): PrismML's one-script setup at github.com/PrismML-Eng/Bonsai-demo serves it on :8080\n`
+              + `• Ollama: runs on :11434 — put http://localhost:11434/v1 in the URL box (and set OLLAMA_ORIGINS=* for the web version)\n`
+              + `• LM Studio: enable the local server on :1234 — URL http://localhost:1234/v1`
+            : `Couldn't connect to ${provider}: ${String(e?.message || e).slice(0, 120)}`);
         }
       }
     }
@@ -8535,10 +8549,15 @@ ${joined}`)(...vs);
     // the effort row hidden.
     function reflectProviderUI() {
       const cc = aiProvider.value === "claude-code";
+      const lo = aiProvider.value === "local";
       // Claude Code needs no key — greying the field says so louder than help
       // text would, and stops "do I paste my key here?" before it is asked.
+      // Local repurposes the field as the SERVER URL.
       aiKey.disabled = cc;
-      aiKey.placeholder = cc ? "not needed — uses your Claude login" : "paste your key";
+      aiKey.placeholder = cc ? "not needed — uses your Claude login"
+        : lo ? "http://localhost:8080/v1 (llama.cpp default — blank works)"
+        : "paste your key";
+      $("ai-key-label").textContent = lo ? "Server URL" : "API key";
       $("cc-effort-row").style.display = cc ? "" : "none";
     }
     aiProvider.addEventListener("change", () => {
@@ -8792,6 +8811,7 @@ ${joined}`)(...vs);
         }
       }
       const useApi = aiProvider.value === "claude-code"
+        || aiProvider.value === "local"        // no key: blank URL = localhost default
         || (aiProvider.value !== "builtin" && aiKey.value.trim());
       if (!useApi) {
         const r = botRespond(text, botState, code.value, modelDims);
@@ -8890,7 +8910,11 @@ ${joined}`)(...vs);
         // Attached images ride on THIS message only.
         const imgs = pendingImgs.slice();
         clearPendingImg();
-        if (imgs.length && cfg.provider !== "claude-code") {
+        if (imgs.length && cfg.provider === "local") {
+          // most local GGUF models are text-only, and a vision payload makes
+          // llama.cpp error the whole request — say so instead of failing
+          addMsg("bot", "Local models here are text-only for now — describing the image in words works best. Sending your message without it.");
+        } else if (imgs.length && cfg.provider !== "claude-code") {
           // API providers take them inline as base64 content blocks.
           msgs[msgs.length - 1].images = imgs.map((im) => ({ media_type: im.mediaType, data: im.b64 }));
         }
@@ -8941,17 +8965,20 @@ ${joined}`)(...vs);
           let wantThoughts = cfg.provider === "gemini";
           let json;
           for (;;) {
-            const wantStream = cfg.provider === "claude";
+            const wantStream = cfg.provider === "claude" || cfg.provider === "local";
             const { url, options } = buildApiRequest(cfg, msgs,
               { includeThoughts: wantThoughts, stream: wantStream, reference, ...harnessOpts() });
             const resp = await fetch(url, options);
             if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
               let lastPaint = 0;
-              json = await CHAT.readClaudeStream(resp, ({ phase, chars }) => {
+              const onDelta = ({ phase, chars }) => {
                 liveState = { phase, chars };
                 const now = performance.now();
                 if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
-              });
+              };
+              json = cfg.provider === "local"
+                ? await CHAT.readOpenAIStream(resp, onDelta)
+                : await CHAT.readClaudeStream(resp, onDelta);
               logLine(`response ← stream ended${json.stop_reason ? ` (${json.stop_reason})` : ""}`);
             } else {
               json = await resp.json();
