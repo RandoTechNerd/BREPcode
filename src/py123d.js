@@ -21,17 +21,24 @@
 // of scope and fail with a pointer to algebra style.
 
 import {
-  cube, cylinder, cone, sphere, torus,
+  cube, cylinder, cone, sphere, torus, freeform,
   union, difference, intersection, translate, rotate,
 } from "./dsl.js";
+// BuildSketch/BuildLine ride the SAME 2D profile species as the OpenSCAD
+// translator, so booleans, extrude and the auto-1mm forgiveness are shared.
+import {
+  isProfile, profileLeaf, profileOp, profileToSolid, mapProfile, offsetPolygon,
+} from "./openscad.js";
 
 export function looksLikePython(src) {
   if (/\b(const|let|=>)\b|;\s*$/m.test(src)) return false;      // JS
   if (/\bfrom\s+(build123d|cadquery)\s+import|\bimport\s+(build123d|cadquery)/.test(src)) return true;
   if (/\bcq\s*\.\s*Workplane\s*\(|\bWorkplane\s*\(\s*["']/.test(src)) return true;
-  // bare algebra-mode snippets: python assignment of a capitalised primitive
-  return /^\s*\w+\s*=\s*(Box|Cylinder|Sphere|Cone|Torus)\s*\(/m.test(src)
-    && /\b(Pos|Rot|Align|Location)\b|\*\s*(Box|Cylinder|Sphere|Cone|Torus)\(/.test(src);
+  // bare algebra-mode snippets: python assignment of a capitalised primitive,
+  // sketch object, or line object (BuildSketch/BuildLine vocabulary)
+  const PY_OBJ = "Box|Cylinder|Sphere|Cone|Torus|Wedge|ConvexPolyhedron|Rectangle(?:Rounded)?|Circle|Ellipse|Polygon|RegularPolygon|Triangle|Trapezoid|Slot\\w+|Line|Polyline|FilletPolyline|PolarLine|Spline|Bezier|\\w*Arc";
+  return new RegExp(`^\\s*\\w+\\s*=\\s*(?:${PY_OBJ})\\s*\\(`, "m").test(src)
+    && new RegExp(`\\b(Pos|Rot|Align|Location|make_face|extrude)\\b|\\*\\s*(?:${PY_OBJ})\\(`).test(src);
 }
 
 // ------------------------------------------------------------- tokenizer
@@ -100,6 +107,99 @@ const isShape = (v) => !!v?.__brepscript;
 const isLoc = (v) => typeof v?.__loc === "function";
 const loc = (fn) => ({ __loc: fn });
 
+// A fourth species: WIRES — open 2D point chains from BuildLine objects
+// (Line, Polyline, arcs, splines). Wires concatenate with + and become a
+// profile via make_face(); everything downstream is then the shared 2D system.
+const isWire = (v) => Array.isArray(v?.__wire);
+const wire = (pts) => ({ __wire: pts });
+const pt2 = (v, what) => {
+  if (Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1])) return [v[0], v[1]];
+  throw new Error(`${what} needs (x, y) points`);
+};
+const joinWires = (a, b) => {
+  const A = a.__wire, B = b.__wire;
+  if (!A.length) return wire(B);
+  const [ax, ay] = A[A.length - 1] || [];
+  const skip = B.length && Math.hypot(B[0][0] - ax, B[0][1] - ay) < 1e-6 ? 1 : 0;
+  return wire([...A, ...B.slice(skip)]);
+};
+const DEG = Math.PI / 180;
+// sampled arc: centre, radius, start angle -> start+sweep (degrees, CCW +)
+function arcPts(cx, cy, r, a0, sweep, ry = null) {
+  const n = Math.max(4, Math.ceil(Math.abs(sweep) / 6));
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (a0 + (sweep * i) / n) * DEG;
+    out.push([cx + r * Math.cos(a), cy + (ry ?? r) * Math.sin(a)]);
+  }
+  return out;
+}
+// closed regular sampling of a full circle/ellipse as a leaf profile
+const ellipsePts = (rx, ry, n = 64) => {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * 2 * Math.PI;
+    out.push([rx * Math.cos(a), ry * Math.sin(a)]);
+  }
+  return out;
+};
+const rectPts = (w, h) => [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+// stadium outline: overall length, height (= end diameter)
+function slotPts(overall, h) {
+  const r = h / 2, half = Math.max(0, overall / 2 - r);
+  return [...arcPts(half, 0, r, -90, 180), ...arcPts(-half, 0, r, 90, 180)];
+}
+// Catmull-Rom through the given points (build123d Spline passes through them)
+function splinePts(pts, seg = 10) {
+  if (pts.length < 3) return pts.slice();
+  const P = [pts[0], ...pts, pts[pts.length - 1]];
+  const out = [pts[0]];
+  for (let i = 1; i < P.length - 2; i++) {
+    const [p0, p1, p2, p3] = [P[i - 1], P[i], P[i + 1], P[i + 2]];
+    for (let j = 1; j <= seg; j++) {
+      const t = j / seg, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1].map((k) =>
+        0.5 * ((2 * p1[k]) + (-p0[k] + p2[k]) * t
+          + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2
+          + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3)));
+    }
+  }
+  return out;
+}
+// de Casteljau — Bezier control points (does NOT pass through the middle ones)
+function bezierPts(ctrl, n = 24) {
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    let pts = ctrl.map((p) => [p[0], p[1]]);
+    while (pts.length > 1) {
+      const nx = [];
+      for (let k = 0; k < pts.length - 1; k++) {
+        nx.push([pts[k][0] + (pts[k + 1][0] - pts[k][0]) * t, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * t]);
+      }
+      pts = nx;
+    }
+    out.push(pts[0]);
+  }
+  return out;
+}
+// arc through three points, sampled start -> end the short way through mid
+function threePointArcPts(p1, p2, p3) {
+  const [ax, ay] = p1, [bx, by] = p2, [cx, cy] = p3;
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  if (Math.abs(d) < 1e-9) return [p1, p3];              // collinear -> a line
+  const ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+  const uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+  const r = Math.hypot(ax - ux, ay - uy);
+  let a0 = Math.atan2(ay - uy, ax - ux) / DEG;
+  let am = Math.atan2(by - uy, bx - ux) / DEG;
+  let a1 = Math.atan2(cy - uy, cx - ux) / DEG;
+  const norm = (x) => ((x % 360) + 360) % 360;
+  const ccwMid = norm(am - a0), ccwEnd = norm(a1 - a0);
+  const sweep = ccwMid <= ccwEnd ? ccwEnd : ccwEnd - 360;   // pass through the mid point
+  return arcPts(ux, uy, r, a0, sweep);
+}
+
 const num = (v, what) => {
   if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${what} needs a number`);
   return v;
@@ -121,6 +221,11 @@ function arg(c, i, name, fallback) {
 
 function makeEnv(langBox) {
   const env = Object.create(null);
+
+  // Python literals — extrude(sk, amount=2, both=True) needs them
+  env.True = true;
+  env.False = false;
+  env.None = null;
 
   // ---- build123d shapes (all CENTRED, per its convention)
   env.Box = (c) => {
@@ -154,9 +259,278 @@ function makeEnv(langBox) {
     tube: num(arg(c, 1, "minor_radius"), "Torus minor_radius"),
     $fn: 48,
   });
+  env.Wedge = (c) => {
+    // OCC wedge: a dx × dy × dz box whose y = dy face shrinks to
+    // [xmin..xmax] × [zmin..zmax]. freeform() hulls the 8 corners directly.
+    const dx = num(arg(c, 0, "xsize"), "Wedge xsize");
+    const dy = num(arg(c, 1, "ysize"), "Wedge ysize");
+    const dz = num(arg(c, 2, "zsize"), "Wedge zsize");
+    const xmin = num(arg(c, 3, "xmin") ?? 0, "Wedge xmin");
+    const zmin = num(arg(c, 4, "zmin") ?? 0, "Wedge zmin");
+    const xmax = num(arg(c, 5, "xmax") ?? dx, "Wedge xmax");
+    const zmax = num(arg(c, 6, "zmax") ?? dz, "Wedge zmax");
+    return translate([-dx / 2, -dy / 2, -dz / 2], freeform([
+      [0, 0, 0], [dx, 0, 0], [dx, dy, 0], [0, dy, 0],
+      [xmin, 0, zmin], [xmax, 0, zmin], [xmax, dy, zmin], [xmin, dy, zmin],
+      [xmin, 0, zmax], [xmax, 0, zmax], [xmax, dy, zmax], [xmin, dy, zmax],
+    ].map(([x, y, z]) => [x, y, z])));
+  };
+  env.ConvexPolyhedron = (c) => {
+    const pts = arg(c, 0, "points");
+    if (!Array.isArray(pts) || pts.length < 4) throw new Error("ConvexPolyhedron needs a list of at least 4 (x, y, z) points");
+    return freeform(pts);
+  };
+  // Hole family: plain solids you subtract (part -= Pos(...) * Hole(...)).
+  // Modelled hanging DOWN from z=0, the way a hole enters a top face.
+  env.Hole = (c) => {
+    const r = num(arg(c, 0, "radius"), "Hole radius");
+    const d = num(arg(c, 1, "depth") ?? 1000, "Hole depth");
+    return translate([0, 0, -d], cylinder({ r, h: d + 1, $fn: 48 }));
+  };
+  env.CounterBoreHole = (c) => {
+    const r = num(arg(c, 0, "radius"), "CounterBoreHole radius");
+    const cbr = num(arg(c, 1, "counter_bore_radius"), "counter_bore_radius");
+    const cbd = num(arg(c, 2, "counter_bore_depth"), "counter_bore_depth");
+    const d = num(arg(c, 3, "depth") ?? 1000, "depth");
+    return union(
+      translate([0, 0, -d], cylinder({ r, h: d + 1, $fn: 48 })),
+      translate([0, 0, -cbd], cylinder({ r: cbr, h: cbd + 1, $fn: 48 })),
+    );
+  };
+  env.CounterSinkHole = (c) => {
+    const r = num(arg(c, 0, "radius"), "CounterSinkHole radius");
+    const csr = num(arg(c, 1, "counter_sink_radius"), "counter_sink_radius");
+    const d = num(arg(c, 2, "depth") ?? 1000, "depth");
+    const ang = num(arg(c, 3, "counter_sink_angle") ?? 82, "counter_sink_angle");
+    const csDepth = (csr - r) / Math.tan((ang / 2) * DEG);
+    return union(
+      translate([0, 0, -d], cylinder({ r, h: d + 1, $fn: 48 })),
+      translate([0, 0, -csDepth], cone({ r1: r, r2: csr, h: csDepth + 1, $fn: 48 })),
+    );
+  };
 
-  // ---- locations
-  const posLoc = (x, y, z) => loc((s) => translate([x, y, z], s));
+  // ---- BuildSketch objects: 2D PROFILES (centred, per build123d) ----------
+  env.Circle = (c) => profileLeaf(ellipsePts(num(arg(c, 0, "radius"), "Circle radius"), num(arg(c, 0, "radius"), "Circle radius")));
+  env.Ellipse = (c) => profileLeaf(ellipsePts(
+    num(arg(c, 0, "x_radius"), "Ellipse x_radius"), num(arg(c, 1, "y_radius"), "Ellipse y_radius")));
+  env.Rectangle = (c) => profileLeaf(rectPts(
+    num(arg(c, 0, "width"), "Rectangle width"), num(arg(c, 1, "height"), "Rectangle height")));
+  env.RectangleRounded = (c) => {
+    const w = num(arg(c, 0, "width"), "RectangleRounded width");
+    const h = num(arg(c, 1, "height"), "RectangleRounded height");
+    const r = num(arg(c, 2, "radius"), "RectangleRounded radius");
+    if (r <= 0 || r * 2 >= Math.min(w, h)) throw new Error("RectangleRounded radius must be > 0 and < half the short side");
+    return profileLeaf(offsetPolygon(rectPts(w - 2 * r, h - 2 * r), r, 32, true));
+  };
+  env.Polygon = (c) => {
+    const pts = (c.args.length === 1 && Array.isArray(c.args[0]) && Array.isArray(c.args[0][0]))
+      ? c.args[0] : c.args;
+    if (pts.length < 3) throw new Error("Polygon needs at least 3 (x, y) points");
+    return profileLeaf(pts.map((p) => pt2(p, "Polygon")));
+  };
+  env.RegularPolygon = (c) => {
+    const r = num(arg(c, 0, "radius"), "RegularPolygon radius");
+    const n = Math.round(num(arg(c, 1, "side_count"), "RegularPolygon side_count"));
+    if (n < 3) throw new Error("RegularPolygon needs side_count >= 3");
+    return profileLeaf(ellipsePts(r, r, n));
+  };
+  env.Triangle = (c) => {
+    const a = num(c.kw.a ?? arg(c, 0, "a"), "Triangle side a");
+    const b = num(c.kw.b ?? arg(c, 1, "b"), "Triangle side b");
+    const cc = num(c.kw.c ?? arg(c, 2, "c"), "Triangle side c");
+    const x = (b * b + cc * cc - a * a) / (2 * cc);
+    const y2 = b * b - x * x;
+    if (y2 <= 0) throw new Error(`Triangle sides ${a}, ${b}, ${cc} don't close`);
+    return profileLeaf([[0, 0], [cc, 0], [x, Math.sqrt(y2)]]);
+  };
+  env.Trapezoid = (c) => {
+    const w = num(arg(c, 0, "width"), "Trapezoid width");
+    const h = num(arg(c, 1, "height"), "Trapezoid height");
+    const la = num(arg(c, 2, "left_side_angle"), "Trapezoid left_side_angle");
+    const ra = num(arg(c, 3, "right_side_angle") ?? la, "Trapezoid right_side_angle");
+    const li = h / Math.tan(la * DEG), ri = h / Math.tan(ra * DEG);
+    if (li + ri >= w) throw new Error("Trapezoid sides meet before the top — reduce the height or steepen the angles");
+    return profileLeaf([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2 - ri, h / 2], [-w / 2 + li, h / 2]]);
+  };
+  env.SlotOverall = (c) => profileLeaf(slotPts(
+    num(arg(c, 0, "width"), "SlotOverall width"), num(arg(c, 1, "height"), "SlotOverall height")));
+  env.SlotCenterToCenter = (c) => {
+    const sep = num(arg(c, 0, "center_separation"), "SlotCenterToCenter center_separation");
+    const h = num(arg(c, 1, "height"), "SlotCenterToCenter height");
+    return profileLeaf(slotPts(sep + h, h));
+  };
+  env.SlotCenterPoint = (c) => {
+    const centre = pt2(arg(c, 0, "center"), "SlotCenterPoint center");
+    const point = pt2(arg(c, 1, "point"), "SlotCenterPoint point");
+    const h = num(arg(c, 2, "height"), "SlotCenterPoint height");
+    const ang = Math.atan2(point[1] - centre[1], point[0] - centre[0]) / DEG;
+    const overall = Math.hypot(point[0] - centre[0], point[1] - centre[1]) * 2 + h;
+    const s = profileLeaf(slotPts(overall, h));
+    const rot = mapProfile(s, ([x, y]) => [
+      x * Math.cos(ang * DEG) - y * Math.sin(ang * DEG),
+      x * Math.sin(ang * DEG) + y * Math.cos(ang * DEG)]);
+    return mapProfile(rot, ([x, y]) => [x + centre[0], y + centre[1]]);
+  };
+  env.Text = () => {
+    throw new Error("Text isn't supported in the Python translator — use BREPcode's text({ text, size, height }) on the result instead");
+  };
+  for (const name of ["Arrow", "ArrowHead", "DimensionLine", "ExtensionLine", "TechnicalDrawing"]) {
+    env[name] = () => {
+      throw new Error(`${name} is a drawing annotation, not solid geometry — BREPcode's "SVG blueprint" export draws dimensioned views for you`);
+    };
+  }
+
+  // ---- BuildLine objects: 1D WIRES (chain with +, close with make_face) ---
+  env.Line = (c) => wire([pt2(arg(c, 0, "pts"), "Line"), pt2(arg(c, 1, "pts"), "Line")]);
+  env.Polyline = (c) => {
+    const pts = (c.args.length === 1 && Array.isArray(c.args[0]) && Array.isArray(c.args[0][0]))
+      ? c.args[0] : c.args;
+    if (pts.length < 2) throw new Error("Polyline needs at least 2 points");
+    return wire(pts.map((p) => pt2(p, "Polyline")));
+  };
+  env.FilletPolyline = (c) => {
+    const r = num(c.kw.radius ?? c.args[c.args.length - 1], "FilletPolyline radius");
+    const raw = (Array.isArray(c.args[0]) && Array.isArray(c.args[0][0]) ? c.args[0] : c.args.slice(0, -1))
+      .map((p) => pt2(p, "FilletPolyline"));
+    if (raw.length < 3) return wire(raw);
+    const out = [raw[0]];
+    for (let i = 1; i < raw.length - 1; i++) {
+      const [px, py] = raw[i - 1], [cx, cy] = raw[i], [nx, ny] = raw[i + 1];
+      const v1 = [px - cx, py - cy], v2 = [nx - cx, ny - cy];
+      const l1 = Math.hypot(...v1), l2 = Math.hypot(...v2);
+      const half = Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))) / 2;
+      const t = Math.min(r / Math.tan(half), l1 * 0.49, l2 * 0.49);
+      const a = [cx + (v1[0] / l1) * t, cy + (v1[1] / l1) * t];
+      const b = [cx + (v2[0] / l2) * t, cy + (v2[1] / l2) * t];
+      // the arc's apex sits on the angle bisector, (r/sin - r) off the corner
+      const rEff = t * Math.tan(half);
+      const bis = [v1[0] / l1 + v2[0] / l2, v1[1] / l1 + v2[1] / l2];
+      const bl = Math.hypot(...bis) || 1;
+      const dist = rEff / Math.sin(half) - rEff;
+      const apex = [cx + (bis[0] / bl) * dist, cy + (bis[1] / bl) * dist];
+      out.push(a, ...threePointArcPts(a, apex, b).slice(1, -1), b);
+    }
+    out.push(raw[raw.length - 1]);
+    return wire(out);
+  };
+  env.PolarLine = (c) => {
+    const s = pt2(arg(c, 0, "start"), "PolarLine start");
+    const len = num(arg(c, 1, "length"), "PolarLine length");
+    const ang = num(arg(c, 2, "angle"), "PolarLine angle");
+    return wire([s, [s[0] + len * Math.cos(ang * DEG), s[1] + len * Math.sin(ang * DEG)]]);
+  };
+  env.Spline = (c) => {
+    const pts = (c.args.length === 1 && Array.isArray(c.args[0]) && Array.isArray(c.args[0][0]))
+      ? c.args[0] : c.args;
+    return wire(splinePts(pts.map((p) => pt2(p, "Spline"))));
+  };
+  env.Bezier = (c) => {
+    const pts = (c.args.length === 1 && Array.isArray(c.args[0]) && Array.isArray(c.args[0][0]))
+      ? c.args[0] : c.args;
+    return wire(bezierPts(pts.map((p) => pt2(p, "Bezier"))));
+  };
+  env.CenterArc = (c) => {
+    const ctr = pt2(arg(c, 0, "center"), "CenterArc center");
+    const r = num(arg(c, 1, "radius"), "CenterArc radius");
+    const a0 = num(arg(c, 2, "start_angle"), "CenterArc start_angle");
+    const sweep = num(arg(c, 3, "arc_size"), "CenterArc arc_size");
+    return wire(arcPts(ctr[0], ctr[1], r, a0, sweep));
+  };
+  env.EllipticalCenterArc = (c) => {
+    const ctr = pt2(arg(c, 0, "center"), "EllipticalCenterArc center");
+    const rx = num(arg(c, 1, "x_radius"), "x_radius");
+    const ry = num(arg(c, 2, "y_radius"), "y_radius");
+    const a0 = num(arg(c, 3, "start_angle") ?? 0, "start_angle");
+    const a1 = num(arg(c, 4, "end_angle") ?? 90, "end_angle");
+    return wire(arcPts(ctr[0], ctr[1], rx, a0, a1 - a0, ry));
+  };
+  env.ThreePointArc = (c) => wire(threePointArcPts(
+    pt2(arg(c, 0, "pts"), "ThreePointArc"), pt2(arg(c, 1, "pts"), "ThreePointArc"), pt2(arg(c, 2, "pts"), "ThreePointArc")));
+  env.RadiusArc = (c) => {
+    const p1 = pt2(arg(c, 0, "start_point"), "RadiusArc");
+    const p2b = pt2(arg(c, 1, "end_point"), "RadiusArc");
+    const r = num(arg(c, 2, "radius"), "RadiusArc radius");
+    const chord = Math.hypot(p2b[0] - p1[0], p2b[1] - p1[1]);
+    if (Math.abs(r) < chord / 2) throw new Error("RadiusArc radius is smaller than half the chord — it can't reach");
+    const sag = Math.abs(r) - Math.sqrt(r * r - (chord / 2) ** 2);
+    const mid = [(p1[0] + p2b[0]) / 2, (p1[1] + p2b[1]) / 2];
+    const nrm = [-(p2b[1] - p1[1]) / chord, (p2b[0] - p1[0]) / chord];
+    const side = r >= 0 ? 1 : -1;
+    const apex = [mid[0] + nrm[0] * sag * side, mid[1] + nrm[1] * sag * side];
+    return wire(threePointArcPts(p1, apex, p2b));
+  };
+  env.SagittaArc = (c) => {
+    const p1 = pt2(arg(c, 0, "start_point"), "SagittaArc");
+    const p2b = pt2(arg(c, 1, "end_point"), "SagittaArc");
+    const sag = num(arg(c, 2, "sagitta"), "SagittaArc sagitta");
+    const chord = Math.hypot(p2b[0] - p1[0], p2b[1] - p1[1]) || 1;
+    const mid = [(p1[0] + p2b[0]) / 2, (p1[1] + p2b[1]) / 2];
+    const nrm = [-(p2b[1] - p1[1]) / chord, (p2b[0] - p1[0]) / chord];
+    const apex = [mid[0] + nrm[0] * sag, mid[1] + nrm[1] * sag];
+    return wire(threePointArcPts(p1, apex, p2b));
+  };
+  env.JernArc = (c) => {
+    const s = pt2(arg(c, 0, "start"), "JernArc start");
+    const tan = pt2(arg(c, 1, "tangent"), "JernArc tangent");
+    const r = num(arg(c, 2, "radius"), "JernArc radius");
+    const sweep = num(arg(c, 3, "arc_size"), "JernArc arc_size");
+    const tl = Math.hypot(tan[0], tan[1]) || 1;
+    const side = sweep >= 0 ? 1 : -1;
+    const ctr = [s[0] - (tan[1] / tl) * r * side, s[1] + (tan[0] / tl) * r * side];
+    const a0 = Math.atan2(s[1] - ctr[1], s[0] - ctr[0]) / DEG;
+    return wire(arcPts(ctr[0], ctr[1], r, a0, sweep));
+  };
+  for (const name of ["Airfoil", "BlendCurve", "BSpline", "ConstrainedArcs", "ConstrainedLines",
+    "DoubleTangentArc", "TangentArc", "IntersectingLine", "ParabolicCenterArc", "HyperbolicCenterArc", "Helix"]) {
+    env[name] = () => {
+      throw new Error(`${name} isn't supported — supported BuildLine objects: Line, Polyline, FilletPolyline, PolarLine, Spline, Bezier, CenterArc, EllipticalCenterArc, ThreePointArc, RadiusArc, SagittaArc, JernArc. Chain them with + and close with make_face(...)`);
+    };
+  }
+
+  // ---- sketch -> solid ----------------------------------------------------
+  env.make_face = (c) => {
+    let parts = c.args.length === 1 && Array.isArray(c.args[0]) ? c.args[0] : c.args;
+    parts = parts.filter(Boolean);
+    if (!parts.length) throw new Error("make_face() needs a wire (or several) to close");
+    let w = null;
+    for (const p of parts) {
+      if (!isWire(p)) throw new Error("make_face() takes BuildLine wires (Line, Polyline, arcs…)");
+      w = w ? joinWires(w, p) : p;
+    }
+    let pts = w.__wire;
+    if (pts.length > 1 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 1e-6) {
+      pts = pts.slice(0, -1);
+    }
+    if (pts.length < 3) throw new Error("make_face(): the wire has fewer than 3 distinct points");
+    return profileLeaf(pts);
+  };
+  env.extrude = (c) => {
+    const pr = arg(c, 0, "to_extrude");
+    const amt = num(c.kw.amount ?? arg(c, 1, "amount"), "extrude amount");
+    const both = c.kw.both === true;
+    if (!isProfile(pr)) throw new Error("extrude() needs a sketch (Rectangle, Circle, make_face(...)…) as its first argument");
+    const h = Math.abs(amt);
+    let s = profileToSolid(pr, both ? 2 * h : h);
+    if (both) s = translate([0, 0, -h], s);
+    else if (amt < 0) s = translate([0, 0, amt], s);
+    return s;
+  };
+  env.revolve = () => {
+    throw new Error("revolve() isn't supported in the Python translator yet — use BREPcode's revolve(angle, polygon([...])) instead");
+  };
+
+  // ---- locations (they understand sketches and wires too: 2D moves in-plane)
+  const posLoc = (x, y, z) => loc((s) => {
+    if (isProfile(s)) {
+      if (z) throw new Error("a sketch lives on the XY plane — extrude(sketch, amount=…) first, then Pos with a Z");
+      return mapProfile(s, ([px, py]) => [px + x, py + y]);
+    }
+    if (isWire(s)) {
+      if (z) throw new Error("a wire lives on the XY plane — make_face + extrude first, then Pos with a Z");
+      return wire(s.__wire.map(([px, py]) => [px + x, py + y]));
+    }
+    return translate([x, y, z], s);
+  });
   env.Pos = (c) => {
     let [x, y, z] = [arg(c, 0, "X", 0), arg(c, 1, "Y", 0), arg(c, 2, "Z", 0)];
     if (Array.isArray(x)) [x, y = 0, z = 0] = x;
@@ -167,7 +541,16 @@ function makeEnv(langBox) {
     const rx = num(c.kw.X ?? arg(c, 0, "X", 0), "Rot");
     const ry = num(c.kw.Y ?? arg(c, 1, "Y", 0), "Rot");
     const rz = num(c.kw.Z ?? arg(c, 2, "Z", 0), "Rot");
-    return loc((s) => rotate([rx, ry, rz], s));
+    const spin2d = ([px, py]) => [
+      px * Math.cos(rz * DEG) - py * Math.sin(rz * DEG),
+      px * Math.sin(rz * DEG) + py * Math.cos(rz * DEG)];
+    return loc((s) => {
+      if (isProfile(s) || isWire(s)) {
+        if (rx || ry) throw new Error("a sketch/wire can only Rot about Z — extrude first for X/Y rotations");
+        return isProfile(s) ? mapProfile(s, spin2d) : wire(s.__wire.map(spin2d));
+      }
+      return rotate([rx, ry, rz], s);
+    });
   };
   env.Rotation = env.Rot;
 
@@ -288,7 +671,7 @@ export function fromPython(src) {
     if (t.type === "name") {
       if (t.value in vars) return postfix(vars[t.value]);
       if (t.value in env) return postfix(env[t.value]);
-      throw new Error(`"${t.value}" isn't defined — supported names: Box, Cylinder, Cone, Sphere, Torus, Pos, Rot, Align, Plane.XY, cq.Workplane`);
+      throw new Error(`"${t.value}" isn't defined — supported: Box/Cylinder/Cone/Sphere/Torus/Wedge/ConvexPolyhedron/Hole/CounterBoreHole/CounterSinkHole, sketches (Rectangle, Circle, Ellipse, Polygon, RegularPolygon, RectangleRounded, Triangle, Trapezoid, Slot…), lines (Line, Polyline, arcs, Spline, Bezier) + make_face + extrude, Pos, Rot, Align, Plane.XY, cq.Workplane`);
     }
     throw new Error(`Unexpected "${t.value ?? t.type}"`);
   }
@@ -348,8 +731,8 @@ export function fromPython(src) {
       if (op === "*") {
         if (isLoc(v)) {
           if (isLoc(r)) { const a = v.__loc, b = r.__loc; v = loc((s) => a(b(s))); }
-          else if (isShape(r) || r?.__wp) v = v.__loc(r?.__wp ? env.__needShape(r) : r);
-          else throw new Error("a location (Pos/Rot) can only multiply a shape or another location");
+          else if (isShape(r) || r?.__wp || isProfile(r) || isWire(r)) v = v.__loc(r?.__wp ? env.__needShape(r) : r);
+          else throw new Error("a location (Pos/Rot) can only multiply a shape, sketch, wire or another location");
         } else if (typeof v === "number" && typeof r === "number") v = v * r;
         else throw new Error("* only combines numbers, or a Pos/Rot with a shape");
       } else {
@@ -369,7 +752,12 @@ export function fromPython(src) {
       const rs = r?.__wp ? env.__needShape(r) : r;
       if (typeof vs === "number" && typeof rs === "number") v = op === "+" ? vs + rs : vs - rs;
       else if (isShape(vs) && isShape(rs)) v = op === "+" ? union(vs, rs) : difference(vs, rs);
-      else throw new Error(`${op} needs two numbers or two solids`);
+      else if (isProfile(vs) && isProfile(rs)) v = profileOp(op === "+" ? "UNION" : "SUBTRACT", [vs, rs]);
+      else if (isWire(vs) && isWire(rs) && op === "+") v = joinWires(vs, rs);
+      else if ((isProfile(vs) && isShape(rs)) || (isShape(vs) && isProfile(rs))) {
+        throw new Error("can't mix a 2D sketch with a 3D solid — extrude(sketch, amount=…) the sketch first");
+      }
+      else throw new Error(`${op} needs two numbers, two solids, two sketches, or two wires`);
     }
     return v;
   }
@@ -381,8 +769,9 @@ export function fromPython(src) {
       const r = arith();
       const vs = v?.__wp ? env.__needShape(v) : v;
       const rs = r?.__wp ? env.__needShape(r) : r;
-      if (!isShape(vs) || !isShape(rs)) throw new Error(`${op} needs two solids`);
-      v = op === "&" ? intersection(vs, rs) : union(vs, rs);
+      if (isProfile(vs) && isProfile(rs)) v = profileOp(op === "&" ? "INTERSECT" : "UNION", [vs, rs]);
+      else if (isShape(vs) && isShape(rs)) v = op === "&" ? intersection(vs, rs) : union(vs, rs);
+      else throw new Error(`${op} needs two solids or two sketches`);
     }
     return v;
   }
@@ -432,11 +821,19 @@ export function fromPython(src) {
       let v = expr();
       if (op !== "=") {
         const cur = vars[name];
-        if (!isShape(cur)) throw new Error(`${name} ${op} … needs ${name} to already be a solid`);
         const rv = v?.__wp ? env.__needShape(v) : v;
-        v = op === "+=" || op === "|=" ? union(cur, rv)
-          : op === "-=" ? difference(cur, rv)
-          : intersection(cur, rv);
+        if (isProfile(cur) && isProfile(rv)) {
+          v = profileOp(op === "-=" ? "SUBTRACT" : op === "&=" ? "INTERSECT" : "UNION", [cur, rv]);
+        } else if (isWire(cur) && isWire(rv) && (op === "+=" || op === "|=")) {
+          v = joinWires(cur, rv);
+        } else if (isShape(cur)) {
+          if (isProfile(rv)) throw new Error(`${name} ${op} sketch — extrude(sketch, amount=…) it first`);
+          v = op === "+=" || op === "|=" ? union(cur, rv)
+            : op === "-=" ? difference(cur, rv)
+            : intersection(cur, rv);
+        } else {
+          throw new Error(`${name} ${op} … needs ${name} to already be a solid, sketch or wire`);
+        }
       }
       vars[name] = v;
       const s = v?.__wp ? v.shape : v;
@@ -458,5 +855,13 @@ export function fromPython(src) {
     if (isShape(s)) return { shape: s, lang: langBox.lang || "build123d" };
   }
   if (lastShape) return { shape: lastShape.shape, lang: langBox.lang || "build123d" };
-  throw new Error("No solid was produced — assign one, e.g.  part = Box(20, 20, 10) - Cylinder(5, 12)");
+  // Forgiving: a design that ends at a SKETCH gets a thin auto-extrude, the
+  // same courtesy the OpenSCAD path extends — add extrude(sketch, amount=h)
+  // for a real thickness.
+  for (const name of ["sketch", "face", "profile", "part", "result", ...Object.keys(vars)]) {
+    if (isProfile(vars[name])) {
+      return { shape: profileToSolid(vars[name], 1), lang: langBox.lang || "build123d" };
+    }
+  }
+  throw new Error("No solid was produced — assign one, e.g.  part = Box(20, 20, 10) - Cylinder(5, 12), or extrude(sketch, amount=5) a sketch");
 }

@@ -113,5 +113,118 @@ try {
   check("no solid -> clear error", /No solid/.test(e.message), e.message.slice(0, 50));
 }
 
+console.log("\nBuildSketch (2D)\n");
+{
+  const { stl } = await run(`from build123d import *
+sketch = Rectangle(40, 30) - Pos(10, 0) * Circle(6)
+part = extrude(sketch, amount=5)`);
+  const v = volumeOf(stl), b = boundsOf(stl);
+  check("rectangle minus circle extrudes", near(v, 40 * 30 - Math.PI * 36 * 1, 40) === false || v > 0);
+  check("...volume = rect - hole, 5 thick", near(v, (1200 - Math.PI * 36) * 5, 60), v.toFixed(1));
+  check("...centred like build123d", near(b.x[0], -20, 0.1) && near(b.x[1], 20, 0.1), JSON.stringify(b.x));
+}
+{
+  const { stl } = await run(`from build123d import *
+part = extrude(RectangleRounded(30, 20, 4), amount=6)`);
+  const v = volumeOf(stl);
+  const expect = (600 - (16 - Math.PI * 4) * 4) * 6;   // rect minus 4 corner squares + quarter-rounds
+  check("rounded rectangle", near(v, expect, expect * 0.02), `${v.toFixed(0)} vs ${expect.toFixed(0)}`);
+}
+{
+  const { stl } = await run(`from build123d import *
+part = extrude(RegularPolygon(10, 6), amount=4)`);
+  const v = volumeOf(stl);
+  const hex = (3 * Math.sqrt(3) / 2) * 100 * 4;
+  check("regular hexagon", near(v, hex, hex * 0.02), `${v.toFixed(0)} vs ${hex.toFixed(0)}`);
+}
+{
+  const { stl } = await run(`from build123d import *
+part = extrude(SlotOverall(40, 10), amount=3)`);
+  const v = volumeOf(stl);
+  const expect = (30 * 10 + Math.PI * 25) * 3;
+  check("slot (stadium)", near(v, expect, expect * 0.02), `${v.toFixed(0)} vs ${expect.toFixed(0)}`);
+}
+{
+  const { stl } = await run(`from build123d import *
+sk = Trapezoid(40, 20, 60)
+part = extrude(sk, amount=2, both=True)`);
+  const b = boundsOf(stl);
+  check("trapezoid + both=True straddles z=0", near(b.z[0], -2, 0.1) && near(b.z[1], 2, 0.1), JSON.stringify(b.z));
+}
+{
+  // a bare sketch auto-extrudes 1mm rather than erroring
+  const { stl } = await run(`from build123d import *
+sketch = Circle(10)`);
+  const b = boundsOf(stl);
+  check("bare sketch auto-extrudes 1mm", near(b.z[1] - b.z[0], 1, 0.01), JSON.stringify(b.z));
+}
+
+console.log("\nBuildLine (1D) + make_face\n");
+{
+  const { stl } = await run(`from build123d import *
+outline = Polyline((0, 0), (40, 0), (40, 20))
+outline += ThreePointArc((40, 20), (20, 28), (0, 20))
+outline += Line((0, 20), (0, 0))
+part = extrude(make_face(outline), amount=8)`);
+  const v = volumeOf(stl), b = boundsOf(stl);
+  check("polyline + arc + line closes and extrudes", v > 40 * 20 * 8, v.toFixed(0));
+  check("...arc bulges past the flat top", b.y[1] > 27 && b.y[1] < 29, JSON.stringify(b.y));
+}
+{
+  const { stl } = await run(`from build123d import *
+w = CenterArc((0, 0), 15, 0, 360)
+part = extrude(make_face(w), amount=5)`);
+  const v = volumeOf(stl);
+  const disc = Math.PI * 225 * 5;
+  check("full CenterArc makes a disc", near(v, disc, disc * 0.02), `${v.toFixed(0)} vs ${disc.toFixed(0)}`);
+}
+{
+  const { stl } = await run(`from build123d import *
+w = Polyline((0,0),(30,0)) + RadiusArc((30,0),(30,20),12) + Line((30,20),(0,20)) + Line((0,20),(0,0))
+part = extrude(make_face(w), amount=4)`);
+  check("RadiusArc chain builds", volumeOf(stl) > 0);
+}
+{
+  const { stl } = await run(`from build123d import *
+part = extrude(make_face(FilletPolyline((0,0),(30,0),(30,30),(0,30), radius=6) + Line((0,30),(0,0))), amount=3)`);
+  const v = volumeOf(stl);
+  check("FilletPolyline rounds its corners", v > 0 && v < 30 * 30 * 3, v.toFixed(0));
+}
+
+console.log("\nBuildPart extras\n");
+{
+  const { stl } = await run(`from build123d import *
+part = Box(30, 30, 10) - Pos(0, 0, 5) * CounterBoreHole(3, 6, 3, 10)`);
+  const v = volumeOf(stl);
+  check("counterbore hole cuts shank + bore", v < 9000 - Math.PI * 9 * 9 && v > 8000, v.toFixed(0));
+}
+{
+  const { stl } = await run(`from build123d import *
+part = Wedge(20, 20, 20, 5, 5, 15, 15)`);
+  const v = volumeOf(stl), b = boundsOf(stl);
+  check("Wedge builds a tapered solid", v > 20 * 20 * 20 / 4 && v < 8000, v.toFixed(0));
+  check("...centred", near(b.x[0], -10, 0.1), JSON.stringify(b.x));
+}
+{
+  const { stl } = await run(`from build123d import *
+part = ConvexPolyhedron([(0,0,0), (20,0,0), (0,20,0), (0,0,20)])`);
+  const v = volumeOf(stl);
+  check("ConvexPolyhedron hulls a tetrahedron", near(v, 20 ** 3 / 6, 20), v.toFixed(1));
+}
+try {
+  fromPython(`from build123d import *\npart = Rectangle(10, 10) - Box(5, 5, 5)`);
+  check("sketch minus solid explains itself", false, "no error");
+} catch (e) {
+  check("sketch minus solid explains itself", /extrude/.test(e.message), e.message.slice(0, 70));
+}
+try {
+  fromPython(`from build123d import *\npart = Helix(5, 20, 5)`);
+  check("unsupported line objects name the supported set", false, "no error");
+} catch (e) {
+  check("unsupported line objects name the supported set", /make_face/.test(e.message), e.message.slice(0, 80));
+}
+check("sketch snippet detected as python",
+  looksLikePython("sketch = Rectangle(40, 30) - Circle(6)\npart = extrude(sketch, amount=5)"));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

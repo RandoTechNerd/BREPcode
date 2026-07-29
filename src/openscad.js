@@ -382,10 +382,11 @@ const UNSUPPORTED = {
 // manifold engine instead of a second geometry library.
 
 export const isProfile = (v) => !!(v && v.__profile2d);
-const profileLeaf = (pts) => ({ __profile2d: true, leaf: true, pts });
+// exported: py123d.js builds BuildSketch/BuildLine on the same profile species
+export const profileLeaf = (pts) => ({ __profile2d: true, leaf: true, pts });
 export const profileOp = (op, children) => ({ __profile2d: true, op, children });
 
-function mapProfile(p, fn) {
+export function mapProfile(p, fn) {
   if (p.leaf) return profileLeaf(p.pts.map(fn));
   return profileOp(p.op, p.children.map((c) => mapProfile(c, fn)));
 }

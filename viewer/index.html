@@ -495,10 +495,12 @@
     #status.busy { color: var(--busy); }
 
     /* The ring spinner grew up into the build cube (see .bcube below) — same
-       compositor guarantee, more story. #spin is just its slot now. */
-    #spin { display: none; flex: none; }
+       compositor guarantee, more story. #spin is just its slot now. The cube
+       draws its 3D content a touch above its own box (the iso tilt), so the
+       slot rides slightly LOW to sit the cube on the text's centre line. */
+    #spin { display: none; flex: none; position: relative; top: 4px; margin-right: 4px; }
     #status.busy #spin { display: inline-block; }
-    #spin .bcube-wrap { --bc: 14px; display: block; }
+    #spin .bcube-wrap { --bc: 19px; display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     /* the chat waiting label, once real progress is streaming in */
     #busy-label.live { display: inline-block; animation: buildpulse 1.3s ease-in-out infinite; }
