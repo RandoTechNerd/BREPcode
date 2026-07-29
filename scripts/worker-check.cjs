@@ -281,6 +281,88 @@ app.whenReady().then(async () => {
     // A plain box is 12 triangles; the corner bite has to add faces.
     check("...(the cut really happened, not a silent no-op)", cutTris > 12, `${cutTris} triangles`);
 
+    // ---- 3bb. a preview stays up until the build is ready to replace it ---
+    //
+    // A mesh too dense for the kernel shows as a view-only preview. Building
+    // something from it used to clear that preview the instant the build
+    // STARTED, so a heavy model (a four-colour Benchy) left the user looking at
+    // an empty scene for the whole build — which reads as "it lost my model".
+    // The swap has to happen at the end, with no frame in between showing
+    // neither.
+    const dropped = await run(`(async () => {
+      const N = 200000;                       // over MESH_REFUSE, so: view-only
+      const buf = new ArrayBuffer(84 + N * 50);
+      const dv = new DataView(buf); dv.setUint32(80, N, true);
+      for (let i = 0; i < N; i++) {
+        const o = 84 + i * 50, a = (i % 400) * 0.1, b = Math.floor(i / 400) * 0.1;
+        const pts = [a, b, 0, a + 0.09, b, 0, a, b + 0.09, 1.5];
+        for (let k = 0; k < 9; k++) dv.setFloat32(o + 12 + k * 4, pts[k], true);
+      }
+      const dt = new DataTransfer();
+      dt.items.add(new File([buf], "huge-benchy.stl", { type: "model/stl" }));
+      window.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
+      window.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+      for (let i = 0; i < 120; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (/view-only preview/.test(document.getElementById("status-text").textContent)) break;
+      }
+      let tris = 0;
+      window.brepscript.scene.traverse((o) => { if (!o.isMesh || !o.geometry?.attributes?.position) return;
+        const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3; });
+      return { status: document.getElementById("status-text").textContent,
+               sceneTris: Math.round(tris),
+               model: window.brepscript.modelGroup.children.length };
+    })()`);
+    check("an oversized mesh shows as a view-only preview",
+      /view-only preview/.test(dropped.status), dropped.status);
+    check("...with its triangles on screen and no model built",
+      dropped.sceneTris > 150000 && dropped.model === 0, JSON.stringify(dropped));
+
+    const swap = await run(`(async () => {
+      const B = window.brepscript;
+      const el = document.getElementById("code");
+      el.value = "let s = sphere({ r: 17, $fn: 128 });\\n"
+        + "for (let i = 0; i < 3; i++) s = difference(s, translate([i * 7 - 7, 0, 0], cylinder({ r: 3.1, h: 44, $fn: 64, center: true })));\\n"
+        + "return s;";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      const sceneTris = () => { let t = 0;
+        B.scene.traverse((o) => { if (!o.isMesh || !o.geometry?.attributes?.position) return;
+          const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; });
+        return t; };
+      const busy = () => document.getElementById("status").className === "busy";
+      // Every busy message, not just the first: the input handler puts a "…"
+      // placeholder up before rebuild() gets as far as saying anything real.
+      let sawBusy = false, blank = 0, heldPreview = 0;
+      const busyTexts = new Set();
+      const t0 = performance.now();
+      await new Promise((done) => {
+        const tick = () => {
+          const now = performance.now();
+          if (busy()) { sawBusy = true; busyTexts.add(document.getElementById("status-text").textContent); }
+          if (sawBusy && busy()) {
+            const t = sceneTris();
+            // still the big preview? good. nothing at all? that's the bug.
+            if (t > 150000) heldPreview++;
+            else if (B.modelGroup.children.length === 0) blank++;
+          }
+          if (now - t0 > 120000 || (sawBusy && !busy())) return done();
+          setTimeout(tick, 100);
+        };
+        tick();
+      });
+      return { blank, heldPreview, busyText: [...busyTexts].join(" ⟂ "), afterTris: Math.round(sceneTris()),
+               afterModel: B.modelGroup.children.length, afterVisible: B.modelGroup.visible,
+               status: document.getElementById("status-text").textContent };
+    })()`);
+    check("the preview stays on screen for the whole build",
+      swap.heldPreview > 3 && swap.blank === 0, JSON.stringify(swap));
+    check("...and the status says so while it waits",
+      /preview stays until it's ready/.test(swap.busyText), swap.busyText);
+    check("...then the built model replaces it", /^ok\|/.test("ok|") && swap.afterModel > 0 && swap.afterVisible,
+      JSON.stringify(swap));
+    check("...with the preview's triangles gone, not left underneath",
+      swap.afterTris < 100000, `${swap.afterTris} triangles left in the scene`);
+
     // ---- 3c. the negatives overlay builds on its own key ------------------
     await setCode("return difference(cube([30, 30, 12]), translate([15, 15, -1], cylinder({ r: 6, h: 14, $fn: 32 })));");
     await settle(60000);

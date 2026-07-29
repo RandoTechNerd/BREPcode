@@ -4569,14 +4569,12 @@ ${joined}`)(...vs);
       // during the pre-build yield below, so a build that never returns can
       // no longer eat the code that started it.
       saveSnapshot().catch(() => { /* recovery is best-effort by design */ });
-      // A preview is a placeholder for geometry that was never built. The
-      // moment anything real is built it has to go, or the two sit on screen
-      // together and the older one wins the argument visually.
-      if (previewGroup.children.length) clearMeshPreview();
       const typed = code.value.trim();
       if (!typed) {
-        // A cleared editor must not leave a ghost model with a stale click-map.
+        // A cleared editor must not leave a ghost model with a stale click-map —
+        // nor a preview of an import the code no longer mentions.
         token++;
+        if (previewGroup.children.length) clearMeshPreview();
         clearModel();
         clearHandles();
         clearSplit();
@@ -4643,7 +4641,11 @@ ${joined}`)(...vs);
         // honest "translating…" note while the kernel works — it's a best-effort
         // re-expression in BREPcode, not the original engine.
         const langName = { openscad: "OpenSCAD", jscad: "JSCAD", build123d: "build123d", cadquery: "CadQuery" }[lastLang];
-        setStatus("busy", langName ? `Translating ${langName} → solid…` : "Building…");
+        // Say so when the thing on screen is the old preview rather than the
+        // build in progress — otherwise a Benchy that sits there unchanged for
+        // a minute looks like nothing is happening.
+        const held = previewGroup.children.length ? " — preview stays until it's ready" : "";
+        setStatus("busy", (langName ? `Translating ${langName} → solid…` : "Building…") + held);
         // The kernel blocks the main thread. Give the browser two frames first
         // so freshly-typed characters and the spinner are actually painted
         // before the freeze — typing always shows up immediately. Raced with a
@@ -4707,6 +4709,14 @@ ${joined}`)(...vs);
         modelIsImport = /importedMesh\s*\(/.test(code.value);
         lastFeatures = ph.features.map((f) => ({ type: f.type, params: { ...f.inputParams } }));
         if (histCard.classList.contains("open")) renderHistory();
+        // The preview comes down HERE, not when the build started. It is a
+        // stand-in for geometry that doesn't exist yet, and on a heavy import
+        // (a four-colour Benchy, say) the kernel can be minutes away — clearing
+        // it up front left the user staring at an empty scene the whole time,
+        // which reads as "it lost my model". Swapping at the last moment, in
+        // the same synchronous block that adds the new meshes, means no frame
+        // is ever painted with neither on screen.
+        if (previewGroup.children.length) clearMeshPreview();
         clearModel();
         let tris = 0;
         // colours set by colorize() in the code — rebuilt every pass, keyed by
@@ -5561,8 +5571,10 @@ ${joined}`)(...vs);
         + `border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">`
         + `Build it now</button>`;
       $("preview-build-now").addEventListener("click", async () => {
-        clearMeshPreview();
-        setStatus("busy", "Building… the window will be unresponsive while it runs.");
+        // Don't clear the preview here — rebuild() swaps it out the moment the
+        // solids exist. Clearing first meant an empty scene for the whole
+        // build, which on a mesh this heavy is a long time to look at nothing.
+        setStatus("busy", "Building…");
         await new Promise((r) => setTimeout(r, 60));
         await rebuild();
       });
