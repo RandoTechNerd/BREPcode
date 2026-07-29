@@ -4,7 +4,7 @@
 
 import {
   cube, cylinder, sphere, union, difference, intersection, group,
-  translate, rotate, build, toSTL,
+  translate, rotate, build, toSTL, estimateBuild,
 } from "../index.js";
 
 function meshOf(result) {
@@ -176,6 +176,23 @@ await test("nested boolean: difference inside a union",
     u.solids.length === 3, `${u.solids.length} solids`);
 }
 
+
+// ---- build-cost estimator (tells 2 seconds from 2 minutes, pre-kernel) ----
+{
+  const small = estimateBuild(difference(cube([30, 30, 12]), cylinder({ r: 8, h: 14 })));
+  check("a simple drilled cube estimates as quick", small.sec < 3, `${small.sec.toFixed(1)}s`);
+  const ballFn96 = estimateBuild(sphere({ r: 10, $fn: 96 }));
+  check("a $fn 96 sphere is quadratic (~18k tris)", ballFn96.tris > 15000, `${ballFn96.tris}`);
+  // the shape of the freeze that prompted this: many high-$fn parts WELDED
+  const parts = [];
+  for (let i = 0; i < 10; i++) parts.push(translate([i * 25, 0, 0], sphere({ r: 8, $fn: 64 })));
+  const welded = estimateBuild(union(...parts));
+  const grouped = estimateBuild(group(...parts));
+  check("a 10-sphere union estimates PAST the hold threshold", welded.sec > 18, `${welded.sec.toFixed(0)}s`);
+  check("...and flags its booleans", welded.booleans === 9, String(welded.booleans));
+  check("the same parts as group() estimate cheaper", grouped.sec < welded.sec,
+    `${grouped.sec.toFixed(0)}s vs ${welded.sec.toFixed(0)}s`);
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

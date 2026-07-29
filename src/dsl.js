@@ -159,6 +159,46 @@ export function listImports() { return [...IMPORTS.keys()]; }
 // curved.js hands imported meshes to OCCT (importSTL) for blueprints/STEP
 export const getImport = (name) => IMPORTS.get(name) ?? null;
 
+// ------------------------------------------------------------ build estimate
+//
+// A rough triangles/seconds guess straight off the shape TREE — no kernel.
+// The viewer uses it to warn before a slow build, and to hold an AI-generated
+// monster behind a "Build" button instead of freezing the tab unannounced.
+// Calibration: this kernel does ~1.5-2ms of main-thread work per triangle of
+// manifold geometry (measured on mesh imports and a 32-primitive boolean
+// scene). An estimate, not a promise — its job is telling 2 seconds from 2
+// minutes, not 40s from 50s.
+export function estimateBuild(root) {
+  let tris = 0, booleans = 0, members = 0;
+  const walk = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (n.kind === "prim") {
+      const res = n.params?.resolution ?? 32;
+      tris += n.code === "P.CU" ? 12
+        : (n.code === "P.CY" || n.code === "P.CO") ? 4 * res
+        : (n.code === "P.S" || n.code === "P.T") ? 2 * res * res
+        : 200;
+      return;
+    }
+    if (n.kind === "prism") { tris += 4 * (n.pts?.length || 8); return; }
+    if (n.kind === "revolve") { tris += 2 * (n.pts?.length || 8) * 32; return; }
+    if (n.kind === "import") {
+      const text = IMPORTS.get(n.name);
+      tris += text ? Math.max(50, Math.round(text.length / 220)) : 5000;   // ~220 chars per ascii facet
+      return;
+    }
+    if (n.kind === "texture") tris += n.opts?.maxTris ?? 6000;   // + the scratch build below
+    if (n.kind === "edgeop") tris += 600;                        // fillet bands aren't free
+    if (n.kind === "op") booleans += Math.max(0, (n.children?.length || 1) - 1);
+    if (n.kind === "group") members += n.children?.length || 0;
+    if (n.child) walk(n.child);
+    for (const c of n.children || []) walk(c);
+  };
+  walk(root);
+  const sec = tris * (booleans ? 0.002 : 0.001) + members * 0.05;
+  return { tris: Math.round(tris), booleans, sec };
+}
+
 // Baked-transform cache: rebuilds re-run compile constantly, and transforming
 // a large STL's every vertex each keystroke would hurt.
 const XFORM_CACHE = new Map();

@@ -4373,6 +4373,16 @@ ${joined}`)(...vs);
         setStatus("err", diagnose(src, e));
         return;
       }
+      // Heavy builds pin the main thread — say roughly how long BEFORE it
+      // happens, so a working build stops reading as a crash. The estimate
+      // comes straight off the shape tree; no kernel involved.
+      try {
+        const est = dsl.estimateBuild(shape);
+        if (est.sec > 8) {
+          setStatus("busy", `heavy model (~${(est.tris / 1000).toFixed(0)}k triangles) — roughly ${Math.round(est.sec)}s, the app will pause…`);
+          await new Promise((r) => setTimeout(r, 30));   // let that paint first
+        }
+      } catch { /* an estimate must never break a build */ }
       if (!shape || !shape.__brepscript) {
         setStatus("err", diagnose(src, null, shape));
         return;
@@ -8825,9 +8835,37 @@ ${joined}`)(...vs);
     async function applyGeneratedCode(newCode) {
       code.value = newCode;
       pushHistory();
+      // An AI model that would freeze the app for half a minute no longer
+      // builds unannounced — it waits in the editor behind a Build button.
+      // This is the exact failure that ate the goggles: code applied, build
+      // froze, user assumed a crash. Estimated off the tree, no kernel.
+      try {
+        const est = dsl.estimateBuild(evaluate(newCode));
+        if (est.sec > 18) {
+          saveSnapshot().catch(() => {});
+          toggleCard(panel, openBtn, true);
+          setStatus("ok", `heavy model ready — press Build (~${Math.round(est.sec)}s)`);
+          const el = addMsg("bot", `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s with the app paused while the kernel works). It's in the editor, ready when you are: `);
+          const b = document.createElement("button");
+          b.className = "hist-btn";
+          b.style.cssText = "margin-left:6px; font-weight:700";
+          b.textContent = `▶ Build it (~${Math.round(est.sec)}s)`;
+          b.addEventListener("click", () => {
+            b.disabled = true;
+            b.textContent = "building…";
+            setStatus("busy", "…");
+            rebuild().then(() => { b.textContent = "built ✓"; });
+          });
+          el.appendChild(b);
+          return { ok: true, detail: "held behind the Build button (heavy model)", warned: "" };
+        }
+      } catch { /* estimate is best-effort; a broken tree fails in rebuild with a real message */ }
       setStatus("busy", "…");
       await rebuild();
       const ok = status.className === "ok";
+      // A model that built: bring the editor forward so the result is SEEN —
+      // the reply landing silently behind the chat was easy to miss.
+      if (ok) toggleCard(panel, openBtn, true);
       const detail = $("status-text")?.textContent || "";
       const warned = fixnote.textContent.trim();
       return { ok, detail, warned };
