@@ -4327,6 +4327,13 @@ ${joined}`)(...vs);
 
     let token = 0;
     async function rebuild() {
+      // Snapshot BEFORE the kernel gets the main thread. The 20s autosave
+      // timer once lost a user's AI-generated model: the code was applied,
+      // the build it triggered froze the app, and the debounce never fired —
+      // the recovery file still held the starter cube. The write goes out
+      // during the pre-build yield below, so a build that never returns can
+      // no longer eat the code that started it.
+      saveSnapshot().catch(() => { /* recovery is best-effort by design */ });
       // A preview is a placeholder for geometry that was never built. The
       // moment anything real is built it has to go, or the two sit on screen
       // together and the older one wins the argument visually.
