@@ -192,6 +192,20 @@ await test("nested boolean: difference inside a union",
   check("...and flags its booleans", welded.booleans === 9, String(welded.booleans));
   check("the same parts as group() estimate cheaper", grouped.sec < welded.sec,
     `${grouped.sec.toFixed(0)}s vs ${welded.sec.toFixed(0)}s`);
+
+  // Pinned against models whose real build time was measured on the worker
+  // path. The estimate may be pessimistic — it should never be pessimistic
+  // enough to hold an ordinary model behind the Build button (45s), which is
+  // exactly what the pre-worker calibration did to a 3-second sphere.
+  const realSphere = estimateBuild(sphere({ r: 20, $fn: 156 }));   // really 3.1s
+  check("a mid-size sphere is not gated as a monster", realSphere.sec < 45,
+    `${realSphere.sec.toFixed(0)}s for a build that measured 3.1s`);
+  const cutBall = estimateBuild(difference(sphere({ r: 15, $fn: 128 }),
+    cylinder({ r: 3, h: 44, $fn: 64 })));                          // really 4.9s
+  check("...nor is a sphere with a hole in it", cutBall.sec < 45,
+    `${cutBall.sec.toFixed(0)}s for a build that measured 4.9s`);
+  check("...but both are still called out as slow", realSphere.sec > 3 && cutBall.sec > 3,
+    `${realSphere.sec.toFixed(0)}s / ${cutBall.sec.toFixed(0)}s`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

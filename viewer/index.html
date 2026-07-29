@@ -1173,6 +1173,12 @@
         <div><strong>BREPcode</strong><span class="sub" id="model-name"
              title="Name this model — used on exports and the blueprint">builds as you type</span></div>
         <div id="editor-tools">
+          <!-- Only appears when a heavy model is waiting to be built on purpose.
+               It lives HERE, in the editor header, because that is where the
+               code it will build is: the status bar saying "press Build" while
+               the only button sat inside a chat bubble behind another card was
+               a prompt with nothing to press. -->
+          <button id="build-now-btn" class="hist-btn" hidden></button>
           <button id="clear-btn" class="hist-btn" title="Clear the editor">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
@@ -4629,6 +4635,10 @@ ${joined}`)(...vs);
       // during the pre-build yield below, so a build that never returns can
       // no longer eat the code that started it.
       saveSnapshot().catch(() => { /* recovery is best-effort by design */ });
+      // Any build at all retires a held one — whether it was pressed, or the
+      // user edited the code and moved on. A Build button offering to build
+      // something that is no longer in the editor is worse than no button.
+      clearHeavyHold();
       const typed = code.value.trim();
       if (!typed) {
         // A cleared editor must not leave a ghost model with a stale click-map —
@@ -9258,6 +9268,66 @@ ${joined}`)(...vs);
       chatMsgs.scrollTop = chatMsgs.scrollHeight;
     }
 
+    // A model heavy enough to be worth confirming waits in the editor behind a
+    // Build button rather than starting unannounced.
+    //
+    // The button is in the EDITOR HEADER, and that placement is the whole point:
+    // it used to exist only inside the chat bubble, while the line that puts the
+    // code in the editor also brings the editor forward — so the status bar read
+    // "press Build" and the only Build button was behind another card. The hint
+    // bar was the other candidate and is worse: updateHint() rewrites it on
+    // every click in the editor, so the button would vanish the moment the user
+    // touched the code it was about to build.
+    //
+    // Chat still gets its own copy for anyone reading the conversation; both
+    // press the same button.
+    const buildNowBtn = $("build-now-btn");
+
+    function clearHeavyHold() {
+      buildNowBtn.hidden = true;
+      buildNowBtn.disabled = false;
+    }
+
+    function holdHeavyBuild(est) {
+      const secs = Math.round(est.sec);
+      const kTris = (est.tris / 1000).toFixed(0);
+      const label = `▶ Build (~${secs}s)`;
+      const offThread = !workerOut;
+      const copies = [];
+      let started = false;
+
+      const start = () => {
+        if (started) return;
+        started = true;
+        for (const b of copies) { b.disabled = true; b.textContent = "building…"; }
+        setStatus("busy", "…");
+        rebuild().then(() => {
+          for (const b of copies) b.textContent = "built ✓";
+          clearHeavyHold();
+        });
+      };
+
+      buildNowBtn.hidden = false;
+      buildNowBtn.disabled = false;
+      buildNowBtn.textContent = label;
+      buildNowBtn.title = `Build this model — about ${secs} seconds, ~${kTris}k triangles`;
+      buildNowBtn.style.cssText = "font-weight:700; color:var(--accent)";
+      buildNowBtn.onclick = start;
+      copies.push(buildNowBtn);
+
+      setStatus("ok", `heavy model ready — press ▶ Build in the editor (~${secs}s)`);
+      const el = addMsg("bot", offThread
+        ? `That model is chunky (~${kTris}k triangles — roughly ${secs}s). It builds in the background so the app stays usable, but it's a long one, so it's in the editor waiting for you — press <b>▶ Build</b> up in the editor header, or here: `
+        : `That model is chunky (~${kTris}k triangles — roughly ${secs}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). Press <b>▶ Build</b> in the editor header, or here: `);
+      const chatBtn = document.createElement("button");
+      chatBtn.className = "hist-btn";
+      chatBtn.style.cssText = "margin-left:6px; font-weight:700";
+      chatBtn.textContent = label;
+      chatBtn.addEventListener("click", start);
+      el.appendChild(chatBtn);
+      copies.push(chatBtn);
+    }
+
     // Apply AI code and report what the build ACTUALLY did. Saying "here you go"
     // while the model silently stayed a box (an unsupported op passed through,
     // or the code threw) is the worst failure mode there is — the user trusts a
@@ -9279,21 +9349,7 @@ ${joined}`)(...vs);
         if (est.sec > (offThread ? 45 : 18)) {
           saveSnapshot().catch(() => {});
           toggleCard(panel, openBtn, true);
-          setStatus("ok", `heavy model ready — press Build (~${Math.round(est.sec)}s)`);
-          const el = addMsg("bot", offThread
-            ? `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s). It builds in the background so the app stays usable, but it's a long one, so it's in the editor waiting for you: `
-            : `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). It's in the editor, ready when you are: `);
-          const b = document.createElement("button");
-          b.className = "hist-btn";
-          b.style.cssText = "margin-left:6px; font-weight:700";
-          b.textContent = `▶ Build it (~${Math.round(est.sec)}s)`;
-          b.addEventListener("click", () => {
-            b.disabled = true;
-            b.textContent = "building…";
-            setStatus("busy", "…");
-            rebuild().then(() => { b.textContent = "built ✓"; });
-          });
-          el.appendChild(b);
+          holdHeavyBuild(est);
           return { ok: true, detail: "held behind the Build button (heavy model)", warned: "" };
         }
       } catch { /* estimate is best-effort; a broken tree fails in rebuild with a real message */ }
@@ -9734,6 +9790,9 @@ ${joined}`)(...vs);
     // Handle for the console: brepscript.scene, .camera, .rebuild(), etc.
     Object.assign(window.brepscript, {
       THREE, scene, camera, renderer, controls, modelGroup, rebuild, dsl, exportSTL, facetedSTEP,
+      // the chat's apply path, so the heavy-model gate can be driven by a test
+      // rather than only by a live API key
+      applyGeneratedCode,
       // Where the last build happened and whether the worker is still holding
       // it — the only way an outside test can tell a real off-thread build from
       // a silent fallback to the old synchronous path.

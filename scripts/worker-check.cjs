@@ -64,6 +64,15 @@ return union(s, translate([0, 0, r], sphere({ r: 6, $fn: 128 })));
 
 const SIMPLE = "return difference(cube([30, 30, 12]), translate([15, 15, -1], cylinder({ r: 6, h: 14, $fn: 48 })));";
 
+// Past the 45s hold threshold on the estimator's own numbers (~97k triangles
+// with a boolean), while still finishing inside a test's patience. Anything
+// smaller no longer trips the gate, which is the point of the recalibration:
+// a 2-second sphere used to be estimated at 49s and held.
+const MONSTER = `return difference(
+  sphere({ r: 30, $fn: 220 }),
+  cylinder({ r: 4, h: 80, $fn: 64, center: true })
+);`;
+
 app.whenReady().then(async () => {
   shellApp.serveBundle();
   const win = shellApp.createWindow();       // visible: rAF must actually run
@@ -431,6 +440,64 @@ app.whenReady().then(async () => {
     const afterNeg = await run("window.brepscript.workerInfo()");
     check("...without evicting the model the exporters read", afterNeg.holdsModel, JSON.stringify(afterNeg));
     await run(`document.getElementById("neg-btn").click()`);
+
+    // ---- 3d. "press Build" must have a Build to press --------------------
+    //
+    // A model heavy enough to be worth confirming waits behind a Build button.
+    // That button used to exist only inside the chat bubble — while the same
+    // code path brings the EDITOR forward — so the status bar said "press
+    // Build" with the only button behind another card. A prompt you cannot
+    // obey is worse than no prompt.
+    const held = await run(`(async () => {
+      const r = await window.brepscript.applyGeneratedCode(${JSON.stringify(MONSTER)});
+      const btn = document.getElementById("build-now-btn");
+      return {
+        detail: r.detail,
+        status: document.getElementById("status-text").textContent,
+        headerHidden: btn.hidden,
+        headerVisible: btn.offsetParent !== null,
+        headerText: btn.textContent,
+        chatButtons: [...document.querySelectorAll("#chat-msgs button")].map((b) => b.textContent),
+        codeInEditor: document.getElementById("code").value.trim() === ${JSON.stringify(MONSTER.trim())},
+      };
+    })()`);
+    check("a monster model is held behind a Build button",
+      /held behind the Build button/.test(held.detail || ""), JSON.stringify(held.detail));
+    check("...and that button is actually ON SCREEN",
+      held.headerVisible === true && held.headerHidden === false, JSON.stringify(held));
+    check("...labelled as a build, with the estimate",
+      /Build/.test(held.headerText) && /\d+s/.test(held.headerText), held.headerText);
+    check("...with a copy in the chat too",
+      held.chatButtons.some((t) => /Build/.test(t)), JSON.stringify(held.chatButtons));
+    check("...the code waiting in the editor, unbuilt", held.codeInEditor === true);
+    check("...and the status pointing at where the button is",
+      /press ▶ Build in the editor/.test(held.status), held.status);
+
+    // Pressing it must build that code, and retire the button.
+    const pressed = await run(`(async () => {
+      document.getElementById("build-now-btn").click();
+      await new Promise((r) => setTimeout(r, 300));
+      return document.getElementById("status").className;
+    })()`);
+    check("...pressing it starts the build", pressed === "busy", pressed);
+    const afterHold = await settle(180000);
+    check("...which finishes", /^ok\|/.test(afterHold), afterHold);
+    const gone = await run(`(() => {
+      const btn = document.getElementById("build-now-btn");
+      return { hidden: btn.hidden, visible: btn.offsetParent !== null,
+               chat: [...document.querySelectorAll("#chat-msgs button")].map((b) => b.textContent) };
+    })()`);
+    check("...and the Build button retires itself", gone.hidden === true && gone.visible === false,
+      JSON.stringify(gone));
+
+    // A held build that the user walks away from must not leave a button
+    // offering to build code that is no longer in the editor.
+    await run(`window.brepscript.applyGeneratedCode(${JSON.stringify(MONSTER)})`);
+    await setCode("return cube([12, 12, 12]);");
+    await settle(60000);
+    const stale = await run(`(() => { const b = document.getElementById("build-now-btn");
+      return { hidden: b.hidden, visible: b.offsetParent !== null }; })()`);
+    check("...and editing the code retires it too", stale.hidden === true, JSON.stringify(stale));
 
     // ---- 4. a build error is reported as a build error -------------------
     // A worker must not turn "your model is broken" into "the worker died and

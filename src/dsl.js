@@ -163,10 +163,23 @@ export const getImport = (name) => IMPORTS.get(name) ?? null;
 //
 // A rough triangles/seconds guess straight off the shape TREE — no kernel.
 // The viewer uses it to warn before a slow build, and to hold an AI-generated
-// monster behind a "Build" button instead of freezing the tab unannounced.
-// Calibration: this kernel does ~1.5-2ms of main-thread work per triangle of
-// manifold geometry (measured on mesh imports and a 32-primitive boolean
-// scene). An estimate, not a promise — its job is telling 2 seconds from 2
+// monster behind a "Build" button instead of starting minutes of work unasked.
+//
+// RECALIBRATED for the worker build. The old numbers (1-2ms per triangle) came
+// from mesh imports on the main thread and were 4-16x pessimistic for ordinary
+// solids, which is not a harmless kind of wrong: a model that really takes 3
+// seconds was estimated at 49 and got held behind a Build button the user then
+// had to hunt for. Measured on the worker path:
+//
+//   sphere $fn 156, no booleans   24,024 tris    3.1s    0.13 ms/tri
+//   sphere $fn 128 + 3 cuts       29,952 tris    4.9s    0.16 ms/tri
+//   goggles, 21 solids            20,512 tris    9.6s    0.47 ms/tri
+//   drilled cube                     272 tris    0.5s    (fixed cost dominates)
+//
+// So: a fixed ~0.15s of setup, a quarter of a millisecond per triangle, double
+// that when booleans are welding, and a per-member cost for assemblies — which
+// is where the goggles' time actually went. Still deliberately on the high
+// side. An estimate, not a promise: its job is telling 2 seconds from 2
 // minutes, not 40s from 50s.
 export function estimateBuild(root) {
   let tris = 0, booleans = 0, members = 0;
@@ -195,7 +208,7 @@ export function estimateBuild(root) {
     for (const c of n.children || []) walk(c);
   };
   walk(root);
-  const sec = tris * (booleans ? 0.002 : 0.001) + members * 0.05;
+  const sec = 0.15 + tris * (booleans ? 0.0005 : 0.00025) + members * 0.05;
   return { tris: Math.round(tris), booleans, sec };
 }
 
