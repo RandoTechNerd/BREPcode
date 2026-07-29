@@ -22,6 +22,11 @@ out/
 viewer/*.stl
 viewer/*.3mf
 
+# A local test stash for the hidden model library (triple-tap the folder icon
+# in the (i) card). Personal models don't belong in a public repo; the site
+# build writes its own empty manifest.
+viewer/secret-models/
+
 # The AES blob holding a personal API key. Publishing it would let anyone
 # brute-force the password offline, so it stays local by default — see the
 # note in README about supplying your own key.

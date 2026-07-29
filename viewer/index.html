@@ -1666,6 +1666,29 @@
           after beta. Inquiries:
           <a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a>.
         </div>
+        <!-- Hidden model stash. Triple-tap the folder button below to reveal:
+             a list of .bcode / .html models served by the SITE itself, so
+             private work can live on brepcode.com without a public menu.
+             The list comes from secret-models/manifest.json next to the site
+             (JSON: { "models": [{ "name": "...", "file": "..." }] }, file
+             relative to the manifest) — or from any URL pasted in the Source
+             box, which is where the Lovable Cloud endpoint goes when it lands.
+             Nothing here is fetched until the reveal. -->
+        <div id="secret-lib" style="display:none">
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
+          <div style="display:flex; align-items:center; gap:8px">
+            <b>🔒 Stashed models</b>
+            <button id="secret-refresh" class="hist-btn" title="Reload the list">&#8635;</button>
+            <span class="note" id="secret-status" style="flex:1"></span>
+          </div>
+          <div id="secret-list" style="display:flex; flex-direction:column; gap:4px; margin:8px 0"></div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:6px">
+            <span class="tag" title="Where the list comes from — a manifest.json on this site, or a cloud endpoint">Source</span>
+            <input id="secret-url" placeholder="secret-models/manifest.json"
+                   style="flex:1; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font:11.5px ui-monospace, Consolas, monospace" />
+            <button id="secret-url-save" class="hist-btn" style="font-size:11.5px">Set</button>
+          </div>
+        </div>
         <div id="theme-row">
           <span class="tag">Theme</span>
           <button class="theme-chip" data-theme="dark">Dark</button>
@@ -7769,7 +7792,7 @@ ${joined}`)(...vs);
     }
     const tick = () => new Promise((r) => setTimeout(r, 0));
 
-    invFolderBtn.addEventListener("click", async () => {
+    async function openInventoryFlow() {
       await ensureInv();                              // restores a saved folder handle on first click
       if (!invDir) {
         if (await pickFolder()) {
@@ -7784,7 +7807,107 @@ ${joined}`)(...vs);
       }
       toggleCard(invCard, null, true);
       if (invEntries) renderInventory(); else await rescanInventory();
+    }
+    // The folder button doubles as the door to the hidden stash: TRIPLE-tap
+    // reveals it, a single tap opens the model folder as always. Clicks are
+    // collected for 380ms before the normal action runs, because the folder
+    // flow opens a NATIVE picker — its dialog would eat taps two and three.
+    // (Chrome keeps the user-activation window open for seconds, so the
+    // delayed picker still counts as user-initiated.)
+    let invTapCount = 0, invTapTimer = null;
+    invFolderBtn.addEventListener("click", () => {
+      invTapCount++;
+      clearTimeout(invTapTimer);
+      if (invTapCount >= 3) {
+        invTapCount = 0;
+        revealSecretLibrary();
+        return;
+      }
+      invTapTimer = setTimeout(() => {
+        const taps = invTapCount;
+        invTapCount = 0;
+        if (taps === 1) openInventoryFlow();     // a double-tap does nothing, forgivingly
+      }, 380);
     });
+
+    // ---- the hidden stash itself ------------------------------------------
+    // Models the SITE carries privately: .bcode opens straight into the
+    // editor, .html (embed pages) opens in a new tab. The list is a manifest
+    // fetched only after the reveal — by default secret-models/manifest.json
+    // beside the site, or any URL saved in the Source box (that is the hook
+    // for the Lovable Cloud endpoint: paste it once, it persists here).
+    const SECRET_URL_KEY = "brepcode-secret-url";
+    const secretSource = () =>
+      (localStorage.getItem(SECRET_URL_KEY) || "").trim() || "secret-models/manifest.json";
+
+    async function loadSecretLibrary() {
+      const list = $("secret-list"), status = $("secret-status");
+      list.innerHTML = "";
+      status.textContent = "loading…";
+      try {
+        const src = new URL(secretSource(), location.href);
+        const resp = await fetch(src, { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const manifest = await resp.json();
+        const models = Array.isArray(manifest?.models) ? manifest.models : [];
+        status.textContent = models.length ? `${models.length} stashed` : "the stash is empty";
+        for (const m of models) {
+          const file = String(m.file || "");
+          if (!file) continue;
+          const href = new URL(file, src);
+          const name = String(m.name || file.split("/").pop());
+          const isBcode = /\.bcode$/i.test(file);
+          const isHtml = /\.html?$/i.test(file);
+          const b = document.createElement("button");
+          b.className = "hist-btn";
+          b.style.cssText = "text-align:left; display:flex; gap:8px; align-items:baseline";
+          const kind = document.createElement("span");
+          kind.className = "note";
+          kind.textContent = isBcode ? ".bcode → editor" : isHtml ? ".html → new tab" : "download";
+          b.append(name, kind);
+          b.addEventListener("click", async () => {
+            try {
+              if (isBcode) {
+                const text = await (await fetch(href, { cache: "no-store" })).text();
+                await openProject(new File([text], name.endsWith(".bcode") ? name : `${name}.bcode`),
+                  new TextEncoder().encode(text).buffer);
+                toggleCard(aboutCard, aboutBtn, false);
+              } else if (isHtml) {
+                window.open(href, "_blank", "noopener");
+              } else {
+                const a = document.createElement("a");
+                a.href = href; a.download = name;
+                document.body.appendChild(a); a.click(); a.remove();
+              }
+            } catch (e) {
+              status.textContent = `couldn't open ${name}: ${String(e?.message || e).slice(0, 60)}`;
+            }
+          });
+          list.appendChild(b);
+        }
+      } catch (e) {
+        status.textContent = `no stash here (${String(e?.message || e).slice(0, 50)}) — set a Source below, or add secret-models/manifest.json to the site`;
+      }
+    }
+
+    function revealSecretLibrary() {
+      const lib = $("secret-lib");
+      const opening = lib.style.display === "none";
+      lib.style.display = opening ? "" : "none";      // triple-tap again to hide
+      if (!opening) return;
+      toggleCard(aboutCard, aboutBtn, true);          // it lives in the (i) card
+      $("secret-url").value = localStorage.getItem(SECRET_URL_KEY) || "";
+      loadSecretLibrary();
+      lib.scrollIntoView({ block: "nearest" });
+    }
+    $("secret-refresh").addEventListener("click", loadSecretLibrary);
+    $("secret-url-save").addEventListener("click", () => {
+      const v = $("secret-url").value.trim();
+      if (v) localStorage.setItem(SECRET_URL_KEY, v);
+      else localStorage.removeItem(SECRET_URL_KEY);
+      loadSecretLibrary();
+    });
+
     $("inv-change").addEventListener("click", async () => {
       if (await pickFolder()) {
         if (invEntries) renderInventory(); else await rescanInventory();

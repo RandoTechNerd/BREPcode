@@ -109,6 +109,17 @@ for (const f of VIEWER_JS) {
   console.log(`  recipes: ${manifest.recipes.length} (${manifest.recipes.filter((r) => r.parent).length} nested)`);
 }
 
+// ---- hidden model stash (triple-tap the folder icon in the (i) card) ----
+// Ships EMPTY: the wiring is in the page, the content is added on the host —
+// drop .bcode/.html files into secret-models/ and list them in the manifest,
+// or point the stash's Source box at a cloud endpoint (then this file is
+// never read and a redeploy can't wipe anything).
+mkdirSync(join(OUT, "secret-models"), { recursive: true });
+writeFileSync(join(OUT, "secret-models", "manifest.json"), JSON.stringify({
+  _readme: "Hidden stash for brepcode.com — reveal with a triple-tap on the folder button in the (i) card. Add entries like { \"name\": \"Dash goggles\", \"file\": \"goggles.bcode\" } with the file in this folder (paths are relative to this manifest). .bcode opens in the editor, .html opens in a new tab, anything else downloads.",
+  models: [],
+}, null, 2));
+
 // ---- vendor: WebLLM (in-browser LLM engine, lazy-loaded on user request) ----
 // The engine JS ships with the site (~6.4MB, fetched only if the provider is
 // picked); the model WEIGHTS never do — they come from HuggingFace at the
