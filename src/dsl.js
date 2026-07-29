@@ -1066,6 +1066,13 @@ export function fins(opts, ...children) {
       .filter((e) => Number.isFinite(e.z));
   };
 
+  // Per-fin overrides, for parts that aren't a uniform slab (a Benchy hull):
+  //   heights: [h1, h2, …]  — each fin only as tall as ITS bit of the face
+  //   faceAt:  [x1, x2, …]  — each fin's own plane, hugging a curved surface
+  // Scalars height/at[0] remain the fallback for every fin without an entry.
+  const finHeights = Array.isArray(o.heights) ? o.heights : null;
+  const finFaces = Array.isArray(o.faceAt) ? o.faceAt : null;
+
   // One fin in LOCAL space: the model face is the plane x = 0, the fin extends
   // toward +x, centred on y = 0, sitting on z = 0.
   //  - plate: right triangle (vertical edge by the part, hypotenuse sloping out)
@@ -1077,19 +1084,15 @@ export function fins(opts, ...children) {
     rotate([90, 0, 0], translate([0, 0, -thick / 2],
       linearExtrude({ h: thick }, polygon(pts)))));
 
-  // The contact edge at height z: plumb when lean is 0, sloping away with the
-  // part when it isn't.
-  const innerX = (z) => gap + z * Math.tan(lean * DEG);
-
-  // Where the fin's OUTER (sloping) edge sits at height z — the hypotenuse runs
-  // from the base's outer corner up to the top of the contact edge.
-  const outerX = (z) => (gap + depth) + (z / height) * (innerX(height) - (gap + depth));
-
-  const makeFin = (zs) => {
-    const parts = [inPlane([[gap, 0], [gap + depth, 0], [innerX(height), height]], t)];
+  const makeFin = (zs, H, D) => {
+    // contact edge at height z: plumb when lean is 0, sloping with the part
+    const innerX = (z) => gap + z * Math.tan(lean * DEG);
+    // outer (sloping) edge: hypotenuse from the base's outer corner to the top
+    const outerX = (z) => (gap + D) + (z / H) * (innerX(H) - (gap + D));
+    const parts = [inPlane([[gap, 0], [gap + D, 0], [innerX(H), H]], t)];
     if (skirt > 0.05) {
       parts.push(linearExtrude({ h: 0.8 }, polygon([
-        [gap, -(t / 2 + skirt)], [gap + Math.min(depth, skirt * 2.5), 0], [gap, t / 2 + skirt],
+        [gap, -(t / 2 + skirt)], [gap + Math.min(D, skirt * 2.5), 0], [gap, t / 2 + skirt],
       ])));
     }
     // Sprues: a bar the same width as the fin, ROOTED INSIDE the plate and
@@ -1098,6 +1101,7 @@ export function fins(opts, ...children) {
     // because the two overlap by construction. Flat on top so it prints as a
     // clean ledge; the underside slopes up to meet the tip.
     for (const s of zs) {
+      if (s.z > H + 0.5) continue;                 // a nub above ITS fin's plate
       const edge = innerX(s.z);
       const tip = edge - Math.max(0.05, s.reach);
       // bite far enough into the plate to weld, but never out through its back
@@ -1117,8 +1121,13 @@ export function fins(opts, ...children) {
     const li = explicitPos ? explicitPos[i] : s0 + ((i + 0.5) * (s1 - s0)) / count;
     const zs = sprueList(i);
     if (!zs.length && o.sprueAt) continue;   // probed as "no material here" — skip the fin
-    const pos = alongX ? [li, face, z0] : [face, li, z0];
-    out.push(translate(pos, rotate([0, 0, yaw], makeFin(zs))));
+    const H = Math.max(2, finHeights?.[i] ?? height);
+    const leanRunI = H * Math.tan(lean * DEG);
+    const wantedI = o.depth ?? Math.max(4, H * Math.tan(angle * DEG) + leanRunI);
+    const D = Number.isFinite(o.maxDepth) ? Math.max(leanRunI + 2, Math.min(wantedI, o.maxDepth)) : wantedI;
+    const faceI = Number.isFinite(finFaces?.[i]) ? finFaces[i] : face;
+    const pos = alongX ? [li, faceI, z0] : [faceI, li, z0];
+    out.push(translate(pos, rotate([0, 0, yaw], makeFin(zs, H, D))));
   }
   if (out.length === 1) throw new Error("fins(): none of the fins had anything to attach to — check `at` and `positions` against the model's bounding box");
   return group(...out);

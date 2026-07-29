@@ -7607,56 +7607,52 @@ ${joined}`)(...vs);
       const h = r1((bb.max.z - bb.min.z) * 0.97);    // tall enough to hold the top
       const gap = 0.8, COUNT = 3, WANT = 3, clearance = 0.2, MAX_REACH = 12;
 
-      // Don't just probe wherever even spacing lands — SEARCH for the spots with
-      // the most material. Split the side into `COUNT` zones and take the best
-      // column in each, which naturally gives "one at each end and one in the
-      // middle" while landing the end fins on a frame's solid rails instead of
-      // floating in a window opening.
-      // First pass, plumb: find the best column in each zone AND read how far
-      // the face slopes, so an angled part gets a matching fin lean.
-      const zones = [];
-      const SCAN = 25;
-      for (let zone = 0; zone < COUNT; zone++) {
-        const lo = a0 + ((a1 - a0) * zone) / COUNT, hi = a0 + ((a1 - a0) * (zone + 1)) / COUNT;
-        let best = null;
-        for (let s = 0; s <= SCAN; s++) {
-          const li = lo + ((hi - lo) * s) / SCAN;
-          const hits = probeColumn(li, face, side, alongX, h, gap, clearance, 0, 60);
-          if (!hits.length) continue;
-          // coverage = how much of the fin's height this column can grab
-          const span = hits[hits.length - 1].z - hits[0].z;
-          const score = hits.length * 2 + span;
-          if (!best || score > best.score) best = { li, hits, score };
-        }
-        if (best) zones.push(best);
-      }
-      // the part's slope: the CLICKED face's own angle when we have one (probe
-      // only fine-tunes ±6° around it, target first so ties keep it), else
-      // measured blind on whichever column saw the most of the part
+      // EQUAL spacing, adaptively fitted. Fins land at evenly spaced stations
+      // — that is what looks right and holds evenly — and each station may
+      // nudge only ±15% of the pitch to find material, so a window doesn't
+      // leave a fin holding air while the row still reads as even. THEN each
+      // fin adapts to its own spot: its own height (the face's real top right
+      // there, not the whole model's — a Benchy hull fin stops at the gunwale,
+      // not the chimney) and its own plane offset hugging the surface, so the
+      // teeth stay short pokes even on a curved hull.
       const target = opts.faceAngle;
       const seeded = target != null
         ? [...new Set([target, Math.max(0, target - 3), Math.min(60, target + 3),
                        Math.max(0, target - 6), Math.min(60, target + 6)])]
         : undefined;
-      const leanSrc = zones.reduce((p, c) => (!p || c.hits.length > p.hits.length ? c : p), null);
-      const fit = leanSrc
-        ? detectLean(leanSrc.li, face, side, alongX, h, gap, clearance, MAX_REACH, seeded)
-        : { lean: target ?? 0, shift: 0 };
+      const fit = detectLean((a0 + a1) / 2, face, side, alongX, h, gap, clearance, MAX_REACH, seeded);
       const lean = fit.lean;
-      // slide the fin plane in by whatever slack the fit found
       const outward = (side === "+x" || side === "+y") ? 1 : -1;
-      const finFace = face - outward * fit.shift;
 
-      // Second pass with the fin edge following the part: now every tooth is a
-      // short poke instead of the top one needing a huge reach.
-      const positions = [], sprueAt = [];
-      for (const z of zones) {
-        const hits = (lean || fit.shift)
-          ? probeColumn(z.li, finFace, side, alongX, h, gap, clearance, lean, MAX_REACH)
-          : z.hits;
-        const nubs = spreadSprues(hits, h, WANT);
+      const pitch = (a1 - a0) / COUNT;
+      const positions = [], sprueAt = [], heights = [], faceAt = [];
+      for (let i = 0; i < COUNT; i++) {
+        const station = a0 + (i + 0.5) * pitch;
+        let best = null;
+        for (let s = -3; s <= 3; s++) {
+          const li = station + (s / 3) * pitch * 0.15;
+          const hits = probeColumn(li, face, side, alongX, h, gap, clearance, lean, 60);
+          if (!hits.length) continue;
+          const span = hits[hits.length - 1].z - hits[0].z;
+          const score = hits.length * 2 + span - Math.abs(s) * 0.5;   // stay near the station
+          if (!best || score > best.score) best = { li, hits, score };
+        }
+        if (!best) continue;
+        // this fin's own plane: slide in until its nearest tooth is a stub
+        const minReach = Math.min(...best.hits.map((hh) => hh.reach));
+        const shift = Math.max(0, minReach - 0.4);
+        const fFace = face - outward * shift;
+        const hits2 = shift
+          ? probeColumn(best.li, fFace, side, alongX, h, gap, clearance, lean, MAX_REACH)
+          : best.hits.filter((hh) => hh.reach <= MAX_REACH);
+        if (!hits2.length) continue;
+        // this fin's own height: the top of the material at ITS column
+        const topZ = hits2[hits2.length - 1].z;
+        const nubs = spreadSprues(hits2, topZ + 1, WANT);
         if (!nubs.length) continue;
-        positions.push(r1(z.li));
+        positions.push(r1(best.li));
+        heights.push(r1(Math.min(h, topZ + 2)));
+        faceAt.push(r1(fFace));
         sprueAt.push(nubs.map((n) => `{ z: ${r1(n.z)}, reach: ${r1(n.reach)} }`));
       }
       if (!positions.length) {
@@ -7672,7 +7668,7 @@ ${joined}`)(...vs);
       const across = alongX ? (bb.max.y - bb.min.y) : (bb.max.x - bb.min.x);
       const maxDepth = r1(Math.max(6, across));
       const skirt = opts.skirt ?? 5;
-      const call = `fins({\n  side: "${side}",\n  positions: [${posStr}],\n  sprueAt: [${sprueStr},\n  ],\n  height: ${h}, lean: ${lean}, angle: 45, maxDepth: ${maxDepth},\n  nozzle: 0.4, clearance: ${clearance}, skirt: ${skirt},\n  at: [${r1(finFace)}, ${r1(a0)}, ${r1(a1)}],\n}, ${expr})`;
+      const call = `fins({\n  side: "${side}",\n  positions: [${posStr}],\n  heights: [${heights.join(", ")}],\n  faceAt: [${faceAt.join(", ")}],\n  sprueAt: [${sprueStr},\n  ],\n  height: ${h}, lean: ${lean}, angle: 45, maxDepth: ${maxDepth},\n  nozzle: 0.4, clearance: ${clearance}, skirt: ${skirt},\n  at: [${r1(face)}, ${r1(a0)}, ${r1(a1)}],\n}, ${expr})`;
       pushHistory(code.value);
       code.value = call;
       code.focus();
@@ -7682,7 +7678,7 @@ ${joined}`)(...vs);
       setStatus("busy", "…");
       rebuild();
       const nubTotal = sprueAt.reduce((n, l) => n + l.length, 0);
-      hint.innerHTML = `${refit ? "<b>Re-fitted</b> the supports to the model's new position — " : ""}${positions.length} fin${positions.length === 1 ? "" : "s"} on the <b>${side}</b> side with <b>${nubTotal} teeth</b>${skirt ? "" : " and <b>no skirt</b>"}. Each tooth was probed against the part and ends in a point <b>${clearance}mm short</b> of it, so a clean print never fuses — the part only rests on them if it shifts. Edit <code>positions</code>, <code>sprueAt</code>, <code>height</code>, <code>angle</code>, <code>nozzle</code>, <code>clearance</code>, <code>skirt</code>. Moved the model since? Press the tool again and it re-probes.`;
+      hint.innerHTML = `${refit ? "<b>Re-fitted</b> the supports to the model's new position — " : ""}${positions.length} <b>evenly spaced</b> fin${positions.length === 1 ? "" : "s"} on the <b>${side}</b> side with <b>${nubTotal} teeth</b>${skirt ? "" : " and <b>no skirt</b>"}. Each fin adapted to its own spot: its <code>heights</code> entry stops at the face's real top there, its <code>faceAt</code> entry hugs the surface, and every tooth ends <b>${clearance}mm short</b> so a clean print never fuses. Edit <code>positions</code>, <code>heights</code>, <code>faceAt</code>, <code>sprueAt</code>, <code>angle</code>. Moved the model? Press the tool again and it re-probes.`;
     }
     // Fins arm like Drill: the button asks for a face, and the CLICK supplies
     // what the camera used to guess — which side the fins go on and the angle

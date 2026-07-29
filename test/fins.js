@@ -301,6 +301,36 @@ const finMinX = (r) => {
     `${finPieces(r)} separate pieces`);
 }
 
+// ---- per-fin adaptation (heights / faceAt arrays) ---------------------------
+{
+  // three fins, each its own height and its own plane — the Benchy-hull case
+  const shape = fins({
+    ...base,
+    positions: [-6, 0, 6],
+    heights: [12, 30, 20],
+    faceAt: [-10, -11.5, -10.6],
+  }, part());
+  check("per-fin heights/faceAt still make 3 fins", shape.children.length === 4,
+    `${shape.children.length - 1} fins`);
+  const r = await build(shape);
+  check("...and they build", facets(r) > 100, `${facets(r)} facets`);
+  // the fin geometry must never rise above its own height entry (+ the part
+  // itself which is 40 tall centred -> z up to 20; fin plates cap at 30)
+  const zs = [...toSTL(r, "t").matchAll(/vertex\s+\S+\s+\S+\s+(\S+)/g)].map((m) => +m[1]);
+  check("...tallest fin honours its heights entry", Math.max(...zs) <= 30.01, Math.max(...zs).toFixed(1));
+}
+{
+  // a sprue above a SHORT fin's plate is dropped, not left floating
+  const shape = fins({
+    ...base,
+    positions: [0],
+    heights: [10],
+    sprueAt: [[{ z: 4, reach: 0.4 }, { z: 25, reach: 0.4 }]],   // 25 > 10 -> dropped
+  }, part());
+  const r = await build(shape);
+  check("a sprue above its short fin is dropped", facets(r) > 30, `${facets(r)} facets`);
+}
+
 // ---- honest errors ----------------------------------------------------------
 throws("rejects a bad side", () => fins({ ...base, side: "up" }, part()), /side must be/);
 throws("rejects a missing at", () => fins({ side: "-x", count: 2 }, part()), /needs at:/);
