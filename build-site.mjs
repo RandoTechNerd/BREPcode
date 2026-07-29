@@ -58,6 +58,8 @@ const rewrites = [
   ["/node_modules/replicad-opencascadejs/src/", "./vendor/replicad/"],
   // scannable codes (lazy-loaded by viewer/codes.js)
   ["/node_modules/bwip-js/dist/bwip-js.mjs", "./vendor/bwip/bwip-js.mjs"],
+  // in-browser LLM engine (lazy-loaded by viewer/webllm.js, weights from HF)
+  ["/node_modules/@mlc-ai/web-llm/lib/index.js", "./vendor/webllm/index.js"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -71,7 +73,7 @@ const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), tex
 //   node build-site.mjs --with-locked-key  -> key included (private hand-off)
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
-  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js",
+  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -106,6 +108,14 @@ for (const f of VIEWER_JS) {
   for (const r of manifest.recipes) cpSync(join("viewer/recipes", r.file), join(OUT, "recipes", r.file));
   console.log(`  recipes: ${manifest.recipes.length} (${manifest.recipes.filter((r) => r.parent).length} nested)`);
 }
+
+// ---- vendor: WebLLM (in-browser LLM engine, lazy-loaded on user request) ----
+// The engine JS ships with the site (~6.4MB, fetched only if the provider is
+// picked); the model WEIGHTS never do — they come from HuggingFace at the
+// user's explicit request and live in the browser cache.
+mkdirSync(join(OUT, "vendor", "webllm"), { recursive: true });
+cpSync("node_modules/@mlc-ai/web-llm/lib/index.js", join(OUT, "vendor/webllm/index.js"));
+cpSync("node_modules/@mlc-ai/web-llm/LICENSE", join(OUT, "vendor/webllm/LICENSE"));
 
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });

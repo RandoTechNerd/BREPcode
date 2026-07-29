@@ -264,6 +264,15 @@ console.log("\nmodel ranking\n");
     rank(["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-4-8", "claude-opus-7"])[0] === "claude-opus-7");
   check("a dated id is not read as a version number",
     modelScore("claude-haiku-4-5-20251001") === modelScore("claude-haiku-4-5"));
+  // In-browser WebLLM ids rank by parameter count — the download picker shows
+  // the most capable first, while the app pre-selects the safe 1.5B itself.
+  check("browser models rank by size",
+    rank([
+      "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
+      "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC",
+      "Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC",
+      "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC",
+    ]).join(" ").match(/-(7|3|1\.5|0\.5)B/g).join(" ") === "-7B -3B -1.5B -0.5B");
 }
 
 

@@ -973,7 +973,7 @@ APP FEATURES BEYOND THE CODE — you know the whole app, so requests these panel
 - Auto-colour with a shade slider (Neon, Glow, light-to-dark families); right-click any shape to recolour or swap just it.
 - Toolbox (wrench in the editor header): Drill a clicked face, Fin supports at a clicked face's angle, Surface texture, Photo emboss (an image as relief on a clicked face), scannable QR/DataMatrix codes on a face.
 - Import: STL, OBJ, 3MF (multicolour), SVG, STEP, .bcode projects. Export: STL, OBJ, 3MF (colour-aware), STEP (curved analytic surfaces — fillets stay round), SVG blueprint (3-view + isometric engineering drawing), GLB, self-contained embed page, .bcode.
-- The ⚙ chat settings hold the model/provider (including free local models), this mission text, and #section toggle chips.
+- The ⚙ chat settings hold the model/provider (including a free in-browser WebGPU model — no key, no install — and free local servers), this mission text, and #section toggle chips.
 
 #speed
 SPEED
@@ -1393,5 +1393,9 @@ export function modelScore(id) {
   else if (/sonnet|flash(?!-?lite)/.test(s)) v += 5;
   else if (/haiku|lite|nano|mini|gemma/.test(s)) v += 2;
   if (/preview|exp(?:$|[^a-z])/.test(s)) v -= 1;
+  // In-browser WebLLM ids carry their parameter count: more parameters, more
+  // capable. Only relative order within the browser list matters.
+  const wb = s.match(/-([\d.]+)b-instruct-q\d/);
+  if (wb) v += Math.min(18, parseFloat(wb[1]) * 3);
   return v;
 }

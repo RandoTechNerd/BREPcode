@@ -861,8 +861,22 @@
     #ai-check.ok { color: var(--ok); }
     #ai-check.bad { color: var(--err); }
     #ai-check.busy { color: var(--busy); }
-    #gear-btn { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 6px; }
+    /* the cog sits INLINE with the × — same height, same hover, centred glyph.
+       The pair is a flex row because a baseline-aligned × next to a
+       middle-aligned SVG sat 3.5px apart, measured. */
+    #chat header > div:last-child { display: flex; align-items: center; }
+    #gear-btn {
+      background: none; border: 0; color: var(--muted); cursor: pointer;
+      padding: 0 6px; border-radius: 6px; height: 20px;
+      display: inline-flex; align-items: center; vertical-align: middle;
+    }
     #gear-btn:hover { background: var(--border); color: #fff; }
+    /* a second way out of the settings — the gear being the only door was a trap */
+    #cs-close {
+      margin-left: auto; background: none; border: 0; color: var(--muted);
+      font-size: 16px; line-height: 1; cursor: pointer; padding: 0 7px; border-radius: 6px;
+    }
+    #cs-close:hover { background: var(--border); color: #fff; }
 
     #about-body { padding: 12px 16px 14px; font-size: 13px; line-height: 1.7; }
     #about-body a { color: var(--link); text-decoration: none; }
@@ -1392,7 +1406,18 @@
       <header>
         <div><strong>Assistant</strong><span class="sub" id="chat-mode">built-in</span></div>
         <div>
-          <button id="gear-btn" title="AI settings">&#9881;</button>
+          <!-- a drawn cog rather than the ⚙ glyph: the entity renders tiny and
+               sits below the ×'s baseline; an SVG matches its weight and line -->
+          <button id="gear-btn" title="AI settings">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none"
+                 stroke="currentColor" stroke-width="2.4">
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="12" cy="12" r="7.2" />
+              <g stroke-width="3">
+                <path d="M12 1.4v2.6M12 20v2.6M1.4 12H4M20 12h2.6M4.5 4.5l1.9 1.9M17.6 17.6l1.9 1.9M19.5 4.5l-1.9 1.9M6.4 17.6l-1.9 1.9" />
+              </g>
+            </svg>
+          </button>
           <button class="close-btn" data-close="chat" title="Close">&times;</button>
         </div>
       </header>
@@ -1401,6 +1426,7 @@
         <div id="cs-tabs">
           <button data-cstab="ai" class="sel">AI</button>
           <button data-cstab="email">Email</button>
+          <button id="cs-close" title="Close settings">&times;</button>
         </div>
         <div class="cs-pane" data-pane="ai">
         <div class="row"><label>Provider</label>
@@ -1410,9 +1436,18 @@
             <option value="claude">Anthropic Claude</option>
             <option value="claude-code" id="opt-claude-code" hidden>Claude Code — this computer, no key</option>
             <option value="local">Local model — llama.cpp / Ollama (experimental)</option>
+            <option value="browser">In your browser — free, no key, no install (WebGPU)</option>
           </select>
         </div>
         <div class="row"><label>Model</label><select id="ai-model"></select></div>
+        <!-- The in-browser model is a ~1GB download the user must ask for by
+             name — nothing auto-loads. Cached by the browser after the first
+             time, so Load is instant on later visits. -->
+        <div class="row" id="browser-load-row" style="display:none">
+          <label title="The model runs on your GPU, in this tab — nothing you type leaves this computer">Weights</label>
+          <button id="browser-load-btn" class="hist-btn" style="font-size:12px">Load</button>
+          <span class="note" id="browser-load-status" style="flex:1"></span>
+        </div>
         <div class="row" id="cc-effort-row" style="display:none"><label title="How much thinking budget Claude gets before answering">Effort</label>
           <select id="cc-effort">
             <option value="medium" selected>Medium — Claude Code's default</option>
@@ -8599,6 +8634,14 @@ ${joined}`)(...vs);
     const AI_MODELS = {
       builtin: [],
       local: [],          // filled by asking the server what it has loaded
+      // In-browser WebGPU models (WebLLM) — a curated list, because each entry
+      // is a real download: ~330MB / ~1GB / ~1.8GB / ~4.1GB respectively.
+      browser: [
+        "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC",
+        "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC",
+        "Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC",
+        "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
+      ],
       gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
       claude: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
       // Aliases the CLI resolves itself, so this list never goes stale;
@@ -8711,6 +8754,9 @@ ${joined}`)(...vs);
       // default is the fast-and-good one; the deep ones are a deliberate
       // choice, not a landing spot.
       if (provider === "claude-code" && !keep) keep = "sonnet";
+      // Same reasoning in the browser: 7B ranks highest but needs a 6GB GPU
+      // and a 4GB download — 1.5B is the one that works on most machines.
+      if (provider === "browser" && !keep) keep = "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC";
       const cached = cachedModels(provider);
       populateModels(cached.length ? cached : (AI_MODELS[provider] ?? []), keep);
     }
@@ -9053,6 +9099,8 @@ ${joined}`)(...vs);
           ? `Claude Code${model && model !== "default" ? " · " + model : ""}`
         : aiProvider.value === "local"
           ? `local${liveModel ? " · " + liveModel : ""}`
+        : aiProvider.value === "browser"
+          ? `in-browser · ${(model || "").replace(/-Instruct.*$/, "") || "WebGPU"}`
           : `${aiProvider.value} · ${model}`;
       updateSpark();
     }
@@ -9130,6 +9178,23 @@ ${joined}`)(...vs);
         if (announce && !ccFound) addMsg("bot", "Claude Code isn't installed on this computer (or isn't signed in). Install it from claude.com/code, run `claude` once to sign in, then restart BREPcode.");
         return;
       }
+      if (provider === "browser") {
+        // No key and no server — the "connection" is whether this browser can
+        // run WebGPU at all, answered without downloading anything.
+        const w = await getWebllm();
+        const gpu = await w.webgpuInfo();
+        if (mine !== checkToken) return;
+        aiCheck.textContent = gpu.ok ? "✓" : "✗";
+        aiCheck.className = gpu.ok ? "ok" : "bad";
+        paintBrowserLoadRow();
+        if (announce && gpu.ok) {
+          addMsg("bot", "").innerHTML = w.loadedBrowserModel() === aiModel.value
+            ? "✓ The in-browser model is loaded and ready — free, private, nothing leaves this machine."
+            : "✓ This browser can run models on its GPU. Press <b>Load</b> in ⚙ (or just send a message) — the model downloads once (~1 GB for the default) and is cached after that. Free, no key, nothing you type leaves this machine.";
+        }
+        if (announce && !gpu.ok) addMsg("bot", `This browser can't run in-browser models: ${gpu.why}. Chrome or Edge on a desktop is the sure path — or pick another provider in ⚙.`);
+        return;
+      }
       // Local needs no key — a blank URL means the llama.cpp default, so it
       // still gets a real connection check.
       if (provider === "builtin" || (!key && provider !== "local")) { aiCheck.textContent = ""; aiCheck.className = ""; return; }
@@ -9176,6 +9241,84 @@ ${joined}`)(...vs);
       saveAiCfg();
       verifyConnection(true);
     });
+    // ---- in-browser model (WebLLM): loaded only when asked ---------------
+    // The module itself is lazy — ~6MB of engine JS that nobody who never
+    // picks this provider should pay for. The WEIGHTS on top of that are a
+    // real download (330MB–4GB from HuggingFace, cached by the browser), so
+    // nothing loads until the user presses Load, exactly once per machine.
+    let _webllm = null;
+    const getWebllm = () => (_webllm ??= import("./webllm.js"));
+    let browserLoading = false;
+
+    function paintBrowserLoadRow(status) {
+      const st = $("browser-load-status"), btn = $("browser-load-btn");
+      if (status != null) { st.textContent = status; return; }
+      if (!_webllm) {
+        const info = { // sizes without waiting for the module
+          "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC": "≈330 MB",
+          "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC": "≈1 GB",
+          "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC": "≈1.8 GB",
+          "Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC": "≈4.1 GB",
+        }[aiModel.value] || "";
+        st.textContent = `not loaded — ${info} download, once; cached after`;
+        btn.textContent = "Load";
+        return;
+      }
+      _webllm.then((w) => {
+        const loaded = w.loadedBrowserModel();
+        if (loaded === aiModel.value) { st.textContent = "loaded — running on your GPU"; btn.textContent = "Free GPU"; }
+        else {
+          const m = w.browserModelInfo(aiModel.value);
+          st.textContent = `not loaded — ${m ? "≈" + (m.dlMB >= 1000 ? (m.dlMB / 1000).toFixed(1) + " GB" : m.dlMB + " MB") : "a"} download, once; cached after`;
+          btn.textContent = "Load";
+        }
+      });
+    }
+
+    // Load with progress painted into the row (and mirrored to a chat bubble
+    // when one is passed). Returns true on success.
+    async function loadBrowserModelUI(progressEl) {
+      if (browserLoading) return false;
+      browserLoading = true;
+      const btn = $("browser-load-btn");
+      btn.disabled = true;
+      const model = aiModel.value;
+      const say = (s) => {
+        paintBrowserLoadRow(s);
+        if (progressEl) progressEl.textContent = s;
+      };
+      try {
+        const w = await getWebllm();
+        const gpu = await w.webgpuInfo();
+        if (!gpu.ok) { say(""); addMsg("bot", `Can't run models in this browser: ${gpu.why}.`); return false; }
+        say("starting…");
+        await w.loadBrowserModel(model, ({ pct, text }) => {
+          say(pct != null ? `${pct}% — ${text}` : text);
+        });
+        say("");
+        paintBrowserLoadRow();
+        saveAiCfg();
+        return true;
+      } catch (e) {
+        say("");
+        paintBrowserLoadRow(`load failed: ${String(e?.message || e).slice(0, 90)}`);
+        return false;
+      } finally {
+        browserLoading = false;
+        btn.disabled = false;
+      }
+    }
+    $("browser-load-btn").addEventListener("click", async () => {
+      const w = _webllm ? await _webllm : null;
+      if (w && w.loadedBrowserModel() === aiModel.value) {
+        await w.unloadBrowserModel();          // the button reads "Free GPU"
+        paintBrowserLoadRow();
+        return;
+      }
+      const ok = await loadBrowserModelUI(null);
+      if (ok) addMsg("bot", `✓ ${aiModel.value.replace(/-Instruct.*$/, "")} is running in your browser — free, private, nothing leaves this machine. Ask me for a model!`);
+    });
+
     // Everything about the settings panel that depends on WHICH provider is
     // chosen, in one place — called on change and once at restore, because a
     // saved claude-code config used to come back with the key field live and
@@ -9183,15 +9326,20 @@ ${joined}`)(...vs);
     function reflectProviderUI() {
       const cc = aiProvider.value === "claude-code";
       const lo = aiProvider.value === "local";
+      const br = aiProvider.value === "browser";
       // Claude Code needs no key — greying the field says so louder than help
       // text would, and stops "do I paste my key here?" before it is asked.
-      // Local repurposes the field as the SERVER URL.
-      aiKey.disabled = cc;
+      // Local repurposes the field as the SERVER URL. In-browser needs no key
+      // either: the model runs in this tab.
+      aiKey.disabled = cc || br;
       aiKey.placeholder = cc ? "not needed — uses your Claude login"
+        : br ? "not needed — the model runs in this tab"
         : lo ? "http://localhost:8080/v1 (llama.cpp default — blank works)"
         : "paste your key";
       $("ai-key-label").textContent = lo ? "Server URL" : "API key";
       $("cc-effort-row").style.display = cc ? "" : "none";
+      $("browser-load-row").style.display = br ? "" : "none";
+      if (br) paintBrowserLoadRow();
     }
     aiProvider.addEventListener("change", () => {
       fillModelOptions(aiProvider.value);
@@ -9200,10 +9348,15 @@ ${joined}`)(...vs);
       verifyConnection(true);
     });
     reflectProviderUI();
-    aiModel.addEventListener("change", saveAiCfg);
+    aiModel.addEventListener("change", () => {
+      saveAiCfg();
+      // picking a different in-browser model changes what Load would fetch
+      if (aiProvider.value === "browser") paintBrowserLoadRow();
+    });
     saveAiCfg();
     // (model list + stored-key re-verify happen in ensureChat on first open)
     $("gear-btn").addEventListener("click", () => $("chat-settings").classList.toggle("open"));
+    $("cs-close").addEventListener("click", () => $("chat-settings").classList.remove("open"));
 
     // ---- hidden shared key: triple-tap "API key" -> password -> unlock -----
     // A key you locked with lockbox lives (encrypted) in locked-key.js. Tapping
@@ -9533,6 +9686,7 @@ ${joined}`)(...vs);
       }
       const useApi = aiProvider.value === "claude-code"
         || aiProvider.value === "local"        // no key: blank URL = localhost default
+        || aiProvider.value === "browser"      // no key: the model runs in this tab
         || (aiProvider.value !== "builtin" && aiKey.value.trim());
       if (!useApi) {
         const r = botRespond(text, botState, code.value, modelDims);
@@ -9541,6 +9695,7 @@ ${joined}`)(...vs);
         addMsg("bot", r.reply);
         chatLog.push({ role: "assistant", text: r.reply });
         if (r.code !== undefined) applyGeneratedCode(r.code);
+        maybeOfferRealAI();
         return;
       }
 
@@ -9631,10 +9786,10 @@ ${joined}`)(...vs);
         // Attached images ride on THIS message only.
         const imgs = pendingImgs.slice();
         clearPendingImg();
-        if (imgs.length && cfg.provider === "local") {
-          // most local GGUF models are text-only, and a vision payload makes
-          // llama.cpp error the whole request — say so instead of failing
-          addMsg("bot", "Local models here are text-only for now — describing the image in words works best. Sending your message without it.");
+        if (imgs.length && (cfg.provider === "local" || cfg.provider === "browser")) {
+          // these small models are text-only, and a vision payload errors the
+          // whole request — say so instead of failing
+          addMsg("bot", `${cfg.provider === "browser" ? "In-browser" : "Local"} models here are text-only for now — describing the image in words works best. Sending your message without it.`);
         } else if (imgs.length && cfg.provider !== "claude-code") {
           // API providers take them inline as base64 content blocks.
           msgs[msgs.length - 1].images = imgs.map((im) => ({ media_type: im.mediaType, data: im.b64 }));
@@ -9676,6 +9831,47 @@ ${joined}`)(...vs);
           ccSession = r.sessionId || ccSession;
           answer = r.text;
           logLine(`response ← Claude Code${r.costUsd != null ? ` (\$${(+r.costUsd).toFixed(4)})` : ""}`);
+        } else if (cfg.provider === "browser") {
+          // The model runs in THIS tab on WebGPU — no fetch, no server. If the
+          // weights aren't in yet, this message becomes the loading prompt: a
+          // gigabyte download starts on a click, never silently.
+          const w = await getWebllm();
+          if (w.loadedBrowserModel() !== cfg.model) {
+            clearInterval(tick);
+            busy.remove();
+            const m = w.browserModelInfo(cfg.model);
+            const size = m ? (m.dlMB >= 1000 ? `${(m.dlMB / 1000).toFixed(1)} GB` : `${m.dlMB} MB`) : "a";
+            const el = addMsg("bot", `The in-browser model isn't loaded yet — it's a one-time ≈${size} download, cached by the browser after that. `);
+            const b = document.createElement("button");
+            b.className = "hist-btn";
+            b.style.cssText = "margin-left:6px; font-weight:700";
+            b.textContent = "⬇ Load, then answer me";
+            b.addEventListener("click", async () => {
+              b.disabled = true;
+              const prog = document.createElement("div");
+              prog.style.cssText = "font-size:11px; opacity:.75; margin-top:5px";
+              el.appendChild(prog);
+              const ok = await loadBrowserModelUI(prog);
+              prog.remove();
+              b.textContent = ok ? "loaded ✓" : "load failed — see ⚙ for why";
+              // the question that triggered the load gets answered without re-typing
+              if (ok) { chatInput.value = text; sendChat(); }
+            });
+            el.appendChild(b);
+            return;
+          }
+          const system = CHAT.composeSystem({ reference, ...harnessOpts() });
+          logLine(`generating in this tab — ${cfg.model}`);
+          let lastPaint = 0;
+          answer = await w.browserChat({
+            model: cfg.model, system, messages: msgs,
+            onDelta: ({ phase, chars }) => {
+              liveState = { phase, chars };
+              const now = performance.now();
+              if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
+            },
+          });
+          logLine("response ← in-browser model");
         } else {
           // Gemini: ask for the model's thoughts too. Models that don't support
           // thinkingConfig reject the whole request — retry once without it.
@@ -9803,6 +9999,31 @@ ${joined}`)(...vs);
         }
       }
     }
+    // After a light-mode reply, say ONCE per session what the user is talking
+    // to and hand them the free upgrade. Every reply would be nagging; never
+    // saying it leaves people thinking the hardcoded helper is the AI.
+    let offeredRealAI = false;
+    function maybeOfferRealAI() {
+      if (offeredRealAI || aiProvider.value !== "builtin") return;
+      offeredRealAI = true;
+      const el = addMsg("bot", "That answer came from the light built-in helper — hardcoded, simple shapes only. For a real AI that designs whole parts: ");
+      const b = document.createElement("button");
+      b.className = "hist-btn";
+      b.style.cssText = "font-weight:700";
+      b.textContent = "⚡ Try the free in-browser AI";
+      b.addEventListener("click", () => {
+        aiProvider.value = "browser";
+        aiProvider.dispatchEvent(new Event("change", { bubbles: true }));
+        $("chat-settings").classList.add("open");
+      });
+      el.appendChild(b);
+      const note = document.createElement("span");
+      note.className = "note";
+      note.style.marginLeft = "8px";
+      note.textContent = "— no key, one download, nothing leaves this machine. Or add a Gemini/Claude key in ⚙.";
+      el.appendChild(note);
+    }
+
     $("chat-send").addEventListener("click", sendChat);
     chatInput.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
@@ -9813,7 +10034,10 @@ ${joined}`)(...vs);
       }
       sendChat();
     });
-    addMsg("bot", "Hi! Try “make a box with a cone on top”. I handle simple shapes myself — add an API key in ⚙ for the full experience.");
+    // Honest about what the default is: a hardcoded helper, not an AI. The
+    // free in-browser model is the no-friction upgrade path, so it gets named.
+    // (addMsg is textContent by design — set HTML on the returned node.)
+    addMsg("bot", "").innerHTML = "Hi! I'm in <b>light mode</b> — a small built-in helper that only knows simple shapes (try “make a box with a cone on top”). For a real AI, open ⚙: <b>In your browser</b> is free with no key and no install (a one-time ~1 GB download), or paste a Gemini / Claude API key.";
 
     // Handle for the console: brepscript.scene, .camera, .rebuild(), etc.
     Object.assign(window.brepscript, {

@@ -28,6 +28,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.84",
     "brep-io-kernel": "^1.0.306",
     "bwip-js": "^4.11.2",
     "nodemailer": "^9.0.3",
