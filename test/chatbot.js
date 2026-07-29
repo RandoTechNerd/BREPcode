@@ -566,6 +566,13 @@ console.log("\nmodel ranking\n");
     && body.stream === true && body.messages[0].role === "system" && body.messages[1].content === "a cube");
   const models = extractModels("local", { data: [{ id: "bonsai-27b" }, { id: "qwen2.5" }] });
   check("local model list extracts", models.join() === "bonsai-27b,qwen2.5");
+  // Bionic/LM Studio list embedding models too — auto-picking one as the
+  // chat default answers nothing, so they never reach the dropdown
+  const mixed = extractModels("local", { data: [
+    { id: "ternary-bonsai-27b" }, { id: "text-embedding-nomic-embed-text-v1.5" }, { id: "whisper-large-v3" },
+  ] });
+  check("embedding/audio models are filtered from the local list",
+    mixed.join() === "ternary-bonsai-27b", mixed.join());
 }
 {
   const events = [

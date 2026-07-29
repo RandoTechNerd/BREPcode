@@ -1208,8 +1208,14 @@ export function extractModels(provider, json) {
       .sort()
       .reverse();
   }
-  if (provider === "claude" || provider === "local") {
+  if (provider === "claude") {
     return (json?.data ?? []).map((m) => m.id).filter(Boolean);
+  }
+  if (provider === "local") {
+    // local servers list EVERYTHING loaded, embedding models included — and
+    // an embedding model auto-picked as the chat default answers nothing
+    return (json?.data ?? []).map((m) => m.id)
+      .filter((id) => id && !/embed|rerank|whisper|clip\b/i.test(id));
   }
   return [];
 }
