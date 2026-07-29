@@ -703,6 +703,26 @@ function makeEnv(langBox) {
 // ----------------------------------------------------------------- parser
 
 export function fromPython(src) {
+  // Structure checks run BEFORE tokenizing: builder-mode code is full of
+  // characters the tokenizer refuses (the @ position operator, f-strings),
+  // and "unexpected @" is a terrible answer to a whole with-block. The
+  // helpful diagnosis has to win the race.
+  if (/^(?:[ \t]+)\S/m.test(src.replace(/\(([^()]|\([^()]*\))*\)/gs, "()"))) {
+    if (/\bwith\s+Build(Part|Sketch|Line)/.test(src)) {
+      throw new Error('build123d BUILDER mode ("with BuildPart() as …") isn\'t supported — ask your AI for '
+        + '"build123d ALGEBRA mode, flat statements, no with-blocks" and it will produce code that runs here. '
+        + "Algebra style: sketch = Rectangle(30, 20); sketch = fillet(sketch.vertices(), radius=3); "
+        + "sketch -= SlotOverall(15, 5); part = extrude(sketch, amount=10) - Hole(5)");
+    }
+    if (/\bfor\b[^\n]*\bin\b[^\n]*Locations\s*\(/.test(src)) {
+      throw new Error("for-loops aren't supported — multiply the locations by the shape instead: holes += GridLocations(25, 15, 2, 2) * Circle(2.5)");
+    }
+    throw new Error("Indented Python blocks (if/for/def/with) aren't supported — keep it to flat assignments like part = Box(20, 20, 10) - Cylinder(5, 12)");
+  }
+  if (src.includes("@")) {
+    throw new Error('the build123d "@" position operator (line @ 1) isn\'t supported — use explicit coordinates: the arc\'s end point is just the (x, y) you gave it');
+  }
+
   const toks = tokenize(src);
   let p = 0;
   const peek = () => toks[p];
@@ -720,16 +740,8 @@ export function fromPython(src) {
   const vars = Object.create(null);
   let lastShape = null;
 
-  // if any statement line is indented, there's a block structure we don't do
-  if (/^(?:[ \t]+)\S/m.test(src.replace(/\(([^()]|\([^()]*\))*\)/gs, "()"))) {
-    if (/\bwith\s+Build(Part|Sketch|Line)/.test(src)) {
-      throw new Error('build123d builder mode ("with BuildPart() as …") isn\'t supported — use algebra mode instead: part = Box(30, 30, 12) - Pos(0, 0, -1) * Cylinder(8, 14)');
-    }
-    if (/\bfor\b[^\n]*\bin\b[^\n]*Locations\s*\(/.test(src)) {
-      throw new Error("for-loops aren't supported — multiply the locations by the shape instead: holes += GridLocations(25, 15, 2, 2) * Circle(2.5)");
-    }
-    throw new Error("Indented Python blocks (if/for/def/with) aren't supported — keep it to flat assignments like part = Box(20, 20, 10) - Cylinder(5, 12)");
-  }
+  // (block-structure and @-operator checks run at the top of fromPython,
+  // BEFORE tokenize — the tokenizer's "unexpected @" must never outrun them)
 
   function atom() {
     const t = next();

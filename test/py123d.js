@@ -98,7 +98,7 @@ try {
   fromPython(`with BuildPart() as bp:\n    Box(10, 10, 10)`);
   check("builder mode errors helpfully", false, "no error");
 } catch (e) {
-  check("builder mode errors helpfully", /algebra mode/.test(e.message), e.message.slice(0, 60));
+  check("builder mode errors helpfully", /ALGEBRA mode/.test(e.message), e.message.slice(0, 60));
 }
 try {
   fromPython(`import cadquery as cq\nr = cq.Workplane("XY").box(10,10,10).faces(">Z").workplane().hole(4)`);
@@ -274,6 +274,25 @@ try {
   check("sweep refuses by name with a way forward", false, "no error");
 } catch (e) {
   check("sweep refuses by name with a way forward", /sweep\(\)/.test(e.message) && /hull/.test(e.message), e.message.slice(0, 80));
+}
+try {
+  // builder mode full of @ operators — the diagnosis must beat the tokenizer
+  fromPython(`from build123d import *
+with BuildLine() as my_1d_wire:
+    l1 = Line((0, 0), (10, 0))
+    a1 = TangentArc(l1 @ 1, (20, 10), tangent=(1, 1))
+with BuildPart() as my_3d_part:
+    extrude(amount=10)`);
+  check("builder mode with @ gets the algebra guide, not 'unexpected @'", false, "no error");
+} catch (e) {
+  check("builder mode with @ gets the algebra guide, not 'unexpected @'",
+    /ALGEBRA mode/.test(e.message) && !/unexpected/i.test(e.message), e.message.slice(0, 80));
+}
+try {
+  fromPython(`from build123d import *\np = Line((0,0),(10,0)) @ 1`);
+  check("a flat @ explains the position operator", false, "no error");
+} catch (e) {
+  check("a flat @ explains the position operator", /position operator/.test(e.message), e.message.slice(0, 80));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
