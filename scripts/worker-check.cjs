@@ -358,8 +358,8 @@ app.whenReady().then(async () => {
       swap.heldPreview > 3 && swap.blank === 0, JSON.stringify(swap));
     check("...and the status says so while it waits",
       /preview stays until it's ready/.test(swap.busyText), swap.busyText);
-    check("...then the built model replaces it", /^ok\|/.test("ok|") && swap.afterModel > 0 && swap.afterVisible,
-      JSON.stringify(swap));
+    check("...then the built model replaces it",
+      swap.afterModel > 0 && swap.afterVisible && /\bsolid/.test(swap.status), JSON.stringify(swap));
     check("...with the preview's triangles gone, not left underneath",
       swap.afterTris < 100000, `${swap.afterTris} triangles left in the scene`);
 
