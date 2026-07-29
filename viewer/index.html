@@ -498,12 +498,17 @@
        compositor guarantee, more story. #spin is just its slot now. The cube
        draws its 3D content a touch above its own box (the iso tilt), so the
        slot rides slightly LOW to sit the cube on the text's centre line. */
-    #spin { display: none; flex: none; position: relative; top: 4px; margin: 0 8px 0 2px; }
+    /* top 2px, not 4: the spinning corners overhang the box and were kissing
+       the bar's bottom edge mid-revolution */
+    #spin { display: none; flex: none; position: relative; top: 2px; margin: 0 8px 0 2px; }
     #status.busy #spin { display: inline-block; }
     /* the laser cube pops its faces ~half a width beyond its box mid-cycle,
        so the editor slot stays small and the margins absorb the overflow */
     #spin .bcube-wrap { --bc: 18; display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* the chat bubble's build cube gets the same tiny lift — its spin
+       corners were grazing the bubble's bottom edge */
+    #chat-msgs .bcube-wrap { position: relative; top: -2px; }
     /* local-server setup help: the OS tabs */
     .lsh-tab.active { background: var(--border); color: #fff; }
     /* the chat waiting label, once real progress is streaming in */
