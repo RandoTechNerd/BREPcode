@@ -23,6 +23,7 @@
     "test:desktop": "electron test/desktop-smoke.cjs",
     "recipes": "node scripts/recipes-manifest.mjs",
     "test:gizmo": "electron scripts/gizmo-check.cjs",
+    "test:worker": "node build-site.mjs && electron scripts/worker-check.cjs",
     "test:api": "node scripts/api-conformance.mjs"
   },
   "license": "MIT",

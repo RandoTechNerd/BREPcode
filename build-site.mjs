@@ -16,7 +16,24 @@ import { dirname, join, posix } from "node:path";
 import JSZip from "jszip";
 
 const OUT = "dist-site";
-rmSync(OUT, { recursive: true, force: true });
+// Windows keeps a directory undeletable while anything holds a handle inside
+// it — an Electron run that was killed hard, a virus scanner, a shell sitting
+// in the folder. Refusing to build over that turned a stale handle into "the
+// site build is broken", so a clean that cannot finish falls back to emptying
+// what it can: every file the build writes is overwritten anyway.
+try {
+  rmSync(OUT, { recursive: true, force: true });
+} catch (e) {
+  console.log(`  note: couldn't remove ${OUT} (${e.code}) — clearing its files instead`);
+  const empty = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const p = join(dir, entry);
+      if (statSync(p).isDirectory()) { empty(p); try { rmSync(p, { recursive: true }); } catch { /* held */ } }
+      else try { rmSync(p); } catch { /* held */ }
+    }
+  };
+  try { empty(OUT); } catch { /* best-effort */ }
+}
 mkdirSync(join(OUT, "src"), { recursive: true });
 mkdirSync(join(OUT, "vendor", "three", "jsm", "controls"), { recursive: true });
 mkdirSync(join(OUT, "vendor", "kernel"), { recursive: true });
@@ -55,6 +72,10 @@ const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), tex
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
   "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js",
+  // the build worker: loaded by URL rather than imported, so nothing else
+  // references it — leaving it out ships a site that silently falls back to
+  // freezing the main thread on every build.
+  "kernel-worker.js",
   ...(WITH_KEY ? ["locked-key.js"] : [])];
 
 // Stamp the build into the version tooltip: hovering the version in About

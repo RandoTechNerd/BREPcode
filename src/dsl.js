@@ -1099,7 +1099,15 @@ export function fins(opts, ...children) {
     // running out to a hair short of the part. Starting it inside is the whole
     // trick — no lean, angle or height can open a gap between fin and sprue,
     // because the two overlap by construction. Flat on top so it prints as a
-    // clean ledge; the underside slopes up to meet the tip.
+    // clean ledge.
+    //
+    // The underside climbs at 45° OR STEEPER, never shallower. These print in
+    // mid-air by definition — a sprue whose belly rises at 20° is a drooping
+    // string of plastic, not a support. So the tooth's height grows with its
+    // horizontal run: a long finger reaching a recessed face becomes a tall
+    // 45° ramp, which is exactly what makes it printable. Near the bed the
+    // rise is clamped so the tooth never dives below z=0 — a nub that low can
+    // bridge off the bed anyway.
     for (const s of zs) {
       if (s.z > H + 0.5) continue;                 // a nub above ITS fin's plate
       const edge = innerX(s.z);
@@ -1107,8 +1115,9 @@ export function fins(opts, ...children) {
       // bite far enough into the plate to weld, but never out through its back
       const room = Math.max(0, outerX(s.z) - edge);
       const root = edge + Math.max(0.8, Math.min(4, room * 0.6));
-      const h = Math.max(0.6, toothH);
-      parts.push(inPlane([[root, s.z - h], [root, s.z], [tip, s.z]], toothT));
+      const run = root - tip;                       // horizontal travel of the underside
+      const rise = Math.max(Math.max(0.6, toothH), Math.min(run, Math.max(0.4, s.z - 0.2)));
+      parts.push(inPlane([[root, s.z - rise], [root, s.z], [tip, s.z]], toothT));
     }
     return union(...parts);
   };

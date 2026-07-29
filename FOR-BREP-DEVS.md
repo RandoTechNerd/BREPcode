@@ -198,6 +198,21 @@ Minor expectation mismatch: the bin just static-serves `dist/`. Coming from Open
 `brep-io-kernel model.js -o out.stl`. Might be worth a line in the README clarifying that it's an app
 server, not a build tool. (This gap is basically why I wrote mine.)
 
+### In a Web Worker the kernel takes its Node path
+
+I now run `runHistory()` in a module worker so long builds don't freeze the page, and the kernel
+works there — but it decides it's running under Node with `typeof window === "undefined"`, which is
+also true in a worker. It then reaches for `await import("node:module")`, and the browser refuses:
+
+```
+Access to script at 'node:module' from origin '...' has been blocked by CORS policy
+```
+
+It's caught, so nothing breaks — but every worker logs a scary CORS error, and it sent me looking
+for a load failure that wasn't there. A worker-aware check (`typeof process?.versions?.node ===
+"string"`, the way the bundled `manifold-*.js` already does it) would avoid the noise. The same
+`typeof window` test guards the vfs storage path, which also fails and falls back to in-memory.
+
 ### The kernel bundles its own three.js
 
 Not a bug, but a sharp edge for anyone rendering kernel output in their own scene: meshes created by

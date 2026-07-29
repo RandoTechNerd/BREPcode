@@ -1936,6 +1936,175 @@
     const getKernel = () => (_kernel ??= import("/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js"));
     getKernel();
 
+    // ---- the kernel's heavy half, off the main thread ---------------------
+    //
+    // runHistory() is the one genuinely expensive call in the app, and it is
+    // superlinear in triangles: ~0.15s for 768, ~2s for 3k, 30s+ for 12k. On
+    // the main thread that is a frozen window — no spinner, no typing, no
+    // cancel — and past ~20s the browser raises its own "Page Unresponsive"
+    // dialog, which no page can suppress or extend. Off the main thread it is
+    // simply a build that takes a while: the UI keeps painting, the editor
+    // keeps accepting characters, and a superseded build can be CANCELLED for
+    // real by terminating the worker mid-boolean.
+    //
+    // It is not faster. It is uninterruptible instead of unresponsive.
+    //
+    // The fallback matters as much as the feature: if a worker can't be made
+    // (old browser, hostile CSP, file:// page) every build still runs the old
+    // synchronous way, so nothing here is load-bearing for correctness.
+    class WorkerGone extends Error {}     // infrastructure died — not a bad model
+    let kernelWorker = null, workerSeq = 0, workerOut = false, workerProven = false;
+    // Bumped every time a worker is thrown away. The built solids live inside
+    // one particular worker, so anything holding "the worker has my model"
+    // has to record WHICH worker — a cancelled build takes the cache with it.
+    let workerEpoch = 0;
+    let workerError = "";                 // why it went away, for diagnosis
+    // A message posted in the same tick as `new Worker(...)` can be dropped —
+    // silently, with no error and no reply, leaving a build that never returns.
+    // (It cost most of an evening: the warm-up ping vanished every time, and
+    // after a cancelled build the replacement worker lost the build message too
+    // and the app sat on "Building…" forever.) So nothing is posted until the
+    // worker itself says it is listening; until then messages wait here.
+    let workerReady = false;
+    let workerOutbox = [];
+    // Turned on by ?workerdebug or by setting brepcode-worker-debug in local
+    // storage, this makes the worker narrate its lifecycle and each build stage
+    // to the console. A build that never comes back is otherwise invisible —
+    // there is no stack to look at, just silence.
+    const WORKER_DEBUG = /[?&]workerdebug/.test(location.search)
+      || !!(() => { try { return localStorage.getItem("brepcode-worker-debug"); } catch { return null; } })();
+    const workerPending = new Map();
+
+    // `broken` separates the two reasons a worker goes away. A worker we CHOSE
+    // to throw away (a cancelled build) is healthy and gets replaced; a worker
+    // that failed on its way up is not, and if it never worked even once we
+    // stop paying the spawn cost on every future build.
+    //
+    // Conflating those two disabled the worker permanently the first time a
+    // build was superseded — which, since the starter cube builds at boot and
+    // the next keystroke supersedes it, meant essentially always.
+    function dropWorker(msg, { broken = false, permanent = false } = {}) {
+      if (WORKER_DEBUG) console.log(`[page] drop worker: ${msg} (${workerPending.size} pending)`);
+      const gone = new WorkerGone(msg);
+      for (const [, p] of workerPending) p.reject(gone);
+      workerPending.clear();
+      workerOutbox = [];
+      workerReady = false;
+      try { kernelWorker?.terminate(); } catch { /* already gone */ }
+      kernelWorker = null;
+      workerEpoch++;
+      // Stop trying only when the worker is genuinely unusable: it broke before
+      // it ever worked, or something asked for it to be off for good.
+      if (permanent || (broken && !workerProven)) workerOut = true;
+    }
+
+    function getBuildWorker() {
+      if (workerOut) return null;
+      if (kernelWorker) return kernelWorker;
+      try {
+        // Resolved against this document, so it works both in the dev tree
+        // (/viewer/kernel-worker.js) and on the built site (/kernel-worker.js).
+        const url = new URL("kernel-worker.js", import.meta.url);
+        if (WORKER_DEBUG) { url.search = "debug=1"; console.log("[page] spawning build worker"); }
+        kernelWorker = new Worker(url, { type: "module" });
+        kernelWorker.onmessage = ({ data }) => {
+          if (data?.ready) {                    // the handshake — safe to post now
+            workerReady = true;
+            const queued = workerOutbox;
+            workerOutbox = [];
+            for (const q of queued) postToWorker(q);
+            return;
+          }
+          const p = workerPending.get(data?.id);
+          if (!p) return;                       // a reply to a cancelled build
+          workerPending.delete(data.id);
+          workerProven = true;
+          if (data.ok) p.resolve(data);
+          else p.reject(new Error(data.error || "the build worker failed"));
+        };
+        // A module worker that can't load its script reports here and nowhere
+        // else — treat it as infrastructure, never as a broken model.
+        kernelWorker.onerror = (e) => {
+          workerError = [e?.message, e?.filename, e?.lineno].filter(Boolean).join(" @ ")
+            || "the build worker could not start";
+          dropWorker(workerError, { broken: true });
+        };
+        kernelWorker.onmessageerror = () =>
+          dropWorker("the build worker sent something unreadable", { broken: true });
+        // Merely constructing it starts the kernel import — an 11MB parse the
+        // worker cannot share with the page. Doing that now rather than on the
+        // first build keeps it off the critical path.
+        //
+        // If the handshake never arrives the worker is unusable, and waiting
+        // forever is the one failure the whole feature exists to prevent: give
+        // up and let the synchronous path take over.
+        const spawned = kernelWorker;
+        setTimeout(() => {
+          if (kernelWorker === spawned && !workerReady) {
+            workerError = "the build worker never finished loading";
+            dropWorker(workerError, { broken: true });
+          }
+        }, 60000);
+      } catch (e) {
+        workerError = String(e?.message || e);
+        workerOut = true;
+        kernelWorker = null;
+        return null;
+      }
+      return kernelWorker;
+    }
+
+    // Cancel whatever the worker is chewing on. The worker is single-threaded,
+    // so a second build posted during a long one would just queue behind it —
+    // which is how typing during a 30s build would cost 60s. Terminating is the
+    // only way to actually stop the kernel mid-run.
+    //
+    // But a fresh worker has to re-import the kernel (~11MB of parse it can't
+    // share with the page), so killing one is far from free. A build that has
+    // only just started is left alone: it finishes in less time than a respawn
+    // would take, its result is discarded by the build token, and the newer
+    // build runs straight after it. Only a build long enough to be worth the
+    // respawn actually gets killed.
+    let workerBuildId = 0, workerBuildStart = 0;
+    const CANCEL_WORTH_IT_MS = 1500;
+    function cancelWorkerBuild() {
+      // Only an actual BUILD is worth killing a worker over. This used to fire
+      // on any pending message, so the warm-up ping sent at spawn counted — and
+      // the first keystroke of the session threw away the worker that was still
+      // loading the kernel, over and over.
+      if (!kernelWorker || !workerBuildId || !workerPending.has(workerBuildId)) return;
+      if (performance.now() - workerBuildStart < CANCEL_WORTH_IT_MS) return;
+      dropWorker("build cancelled");
+    }
+
+    function postToWorker(item) {
+      if (WORKER_DEBUG) console.log(`[page] post ${item.msg?.op} #${item.msg?.id}`);
+      try { kernelWorker.postMessage(item.msg, item.transfer || []); }
+      catch (e) {
+        workerPending.delete(item.msg.id);
+        item.reject(new WorkerGone(String(e?.message || e)));
+      }
+    }
+
+    function workerCall(msg, transfer) {
+      const w = getBuildWorker();
+      if (!w) return Promise.reject(new WorkerGone("no build worker available"));
+      const id = ++workerSeq;
+      if (msg?.op === "build") { workerBuildId = id; workerBuildStart = performance.now(); }
+      return new Promise((resolve, reject) => {
+        workerPending.set(id, { resolve, reject });
+        const item = { msg: { ...msg, id }, transfer, reject };
+        if (workerReady) postToWorker(item);
+        else {
+          if (WORKER_DEBUG) console.log(`[page] queue ${msg?.op} #${id} (worker still loading)`);
+          workerOutbox.push(item);
+        }
+      });
+    }
+    // Spawn it now, in parallel with everything else the page is starting, so
+    // the kernel is already in memory over there when the first model builds.
+    getBuildWorker();
+
     let _curved, _trace, _lock;
     const getCurved = () => (_curved ??= import("./curved.js"));
     const getTrace = () => (_trace ??= import("./trace.js"));
@@ -2656,46 +2825,73 @@
     // Only FACE children hold real surface geometry. EDGE children also report
     // isMesh === true, but they carry a LineMaterial and their vertex buffer is
     // fat-line data, not positions — adopting those yields junk quads at the origin.
-    function adoptSolid(solid, validIds = null) {
-      solid.updateWorldMatrix?.(true, true);
+    // One solid's FACE buffers become meshes here — and this is the ONLY place
+    // that happens, whether the faces came off a kernel solid on this thread or
+    // arrived as transferred buffers from the build worker. Two copies of the
+    // feature-id parsing would drift, and the click-map is exactly the thing
+    // nobody notices is wrong until a drag edits the wrong line of code.
+    //
+    // `owned` says the arrays belong to us already (transferred from the
+    // worker, referenced by nothing else), so they can be used in place instead
+    // of copied — applyMatrix4 writes through them.
+    function adoptFaceData(solidName, faces, validIds = null, owned = false) {
       const out = [];
-      solid.traverse?.((o) => {
-        const pos = o?.geometry?.attributes?.position;
-        if (o.type !== "FACE" || !o.isMesh || !pos) return;
-
+      for (const f of faces) {
+        if (!f?.positions) continue;
         // Face names carry the originating feature id: "P.CU1_NX" (suffix after
         // "_"), "E3:S2:PROFILE" (after ":"), or — single-face solids like the
         // sphere — the bare id "P.S1" with no separator at all. Missing that
         // last case once made spheres completely unclickable.
-        const nm = typeof o.name === "string" ? o.name : "";
+        const nm = typeof f.name === "string" ? f.name : "";
         const cuts = [nm.indexOf("_"), nm.indexOf(":")].filter((i) => i > 0);
         let featureId = nm ? (cuts.length ? nm.slice(0, Math.min(...cuts)) : nm) : null;
         // Imported meshes name faces "STL_FACE_5" with no feature prefix at
         // all — fall back to the owning solid's id when the parse is bogus.
-        if (validIds && featureId && !validIds.has(featureId) && validIds.has(solid.name)) {
-          featureId = solid.name;
+        if (validIds && featureId && !validIds.has(featureId) && validIds.has(solidName)) {
+          featureId = solidName;
         }
 
         const g = new THREE.BufferGeometry();
-        g.setAttribute("position", new THREE.BufferAttribute(Float32Array.from(pos.array), pos.itemSize));
+        const pos = owned ? f.positions : Float32Array.from(f.positions);
+        g.setAttribute("position", new THREE.BufferAttribute(pos, f.itemSize || 3));
 
-        const nrm = o.geometry.attributes.normal;
-        if (nrm) g.setAttribute("normal", new THREE.BufferAttribute(Float32Array.from(nrm.array), nrm.itemSize));
-
-        const idx = o.geometry.index;
-        if (idx) g.setIndex(new THREE.BufferAttribute(Uint32Array.from(idx.array), 1));
-
-        if (o.matrixWorld?.elements) {
-          g.applyMatrix4(new THREE.Matrix4().fromArray(Array.from(o.matrixWorld.elements)));
+        if (f.normals) {
+          const nrm = owned ? f.normals : Float32Array.from(f.normals);
+          g.setAttribute("normal", new THREE.BufferAttribute(nrm, f.normalSize || 3));
         }
-        if (!nrm) g.computeVertexNormals();
+        if (f.index) {
+          g.setIndex(new THREE.BufferAttribute(owned ? f.index : Uint32Array.from(f.index), 1));
+        }
+        if (f.matrix) g.applyMatrix4(new THREE.Matrix4().fromArray(f.matrix));
+        if (!f.normals) g.computeVertexNormals();
         g.computeBoundingBox();
         g.computeBoundingSphere();
         const mesh = new THREE.Mesh(g, matForFeature(featureId));
         mesh.userData.featureId = featureId;
         out.push(mesh);
-      });
+      }
       return out;
+    }
+
+    function adoptSolid(solid, validIds = null) {
+      solid.updateWorldMatrix?.(true, true);
+      const faces = [];
+      solid.traverse?.((o) => {
+        const pos = o?.geometry?.attributes?.position;
+        if (o.type !== "FACE" || !o.isMesh || !pos) return;
+        const nrm = o.geometry.attributes.normal;
+        const idx = o.geometry.index;
+        faces.push({
+          name: typeof o.name === "string" ? o.name : "",
+          positions: pos.array, itemSize: pos.itemSize,
+          normals: nrm ? nrm.array : null, normalSize: nrm?.itemSize ?? 3,
+          index: idx ? idx.array : null,
+          matrix: o.matrixWorld?.elements ? Array.from(o.matrixWorld.elements) : null,
+        });
+      });
+      // owned:false — these arrays belong to the kernel's own geometry, and
+      // applyMatrix4 would rewrite the model in place.
+      return adoptFaceData(typeof solid.name === "string" ? solid.name : "", faces, validIds, false);
     }
 
     // ------------------------------------------- negative-shape outlines
@@ -2735,8 +2931,28 @@
         const ph = new PartHistory();
         const trace = [];
         await dsl.compile(lastShape, ph, trace, { keepCutters: true });
-        await ph.runHistory({ throwOnFeatureError: true });
         if (mine !== negToken) return;
+        // The overlay build is a SECOND full run of the model — every bit as
+        // expensive as the first. It rides its own key in the worker so it
+        // never evicts the model the exporters read from.
+        let solids = null, fromWorker = false;
+        let json = null;
+        if (!workerOut) { try { json = await ph.toJSON(); } catch { json = null; } }
+        if (json && getBuildWorker()) {
+          try {
+            const r = await workerCall({ op: "build", key: "cutters", json });
+            if (mine !== negToken) return;
+            solids = r.solids;
+            fromWorker = true;
+          } catch (e) {
+            if (mine !== negToken || !(e instanceof WorkerGone)) return;   // best-effort overlay
+          }
+        }
+        if (!solids) {
+          await ph.runHistory({ throwOnFeatureError: true });
+          if (mine !== negToken) return;
+          solids = (ph.scene?.children || []).filter((o) => o?.type === "SOLID");
+        }
         const negIds = new Set(trace.filter((t) => t.negative).map((t) => t.id));
         if (!negIds.size) return;
         const bb = new THREE.Box3().setFromObject(modelGroup);
@@ -2746,8 +2962,10 @@
           transparent: true, opacity: 0.95, depthTest: false,
         });
         const validIds = new Set(trace.map((t) => t.id));
-        for (const s of (ph.scene?.children || []).filter((o) => o?.type === "SOLID")) {
-          for (const mesh of adoptSolid(s, validIds)) {
+        for (const s of solids) {
+          const meshes = fromWorker ? adoptFaceData(s.name, s.faces, validIds, true)
+                                    : adoptSolid(s, validIds);
+          for (const mesh of meshes) {
             if (negIds.has(mesh.userData.featureId)) {
               const line = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 25), mat);
               line.computeLineDistances();
@@ -4334,7 +4552,11 @@ ${joined}`)(...vs);
 
     let featureMap = null;   // featureId -> {kind, start, end} in the editor text
     let mapText = null;      // the exact editor text featureMap was computed against
-    let lastSolids = [];     // kernel solids from the last successful build (for export)
+    let lastSolids = [];     // last successful build: kernel solids, or the worker's face records
+    let workerHasModel = false;  // …and if the exportable solids are in the worker
+    let modelEpoch = -1;         // which worker instance is holding them
+    const workerHoldsModel = () =>
+      workerHasModel && !!kernelWorker && modelEpoch === workerEpoch;
     let modelIsImport = false;   // imported meshes: drag orbits instead of manipulating
     let lastFeatures = [];   // the kernel feature history from that build
 
@@ -4359,7 +4581,8 @@ ${joined}`)(...vs);
         clearHandles();
         clearSplit();
         clearOutlines();
-        featureMap = null; mapText = null; lastSolids = [];
+        featureMap = null; mapText = null; lastSolids = []; workerHasModel = false;
+        cancelWorkerBuild();          // nothing to build — stop any run in flight
         lastShape = null;
         clearNegatives();
         seatGrid();
@@ -4392,13 +4615,20 @@ ${joined}`)(...vs);
       try {
         const est = dsl.estimateBuild(shape);
         if (est.sec > 8) {
-          setStatus("busy", `heavy model (~${(est.tris / 1000).toFixed(0)}k triangles) — roughly ${Math.round(est.sec)}s, the app will pause…`);
-          // The browser can't tell "working hard" from "hung", so past ~20s it
-          // may raise its own Page Unresponsive dialog. We can't suppress that
-          // (no page can) — but a user who was TOLD to expect it and to press
-          // Wait reads it as weather, not a crash.
+          // Two different warnings, because they describe two different
+          // experiences. In the worker the app simply keeps working while the
+          // build runs; on the fallback path the window really does freeze.
+          const offThread = !workerOut;
+          setStatus("busy", `heavy model (~${(est.tris / 1000).toFixed(0)}k triangles) — roughly ${Math.round(est.sec)}s`
+            + (offThread ? ", building in the background…" : ", the app will pause…"));
           if (est.sec > 20) {
-            hint.innerHTML = `⏳ Heavy build (~${Math.round(est.sec)}s). The window will freeze while the kernel works — that's normal. If the browser pops up <b>"Page Unresponsive"</b>, choose <b>Wait</b>; the build is running, not stuck. The result appears when it's done.`;
+            hint.innerHTML = offThread
+              ? `⏳ Heavy build (~${Math.round(est.sec)}s), running off the main thread — keep typing, spin the view, the app stays live. The model appears when the kernel finishes.`
+              // The browser can't tell "working hard" from "hung", so past ~20s
+              // it may raise its own Page Unresponsive dialog. We can't suppress
+              // that (no page can) — but a user who was TOLD to expect it and to
+              // press Wait reads it as weather, not a crash.
+              : `⏳ Heavy build (~${Math.round(est.sec)}s). The window will freeze while the kernel works — that's normal. If the browser pops up <b>"Page Unresponsive"</b>, choose <b>Wait</b>; the build is running, not stuck. The result appears when it's done.`;
           }
           await new Promise((r) => setTimeout(r, 30));   // let that paint first
         }
@@ -4428,12 +4658,50 @@ ${joined}`)(...vs);
         const { PartHistory } = await getKernel();
         const ph = new PartHistory();
         const trace = [];
+        // compile() only builds the feature list — cheap, and it's what produces
+        // the trace the click-map and the colours are keyed to. The expensive
+        // half is runHistory(), and that is what goes to the worker.
         await dsl.compile(shape, ph, trace);
-        await ph.runHistory({ throwOnFeatureError: true });
-        if (mine !== token) return;                       // superseded while building
+        if (mine !== token) return;
 
-        const solids = (ph.scene?.children || []).filter((o) => o?.type === "SOLID");
+        // A build in the worker: hand it the history as JSON, get face buffers
+        // back. `solids` ends up holding either kernel solids (local build) or
+        // the worker's plain {name, faces} records — adoptFaceData takes both.
+        let solids = null;
+        let fromWorker = false;
+        let json = null;
+        if (!workerOut) { try { json = await ph.toJSON(); } catch { json = null; } }
+        if (WORKER_DEBUG) console.log(`[page] history serialized: ${json ? json.length + " chars" : "FAILED"}`);
+        // An older build still running is dropped — for real, mid-boolean —
+        // rather than left to finish into a result nobody wants while this one
+        // queues behind it.
+        cancelWorkerBuild();
+        if (json && getBuildWorker()) {
+          try {
+            const r = await workerCall({ op: "build", key: "model", json });
+            if (mine !== token) return;
+            solids = r.solids;
+            fromWorker = true;
+          } catch (e) {
+            if (mine !== token) return;             // cancelled by a newer build
+            // A worker that died is infrastructure and we quietly build here
+            // instead. A worker that ANSWERED with an error is the model's own
+            // build error and must be reported as one — rerunning it on this
+            // thread would just freeze the page to reach the same failure.
+            if (!(e instanceof WorkerGone)) throw e;
+          }
+        }
+        if (!solids) {
+          await ph.runHistory({ throwOnFeatureError: true });
+          if (mine !== token) return;                     // superseded while building
+          solids = (ph.scene?.children || []).filter((o) => o?.type === "SOLID");
+        }
         lastSolids = solids;
+        // Where the exportable geometry lives right now. The worker keeps its
+        // solids alive after the build precisely so STL/STEP can be written
+        // without shipping every face back or rebuilding.
+        workerHasModel = fromWorker;
+        modelEpoch = workerEpoch;
         // imported meshes are expensive to re-bake, so their manipulation is
         // disabled — dragging just orbits the camera around them instead.
         modelIsImport = /importedMesh\s*\(/.test(code.value);
@@ -4451,7 +4719,10 @@ ${joined}`)(...vs);
         }
         const validIds = new Set(trace.map((t) => t.id));
         for (const s of solids) {
-          for (const mesh of adoptSolid(s, validIds)) {
+          const meshes = fromWorker
+            ? adoptFaceData(s.name, s.faces, validIds, true)   // buffers are ours
+            : adoptSolid(s, validIds);
+          for (const mesh of meshes) {
             modelGroup.add(mesh);
             const g = mesh.geometry;
             tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
@@ -6174,11 +6445,55 @@ ${joined}`)(...vs);
     }
 
     reflectAnchor();
-    // Export what's on screen as ASCII STL (same path the CLI uses).
-    function exportSTL() {
+    // Export what's on screen as ASCII STL (same path the CLI uses). Async
+    // because after a worker build the solids live in the worker — it keeps
+    // them alive after the build precisely so this costs a message, not a
+    // rebuild.
+    async function exportSTL(retry = true) {
+      if (!lastSolids.length) return null;
+      if (workerHasModel) {
+        try {
+          // A cancelled build takes the worker — and its solids — with it.
+          if (!workerHoldsModel()) throw new WorkerGone("the build worker was restarted");
+          const r = await workerCall({ op: "stl", key: "model", tolerance: 6 });
+          return r.text || null;
+        } catch (e) {
+          if (!(e instanceof WorkerGone) || !retry) throw e;
+          // The worker died holding the only copy of the solids. Rebuild once
+          // and try again — an export is a deliberate act, so a pause here is
+          // acceptable where it would never be while typing.
+          setStatus("busy", "Rebuilding the model to export it…");
+          await rebuild();
+          return exportSTL(false);
+        }
+      }
       const usable = lastSolids.filter((s) => typeof s.toSTL === "function");
       if (!usable.length) return null;
       return usable.map((s, i) => s.toSTL(s.name || `solid_${i}`, 6)).join("\n");
+    }
+
+    // Faceted STEP — the kernel's own writer, run wherever the solids are. It
+    // wants live solid objects, so after a worker build it has to run THERE;
+    // shipping every face back to the page just to write a file would cost more
+    // than the export.
+    async function facetedSTEP(base, retry = true) {
+      if (workerHasModel) {
+        try {
+          if (!workerHoldsModel()) throw new WorkerGone("the build worker was restarted");
+          const r = await workerCall({ op: "step", key: "model", name: base });
+          return r.text;
+        } catch (e) {
+          if (!(e instanceof WorkerGone) || !retry) throw e;
+          setStatus("busy", "Rebuilding the model to export it…");
+          await rebuild();
+          return facetedSTEP(base, false);
+        }
+      }
+      const exp = await getExporters();
+      const generateSTEP = await exp.loadGenerateSTEP();
+      const res = generateSTEP(lastSolids, { name: base, precision: 6, applyWorldTransform: true });
+      if (!res?.data) throw new Error("STEP exporter returned no data.");
+      return res.data;
     }
 
     // The on-screen meshes grouped by resolved colour — the source for a
@@ -6365,7 +6680,7 @@ ${joined}`)(...vs);
         const distinct = new Set(groups.map((g) => g.color)).size;
         const opts = { source: code.value.trim() };
         const bytes = distinct > 1 ? exp.colored3MF(groups, base, opts)
-                                   : exp.stlTo3MF(exportSTL(), base, opts);
+                                   : exp.stlTo3MF(await exportSTL(), base, opts);
         const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
         if (!r?.ok) { setStatus("err", `Couldn't open the slicer: ${r?.error || "unknown error"}`); return; }
         setStatus("ok", `Opened ${base}.3mf in ${r.via === "orca" ? "OrcaSlicer" : "your default 3MF app"}.`);
@@ -6404,17 +6719,13 @@ ${joined}`)(...vs);
         const src = code.value.trim();
         if (fmt === "stl") {
           const exp = await getExporters();
-          size = download(`${base}.stl`, exp.stlWithSource(exportSTL(), src), "model/stl");
+          size = download(`${base}.stl`, exp.stlWithSource(await exportSTL(), src), "model/stl");
         } else if (fmt === "obj") {
           const exp = await getExporters();
-          size = download(`${base}.obj`, exp.stlToObj(exportSTL(), base), "text/plain");
+          size = download(`${base}.obj`, exp.stlToObj(await exportSTL(), base), "text/plain");
         } else if (fmt === "step") {
           setStatus("busy", "Generating STEP…");
-          const exp = await getExporters();
-          const generateSTEP = await exp.loadGenerateSTEP();
-          const res = generateSTEP(lastSolids, { name: base, precision: 6, applyWorldTransform: true });
-          if (!res?.data) throw new Error("STEP exporter returned no data.");
-          size = download(`${base}.step`, res.data, "application/step");
+          size = download(`${base}.step`, await facetedSTEP(base), "application/step");
         } else if (fmt === "3mf") {
           setStatus("busy", "Generating 3MF…");
           const exp = await getExporters();
@@ -6424,7 +6735,7 @@ ${joined}`)(...vs);
           const distinct = new Set(groups.map((g) => g.color)).size;
           size = download(`${base}.3mf`,
             distinct > 1 ? exp.colored3MF(groups, base, { source: src })
-                         : exp.stlTo3MF(exportSTL(), base, { source: src }),
+                         : exp.stlTo3MF(await exportSTL(), base, { source: src }),
             "model/3mf");
           if (distinct > 1) fixnote.innerHTML = `<span style="color:var(--muted3)">${distinct} colours written as a 3MF colour group — a multi-material slicer (Bambu, Prusa, Orca) will offer a filament per colour.</span>`;
         } else if (fmt === "step-curved") {
@@ -6773,6 +7084,7 @@ ${joined}`)(...vs);
       selected = null;
       clearHandles();
       lastSolids = [];
+      workerHasModel = false;
       lastShape = null;
       modelGroup.visible = false;
       objects.forEach((o, i) => {
@@ -8857,11 +9169,18 @@ ${joined}`)(...vs);
       // froze, user assumed a crash. Estimated off the tree, no kernel.
       try {
         const est = dsl.estimateBuild(evaluate(newCode));
-        if (est.sec > 18) {
+        // With the build off the main thread there is nothing to protect the
+        // user from until it gets genuinely long, so the gate moves out of the
+        // way. It stays tight on the fallback path, where a build really does
+        // take the whole app hostage.
+        const offThread = !workerOut;
+        if (est.sec > (offThread ? 45 : 18)) {
           saveSnapshot().catch(() => {});
           toggleCard(panel, openBtn, true);
           setStatus("ok", `heavy model ready — press Build (~${Math.round(est.sec)}s)`);
-          const el = addMsg("bot", `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). It's in the editor, ready when you are: `);
+          const el = addMsg("bot", offThread
+            ? `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s). It builds in the background so the app stays usable, but it's a long one, so it's in the editor waiting for you: `
+            : `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). It's in the editor, ready when you are: `);
           const b = document.createElement("button");
           b.className = "hist-btn";
           b.style.cssText = "margin-left:6px; font-weight:700";
@@ -9311,7 +9630,21 @@ ${joined}`)(...vs);
     addMsg("bot", "Hi! Try “make a box with a cone on top”. I handle simple shapes myself — add an API key in ⚙ for the full experience.");
 
     // Handle for the console: brepscript.scene, .camera, .rebuild(), etc.
-    Object.assign(window.brepscript, { THREE, scene, camera, renderer, controls, modelGroup, rebuild, dsl, exportSTL });
+    Object.assign(window.brepscript, {
+      THREE, scene, camera, renderer, controls, modelGroup, rebuild, dsl, exportSTL, facetedSTEP,
+      // Where the last build happened and whether the worker is still holding
+      // it — the only way an outside test can tell a real off-thread build from
+      // a silent fallback to the old synchronous path.
+      workerInfo: () => ({
+        live: !!kernelWorker, out: workerOut, proven: workerProven,
+        epoch: workerEpoch, hasModel: workerHasModel, holdsModel: workerHoldsModel(),
+        inFlight: workerPending.size, queued: workerOutbox.length,
+        ready: workerReady, error: workerError,
+      }),
+      // Test hook: force the fallback path, so the synchronous build stays
+      // covered instead of quietly rotting behind a worker that always works.
+      disableWorker: () => { dropWorker("disabled for testing", { permanent: true }); },
+    });
 
     updateHint();
 

@@ -331,6 +331,29 @@ const finMinX = (r) => {
   check("a sprue above its short fin is dropped", facets(r) > 30, `${facets(r)} facets`);
 }
 
+// ---- sprues print in mid-air: undersides must climb at >= 45° ---------------
+{
+  const volumeOf = (r) => {
+    const v = [...toSTL(r, "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    let vol = 0;
+    for (let i = 0; i < v.length; i += 3) {
+      const [a, b, c] = v.slice(i, i + 3);
+      vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+    return Math.abs(vol);
+  };
+  const one = (reach) => fins({
+    ...base, positions: [0], sprueAt: [[{ z: 20, reach }]],
+  }, part());
+  const shallow = volumeOf(await build(one(0.4)));
+  const deep = volumeOf(await build(one(8)));
+  // a long finger must be a tall 45° ramp: run ≈ reach + root-bite, so the
+  // tooth's cross-section grows ~quadratically with reach — far more volume
+  // than a stubby fixed-height tooth would add
+  check("a long-reach sprue grows into a 45° ramp", deep - shallow > 30,
+    `deep adds ${(deep - shallow).toFixed(1)}mm³`);
+}
+
 // ---- honest errors ----------------------------------------------------------
 throws("rejects a bad side", () => fins({ ...base, side: "up" }, part()), /side must be/);
 throws("rejects a missing at", () => fins({ side: "-x", count: 2 }, part()), /needs at:/);

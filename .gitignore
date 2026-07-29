@@ -10,6 +10,11 @@ BREPcode-site.zip
 # part of the source. Regenerate rather than commit.
 out/
 
+# Readouts from the Electron test harnesses (electron.exe is a GUI binary and
+# its stdout can vanish when redirected, so they write their results here).
+/*-check.log
+/*-probe.log
+
 # Scratch models and exports left behind while testing
 /*.stl
 /*.3mf
