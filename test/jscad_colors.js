@@ -42,6 +42,26 @@ check("colorToRgba adds alpha", JSON.stringify(colorToRgba([1, 0, 0])) === "[1,0
   check("trace colours match the input", colored.some((t) => t.color === "#ff0000") && colored.some((t) => t.color === "#0000ff"));
 }
 
+// glass() rides the same style threading — a clear tag per feature, geometry
+// untouched (it's a look, like colorize)
+{
+  const { glass, cube, cylinder } = await import("../src/dsl.js");
+  const shape = group(
+    glass(0.2, cylinder({ r: 5, h: 2 })),
+    cube([10, 10, 10]),
+  );
+  const ph = new PartHistory();
+  const trace = [];
+  await compile(shape, ph, trace);
+  const clears = trace.filter((t) => t.clear != null);
+  check("glass threads a clear tag into the trace", clears.length === 1 && clears[0].clear === 0.2,
+    JSON.stringify(trace.map((t) => t.clear)));
+  check("glass accepts percent form", glass(25, cube([1, 1, 1])).clearOpacity === 0.25);
+  check("glass defaults without a number", glass(cube([1, 1, 1])).clearOpacity === 0.3);
+  const r = await build(shape);
+  check("glass model still builds real geometry", facets(r) > 0);
+}
+
 // group() builds the parts as SEPARATE solids (no boolean) and much faster
 {
   const g = group(

@@ -494,19 +494,95 @@
     #status.err { color: var(--err); }
     #status.busy { color: var(--busy); }
 
-    /* transform animation runs on the compositor, so it keeps spinning even
-       while the kernel blocks the main thread */
-    #spin {
-      width: 13px; height: 13px; flex: none; border-radius: 50%;
-      border: 2px solid var(--spin-track); border-top-color: var(--accent-soft2);
-      animation: spin .7s linear infinite; will-change: transform;
-      display: none;
-    }
-    #status.busy #spin { display: block; }
+    /* The ring spinner grew up into the build cube (see .bcube below) — same
+       compositor guarantee, more story. #spin is just its slot now. */
+    #spin { display: none; flex: none; }
+    #status.busy #spin { display: inline-block; }
+    #spin .bcube-wrap { --bc: 14px; display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     /* the chat waiting label, once real progress is streaming in */
     #busy-label.live { display: inline-block; animation: buildpulse 1.3s ease-in-out infinite; }
     @keyframes buildpulse { 50% { opacity: .55; } }
+
+    /* ---------- the build cube ----------
+       The little "something is building" story, echoing the view-cube:
+       dot -> line -> square -> folds into a spinning box -> faces take
+       colour -> X/Y/Z appear -> corner handles appear -> collapses, loops.
+       Every animated property is transform/opacity (+1 tiny border-radius
+       blink), so like the old ring spinner it keeps moving on the compositor
+       even while the kernel has the main thread pinned. */
+    .bcube-wrap {
+      --bc: 26px;
+      width: var(--bc); height: var(--bc); display: inline-block;
+      perspective: calc(var(--bc) * 4); flex: none;
+      animation: bcGrow 9s ease-in-out infinite;
+    }
+    .bcube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d;
+      animation: bcSpin 9s linear infinite; }
+    .bcube .f {
+      position: absolute; inset: 0; display: block;
+      background: rgba(140, 170, 220, .14);
+      border: 1px solid var(--accent-soft, #7fb0e0);
+      animation: bcFace 9s linear infinite;
+    }
+    /* the seed face draws the dot -> line -> square opening */
+    .bcube .f.seed { animation: bcSeed 9s linear infinite; }
+    .bcube .f.f-front { transform: translateZ(calc(var(--bc) / 2)); }
+    .bcube .f.f-back  { transform: rotateY(180deg) translateZ(calc(var(--bc) / 2)); }
+    .bcube .f.f-right { transform: rotateY(90deg)  translateZ(calc(var(--bc) / 2)); }
+    .bcube .f.f-left  { transform: rotateY(-90deg) translateZ(calc(var(--bc) / 2)); }
+    .bcube .f.f-top   { transform: rotateX(90deg)  translateZ(calc(var(--bc) / 2)); }
+    .bcube .f.f-bot   { transform: rotateX(-90deg) translateZ(calc(var(--bc) / 2)); }
+    /* colour arrives as an overlay per face (opacity = compositor-safe) */
+    .bcube .f i { position: absolute; inset: -1px; display: block; opacity: 0;
+      animation: bcTint 9s linear infinite; }
+    .bcube .f.f-front i { background: rgba(46, 118, 242, .55); }
+    .bcube .f.f-back i  { background: rgba(46, 118, 242, .35); }
+    .bcube .f.f-right i { background: rgba(224, 122, 95, .55); }
+    .bcube .f.f-left i  { background: rgba(224, 122, 95, .35); }
+    .bcube .f.f-top i   { background: rgba(129, 178, 154, .6); }
+    .bcube .f.f-bot i   { background: rgba(129, 178, 154, .35); }
+    /* axis letters ride their faces */
+    .bcube .ax { position: absolute; inset: 0; display: grid; place-items: center;
+      font: 700 calc(var(--bc) * .4)/1 system-ui, sans-serif; color: #fff;
+      text-shadow: 0 0 3px rgba(0,0,0,.7); opacity: 0;
+      animation: bcAx 9s linear infinite; }
+    .bcube .ax.ax-x { transform: rotateY(90deg) translateZ(calc(var(--bc) / 2 + 1px)); }
+    .bcube .ax.ax-y { transform: translateZ(calc(var(--bc) / 2 + 1px)); }
+    .bcube .ax.ax-z { transform: rotateX(90deg) translateZ(calc(var(--bc) / 2 + 1px)); }
+    /* corner beads, like the selection handles */
+    .bcube .c { position: absolute; left: 50%; top: 50%;
+      width: calc(var(--bc) * .18); height: calc(var(--bc) * .18);
+      margin: calc(var(--bc) * -.09) 0 0 calc(var(--bc) * -.09);
+      border-radius: 50%; background: var(--icon-active, #9ad0ff);
+      box-shadow: 0 0 3px rgba(120, 180, 255, .8); opacity: 0;
+      animation: bcDot 9s linear infinite; }
+    @keyframes bcGrow {
+      0% { transform: scale(.12); } 5% { transform: scale(.14); }
+      16% { transform: scale(1); } 90% { transform: scale(1); }
+      99%, 100% { transform: scale(.12); }
+    }
+    @keyframes bcSpin {
+      0%, 13% { transform: rotateX(-24deg) rotateY(-32deg); }
+      100% { transform: rotateX(-24deg) rotateY(688deg); }
+    }
+    @keyframes bcSeed {
+      0%, 5% { border-radius: 50%; transform: translateZ(calc(var(--bc) / 2)) scale(.16, .16); }
+      9% { border-radius: 2px; transform: translateZ(calc(var(--bc) / 2)) scale(1, .12); }
+      14%, 100% { border-radius: 0; transform: translateZ(calc(var(--bc) / 2)) scale(1, 1); }
+    }
+    @keyframes bcFace {
+      0%, 13% { opacity: 0; } 20%, 94% { opacity: 1; } 99%, 100% { opacity: 0; }
+    }
+    @keyframes bcTint {
+      0%, 38% { opacity: 0; } 47%, 91% { opacity: 1; } 97%, 100% { opacity: 0; }
+    }
+    @keyframes bcAx {
+      0%, 56% { opacity: 0; } 63%, 91% { opacity: 1; } 96%, 100% { opacity: 0; }
+    }
+    @keyframes bcDot {
+      0%, 71% { opacity: 0; } 77%, 91% { opacity: 1; } 95%, 100% { opacity: 0; }
+    }
 
     #export-menu {
       position: absolute; z-index: 30; display: none;
@@ -1689,8 +1765,18 @@
           <div class="mat-group">Colour</div>
           <label class="mat-row"><span>Key tint</span>
             <span class="swatches" id="lightcol-swatches"></span>
-            <button id="lightcol-add" class="swatch-add" title="Add a custom light tint">+</button>
+            <button id="lightcol-add" class="swatch-add" title="Add a custom key-light tint">+</button>
             <input type="color" id="mat-lightcol" value="#ffffff" />
+          </label>
+          <label class="mat-row"><span>Fill tint</span>
+            <span class="swatches" id="fillcol-swatches"></span>
+            <button id="fillcol-add" class="swatch-add" title="Add a custom fill-light tint">+</button>
+            <input type="color" id="mat-fillcol" value="#ffffff" />
+          </label>
+          <label class="mat-row"><span>Rim tint</span>
+            <span class="swatches" id="rimcol-swatches"></span>
+            <button id="rimcol-add" class="swatch-add" title="Add a custom rim-light tint">+</button>
+            <input type="color" id="mat-rimcol" value="#ffffff" />
           </label>
           <label class="mat-row"><span>Background</span>
             <span class="swatches" id="bg-swatches"></span>
@@ -2456,18 +2542,42 @@
     const featureColors = {};          // featureId -> "#hex" per-shape override (right-click menu)
     let codeColors = {};               // featureId -> "#hex" set by colorize() in the code (per build)
     let codeEmissive = {};             // featureId -> {hex, int} set by glow() in the code
+    let codeClear = {};                // featureId -> opacity set by glass() in the code
     const overrideMats = new Map();    // key -> material (cached, texture/shading synced)
+
+    // The reflection environment, loaded the FIRST time anything clear exists
+    // — glass is rare, and a PMREM render at boot would tax every plain cube.
+    let envTex = null, envLoading = null;
+    function ensureEnv() {
+      if (envTex) return Promise.resolve(envTex);
+      envLoading ??= import("three/addons/environments/RoomEnvironment.js").then(({ RoomEnvironment }) => {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+        // late-arriving reflections: refresh every clear material already made
+        for (const m of overrideMats.values()) {
+          if (m.userData.codeClear != null) { m.envMap = envTex; m.needsUpdate = true; }
+        }
+        if (solidMaterial.userData.wantEnv) { solidMaterial.envMap = envTex; solidMaterial.needsUpdate = true; }
+        return envTex;
+      });
+      return envLoading;
+    }
+
     function matForFeature(fid) {
       const c = featureColors[fid] ?? codeColors[fid];   // a manual override beats the code's colour
       const g = codeEmissive[fid];                       // per-shape glow (emissive) from glow()
-      if (!c && !g) return solidMaterial;
-      const key = (c || "-") + "|" + (g ? g.hex + ":" + g.int : "-");
+      const cl = codeClear[fid];                         // per-shape glass() opacity
+      if (!c && !g && cl == null) return solidMaterial;
+      const key = (c || "-") + "|" + (g ? g.hex + ":" + g.int : "-") + "|" + (cl ?? "-");
       let m = overrideMats.get(key);
       if (!m) {
-        m = makeSolidMat(c || solidMaterial.color.clone());
+        m = makeSolidMat(c || (cl != null ? "#cfe6ef" : solidMaterial.color.clone()));
         m.userData.codeGlow = g || null;   // survives panel re-syncs (see syncMatProps)
+        m.userData.codeClear = cl ?? null;
         syncMatProps(m);
         overrideMats.set(key, m);
+        if (cl != null) ensureEnv();       // reflections arrive async, harmless if late
       }
       return m;
     }
@@ -2484,6 +2594,19 @@
       m.polygonOffsetUnits = solidMaterial.polygonOffsetUnits;
       m.flatShading = solidMaterial.flatShading;
       m.wireframe = solidMaterial.wireframe;
+      if (m.userData.codeClear == null) {   // glass mats manage their own envMap
+        m.envMap = solidMaterial.envMap;
+        m.envMapIntensity = solidMaterial.envMapIntensity ?? 1;
+      }
+      if (m.userData.codeClear != null) {                // a glass() shape stays glass
+        m.transparent = true;
+        m.opacity = m.userData.codeClear;
+        m.depthWrite = false;
+        m.roughness = 0.06;
+        m.metalness = 0;
+        m.envMap = envTex;                               // null until ensureEnv lands
+        m.envMapIntensity = 1.25;
+      }
       if (m.userData.codeGlow) {                         // a glow() shape keeps its own emissive
         m.emissive.set(m.userData.codeGlow.hex);
         m.emissiveIntensity = m.userData.codeGlow.int;
@@ -2642,7 +2765,10 @@
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
       selOutline: true, selOutlineCol: "#3b9dff",
       grabCol: "#2e76f2", ballCol: "#eaf1ff",
-      ambient: 55, key: 150, fill: 50, rim: 0, lightcol: "#ffffff", bg: "#0b0f16",
+      ambient: 55, key: 150, fill: 50, rim: 0,
+      // per-light tints: fillcol/rimcol empty = follow the old single-tint
+      // behaviour, so stored settings from before the split load unchanged
+      lightcol: "#ffffff", fillcol: "", rimcol: "", bg: "#0b0f16",
     };
 
     // Named material presets — each picks a colour + surface + (for glow) emissive
@@ -2671,14 +2797,21 @@
       { name: "Stone", color: "#8d8b86", metal: 0, rough: 92, opacity: 100 },
       { name: "Concrete", color: "#9a9a94", metal: 0, rough: 95, opacity: 100 },
       { name: "Ceramic", color: "#f0ece3", metal: 0, rough: 22, opacity: 100 },
-      // see-through
-      { name: "Glass", color: "#cfe6ef", metal: 0, rough: 6, opacity: 26 },
-      { name: "Acrylic", color: "#bfe0ff", metal: 0, rough: 12, opacity: 52 },
+      // see-through — reflect: the env map loads on first use for a real
+      // optically-clear look (lenses, LCD windows) instead of flat tint
+      { name: "Glass", color: "#cfe6ef", metal: 0, rough: 6, opacity: 26, reflect: true },
+      { name: "Acrylic", color: "#bfe0ff", metal: 0, rough: 12, opacity: 52, reflect: true },
       // special
       { name: "Glow in the dark", glow: true, color: "#b6ffcf", metal: 0, rough: 45, opacity: 100,
         emissive: "#57ff9e", emissiveInt: 1.15, bg: "#05070a",
         lights: { ambient: 12, key: 28, fill: 8, rim: 0 },
         note: "Emits its own light. The scene lights auto-dim and the background darkens so the glow shows — best viewed dark, just like the real thing." },
+      // the classic product-render look: white key, GREEN fill/rim on a deep
+      // navy gloss, white sweep background — the "B-Rep vs Mesh" torus shot
+      { name: "Showroom", color: "#1b2c74", metal: 22, rough: 28, opacity: 100,
+        bg: "#f5f7fa", reflect: true,
+        lights: { ambient: 30, key: 165, fill: 85, rim: 55,
+          lightcol: "#ffffff", fillcol: "#3ddc84", rimcol: "#37e07a" } },
     ];
     const MODEL_SWATCHES = ["#9fb4d6", "#e8b84b", "#e07a5f", "#81b29a", "#c9ccd1", "#b892d6", "#5a6b8c"];
     // glow (emissive) picks — the classic phosphor greens plus the neon range
@@ -2692,7 +2825,7 @@
     const GRAB_SWATCHES = ["#2e76f2", "#3b9dff", "#00c2a8", "#f2802e", "#a76bf2", "#e0e6f0"];
     const BALL_SWATCHES = ["#eaf1ff", "#ffffff", "#ffd98a", "#9ad0ff", "#c8f5d0", "#ffb3c8"];
     const BG_SWATCHES = ["#0b0f16", "#1a2438", "#eef2f8", "#141024", "#20242b", "#000000"];
-    const LIGHTCOL_SWATCHES = ["#ffffff", "#ffe6b0", "#ffd0a0", "#cfe0ff", "#ffd6e6", "#d6ffe0"];
+    const LIGHTCOL_SWATCHES = ["#ffffff", "#ffe6b0", "#ffd0a0", "#cfe0ff", "#ffd6e6", "#3ddc84", "#00e0c0"];
     let mat = { ...MAT_DEFAULTS, ...JSON.parse(localStorage.getItem("brepcode-material") || "{}") };
     // Outlines became the default look, but anyone who used the app before that
     // has `outline: false` sitting in localStorage and would never see it. A
@@ -2742,12 +2875,17 @@
       keyLight.color.set(mat.lightcol);
       fillLight.intensity = pct(mat.fill);
       rimLight.intensity = pct(mat.rim);
-      rimLight.color.set(mat.lightcol);
+      // Each light owns its colour now — a white key with a green fill/rim is
+      // the classic product-shot look, impossible when one tint drove them all.
+      fillLight.color.set(mat.fillcol || "#ffffff");
+      rimLight.color.set(mat.rimcol || mat.lightcol);
       if (matUserBg) scene.background.set(mat.bg);
       // reflect widget values
       $("mat-color").value = mat.color;
       $("mat-bg").value = mat.bg;
       $("mat-lightcol").value = mat.lightcol;
+      $("mat-fillcol").value = mat.fillcol || "#ffffff";
+      $("mat-rimcol").value = mat.rimcol || mat.lightcol;
       if (mat.emissive && mat.emissive !== "#000000") $("mat-glow").value = mat.emissive;
       $("mat-glowint").value = Math.round((mat.emissiveInt || 0) * 100);
       $("mat-glowint-o").textContent = Math.round((mat.emissiveInt || 0) * 100) + "%";
@@ -2828,6 +2966,8 @@
       ["glow-swatches", GLOW_SWATCHES, "emissive", "glow-color-add", "mat-glow"],
       ["bg-swatches", BG_SWATCHES, "bg", "bg-add", "mat-bg"],
       ["lightcol-swatches", LIGHTCOL_SWATCHES, "lightcol", "lightcol-add", "mat-lightcol"],
+      ["fillcol-swatches", LIGHTCOL_SWATCHES, "fillcol", "fillcol-add", "mat-fillcol"],
+      ["rimcol-swatches", LIGHTCOL_SWATCHES, "rimcol", "rimcol-add", "mat-rimcol"],
       ["outline-swatches", OUTLINE_SWATCHES, "outlineCol", "outline-add", "mat-outlinecol"],
       ["seloutline-swatches", SELOUTLINE_SWATCHES, "selOutlineCol", "seloutline-add", "mat-seloutlinecol"],
       ["grab-swatches", GRAB_SWATCHES, "grabCol", "grab-add", "mat-grabcol"],
@@ -2849,7 +2989,7 @@
       // A colour change does NOT take you off a preset: concrete in another
       // colour is still concrete, and dropping the highlight made it look as
       // though the preset had been cancelled. Only surface edits clear it.
-      if (!["bg", "lightcol", "outlineCol", "selOutlineCol", "grabCol", "ballCol", "color"].includes(key)) clearPreset();
+      if (!["bg", "lightcol", "fillcol", "rimcol", "outlineCol", "selOutlineCol", "grabCol", "ballCol", "color"].includes(key)) clearPreset();
       if (key === "color") noteColourOverride();
       applyMaterial(); saveMat();          // applyMaterial reflects the widgets
     }
@@ -2922,6 +3062,16 @@
       });
       if (p.lights) Object.assign(mat, p.lights);        // glow dims the scene
       if (p.bg) { mat.bg = p.bg; matUserBg = true; }      // glow darkens the background
+      // See-through and showroom presets get REAL reflections — the env map
+      // loads on this first click, never at boot (glass is the exception, a
+      // plain PLA cube shouldn't pay for it).
+      solidMaterial.userData.wantEnv = !!p.reflect;
+      if (p.reflect) {
+        ensureEnv().then(() => applyMaterial());
+      } else if (solidMaterial.envMap) {
+        solidMaterial.envMap = null;
+        solidMaterial.needsUpdate = true;
+      }
       applyMaterial(); saveMat();
       noteColourOverride();
       for (const el of document.querySelectorAll(".mat-preset")) el.classList.toggle("active", el.dataset.name === p.name);
@@ -4119,6 +4269,24 @@ ${joined}`)(...vs);
     const statusText = $("status-text");
     const setStatus = (cls, msg) => { status.className = cls; statusText.textContent = msg; };
 
+    // The build-cube markup (styles: .bcube in the stylesheet). One factory so
+    // the status bar and the chat waiting bubble show the same little story.
+    function buildCubeHTML() {
+      const faces = ["front", "back", "right", "left", "top", "bot"]
+        .map((f, i) => `<span class="f f-${f}${i === 0 ? " seed" : ""}"><i></i></span>`).join("");
+      const ax = `<span class="ax ax-y">Y</span><span class="ax ax-x">X</span><span class="ax ax-z">Z</span>`;
+      let dots = "";
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            dots += `<span class="c" style="transform: translate3d(calc(var(--bc)/2*${sx}), calc(var(--bc)/2*${sy}), calc(var(--bc)/2*${sz}))"></span>`;
+          }
+        }
+      }
+      return `<span class="bcube-wrap"><span class="bcube">${faces}${ax}${dots}</span></span>`;
+    }
+    $("spin").innerHTML = buildCubeHTML();
+
     const exact = $("exact"), fixnote = $("fixnote");
 
     let featureMap = null;   // featureId -> {kind, start, end} in the editor text
@@ -4208,10 +4376,11 @@ ${joined}`)(...vs);
         let tris = 0;
         // colours set by colorize() in the code — rebuilt every pass, keyed by
         // feature id, so adoptSolid()'s matForFeature() paints each coloured piece
-        codeColors = {}; codeEmissive = {};
+        codeColors = {}; codeEmissive = {}; codeClear = {};
         for (const t of trace) {
           if (t.color) codeColors[t.id] = t.color;
           if (t.emissive) codeEmissive[t.id] = { hex: t.emissive, int: t.emissiveInt ?? 1 };
+          if (t.clear != null) codeClear[t.id] = t.clear;
         }
         const validIds = new Set(trace.map((t) => t.id));
         for (const s of solids) {
@@ -8650,7 +8819,7 @@ ${joined}`)(...vs);
       // The waiting bubble is expandable — a live elapsed timer up top, and a
       // ▸ that opens the request log so "is it stuck?" has an answer.
       const busy = addMsg("bot", "", true);
-      busy.innerHTML = `<details><summary><span class="tw">▸</span><em id="busy-label">thinking…</em></summary><div class="think-body" id="busy-log"></div></details>`;
+      busy.innerHTML = `<details><summary style="display:flex; align-items:center; gap:9px">${buildCubeHTML()}<span class="tw">▸</span><em id="busy-label">thinking…</em></summary><div class="think-body" id="busy-log"></div></details>`;
       const busyLabel = busy.querySelector("#busy-label");
       const busyLog = busy.querySelector("#busy-log");
       const t0 = performance.now();

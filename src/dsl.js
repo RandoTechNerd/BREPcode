@@ -454,12 +454,29 @@ export function colorize(color, ...children) {
 }
 
 // Emissive tag — the same threading, for a part that should glow.
+// This IS the LED look: glow("#ff3b30", 2, sphere({ r: 2.5 })) is a lit LED.
 export function glow(color, intensity, ...children) {
   const kids = collect(children);
   if (!kids.length) throw new Error('glow() needs a shape, e.g. glow("#39ff14", 2, sphere({ r: 10 }))');
   const shape = kids.length === 1 ? kids[0] : group(...kids);
   const em = normaliseColor(color);
   return node({ ...shape, color: shape.color ?? em, emissive: em, emissiveInt: Number(intensity) || 1 });
+}
+
+// Optically-clear tag — lenses, LCD windows, acrylic covers. The shape renders
+// transparent with a real reflection in the viewer (the environment map loads
+// lazily, the first time any glass exists — zero cost until then). Geometry
+// and exports are unchanged; this is a LOOK, like colorize().
+//   glass(cylinder({ r: 12, h: 2 }))          // default 30% opacity
+//   glass(0.15, cube([40, 30, 1]))            // clearer — an LCD window
+export function glass(opacity, ...children) {
+  let o = 0.3, rest = children;
+  if (typeof opacity === "number") o = opacity > 1 ? opacity / 100 : opacity;
+  else rest = [opacity, ...children];
+  const kids = collect(rest);
+  if (!kids.length) throw new Error('glass() needs a shape, e.g. glass(0.3, cylinder({ r: 12, h: 2 }))');
+  const shape = kids.length === 1 ? kids[0] : group(...kids);
+  return node({ ...shape, clearOpacity: Math.min(0.95, Math.max(0.05, o)) });
 }
 
 // ------------------------------------------------------------- textures
@@ -1148,7 +1165,8 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     const col = n.color ?? style?.color ?? null;
     const em = n.emissive ?? style?.emissive ?? null;
     const emi = n.emissiveInt ?? style?.emissiveInt ?? 1;
-    const st = { color: col, emissive: em, emissiveInt: emi };
+    const clr = n.clearOpacity ?? style?.clearOpacity ?? null;
+    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr };
     if (n.kind === "xform") {
       return emit(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix), st);
     }
@@ -1171,7 +1189,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ],
         scale: [scl.x, scl.y, scl.z],
       };
-      trace?.push({ id: f.inputParams.id, code: n.code, color: col, emissive: em, emissiveInt: emi });
+      trace?.push({ id: f.inputParams.id, code: n.code, color: col, emissive: em, emissiveInt: emi, clear: clr });
       return f.inputParams.id;
     }
 
@@ -1209,7 +1227,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ];
         xf.inputParams.scale = [scl.x, scl.y, scl.z];
       }
-      trace?.push({ id: ex.inputParams.id, code: "E", color: col, emissive: em, emissiveInt: emi });
+      trace?.push({ id: ex.inputParams.id, code: "E", color: col, emissive: em, emissiveInt: emi, clear: clr });
       return ex.inputParams.id;
     }
 
@@ -1240,7 +1258,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // (an assembly) comes in as individually selectable/movable bodies. Harmless
       // on a single connected part (still one solid).
       if (n.opts.split ?? n.opts.separate) f.inputParams.extractMultipleSolids = true;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
       return f.inputParams.id;
     }
 
@@ -1377,7 +1395,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // so hull(a, b) rendered somewhere other than where a and b were. It also
       // put freeform()'s corner handles nowhere near the solid they belong to.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
       return f.inputParams.id;
     }
 
@@ -1417,7 +1435,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       f.inputParams.meshRepairLevel = "NONE";
       // like hull(): the STL already sits at its real position — never re-centre
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
       return f.inputParams.id;
     }
 

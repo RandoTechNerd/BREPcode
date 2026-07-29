@@ -109,6 +109,16 @@ export const SPECS = [
     hint: "Removable print supports: 45° buttress fins that DON'T touch the part. Each carries level sprues — bars the same width as the fin, rooted INSIDE the plate (so no lean or angle can ever leave one floating), flat on top, running out to a tip that stops `clearance` (0.2mm default) short of the surface. A clean print leaves daylight and nothing fuses; the part only rests on a sprue if it shifts. Easiest way: press the fin icon in the editor header (or ⋮ → “Add support fins”): it probes the model with rays, puts the fins where there's the most material to brace against, and places each tooth only where the part actually is — so a frame or bracket doesn't get teeth poking into its holes, and a recessed face still gets a longer tooth. Then edit angle (slope, 45° default), height, clearance, tooth (tooth size), count/sprues/side/skirt — or take full control with positions: [x1, x2, x3] and sprueAt: [[z…], [z…]] (one list per fin; { z, reach } sets a tooth's exact length). Knobs worth knowing: nozzle: 0.6 rescales the fin width, teeth and clearance in one go for a bigger nozzle; lean slopes the contact edge to match a part printed on a slant (it DEFAULTS to 45 — pass lean: 0 for a plumb wall, and the tool measures the real angle for you); maxDepth stops the fins spilling outside the part's own footprint; and a deliberately long reach turns a tooth into a finger that pokes in to hold a recessed pocket. Move the model afterwards? Press the tool again — it re-probes and re-fits instead of nesting.",
   },
   {
+    name: "LED / glow", group: "Edit a part", sig: "glow(color, intensity, shape)",
+    snippet: 'glow("#ff3b30", 2, sphere({ r: 2.5 }))', argStart: 5,
+    hint: "A lit LED, lamp or screen: the shape emits its own light in the viewer (and in GLB/embed exports). glow(\"#39ff14\", 1.5, panel) makes a lit display. Looks only — geometry and STL/3MF are unchanged.",
+  },
+  {
+    name: "glass / lens", group: "Edit a part", sig: "glass(opacity, shape)",
+    snippet: "glass(0.25, cylinder({ r: 12, h: 2 }))", argStart: 6,
+    hint: "Optically clear with a real reflection — binocular lenses, LCD windows, acrylic covers. Lower opacity = clearer (0.15 for a display window). The reflection environment loads only when glass is first used, so plain models pay nothing. Looks only — exports unchanged.",
+  },
+  {
     name: "surface texture", group: "Edit a part", sig: "texture({ pattern, depth, scale, faces }, model)",
     wrap: 'texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, $MODEL$)',
     snippet: 'texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, cube([30, 30, 12]))', argStart: 9,
