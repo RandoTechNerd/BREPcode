@@ -62,7 +62,16 @@ const asciiStl = toSTL(await build(cube([10, 10, 10])), "c");
   const pos = await parse3MF(zip.buffer ?? zip);
   check("3MF (stored zip) round-trips", pos.length === 12 * 9, String(pos.length / 9));
   const xs = [...pos].filter((_, i) => i % 3 === 0);
-  check("3MF coordinates intact", Math.min(...xs) === 0 && Math.max(...xs) === 10);
+  // The writer now centres the part on the build plate, so the absolute
+  // coordinates move — what has to survive the round-trip is the SHAPE.
+  check("3MF geometry intact", Math.max(...xs) - Math.min(...xs) === 10,
+    `${Math.min(...xs)}..${Math.max(...xs)}`);
+  check("...placed on the middle of the default plate",
+    (Math.min(...xs) + Math.max(...xs)) / 2 === 128, String((Math.min(...xs) + Math.max(...xs)) / 2));
+  const asIs = [...await parse3MF((stlTo3MF(asciiStl, "cube", { plate: null })).buffer)]
+    .filter((_, i) => i % 3 === 0);
+  check("...and plate: null leaves them exactly as modelled",
+    Math.min(...asIs) === 0 && Math.max(...asIs) === 10, `${Math.min(...asIs)}..${Math.max(...asIs)}`);
 }
 
 // deflated 3MF: recompress our package with real deflate entries

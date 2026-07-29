@@ -281,6 +281,58 @@ app.whenReady().then(async () => {
     // A plain box is 12 triangles; the corner bite has to add faces.
     check("...(the cut really happened, not a silent no-op)", cutTris > 12, `${cutTris} triangles`);
 
+    // ---- 3ba. a hole is part of the thing it was bored out of -------------
+    //
+    // The walls and floor of a hole belong to the CUTTER, which has no colour,
+    // so they used to come out default grey: in the viewer a drilled hole
+    // looked like a disc sitting ON the surface (indistinguishable from the
+    // drill bit being left behind), and in a colour 3MF the hole's interior
+    // became its own colour group — an entire extra filament for a hole.
+    await setCode(`return difference(
+  colorize("#1e2a78", cube([60, 60, 12])),
+  drill([30, 30, 12], [0, 0, 1], { d: 14, depth: 6 })
+);`);
+    const drilled = await settle(60000);
+    check("a drilled hole builds", /^ok\|/.test(drilled), drilled);
+    const holeColours = await run(`(() => {
+      const by = {};
+      window.brepscript.modelGroup.traverse((o) => {
+        if (!o.isMesh) return;
+        const c = "#" + o.material.color.getHexString();
+        by[c] = (by[c] || 0) + 1;
+      });
+      return by;
+    })()`);
+    check("...and takes the colour of the part it was cut from",
+      Object.keys(holeColours).length === 1 && Object.keys(holeColours)[0] === "#1e2a78",
+      JSON.stringify(holeColours));
+
+    // Through a two-colour assembly, the hole takes the colour of the block it
+    // actually passes through — not whichever was coloured first.
+    await setCode(`return difference(
+  group(
+    colorize("#c0392b", cube([40, 40, 12])),
+    colorize("#1e2a78", translate([45, 0, 0], cube([40, 40, 12])))
+  ),
+  drill([20, 20, 12], [0, 0, 1], { d: 10, through: true })
+);`);
+    const twoTone = await settle(60000);
+    check("a hole through a two-colour assembly builds", /^ok\|/.test(twoTone), twoTone);
+    const holeSide = await run(`(() => {
+      const out = [];
+      window.brepscript.modelGroup.traverse((o) => {
+        if (!o.isMesh) return;
+        const c = o.geometry.boundingBox.getCenter(new window.brepscript.THREE.Vector3());
+        out.push({ fid: o.userData.featureId, colour: "#" + o.material.color.getHexString(), x: +c.x.toFixed(1) });
+      });
+      return { colours: [...new Set(out.map((r) => r.colour))],
+               cutFaces: out.filter((r) => r.fid && /CY/.test(r.fid)).map((r) => r.colour) };
+    })()`);
+    check("...the hole is the colour of the block it passes through",
+      holeSide.cutFaces.length > 0 && holeSide.cutFaces.every((c) => c === "#c0392b"),
+      JSON.stringify(holeSide));
+    check("...and no third colour appears", holeSide.colours.length === 2, JSON.stringify(holeSide.colours));
+
     // ---- 3bb. a preview stays up until the build is ready to replace it ---
     //
     // A mesh too dense for the kernel shows as a view-only preview. Building

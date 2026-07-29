@@ -2,7 +2,7 @@
 // validated by actually unzipping it (jszip) and parsing the mesh XML back.
 
 import { cube, cylinder, difference, translate, build, toSTL } from "../index.js";
-import { stlToObj, stlTo3MF } from "../viewer/exporters.js";
+import { stlToObj, stlTo3MF, colored3MF } from "../viewer/exporters.js";
 import JSZip from "jszip";
 
 let pass = 0, fail = 0;
@@ -56,6 +56,60 @@ check("triangle indices in range", (() => {
   return true;
 })());
 check("rels points at the model", (await zip.file("_rels/.rels").async("string")).includes("/3D/3dmodel.model"));
+
+// ---- where the part lands on the plate --------------------------------
+//
+// A slicer's plate origin is its FRONT-LEFT corner, and models here are built
+// around 0,0 — so a 3MF written as-modelled opens in the corner with half the
+// part off the bed. That is what a user hit with a four-colour Benchy in Orca.
+console.log("\n3MF plate placement\n");
+
+const boundsOfModel = (xml) => {
+  const b = { x: [Infinity, -Infinity], y: [Infinity, -Infinity], z: [Infinity, -Infinity] };
+  for (const m of xml.matchAll(/<vertex x="([-\d.eE]+)" y="([-\d.eE]+)" z="([-\d.eE]+)"\/>/g)) {
+    const v = { x: +m[1], y: +m[2], z: +m[3] };
+    for (const a of ["x", "y", "z"]) {
+      b[a][0] = Math.min(b[a][0], v[a]);
+      b[a][1] = Math.max(b[a][1], v[a]);
+    }
+  }
+  return {
+    centre: ["x", "y", "z"].map((a) => +((b[a][0] + b[a][1]) / 2).toFixed(3)),
+    size: ["x", "y", "z"].map((a) => +(b[a][1] - b[a][0]).toFixed(3)),
+    minZ: +b.z[0].toFixed(3),
+  };
+};
+const modelOf = async (bytes) =>
+  (await JSZip.loadAsync(bytes)).file("3D/3dmodel.model").async("string");
+
+const placed = boundsOfModel(await modelOf(stlTo3MF(stl, "part")));
+check("centred on a 256 × 256 plate by default",
+  placed.centre[0] === 128 && placed.centre[1] === 128, placed.centre.join(", "));
+check("...standing ON the bed, not through it", placed.minZ === 0, String(placed.minZ));
+check("...with the geometry itself untouched",
+  placed.size.join(",") === "20,20,8", placed.size.join(", "));
+
+const mini = boundsOfModel(await modelOf(stlTo3MF(stl, "part", { plate: { x: 180, y: 180 } })));
+check("a smaller plate centres on ITS middle",
+  mini.centre[0] === 90 && mini.centre[1] === 90, mini.centre.join(", "));
+
+const asIs = boundsOfModel(await modelOf(stlTo3MF(stl, "part", { plate: null })));
+check("plate: null keeps the model's own coordinates",
+  asIs.centre[0] === 10 && asIs.centre[1] === 10, asIs.centre.join(", "));
+
+// A multi-colour model must move as ONE assembly: centring each colour on its
+// own middle would take the model apart.
+const twoParts = [
+  { color: "#c0392b", verts: [[0, 0, 0], [10, 0, 0], [0, 10, 0], [0, 0, 5]],
+    tris: [[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]] },
+  { color: "#1e2a78", verts: [[20, 0, 0], [30, 0, 0], [20, 10, 0], [20, 0, 5]],
+    tris: [[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]] },
+];
+const colour = boundsOfModel(await modelOf(colored3MF(twoParts, "part")));
+check("a colour 3MF centres the whole assembly",
+  colour.centre[0] === 128 && colour.centre[1] === 128, colour.centre.join(", "));
+check("...without pulling its parts apart",
+  colour.size.join(",") === "30,10,5", colour.size.join(", "));
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

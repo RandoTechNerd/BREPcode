@@ -207,6 +207,47 @@ function storedZip(entries) {
 //
 // The colorgroup stays too. It costs a few bytes, it is the spec-correct answer,
 // and tools that are not Orca do read it.
+// ------------------------------------------------------------ plate placing
+//
+// A slicer's build plate has its origin at the FRONT-LEFT corner, and BREPcode
+// models are built around 0,0 — so a 3MF exported as-is opens in the corner
+// with half the part hanging off the plate. (STL doesn't have this problem:
+// with no position information at all, slicers centre it themselves.)
+//
+// The offset is BAKED INTO THE COORDINATES rather than written as an <item>
+// transform. The transform is the tidier answer and the spec supports it, but
+// it is also something a slicer can quietly ignore or reset on import, and the
+// whole point here is that the part lands where we say. Baked geometry cannot
+// be ignored.
+//
+// The plate defaults to 256 × 256 — Bambu X1/P1/A1 and Orca's stock profile.
+// Pass opts.plate = { x, y } for anything else.
+export const DEFAULT_PLATE = { x: 256, y: 256 };
+
+// Centre the model's footprint on the plate and stand it on the bed.
+// plate === null means "leave the coordinates exactly as modelled".
+export function plateOffset(bounds, plate = DEFAULT_PLATE) {
+  if (plate === null) return [0, 0, 0];
+  const px = Number(plate?.x) > 0 ? Number(plate.x) : DEFAULT_PLATE.x;
+  const py = Number(plate?.y) > 0 ? Number(plate.y) : DEFAULT_PLATE.y;
+  return [
+    px / 2 - (bounds.minX + bounds.maxX) / 2,
+    py / 2 - (bounds.minY + bounds.maxY) / 2,
+    -bounds.minZ,                    // a part that starts below the bed is lifted onto it
+  ];
+}
+
+function boundsOf(points) {
+  const b = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
+  for (const p of points) {
+    const x = +p[0], y = +p[1], z = +p[2];
+    if (x < b.minX) b.minX = x; if (x > b.maxX) b.maxX = x;
+    if (y < b.minY) b.minY = y; if (y > b.maxY) b.maxY = y;
+    if (z < b.minZ) b.minZ = z; if (z > b.maxZ) b.maxZ = z;
+  }
+  return b;
+}
+
 export function colored3MF(groups, name = "brepcode-model", opts = {}) {
   const palette = [];                       // distinct colours, in first-seen order
   const byColour = new Map();               // colour -> merged {verts, tris}
@@ -238,6 +279,11 @@ export function colored3MF(groups, name = "brepcode-model", opts = {}) {
   const used = palette.filter((hex) => byColour.get(hex)?.tris.length);
   if (!used.length) return stlTo3MF("", name, opts);
 
+  // One offset for the WHOLE assembly, measured across every colour — moving
+  // each colour to its own centre would take the model apart.
+  const [ox, oy, oz] = plateOffset(
+    boundsOf(used.flatMap((hex) => byColour.get(hex).verts)), opts.plate);
+
   const M = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02";
   const COLOURS_ID = 1;
   const firstObject = 2;                                   // ids 2 … 2+n-1
@@ -248,7 +294,7 @@ export function colored3MF(groups, name = "brepcode-model", opts = {}) {
     return `  <object id="${firstObject + i}" type="model" name="${name} — ${hex}" pid="${COLOURS_ID}" pindex="${i}">
    <mesh>
     <vertices>
-${verts.map((v) => `     <vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join("\n")}
+${verts.map((v) => `     <vertex x="${+(+v[0] + ox).toFixed(5)}" y="${+(+v[1] + oy).toFixed(5)}" z="${+(+v[2] + oz).toFixed(5)}"/>`).join("\n")}
     </vertices>
     <triangles>
 ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("\n")}
@@ -466,6 +512,9 @@ export function extractSourceFromStl(text) {
 
 export function stlTo3MF(stl, name = "brepcode-model", opts = {}) {
   const { verts, tris } = parseStlTriangles(stl);
+  // Onto the middle of the plate rather than its front-left corner — see
+  // plateOffset(). An empty mesh has no bounds worth moving.
+  const [ox, oy, oz] = verts.length ? plateOffset(boundsOf(verts), opts.plate) : [0, 0, 0];
   // Core-spec metadata, so anything reading this file knows where it came from.
   // Our 3MF used to declare nothing at all, which is simply a gap.
   //
@@ -485,7 +534,7 @@ export function stlTo3MF(stl, name = "brepcode-model", opts = {}) {
   <object id="1" type="model" name="${name}">
    <mesh>
     <vertices>
-${verts.map((v) => `     <vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join("\n")}
+${verts.map((v) => `     <vertex x="${+(+v[0] + ox).toFixed(5)}" y="${+(+v[1] + oy).toFixed(5)}" z="${+(+v[2] + oz).toFixed(5)}"/>`).join("\n")}
     </vertices>
     <triangles>
 ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("\n")}

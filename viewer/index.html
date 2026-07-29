@@ -743,6 +743,17 @@
     }
     #sm-swaps button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
     #export-menu .exp-group:first-child, #export-more .exp-group:first-child { padding-top: 9px; }
+    /* Plate picker: a row inside the export menu, styled to sit quietly under
+       the mesh formats rather than compete with them. */
+    #plate-row {
+      display: flex; align-items: center; gap: 8px; padding: 4px 14px 9px;
+      font: 11px system-ui, sans-serif; color: var(--muted2);
+    }
+    #plate-row select {
+      flex: 1; min-width: 0; background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+      font: 11px system-ui, sans-serif; cursor: pointer;
+    }
 
     /* ---------- feature history ---------- */
     #history-body { overflow-y: auto; max-height: min(46vh, 420px); padding: 6px 0 8px; }
@@ -1092,6 +1103,20 @@
     <button data-fmt="stl">STL<small>3D printing</small></button>
     <button data-fmt="obj">OBJ<small>DCC / game tools</small></button>
     <button data-fmt="3mf">3MF<small>modern slicers</small></button>
+    <!-- A 3MF carries a position, and a slicer's plate origin is its FRONT-LEFT
+         corner — so without this the part opens in the corner, half off the bed.
+         The size only affects where the model is placed, never its geometry. -->
+    <label id="plate-row" title="Where a 3MF lands: the model is centred on a plate this size">
+      <span>Plate</span>
+      <select id="plate-size">
+        <option value="256x256">256 × 256 — Bambu X1 / P1 / A1</option>
+        <option value="180x180">180 × 180 — A1 mini</option>
+        <option value="250x210">250 × 210 — Prusa MK3/MK4</option>
+        <option value="220x220">220 × 220 — Ender 3</option>
+        <option value="350x350">350 × 350 — X1E / large format</option>
+        <option value="0x0">Don't move it — keep model coordinates</option>
+      </select>
+    </label>
     <div class="exp-group">CAD (solid)</div>
     <button data-fmt="step">STEP<small>interchange · faceted</small></button>
     <button data-fmt="step-curved">STEP — curved<small>true B-rep surfaces</small></button>
@@ -2735,6 +2760,7 @@
     const solidMaterial = makeSolidMat(0x9fb4d6);
     const featureColors = {};          // featureId -> "#hex" per-shape override (right-click menu)
     let codeColors = {};               // featureId -> "#hex" set by colorize() in the code (per build)
+    let codeNegatives = new Set();     // featureIds that are CUTTERS — their faces are holes
     let codeEmissive = {};             // featureId -> {hex, int} set by glow() in the code
     let codeClear = {};                // featureId -> opacity set by glass() in the code
     const overrideMats = new Map();    // key -> material (cached, texture/shading synced)
@@ -2870,7 +2896,41 @@
         mesh.userData.featureId = featureId;
         out.push(mesh);
       }
+      paintCutFaces(out);
       return out;
+    }
+
+    // The walls and floor of a hole belong to the CUTTER, not to the part they
+    // were bored out of — and a cutter has no colour, so a hole in a coloured
+    // part came out default grey. In the viewer that reads as a disc sitting ON
+    // the surface (it looks exactly like the drill bit was left behind), and in
+    // a colour 3MF it is worse than cosmetic: the hole's interior becomes its
+    // own colour group, so a slicer assigns a whole extra filament to it.
+    //
+    // A cut surface belongs to whatever it was cut out of, so it takes that
+    // colour: the nearest coloured face in the same solid. Nearest rather than
+    // first, because a hole through a two-colour assembly should take the
+    // colour of the part it actually passes through. A cutter the user coloured
+    // on purpose keeps its own colour — only untouched grey is reassigned.
+    function paintCutFaces(meshes) {
+      if (!codeNegatives.size) return;
+      const cut = meshes.filter((m) => codeNegatives.has(m.userData.featureId)
+        && m.material === solidMaterial);
+      if (!cut.length) return;
+      const homes = meshes
+        .filter((m) => !codeNegatives.has(m.userData.featureId) && m.material !== solidMaterial)
+        .map((m) => ({ c: m.geometry.boundingBox.getCenter(new THREE.Vector3()), mat: m.material }));
+      if (!homes.length) return;                 // nothing coloured — grey is right
+      const here = new THREE.Vector3();
+      for (const m of cut) {
+        m.geometry.boundingBox.getCenter(here);
+        let best = homes[0], bestDist = Infinity;
+        for (const h of homes) {
+          const d = here.distanceToSquared(h.c);
+          if (d < bestDist) { bestDist = d; best = h; }
+        }
+        m.material = best.mat;
+      }
     }
 
     function adoptSolid(solid, validIds = null) {
@@ -4722,7 +4782,9 @@ ${joined}`)(...vs);
         // colours set by colorize() in the code — rebuilt every pass, keyed by
         // feature id, so adoptSolid()'s matForFeature() paints each coloured piece
         codeColors = {}; codeEmissive = {}; codeClear = {};
+        codeNegatives = new Set();       // cutters — see paintCutFaces()
         for (const t of trace) {
+          if (t.negative) codeNegatives.add(t.id);
           if (t.color) codeColors[t.id] = t.color;
           if (t.emissive) codeEmissive[t.id] = { hex: t.emissive, int: t.emissiveInt ?? 1 };
           if (t.clear != null) codeClear[t.id] = t.clear;
@@ -4757,6 +4819,9 @@ ${joined}`)(...vs);
         refreshOutlines();    // and re-trace the CAD edges on the new geometry
 
         lastBuildMs = performance.now() - t0;
+        if (window.brepscript.firstBuildMs === undefined) {
+          window.brepscript.firstBuildMs = Math.round(performance.now());
+        }
         const via = lastLang === "openscad" ? "OpenSCAD · " : lastLang === "jscad" ? "JSCAD · "
           : lastLang === "build123d" ? "build123d · " : lastLang === "cadquery" ? "CadQuery · " : "";
         const bb = new THREE.Box3().setFromObject(modelGroup);
@@ -6508,6 +6573,24 @@ ${joined}`)(...vs);
       return res.data;
     }
 
+    // Which build plate a 3MF is placed on. Geometry never changes — only where
+    // the part sits when a slicer opens it. "0x0" means leave the coordinates
+    // exactly as modelled.
+    const plateSel = $("plate-size");
+    plateSel.value = localStorage.getItem("brepcode-plate") || "256x256";
+    if (!plateSel.value) plateSel.value = "256x256";     // a stored size we no longer offer
+    plateSel.addEventListener("change", () => {
+      localStorage.setItem("brepcode-plate", plateSel.value);
+      setStatus("ok", plateSel.value === "0x0"
+        ? "3MF exports keep their model coordinates."
+        : `3MF exports will be centred on a ${plateSel.value.replace("x", " × ")} mm plate.`);
+    });
+    plateSel.addEventListener("click", (e) => e.stopPropagation());   // don't close the menu
+    function currentPlate() {
+      const [x, y] = (plateSel.value || "256x256").split("x").map(Number);
+      return x > 0 && y > 0 ? { x, y } : null;      // null = don't move it
+    }
+
     // The on-screen meshes grouped by resolved colour — the source for a
     // colour-aware 3MF. Geometry is already world-space (adoptSolid baked the
     // transforms), so positions read straight off. Non-indexed geometry is
@@ -6690,7 +6773,7 @@ ${joined}`)(...vs);
         slicerInfo = slicerInfo || await window.brepcodeDesktop.slicerInfo();
         const groups = colorGroupsForExport();
         const distinct = new Set(groups.map((g) => g.color)).size;
-        const opts = { source: code.value.trim() };
+        const opts = { source: code.value.trim(), plate: currentPlate() };
         const bytes = distinct > 1 ? exp.colored3MF(groups, base, opts)
                                    : exp.stlTo3MF(await exportSTL(), base, opts);
         const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
@@ -6745,11 +6828,18 @@ ${joined}`)(...vs);
           // label/code prints in its own filament on a multi-material printer.
           const groups = colorGroupsForExport();
           const distinct = new Set(groups.map((g) => g.color)).size;
+          const plate = currentPlate();
+          const opts3mf = { source: src, plate };
           size = download(`${base}.3mf`,
-            distinct > 1 ? exp.colored3MF(groups, base, { source: src })
-                         : exp.stlTo3MF(await exportSTL(), base, { source: src }),
+            distinct > 1 ? exp.colored3MF(groups, base, opts3mf)
+                         : exp.stlTo3MF(await exportSTL(), base, opts3mf),
             "model/3mf");
-          if (distinct > 1) fixnote.innerHTML = `<span style="color:var(--muted3)">${distinct} colours written as a 3MF colour group — a multi-material slicer (Bambu, Prusa, Orca) will offer a filament per colour.</span>`;
+          const placed = plate
+            ? `Placed in the middle of a ${plate.x} × ${plate.y} mm plate (change that under <b>Plate</b> in this menu).`
+            : "Kept at its model coordinates, as you asked under <b>Plate</b>.";
+          fixnote.innerHTML = `<span style="color:var(--muted3)">${placed}`
+            + (distinct > 1 ? ` ${distinct} colours written as a 3MF colour group — a multi-material slicer (Bambu, Prusa, Orca) will offer a filament per colour.` : "")
+            + `</span>`;
         } else if (fmt === "step-curved") {
           // real analytic B-rep: the DSL tree re-built in OCCT (replicad),
           // so cylinders export as CYLINDRICAL_SURFACE, not triangle fans
@@ -9683,6 +9773,54 @@ ${joined}`)(...vs);
       else return;
       e.preventDefault();
     });
+
+    // ---- something real in the first frame --------------------------------
+    //
+    // The first model of every session is the same drilled cube, and the kernel
+    // that builds it is an 11MB download and parse away. That shape needs no
+    // CAD kernel to DRAW, though — a rectangle with a circular hole, extruded —
+    // so three draws it directly and the page has real geometry in it before
+    // the kernel has finished arriving. The genuine build replaces it the
+    // moment it lands: clearModel() at the swap takes the placeholder out, and
+    // because it is the same size in the same place, the handover is invisible.
+    //
+    // It is deliberately inert — not clickable, not exportable, not a solid.
+    // It is a picture of the model you are about to get, and the status bar
+    // still says "Building…" until the real one exists.
+    //
+    // Only ever for the untouched starter code. A restored session or a file
+    // opened from the OS must not flash a shape that isn't theirs, which is
+    // what comparing against the textarea's own default content guarantees.
+    function showStarterPlaceholder() {
+      const outline = new THREE.Shape();
+      outline.moveTo(0, 0); outline.lineTo(30, 0); outline.lineTo(30, 30); outline.lineTo(0, 30);
+      outline.closePath();
+      const hole = new THREE.Path();
+      hole.absarc(15, 15, 8, 0, Math.PI * 2, true);      // matches the cylinder r: 8
+      outline.holes.push(hole);
+      // depth 12 from z=0 up — the same box the code describes. No
+      // computeVertexNormals(): extrude already gives flat faces, and smoothing
+      // them would round off the corners the real build has sharp.
+      const g = new THREE.ExtrudeGeometry(outline, { depth: 12, bevelEnabled: false, curveSegments: 64 });
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
+      const mesh = new THREE.Mesh(g, solidMaterial);
+      mesh.userData.placeholder = true;
+      mesh.raycast = () => { /* nothing to select: there is no feature behind it */ };
+      modelGroup.add(mesh);
+      modelGroup.visible = true;
+      modelGroup.updateMatrixWorld(true);
+      seatGrid();
+      frameModel();
+      updateDims();
+      // When the shape appeared, against when the real one did (see rebuild) —
+      // the only way to tell a working head start from a placeholder that never
+      // actually beat the kernel.
+      window.brepscript.starterShownMs = Math.round(performance.now());
+    }
+    if (code.value === code.defaultValue) {
+      try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
+    }
 
     await rebuild();
 
