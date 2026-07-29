@@ -502,6 +502,8 @@
     #status.busy #spin { display: inline-block; }
     #spin .bcube-wrap { --bc: 19px; display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* local-server setup help: the OS tabs */
+    .lsh-tab.active { background: var(--border); color: #fff; }
     /* the chat waiting label, once real progress is streaming in */
     #busy-label.live { display: inline-block; animation: buildpulse 1.3s ease-in-out infinite; }
     @keyframes buildpulse { 50% { opacity: .55; } }
@@ -8107,9 +8109,22 @@ ${joined}`)(...vs);
     });
 
     function populateModels(list, keep) {
-      if (!CHAT) return;                              // chatbot not loaded yet
+      if (!CHAT) {
+        // chatbot not loaded yet — still CLEAR the stale list, or the old
+        // provider's models (and the header label) linger under the new one
+        aiModel.innerHTML = "";
+        aiModel.disabled = true;
+        return;
+      }
       const sorted = [...list].sort((a, b) => CHAT.modelScore(b) - CHAT.modelScore(a));
       aiModel.innerHTML = "";
+      if (!sorted.length && aiProvider.value === "local") {
+        // the local list only exists once a server answers — say so
+        const o = document.createElement("option");
+        o.value = "";
+        o.textContent = "(connect a server — the list comes from it)";
+        aiModel.appendChild(o);
+      }
       sorted.forEach((m, i) => {
         const o = document.createElement("option");
         o.value = m;
@@ -8462,14 +8477,70 @@ ${joined}`)(...vs);
         fixTries: $("ai-fixtries").value, ccEffort: $("cc-effort").value,
         harnessOff: [...harnessOff],
       }));
+      // The local label reads the LIVE dropdown, never the stored fallback —
+      // the fallback belongs to whatever provider was active before, and
+      // "local · claude-opus-4-8" is exactly the confusion it caused.
+      const liveModel = aiModel.value && !/^\(/.test(aiModel.value) ? aiModel.value : "";
       $("chat-mode").textContent = aiProvider.value === "builtin" ? "built-in"
         : aiProvider.value === "claude-code"
           ? `Claude Code${model && model !== "default" ? " · " + model : ""}`
         : aiProvider.value === "local"
-          ? `local${model ? " · " + model : ""}`
+          ? `local${liveModel ? " · " + liveModel : ""}`
           : `${aiProvider.value} · ${model}`;
       updateSpark();
     }
+    // Step-by-step local-server setup, written for someone who has never
+    // opened a terminal. Windows first; the Mac tab swaps the whole panel.
+    function showLocalSetupHelp(err) {
+      const el = addMsg("bot", "");
+      const step = (n, txt) => `<div style="margin:4px 0 4px 2px"><b>${n}.</b> ${txt}</div>`;
+      const cmd = (t) => `<code style="user-select:all; background:rgba(255,255,255,.08); padding:1px 6px; border-radius:5px">${t}</code>`;
+      const h = (t) => `<div style="margin:10px 0 2px; font-weight:700">${t}</div>`;
+      const winHTML =
+        h("Easiest — LM Studio (no typing at all)")
+        + step(1, `Go to <b>lmstudio.ai</b>, click <b>Download for Windows</b>, run the installer.`)
+        + step(2, `In LM Studio, use the 🔍 search: try <b>Qwen2.5 Coder 7B</b> (small &amp; quick) — click <b>Download</b>.`)
+        + step(3, `Click the green <b>Developer</b> tab on the left, flip <b>Start Server</b> on.`)
+        + step(4, `Back here: put ${cmd("http://localhost:1234/v1")} in the <b>Server URL</b> box above. You'll see a ✓.`)
+        + h("Or — Ollama (one command)")
+        + step(1, `Go to <b>ollama.com</b>, download for Windows, install it.`)
+        + step(2, `Press the <b>Windows key</b>, type ${cmd("cmd")}, press Enter — a black window opens. That's all the "PowerShell" you need.`)
+        + step(3, `Type ${cmd("ollama pull qwen2.5-coder:7b")} and press Enter. Wait for the download.`)
+        + step(4, `Server URL box: ${cmd("http://localhost:11434/v1")}. <span class="note">(Using brepcode.com in a browser? Also type ${cmd("setx OLLAMA_ORIGINS *")} in that window, then quit &amp; reopen Ollama.)</span>`)
+        + h("The big one — Bonsai 27B (free 27B-class model, ~4GB)")
+        + step(1, `In LM Studio's search, look for <b>Bonsai 27B GGUF</b>. It may ask you to sign in to Hugging Face (free) and accept the model's terms once.`)
+        + step(2, `Download, start the server, same URL as LM Studio above.`);
+      const macHTML =
+        h("Easiest — LM Studio (no typing at all)")
+        + step(1, `Go to <b>lmstudio.ai</b>, download for Mac, drag it to Applications.`)
+        + step(2, `Search for <b>Qwen2.5 Coder 7B</b> — click <b>Download</b>.`)
+        + step(3, `Green <b>Developer</b> tab → <b>Start Server</b>.`)
+        + step(4, `Server URL box above: ${cmd("http://localhost:1234/v1")}.`)
+        + h("Or — Ollama (one command)")
+        + step(1, `Go to <b>ollama.com</b>, download for Mac, open it once.`)
+        + step(2, `Press <b>⌘ + Space</b>, type ${cmd("Terminal")}, press Enter.`)
+        + step(3, `Type ${cmd("ollama pull qwen2.5-coder:7b")} and press Enter.`)
+        + step(4, `Server URL box: ${cmd("http://localhost:11434/v1")}.`)
+        + h("The big one — Bonsai 27B (Macs are its home turf)")
+        + step(1, `In Terminal: ${cmd("git clone https://github.com/PrismML-Eng/Bonsai-demo && cd Bonsai-demo && ./setup.sh")} (downloads ~4GB).`)
+        + step(2, `Then: ${cmd("./scripts/start_llama_server.sh")}`)
+        + step(3, `Leave the Server URL box <b>blank</b> — it serves on the default :8080.`);
+      el.innerHTML =
+        `<div>No local model server answered <span class="note">(${esc(err)})</span>. Set one up — it's free, private, and nothing leaves this computer:</div>`
+        + `<div style="display:flex; gap:6px; margin:8px 0 2px">`
+        + `<button class="hist-btn lsh-tab" data-os="win">Windows</button>`
+        + `<button class="hist-btn lsh-tab" data-os="mac">Mac</button></div>`
+        + `<div class="lsh-pane" data-os="win">${winHTML}</div>`
+        + `<div class="lsh-pane" data-os="mac" style="display:none">${macHTML}</div>`
+        + `<div style="margin-top:10px">When the server is running, pick <b>Local model</b> in ⚙ again (or re-enter the URL) — the ✓ and its model list appear, and you're chatting for free.</div>`;
+      const pick = (os) => {
+        for (const b of el.querySelectorAll(".lsh-tab")) b.classList.toggle("active", b.dataset.os === os);
+        for (const p of el.querySelectorAll(".lsh-pane")) p.style.display = p.dataset.os === os ? "" : "none";
+      };
+      for (const b of el.querySelectorAll(".lsh-tab")) b.addEventListener("click", () => pick(b.dataset.os));
+      pick(/mac|iphone|ipad/i.test(navigator.platform || "") ? "mac" : "win");
+    }
+
     // ---- live connection check: fetch the models THIS key can actually use
     const aiCheck = $("ai-check");
     let checkToken = 0;
@@ -8522,13 +8593,8 @@ ${joined}`)(...vs);
         aiCheck.textContent = "✗"; aiCheck.className = "bad";
         fillModelOptions(provider, aiModel.value);   // fall back to the curated list
         if (announce) {
-          addMsg("bot", provider === "local"
-            ? `Couldn't reach a local model server (${String(e?.message || e).slice(0, 80)}). Start one, then re-pick the provider:\n`
-              + `• llama.cpp: \`llama-server -m model.gguf --port 8080\`\n`
-              + `• Bonsai 27B (free 27B, 3.9GB): PrismML's one-script setup at github.com/PrismML-Eng/Bonsai-demo serves it on :8080\n`
-              + `• Ollama: runs on :11434 — put http://localhost:11434/v1 in the URL box (and set OLLAMA_ORIGINS=* for the web version)\n`
-              + `• LM Studio: enable the local server on :1234 — URL http://localhost:1234/v1`
-            : `Couldn't connect to ${provider}: ${String(e?.message || e).slice(0, 120)}`);
+          if (provider === "local") showLocalSetupHelp(String(e?.message || e).slice(0, 80));
+          else addMsg("bot", `Couldn't connect to ${provider}: ${String(e?.message || e).slice(0, 120)}`);
         }
       }
     }
