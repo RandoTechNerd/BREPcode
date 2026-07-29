@@ -274,7 +274,9 @@ export async function parse3MFObjects(buf) {
   const push = (path, id, transform, label) => {
     const acc = [];
     collect(path, id, transform, 0, acc, new Set());
-    if (acc.length) out.push({ name: label, positions: new Float32Array(acc) });
+    // srcPath/srcId identify the object this part came from, so the colour
+    // fallback can look up its pid/pindex without re-deriving the traversal
+    if (acc.length) out.push({ name: label, positions: new Float32Array(acc), srcPath: path, srcId: id });
   };
 
   const items = [...rootXml.matchAll(/<item\b([^>]*)>/g)]
@@ -319,7 +321,7 @@ export async function parse3MFObjects(buf) {
 // part has no colour to report.
 export async function parse3MFPartColours(buf) {
   let cfg = "", proj = "";
-  try { cfg = new TextDecoder().decode(await unzipEntry(buf, /model_settings\.config$/i)); } catch { return []; }
+  try { cfg = new TextDecoder().decode(await unzipEntry(buf, /model_settings\.config$/i)); } catch { cfg = ""; }
   try { proj = new TextDecoder().decode(await unzipEntry(buf, /project_settings\.config$/i)); } catch { /* colours unknown */ }
 
   const filaments = (/"filament_colour"\s*:\s*\[([^\]]*)\]/.exec(proj)?.[1] || "")
@@ -327,11 +329,47 @@ export async function parse3MFPartColours(buf) {
 
   // Parts appear in the same order as the components they describe.
   const out = [];
-  for (const m of cfg.matchAll(/<part\b[\s\S]*?<\/part>/g)) {
-    const ex = +(/key="extruder"\s+value="(\d+)"/.exec(m[0])?.[1] || 0);
-    out.push(ex > 0 && filaments[ex - 1] ? filaments[ex - 1].toUpperCase() : null);
+  if (cfg && filaments.length) {
+    for (const m of cfg.matchAll(/<part\b[\s\S]*?<\/part>/g)) {
+      const ex = +(/key="extruder"\s+value="(\d+)"/.exec(m[0])?.[1] || 0);
+      out.push(ex > 0 && filaments[ex - 1] ? filaments[ex - 1].toUpperCase() : null);
+    }
   }
-  return out;
+  if (out.some(Boolean)) return out;
+
+  // FALLBACK: the 3MF materials extension itself. Each object may carry
+  // pid/pindex into an <m:colorgroup> palette — the spec-correct mechanism
+  // (and what our own colored3MF always wrote). Aligned by srcPath/srcId,
+  // never by guesswork about ordering.
+  try {
+    const objects = await parse3MFObjects(buf);
+    const parts = await unzipEntries(buf, /\.model$/i);
+    const dec = new TextDecoder();
+    const palettes = new Map();   // "path" -> Map(groupId -> [hex...])
+    const objMeta = new Map();    // "path#id" -> { pid, pindex }
+    const norm = (p) => "/" + String(p || "").replace(/^\/+/, "");
+    for (const [name, bytes] of parts) {
+      const xml = dec.decode(bytes);
+      const pal = new Map();
+      for (const g of xml.matchAll(/<m:colorgroup\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/m:colorgroup>/g)) {
+        pal.set(g[1], [...g[2].matchAll(/<m:color\b[^>]*\bcolor="(#[0-9a-fA-F]{6})/g)].map((c) => c[1].toUpperCase()));
+      }
+      palettes.set(norm(name), pal);
+      for (const o of xml.matchAll(/<object\b([^>]*)>/g)) {
+        const id = /\bid="([^"]+)"/.exec(o[1])?.[1];
+        const pid = /\bpid="([^"]+)"/.exec(o[1])?.[1];
+        const pindex = /\bpindex="(\d+)"/.exec(o[1])?.[1];
+        if (id && pid) objMeta.set(`${norm(name)}#${id}`, { pid, pindex: +(pindex || 0) });
+      }
+    }
+    return objects.map((o) => {
+      const meta = objMeta.get(`${o.srcPath}#${o.srcId}`);
+      if (!meta) return null;
+      return palettes.get(o.srcPath)?.get(meta.pid)?.[meta.pindex] ?? null;
+    });
+  } catch {
+    return out;
+  }
 }
 
 // The same file as ONE triangle soup — what a thumbnail wants.

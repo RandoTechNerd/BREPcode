@@ -1,8 +1,11 @@
 // Model-inventory parsers: STL (ascii + binary), OBJ, and 3MF via the
 // minimal zip reader — including a round-trip through our own 3MF writer.
 
-import { parseSTL, parseOBJ, parse3MF, parseModelFile } from "../viewer/inventory.js";
-import { stlTo3MF } from "../viewer/exporters.js";
+import {
+  parseSTL, parseOBJ, parse3MF, parseModelFile,
+  parse3MFObjects, parse3MFPartColours, parse3MFColourGroups,
+} from "../viewer/inventory.js";
+import { stlTo3MF, colored3MF } from "../viewer/exporters.js";
 import { build, toSTL, cube } from "../index.js";
 
 let pass = 0, fail = 0;
@@ -165,6 +168,49 @@ ${cube(2)}
   const plain = stlTo3MF(asciiStl, "cube");
   check("a plain single-part 3MF still parses",
     (await parse3MF(plain.buffer ?? plain)).length === 12 * 9);
+}
+
+// ---- colour round-trip through our OWN writer -------------------------------
+// The bug this pins down: colored3MF wrote per-part extruders but never the
+// filament_colour palette, so a coloured BREPcode export re-imported GREY.
+{
+  const cubeGroup = (ox, color) => {
+    const v = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10]]
+      .map(([x, y, z]) => [x + ox, y, z]);
+    const q = (a, b, c, d) => [[a, b, c], [a, c, d]];
+    const tris = [...q(0, 3, 2, 1), ...q(4, 5, 6, 7), ...q(0, 1, 5, 4), ...q(2, 3, 7, 6), ...q(0, 4, 7, 3), ...q(1, 2, 6, 5)];
+    return { verts: v, tris, color };
+  };
+  const bytes = colored3MF([cubeGroup(0, "#ff0000"), cubeGroup(14, "#00aa00"), cubeGroup(28, "#0000ff")], "rainbow");
+
+  const objects = await parse3MFObjects(bytes);
+  check("our colour 3MF parses to 3 parts", objects.length === 3, String(objects.length));
+  const colours = await parse3MFPartColours(bytes);
+  check("colours ROUND-TRIP through our own writer",
+    colours.join() === "#FF0000,#00AA00,#0000FF", colours.join());
+  const groups = await parse3MFColourGroups(bytes);
+  check("colour groups pair positions with colours",
+    groups.length === 3 && groups.every((g) => g.color && g.positions.length === 12 * 9));
+
+  // Files exported BEFORE the fix have no project_settings — the m:colorgroup
+  // fallback must recover their colours too.
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(bytes);
+  zip.remove("Metadata/project_settings.config");
+  const legacy = await zip.generateAsync({ type: "uint8array" });
+  const legacyColours = await parse3MFPartColours(legacy);
+  check("legacy exports (no palette file) recover via m:colorgroup",
+    legacyColours.join() === "#FF0000,#00AA00,#0000FF", legacyColours.join());
+  // and with BOTH colour records gone, it degrades to no colours, not a throw
+  zip.remove("Metadata/model_settings.config");
+  const grey = await zip.generateAsync({ type: "uint8array" });
+  // strip pid/pindex from the model to simulate a plain colourless file
+  const model = (await (await JSZip.loadAsync(grey)).file("3D/3dmodel.model").async("string"))
+    .replace(/\spid="[^"]*"/g, "").replace(/\spindex="[^"]*"/g, "").replace(/<m:colorgroup[\s\S]*?<\/m:colorgroup>/g, "");
+  const z2 = await JSZip.loadAsync(grey);
+  z2.file("3D/3dmodel.model", model);
+  const colourless = await parse3MFPartColours(await z2.generateAsync({ type: "uint8array" }));
+  check("a colourless file yields nulls, never a throw", colourless.every((c) => !c));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

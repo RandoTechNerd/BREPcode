@@ -6749,14 +6749,59 @@ ${joined}`)(...vs);
       updateDims(previewGroup);      // the ruler measures what is on screen
     }
 
+    // Too dense for the KERNEL is not too dense for the GPU: drawing triangles
+    // is cheap, manifoldizing them is not. So an oversized model gets a
+    // VIEW-ONLY preview — orbit it, measure it with the ruler, read its
+    // colours — with the editor left untouched and the edit tools refusing
+    // (they already refuse whenever a preview is up).
+    async function showViewOnlyPreview(file, buf, ext, triLabel) {
+      setStatus("busy", `Reading ${file.name} for a view-only preview…`);
+      await new Promise((r) => setTimeout(r, 30));
+      const inv = await getInventory();
+      let objects = [], colours = [];
+      if (ext === "3mf") {
+        objects = await inv.parse3MFObjects(buf);
+        colours = await inv.parse3MFPartColours(buf).catch(() => []);
+      } else {
+        objects = [{ positions: await inv.parseModelFile(file.name, buf) }];
+      }
+      if (!objects.length || !objects.some((o) => o.positions?.length)) {
+        throw new Error("no geometry found in that file");
+      }
+      let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity;
+      for (const o of objects) {
+        const p = o.positions;
+        for (let i = 0; i < p.length; i += 3) {
+          if (p[i] < mnx) mnx = p[i]; if (p[i] > mxx) mxx = p[i];
+          if (p[i + 1] < mny) mny = p[i + 1]; if (p[i + 1] > mxy) mxy = p[i + 1];
+          if (p[i + 2] < mnz) mnz = p[i + 2];
+        }
+      }
+      showMeshPreview(objects, colours, [-(mnx + mxx) / 2, -(mny + mxy) / 2, -mnz]);
+      setStatus("ok", `${file.name}: view-only preview (${triLabel} — too dense to edit in the browser)`);
+      hint.innerHTML = `<b>${esc(file.name)}</b> is showing as a <b>view-only preview</b> — orbit it, and the ruler shows its true size, but ${triLabel} is too dense for the modelling kernel. To actually edit it: decimate first (Blender's <b>Decimate</b> modifier, or “Simplify model” in PrusaSlicer/Bambu) to under ${(MESH_REFUSE / 1000)}k triangles and re-import.`;
+    }
+
     async function importMeshFile(file) {
       const mb = file.size / 1048576;
-      // A mesh this size will freeze or crash a browser tab long before the
-      // kernel finishes manifoldizing it — refuse with a way forward instead
-      // of leaving the user staring at a stuck spinner.
+      // Beyond ~150 MB even READING the file stalls the tab — refuse. Between
+      // 60 and 150 MB the kernel is hopeless but a look is still possible.
+      if (mb > 150) {
+        setStatus("err", `${file.name} is ${mb.toFixed(0)} MB — too heavy even to preview in the browser. Export a simplified/decimated copy and import that.`);
+        hint.innerHTML = `<b>${esc(file.name)}</b> is ${mb.toFixed(0)} MB. Most slicers and mesh tools can decimate: in Blender use the Decimate modifier; in PrusaSlicer/Bambu export a simplified STL.`;
+        return;
+      }
+      if (mb > 60 && /^(stl|obj|3mf)$/.test(file.name.toLowerCase().split(".").pop())) {
+        try {
+          return await showViewOnlyPreview(file, await file.arrayBuffer(),
+            file.name.toLowerCase().split(".").pop(), `${mb.toFixed(0)} MB`);
+        } catch (err) {
+          setStatus("err", `Couldn't preview ${file.name}: ${String(err?.message || err).slice(0, 80)}`);
+          return;
+        }
+      }
       if (mb > 60) {
         setStatus("err", `${file.name} is ${mb.toFixed(0)} MB — too heavy to model with in the browser. Export a simplified/decimated copy (under ~60 MB) and import that.`);
-        hint.innerHTML = `<b>${esc(file.name)}</b> is ${mb.toFixed(0)} MB. Most slicers and mesh tools can decimate: in Blender use the Decimate modifier; in PrusaSlicer/Bambu export a simplified STL.`;
         return;
       }
       try {
@@ -6793,10 +6838,8 @@ ${joined}`)(...vs);
 
         const triCount = stlTriangleCount(buf, ext, isAsciiStl);
         if (triCount && triCount > MESH_REFUSE) {
-          const k = (triCount / 1000).toFixed(0);
-          setStatus("err", `${file.name} has about ${k}k triangles — too dense to build in the browser (it would lock the tab). Decimate it to under ${(MESH_REFUSE / 1000)}k and re-import.`);
-          hint.innerHTML = `<b>${esc(file.name)}</b> is ~${k}k triangles. Detail that fine costs you nothing here — the kernel has to rebuild every one. In Blender add a <b>Decimate</b> modifier (ratio ~${Math.max(0.05, MESH_REFUSE / triCount / 2).toFixed(2)}); in PrusaSlicer/Bambu use “Simplify model”. Then import the lighter copy.`;
-          return;
+          // the kernel would lock the tab, but the GPU can still SHOW it
+          return await showViewOnlyPreview(file, buf, ext, `~${(triCount / 1000).toFixed(0)}k triangles`);
         }
         if (triCount && triCount > MESH_HEAVY) {
           setStatus("busy", `${file.name}: ~${(triCount / 1000).toFixed(0)}k triangles — this will take a while…`);
@@ -6872,8 +6915,11 @@ ${joined}`)(...vs);
           // window with nothing to read.
           const guessSec = Math.round(total * 0.0015);
           if (guessSec > 150) {
-            setStatus("err", `${file.name} is ~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — roughly ${Math.round(guessSec / 60)} minutes to build, with the tab frozen throughout. Simplify it and re-import.`);
-            hint.innerHTML = `<b>${esc(file.name)}</b> is ~${(total / 1000).toFixed(0)}k triangles. In PrusaSlicer/Bambu use “Simplify model”, or in Blender add a <b>Decimate</b> modifier, then import the lighter copy.`;
+            // a build would freeze the tab for minutes — show it instead,
+            // colours and all (the parts + palette are already parsed)
+            showMeshPreview(objects, partColours, off);
+            setStatus("ok", `${file.name}: view-only preview (~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — too dense to edit)`);
+            hint.innerHTML = `<b>${esc(file.name)}</b> is showing as a <b>view-only preview</b> with its real colours — a full build would take ~${Math.round(guessSec / 60)} minutes with the tab frozen. To edit it: “Simplify model” in PrusaSlicer/Bambu or Blender's <b>Decimate</b>, then re-import.`;
             return;
           }
           if (total > MESH_HEAVY) {

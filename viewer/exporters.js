@@ -293,7 +293,15 @@ ${used.map((hex, i) => `    <part id="${firstObject + i}" subtype="normal_part">
   </object>
 </config>
 `;
-  return threeMfPackage(model, name, opts.source, [["Metadata/model_settings.config", settings]]);
+  // The other half of the colour story: model_settings says which EXTRUDER
+  // each part uses, project_settings says what colour each extruder holds.
+  // We wrote only the first half — so our own coloured exports re-imported
+  // GREY (and slicers showed default filament colours). Both halves now ship.
+  const project = `{\n  "filament_colour": [${used.map((hex) => `"${hex}"`).join(", ")}]\n}\n`;
+  return threeMfPackage(model, name, opts.source, [
+    ["Metadata/model_settings.config", settings],
+    ["Metadata/project_settings.config", project],
+  ]);
 }
 
 // Where the parametric source rides along inside an exported file. A mesh is a
@@ -318,12 +326,13 @@ const sourceHeader = (name) =>
 // Metadata/ parts of their own, so this is a well-trodden path, not a hack.
 function threeMfPackage(model, name, code, extra = []) {
   const source = code ? String(code).trim() : "";
+  const hasConfig = extra.some(([p]) => /\.config$/i.test(p));
   return storedZip([
     ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
-${source ? ` <Default Extension="js" ContentType="text/javascript"/>\n` : ""}</Types>
+${hasConfig ? ` <Default Extension="config" ContentType="application/xml"/>\n` : ""}${source ? ` <Default Extension="js" ContentType="text/javascript"/>\n` : ""}</Types>
 `],
     ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
