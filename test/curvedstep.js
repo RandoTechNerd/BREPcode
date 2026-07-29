@@ -15,7 +15,7 @@ import { buildCurved, stepToStl, _setReplicad } from "../viewer/curved.js";
 import {
   cube, cylinder, cone, sphere, torus, polygon, linearExtrude,
   difference, union, translate, rotate, scale, importedMesh, registerImport,
-  hull, freeform, fillet,
+  hull, freeform, fillet, texture,
 } from "../src/dsl.js";
 
 let pass = 0, fail = 0;
@@ -106,6 +106,17 @@ try {
   check("...transformed to where the code put it",
     Math.abs(Math.min(...xs) - 5) < 0.2 && Math.abs(Math.max(...xs) - 17) < 0.2,
     `x ${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}`);
+}
+{
+  // a knurled part (the goggles' gain dial) must export too — displaced
+  // geometry is honestly faceted, sewn back in through OCCT
+  const step = await stepOf(union(
+    cube([20, 20, 4]),
+    translate([10, 10, 4], texture({ pattern: "knurl", depth: 0.5, scale: 2, maxTris: 2000 },
+      cylinder({ r: 6, h: 5, $fn: 48 }))),
+  ));
+  check("texture() rides into curved STEP/blueprints", /ADVANCED_FACE/.test(step) && step.length > 10000,
+    `${(step.length / 1024).toFixed(0)}KB`);
 }
 try {
   // a mesh too dense for hidden-line removal still refuses, with a number

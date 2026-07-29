@@ -12,7 +12,7 @@
 // equivalent — both fail with a clear message instead of a faceted lie.
 
 import { Matrix4, Vector3, Quaternion } from "three";
-import { getImport } from "../src/dsl.js";
+import { getImport, displacedPositions } from "../src/dsl.js";
 
 let replicadReady = null;
 
@@ -152,6 +152,34 @@ export async function buildCurved(root) {
     importShapes.set(n, await r.importSTL(new Blob([text], { type: "model/stl" })));
   };
 
+  // texture()/heightmap(): displaced geometry genuinely IS faceted, so run
+  // the same displacement pipeline the kernel path uses — on replicad's own
+  // tessellation of the child — and sew the result back in via importSTL.
+  // A knurled dial then shows up in the blueprint and the STEP for real.
+  const textureShapes = new Map();
+  const resolveTextures = async (n) => {
+    if (!n || typeof n !== "object") return;
+    for (const c of kids(n)) await resolveTextures(c);
+    if (n.kind !== "texture" || textureShapes.has(n)) return;
+    let base = build(n.children[0], new Matrix4());
+    for (let i = 1; i < n.children.length; i++) base = base.fuse(build(n.children[i], new Matrix4()));
+    const mesh = base.mesh({ tolerance: 0.2, angularTolerance: 20 });
+    const flat = [];
+    for (let i = 0; i < mesh.triangles.length; i++) {
+      const p = mesh.triangles[i] * 3;
+      flat.push(mesh.vertices[p], mesh.vertices[p + 1], mesh.vertices[p + 2]);
+    }
+    const pos = displacedPositions(flat, n.opts);
+    const out = ["solid tex"];
+    for (let i = 0; i < pos.length; i += 9) {
+      out.push("facet normal 0 0 0", "outer loop");
+      for (let k = 0; k < 9; k += 3) out.push(`vertex ${pos[i + k]} ${pos[i + k + 1]} ${pos[i + k + 2]}`);
+      out.push("endloop", "endfacet");
+    }
+    out.push("endsolid tex");
+    textureShapes.set(n, await r.importSTL(new Blob([out.join("\n")], { type: "model/stl" })));
+  };
+
   // OCCT refuses a wire containing a zero-length edge, while the BREP.io kernel
   // quietly ignores one — so a profile that builds fine in the viewer can fail
   // the STEP/blueprint export with nothing but an emscripten pointer to show for
@@ -230,6 +258,11 @@ export async function buildCurved(root) {
       if (!shape) throw new Error("curved export: import was not resolved before the build");
       return applyMatrix(shape, new Matrix4().multiplyMatrices(matrix, n.fix));
     }
+    if (n.kind === "texture") {
+      const shape = textureShapes.get(n);
+      if (!shape) throw new Error("curved export: texture was not resolved before the build");
+      return applyMatrix(shape, new Matrix4().multiplyMatrices(matrix, n.fix));
+    }
     throw new Error(`curved export: unknown node kind "${n.kind}"`);
   };
 
@@ -239,7 +272,8 @@ export async function buildCurved(root) {
   // real message first — some OCCT builds expose a decoder.
   try {
     await resolveImports(root);
-    await resolveHulls(root);
+    await resolveTextures(root);   // after imports (a texture's child may be one)
+    await resolveHulls(root);      // after textures (a hull's child may be one)
     return build(root, new Matrix4());
   } catch (e) {
     if (e instanceof Error) throw e;

@@ -3551,7 +3551,10 @@
     for (const headerEl of document.querySelectorAll(".card > header")) {
       const card = headerEl.closest(".card");
       headerEl.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0 || e.target.closest("button, input, select, a")) return;
+        // #model-name is in the exclusion list because the drag's pointer
+        // capture retargets the eventual click to the header — the name field
+        // never opened, it just silently started a window drag instead.
+        if (e.button !== 0 || e.target.closest("button, input, select, a, #model-name, #model-name-input")) return;
         if (card.classList.contains("maxed")) return;
         const rect = card.getBoundingClientRect();
         if (!card.classList.contains("floating")) {
@@ -3985,8 +3988,9 @@
       const el = nameEl();
       if (!el) return;
       el.textContent = modelName || (nameArmed ? NAME_HINT : "builds as you type");
-      el.classList.toggle("editable", nameArmed);
+      el.classList.add("editable");        // always clickable — the click arms it
       el.classList.toggle("named", !!modelName);
+      el.title = "Name this model — used on exports and the blueprint";
     }
 
     // Called on the first keystroke in the editor.
@@ -3997,7 +4001,11 @@
     }
 
     function editModelName() {
-      if (!nameArmed || $("model-name-input")) return;
+      if ($("model-name-input")) return;
+      // Clicking IS the arming gesture. It used to require a keystroke in the
+      // editor first, so a model built by the AI or opened from a file left
+      // the caption dead to clicks — "I try clicking and nothing".
+      nameArmed = true;
       const el = nameEl();
       const input = document.createElement("input");
       input.id = "model-name-input";
