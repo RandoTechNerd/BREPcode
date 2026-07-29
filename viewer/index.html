@@ -8507,8 +8507,8 @@ ${joined}`)(...vs);
         + step(2, `Press the <b>Windows key</b>, type ${cmd("cmd")}, press Enter — a black window opens. That's all the "PowerShell" you need.`)
         + step(3, `Type ${cmd("ollama pull qwen2.5-coder:7b")} and press Enter. Wait for the download.`)
         + step(4, `Server URL box: ${cmd("http://localhost:11434/v1")}. <span class="note">(Using brepcode.com in a browser? Also type ${cmd("setx OLLAMA_ORIGINS *")} in that window, then quit &amp; reopen Ollama.)</span>`)
-        + h("The big one — Bonsai 27B (free 27B-class model, ~4GB)")
-        + step(1, `In LM Studio's search, look for <b>Bonsai 27B GGUF</b>. It may ask you to sign in to Hugging Face (free) and accept the model's terms once.`)
+        + h("The big one — Bonsai 27B (free 27B-class model, ~6GB)")
+        + step(1, `In LM Studio's search, look for <b>Bonsai 27B GGUF</b> and pick the <b>Ternary</b> build — it's the one tuned for writing code (the smaller 1-bit build is noticeably worse at it). May ask you to sign in to Hugging Face (free) and accept the model's terms once.`)
         + step(2, `Download, start the server, same URL as LM Studio above.`);
       const macHTML =
         h("Easiest — LM Studio (no typing at all)")
