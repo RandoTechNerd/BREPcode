@@ -111,6 +111,7 @@ const loc = (fn) => ({ __loc: fn });
 // (Line, Polyline, arcs, splines). Wires concatenate with + and become a
 // profile via make_face(); everything downstream is then the shared 2D system.
 const isWire = (v) => Array.isArray(v?.__wire);
+const isLocSet = (v) => Array.isArray(v?.__locs);
 const wire = (pts) => ({ __wire: pts });
 const pt2 = (v, what) => {
   if (Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1])) return [v[0], v[1]];
@@ -487,6 +488,52 @@ function makeEnv(langBox) {
     };
   }
 
+  // Wire([e1, e2, e3]) — the constructor form LLMs write constantly. Same as
+  // chaining with +: join the edges end to end.
+  env.Wire = (c) => {
+    const parts = (c.args.length === 1 && Array.isArray(c.args[0]) ? c.args[0] : c.args).filter(Boolean);
+    if (!parts.length || !parts.every(isWire)) {
+      throw new Error("Wire([...]) takes BuildLine edges (Line, Polyline, arcs…)");
+    }
+    return parts.reduce((a, b) => joinWires(a, b));
+  };
+
+  // fillet(sketch.vertices(), radius=r) — round every corner of a 2D sketch.
+  // Leaf profiles only; combined sketches should fillet before combining.
+  env.fillet = (c) => {
+    const target = c.args[0]?.__verts ?? c.args[0];
+    const r2 = num(c.kw.radius ?? c.args[1], "fillet radius");
+    if (!isProfile(target)) throw new Error("fillet() here takes a sketch's corners: fillet(Rectangle(40, 30).vertices(), radius=4)");
+    if (!target.leaf) throw new Error("fillet the sketch BEFORE combining it with + - & (a combined sketch has no simple corner list)");
+    const pts = target.pts, n = pts.length, out = [];
+    for (let i = 0; i < n; i++) {
+      const [px, py] = pts[(i - 1 + n) % n], [cx, cy] = pts[i], [nx2, ny2] = pts[(i + 1) % n];
+      const v1 = [px - cx, py - cy], v2 = [nx2 - cx, ny2 - cy];
+      const l1 = Math.hypot(...v1), l2 = Math.hypot(...v2);
+      if (!l1 || !l2) continue;
+      const half = Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))) / 2;
+      const t = Math.min(r2 / Math.tan(half), l1 * 0.49, l2 * 0.49);
+      if (!(t > 1e-6) || half > Math.PI / 2 - 1e-3) { out.push([cx, cy]); continue; }   // straight-ish: keep
+      const a = [cx + (v1[0] / l1) * t, cy + (v1[1] / l1) * t];
+      const b = [cx + (v2[0] / l2) * t, cy + (v2[1] / l2) * t];
+      const rEff = t * Math.tan(half);
+      const bis = [v1[0] / l1 + v2[0] / l2, v1[1] / l1 + v2[1] / l2];
+      const bl = Math.hypot(...bis) || 1;
+      const dist = rEff / Math.sin(half) - rEff;
+      const apex = [cx + (bis[0] / bl) * dist, cy + (bis[1] / bl) * dist];
+      out.push(a, ...threePointArcPts(a, apex, b).slice(1, -1), b);
+    }
+    return profileLeaf(out);
+  };
+  env.chamfer = () => {
+    throw new Error("2D chamfer() isn't supported yet — fillet(sketch.vertices(), radius=…) rounds corners instead");
+  };
+  for (const name of ["sweep", "loft"]) {
+    env[name] = () => {
+      throw new Error(`${name}() isn't supported — the kernel has no path-${name}. Model the part from extrusions/revolves, or use BREPcode's hull() for lofts between sections.`);
+    };
+  }
+
   // ---- sketch -> solid ----------------------------------------------------
   env.make_face = (c) => {
     let parts = c.args.length === 1 && Array.isArray(c.args[0]) ? c.args[0] : c.args;
@@ -553,6 +600,43 @@ function makeEnv(langBox) {
     });
   };
   env.Rotation = env.Rot;
+
+  // Location SETS — the algebra replacement for builder-mode for-loops:
+  //   holes += GridLocations(25, 15, 2, 2) * Circle(2.5)
+  // multiplies into one combined shape, one copy per location. Centred grids,
+  // matching build123d.
+  env.GridLocations = (c) => {
+    const xs = num(arg(c, 0, "x_spacing"), "GridLocations x_spacing");
+    const ys = num(arg(c, 1, "y_spacing"), "GridLocations y_spacing");
+    const nx = Math.round(num(arg(c, 2, "x_count"), "GridLocations x_count"));
+    const ny = Math.round(num(arg(c, 3, "y_count"), "GridLocations y_count"));
+    const locs = [];
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < ny; j++) {
+        locs.push(posLoc((i - (nx - 1) / 2) * xs, (j - (ny - 1) / 2) * ys, 0));
+      }
+    }
+    return { __locs: locs };
+  };
+  env.PolarLocations = (c) => {
+    const rad = num(arg(c, 0, "radius"), "PolarLocations radius");
+    const count = Math.round(num(arg(c, 1, "count"), "PolarLocations count"));
+    const start = num(arg(c, 2, "start_angle") ?? 0, "start_angle");
+    const locs = [];
+    for (let i = 0; i < count; i++) {
+      const a = (start + (360 * i) / count) * DEG;
+      locs.push(posLoc(rad * Math.cos(a), rad * Math.sin(a), 0));
+    }
+    return { __locs: locs };
+  };
+  env.Locations = (c) => {
+    const pts = (c.args.length === 1 && Array.isArray(c.args[0]) && Array.isArray(c.args[0][0])) ? c.args[0] : c.args;
+    return { __locs: pts.map((p) => {
+      if (isLoc(p)) return p;
+      const [x, y, z] = Array.isArray(p) ? p : [0, 0, 0];
+      return posLoc(x || 0, y || 0, z || 0);
+    }) };
+  };
 
   // ---- enums / namespaces
   env.Align = { MIN: ALIGN.MIN, CENTER: ALIGN.CENTER, MAX: ALIGN.MAX };
@@ -641,6 +725,9 @@ export function fromPython(src) {
     if (/\bwith\s+Build(Part|Sketch|Line)/.test(src)) {
       throw new Error('build123d builder mode ("with BuildPart() as …") isn\'t supported — use algebra mode instead: part = Box(30, 30, 12) - Pos(0, 0, -1) * Cylinder(8, 14)');
     }
+    if (/\bfor\b[^\n]*\bin\b[^\n]*Locations\s*\(/.test(src)) {
+      throw new Error("for-loops aren't supported — multiply the locations by the shape instead: holes += GridLocations(25, 15, 2, 2) * Circle(2.5)");
+    }
     throw new Error("Indented Python blocks (if/for/def/with) aren't supported — keep it to flat assignments like part = Box(20, 20, 10) - Cylinder(5, 12)");
   }
 
@@ -710,6 +797,10 @@ export function fromPython(src) {
           const m = v.methods[name];
           if (!m) throw new Error(`CadQuery .${name}() isn't supported`);
           v = m(callArgs());
+        } else if (isProfile(v) && name === "vertices") {
+          // fillet(sketch.vertices(), radius=…) — the marker fillet() reads
+          const p = v;
+          v = () => ({ __verts: p });
         } else if (v && typeof v === "object" && name in v) {
           v = v[name];
         } else if (isShape(v) || isShape(v?.shape)) {
@@ -733,6 +824,13 @@ export function fromPython(src) {
           if (isLoc(r)) { const a = v.__loc, b = r.__loc; v = loc((s) => a(b(s))); }
           else if (isShape(r) || r?.__wp || isProfile(r) || isWire(r)) v = v.__loc(r?.__wp ? env.__needShape(r) : r);
           else throw new Error("a location (Pos/Rot) can only multiply a shape, sketch, wire or another location");
+        } else if (isLocSet(v)) {
+          // GridLocations(…) * Circle(…) — one copy per location, combined
+          if (isProfile(r)) v = profileOp("UNION", v.__locs.map((l) => l.__loc(r)));
+          else if (isShape(r) || r?.__wp) {
+            const s = r?.__wp ? env.__needShape(r) : r;
+            v = union(...v.__locs.map((l) => l.__loc(s)));
+          } else throw new Error("GridLocations/PolarLocations multiply a sketch or a solid");
         } else if (typeof v === "number" && typeof r === "number") v = v * r;
         else throw new Error("* only combines numbers, or a Pos/Rot with a shape");
       } else {

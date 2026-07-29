@@ -226,5 +226,55 @@ try {
 check("sketch snippet detected as python",
   looksLikePython("sketch = Rectangle(40, 30) - Circle(6)\npart = extrude(sketch, amount=5)"));
 
+console.log("\nLLM-style build123d (the Gemini samples)\n");
+{
+  // sample 1 verbatim (plus a closing edge + extrude to make it a solid)
+  const { stl } = await run(`from build123d import *
+e1 = Line((0, 0), (20, 0))
+e2 = Line((20, 0), (20, 10))
+e3 = ThreePointArc((20, 10), (10, 15), (0, 0))
+test_1d = Wire([e1, e2, e3])
+show(test_1d)
+part = extrude(make_face(test_1d), amount=4)`);
+  const v = volumeOf(stl);
+  check("Wire([edges]) + show() works", v > 20 * 10 * 4 * 0.8, v.toFixed(0));
+}
+{
+  // sample 2 in algebra form: vertex fillets + GridLocations * Circle
+  const { stl } = await run(`from build123d import *
+base = Rectangle(40, 30)
+base = fillet(base.vertices(), radius=4)
+holes = Circle(7)
+holes += GridLocations(25, 15, 2, 2) * Circle(2.5)
+part = extrude(base - holes, amount=5)`);
+  const v = volumeOf(stl);
+  const expect = (1200 - (16 - Math.PI * 4) * 4 - Math.PI * 49 - 4 * Math.PI * 6.25) * 5;
+  check("fillet(.vertices()) + GridLocations plate", near(v, expect, expect * 0.02),
+    `${v.toFixed(0)} vs ${expect.toFixed(0)}`);
+  const b = boundsOf(stl);
+  check("...grid holes are centred (symmetric bounds)", near(b.x[0], -20, 0.1) && near(b.x[1], 20, 0.1));
+}
+{
+  const { stl } = await run(`from build123d import *
+part = extrude(Circle(20) - PolarLocations(12, 6) * Circle(3), amount=3)`);
+  const v = volumeOf(stl);
+  const expect = (Math.PI * 400 - 6 * Math.PI * 9) * 3;
+  check("PolarLocations ring of holes", near(v, expect, expect * 0.02), `${v.toFixed(0)} vs ${expect.toFixed(0)}`);
+}
+try {
+  fromPython(`from build123d import *
+for loc in GridLocations(25, 15, 2, 2):
+    holes += loc * Circle(2.5)`);
+  check("the for-loop form teaches the algebra form", false, "no error");
+} catch (e) {
+  check("the for-loop form teaches the algebra form", /GridLocations\(25, 15, 2, 2\) \* Circle/.test(e.message), e.message.slice(0, 90));
+}
+try {
+  fromPython(`from build123d import *\npart = sweep(Circle(3), path=Line((0,0),(10,10)))`);
+  check("sweep refuses by name with a way forward", false, "no error");
+} catch (e) {
+  check("sweep refuses by name with a way forward", /sweep\(\)/.test(e.message) && /hull/.test(e.message), e.message.slice(0, 80));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
