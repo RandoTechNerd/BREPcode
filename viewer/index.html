@@ -504,6 +504,9 @@
     }
     #status.busy #spin { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* the chat waiting label, once real progress is streaming in */
+    #busy-label.live { display: inline-block; animation: buildpulse 1.3s ease-in-out infinite; }
+    @keyframes buildpulse { 50% { opacity: .55; } }
 
     #export-menu {
       position: absolute; z-index: 30; display: none;
@@ -8638,9 +8641,21 @@ ${joined}`)(...vs);
       const logLine = (s) => {
         busyLog.textContent += `${((performance.now() - t0) / 1000).toFixed(1)}s  ${s}\n`;
       };
-      const tick = setInterval(() => {
-        busyLabel.textContent = `thinking… ${Math.round((performance.now() - t0) / 1000)}s`;
-      }, 1000);
+      // Once real progress arrives (streamed deltas, CLI events) the label
+      // switches from a bare timer to what is actually happening — watching
+      // the character count climb is the difference between "it's working"
+      // and "it's dead".
+      let liveState = null;   // { phase: "thinking"|"writing", chars|null }
+      const paintBusy = () => {
+        const s = Math.round((performance.now() - t0) / 1000);
+        if (!liveState) { busyLabel.textContent = `thinking… ${s}s`; return; }
+        busyLabel.classList.add("live");
+        const chars = liveState.chars != null ? ` · ${liveState.chars.toLocaleString()} characters` : "";
+        busyLabel.textContent = liveState.phase === "writing"
+          ? `🔭 building the model… ${s}s${chars}`
+          : `🧠 thinking… ${s}s${chars}`;
+      };
+      const tick = setInterval(paintBusy, 1000);
 
       try {
         // Include the current model code so "make the holes bigger" works — and
@@ -8705,7 +8720,13 @@ ${joined}`)(...vs);
             else addMsg("bot", `Couldn't attach ${im.name || "an image"} (${saved?.error || "unknown"}) — sending without it.`);
           }
           const system = CHAT.composeSystem({ reference, ...harnessOpts() });
-          ccProgress = logLine;
+          ccProgress = (s) => {
+            logLine(s);
+            const m = /writing… ([\d,]+) characters/.exec(s);
+            if (m) liveState = { phase: "writing", chars: +m[1].replace(/,/g, "") };
+            else if (/thinking/.test(s)) liveState = { phase: "thinking", chars: null };
+            paintBusy();
+          };
           const r = await window.brepcodeDesktop.claudeAsk({
             system,
             prompt: context + (imagePaths.length
@@ -8726,24 +8747,39 @@ ${joined}`)(...vs);
         } else {
           // Gemini: ask for the model's thoughts too. Models that don't support
           // thinkingConfig reject the whole request — retry once without it.
+          // Claude: STREAM. The Claude 5 family thinks before answering, and a
+          // hard request over a non-streaming call was a multi-minute dead
+          // spinner ending in nothing; streamed, the same wait shows the
+          // reasoning and the code being written character by character.
           let wantThoughts = cfg.provider === "gemini";
           let json;
           for (;;) {
+            const wantStream = cfg.provider === "claude";
             const { url, options } = buildApiRequest(cfg, msgs,
-              { includeThoughts: wantThoughts, reference, ...harnessOpts() });
+              { includeThoughts: wantThoughts, stream: wantStream, reference, ...harnessOpts() });
             const resp = await fetch(url, options);
-            json = await resp.json();
+            if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
+              let lastPaint = 0;
+              json = await CHAT.readClaudeStream(resp, ({ phase, chars }) => {
+                liveState = { phase, chars };
+                const now = performance.now();
+                if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
+              });
+              logLine(`response ← stream ended${json.stop_reason ? ` (${json.stop_reason})` : ""}`);
+            } else {
+              json = await resp.json();
+              logLine(`response ← HTTP ${resp.status}`);
+            }
             const errMsg = json?.error?.message || "";
             if (wantThoughts && errMsg && /think|thought/i.test(errMsg)) {
               wantThoughts = false;
               logLine("model doesn't expose thinking — retrying without");
               continue;
             }
-            logLine(`response ← HTTP ${resp.status}`);
             break;
           }
           answer = extractApiText(cfg.provider, json);
-          if (!answer) throw new Error("Empty response");
+          if (!answer) throw new Error(CHAT.emptyReplyReason(cfg.provider, json));
           reasoning = extractApiThinking(cfg.provider, json);
         }
 

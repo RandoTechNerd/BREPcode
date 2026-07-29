@@ -1084,11 +1084,15 @@ export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
         },
         body: JSON.stringify({
           model,
-          // 2000 truncated real models mid-code: the reply then had an opening
-          // fence and no closing one, so nothing got applied and the user saw a
-          // preamble that stopped dead. A parametric part plus a sentence of
-          // preamble needs room.
-          max_tokens: 8000,
+          // History of this number: 2000 truncated real models mid-code; then
+          // 8000 produced the "no response" bug — the Claude 5 family THINKS
+          // by default and thinking spends the same budget, so a hard request
+          // burned all 8000 on reasoning, stopped at max_tokens with zero text
+          // blocks, and the user saw nothing at all. 32000 leaves room for a
+          // long think AND the model; streaming (below) keeps it safe from
+          // request timeouts.
+          max_tokens: 32000,
+          ...(opts.stream ? { stream: true } : {}),
           system,
           messages: messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",
@@ -1162,6 +1166,73 @@ export function extractApiText(provider, json) {
     return t;
   }
   return "";
+}
+
+// Read a Claude SSE stream back into the same JSON shape a non-streaming call
+// returns, reporting progress as it goes — so extractApiText/Thinking work
+// unchanged and the user watches the character count climb instead of staring
+// at a spinner. onProgress({ phase: "thinking"|"writing", chars }) is called
+// as deltas arrive (throttle in the caller if needed).
+export async function readClaudeStream(resp, onProgress) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  const blocks = [];
+  let stopReason = null, error = null, buf = "";
+  const note = (phase, chars) => { try { onProgress?.({ phase, chars }); } catch { /* UI gone */ } };
+  const handle = (data) => {
+    let ev = null;
+    try { ev = JSON.parse(data); } catch { return; }
+    if (ev.type === "content_block_start") {
+      blocks[ev.index] = ev.content_block?.type === "thinking"
+        ? { type: "thinking", thinking: "" }
+        : { type: ev.content_block?.type || "text", text: "" };
+    } else if (ev.type === "content_block_delta") {
+      const b = blocks[ev.index];
+      if (!b) return;
+      if (ev.delta?.type === "thinking_delta") {
+        b.thinking = (b.thinking || "") + (ev.delta.thinking || "");
+        note("thinking", blocks.reduce((n, x) => n + (x?.thinking?.length || 0), 0));
+      } else if (ev.delta?.type === "text_delta") {
+        b.text = (b.text || "") + (ev.delta.text || "");
+        note("writing", blocks.reduce((n, x) => n + (x?.text?.length || 0), 0));
+      }
+    } else if (ev.type === "message_delta") {
+      stopReason = ev.delta?.stop_reason ?? stopReason;
+    } else if (ev.type === "error") {
+      error = ev.error || { message: "stream error" };
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line.startsWith("data:")) handle(line.slice(5).trim());
+    }
+  }
+  return { content: blocks.filter(Boolean), stop_reason: stopReason, ...(error ? { error } : {}) };
+}
+
+// When a reply carries no text at all, say WHY instead of "Empty response" —
+// the difference between a user retrying sensibly and giving up.
+export function emptyReplyReason(provider, json) {
+  if (json?.error?.message) return json.error.message;
+  if (provider === "claude") {
+    const thought = (json?.content ?? []).some((b) => b.type === "thinking");
+    if (json?.stop_reason === "max_tokens") {
+      return thought
+        ? "The model spent its whole token budget thinking and never got to the answer. Ask again — or simplify the request, or pick a faster model (sonnet) for this one."
+        : "The reply hit the token limit before any text arrived. Try again or simplify the request.";
+    }
+    if (thought) return "The model thought but produced no reply text — this usually passes on a retry.";
+  }
+  if (provider === "gemini" && json?.candidates?.[0]?.finishReason) {
+    return `No text in the reply (finishReason: ${json.candidates[0].finishReason}).`;
+  }
+  return "The provider returned no reply text. Try again — and if it repeats, check the request log above.";
 }
 
 // The model's reasoning, when the response carries it (Gemini thought parts,

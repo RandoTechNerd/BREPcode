@@ -5,6 +5,7 @@ import {
   respond, buildModelsRequest, extractModels, modelScore,
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
   parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem,
+  readClaudeStream, emptyReplyReason, extractApiText, extractApiThinking,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -508,6 +509,48 @@ console.log("\nmodel ranking\n");
   const sys = composeSystem({ harness: filterHarness(H, ["openscad"]) });
   check("composeSystem carries the filtered mission",
     sys.includes("Jscad rule.") && !sys.includes("Scad rule A."));
+}
+
+// ---- streamed Claude replies + the "no response" bug -----------------------
+{
+  // a synthetic SSE body: thinking first, then text, then the stop reason
+  const events = [
+    { type: "content_block_start", index: 0, content_block: { type: "thinking" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm, goggles need" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: " two tubes" } },
+    { type: "content_block_start", index: 1, content_block: { type: "text" } },
+    { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Here you go.\n```js\nreturn cube([10,10,10]);\n```" } },
+    { type: "message_delta", delta: { stop_reason: "end_turn" } },
+  ];
+  const sse = events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
+  const resp = { body: new Blob([sse]).stream() };
+  const seen = [];
+  const json = await readClaudeStream(resp, (p) => seen.push(p.phase));
+  check("stream reassembles into the non-streaming shape",
+    json.stop_reason === "end_turn" && json.content.length === 2);
+  check("...text extraction works unchanged",
+    extractApiText("claude", json).includes("return cube"));
+  check("...thinking extraction works unchanged",
+    extractApiThinking("claude", json) === "hmm, goggles need two tubes");
+  check("...progress reported both phases",
+    seen.includes("thinking") && seen.includes("writing"));
+}
+{
+  // THE bug: budget burned on thinking, stop_reason max_tokens, zero text —
+  // used to surface as "Empty response" / nothing at all
+  const thoughtOnly = { content: [{ type: "thinking", thinking: "…" }], stop_reason: "max_tokens" };
+  check("thinking-only max_tokens reply explains itself",
+    /budget thinking/.test(emptyReplyReason("claude", thoughtOnly)));
+  check("a provider error passes through verbatim",
+    emptyReplyReason("claude", { error: { message: "overloaded_error" } }) === "overloaded_error");
+  check("a truly empty reply still gets a sentence",
+    emptyReplyReason("claude", {}).length > 20);
+  // and the request that avoids it in the first place
+  const req = buildApiRequest({ provider: "claude", model: "m", key: "k" }, [{ role: "user", text: "hi" }], { stream: true });
+  const body = JSON.parse(req.options.body);
+  check("claude requests stream with a 32k budget", body.stream === true && body.max_tokens === 32000);
+  const req2 = buildApiRequest({ provider: "claude", model: "m", key: "k" }, [{ role: "user", text: "hi" }]);
+  check("...and stream stays off unless asked", JSON.parse(req2.options.body).stream === undefined);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
