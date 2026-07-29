@@ -451,12 +451,18 @@ app.whenReady().then(async () => {
     const held = await run(`(async () => {
       const r = await window.brepscript.applyGeneratedCode(${JSON.stringify(MONSTER)});
       const btn = document.getElementById("build-now-btn");
+      const bar = document.getElementById("build-bar");
+      const code = document.getElementById("code").getBoundingClientRect();
+      const bb = bar.getBoundingClientRect();
       return {
         detail: r.detail,
         status: document.getElementById("status-text").textContent,
-        headerHidden: btn.hidden,
+        headerHidden: bar.hidden,
         headerVisible: btn.offsetParent !== null,
         headerText: btn.textContent,
+        note: document.getElementById("build-bar-note").textContent,
+        // the bar spans the editor and sits under the code it will build
+        underTheCode: Math.abs(bb.top - code.bottom) < 4 && bb.width > code.width * 0.9,
         chatButtons: [...document.querySelectorAll("#chat-msgs button")].map((b) => b.textContent),
         codeInEditor: document.getElementById("code").value.trim() === ${JSON.stringify(MONSTER.trim())},
       };
@@ -467,11 +473,13 @@ app.whenReady().then(async () => {
       held.headerVisible === true && held.headerHidden === false, JSON.stringify(held));
     check("...labelled as a build, with the estimate",
       /Build/.test(held.headerText) && /\d+s/.test(held.headerText), held.headerText);
+    check("...spanning the editor, directly under the code",
+      held.underTheCode === true, JSON.stringify(held.note));
     check("...with a copy in the chat too",
       held.chatButtons.some((t) => /Build/.test(t)), JSON.stringify(held.chatButtons));
     check("...the code waiting in the editor, unbuilt", held.codeInEditor === true);
     check("...and the status pointing at where the button is",
-      /press ▶ Build in the editor/.test(held.status), held.status);
+      /press ▶ Build under the code/.test(held.status), held.status);
 
     // Pressing it must build that code, and retire the button.
     const pressed = await run(`(async () => {
@@ -484,7 +492,7 @@ app.whenReady().then(async () => {
     check("...which finishes", /^ok\|/.test(afterHold), afterHold);
     const gone = await run(`(() => {
       const btn = document.getElementById("build-now-btn");
-      return { hidden: btn.hidden, visible: btn.offsetParent !== null,
+      return { hidden: document.getElementById("build-bar").hidden, visible: btn.offsetParent !== null,
                chat: [...document.querySelectorAll("#chat-msgs button")].map((b) => b.textContent) };
     })()`);
     check("...and the Build button retires itself", gone.hidden === true && gone.visible === false,
@@ -496,7 +504,8 @@ app.whenReady().then(async () => {
     await setCode("return cube([12, 12, 12]);");
     await settle(60000);
     const stale = await run(`(() => { const b = document.getElementById("build-now-btn");
-      return { hidden: b.hidden, visible: b.offsetParent !== null }; })()`);
+      return { hidden: document.getElementById("build-bar").hidden,
+               visible: b.offsetParent !== null }; })()`);
     check("...and editing the code retires it too", stale.hidden === true, JSON.stringify(stale));
 
     // ---- 4. a build error is reported as a build error -------------------

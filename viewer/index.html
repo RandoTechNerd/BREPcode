@@ -743,6 +743,25 @@
     }
     #sm-swaps button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
     #export-menu .exp-group:first-child, #export-more .exp-group:first-child { padding-top: 9px; }
+
+    /* ---------- heavy-model Build bar ---------- */
+    /* Sits directly under the code it will build, spanning the editor, so the
+       one thing to do next is the widest thing on screen. Hidden until a model
+       is actually being held. */
+    #build-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-top: 1px solid var(--border);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+    #build-bar[hidden] { display: none; }
+    #build-bar-note { flex: 1; min-width: 0; font: 11.5px system-ui, sans-serif; color: var(--muted3); }
+    #build-now-btn {
+      flex: none; cursor: pointer; font: 700 12.5px system-ui, sans-serif;
+      padding: 6px 16px; border-radius: 7px;
+      border: 1px solid var(--accent); background: var(--accent); color: #fff;
+    }
+    #build-now-btn:hover { filter: brightness(1.12); }
+    #build-now-btn:disabled { opacity: .6; cursor: default; filter: none; }
     /* Plate picker: a row inside the export menu, styled to sit quietly under
        the mesh formats rather than compete with them. */
     #plate-row {
@@ -1173,12 +1192,6 @@
         <div><strong>BREPcode</strong><span class="sub" id="model-name"
              title="Name this model — used on exports and the blueprint">builds as you type</span></div>
         <div id="editor-tools">
-          <!-- Only appears when a heavy model is waiting to be built on purpose.
-               It lives HERE, in the editor header, because that is where the
-               code it will build is: the status bar saying "press Build" while
-               the only button sat inside a chat bubble behind another card was
-               a prompt with nothing to press. -->
-          <button id="build-now-btn" class="hist-btn" hidden></button>
           <button id="clear-btn" class="hist-btn" title="Clear the editor">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
@@ -1316,6 +1329,14 @@
   cube([30, 30, 12]),
   translate([15, 15, -1], cylinder({ r: 8, h: 14, $fn: 64 })),
 )</textarea>
+      <!-- A heavy model waiting to be built on purpose. Directly under the code
+           it will build, full width, so it reads as the one thing to do next —
+           in the toolbar it was a 100px text button first in a row of eight
+           icons, which is present but not FOUND. -->
+      <div id="build-bar" hidden>
+        <span id="build-bar-note"></span>
+        <button id="build-now-btn"></button>
+      </div>
       <div id="opts">
         <label title="When off, small typos are patched before building — your text is left as-is.">
           <input type="checkbox" id="exact" /> Exact
@@ -9271,20 +9292,26 @@ ${joined}`)(...vs);
     // A model heavy enough to be worth confirming waits in the editor behind a
     // Build button rather than starting unannounced.
     //
-    // The button is in the EDITOR HEADER, and that placement is the whole point:
-    // it used to exist only inside the chat bubble, while the line that puts the
-    // code in the editor also brings the editor forward — so the status bar read
-    // "press Build" and the only Build button was behind another card. The hint
-    // bar was the other candidate and is worse: updateHint() rewrites it on
-    // every click in the editor, so the button would vanish the moment the user
-    // touched the code it was about to build.
+    // The button sits in a bar DIRECTLY UNDER THE CODE, and the placement is the
+    // whole point. It first existed only inside the chat bubble, while the line
+    // that puts the code in the editor also brings the editor forward — so the
+    // status bar read "press Build" and the only button was behind another card.
+    // Moving it to the editor's toolbar fixed that but not really: a 100px text
+    // button first in a row of eight icons is present without being found. A bar
+    // under the code is the width of the card and reads as the next thing to do.
     //
-    // Chat still gets its own copy for anyone reading the conversation; both
-    // press the same button.
+    // The hint bar was the other candidate and is worse than both: updateHint()
+    // rewrites it on every click in the editor, so the button would vanish the
+    // moment the user touched the code it was about to build.
+    //
+    // Chat still gets its own copy inline with the message, for anyone reading
+    // the conversation rather than the editor; both press the same button.
+    const buildBar = $("build-bar");
+    const buildBarNote = $("build-bar-note");
     const buildNowBtn = $("build-now-btn");
 
     function clearHeavyHold() {
-      buildNowBtn.hidden = true;
+      buildBar.hidden = true;
       buildNowBtn.disabled = false;
     }
 
@@ -9307,18 +9334,19 @@ ${joined}`)(...vs);
         });
       };
 
-      buildNowBtn.hidden = false;
+      buildBar.hidden = false;
+      buildBarNote.innerHTML = `<b>Heavy model ready</b> — ~${kTris}k triangles, roughly ${secs}s`
+        + (offThread ? ". It builds in the background; the app stays usable." : ". The app will pause while it runs.");
       buildNowBtn.disabled = false;
       buildNowBtn.textContent = label;
       buildNowBtn.title = `Build this model — about ${secs} seconds, ~${kTris}k triangles`;
-      buildNowBtn.style.cssText = "font-weight:700; color:var(--accent)";
       buildNowBtn.onclick = start;
       copies.push(buildNowBtn);
 
-      setStatus("ok", `heavy model ready — press ▶ Build in the editor (~${secs}s)`);
+      setStatus("ok", `heavy model ready — press ▶ Build under the code (~${secs}s)`);
       const el = addMsg("bot", offThread
-        ? `That model is chunky (~${kTris}k triangles — roughly ${secs}s). It builds in the background so the app stays usable, but it's a long one, so it's in the editor waiting for you — press <b>▶ Build</b> up in the editor header, or here: `
-        : `That model is chunky (~${kTris}k triangles — roughly ${secs}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). Press <b>▶ Build</b> in the editor header, or here: `);
+        ? `That model is chunky (~${kTris}k triangles — roughly ${secs}s). It builds in the background so the app stays usable, but it's a long one, so it's waiting in the editor — press <b>▶ Build</b> under the code there, or right here: `
+        : `That model is chunky (~${kTris}k triangles — roughly ${secs}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). Press <b>▶ Build</b> under the code in the editor, or right here: `);
       const chatBtn = document.createElement("button");
       chatBtn.className = "hist-btn";
       chatBtn.style.cssText = "margin-left:6px; font-weight:700";
