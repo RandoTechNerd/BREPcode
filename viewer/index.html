@@ -4388,6 +4388,13 @@ ${joined}`)(...vs);
         const est = dsl.estimateBuild(shape);
         if (est.sec > 8) {
           setStatus("busy", `heavy model (~${(est.tris / 1000).toFixed(0)}k triangles) — roughly ${Math.round(est.sec)}s, the app will pause…`);
+          // The browser can't tell "working hard" from "hung", so past ~20s it
+          // may raise its own Page Unresponsive dialog. We can't suppress that
+          // (no page can) — but a user who was TOLD to expect it and to press
+          // Wait reads it as weather, not a crash.
+          if (est.sec > 20) {
+            hint.innerHTML = `⏳ Heavy build (~${Math.round(est.sec)}s). The window will freeze while the kernel works — that's normal. If the browser pops up <b>"Page Unresponsive"</b>, choose <b>Wait</b>; the build is running, not stuck. The result appears when it's done.`;
+          }
           await new Promise((r) => setTimeout(r, 30));   // let that paint first
         }
       } catch { /* an estimate must never break a build */ }
@@ -8849,7 +8856,7 @@ ${joined}`)(...vs);
           saveSnapshot().catch(() => {});
           toggleCard(panel, openBtn, true);
           setStatus("ok", `heavy model ready — press Build (~${Math.round(est.sec)}s)`);
-          const el = addMsg("bot", `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s with the app paused while the kernel works). It's in the editor, ready when you are: `);
+          const el = addMsg("bot", `That model is chunky (~${(est.tris / 1000).toFixed(0)}k triangles — roughly ${Math.round(est.sec)}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). It's in the editor, ready when you are: `);
           const b = document.createElement("button");
           b.className = "hist-btn";
           b.style.cssText = "margin-left:6px; font-weight:700";
