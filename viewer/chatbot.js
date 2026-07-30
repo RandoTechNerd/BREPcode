@@ -941,14 +941,35 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
 // better: vocabulary, a handful of hard rules, the output shape, done.
 // Used automatically for the "browser" provider when the mission is the
 // untouched default; a user-edited mission always wins.
+// Pass 1: the SCULPTOR pass. Deliberately blocky — a small model juggling
+// eight primitives and fillets at once hallucinates; the same model given
+// five shapes and three combiners mostly gets the massing right. A/B'd on
+// the 1.5B: the base-vocabulary BREPcode prompt was the only one of four
+// runs (vs OpenSCAD, which the model has actually SEEN in pretraining) that
+// produced code that BUILT. Rounding, colour and fancier forms come in the
+// Polish pass below, on code that already works.
 export const COMPACT_HARNESS = `You write BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. Parts sit on z=0.
-SHAPES (the ONLY primitives): cube([x,y,z]) corner at origin · cylinder({r,h,$fn}) rises +Z from origin · cone({r1,r2,h}) · sphere({r}) · torus({R,r}).
-COMBINE: union(a,b,...) welds · difference(base, ...cutters) cuts · intersection(a,b) · group(...parts) keeps parts separate — end multi-part assemblies with group(), never one big union.
-MOVE: translate([x,y,z], shape) · rotate([rx,ry,rz], shape) degrees · scale([x,y,z], shape) · mirror([1,0,0], shape).
-DETAIL: fillet(r, shape) and chamfer(c, shape) round/bevel all edges · linearExtrude({h}, polygon([[x,y],...])) · revolve({angle}, polygon(...)).
-LOOKS: colorize("#hex", shape) per part.
-RULES: sizes as named const at the top · $fn: 48 default, 96 only where the curve is the point · cutters poke THROUGH faces (start 1mm below, end 1mm past) · there is no hole()/screw()/text() — build them from the primitives above.
-REPLY SHAPE: one short sentence, then ONE fenced code block of complete runnable code ending in a return. Nothing after the fence.`;
+SHAPES (the ONLY primitives): cube([x,y,z]) corner at origin · cylinder({r,h,$fn:48}) rises +Z from origin · sphere({r}).
+COMBINE: union(a,b,...) welds · difference(base, ...cutters) cuts holes · group(...parts) keeps parts separate — end multi-part assemblies with group(), never one big union.
+MOVE: translate([x,y,z], shape) · rotate([rx,ry,rz], shape) degrees.
+RULES: sizes as named const at the top · cutters poke THROUGH faces (start 1mm below, end 1mm past) · keep it blocky and correct — rounding and colour come in a later Polish pass · there is no hole()/screw()/text()/fillet() here — build from the shapes above.
+THIS IS JAVASCRIPT: call the functions and nest shapes as arguments. NEVER OpenSCAD-style {} blocks after translate/rotate, NEVER shapes inside a string — return the shape object itself.
+EXAMPLE (a plate with one screw hole):
+const W = 40, D = 20, T = 5;
+return difference(
+  cube([W, D, T]),
+  translate([10, 10, -1], cylinder({ r: 2.5, h: T + 2 }))
+);
+REPLY SHAPE: one short sentence, then ONE fenced code block of complete runnable code ending in a return. Nothing after the fence. Never repeat the request back, never introduce yourself — build.`;
+
+// Pass 2: POLISH. Runs only on code that already builds, so the model edits
+// instead of inventing — the easier job. This is where the wider vocabulary
+// unlocks, one step at a time, exactly the way a person sands after shaping.
+export const POLISH_HARNESS = `You improve existing BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. The code you are given ALREADY BUILDS — keep its structure and sizes, refine it.
+YOU MAY NOW ALSO USE: fillet(r, shape) rounds all edges (r 1-2 typical) · chamfer(c, shape) bevels · cone({r1,r2,h}) · torus({R,r}) · colorize("#hex", shape) per part · scale([x,y,z], shape) · mirror([1,0,0], shape).
+POLISH MEANS: fillet or chamfer edges a hand touches · colorize each logical part differently · swap a crude block for a cone/torus where the real object is round · keep every screw hole and mating size EXACTLY as it is.
+Do not add new features the user never asked for. Do not rename the consts.
+REPLY SHAPE: one short sentence saying what you refined, then ONE fenced code block of the COMPLETE improved code ending in a return. Nothing after the fence.`;
 
 export const DEFAULT_HARNESS = `MISSION
 You are the modeling engine inside BREPcode, a browser CAD app. The user describes a physical object; you deliver working BREPcode that builds it. Your reply IS the product: every reply ends with one complete fenced code block containing the model. One short sentence of context before it is allowed. A reply with no code block is a failed reply.

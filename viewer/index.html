@@ -1141,12 +1141,15 @@
          The size only affects where the model is placed, never its geometry. -->
     <label id="plate-row" title="Where a 3MF lands: the model is centred on a plate this size">
       <span>Plate</span>
+      <!-- ordered small to large; the default is still the Bambu 256 -->
       <select id="plate-size">
-        <option value="256x256">256 × 256 — Bambu X1 / P1 / A1</option>
-        <option value="180x180">180 × 180 — A1 mini</option>
+        <option value="180x180">180 × 180 — Bambu A1 mini</option>
+        <option value="220x220">220 × 220 — Ender 3 / Ender 5 Pro</option>
         <option value="250x210">250 × 210 — Prusa MK3/MK4</option>
-        <option value="220x220">220 × 220 — Ender 3</option>
-        <option value="350x350">350 × 350 — X1E / large format</option>
+        <option value="256x256">256 × 256 — Bambu X1 / P1 / A1 / X1E</option>
+        <option value="270x270">270 × 270 — Snapmaker U1</option>
+        <option value="350x350">350 × 350 — Ender 5 Plus / Voron 350</option>
+        <option value="400x400">400 × 400 — Formbot Xplorer 400</option>
         <option value="0x0">Don't move it — keep model coordinates</option>
       </select>
     </label>
@@ -9990,12 +9993,32 @@ ${joined}`)(...vs);
           const ho = harnessOpts();
           const untouchedMission = !aiCfg.harness?.trim()
             && aiHarness.value.trim() === (CHAT.DEFAULT_HARNESS || "").trim();
-          if (untouchedMission) ho.harness = CHAT.COMPACT_HARNESS;
+          // Two-pass sculptor: the FIRST pass gets a deliberately blocky base
+          // vocabulary (small models juggling fillets and tori hallucinate);
+          // the POLISH pass runs on code that already builds and unlocks the
+          // rounding/colour vocabulary. A user-edited mission overrides both.
+          const polishing = /^Polish the current model\b/.test(text);
+          if (untouchedMission) {
+            ho.harness = polishing ? CHAT.POLISH_HARNESS : CHAT.COMPACT_HARNESS;
+            // Every token of system noise costs a small model accuracy — and
+            // the name-preference line made the 1.5B ROLE-PLAY: it prefixed
+            // "Rando." and echoed the request instead of building.
+            ho.botName = "";
+            ho.gem = "";
+          }
           const system = CHAT.composeSystem({ reference: reference.slice(0, 1500), ...ho });
-          logLine(`generating in this tab — ${cfg.model}${untouchedMission ? " (compact mission)" : ""}`);
+          // The untouched starter cube sent as "current model code" is another
+          // echo trigger: the model thinks it must relate the request to a
+          // drilled box it never asked about. A fresh session sends the bare
+          // request; real edits (and every polish) keep the full context.
+          const starterEditor = code.value.trim() === code.defaultValue.trim();
+          const msgsForModel = (untouchedMission && starterEditor && !polishing)
+            ? [...msgs.slice(0, -1), { role: "user", text }]
+            : msgs;
+          logLine(`generating in this tab — ${cfg.model}${untouchedMission ? (polishing ? " (polish pass)" : " (base pass)") : ""}`);
           let lastPaint = 0;
           answer = await w.browserChat({
-            model: cfg.model, system, messages: msgs,
+            model: cfg.model, system, messages: msgsForModel,
             onDelta: ({ phase, chars }) => {
               liveState = { phase, chars };
               const now = performance.now();
@@ -10093,8 +10116,19 @@ ${joined}`)(...vs);
             addMsg("bot", `⚠️ Still not building after ${maxAutoFix()} tries: ${r.detail}`);
             chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
             quickReplies([RETRY_TEXT], ["⚠ Try once more"]);
-          } else if (r.warned) {
-            addMsg("bot", `Built — but note: ${r.warned}`);
+          } else {
+            if (r.warned) addMsg("bot", `Built — but note: ${r.warned}`);
+            // The sculptor's second pass, offered rather than automatic: at
+            // in-browser token speeds an auto-polish would double every wait,
+            // and a blocky part that IS what the user wanted needs no pass 2.
+            // Not offered on a model still held behind the Build button — no
+            // point polishing what hasn't been shaped yet.
+            if (cfg.provider === "browser" && !/^Polish the current model\b/.test(text)
+                && !/held behind/.test(r.detail || "")) {
+              quickReplies(
+                ["Polish the current model: round the edges people touch with fillet, colour each part with colorize, and refine crude blocks — keep every size and hole exactly the same."],
+                ["✨ Polish it — round edges, add colour"]);
+            }
           }
         }
         if (truncated && !unsafe) {

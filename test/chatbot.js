@@ -270,12 +270,21 @@ console.log("\nmodel ranking\n");
   // stay SMALL (the whole point), and still teach the vocabulary + the
   // one-fenced-block reply shape. ~4 chars/token makes 3000 chars ≈ 750
   // tokens — a fifth of the smallest window.
-  const CH = (await import("../viewer/chatbot.js")).COMPACT_HARNESS;
+  const M = await import("../viewer/chatbot.js");
+  const CH = M.COMPACT_HARNESS, PH = M.POLISH_HARNESS;
   check("compact mission stays compact", CH.length < 3000, `${CH.length} chars`);
-  check("...but still teaches the vocabulary",
-    ["cube", "cylinder", "difference", "group", "fillet", "colorize", "return"].every((w) => CH.includes(w)));
+  check("...teaching only the BASE vocabulary",
+    ["cube", "cylinder", "difference", "group", "return"].every((w) => CH.includes(w)));
+  check("...with the fancy ops held back for the polish pass",
+    !/fillet\(r, shape\)/.test(CH) && /Polish pass/.test(CH));
   check("...and the reply shape", /fenced code block/i.test(CH));
   check("...and warns off invented words", /hole\(\)/.test(CH));
+  // the polish pass is where rounding/colour unlock, on code that already works
+  check("polish mission unlocks fillet/chamfer/colour",
+    ["fillet", "chamfer", "colorize", "cone", "torus"].every((w) => PH.includes(w)));
+  check("...and protects what already works",
+    /ALREADY BUILDS/.test(PH) && /EXACTLY as it is/.test(PH));
+  check("...while staying compact too", PH.length < 2000, `${PH.length} chars`);
   check("browser models rank by size",
     rank([
       "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
