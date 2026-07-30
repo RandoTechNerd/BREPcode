@@ -34,6 +34,22 @@
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <!--
+    The import map MUST come before the modulepreload links below and before any
+    other module script. A preload counts as "a module load has started", and
+    Firefox then refuses the map outright — "An import map is not allowed after a
+    module load or preload has started" — which kills the whole app on load.
+    Chrome happens to tolerate the old bottom-of-body placement; Firefox does not.
+    Keep exactly one of these blocks, and keep it first.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/node_modules/three/build/three.module.js",
+      "three/addons/": "/node_modules/three/examples/jsm/"
+    }
+  }
+  </script>
   <!-- start fetching the heavy modules before the inline script asks for them -->
   <link rel="modulepreload" href="/node_modules/three/build/three.module.js" />
   <link rel="modulepreload" href="/node_modules/three/build/three.core.js" />
@@ -2010,14 +2026,7 @@
     </div>
   </div>
 
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "/node_modules/three/build/three.module.js",
-      "three/addons/": "/node_modules/three/examples/jsm/"
-    }
-  }
-  </script>
+  <!-- the import map lives in <head>, before the modulepreloads — see the note there -->
 
   <script type="module">
     import * as THREE from "three";
@@ -2282,7 +2291,11 @@
     camera.position.set(0, -110, 60);
     camera.up.set(0, 0, 1);                       // Z-up, matching the DSL
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // preserveDrawingBuffer keeps the colour buffer readable after the frame is
+    // presented. Without it the browser is free to clear it on swap, so anything
+    // that grabs the canvas after the fact — thumbnails, cloud-save previews —
+    // gets a solid black image on many machines.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     stage.appendChild(renderer.domElement);
 
@@ -7982,6 +7995,47 @@ ${joined}`)(...vs);
     const secretSource = () =>
       (localStorage.getItem(SECRET_URL_KEY) || "").trim() || "secret-models/manifest.json";
 
+    // A picture for a stashed model. A name in a list tells you nothing about
+    // which model it is, so every tile gets one. Cheapest first: the manifest
+    // may name a `thumb` (the host controls it, and it costs one <img>).
+    // Failing that a .bcode is built once, off to the side in its own
+    // PartHistory, and snapshotted with the inventory's thumbnailer. Previews
+    // are strictly best-effort — anything that throws just keeps the icon, and
+    // a model whose imported meshes are not registered in this session is
+    // exactly such a case.
+    const secretShots = new Map();          // href -> dataURL | null, this session
+    let secretShotChain = Promise.resolve();
+
+    async function secretShot(href, fetchText) {
+      if (secretShots.has(href)) return secretShots.get(href);
+      let url = null;
+      const langWas = lastLang;
+      try {
+        const [inv, { PartHistory }, exp] = await Promise.all([ensureInv(), getKernel(), getExporters()]);
+        thumbnailer ??= inv.makeThumbnailer(THREE);
+        const { source } = exp.parseBcodeFile(await fetchText());
+        if (source) {
+          const ph = new PartHistory();
+          await dsl.compile(evaluate(source), ph, []);
+          await ph.runHistory({ throwOnFeatureError: true });
+          const pts = [];
+          for (const s of (ph.scene?.children || [])) {
+            if (s?.type !== "SOLID" || typeof s.toSTL !== "function") continue;
+            for (const v of String(s.toSTL("t", 6)).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) {
+              pts.push(+v[1], +v[2], +v[3]);
+            }
+          }
+          if (pts.length) url = thumbnailer.snapshot(Float32Array.from(pts));
+        }
+      } catch {
+        url = null;                          // no preview is fine; a wrong one is not
+      } finally {
+        lastLang = langWas;                  // evaluate() sets it; the editor owns it
+      }
+      secretShots.set(href, url);
+      return url;
+    }
+
     async function loadSecretLibrary() {
       const list = $("secret-list"), status = $("secret-status");
       list.innerHTML = "";
@@ -8002,11 +8056,42 @@ ${joined}`)(...vs);
           const isHtml = /\.html?$/i.test(file);
           const b = document.createElement("button");
           b.className = "hist-btn";
-          b.style.cssText = "text-align:left; display:flex; gap:8px; align-items:baseline";
+          b.style.cssText = "text-align:left; display:flex; gap:9px; align-items:center";
+          const shot = document.createElement("span");
+          shot.style.cssText = "width:46px; height:46px; flex:0 0 46px; display:grid; place-items:center;"
+            + "border:1px solid var(--muted3); border-radius:6px; overflow:hidden; background:var(--bg)";
+          shot.innerHTML = THUMB_ICON;
+          const label = document.createElement("span");
+          label.style.cssText = "display:flex; flex-direction:column; gap:1px; min-width:0";
           const kind = document.createElement("span");
           kind.className = "note";
           kind.textContent = isBcode ? ".bcode → editor" : isHtml ? ".html → new tab" : "download";
-          b.append(name, kind);
+          const title = document.createElement("span");
+          title.textContent = name;
+          title.style.cssText = "overflow:hidden; text-overflow:ellipsis; white-space:nowrap";
+          label.append(title, kind);
+          b.append(shot, label);
+
+          const paint = (url) => {
+            if (!url) return;
+            const img = document.createElement("img");
+            img.src = url;
+            img.alt = "";
+            img.style.cssText = "width:100%; height:100%; object-fit:contain";
+            shot.innerHTML = "";
+            shot.appendChild(img);
+          };
+          if (m.thumb) {
+            paint(String(new URL(String(m.thumb), src)));
+          } else if (isBcode) {
+            // one at a time: each of these is a real kernel build, and a stash
+            // of them all at once would fight the editor for the main thread
+            secretShotChain = secretShotChain
+              .then(() => secretShot(href.href, async () =>
+                (await fetch(href, { cache: "no-store" })).text()))
+              .then(paint)
+              .catch(() => {});
+          }
           b.addEventListener("click", async () => {
             try {
               if (isBcode) {

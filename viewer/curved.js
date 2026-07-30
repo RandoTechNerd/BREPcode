@@ -16,6 +16,15 @@ import { getImport, displacedPositions } from "../src/dsl.js";
 
 let replicadReady = null;
 
+// Where the OCCT wasm comes from. It is ~10.8MB, which some static hosts will
+// not take, so the URL is a single overridable value rather than a literal
+// buried in the loader call: set window.__BREP_REPLICAD_WASM_URL before the
+// first curved-geometry operation to serve it from somewhere else. Left unset,
+// it loads the copy shipped beside the app, so offline and desktop keep working.
+// NB build-site.mjs rewrites the default path for the static site.
+const WASM_URL = "/node_modules/replicad-opencascadejs/src/replicad_single.wasm";
+const wasmUrl = () => (typeof window !== "undefined" && window.__BREP_REPLICAD_WASM_URL) || WASM_URL;
+
 export function loadReplicad() {
   replicadReady ??= (async () => {
     const [r, loader] = await Promise.all([
@@ -23,7 +32,7 @@ export function loadReplicad() {
       import("/node_modules/replicad-opencascadejs/src/replicad_single.js"),
     ]);
     const OC = await loader.default({
-      locateFile: () => "/node_modules/replicad-opencascadejs/src/replicad_single.wasm",
+      locateFile: () => wasmUrl(),
     });
     r.setOC(OC);
     return r;
