@@ -9983,8 +9983,16 @@ ${joined}`)(...vs);
             el.appendChild(b);
             return;
           }
-          const system = CHAT.composeSystem({ reference, ...harnessOpts() });
-          logLine(`generating in this tab — ${cfg.model}`);
+          // These models see 4-8k tokens TOTAL, and the full mission is ~3k on
+          // its own — an untouched default swaps for the compact primer, and
+          // the reference material is capped so a fat recipe can't crowd out
+          // the user's own code. A mission the user edited is sent as-is.
+          const ho = harnessOpts();
+          const untouchedMission = !aiCfg.harness?.trim()
+            && aiHarness.value.trim() === (CHAT.DEFAULT_HARNESS || "").trim();
+          if (untouchedMission) ho.harness = CHAT.COMPACT_HARNESS;
+          const system = CHAT.composeSystem({ reference: reference.slice(0, 1500), ...ho });
+          logLine(`generating in this tab — ${cfg.model}${untouchedMission ? " (compact mission)" : ""}`);
           let lastPaint = 0;
           answer = await w.browserChat({
             model: cfg.model, system, messages: msgs,

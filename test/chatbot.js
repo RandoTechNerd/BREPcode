@@ -266,6 +266,16 @@ console.log("\nmodel ranking\n");
     modelScore("claude-haiku-4-5-20251001") === modelScore("claude-haiku-4-5"));
   // In-browser WebLLM ids rank by parameter count — the download picker shows
   // the most capable first, while the app pre-selects the safe 1.5B itself.
+  // The compact mission exists for models with 4-8k-token windows: it must
+  // stay SMALL (the whole point), and still teach the vocabulary + the
+  // one-fenced-block reply shape. ~4 chars/token makes 3000 chars ≈ 750
+  // tokens — a fifth of the smallest window.
+  const CH = (await import("../viewer/chatbot.js")).COMPACT_HARNESS;
+  check("compact mission stays compact", CH.length < 3000, `${CH.length} chars`);
+  check("...but still teaches the vocabulary",
+    ["cube", "cylinder", "difference", "group", "fillet", "colorize", "return"].every((w) => CH.includes(w)));
+  check("...and the reply shape", /fenced code block/i.test(CH));
+  check("...and warns off invented words", /hole\(\)/.test(CH));
   check("browser models rank by size",
     rank([
       "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",

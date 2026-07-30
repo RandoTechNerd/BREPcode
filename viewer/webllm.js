@@ -65,11 +65,17 @@ export async function loadBrowserModel(model, onProgress) {
       const pct = typeof p?.progress === "number" ? Math.round(p.progress * 100) : null;
       onProgress({ pct, text: String(p?.text || "").slice(0, 140) });
     };
+    // 8K context instead of the prebuilt 4K. The default overflowed on real
+    // use — mission + the current model's code + a few turns of history came
+    // to ~6k tokens and the whole request errored. The KV cache grows with
+    // the window (~+250MB on the 7B, less on the small ones), which is the
+    // right trade against "can't discuss the model that's on screen".
+    const chatOpts = { context_window_size: 8192 };
     if (engine) {
       engine.setInitProgressCallback?.(cb);
-      await engine.reload(model);
+      await engine.reload(model, chatOpts);
     } else {
-      engine = await webllm.CreateMLCEngine(model, { initProgressCallback: cb });
+      engine = await webllm.CreateMLCEngine(model, { initProgressCallback: cb }, chatOpts);
     }
     loadedModel = model;
     return engine;
@@ -93,7 +99,10 @@ export async function browserChat({ model, system, messages, onDelta }) {
     stream: true,
     // small models ramble; a temperature nudge keeps the code deterministic-ish
     temperature: 0.3,
-    max_tokens: 3000,
+    // A complete BREPcode model is rarely 800 tokens; 2000 leaves generous
+    // room while halving the worst case — the 0.5B once spent 4+ minutes
+    // free-associating its way to a 3000-token cap at ~20 tokens/s.
+    max_tokens: 2000,
     messages: [
       { role: "system", content: system },
       ...messages.map((m) => ({
