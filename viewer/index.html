@@ -624,12 +624,61 @@
       86%, 100% { transform: rotateX(-90deg) translateZ(0px); opacity: 0; }
     }
 
-    #export-menu {
-      position: absolute; z-index: 30; display: none;
-      background: var(--header); border: 1px solid var(--border); border-radius: 10px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; min-width: 190px;
+    /* ---------- export dialog ---------- */
+    #export-modal {
+      position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+      background: rgba(0, 0, 0, .45);
     }
-    #export-menu.open { display: block; }
+    #export-modal[hidden] { display: none; }
+    #export-dialog {
+      display: flex; width: min(620px, calc(100vw - 24px)); max-height: min(560px, calc(100vh - 24px));
+      background: var(--header); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 12px 44px rgba(0,0,0,.6); overflow: hidden;
+    }
+    #exp-list { flex: 0 0 218px; overflow-y: auto; border-right: 1px solid var(--border); padding-bottom: 8px; }
+    #exp-list button {
+      display: block; width: 100%; text-align: left; background: none; border: 0;
+      padding: 7px 14px; cursor: pointer; color: var(--text); font: 13px system-ui, sans-serif;
+    }
+    #exp-list button:hover { background: var(--hover-strong); }
+    #exp-list button.sel { background: var(--accent); color: #fff; }
+    #exp-list button.sel small { color: rgba(255,255,255,.75); }
+    #exp-list small { color: var(--muted4); margin-left: 7px; }
+    #exp-list .exp-group {
+      padding: 10px 14px 3px; font-size: 10px; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--muted2);
+    }
+    #exp-side { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; gap: 9px; }
+    #exp-preview {
+      position: relative; height: 190px; flex: none; display: grid; place-items: center;
+      border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--bg);
+    }
+    #exp-preview canvas { max-width: 100%; max-height: 100%; }
+    #exp-preview pre {
+      margin: 0; align-self: stretch; justify-self: stretch; overflow: hidden; padding: 10px 12px;
+      font: 11px ui-monospace, Consolas, monospace; color: var(--muted3); white-space: pre;
+    }
+    #exp-preview-tag {
+      position: absolute; left: 8px; bottom: 6px; font: 10.5px system-ui, sans-serif;
+      color: var(--muted3); background: color-mix(in srgb, var(--bg) 78%, transparent);
+      padding: 1px 7px; border-radius: 999px; pointer-events: none;
+    }
+    #exp-desc { margin: 0; font: 12px system-ui, sans-serif; color: var(--muted3); min-height: 44px; }
+    #exp-opts label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font: 11.5px system-ui, sans-serif; color: var(--muted2); }
+    #exp-opts label[hidden] { display: none; }
+    #exp-opts span { flex: 0 0 44px; }
+    #exp-opts select {
+      flex: 1; min-width: 0; background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+      font: 11.5px system-ui, sans-serif; cursor: pointer;
+    }
+    #exp-actions { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
+    #exp-actions button {
+      cursor: pointer; font: 600 12.5px system-ui, sans-serif; padding: 7px 18px; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--hover); color: var(--text);
+    }
+    #exp-go { background: var(--accent) !important; border-color: var(--accent) !important; color: #fff !important; }
+    #exp-actions button:hover { filter: brightness(1.12); }
     /* The attach-image button follows the app's icon-button convention
        (#anchor-btn and friends): transparent, coloured by the theme through
        currentColor, hover ring. Removing the spark button took the shared
@@ -649,17 +698,6 @@
     #chat-img-chip img { height: 26px; border-radius: 4px; }
     #chat-img-chip button { background: none; border: none; color: var(--muted3);
       cursor: pointer; font-size: 14px; padding: 0 3px; }
-    /* the fly-out tail — same skin, positioned beside the menu in JS */
-    #export-more {
-      position: absolute; z-index: 31; display: none;
-      background: var(--header); border: 1px solid var(--border); border-radius: 10px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; min-width: 190px;
-    }
-    #export-more.open { display: block; }
-    #export-menu .exp-more { position: relative; }
-    #export-menu .exp-more b { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-      font-size: 16px; opacity: .7; }
-    #export-menu .exp-more.on { background: var(--border); }
 
     /* editor header: the "more" (⋮) overflow menu. The ⋮ button and its menu
        stay hidden until the header can't fit its buttons (narrow / mobile),
@@ -717,20 +755,6 @@
       #editor-tools .ovf { display: none; }
       #more-btn { display: inline-grid; place-items: center; }
     }
-    /* #export-more holds the fly-out tail of this menu — it lives OUTSIDE
-       #export-menu in the DOM (overflow:hidden there would clip it), so every
-       rule for the menu's innards has to name both or the fly-out renders as
-       stock white buttons. That is exactly how it shipped once. */
-    #export-menu button, #export-more button {
-      display: block; width: 100%; text-align: left; background: none; border: 0;
-      padding: 8px 14px; cursor: pointer; color: var(--text); font: 13px system-ui, sans-serif;
-    }
-    #export-menu button:hover, #export-more button:hover { background: var(--hover-strong); }
-    #export-menu small, #export-more small { color: var(--muted4); margin-left: 8px; }
-    #export-menu .exp-group, #export-more .exp-group {
-      padding: 7px 14px 3px; font-size: 10px; letter-spacing: .09em;
-      text-transform: uppercase; color: var(--muted2);
-    }
     #shape-menu {
       position: absolute; z-index: 40; display: none; padding: 8px;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
@@ -758,8 +782,6 @@
       font: 12px system-ui, sans-serif; padding: 4px 9px; border-radius: 999px; cursor: pointer;
     }
     #sm-swaps button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-    #export-menu .exp-group:first-child, #export-more .exp-group:first-child { padding-top: 9px; }
-
     /* ---------- heavy-model Build bar ---------- */
     /* Sits directly under the code it will build, spanning the editor, so the
        one thing to do next is the widest thing on screen. Hidden until a model
@@ -778,18 +800,6 @@
     }
     #build-now-btn:hover { filter: brightness(1.12); }
     #build-now-btn:disabled { opacity: .6; cursor: default; filter: none; }
-    /* Plate picker: a row inside the export menu, styled to sit quietly under
-       the mesh formats rather than compete with them. */
-    #plate-row {
-      display: flex; align-items: center; gap: 8px; padding: 4px 14px 9px;
-      font: 11px system-ui, sans-serif; color: var(--muted2);
-    }
-    #plate-row select {
-      flex: 1; min-width: 0; background: var(--panel); color: var(--text);
-      border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
-      font: 11px system-ui, sans-serif; cursor: pointer;
-    }
-
     /* ---------- feature history ---------- */
     #history-body { overflow-y: auto; max-height: min(46vh, 420px); padding: 6px 0 8px; }
     .edit-row { display: flex; align-items: center; }
@@ -1144,49 +1154,70 @@
     </svg>
   </div>
 
-  <div id="export-menu">
-    <div class="exp-group">Project</div>
-    <button data-fmt="bcode">BREPcode<small>the editable model — save your work</small></button>
-    <button data-fmt="slicer" id="slicer-btn" style="display:none">Open in slicer<small>straight into OrcaSlicer</small></button>
-    <div class="exp-group">Mesh</div>
-    <button data-fmt="stl">STL<small>3D printing</small></button>
-    <button data-fmt="obj">OBJ<small>DCC / game tools</small></button>
-    <button data-fmt="3mf">3MF<small>modern slicers</small></button>
-    <button data-fmt="3mf-parts">3MF — parts laid out<small>each piece side by side on the plate</small></button>
-    <!-- A 3MF carries a position, and a slicer's plate origin is its FRONT-LEFT
-         corner — so without this the part opens in the corner, half off the bed.
-         The size only affects where the model is placed, never its geometry. -->
-    <label id="plate-row" title="Where a 3MF lands: the model is centred on a plate this size">
-      <span>Plate</span>
-      <!-- ordered small to large; the default is still the Bambu 256 -->
-      <select id="plate-size">
-        <option value="180x180">180 × 180 — Bambu A1 mini</option>
-        <option value="220x220">220 × 220 — Ender 3 / Ender 5 Pro</option>
-        <option value="250x210">250 × 210 — Prusa MK3/MK4</option>
-        <option value="256x256">256 × 256 — Bambu X1 / P1 / A1 / X1E</option>
-        <option value="270x270">270 × 270 — Snapmaker U1</option>
-        <option value="350x350">350 × 350 — Ender 5 Plus / Voron 350</option>
-        <option value="400x400">400 × 400 — Formbot Xplorer 400</option>
-        <option value="0x0">Don't move it — keep model coordinates</option>
-      </select>
-    </label>
-    <div class="exp-group">CAD (solid)</div>
-    <button data-fmt="step">STEP<small>interchange · faceted</small></button>
-    <button data-fmt="step-curved">STEP — curved<small>true B-rep surfaces</small></button>
-    <button id="export-more-btn" class="exp-more">Drawing / Web<small>blueprint, GLB, embed page</small><b>&rsaquo;</b></button>
-  </div>
-
-  <!-- The tail of the export list, as a fly-out. The menu had grown tall enough
-       to run off the bottom of the screen when the window sits low, and these
-       four are the least-used entries — so they move sideways instead of down.
-       Kept OUTSIDE #export-menu because that has overflow:hidden for its
-       rounded corners, which would clip a nested pop-out. -->
-  <div id="export-more">
-    <div class="exp-group">Drawing</div>
-    <button data-fmt="svg">SVG blueprint<small>3-view engineering drawing</small></button>
-    <div class="exp-group">Web / embed</div>
-    <button data-fmt="glb">GLB<small>3D for any web viewer</small></button>
-    <button data-fmt="embed">Embed page<small>self-contained HTML + viewer</small></button>
+  <!-- Export, as a dialog. The old dropdown had grown past ten entries plus a
+       fly-out tail and a plate picker wedged in the middle — a list that long
+       stops being a menu. The dialog pairs the same formats with a live
+       preview of what each one will actually LOOK like when it comes back
+       (grey for mesh formats that drop colour, laid-out parts for the plate
+       export, line art for the blueprint) and gives per-format options an
+       obvious home instead of a squeeze. -->
+  <div id="export-modal" hidden>
+    <div id="export-dialog" role="dialog" aria-label="Export">
+      <div id="exp-list">
+        <div class="exp-group">Project</div>
+        <button data-fmt="bcode">BREPcode<small>editable source</small></button>
+        <button data-fmt="slicer" id="slicer-btn" style="display:none">Open in slicer<small>OrcaSlicer</small></button>
+        <div class="exp-group">Mesh</div>
+        <button data-fmt="stl">STL<small>3D printing</small></button>
+        <button data-fmt="obj">OBJ<small>DCC / games</small></button>
+        <button data-fmt="3mf">3MF<small>modern slicers</small></button>
+        <button data-fmt="3mf-parts">3MF — parts laid out<small>print plate(s)</small></button>
+        <div class="exp-group">CAD (solid)</div>
+        <button data-fmt="step">STEP<small>faceted</small></button>
+        <button data-fmt="step-curved">STEP — curved<small>true surfaces</small></button>
+        <div class="exp-group">Drawing / Web</div>
+        <button data-fmt="svg">SVG blueprint<small>3-view drawing</small></button>
+        <button data-fmt="glb">GLB<small>web viewers</small></button>
+        <button data-fmt="embed">Embed page<small>HTML + viewer</small></button>
+      </div>
+      <div id="exp-side">
+        <div id="exp-preview"><canvas id="exp-canvas" width="300" height="190"></canvas><pre id="exp-code" hidden></pre>
+          <span id="exp-preview-tag"></span></div>
+        <p id="exp-desc"></p>
+        <div id="exp-opts">
+          <!-- 3MF colour handling: the default keeps colours as filaments; the
+               alternative writes plain geometry for one-material printing. -->
+          <label id="mf-colour-row" hidden>
+            <span>Colour</span>
+            <select id="mf-colour">
+              <option value="colour">Colours → filaments (multi-material)</option>
+              <option value="mono">Model only — single material, no colour</option>
+            </select>
+          </label>
+          <!-- A 3MF carries a position, and a slicer's plate origin is its
+               FRONT-LEFT corner — so without this the part opens in the corner,
+               half off the bed. Placement only; geometry never changes. -->
+          <label id="plate-row" hidden title="Where a 3MF lands: the model is centred on a plate this size">
+            <span>Plate</span>
+            <!-- ordered small to large; the default is still the Bambu 256 -->
+            <select id="plate-size">
+              <option value="180x180">180 × 180 — Bambu A1 mini</option>
+              <option value="220x220">220 × 220 — Ender 3 / Ender 5 Pro</option>
+              <option value="250x210">250 × 210 — Prusa MK3/MK4</option>
+              <option value="256x256">256 × 256 — Bambu X1 / P1 / A1 / X1E</option>
+              <option value="270x270">270 × 270 — Snapmaker U1</option>
+              <option value="350x350">350 × 350 — Ender 5 Plus / Voron 350</option>
+              <option value="400x400">400 × 400 — Formbot Xplorer 400</option>
+              <option value="0x0">Don't move it — keep model coordinates</option>
+            </select>
+          </label>
+        </div>
+        <div id="exp-actions">
+          <button id="exp-cancel">Cancel</button>
+          <button id="exp-go">Export</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- right-click a shape to swap or colour it -->
@@ -7043,8 +7074,11 @@ ${joined}`)(...vs);
           const exp = await getExporters();
           // Colour-aware when the model has more than one colour, so an embossed
           // label/code prints in its own filament on a multi-material printer.
+          // The dialog's Colour option can force "model only" — one material,
+          // plain geometry — for single-extruder printing of a coloured model.
           const groups = colorGroupsForExport();
-          const distinct = new Set(groups.map((g) => g.color)).size;
+          const wantMono = $("mf-colour").value === "mono";
+          const distinct = wantMono ? 1 : new Set(groups.map((g) => g.color)).size;
           const plate = currentPlate();
           const opts3mf = { source: src, plate };
           size = download(`${base}.3mf`,
@@ -7125,88 +7159,219 @@ ${joined}`)(...vs);
       }
     }
 
-    const exportMenu = $("export-menu");
-    const exportMore = $("export-more");
+    // ---- the export dialog ------------------------------------------------
+    // A dozen formats stopped fitting in a dropdown. The dialog gives each one
+    // a sentence of context and — the real point — a PREVIEW of what comes
+    // back: mesh formats that drop colour show the model grey, the laid-out
+    // 3MF shows the parts packed on the plate, the blueprint shows line art.
+    // The preview is a look, not the file: it renders whatever cheap
+    // approximation tells the truth about the format.
+    const exportModal = $("export-modal");
+    const EXPORT_FORMATS = {
+      bcode: { kind: "code", desc: "The project itself — your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
+      slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
+      stl: { kind: "mono", desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
+      obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
+      "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
+      "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
+      step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
+      "step-curved": { kind: "mono", desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
+      svg: { kind: "lines", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
+      glb: { kind: "color", desc: "The web's 3D format, colours and materials included — drops into <model-viewer>, three.js, Babylon, Blender." },
+      embed: { kind: "color", desc: "A single self-contained HTML page with the model and a viewer inside — host it anywhere, no dependencies." },
+    };
+    let expSel = localStorage.getItem("brepcode-export-fmt") || "stl";
+    let expPrev = null;      // lazy: { renderer, scene, camera, holder, mono }
+    let expToken = 0;
+
+    function ensureExpPreview() {
+      if (expPrev) return expPrev;
+      const canvas = $("exp-canvas");
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      renderer.setSize(300, 190, false);
+      const scene = new THREE.Scene();
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const key = new THREE.DirectionalLight(0xffffff, 1.3);
+      key.position.set(60, -80, 120);
+      scene.add(key);
+      const cam = new THREE.PerspectiveCamera(35, 300 / 190, 0.01, 10000);
+      cam.up.set(0, 0, 1);
+      const holder = new THREE.Group();
+      scene.add(holder);
+      const mono = new THREE.MeshStandardMaterial({ color: 0x9fb4d6, metalness: 0.1, roughness: 0.55 });
+      expPrev = { renderer, scene, camera: cam, holder, mono };
+      return expPrev;
+    }
+
+    function expFit(pad = 3.0) {
+      const { camera, holder } = expPrev;
+      const bb = new THREE.Box3().setFromObject(holder);
+      if (bb.isEmpty()) return;
+      const c = bb.getCenter(new THREE.Vector3());
+      const r = Math.max(bb.getSize(new THREE.Vector3()).length() / 2, 0.001);
+      camera.position.copy(c).addScaledVector(new THREE.Vector3(1, -1, 0.75).normalize(), r * pad);
+      camera.near = r / 100; camera.far = r * 100;
+      camera.lookAt(c);
+      camera.updateProjectionMatrix();
+    }
+
+    function expClearHolder() {
+      for (const o of [...expPrev.holder.children]) {
+        expPrev.holder.remove(o);
+        if (o.userData.ownGeometry) o.geometry?.dispose?.();
+        if (o.userData.ownMaterial) o.material?.dispose?.();
+      }
+    }
+
+    async function renderExportPreview(fmt) {
+      const mine = ++expToken;
+      const spec = EXPORT_FORMATS[fmt] || EXPORT_FORMATS.stl;
+      const canvas = $("exp-canvas"), codeBox = $("exp-code"), tag = $("exp-preview-tag");
+      const asCode = spec.kind === "code";
+      canvas.hidden = asCode;
+      codeBox.hidden = !asCode;
+      if (asCode) {
+        codeBox.textContent = (code.value.trim() || "// nothing here yet — the file saves whatever the editor holds")
+          .split("\n").slice(0, 13).join("\n");
+        tag.textContent = "the file IS this text";
+        return;
+      }
+      ensureExpPreview();
+      expClearHolder();
+      const { holder, mono, renderer, scene, camera } = expPrev;
+      // 3MF with "model only" chosen previews grey — that is what the option means
+      const kind = fmt === "3mf" && $("mf-colour").value === "mono" ? "mono" : spec.kind;
+
+      if (kind === "mono" || kind === "color") {
+        for (const m of modelGroup.children) {
+          if (!m.isMesh || !m.visible) continue;
+          const c = new THREE.Mesh(m.geometry, kind === "mono" ? mono : m.material);
+          c.matrixAutoUpdate = false;
+          m.updateWorldMatrix(true, false);
+          c.matrix.copy(m.matrixWorld);
+          holder.add(c);
+        }
+        tag.textContent = kind === "mono" ? "geometry only — colours are not in this format" : "as on screen, colours included";
+      } else if (kind === "lines") {
+        let tris = 0;
+        for (const m of modelGroup.children) {
+          if (!m.isMesh || !m.visible) continue;
+          tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
+        }
+        for (const m of modelGroup.children) {
+          if (!m.isMesh || !m.visible) continue;
+          const white = new THREE.MeshBasicMaterial({ color: 0xf4f6fb });
+          const c = new THREE.Mesh(m.geometry, white);
+          c.userData.ownMaterial = true;
+          c.matrixAutoUpdate = false;
+          m.updateWorldMatrix(true, false);
+          c.matrix.copy(m.matrixWorld);
+          holder.add(c);
+          if (tris < 150000) {          // edge extraction on a monster would stall the dialog
+            const eg = new THREE.EdgesGeometry(m.geometry, 20);
+            const l = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x2c3e6b }));
+            l.userData.ownGeometry = true; l.userData.ownMaterial = true;
+            l.matrixAutoUpdate = false;
+            l.matrix.copy(m.matrixWorld);
+            holder.add(l);
+          }
+        }
+        tag.textContent = "line art — the drawing has front, top and side views";
+      } else if (kind === "parts") {
+        tag.textContent = "packing parts…";
+        try {
+          const exp = await getExporters();
+          if (mine !== expToken) return;
+          const groups = colorGroupsForExport();
+          const parts = exp.splitConnectedParts(groups);
+          const plate = currentPlate() ?? exp.DEFAULT_PLATE;
+          const plates = exp.layoutOnPlates(parts, plate, 8);
+          const first = plates[0] || [];
+          for (const { part, dx, dy, dz } of first) {
+            for (const g of part.groups) {
+              const arr = new Float32Array(g.tris.length * 9);
+              let k = 0;
+              for (const t of g.tris) for (const vi of t) {
+                const v = g.verts[vi];
+                arr[k++] = v[0] + dx; arr[k++] = v[1] + dy; arr[k++] = v[2] + dz;
+              }
+              const geo = new THREE.BufferGeometry();
+              geo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+              geo.computeVertexNormals();
+              const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+                color: g.color || "#9fb4d6", metalness: 0.1, roughness: 0.55,
+              }));
+              mesh.userData.ownGeometry = true; mesh.userData.ownMaterial = true;
+              holder.add(mesh);
+            }
+          }
+          // the plate itself, so "laid out on the bed" is visible as such
+          const px = plate.x, py = plate.y;
+          const rect = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0), new THREE.Vector3(px, 0, 0),
+            new THREE.Vector3(px, py, 0), new THREE.Vector3(0, py, 0), new THREE.Vector3(0, 0, 0),
+          ]);
+          const line = new THREE.Line(rect, new THREE.LineBasicMaterial({ color: 0x4d6396 }));
+          line.userData.ownGeometry = true; line.userData.ownMaterial = true;
+          holder.add(line);
+          tag.textContent = plates.length > 1
+            ? `${parts.length} parts — plate 1 of ${plates.length} shown`
+            : `${parts.length} part${parts.length === 1 ? "" : "s"} on the plate, each on the bed`;
+        } catch {
+          tag.textContent = "preview unavailable — the export itself still works";
+        }
+      }
+      if (mine !== expToken) return;
+      expFit(spec.kind === "parts" ? 2.2 : 3.0);
+      renderer.render(scene, camera);
+    }
+
+    function expShow(fmt) {
+      expSel = fmt;
+      localStorage.setItem("brepcode-export-fmt", fmt);
+      const spec = EXPORT_FORMATS[fmt] || EXPORT_FORMATS.stl;
+      for (const b of document.querySelectorAll("#exp-list [data-fmt]")) {
+        b.classList.toggle("sel", b.dataset.fmt === fmt);
+      }
+      $("exp-desc").textContent = spec.desc;
+      for (const row of ["mf-colour-row", "plate-row"]) {
+        $(row).hidden = !(spec.opts || []).includes(row);
+      }
+      renderExportPreview(fmt);
+    }
+
+    function closeExportModal() { exportModal.hidden = true; }
+
     $("export-btn").addEventListener("click", (e) => {
       e.stopPropagation();
-      // Warm the exporter module + STEP generator while the user reads the menu,
-      // so the download click runs without waiting on a fetch.
+      // Warm the exporter module + STEP generator while the user reads the
+      // dialog, so the Export click runs without waiting on a fetch.
       getExporters().then((exp) => exp.loadGenerateSTEP().catch(() => {})).catch(() => {});
-      const r = $("export-btn").getBoundingClientRect();
-      exportMenu.style.left = `${Math.max(8, r.right - 190)}px`;
-      // Below the button by default, ABOVE it when there isn't room. The menu
-      // used to be placed at r.bottom unconditionally, so with the window sat
-      // low on screen its lower half was simply unreachable.
-      exportMenu.style.top = `${r.bottom + 6}px`;
-      exportMenu.style.maxHeight = "";
-      exportMenu.classList.toggle("open");
-      exportMore.classList.remove("open");
-      $("export-more-btn").classList.remove("on");
-      if (exportMenu.classList.contains("open")) placeMenu(r);
+      exportModal.hidden = false;
+      expShow(EXPORT_FORMATS[expSel] ? expSel : "stl");
     });
-
-    // Keep the whole menu on screen: prefer below, flip above when that would
-    // overflow, and only then fall back to scrolling.
-    function placeMenu(btnRect) {
-      const gap = 6, margin = 8;
-      const h = exportMenu.offsetHeight;
-      const below = window.innerHeight - btnRect.bottom - gap - margin;
-      const above = btnRect.top - gap - margin;
-      if (h <= below) {
-        exportMenu.style.top = `${btnRect.bottom + gap}px`;
-      } else if (h <= above) {
-        exportMenu.style.top = `${btnRect.top - gap - h}px`;
-      } else {
-        const room = Math.max(below, above);
-        exportMenu.style.top = below >= above
-          ? `${btnRect.bottom + gap}px` : `${margin}px`;
-        exportMenu.style.maxHeight = `${room}px`;
-        exportMenu.style.overflowY = "auto";
-      }
-    }
-
-    // The fly-out goes to whichever side has room, aligned with its trigger.
-    function placeMore() {
-      const m = exportMenu.getBoundingClientRect();
-      const t = $("export-more-btn").getBoundingClientRect();
-      exportMore.style.top = "0px";                       // measure at a known spot
-      exportMore.style.left = "0px";
-      const w = exportMore.offsetWidth, h = exportMore.offsetHeight;
-      const left = m.right + 6 + w <= window.innerWidth - 8
-        ? m.right + 6
-        : Math.max(8, m.left - 6 - w);
-      exportMore.style.left = `${left}px`;
-      exportMore.style.top = `${Math.max(8, Math.min(t.top, window.innerHeight - 8 - h))}px`;
-    }
-
-    $("export-more-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      const on = !exportMore.classList.contains("open");
-      exportMore.classList.toggle("open", on);
-      $("export-more-btn").classList.toggle("on", on);
-      if (on) placeMore();
-    });
-    exportMore.addEventListener("click", (e) => {
+    $("exp-list").addEventListener("click", (e) => {
       const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
-      if (!fmt) return;
-      exportMore.classList.remove("open");
-      exportMenu.classList.remove("open");
-      $("export-more-btn").classList.remove("on");
-      exportAs(fmt);
+      if (fmt) expShow(fmt);
     });
-    exportMenu.addEventListener("click", (e) => {
+    $("exp-list").addEventListener("dblclick", (e) => {
       const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
-      exportMenu.classList.remove("open");
-      if (fmt) exportAs(fmt);
+      if (fmt) { closeExportModal(); exportAs(fmt); }
     });
-    addEventListener("pointerdown", (e) => {
-      if (!exportMenu.contains(e.target) && !exportMore.contains(e.target)
-        && e.target !== $("export-btn")) {
-        exportMore.classList.remove("open");
-        $("export-more-btn").classList.remove("on");
-        exportMenu.classList.remove("open");
-      }
+    $("exp-go").addEventListener("click", () => { closeExportModal(); exportAs(expSel); });
+    $("exp-cancel").addEventListener("click", closeExportModal);
+    exportModal.addEventListener("pointerdown", (e) => {
+      if (e.target === exportModal) closeExportModal();    // backdrop, not the dialog
     });
+    addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !exportModal.hidden) { e.stopPropagation(); closeExportModal(); }
+    }, true);
+    $("mf-colour").value = localStorage.getItem("brepcode-3mf-colour") || "colour";
+    $("mf-colour").addEventListener("change", () => {
+      localStorage.setItem("brepcode-3mf-colour", $("mf-colour").value);
+      renderExportPreview(expSel);
+    });
+    plateSel.addEventListener("change", () => renderExportPreview(expSel));
 
     // ---- import a mesh file as a first-class solid ------------------------
     $("import-btn").addEventListener("click", () => $("import-file").click());
