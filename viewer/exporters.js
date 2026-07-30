@@ -350,6 +350,181 @@ ${used.map((hex, i) => `    <part id="${firstObject + i}" subtype="normal_part">
   ]);
 }
 
+// ------------------------------------------------- parts laid out on plates
+//
+// The normal 3MF keeps the assembly ASSEMBLED — a cap exports sitting on its
+// jar, because that is what the model says. For printing you usually want the
+// opposite: every physically separate piece side by side on the bed. "Part"
+// here means a connected component of the mesh — decided by geometry, not by
+// colour or feature, because a two-colour cap is one part and two cubes of the
+// same colour are two.
+
+// Split colour groups into connected parts. Vertices weld across group
+// boundaries (a part's colours meet at coincident vertices), then triangles
+// union their corners; each surviving root is one physical piece.
+export function splitConnectedParts(groups) {
+  const key2id = new Map();
+  const parent = [];
+  const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; };
+  const idOf = (v) => {
+    const k = `${+(+v[0]).toFixed(4)},${+(+v[1]).toFixed(4)},${+(+v[2]).toFixed(4)}`;
+    let i = key2id.get(k);
+    if (i === undefined) { i = parent.length; key2id.set(k, i); parent.push(i); }
+    return i;
+  };
+  const welded = groups.map((g) => {
+    const ids = g.verts.map(idOf);
+    for (const t of g.tris) { union(ids[t[0]], ids[t[1]]); union(ids[t[1]], ids[t[2]]); }
+    return ids;
+  });
+  // root -> part; each part keeps per-colour groups with local indexing
+  const parts = new Map();
+  groups.forEach((g, gi) => {
+    const ids = welded[gi];
+    for (const t of g.tris) {
+      const root = find(ids[t[0]]);
+      let part = parts.get(root);
+      if (!part) { part = { colours: new Map() }; parts.set(root, part); }
+      let sub = part.colours.get(g.color);
+      if (!sub) { sub = { color: g.color, verts: [], tris: [], local: new Map() }; part.colours.set(g.color, sub); }
+      const li = t.map((vi) => {
+        let l = sub.local.get(vi);
+        if (l === undefined) { l = sub.verts.length; sub.local.set(vi, l); sub.verts.push(g.verts[vi]); }
+        return l;
+      });
+      sub.tris.push(li);
+    }
+  });
+  return [...parts.values()].map((p) => ({
+    groups: [...p.colours.values()].map(({ color, verts, tris }) => ({ color, verts, tris })),
+  }));
+}
+
+// Shelf-pack the parts onto plates. Every part stands on the bed (its own
+// minZ -> 0 — in an assembly the cap floats above the jar, and printed alone
+// it must not). Rows fill front-to-back; a part that no longer fits starts the
+// next plate, so the return is ONE LAYOUT PER PLATE. gap is air between parts.
+export function layoutOnPlates(parts, plate = DEFAULT_PLATE, gap = 8) {
+  const px = Number(plate?.x) > 0 ? Number(plate.x) : DEFAULT_PLATE.x;
+  const py = Number(plate?.y) > 0 ? Number(plate.y) : DEFAULT_PLATE.y;
+  const sized = parts.map((part) => {
+    const b = boundsOf(part.groups.flatMap((g) => g.verts));
+    return { part, b, w: b.maxX - b.minX, d: b.maxY - b.minY };
+  }).sort((a, r) => Math.max(r.w, r.d) - Math.max(a.w, a.d));   // big first packs tighter
+
+  const plates = [];
+  let cur = null;
+  const open = () => { cur = { placed: [], x: 0, y: 0, rowDepth: 0 }; plates.push(cur); };
+  open();
+  for (const s of sized) {
+    if (cur.x > 0 && cur.x + s.w > px) {              // row full -> next row
+      cur.x = 0; cur.y += cur.rowDepth + gap; cur.rowDepth = 0;
+    }
+    if (cur.y + s.d > py && cur.placed.length) {      // plate full -> next plate
+      open();
+    }
+    cur.placed.push({
+      part: s.part,
+      dx: cur.x - s.b.minX, dy: cur.y - s.b.minY, dz: -s.b.minZ,
+      w: s.w, d: s.d,
+    });
+    cur.x += s.w + gap;
+    cur.rowDepth = Math.max(cur.rowDepth, s.d);
+  }
+  // centre each plate's occupied footprint, so the arrangement sits in the
+  // middle of the bed rather than crowding the front-left corner. dx/dy put a
+  // part's minX/minY at its slot, so slot + footprint is its far edge.
+  for (const pl of plates) {
+    const mx = Math.max(...pl.placed.map((p) => p.dx + boundsOf(p.part.groups.flatMap((g) => g.verts)).maxX));
+    const my = Math.max(...pl.placed.map((p) => p.dy + boundsOf(p.part.groups.flatMap((g) => g.verts)).maxY));
+    const sx = (px - mx) / 2, sy = (py - my) / 2;
+    for (const p of pl.placed) { p.dx += sx; p.dy += sy; }
+  }
+  return plates.map((pl) => pl.placed.map(({ part, dx, dy, dz }) => ({ part, dx, dy, dz })));
+}
+
+// The laid-out export itself: one 3MF PER PLATE, each part its own object (its
+// colours as sub-objects referenced by a per-part assembly), so the slicer
+// sees N movable parts, each already standing where it should print. Returns
+// [{ suffix, bytes }] — one entry per plate.
+export function partsPlate3MF(groups, name = "brepcode-model", opts = {}) {
+  const parts = splitConnectedParts(groups);
+  if (!parts.length) return [];
+  const plate = opts.plate === null ? DEFAULT_PLATE : (opts.plate ?? DEFAULT_PLATE);
+  const plates = layoutOnPlates(parts, plate, opts.gap ?? 8);
+  const M = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02";
+
+  return plates.map((placed, pi) => {
+    const palette = [];
+    for (const { part } of placed) for (const g of part.groups) {
+      const hex = (g.color || "#cccccc").toUpperCase();
+      if (!palette.includes(hex)) palette.push(hex);
+    }
+    const COLOURS_ID = 1;
+    let nextId = 2;
+    const objects = [], items = [], settings = [];
+    placed.forEach(({ part, dx, dy, dz }, idx) => {
+      const colourIds = part.groups.map((g) => {
+        const hex = (g.color || "#cccccc").toUpperCase();
+        const id = nextId++;
+        objects.push(`  <object id="${id}" type="model" name="${name} — part ${idx + 1} — ${hex}" pid="${COLOURS_ID}" pindex="${palette.indexOf(hex)}">
+   <mesh>
+    <vertices>
+${g.verts.map((v) => `     <vertex x="${+(+v[0] + dx).toFixed(5)}" y="${+(+v[1] + dy).toFixed(5)}" z="${+(+v[2] + dz).toFixed(5)}"/>`).join("\n")}
+    </vertices>
+    <triangles>
+${g.tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("\n")}
+    </triangles>
+   </mesh>
+  </object>`);
+        return { id, hex };
+      });
+      const partId = nextId++;
+      objects.push(`  <object id="${partId}" type="model" name="${name} — part ${idx + 1}">
+   <components>
+${colourIds.map(({ id }) => `    <component objectid="${id}"/>`).join("\n")}
+   </components>
+  </object>`);
+      items.push(`  <item objectid="${partId}"/>`);
+      settings.push(`  <object id="${partId}">
+    <metadata key="name" value="${name} — part ${idx + 1}"/>
+    <metadata key="extruder" value="${palette.indexOf(colourIds[0].hex) + 1}"/>
+${colourIds.map(({ id, hex }) => `    <part id="${id}" subtype="normal_part">
+      <metadata key="name" value="${name} — part ${idx + 1} — ${hex}"/>
+      <metadata key="extruder" value="${palette.indexOf(hex) + 1}"/>
+    </part>`).join("\n")}
+  </object>`);
+    });
+
+    const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
+ <metadata name="Application">BREPcode-${APP_VERSION}</metadata>
+ <metadata name="Title">${name}</metadata>
+ <resources>
+  <m:colorgroup id="${COLOURS_ID}">
+${palette.map((hex) => `   <m:color color="${hex}"/>`).join("\n")}
+  </m:colorgroup>
+${objects.join("\n")}
+ </resources>
+ <build>
+${items.join("\n")}
+ </build>
+</model>
+`;
+    const config = `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${settings.join("\n")}\n</config>\n`;
+    const project = `{\n  "filament_colour": [${palette.map((hex) => `"${hex}"`).join(", ")}]\n}\n`;
+    return {
+      suffix: plates.length > 1 ? `-plate${pi + 1}` : "",
+      parts: placed.length,
+      bytes: threeMfPackage(model, name, opts.source, [
+        ["Metadata/model_settings.config", config],
+        ["Metadata/project_settings.config", project],
+      ]),
+    };
+  });
+}
+
 // Where the parametric source rides along inside an exported file. A mesh is a
 // dead end — once a part leaves as triangles the recipe that made it is gone,
 // and "I printed this a year ago and want it 3mm taller" means starting over.

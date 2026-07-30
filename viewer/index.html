@@ -1152,6 +1152,7 @@
     <button data-fmt="stl">STL<small>3D printing</small></button>
     <button data-fmt="obj">OBJ<small>DCC / game tools</small></button>
     <button data-fmt="3mf">3MF<small>modern slicers</small></button>
+    <button data-fmt="3mf-parts">3MF — parts laid out<small>each piece side by side on the plate</small></button>
     <!-- A 3MF carries a position, and a slicer's plate origin is its FRONT-LEFT
          corner — so without this the part opens in the corner, half off the bed.
          The size only affects where the model is placed, never its geometry. -->
@@ -7056,6 +7057,28 @@ ${joined}`)(...vs);
           fixnote.innerHTML = `<span style="color:var(--muted3)">${placed}`
             + (distinct > 1 ? ` ${distinct} colours written as a 3MF colour group — a multi-material slicer (Bambu, Prusa, Orca) will offer a filament per colour.` : "")
             + `</span>`;
+        } else if (fmt === "3mf-parts") {
+          // The assembled 3MF above exports the cap ON the jar, because that is
+          // what the model says. This one is for printing: every physically
+          // separate piece — connectivity decides, not colour — packed side by
+          // side on the bed, each standing on z=0, spilling onto a second file
+          // when one plate is not enough.
+          setStatus("busy", "Splitting into parts…");
+          const exp = await getExporters();
+          const groups = colorGroupsForExport();
+          if (!groups.length) throw new Error("build the model first");
+          const plate = currentPlate() ?? undefined;   // "keep coordinates" makes no sense here
+          const files = exp.partsPlate3MF(groups, base, { source: src, plate, gap: 8 });
+          if (!files.length) throw new Error("no printable geometry");
+          size = 0;
+          for (const f of files) size += download(`${base}${f.suffix}.3mf`, f.bytes, "model/3mf");
+          const totalParts = files.reduce((n, f) => n + f.parts, 0);
+          const plateTxt = plate ?? exp.DEFAULT_PLATE;
+          fixnote.innerHTML = `<span style="color:var(--muted3)">${totalParts} part${totalParts === 1 ? "" : "s"} `
+            + `laid out on ${files.length} plate${files.length === 1 ? "" : "s"} of ${plateTxt.x} × ${plateTxt.y} mm `
+            + `(size under <b>Plate</b> in this menu), 8&thinsp;mm apart, every piece standing on the bed. `
+            + (files.length > 1 ? `Each plate is its own .3mf file. ` : "")
+            + `Parts are separate objects in the slicer, so they can still be moved one by one.</span>`;
         } else if (fmt === "step-curved") {
           // real analytic B-rep: the DSL tree re-built in OCCT (replicad),
           // so cylinders export as CYLINDRICAL_SURFACE, not triangle fans
