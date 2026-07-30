@@ -397,6 +397,38 @@ export async function stepToStl(buf, name = "step-import", opts = {}) {
   });
   const v = mesh.vertices, t = mesh.triangles;
   if (!t?.length) throw new Error("That STEP file contained no solid geometry.");
+
+  // Is what came back actually CLOSED? A proper analytic STEP — the kind
+  // Fusion, SolidWorks, FreeCAD and Onshape write — reads back watertight.
+  // A STEP carrying AP242 *tessellated* geometry instead (our own faceted STEP
+  // export is one) does not: OCCT hands back the surface patches without
+  // sewing them into a solid, so a ring arrives as two open tubes with its end
+  // caps missing. That still previews and measures fine, which is exactly the
+  // trap — it will not slice and it will not boolean. Count the boundary edges
+  // so the caller can say so out loud rather than hand over a shell that looks
+  // like a solid. A closed shell has every directed edge exactly once each way.
+  if (opts.stats) {
+    const idx = new Map();
+    const key = (p) => {
+      const k = `${v[p].toFixed(4)},${v[p + 1].toFixed(4)},${v[p + 2].toFixed(4)}`;
+      let i = idx.get(k); if (i === undefined) idx.set(k, i = idx.size);
+      return i;
+    };
+    const dir = new Map();
+    for (let i = 0; i < t.length; i += 3) {
+      const a = key(t[i] * 3), b = key(t[i + 1] * 3), c = key(t[i + 2] * 3);
+      if (a === b || b === c || a === c) continue;
+      for (const [x, y] of [[a, b], [b, c], [c, a]]) dir.set(`${x}:${y}`, (dir.get(`${x}:${y}`) || 0) + 1);
+    }
+    let open = 0;
+    for (const k of dir.keys()) {
+      const [x, y] = k.split(":");
+      if (!dir.get(`${y}:${x}`)) open++;
+    }
+    opts.stats.openEdges = open;
+    opts.stats.triangles = t.length / 3;
+  }
+
   let stl = `solid ${name}\n`;
   for (let i = 0; i < t.length; i += 3) {
     stl += "facet normal 0 0 0\nouter loop\n";

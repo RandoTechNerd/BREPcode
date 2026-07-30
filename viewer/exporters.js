@@ -13,7 +13,7 @@
 
 // Stamped into the 3MF's Application field — the honest answer to "what made
 // this file".
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.2.2";
 
 // A note on OrcaSlicer, because this cost real time and the conclusion is the
 // opposite of where it started.

@@ -7812,6 +7812,7 @@ ${joined}`)(...vs);
         }
 
         let contents;
+        let stepStats = null;      // filled for STEP: { openEdges, triangles }
         if (ext === "svg") {
           // vector art -> extruded solid (stencil source / TPU screen-print positive)
           setStatus("busy", `Extruding ${file.name}…`);
@@ -7824,7 +7825,8 @@ ${joined}`)(...vs);
           setStatus("busy", "Reading STEP — loading the CAD kernel…");
           await new Promise((r) => setTimeout(r, 30));
           const cv = await getCurved();
-          contents = await cv.stepToStl(buf, file.name);
+          stepStats = {};
+          contents = await cv.stepToStl(buf, file.name, { stats: stepStats });
         } else if (ext === "obj") {
           const { objToStl } = await getExporters();
           contents = objToStl(new TextDecoder().decode(buf), file.name);
@@ -8023,7 +8025,16 @@ ${joined}`)(...vs);
         pushHistory();
         setStatus("busy", `Importing ${file.name}…`);
         const size = mb >= 1 ? `${mb.toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`;
-        hint.innerHTML = `Imported <b>${esc(file.name)}</b> (${size}) — it's a real solid now. Edit it: wrap in <code>difference(…, cylinder(…))</code> to drill holes, <code>union(…)</code> to add a frame, or <code>stretch({ axis:'x', by:25 }, …)</code> to make it longer. Press <b>K</b> → “Edit a part” for snippets.`
+        hint.innerHTML = stepStats?.openEdges
+          // An open shell measures and previews exactly like a solid, which is
+          // the trap: it will not slice and it will not boolean. Say so here
+          // rather than let it fail later with something less explicable.
+          ? `Imported <b>${esc(file.name)}</b> (${size}), but it came back as an <b>open shell</b> — `
+            + `${stepStats.openEdges.toLocaleString()} unjoined edges, so it is a surface, not a solid. `
+            + `That happens with STEP files carrying <i>tessellated</i> geometry rather than real surfaces. `
+            + `You can look at it and measure it, but booleans and slicing need a closed solid — `
+            + `re-export it from the source CAD as a solid STEP (AP203/AP214/AP242 b-rep) if you need to cut it.`
+          : `Imported <b>${esc(file.name)}</b> (${size}) — it's a real solid now. Edit it: wrap in <code>difference(…, cylinder(…))</code> to drill holes, <code>union(…)</code> to add a frame, or <code>stretch({ axis:'x', by:25 }, …)</code> to make it longer. Press <b>K</b> → “Edit a part” for snippets.`
           + (hadCode ? " Your previous code is one ◀ tap away." : "")
           + (cleaned.removed
             ? ` Cleaned up <b>${cleaned.removed}</b> duplicate face${cleaned.removed === 1 ? "" : "s"} that would have flickered as black patches — the part itself is unchanged.`
