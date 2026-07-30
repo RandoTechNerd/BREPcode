@@ -3122,9 +3122,32 @@
         if (!negIds.size) return;
         const bb = new THREE.Box3().setFromObject(modelGroup);
         const span = bb.isEmpty() ? 30 : bb.getSize(new THREE.Vector3()).length();
+        // Clip the ghost to the part. A cutter is deliberately longer than the
+        // material it cuts — a drill starts proud of the surface and runs past
+        // the far side so it breaks through cleanly — so drawing the WHOLE tool
+        // put a salmon rod out in mid-air beyond the model. With depthTest off
+        // it also painted over everything in front of it, and the result read,
+        // exactly and unavoidably, as a drill bit left stuck in the model. It
+        // never was: the hole is cut, this is just the picture of what came out.
+        // Clipped to the model's bounds, only the part that was actually inside
+        // the material is drawn, which is the only part that means anything.
+        const clip = [];
+        if (!bb.isEmpty()) {
+          const e = span * 0.002;             // a hair of slack so the rim survives
+          clip.push(
+            new THREE.Plane(new THREE.Vector3(1, 0, 0), -bb.min.x + e),
+            new THREE.Plane(new THREE.Vector3(-1, 0, 0), bb.max.x + e),
+            new THREE.Plane(new THREE.Vector3(0, 1, 0), -bb.min.y + e),
+            new THREE.Plane(new THREE.Vector3(0, -1, 0), bb.max.y + e),
+            new THREE.Plane(new THREE.Vector3(0, 0, 1), -bb.min.z + e),
+            new THREE.Plane(new THREE.Vector3(0, 0, -1), bb.max.z + e),
+          );
+          renderer.localClippingEnabled = true;
+        }
         const mat = new THREE.LineDashedMaterial({
           color: 0xf08c78, dashSize: span * 0.02, gapSize: span * 0.013,
           transparent: true, opacity: 0.95, depthTest: false,
+          clippingPlanes: clip, clipIntersection: false,
         });
         const validIds = new Set(trace.map((t) => t.id));
         for (const s of solids) {
@@ -3132,7 +3155,13 @@
                                     : adoptSolid(s, validIds);
           for (const mesh of meshes) {
             if (negIds.has(mesh.userData.featureId)) {
-              const line = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 25), mat);
+              // 5°, not 25°. A drill's cutter is a smooth cylinder: at 25° the
+              // only edges sharp enough to survive are its two end rings, and
+              // both of those sit outside the material (a cutter runs past the
+              // far side on purpose). Clip to the part and there is literally
+              // nothing left to draw. A low threshold keeps the longitudinal
+              // seams, so what you see inside the solid is the wall of the hole.
+              const line = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 5), mat);
               line.computeLineDistances();
               line.renderOrder = 998;
               line.userData.featureId = mesh.userData.featureId;
@@ -3161,6 +3190,12 @@
       localStorage.setItem("brepcode-negatives", on ? "1" : "");
       negBtn.title = on ? "Hide negative-shape outlines"
         : "Outline the negative (subtracted) shapes";
+      // Say what the salmon is. Left unlabelled it looks like a part of the
+      // model rather than a picture of the absence of one.
+      hint.innerHTML = on
+        ? `Showing <b style="color:#f08c78">negative shapes</b> — the salmon outlines are the material that was `
+          + `<b>removed</b>, drawn through the solid. They are a view, not geometry: nothing there is exported.`
+        : "Negative-shape outlines hidden.";
       refreshNegatives();
     });
     if (localStorage.getItem("brepcode-negatives")) negBtn.classList.add("active");
