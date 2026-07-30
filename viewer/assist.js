@@ -752,6 +752,77 @@ export function wordAt(text, pos) {
   return s === e ? null : { start: s, end: e, word: text.slice(s, e) };
 }
 
+// ------------------------------------------------------- inline option cycler
+// Alt+Up/Down nudges numbers and swaps shape keywords. It has to do the WORD
+// options too. pattern: "knurl" and faces: "sides" are precisely the values you
+// want to flick through to see what they look like, and having to break off and
+// hunt the spelling out of the cheat sheet is what kills that loop — you stop
+// exploring after the first one. Every enumerated value in the language is
+// listed here so the same keystroke covers all of them.
+export const OPTION_SETS = {
+  pattern: ["knurl", "fuzzy", "layers", "bumps", "waffle"],
+  faces: ["sides", "top", "bottom", "all"],
+  side: ["+x", "-x", "+y", "-y", "+z", "-z", "wrap"],
+  axis: ["x", "y", "z"],
+  repair: ["NONE", "BASIC", "AGGRESSIVE"],
+};
+
+// Some calls take a narrower set than the shared property name implies: a
+// fins() buttress can only stand on a vertical wall, so ±z and "wrap" are not
+// on offer there even though heightmap() accepts them on the same key.
+export const CALL_OPTION_SETS = {
+  fins: { side: ["+x", "-x", "+y", "-y"] },
+};
+
+// the `name:` immediately before a value, which is what names its option list
+function propertyBefore(text, start) {
+  const m = /([A-Za-z_$][\w$]*)\s*:\s*$/.exec(text.slice(0, start));
+  return m ? m[1] : null;
+}
+
+// the call this value sits inside — the nearest identifier whose "(" is still open
+function callAround(text, start) {
+  let depth = 0;
+  for (let i = start - 1; i >= 0; i--) {
+    const c = text[i];
+    if (c === ")" || c === "]" || c === "}") depth++;
+    else if (c === "[" || c === "{") { if (depth) depth--; }
+    else if (c === "(") {
+      if (depth) { depth--; continue; }
+      const m = /([A-Za-z_$][\w$]*)\s*$/.exec(text.slice(0, i));
+      return m ? m[1] : null;
+    }
+  }
+  return null;
+}
+
+// The option the caret is sitting in: a quoted value whose property has a known
+// set, or a bare true/false anywhere. Quoted values are matched WITH their
+// quotes because "+x" and "-x" are not words — wordAt() cannot see them.
+export function optionAt(text, pos) {
+  for (const m of text.matchAll(/(["'])((?:\\.|(?!\1)[^\\])*)\1|\b(?:true|false)\b/g)) {
+    const start = m.index, end = start + m[0].length;
+    if (pos < start || pos > end) continue;
+    if (m[1] === undefined) {
+      return { start, end, value: m[0], quote: "", options: ["true", "false"], prop: null };
+    }
+    const prop = propertyBefore(text, start);
+    if (!prop) return null;
+    const call = callAround(text, start);
+    const options = CALL_OPTION_SETS[call]?.[prop] ?? OPTION_SETS[prop];
+    if (!options || !options.includes(m[2])) return null;
+    return { start, end, value: m[2], quote: m[1], options, prop };
+  }
+  return null;
+}
+
+// The next value in that option's list, wrapping at both ends.
+export function optionTarget(opt, dir = 1) {
+  const i = opt.options.indexOf(opt.value);
+  if (i < 0) return null;
+  return opt.options[(i + dir + opt.options.length) % opt.options.length];
+}
+
 // The number the caret is in or immediately after (so "10|" and "1|0" both hit).
 export function numberAt(text, pos) {
   for (const m of text.matchAll(/-?\d+\.?\d*/g)) {

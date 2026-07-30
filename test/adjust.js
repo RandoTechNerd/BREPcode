@@ -1,8 +1,8 @@
 // Inline keyword swapper, number scrubbing, and the mesh→code mapping helpers.
 
 import {
-  swapTarget, wordAt, numberAt, primitiveSites, mapTraceToSites, convertPrimitiveCall,
-  findScaleTargets, rewriteNumbers, findResizeTarget,
+  swapTarget, wordAt, numberAt, optionAt, optionTarget, primitiveSites, mapTraceToSites,
+  convertPrimitiveCall, findScaleTargets, rewriteNumbers, findResizeTarget,
 } from "../viewer/assist.js";
 
 let pass = 0, fail = 0;
@@ -133,6 +133,50 @@ console.log("\nfindScaleTargets / rewriteNumbers (corner handles)\n");
   const site = primitiveSites(src)[0];
   const out = rewriteNumbers(src, findScaleTargets(src, site), (v) => v * 0.011);
   check("scale floor prevents degenerate sizes", out.includes("r: 0.2"), out);
+}
+
+console.log("\noptionAt / optionTarget — Alt+Up/Down through word options\n");
+{
+  const tex = 'texture({ pattern: "knurl", depth: 0.6, faces: "sides" }, cube([30, 30, 12]))';
+  const pat = optionAt(tex, tex.indexOf("knurl") + 2);
+  check("finds the pattern the caret is in", pat?.value === "knurl" && pat.prop === "pattern");
+  check("knurl -> fuzzy", optionTarget(pat, 1) === "fuzzy");
+  check("knurl <- waffle (wraps)", optionTarget(pat, -1) === "waffle");
+  check("cycling covers every pattern", pat.options.join() === "knurl,fuzzy,layers,bumps,waffle");
+
+  const fc = optionAt(tex, tex.indexOf('"sides"') + 3);
+  check("faces cycles too", fc?.prop === "faces" && optionTarget(fc, 1) === "top");
+
+  // the span must include the quotes, or the replacement eats them
+  check("span covers the quotes", tex.slice(pat.start, pat.end) === '"knurl"');
+  check("quote character is kept", pat.quote === '"');
+}
+{
+  // same property name, different call, different legal set: a fins() buttress
+  // has to stand on a vertical wall, so it must not offer ±z or "wrap"
+  const hm = 'heightmap({ map: "m", w: 8, h: 8, side: "+z" }, cube(10))';
+  const fn = 'fins({ side: "+x", height: 4 }, cube(10))';
+  check("heightmap side reaches wrap",
+    optionAt(hm, hm.indexOf('"+z"') + 2).options.includes("wrap"));
+  check("fins side stops at the four walls",
+    optionAt(fn, fn.indexOf('"+x"') + 2).options.join() === "+x,-x,+y,-y");
+  check("fins +x -> -x", optionTarget(optionAt(fn, fn.indexOf('"+x"') + 2), 1) === "-x");
+}
+{
+  const im = 'importedMesh("part.stl", { repair: "BASIC" })';
+  const r = optionAt(im, im.indexOf('"BASIC"') + 2);
+  check("repair cycles the kernel's three levels", r?.options.join() === "NONE,BASIC,AGGRESSIVE");
+  // a filename is a quoted string with no option list behind it — leave it be
+  check("a plain string argument is not an option", optionAt(im, im.indexOf("part") + 1) === null);
+  // ...and neither is an unknown property
+  check("an unknown property is not an option",
+    optionAt('foo({ colour: "red" })', 16) === null);
+}
+{
+  check("a bare true flips to false",
+    optionTarget(optionAt("cube(10, { center: true })", 20), 1) === "false");
+  check("...and back again",
+    optionTarget(optionAt("cube(10, { center: false })", 21), 1) === "true");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

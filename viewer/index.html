@@ -2232,6 +2232,10 @@
     // the message is about it. Loads on the first chat message, never at boot.
     let _recipes;
     const getRecipes = () => (_recipes ??= import("./recipes.js"));
+    // mesh decimation (meshoptimizer wasm) — only when a too-dense import
+    // offers its Simplify button
+    let _simplify;
+    const getSimplify = () => (_simplify ??= import("./simplify.js"));
 
     let _exp, _bot, _inv;
     const getExporters = () => (_exp ??= import("./exporters.js"));
@@ -2240,7 +2244,7 @@
     const DEFAULT_GEM = "When a request references a real-world object with unknown sizing (a GoPro, an AA battery, a phone stand), don't silently guess: state the standard dimensions you're assuming, encourage the user to verify or research the exact measurements, and put every size in a clearly named variable so it's easy to adjust.";
     import {
       SPECS, RECIPES, DIALECTS, specOf, diagnose, enclosingCall, autoFix, stripFences, addImplicitReturn,
-      swapTarget, wordAt, numberAt, primitiveSites, mapTraceToSites, convertPrimitiveCall,
+      swapTarget, wordAt, numberAt, optionAt, optionTarget, primitiveSites, mapTraceToSites, convertPrimitiveCall,
       isBrepscriptModule, prepareBrepscriptModule, declaredNames, fixDanglingReturn, looseShapeCount,
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
     } from "./assist.js";
@@ -3707,7 +3711,7 @@
       raycaster.setFromCamera(new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1), camera);
-      const hit = raycaster.intersectObjects(modelGroup.children, false)[0];
+      const hit = pickModel(raycaster)[0];
       if (!hit?.object.userData.featureId) { shapeMenu.classList.remove("open"); return; }
       shapeMenuFid = hit.object.userData.featureId;
       buildSwapChips(shapeMenuFid);
@@ -4528,6 +4532,15 @@
     function updateHint() {
       const pos = code.selectionStart, text = code.value;
 
+      // Caret inside an enumerated value: show the whole set, so the options
+      // are discoverable by parking the caret rather than by reading the docs.
+      const optHere = optionAt(text, pos);
+      if (optHere) {
+        const list = optHere.options.map((o) => (o === optHere.value ? `<b>${o}</b>` : o)).join(" · ");
+        hint.innerHTML = `${optHere.prop ? `<b>${optHere.prop}</b>: ` : ""}${list}`
+          + ` — <b>Alt+&uarr;/&darr;</b> cycles`;
+        return;
+      }
       // Caret on a number: the manual-adjust affordance beats everything else.
       if (numberAt(text, pos)) {
         const inside = enclosingCall(text, pos);
@@ -5017,6 +5030,23 @@ ${joined}`)(...vs);
     // primitive arguments so the model stays sensible.
     function adjustAtCaret(dir, step) {
       const pos = code.selectionStart, text = code.value;
+
+      // Word options first: "-0.5" would otherwise look like a number to nudge,
+      // and cycling the option is what the caret being inside quotes means.
+      const opt = optionAt(text, pos);
+      const next = opt && optionTarget(opt, dir);
+      if (next) {
+        const str = opt.quote + next + opt.quote;
+        code.value = text.slice(0, opt.start) + str + text.slice(opt.end);
+        code.setSelectionRange(opt.start, opt.start + str.length);
+        pushHistory();
+        setStatus("busy", "…");
+        scheduleBuild();
+        const list = opt.options.map((o) => (o === next ? `<b>${o}</b>` : o)).join(" · ");
+        hint.innerHTML = `${opt.prop ? `<b>${opt.prop}</b>: ` : ""}${list}`
+          + ` &nbsp;<small>Alt+&uarr;/&darr; keeps cycling</small>`;
+        return true;
+      }
 
       const num = numberAt(text, pos);
       if (num) {
@@ -5713,6 +5743,53 @@ ${joined}`)(...vs);
 
     // --------------------- click a shape to find its code / drag it to move it
     const raycaster = new THREE.Raycaster();
+
+    // Every pick against the model goes through here rather than calling
+    // intersectObjects directly. three's raycaster honours material.side, and
+    // our solids render FrontSide, so a triangle wound the wrong way is
+    // invisible to a click even though it is plainly on screen. That is not
+    // hypothetical: the kernel's BASIC repair of a heavy simplified import came
+    // back with ~0.7% of its faces flipped or open, and arming the Drill on one
+    // of those patches did nothing at all — no hit, no hint, no hole. Culling
+    // is a rendering decision, never a picking one, so we drop it for the
+    // duration of the ray and restore it immediately. Nothing renders in
+    // between, so no shader recompile and no visual change.
+    function pickModel(rc) {
+      const saved = [];
+      for (const o of modelGroup.children) {
+        if (o.material && o.material.side !== THREE.DoubleSide) {
+          saved.push([o.material, o.material.side]);
+          o.material.side = THREE.DoubleSide;
+        }
+      }
+      try {
+        return rc.intersectObjects(modelGroup.children, false);
+      } finally {
+        for (const [m, s] of saved) m.side = s;
+      }
+    }
+
+    // The surface normal at a clicked face, oriented OUT of the solid. Which way
+    // is "out" has to be decided by the view, not by the triangle: a repaired
+    // import can carry faces wound the wrong way, and their stored normal points
+    // into the material. drill() cuts along -normal, so an inverted one aimed the
+    // bore into open air — the cutter hung above the surface, subtracted nothing,
+    // and looked for all the world like the tool had left the bit stuck in the
+    // model. You clicked a face you can see, so the material is on the far side
+    // of it: a normal pointing back along the line of sight is flipped.
+    function faceNormalAt(hit, fallback = [0, 0, 1]) {
+      const n = hit.face
+        ? hit.face.normal.clone()
+            .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+            .normalize()
+        : new THREE.Vector3(...fallback);
+      const view = camera.isOrthographicCamera
+        ? camera.getWorldDirection(new THREE.Vector3())
+        : hit.point.clone().sub(camera.position);
+      if (n.dot(view) > 0) n.negate();
+      return n;
+    }
+
     let downAt = null;
     let drag = null;   // {fid, site, start:Vector3, planeZ, meshes, delta, moved}
     let drillArmed = false;   // "Drill" tool: next click on a face bores a hole there
@@ -5793,7 +5870,7 @@ ${joined}`)(...vs);
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
           -((e.clientY - rect.top) / rect.height) * 2 + 1,
         ), camera);
-        const mHit = raycaster.intersectObjects(modelGroup.children, false)[0];
+        const mHit = pickModel(raycaster)[0];
         if (mHit && currentModelExpr()) {
           drag = {
             mode: "importMove", span: { label: "the model" },
@@ -5935,7 +6012,7 @@ ${joined}`)(...vs);
         }
       }
 
-      let hit = raycaster.intersectObjects(modelGroup.children, false)[0];
+      let hit = pickModel(raycaster)[0];
       // Nothing solid under the cursor? Try the negative-shape ghosts. Solid
       // always wins, so a cutter is only selectable where you can genuinely see
       // it — the part of it standing outside the material — and clicking the
@@ -6313,12 +6390,7 @@ ${joined}`)(...vs);
       if (!expr) { setCodeArmed(false); return; }
       const r1 = (n) => Math.round(n * 10) / 10;
       const p = hit.point;
-      let n = new THREE.Vector3(0, 0, 1);
-      if (hit.face) {
-        n = hit.face.normal.clone()
-          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
-          .normalize();
-      }
+      const n = faceNormalAt(hit);
       // rotation that takes +Z (the code's own up) onto the face normal
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
       const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
@@ -6347,13 +6419,7 @@ ${joined}`)(...vs);
       if (!expr) { setDrillArmed(false); return; }
       const r1 = (n) => Math.round(n * 10) / 10;
       const p = hit.point;
-      // world normal: transform the face normal by the mesh's normal matrix
-      let n = new THREE.Vector3(0, 0, 1);
-      if (hit.face) {
-        n = hit.face.normal.clone()
-          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
-          .normalize();
-      }
+      const n = faceNormalAt(hit);
       const pt = `[${r1(p.x)}, ${r1(p.y)}, ${r1(p.z)}]`;
       const nv = `[${r1(n.x)}, ${r1(n.y)}, ${r1(n.z)}]`;
       pushHistory(code.value);
@@ -6397,7 +6463,7 @@ ${joined}`)(...vs);
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(ndc, camera);
-      let hit = raycaster.intersectObjects(modelGroup.children, false)[0];
+      let hit = pickModel(raycaster)[0];
 
       // The drill and code tools bore into real material at a real surface, so
       // they only ever see modelGroup — a ghost has nothing to act on.
@@ -7303,6 +7369,75 @@ ${joined}`)(...vs);
       updateDims(previewGroup);      // the ruler measures what is on screen
     }
 
+    // Register a set of parsed parts as imports and write the editor code for
+    // them — the tail every import route ends in, shared so the Simplify
+    // buttons land in exactly the state a normal import would have produced.
+    // `off` recentres the assembly (one shared offset, or parts would pile up
+    // at the origin); colours ride as colorize() so they survive .bcode saves
+    // and export back out to 3MF.
+    async function importObjectsAsParts(fileName, objects, partColours, off) {
+      const stem = fileName.replace(/\.(3mf|stl|obj)$/i, "");
+      const names = [];
+      for (const [i, o] of objects.entries()) {
+        const p = o.positions;
+        const lines = [`solid ${stem}-${i + 1}`];
+        for (let t = 0; t < p.length; t += 9) {
+          lines.push("facet normal 0 0 0", "outer loop");
+          for (let k = 0; k < 9; k += 3) {
+            lines.push(`vertex ${p[t + k] + off[0]} ${p[t + k + 1] + off[1]} ${p[t + k + 2] + off[2]}`);
+          }
+          lines.push("endloop", "endfacet");
+        }
+        lines.push(`endsolid ${stem}-${i + 1}`);
+        const partName = objects.length === 1 ? fileName : `${stem} (${i + 1}).stl`;
+        dsl.registerImport(partName, lines.join("\n"));
+        names.push(partName);
+      }
+      if (code.value.trim()) pushHistory(code.value);
+      const call = (n, i) => {
+        const c = partColours?.[i];
+        const mesh = `importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`;
+        return c ? `colorize(${JSON.stringify(c)}, ${mesh})` : mesh;
+      };
+      code.value = names.length === 1
+        ? (partColours?.[0] ? `return ${call(names[0], 0)};` : call(names[0], 0))
+        : `return group(\n${names.map((n, i) => `  ${call(n, i)},`).join("\n")}\n);`;
+      toggleCard(panel, openBtn, true);
+      code.focus();
+      pushHistory();
+      await rebuild();
+    }
+
+    // The Simplify button a too-dense preview offers: decimate in the app —
+    // proper quadric edge collapse, per part so colours keep their borders —
+    // then flow into the normal import tail. No Blender round-trip.
+    function offerSimplify(el, fileName, objects, partColours, off, totalTris) {
+      const b = document.createElement("button");
+      b.style.cssText = "font:inherit;padding:2px 9px;margin-left:6px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer;font-weight:700";
+      b.textContent = `🪄 Simplify to ~${(MESH_HEAVY / 1000).toFixed(0)}k & edit`;
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        b.textContent = "simplifying…";
+        setStatus("busy", `Decimating ${(totalTris / 1000).toFixed(0)}k → ~${(MESH_HEAVY / 1000).toFixed(0)}k triangles…`);
+        await new Promise((r) => setTimeout(r, 30));
+        try {
+          const S = await getSimplify();
+          const slim = await S.simplifyObjects(objects, MESH_HEAVY);
+          const kept = slim.reduce((n, o) => n + o.positions.length / 9, 0);
+          clearMeshPreview();
+          setStatus("busy", `Building ${slim.length} simplified part${slim.length === 1 ? "" : "s"} (${Math.round(kept / 1000)}k triangles)…`);
+          await new Promise((r) => setTimeout(r, 30));
+          await importObjectsAsParts(fileName, slim, partColours, off);
+          hint.innerHTML = `Simplified <b>${esc(fileName)}</b> from ${(totalTris / 1000).toFixed(0)}k to <b>${Math.round(kept / 1000)}k</b> triangles — it's a real, editable solid now: drill it, cut it, export it. Detail drift is capped at ~1% of the part's size.`;
+        } catch (e) {
+          b.disabled = false;
+          b.textContent = "simplify failed — try again";
+          setStatus("err", `Simplify failed: ${String(e?.message || e).slice(0, 90)}`);
+        }
+      });
+      el.appendChild(b);
+    }
+
     // Too dense for the KERNEL is not too dense for the GPU: drawing triangles
     // is cheap, manifoldizing them is not. So an oversized model gets a
     // VIEW-ONLY preview — orbit it, measure it with the ruler, read its
@@ -7331,9 +7466,12 @@ ${joined}`)(...vs);
           if (p[i + 2] < mnz) mnz = p[i + 2];
         }
       }
-      showMeshPreview(objects, colours, [-(mnx + mxx) / 2, -(mny + mxy) / 2, -mnz]);
+      const off = [-(mnx + mxx) / 2, -(mny + mxy) / 2, -mnz];
+      showMeshPreview(objects, colours, off);
       setStatus("ok", `${file.name}: view-only preview (${triLabel} — too dense to edit in the browser)`);
-      hint.innerHTML = `<b>${esc(file.name)}</b> is showing as a <b>view-only preview</b> — orbit it, and the ruler shows its true size, but ${triLabel} is too dense for the modelling kernel. To actually edit it: decimate first (Blender's <b>Decimate</b> modifier, or “Simplify model” in PrusaSlicer/Bambu) to under ${(MESH_REFUSE / 1000)}k triangles and re-import.`;
+      hint.innerHTML = `<b>${esc(file.name)}</b> is showing as a <b>view-only preview</b> — orbit it, and the ruler shows its true size, but ${triLabel} is too dense for the modelling kernel. `;
+      const total = objects.reduce((n, o) => n + o.positions.length / 9, 0);
+      offerSimplify(hint, file.name, objects, colours, off, total);
     }
 
     async function importMeshFile(file) {
@@ -7473,7 +7611,8 @@ ${joined}`)(...vs);
             // colours and all (the parts + palette are already parsed)
             showMeshPreview(objects, partColours, off);
             setStatus("ok", `${file.name}: view-only preview (~${(total / 1000).toFixed(0)}k triangles across ${objects.length} parts — too dense to edit)`);
-            hint.innerHTML = `<b>${esc(file.name)}</b> is showing as a <b>view-only preview</b> with its real colours — a full build would take ~${Math.round(guessSec / 60)} minutes with the tab frozen. To edit it: “Simplify model” in PrusaSlicer/Bambu or Blender's <b>Decimate</b>, then re-import.`;
+            hint.innerHTML = `<b>${esc(file.name)}</b> is showing as a <b>view-only preview</b> with its real colours — a full build would take ~${Math.round(guessSec / 60)} minutes with the tab frozen. `;
+            offerSimplify(hint, file.name, objects, partColours, off, total);
             return;
           }
           if (total > MESH_HEAVY) {
@@ -8090,7 +8229,7 @@ ${joined}`)(...vs);
         o.setComponent(alongX ? 0 : 1, li);
         o.z = z;
         rc.set(o, dir);
-        const hit = rc.intersectObjects(modelGroup.children, false)[0];
+        const hit = pickModel(rc)[0];
         if (!hit) continue;
         // How far the surface sits from the fin's contact edge. The tooth stops
         // `clearance` short of it, so a clean print leaves daylight; a long one
@@ -8317,12 +8456,7 @@ ${joined}`)(...vs);
     function finsAtHit(hit) {
       const opts = { ...finsOpts };
       setFinsArmed(false);
-      let n = new THREE.Vector3(1, 0, 0);
-      if (hit.face) {
-        n = hit.face.normal.clone()
-          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
-          .normalize();
-      }
+      const n = faceNormalAt(hit, [1, 0, 0]);
       const nh = Math.hypot(n.x, n.y);
       if (nh < 0.1) {
         hint.innerHTML = "That face points straight up or down — fins lean on a <b>side</b>. Click a side face (one facing ±X or ±Y) and press the tool again.";
@@ -8433,12 +8567,7 @@ ${joined}`)(...vs);
       setEmbossArmed(false);
       const expr = currentModelExpr();
       if (!expr || !grid) return;
-      let n = new THREE.Vector3(1, 0, 0);
-      if (hit.face) {
-        n = hit.face.normal.clone()
-          .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
-          .normalize();
-      }
+      const n = faceNormalAt(hit, [1, 0, 0]);
       // Clicked a CYLINDER wall? Wrap the image around it like a can label
       // instead of stamping it flat — a planar emboss on a round face smears
       // across the curve. The trace names faces by feature ("P.CY3_S"), so a

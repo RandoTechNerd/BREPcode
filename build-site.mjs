@@ -60,6 +60,8 @@ const rewrites = [
   ["/node_modules/bwip-js/dist/bwip-js.mjs", "./vendor/bwip/bwip-js.mjs"],
   // in-browser LLM engine (lazy-loaded by viewer/webllm.js, weights from HF)
   ["/node_modules/@mlc-ai/web-llm/lib/index.js", "./vendor/webllm/index.js"],
+  // mesh decimation (lazy-loaded by viewer/simplify.js on the Simplify button)
+  ["/node_modules/meshoptimizer/meshopt_simplifier.js", "./vendor/meshopt/meshopt_simplifier.js"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -73,7 +75,7 @@ const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), tex
 //   node build-site.mjs --with-locked-key  -> key included (private hand-off)
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
-  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js",
+  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "simplify.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -127,6 +129,11 @@ writeFileSync(join(OUT, "secret-models", "manifest.json"), JSON.stringify({
 mkdirSync(join(OUT, "vendor", "webllm"), { recursive: true });
 cpSync("node_modules/@mlc-ai/web-llm/lib/index.js", join(OUT, "vendor/webllm/index.js"));
 cpSync("node_modules/@mlc-ai/web-llm/LICENSE", join(OUT, "vendor/webllm/LICENSE"));
+
+// ---- vendor: meshoptimizer simplifier (Simplify button, lazy-loaded) ----
+mkdirSync(join(OUT, "vendor", "meshopt"), { recursive: true });
+cpSync("node_modules/meshoptimizer/meshopt_simplifier.js", join(OUT, "vendor/meshopt/meshopt_simplifier.js"));
+cpSync("node_modules/meshoptimizer/LICENSE.md", join(OUT, "vendor/meshopt/LICENSE.md"));
 
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });
