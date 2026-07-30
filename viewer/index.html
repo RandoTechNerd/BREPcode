@@ -5812,6 +5812,16 @@ ${joined}`)(...vs);
     const inPreview = () => previewGroup.children.length > 0;
 
     function refusePreviewTool(name) {
+      // The mesh is too dense for the kernel: "Build it now" is the one thing
+      // that CANNOT work, so offer the step that makes it buildable instead.
+      if (pendingSimplify) {
+        const p = pendingSimplify;
+        hint.innerHTML = `<b>${name}</b> needs a solid to cut, and ${esc(p.fileName)} is still a `
+          + `view-only preview — at ${(p.totalTris / 1000).toFixed(0)}k triangles it is too dense for the `
+          + `modelling kernel to turn into one. Simplify it and every edit tool works on it: `;
+        offerSimplify(hint, p.fileName, p.objects, p.partColours, p.off, p.totalTris);
+        return;
+      }
       hint.innerHTML = `<b>${name}</b> needs the model built first — what is on screen is a preview, `
         + `which is triangles for looking at rather than solids to cut. `
         + `<button id="preview-build-now" style="font:inherit;padding:2px 9px;margin-left:4px;`
@@ -7334,6 +7344,8 @@ ${joined}`)(...vs);
     scene.add(previewGroup);
 
     function clearMeshPreview() {
+      if (pendingSimplify) clearHeavyHold();   // the bar was offering THIS preview
+      pendingSimplify = null;             // that preview is gone; so is its offer
       modelGroup.visible = true;          // the preview hid it; it comes back
       updateDims();                       // ...and the ruler goes back to measuring it
       for (const c of [...previewGroup.children]) {
@@ -7424,31 +7436,56 @@ ${joined}`)(...vs);
     // The Simplify button a too-dense preview offers: decimate in the app —
     // proper quadric edge collapse, per part so colours keep their borders —
     // then flow into the normal import tail. No Blender round-trip.
+    // What the on-screen preview COULD be simplified into, kept so the edit
+    // tools can offer it too. Without this, arming the Drill on a mesh the
+    // kernel has already refused told you to "Build it now" — a button that
+    // cannot work, because building is the very thing that was refused. That
+    // dead end is why the drill looked broken on a Benchy: the tool was never
+    // reached. Cleared the moment the preview stops being what's on screen.
+    let pendingSimplify = null;
+
     function offerSimplify(el, fileName, objects, partColours, off, totalTris) {
-      const b = document.createElement("button");
-      b.style.cssText = "font:inherit;padding:2px 9px;margin-left:6px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer;font-weight:700";
-      b.textContent = `🪄 Simplify to ~${(MESH_HEAVY / 1000).toFixed(0)}k & edit`;
-      b.addEventListener("click", async () => {
-        b.disabled = true;
-        b.textContent = "simplifying…";
+      pendingSimplify = { fileName, objects, partColours, off, totalTris };
+      const label = `🪄 Simplify to ~${(MESH_HEAVY / 1000).toFixed(0)}k & edit`;
+      const buttons = [];
+
+      async function runSimplify() {
+        for (const x of buttons) { x.disabled = true; x.textContent = "simplifying…"; }
         setStatus("busy", `Decimating ${(totalTris / 1000).toFixed(0)}k → ~${(MESH_HEAVY / 1000).toFixed(0)}k triangles…`);
         await new Promise((r) => setTimeout(r, 30));
         try {
           const S = await getSimplify();
           const slim = await S.simplifyObjects(objects, MESH_HEAVY);
           const kept = slim.reduce((n, o) => n + o.positions.length / 9, 0);
-          clearMeshPreview();
+          clearMeshPreview();                 // also drops the bar and the offer
           setStatus("busy", `Building ${slim.length} simplified part${slim.length === 1 ? "" : "s"} (${Math.round(kept / 1000)}k triangles)…`);
           await new Promise((r) => setTimeout(r, 30));
           await importObjectsAsParts(fileName, slim, partColours, off);
           hint.innerHTML = `Simplified <b>${esc(fileName)}</b> from ${(totalTris / 1000).toFixed(0)}k to <b>${Math.round(kept / 1000)}k</b> triangles — it's a real, editable solid now: drill it, cut it, export it. Detail drift is capped at ~1% of the part's size.`;
         } catch (e) {
-          b.disabled = false;
-          b.textContent = "simplify failed — try again";
+          for (const x of buttons) { x.disabled = false; x.textContent = "simplify failed — try again"; }
           setStatus("err", `Simplify failed: ${String(e?.message || e).slice(0, 90)}`);
         }
-      });
+      }
+
+      const b = document.createElement("button");
+      b.style.cssText = "font:inherit;padding:2px 9px;margin-left:6px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer;font-weight:700";
+      b.textContent = label;
+      b.addEventListener("click", runSimplify);
+      buttons.push(b);
       el.appendChild(b);
+
+      // ...and the same offer under the editor, where the Build button lives.
+      // A hint line is easy to scroll past or overwrite; this is the one place
+      // that always says what the model needs before it can be edited.
+      buildBar.hidden = false;
+      buildBarNote.innerHTML = `<b>${esc(fileName)}</b> — ${(totalTris / 1000).toFixed(0)}k triangles is `
+        + `too dense to build as a solid. Simplify it to drill, cut and boolean it.`;
+      buildNowBtn.disabled = false;
+      buildNowBtn.textContent = label;
+      buildNowBtn.title = `Decimate to about ${(MESH_HEAVY / 1000).toFixed(0)}k triangles and open it as an editable solid`;
+      buildNowBtn.onclick = runSimplify;
+      buttons.push(buildNowBtn);
     }
 
     // Too dense for the KERNEL is not too dense for the GPU: drawing triangles
