@@ -1300,7 +1300,7 @@
               <rect x="2" y="2" width="12" height="12" rx="1.5" /><circle cx="6" cy="6.4" r="1.5" />
               <path d="M2 12l3.4-3.4 2.4 2.4 3.4-3.6L14 10.5" />
             </svg>
-            <span><b>Photo emboss</b><small>image → relief on a clicked face</small></span>
+            <span><b>Photo emboss / label</b><small>image → relief on a face · wraps round a clicked cylinder</small></span>
           </button>
           <button data-act="code-dm-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none">
@@ -8439,20 +8439,34 @@ ${joined}`)(...vs);
           .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
           .normalize();
       }
-      const ax = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
-      const dom = ax.indexOf(Math.max(...ax));
-      const side = (["x", "y", "z"][dom] === "x" ? (n.x >= 0 ? "+x" : "-x")
-        : ["x", "y", "z"][dom] === "y" ? (n.y >= 0 ? "+y" : "-y")
-        : (n.z >= 0 ? "+z" : "-z"));
+      // Clicked a CYLINDER wall? Wrap the image around it like a can label
+      // instead of stamping it flat — a planar emboss on a round face smears
+      // across the curve. The trace names faces by feature ("P.CY3_S"), so a
+      // cylinder answers to /\.CY\d/; imported meshes have no such id and get
+      // the flat treatment, where the code's side can be hand-swapped to
+      // "wrap" if the mesh really is a can.
+      const fid = hit.object?.userData?.featureId || "";
+      const isCylWall = /\.CY\d*$/i.test(fid) && Math.abs(n.z) < 0.7;
       pushHistory(code.value);
-      replaceModelExpr(`heightmap({\n  // ${grid.name} — ${grid.w}×${grid.h} luminance grid\n  map: "${grid.map}",\n  w: ${grid.w}, h: ${grid.h}, side: "${side}", depth: 1.5,\n}, ${expr})`);
+      if (isCylWall) {
+        replaceModelExpr(`heightmap({\n  // ${grid.name} — ${grid.w}×${grid.h} luminance grid, wrapped like a can label\n  map: "${grid.map}",\n  w: ${grid.w}, h: ${grid.h}, side: "wrap", depth: 1.2,\n  arc: 360,   // degrees the label covers — 180 = half way round\n}, ${expr})`);
+      } else {
+        const ax = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+        const dom = ax.indexOf(Math.max(...ax));
+        const side = (["x", "y", "z"][dom] === "x" ? (n.x >= 0 ? "+x" : "-x")
+          : ["x", "y", "z"][dom] === "y" ? (n.y >= 0 ? "+y" : "-y")
+          : (n.z >= 0 ? "+z" : "-z"));
+        replaceModelExpr(`heightmap({\n  // ${grid.name} — ${grid.w}×${grid.h} luminance grid\n  map: "${grid.map}",\n  w: ${grid.w}, h: ${grid.h}, side: "${side}", depth: 1.5,\n}, ${expr})`);
+      }
       code.focus();
       const m = /depth:\s*(\d+(?:\.\d+)?)/.exec(code.value);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length, m.index + m[0].length);
       pushHistory();
       setStatus("busy", "…");
       rebuild();
-      hint.innerHTML = `Embossing <b>${esc(grid.name)}</b> onto the <b>${side}</b> face — give it a moment, relief is a heavier build. Darker pixels stand out further (add <code>invert: true</code> to flip). Tune <code>depth</code>; the relief is real geometry, so it exports.`;
+      hint.innerHTML = isCylWall
+        ? `Wrapping <b>${esc(grid.name)}</b> around that cylinder like a can label — darker pixels stand out further (add <code>invert: true</code> to flip). <code>arc</code> sets how far round it reaches (360 = all the way), <code>start</code> turns it, <code>depth</code> sets the relief. Real geometry — it prints.`
+        : `Embossing <b>${esc(grid.name)}</b> onto the flat face — darker pixels stand out further (add <code>invert: true</code> to flip). Tune <code>depth</code>; the relief is real geometry, so it exports.`;
     }
 
     // Toolbox dropdown — the model-editing tools in one place. Rows click the

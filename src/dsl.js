@@ -587,7 +587,16 @@ export function heightmap(opts, ...children) {
   const kids = collect(children);
   if (!kids.length) throw new Error('heightmap() needs a shape, e.g. heightmap({ map, w: 64, h: 64, side: "+x" }, cube([40, 40, 40]))');
   const side = String(o.side ?? "+x");
-  if (!/^[+-][xyz]$/.test(side)) throw new Error(`heightmap(): side must be "+x", "-x", "+y", "-y", "+z" or "-z" — got ${JSON.stringify(o.side)}`);
+  // side: "wrap" bends the image AROUND the model like a label on a can —
+  // cylindrical projection about the Z axis, displacing radially. `arc` is
+  // how many degrees the image covers (default 360, all the way round),
+  // `start` where its left edge sits (degrees CCW from +X, default 0), and
+  // the image runs rightward as seen from OUTSIDE the can, so text reads
+  // correctly. Top and bottom faces are untouched automatically: their
+  // normals have no radial component.
+  if (!/^[+-][xyz]$/.test(side) && side !== "wrap") {
+    throw new Error(`heightmap(): side must be "+x", "-x", "+y", "-y", "+z", "-z" or "wrap" (label around a cylinder) — got ${JSON.stringify(o.side)}`);
+  }
   const w = Math.round(Number(o.w) || 0), h = Math.round(Number(o.h) || 0);
   if (!w || !h || typeof o.map !== "string" || !o.map) {
     throw new Error("heightmap() needs { map (base64 luminance), w, h } — use the Photo emboss tool to generate them from an image");
@@ -600,6 +609,9 @@ export function heightmap(opts, ...children) {
       map: grid, mapW: w, mapH: h, side,
       invert: !!o.invert,
       depth: Number(o.depth) || 1.5,
+      // wrap-only: how far round the label reaches, and where it starts
+      arc: Math.max(5, Math.min(360, Number(o.arc) || 360)),
+      start: Number(o.start) || 0,
       // relief wants more resolution than a repeating pattern; ~12k tris is
       // roughly half a minute of build — a one-off bake, not a typing loop
       maxTris: Number(o.maxTris) || 12000,
@@ -764,15 +776,27 @@ export function displacedPositions(soupIn, o) {
   // displace every welded vertex outward. Patterns push along the vertex
   // normal; a heightmap pushes along the FACE AXIS — a corner vertex's
   // averaged normal points diagonally, and relief that smears sideways off
-  // its face would fatten the whole part by a millimetre.
+  // its face would fatten the whole part by a millimetre. A wrapped label
+  // pushes RADIALLY out from the Z axis instead: on a can, "out" is a
+  // different direction at every point around it.
+  const wrap = o.map && o.side === "wrap";
+  const cx = (bb.min[0] + bb.max[0]) / 2, cy = (bb.min[1] + bb.max[1]) / 2;
   const axisVec = [0, 0, 0];
-  if (o.map) axisVec[SIDE_AXIS[o.side[1]]] = o.side[0] === "+" ? 1 : -1;
+  if (o.map && !wrap) axisVec[SIDE_AXIS[o.side[1]]] = o.side[0] === "+" ? 1 : -1;
   const out = new Float64Array(verts.length);
   for (let i = 0; i < verts.length; i += 3) {
     const px = verts[i], py = verts[i + 1], pz = verts[i + 2];
     const nx = nrm[i], ny = nrm[i + 1], nz = nrm[i + 2];
     let amp, dx = nx, dy = ny, dz = nz;
-    if (o.map) {
+    if (wrap) {
+      const rx = px - cx, ry = py - cy;
+      const rl = Math.hypot(rx, ry);
+      if (rl < 1e-6) { amp = 0; dx = dy = dz = 0; }          // on the axis — caps' centres
+      else {
+        dx = rx / rl; dy = ry / rl; dz = 0;
+        amp = wrapAmp(o, px, py, pz, nx, ny, nz, bb, cx, cy);
+      }
+    } else if (o.map) {
       amp = mapAmp(o, px, py, pz, nx, ny, nz, bb);
       [dx, dy, dz] = axisVec;
     } else {
@@ -798,6 +822,20 @@ export function displacedPositions(soupIn, o) {
 const SIDE_AXIS = { x: 0, y: 1, z: 2 };
 // pixel pitch of the map on the model face — the subdivision target
 function mapSpacing(soup, o) {
+  if (o.side === "wrap") {
+    // pitch around the curve: the label's arc length per pixel column,
+    // against its height per pixel row
+    let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < soup.length; i += 3) {
+      for (let a = 0; a < 3; a++) {
+        if (soup[i + a] < mn[a]) mn[a] = soup[i + a];
+        if (soup[i + a] > mx[a]) mx[a] = soup[i + a];
+      }
+    }
+    const r = Math.max(mx[0] - mn[0], mx[1] - mn[1]) / 2 || 1;
+    const arcLen = 2 * Math.PI * r * ((o.arc || 360) / 360);
+    return Math.min(arcLen / o.mapW, (mx[2] - mn[2] || 1) / o.mapH);
+  }
   const ax = SIDE_AXIS[o.side[1]];
   const [u, v] = [0, 1, 2].filter((a) => a !== ax);
   let mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
@@ -826,6 +864,27 @@ function mapAmp(o, px, py, pz, nx, ny, nz, bb) {
   const g = sampleGrid(o.map, o.mapW, o.mapH, u, v);
   const lum = o.invert ? g / 255 : 1 - g / 255;
   return lum * facing;      // feather by how squarely the surface faces the map
+}
+
+// The wrapped-label sampler. u runs around the can: the label's LEFT edge sits
+// at `start`° (CCW from +X) and the image runs rightward AS SEEN FROM OUTSIDE
+// — which is decreasing θ — so text reads correctly instead of mirrored.
+// v runs down the label over the shape's full height. Outside the arc, or on
+// a face with no outward radial component (caps), the amplitude is zero.
+function wrapAmp(o, px, py, pz, nx, ny, nz, bb, cx, cy) {
+  const rx = px - cx, ry = py - cy;
+  const rl = Math.hypot(rx, ry) || 1;
+  const facing = (nx * rx + ny * ry) / rl;       // outward-facing walls only
+  if (facing <= 0) return 0;
+  const theta = Math.atan2(ry, rx) * 180 / Math.PI;
+  const rel = ((o.start - theta) % 360 + 360) % 360;
+  if (rel > (o.arc || 360)) return 0;            // off the label's edge
+  const u = rel / (o.arc || 360);
+  const zSpan = bb.max[2] - bb.min[2] || 1;
+  const v = 1 - (pz - bb.min[2]) / zSpan;        // image rows run down
+  const g = sampleGrid(o.map, o.mapW, o.mapH, u, v);
+  const lum = o.invert ? g / 255 : 1 - g / 255;
+  return lum * facing;
 }
 
 function sampleGrid(grid, w, h, u, v) {

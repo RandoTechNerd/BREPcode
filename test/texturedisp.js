@@ -117,6 +117,52 @@ console.log("\nDisplacement textures\n");
   check("fuzzy cylinder builds", volumeOf(r) > 0);
 }
 
+// ---- wrapped label: heightmap side:"wrap" around a cylinder ---------------
+//
+// The can-label case: the image bends AROUND the model, displacing radially.
+// What must hold: the relief lands on the wall (radius grows by ~depth where
+// the image is dark), the caps stay put (their normals have no radial
+// component), an arc-limited label leaves the far side untouched, and the
+// shell survives the kernel.
+{
+  // left half black (stands out), right half white (flat): 4×4 grid
+  const mapB64 = Buffer.from(new Uint8Array([
+    0, 0, 255, 255,
+    0, 0, 255, 255,
+    0, 0, 255, 255,
+    0, 0, 255, 255,
+  ])).toString("base64");
+  const r = await build(heightmap(
+    { map: mapB64, w: 4, h: 4, side: "wrap", depth: 2 },
+    cylinder({ r: 10, h: 20, $fn: 64 }),
+  ));
+  const pts = soupOf(r);
+  const radii = pts.filter((p) => p[2] > 1 && p[2] < 19).map((p) => Math.hypot(p[0] - 0, p[1] - 0));
+  check("wrap: the dark half of the label stands proud",
+    Math.max(...radii) > 11.5, `max r ${Math.max(...radii).toFixed(2)}`);
+  check("...and the white half stays at the wall",
+    Math.min(...radii) > 9.4 && Math.min(...radii) < 10.3, `min r ${Math.min(...radii).toFixed(2)}`);
+  const bb = boundsOf(r);
+  check("...the caps don't move", near(bb.z[0], 0, 0.01) && near(bb.z[1], 20, 0.01), JSON.stringify(bb.z));
+  check("...and it went through the kernel watertight", volumeOf(r) > Math.PI * 100 * 20 * 0.98);
+}
+{
+  // a 90° label: three quarters of the can must be untouched
+  const dark = Buffer.from(new Uint8Array(16).fill(0)).toString("base64");
+  const r = await build(heightmap(
+    { map: dark, w: 4, h: 4, side: "wrap", depth: 2, arc: 90, start: 0 },
+    cylinder({ r: 10, h: 12, $fn: 96 }),
+  ));
+  const pts = soupOf(r).filter((p) => p[2] > 1 && p[2] < 11);
+  // start 0, running rightward-from-outside = θ in [-90°, 0°]: x>0, y<0 quadrant
+  const inLabel = pts.filter((p) => p[0] > 0 && p[1] < 0).map((p) => Math.hypot(p[0], p[1]));
+  const offLabel = pts.filter((p) => p[0] < 0).map((p) => Math.hypot(p[0], p[1]));
+  check("a 90° label raises its own quadrant", Math.max(...inLabel) > 11.5,
+    `max in-label r ${Math.max(...inLabel).toFixed(2)}`);
+  check("...and leaves the far side of the can alone", Math.max(...offLabel) < 10.1,
+    `max off-label r ${Math.max(...offLabel).toFixed(2)}`);
+}
+
 // ---- guard rails ----------------------------------------------------------
 try {
   texture({ pattern: "sparkles" }, cube([10, 10, 10]));
