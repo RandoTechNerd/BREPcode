@@ -1485,6 +1485,7 @@
             <option value="builtin">Built-in (no key needed)</option>
             <option value="gemini">Google Gemini</option>
             <option value="claude">Anthropic Claude</option>
+            <option value="openai">OpenAI — GPT</option>
             <option value="claude-code" id="opt-claude-code" hidden>Claude Code — this computer, no key</option>
             <option value="local">Local model — llama.cpp / Ollama (experimental)</option>
             <option value="browser">In your browser — free, no key, no install (WebGPU)</option>
@@ -1523,6 +1524,16 @@
               <path d="M11.3 2.4l2.3 2.3-8.2 8.2-3 .7.7-3zM9.8 3.9l2.3 2.3" />
             </svg>
           </button>
+        </div>
+        <!-- OpenAI-compatible endpoints: OpenRouter, Azure, a proxy, LM Studio.
+             It is also the web build's only route to GPT, since OpenAI itself
+             refuses browser chat. Hidden for every other provider. -->
+        <div class="row" id="ai-base-row" style="display:none">
+          <label title="Where the OpenAI-compatible API lives">Base URL</label>
+          <input id="ai-base" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div class="row" id="openai-web-note" style="display:none">
+          <span class="note" style="flex:1"></span>
         </div>
         <div class="row"><label>Name</label>
           <input id="ai-botname" placeholder="Rando." />
@@ -9133,6 +9144,38 @@ ${joined}`)(...vs);
     // ------------------------------------------------------------- assistant
     const chatMsgs = $("chat-msgs"), chatInput = $("chat-input");
     const aiProvider = $("ai-provider"), aiModel = $("ai-model"), aiKey = $("ai-key");
+    const aiBase = $("ai-base");
+
+    // Can this build actually CHAT with OpenAI? Measured, not guessed: OpenAI
+    // permits a browser to GET /v1/models with a key but refuses the chat POST
+    // that carries one, so on the web it works only against an OpenAI-
+    // compatible host that does allow browsers. The desktop app relays through
+    // its main process, where there is no origin and no preflight, so there it
+    // always works.
+    const isDesktop = !!window.brepcodeDesktop?.aiRelay;
+    const openaiChatPossible = () =>
+      isDesktop || !/(^|\/\/)api\.openai\.com/.test(CHAT_BASE_FOR_CHECK());
+    const CHAT_BASE_FOR_CHECK = () => (aiBase?.value || "").trim() || "https://api.openai.com/v1";
+
+    // One transport for every provider request. On the desktop it goes through
+    // the main process (allowlisted hosts only); everywhere else it is a plain
+    // fetch. Returns something Response-shaped either way so callers do not
+    // have to care which happened.
+    async function aiFetch(url, options = {}) {
+      if (isDesktop) {
+        const r = await window.brepcodeDesktop.aiRelay({
+          url, method: options.method || "GET", headers: options.headers, body: options.body,
+        });
+        if (r?.error) throw new Error(r.error);
+        return {
+          ok: r.ok, status: r.status,
+          headers: { get: () => "application/json" },   // the relay never streams
+          json: async () => JSON.parse(r.text),
+          text: async () => r.text,
+        };
+      }
+      return fetch(url, options);
+    }
     // Any focus that lands with the caret parked at 0,0 (tab, programmatic)
     // jumps to the end of the draft. Deferred a frame so a real mid-text CLICK
     // — whose selection lands after focus — is left exactly where it was aimed.
@@ -9269,6 +9312,9 @@ ${joined}`)(...vs);
       ],
       gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
       claude: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
+      // A starting list only — the real one comes from /v1/models the moment a
+      // key checks out, which is the whole point of pasting one.
+      openai: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"],
       // Aliases the CLI resolves itself, so this list never goes stale;
       // "default" means "whatever the user's Claude Code is set to".
       "claude-code": ["default", "fable", "opus", "sonnet", "haiku"],
@@ -9391,6 +9437,7 @@ ${joined}`)(...vs);
     for (const t of aiCfg.harnessOff || []) harnessOff.add(t);
     if (aiCfg.provider) aiProvider.value = aiCfg.provider;
     aiKey.value = aiCfg.key || "";
+    aiBase.value = aiCfg.baseUrl || "";
     const aiGem = $("ai-gem");
     aiGem.value = aiCfg.gem ?? DEFAULT_GEM;
     // One-time migration: the old default routed simple asks to the built-in
@@ -9710,6 +9757,7 @@ ${joined}`)(...vs);
       const harness = (CHAT && aiHarness.value.trim() === CHAT.DEFAULT_HARNESS.trim()) ? "" : aiHarness.value;
       localStorage.setItem("brepcode-ai", JSON.stringify({
         provider: aiProvider.value, model, key: aiKey.value, gem: aiGem.value,
+        baseUrl: aiBase.value,
         harness, askDims: aiAskDims.checked, botName: aiBotName.value,
         emailTo: $("email-to").value,
         fixTries: $("ai-fixtries").value, ccEffort: $("cc-effort").value,
@@ -9825,8 +9873,8 @@ ${joined}`)(...vs);
       if (provider === "builtin" || (!key && provider !== "local")) { aiCheck.textContent = ""; aiCheck.className = ""; return; }
       aiCheck.textContent = "…"; aiCheck.className = "busy";
       try {
-        const { url, options } = CHAT.buildModelsRequest({ provider, key });
-        const resp = await fetch(url, options);
+        const { url, options } = CHAT.buildModelsRequest({ provider, key, baseUrl: aiBase.value });
+        const resp = await aiFetch(url, options);
         const json = await resp.json();
         if (mine !== checkToken) return;
         const models = CHAT.extractModels(provider, json);
@@ -9841,9 +9889,16 @@ ${joined}`)(...vs);
         try { localStorage.setItem(modelCacheKey(provider), JSON.stringify(models)); } catch { /* full */ }
         saveAiCfg();
         if (announce) {
+          const NAME = { gemini: "Gemini", claude: "Claude", openai: "OpenAI" };
           addMsg("bot", provider === "local"
             ? `✓ Connected to your local server — ${models.length} model${models.length === 1 ? "" : "s"} loaded. Using ${aiModel.value}. Free, private, no key — ask me anything!`
-            : `✓ Connected to ${provider === "gemini" ? "Gemini" : "Claude"} — ${models.length} models available. Using ${aiModel.value}. Ask me anything!`);
+            : `✓ Connected to ${NAME[provider] || provider} — ${models.length} models available. Using ${aiModel.value}. Ask me anything!`
+              // Listing works from a web page; chatting does not. Say it now,
+              // at the moment the key checks out, rather than at the first
+              // failed message.
+              + (provider === "openai" && !openaiChatPossible()
+                ? `\n\nHeads-up: OpenAI allows a web page to LIST models but blocks it from chatting (their CORS policy — I tested it). To actually talk to GPT here, either use the BREPcode desktop app, or point **Base URL** at an OpenAI-compatible endpoint that permits browsers (OpenRouter, Azure, your own proxy).`
+                : ""));
         }
       } catch (e) {
         if (mine !== checkToken) return;
@@ -9965,6 +10020,22 @@ ${joined}`)(...vs);
       $("cc-effort-row").style.display = cc ? "" : "none";
       $("browser-load-row").style.display = br ? "" : "none";
       if (br) paintBrowserLoadRow();
+
+      // OpenAI: the base URL is what makes OpenRouter/Azure/a proxy work, and
+      // on the web it is the ONLY way to chat at all — so the row appears with
+      // the reason attached rather than as an unexplained expert field.
+      const oa = aiProvider.value === "openai";
+      $("ai-base-row").style.display = oa ? "" : "none";
+      const note = $("openai-web-note");
+      if (oa && !openaiChatPossible()) {
+        note.style.display = "";
+        note.querySelector(".note").innerHTML =
+          "Your key will list models here, but OpenAI blocks web pages from <i>chatting</i> "
+          + "(their CORS policy). Use the desktop app, or set Base URL to an OpenAI-compatible "
+          + "endpoint that allows browsers — OpenRouter, Azure, or your own proxy.";
+      } else {
+        note.style.display = "none";
+      }
     }
     aiProvider.addEventListener("change", () => {
       fillModelOptions(aiProvider.value);
@@ -9972,6 +10043,7 @@ ${joined}`)(...vs);
       saveAiCfg();
       verifyConnection(true);
     });
+    aiBase.addEventListener("change", () => { reflectProviderUI(); saveAiCfg(); verifyConnection(true); });
     reflectProviderUI();
     aiModel.addEventListener("change", () => {
       saveAiCfg();
@@ -10383,7 +10455,8 @@ ${joined}`)(...vs);
         const context = code.value.trim()
           ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}\n\nRequest: ${text}` : text;
         const msgs = [...chatLog.slice(-8, -1), { role: "user", text: context }];
-        const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim() };
+        const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
+          baseUrl: aiBase.value.trim() };
 
         logLine(`request → ${cfg.provider} · ${cfg.model}`);
 
@@ -10535,10 +10608,13 @@ ${joined}`)(...vs);
           let wantThoughts = cfg.provider === "gemini";
           let json;
           for (;;) {
-            const wantStream = cfg.provider === "claude" || cfg.provider === "local";
+            // The desktop relay returns a finished body, so streaming is only
+            // asked for when the request really is a browser fetch.
+            const wantStream = !isDesktop
+              && (cfg.provider === "claude" || cfg.provider === "local" || cfg.provider === "openai");
             const { url, options } = buildApiRequest(cfg, msgs,
               { includeThoughts: wantThoughts, stream: wantStream, reference, ...harnessOpts() });
-            const resp = await fetch(url, options);
+            const resp = await aiFetch(url, options);
             if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
               let lastPaint = 0;
               const onDelta = ({ phase, chars }) => {
@@ -10546,9 +10622,9 @@ ${joined}`)(...vs);
                 const now = performance.now();
                 if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
               };
-              json = cfg.provider === "local"
-                ? await CHAT.readOpenAIStream(resp, onDelta)
-                : await CHAT.readClaudeStream(resp, onDelta);
+              json = cfg.provider === "claude"
+                ? await CHAT.readClaudeStream(resp, onDelta)
+                : await CHAT.readOpenAIStream(resp, onDelta);
               logLine(`response ← stream ended${json.stop_reason ? ` (${json.stop_reason})` : ""}`);
             } else {
               json = await resp.json();

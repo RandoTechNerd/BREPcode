@@ -6,7 +6,7 @@ import {
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
   parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem,
   readClaudeStream, readOpenAIStream, emptyReplyReason, extractApiText, extractApiThinking,
-  localBase,
+  localBase, openaiBase,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -622,6 +622,61 @@ console.log("\nmodel ranking\n");
   check("<think> block is stripped from the reply", !extractApiText("local", json).includes("hmm sizes"));
   check("...and surfaces as thinking", extractApiThinking("local", json) === "hmm sizes");
   check("empty local reply explains itself", /local server|model loaded/i.test(emptyReplyReason("local", {})));
+}
+
+console.log("\nOpenAI provider\n");
+{
+  check("base URL defaults to OpenAI", openaiBase("") === "https://api.openai.com/v1");
+  check("a bare host gets https + /v1", openaiBase("openrouter.ai/api") === "https://openrouter.ai/api/v1");
+  check("an explicit /v1 is left alone", openaiBase("https://x.test/v1") === "https://x.test/v1");
+  check("trailing slashes are trimmed", openaiBase("https://x.test/v1/") === "https://x.test/v1");
+
+  const msgs = [{ role: "user", text: "make a cube" }];
+  const r = buildApiRequest({ provider: "openai", model: "gpt-4o", key: "sk-x" }, msgs);
+  check("chat hits /chat/completions", r.url === "https://api.openai.com/v1/chat/completions");
+  check("key rides as a Bearer token", r.options.headers.Authorization === "Bearer sk-x");
+  const body = JSON.parse(r.options.body);
+  check("model is passed through", body.model === "gpt-4o");
+  check("a normal model uses max_tokens", body.max_tokens === 8000 && body.max_completion_tokens === undefined);
+  check("the harness goes in as system", body.messages[0].role === "system");
+  check("the user turn survives", body.messages[1].content === "make a cube");
+
+  // reasoning models renamed the budget field and take "developer", not
+  // "system" — sending the old shape is a hard 400 rather than a warning
+  const o = JSON.parse(buildApiRequest({ provider: "openai", model: "o4-mini", key: "k" }, msgs).options.body);
+  check("a reasoning model uses max_completion_tokens",
+    o.max_completion_tokens === 16000 && o.max_tokens === undefined);
+  check("...and takes a developer role", o.messages[0].role === "developer");
+  const g5 = JSON.parse(buildApiRequest({ provider: "openai", model: "gpt-5", key: "k" }, msgs).options.body);
+  check("gpt-5 counts as a reasoning model", g5.max_completion_tokens === 16000);
+
+  // an attached sketch becomes an image_url part ahead of the text
+  const img = buildApiRequest({ provider: "openai", model: "gpt-4o", key: "k" },
+    [{ role: "user", text: "like this", images: [{ media_type: "image/png", data: "AAA" }] }]);
+  const parts = JSON.parse(img.options.body).messages[1].content;
+  check("an image rides as a data URI", parts[0].image_url.url === "data:image/png;base64,AAA");
+  check("...with the text after it", parts[1].text === "like this");
+
+  // a custom base URL is what makes OpenRouter / Azure / a proxy work
+  const alt = buildApiRequest({ provider: "openai", model: "gpt-4o", key: "k", baseUrl: "https://openrouter.ai/api/v1" }, msgs);
+  check("a custom base URL is honoured", alt.url === "https://openrouter.ai/api/v1/chat/completions");
+
+  const mr = buildModelsRequest({ provider: "openai", key: "sk-y" });
+  check("model listing hits /models", mr.url === "https://api.openai.com/v1/models");
+  check("...authenticated the same way", mr.options.headers.Authorization === "Bearer sk-y");
+
+  const list = extractModels("openai", {
+    data: [{ id: "gpt-4o" }, { id: "o4-mini" }, { id: "text-embedding-3-small" },
+      { id: "whisper-1" }, { id: "dall-e-3" }, { id: "tts-1" }, { id: "gpt-4o-realtime-preview" }],
+  });
+  check("only chat models are offered", list.includes("gpt-4o") && list.includes("o4-mini"));
+  check("...embeddings, audio and image models are not",
+    !list.some((m) => /embedding|whisper|dall|tts|realtime/.test(m)), list.join(","));
+
+  check("reply text is read from choices",
+    extractApiText("openai", { choices: [{ message: { content: "hi" } }] }) === "hi");
+  check("a length stop explains itself",
+    /token limit/i.test(emptyReplyReason("openai", { choices: [{ finish_reason: "length" }] })));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

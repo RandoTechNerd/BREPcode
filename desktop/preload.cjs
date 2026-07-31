@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   // live progress while a Claude reply is being written — text only, one way
   onClaudeProgress: (cb) => ipcRenderer.on("claude-progress", (_e, text) => cb(text)),
 
+  // Make an AI request from the main process, where there is no origin and so
+  // no CORS. Only OpenAI actually needs it — it allows a browser to LIST its
+  // models but not to chat — and it is locked to an allowlist of AI hosts,
+  // GET/POST, and the handful of headers such a call legitimately carries.
+  aiRelay: (req) => ipcRenderer.invoke("ai:relay", req),
+
   // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
   // The page registers a callback and gets { name, text } for each one.
   onOpenFile: (cb) => ipcRenderer.on("open-file", (_e, payload) => cb(payload)),

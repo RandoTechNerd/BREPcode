@@ -1117,8 +1117,70 @@ export function localBase(key) {
   return u;
 }
 
-export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
+// ------------------------------------------------------------------ OpenAI
+//
+// GPT models, same Chat Completions wire format the "local" provider already
+// speaks — the difference is a Bearer key, a hosted base URL, and two quirks.
+//
+// THE BROWSER CANNOT TALK TO api.openai.com DIRECTLY, and this is measured,
+// not assumed. From a page:
+//     GET  /v1/models          + Authorization  ->  works (CORS, 401 JSON back)
+//     POST /v1/chat/completions + Authorization ->  blocked before it is sent
+//     POST /v1/chat/completions, no auth header ->  works (401 "no API key")
+// The same POST-with-Authorization against a normal CORS server succeeds, so
+// this is OpenAI's policy and not our request: you may LIST models from a web
+// page but you may not chat. So the desktop build sends this one through the
+// main process, where CORS does not exist, and the web build either points at
+// an OpenAI-COMPATIBLE endpoint that does allow browsers (OpenRouter, Azure,
+// LM Studio, your own proxy) or says plainly that it cannot.
+export const OPENAI_DEFAULT_URL = "https://api.openai.com/v1";
+export function openaiBase(baseUrl) {
+  let u = String(baseUrl || "").trim() || OPENAI_DEFAULT_URL;
+  if (!/^https?:\/\//.test(u)) u = "https://" + u;
+  u = u.replace(/\/+$/, "");
+  if (!/\/v\d+$/.test(u)) u += "/v1";
+  return u;
+}
+// o-series and GPT-5 reasoning models renamed the budget field and refuse a
+// custom temperature; sending the old shape is a hard 400, not a warning.
+const isReasoningModel = (m) => /^(o\d|gpt-5|gpt-4\.5)/i.test(String(m || ""));
+
+export function buildApiRequest({ provider, model, key, baseUrl }, messages, opts = {}) {
   const system = composeSystem(opts);
+  if (provider === "openai") {
+    const budget = isReasoningModel(model)
+      ? { max_completion_tokens: 16000 }
+      : { max_tokens: 8000 };
+    return {
+      url: `${openaiBase(baseUrl)}/chat/completions`,
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: model || "gpt-4o-mini",
+          ...(opts.stream ? { stream: true } : {}),
+          ...budget,
+          messages: [
+            // reasoning models take "developer" where the rest take "system"
+            { role: isReasoningModel(model) ? "developer" : "system", content: system },
+            ...messages.map((m) => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              // an attached sketch/photo rides as an image_url data URI
+              content: m.images?.length
+                ? [
+                  ...m.images.map((im) => ({
+                    type: "image_url",
+                    image_url: { url: `data:${im.media_type};base64,${im.data}` },
+                  })),
+                  { type: "text", text: m.text },
+                ]
+                : m.text,
+            })),
+          ],
+        }),
+      },
+    };
+  }
   if (provider === "local") {
     return {
       url: `${localBase(key)}/chat/completions`,
@@ -1207,7 +1269,16 @@ export function buildApiRequest({ provider, model, key }, messages, opts = {}) {
 }
 
 // List the models a key can actually use, so the dropdown reflects reality.
-export function buildModelsRequest({ provider, key }) {
+export function buildModelsRequest({ provider, key, baseUrl }) {
+  if (provider === "openai") {
+    // GET + Authorization is the one thing OpenAI DOES allow a browser to do,
+    // which is why the model dropdown fills in on the web build even where
+    // chatting will not.
+    return {
+      url: `${openaiBase(baseUrl)}/models`,
+      options: { method: "GET", headers: { Authorization: `Bearer ${key}` } },
+    };
+  }
   if (provider === "local") {
     return { url: `${localBase(key)}/models`, options: { method: "GET" } };
   }
@@ -1235,6 +1306,14 @@ export function buildModelsRequest({ provider, key }) {
 
 export function extractModels(provider, json) {
   if (json?.error) throw new Error(json.error.message || "API error");
+  if (provider === "openai") {
+    // The list is the whole account catalogue — embeddings, whisper, TTS,
+    // image and moderation models included. Only chat models can write CAD.
+    return (json?.data ?? []).map((m) => m.id).filter(Boolean)
+      .filter((id) => /^(gpt|o\d|chatgpt)/i.test(id))
+      .filter((id) => !/embed|whisper|tts|audio|image|dall|moderation|realtime|transcribe|search|codex/i.test(id))
+      .sort().reverse();
+  }
   if (provider === "gemini") {
     // keep text-generation models only — lyria is music, deep-research runs
     // long agentic jobs, antigravity/learnlm/robotics aren't for code either
@@ -1267,6 +1346,11 @@ export function extractApiText(provider, json) {
   if (provider === "claude") {
     const t = (json?.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
     if (!t && json?.error) throw new Error(json.error.message || "Claude error");
+    return t;
+  }
+  if (provider === "openai") {
+    const t = json?.choices?.[0]?.message?.content ?? "";
+    if (!t && json?.error) throw new Error(json.error.message || "OpenAI error");
     return t;
   }
   if (provider === "local") {
@@ -1344,6 +1428,13 @@ export function emptyReplyReason(provider, json) {
   if (provider === "gemini" && json?.candidates?.[0]?.finishReason) {
     return `No text in the reply (finishReason: ${json.candidates[0].finishReason}).`;
   }
+  if (provider === "openai") {
+    const fin = json?.choices?.[0]?.finish_reason;
+    if (fin === "length") {
+      return "The reply hit the token limit before any text arrived — a reasoning model can spend the whole budget thinking. Try a simpler request, or pick a non-reasoning model like gpt-4o.";
+    }
+    return `OpenAI returned no reply text${fin ? ` (finish_reason: ${fin})` : ""}. Try again — and if it repeats, check the request log above.`;
+  }
   if (provider === "local") {
     return "The local server returned no text — is a model loaded? Check the server window, and that the URL in ⚙ points at it (default http://localhost:8080/v1).";
   }
@@ -1361,7 +1452,7 @@ export function extractApiThinking(provider, json) {
     return (json?.content ?? []).filter((b) => b.type === "thinking")
       .map((b) => b.thinking).filter(Boolean).join("\n");
   }
-  if (provider === "local") {
+  if (provider === "openai" || provider === "local") {
     const m = json?.choices?.[0]?.message;
     if (m?.reasoning_content) return m.reasoning_content;          // llama.cpp --jinja
     const think = /<think>([\s\S]*?)<\/think>/.exec(m?.content || "");

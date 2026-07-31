@@ -19,6 +19,7 @@ const mail = require("./mail.cjs");
 const recovery = require("./recovery.cjs");
 const slicer = require("./slicer.cjs");
 const claude = require("./claude.cjs");
+const aiproxy = require("./aiproxy.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -191,6 +192,7 @@ if (!EMBEDDED) app.whenReady().then(() => {
   recovery.register();      // crash snapshots into the OS temp folder
   slicer.register();        // "open this in my slicer" — impossible from a web page
   claude.register();        // chat via the user's own Claude Code login
+  aiproxy.register();       // OpenAI refuses browser chat; a desktop app has no origin
   serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.
