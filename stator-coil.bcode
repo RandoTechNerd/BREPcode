@@ -17,6 +17,10 @@ const R_MID = 313.7;    // cross-section centre radius (inner 238.7, outer 388.8
 const WIRE_R = 9;       // 18mm wire
 const STANDOFF = 2;     // clearance so it lies ON the surface, not in it
 const TURNS = 70;       // wraps — 1971mm round the ring / 70 = 28mm pitch
+const TILT = 15;        // degrees the loop leans. 0 = rings perpendicular to
+                        // the ring, which is what a plain toroidal wrap gives:
+                        // at a 28mm pitch over a 733mm cross-section its own
+                        // lean is only 2.2 degrees, which reads as parallel.
 const PER_TURN = 26;    // path points per wrap — smoothness of each loop
 const SIDES = 6;        // facets around the wire
 
@@ -36,7 +40,15 @@ function centre(k, total) {
   const n0 = nrm(i), n1 = nrm(j), off = WIRE_R + STANDOFF;
   const u = HULL[i][0] + (HULL[j][0] - HULL[i][0]) * f + (n0[0] + (n1[0] - n0[0]) * f) * off;
   const w = HULL[i][1] + (HULL[j][1] - HULL[i][1]) * f + (n0[1] + (n1[1] - n0[1]) * f) * off;
-  const th = (k / total) * 2 * Math.PI, r = R_MID + u;
+  const r = R_MID + u;
+  // TILT leans the plane of each loop about the radial axis: a point high up
+  // the cross-section is carried forward along the ring, a point low down is
+  // carried back, by tan(TILT) x its height. It is a SHEAR, so both neighbours
+  // at a given height move by the same amount — the 28mm spacing between turns
+  // survives untouched and no two wraps can cross. And since u and w are not
+  // touched, the wire stays exactly as hard against the surface as before.
+  const lean = Math.tan(TILT * Math.PI / 180) * w / r;
+  const th = (k / total) * 2 * Math.PI + lean;
   return [r * Math.cos(th), w, CZ + r * Math.sin(th)];
 }
 
