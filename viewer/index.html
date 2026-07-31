@@ -7295,6 +7295,91 @@ ${joined}`)(...vs);
       } catch { return false; }
     }
 
+    // ---- cloud stash bridge -----------------------------------------------
+    //
+    // Three globals an external script (quicksave.js, served alongside the app)
+    // calls to save a model to the hosted stash and publish it at
+    // brepcode.com/<slug>. They are the whole contract: nothing in here knows
+    // about the endpoint, the bucket or the secret, so auth stays entirely on
+    // that side and this side stays a static page.
+
+    // A JPEG thumbnail. Rendered into an off-screen render target and read back
+    // rather than grabbed off renderer.domElement, because the on-screen colour
+    // buffer is cleared on swap unless preserveDrawingBuffer holds it, and on
+    // plenty of machines the grab comes back black. readRenderTargetPixels
+    // always has real pixels. WebGL hands them back bottom-up, so the rows are
+    // flipped on the way into the 2D canvas.
+    window.__brepQuicksaveSnapshot = (w = 900, h = 600) => {
+      const rt = new THREE.WebGLRenderTarget(w, h);
+      const cam = camera.clone();
+      cam.aspect = w / h;
+      cam.updateProjectionMatrix();
+      const gridWas = grid?.visible;
+      if (grid) grid.visible = false;                 // a thumbnail is the part, not the floor
+      const prevTarget = renderer.getRenderTarget();
+      renderer.setRenderTarget(rt);
+      renderer.render(scene, cam);
+      const buf = new Uint8Array(w * h * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, w, h, buf);
+      renderer.setRenderTarget(prevTarget);
+      if (grid) grid.visible = gridWas;
+      rt.dispose();
+
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext("2d");
+      const img = ctx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const src = (h - 1 - y) * w * 4, dst = y * w * 4;   // flip
+        img.data.set(buf.subarray(src, src + w * 4), dst);
+      }
+      ctx.putImageData(img, 0, 0);
+      return cv.toDataURL("image/jpeg", 0.82);
+    };
+
+    // The full project as .bcode text, with every imported mesh it depends on
+    // gzipped and embedded — so a save reopens in a fresh browser on another
+    // machine, which a plain .bcode cannot do.
+    window.__brepQuicksaveProject = async () => {
+      const exp = await getExporters();
+      const src = code.value.trim();
+      // only the meshes this model actually names; the session may hold more
+      let used = [];
+      try {
+        used = dsl.listImports().filter((n) => src.includes(JSON.stringify(n)));
+      } catch { used = []; }
+      const meshes = await exp.packMeshes(used, (n) => dsl.getImport(n));
+      return exp.bcodeFile(src, {
+        name: safeModelName(),
+        scene: {
+          material: mat,
+          camera: camera.position.toArray().map((n) => +n.toFixed(3)),
+          target: controls.target.toArray().map((n) => +n.toFixed(3)),
+          up: camera.up.toArray(),
+          negatives: negBtn.classList.contains("active"),
+        },
+        history: hist.stack,
+        meshes,
+      });
+    };
+
+    // Load a .bcode string back. Embedded meshes are registered FIRST — the
+    // build runs as soon as the source lands, and a model whose importedMesh()
+    // is not registered yet fails on that first pass.
+    window.__brepOpenQuicksave = async ({ name, text } = {}) => {
+      const exp = await getExporters();
+      const parsed = exp.parseBcodeFile(String(text || ""));
+      if (!parsed.source) throw new Error("that is not a BREPcode project");
+      if (parsed.meshes) {
+        const files = await exp.unpackMeshes(parsed.meshes);
+        for (const [n, body] of Object.entries(files)) dsl.registerImport(n, body);
+      }
+      const file = new File([text], name || "model.bcode", { type: "text/plain" });
+      await openProject(file, new TextEncoder().encode(String(text)).buffer);
+      paintPartsBar();
+      return true;
+    };
+
     async function exportProject() {
       const src = code.value.trim();
       if (!src) { setStatus("err", "Nothing to save — the editor is empty."); return; }

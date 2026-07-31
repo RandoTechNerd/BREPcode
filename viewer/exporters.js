@@ -648,11 +648,36 @@ export const SCENE_CLOSE = "BREPCODE-SCENE-END */";
 // nobody scrolls back through. The most recent states are the useful ones.
 export const HISTORY_KEEP = 40;
 
+// Imported meshes, gzipped, to ride inside a .bcode.
+//
+// A .bcode is a RECIPE, and importedMesh("part.stl") names a file that lives on
+// the machine that imported it — which is why one opened anywhere else stops at
+// "no imported file by that name". For a save that has to survive leaving this
+// computer (a cloud stash, a link sent to someone else) the mesh has to travel
+// with it. STL is extremely compressible text, so gzip earns its keep here.
+export async function packMeshes(names, getText) {
+  const out = {};
+  for (const n of names) {
+    const t = getText(n);
+    if (t == null) continue;
+    out[n] = b64url(await gzip(String(t)));
+  }
+  return out;
+}
+export async function unpackMeshes(packed) {
+  const out = {};
+  for (const [n, v] of Object.entries(packed || {})) {
+    try { out[n] = await gunzip(unb64url(v)); } catch { /* one bad mesh must not sink the file */ }
+  }
+  return out;
+}
+
 export function bcodeFile(source, meta = {}) {
   const src = String(source || "").trim();
   const name = String(meta.name || "brepcode-model").replace(/[\r\n]/g, " ");
   const scene = {};
   if (meta.scene) scene.scene = meta.scene;
+  if (meta.meshes && Object.keys(meta.meshes).length) scene.meshes = meta.meshes;
   if (Array.isArray(meta.history) && meta.history.length) {
     scene.history = meta.history.slice(-HISTORY_KEEP).map((h) => String(h));
   }
@@ -698,6 +723,8 @@ export function parseBcodeFile(text) {
     source: stripSourceHeader(body),
     scene: scene?.scene ?? null,
     history: Array.isArray(scene?.history) ? scene.history : [],
+    // Still gzipped — unpackMeshes() is async, so the caller decides when.
+    meshes: scene?.meshes ?? null,
   };
 }
 
