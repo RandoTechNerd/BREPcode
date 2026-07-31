@@ -4520,20 +4520,38 @@
       try { names = dsl.listImports(); } catch { names = []; }
       // Textures and hull results register themselves under generated names;
       // they are intermediates, not parts anyone means to place.
-      names = names.filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n) || n.startsWith("__"));
+      names = names.filter((n) => !(/^(hull|tex|heightmap)-?\d/i.test(n) || n.startsWith("__")));
       list.innerHTML = "";
       if (!names.length) { bar.hidden = true; return; }
       bar.hidden = false;
+
+      // ONE chip per source FILE, not per part. A multicolour 3MF registers a
+      // part per colour — the 4-colour Benchy is eight — and eight chips whose
+      // names differ only in a "(3)" near the END all truncate to the same
+      // ellipsis. They were unreadable and there were too many of them. So the
+      // parts of one import collapse into a single chip that puts the whole
+      // thing back, assembled, the way it arrived.
+      const groups = new Map();
       for (const n of names) {
+        const stem = n.replace(/\s*\(\d+\)(\.[a-z0-9]+)$/i, "$1");   // "x (3).stl" -> "x.stl"
+        if (!groups.has(stem)) groups.set(stem, []);
+        groups.get(stem).push(n);
+      }
+      for (const [stem, parts] of groups) {
         const b = document.createElement("button");
-        const inCode = code.value.includes(JSON.stringify(n));
-        b.textContent = (inCode ? "✓ " : "+ ") + n;
+        const inCode = parts.every((n) => code.value.includes(JSON.stringify(n)));
+        // the tail carries what distinguishes one import from another, so when
+        // it has to be shortened, keep the END rather than the beginning
+        const short = stem.length > 26 ? "…" + stem.slice(-25) : stem;
+        const count = parts.length > 1 ? ` ×${parts.length}` : "";
+        b.textContent = (inCode ? "✓ " : "+ ") + short + count;
         b.className = inCode ? "on" : "";
-        b.title = inCode
-          ? `${n} is already in this model — click to add another copy beside it`
-          : `Add ${n} to the plate, beside what is already there`;
+        b.title = (inCode ? `${stem} is already in this model — click to add another copy` : `Add ${stem} to the plate`)
+          + (parts.length > 1 ? `\n${parts.length} parts: ${parts.join(", ")}` : "");
         b.addEventListener("click", () => {
-          placeImport(`importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`, { add: true, name: n });
+          const call = (n) => `importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`;
+          placeImport(parts.length === 1 ? call(parts[0])
+            : `group(\n    ${parts.map(call).join(",\n    ")},\n  )`, { add: true, name: stem });
           paintPartsBar();
           setStatus("busy", "…");
           scheduleBuild();
@@ -5181,6 +5199,20 @@ ${joined}`)(...vs);
         if (mine !== token) return;
         lastBuildMs = performance.now() - t0;
         setStatus("err", diagnose(src, e));
+        // A saved model naming a mesh this session has not imported is not a
+        // mistake in the code — a .bcode carries the RECIPE, and the mesh is a
+        // file on your disk. Telling someone to "use the Import button" and
+        // leaving them to find it is a dead end when we know exactly which
+        // file is missing; offer the picker right here instead.
+        const miss = /importedMesh\("([^"]+)"\): no imported file/.exec(String(e?.message || ""));
+        if (miss) {
+          hint.innerHTML = `This model is built from <b>${esc(miss[1])}</b>, which is not loaded in this `
+            + `session — a <b>.bcode</b> saves the recipe, not the mesh. Open that file and it will build: `
+            + `<button id="fix-import" style="font:inherit;padding:2px 9px;margin-left:4px;`
+            + `border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">`
+            + `Import ${esc(miss[1].split(/[\\/]/).pop())}…</button>`;
+          $("fix-import")?.addEventListener("click", () => $("import-file").click());
+        }
       }
     }
 
@@ -10656,7 +10688,7 @@ ${joined}`)(...vs);
         // so "put the bracket next to the case" was unanswerable — it had no
         // way to know the bracket existed, let alone what it was called.
         let onHand = [];
-        try { onHand = dsl.listImports().filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n) || n.startsWith("__")); } catch { /* none */ }
+        try { onHand = dsl.listImports().filter((n) => !(/^(hull|tex|heightmap)-?\d/i.test(n) || n.startsWith("__"))); } catch { /* none */ }
         const parts = onHand.length
           ? `\n\nMeshes already imported in this session — you can place any of them by name with `
             + `importedMesh("NAME", { repair: "BASIC" }), and combine them with group(...):\n`
