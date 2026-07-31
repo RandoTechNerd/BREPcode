@@ -6491,16 +6491,30 @@ ${joined}`)(...vs);
           next = text.slice(0, s.by.end) + `, at: ${v}` + text.slice(s.by.end);
         }
       } else if (drag.mode === "importMove") {
-        // slide the whole model: fold into a leading translate() if there is one,
-        // else wrap the entire expression in a fresh translate().
+        // Slide the whole model: fold into a leading translate() if there is
+        // one, else wrap in a fresh one.
+        //
+        // Wrap the MODEL EXPRESSION, never the whole file. This used to wrap
+        // code.value itself, which is fine while the editor holds a single
+        // expression — importedMesh("part.stl") — and catastrophic the moment
+        // it holds a real program. Drag a model whose code declares constants
+        // and the result was
+        //     translate([-193.3, 213, 0], const CENTER_X = -44.2; … )
+        // a statement sitting where an argument goes, dead on the next build
+        // with "Unexpected token 'const'" and no clue which action caused it.
+        // modelExprSpan() finds the expression after the last `return`, so the
+        // declarations above it are left exactly alone.
         const d = drag.delta;
-        const expr = text.trim();
-        const lead = /^translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*([\s\S]*)\)\s*$/.exec(expr);
-        if (lead) {
-          const nx = r1(+lead[1] + d.x), ny = r1(+lead[2] + d.y), nz = r1(+lead[3] + d.z);
-          next = `translate([${nx}, ${ny}, ${nz}], ${lead[4].trim()})`;
+        const span = modelExprSpan();
+        if (!span) {
+          next = text;                       // nothing wrappable — leave it be
         } else {
-          next = `translate([${r1(d.x)}, ${r1(d.y)}, ${r1(d.z)}], ${expr})`;
+          const expr = span.expr.trim();
+          const lead = /^translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*([\s\S]*)\)\s*$/.exec(expr);
+          const moved = lead
+            ? `translate([${r1(+lead[1] + d.x)}, ${r1(+lead[2] + d.y)}, ${r1(+lead[3] + d.z)}], ${lead[4].trim()})`
+            : `translate([${r1(d.x)}, ${r1(d.y)}, ${r1(d.z)}], ${expr})`;
+          next = text.slice(0, span.start) + moved + text.slice(span.end);
         }
       } else if (drag.mode === "stretch") {
         // 1. rewrite both sizes (descending offset so spans stay valid)
