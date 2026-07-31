@@ -15,8 +15,8 @@ const BODY = "Stator winding body.stp";
 const CZ = 388.75;      // ring centre height (z), measured from the import
 const R_MID = 313.7;    // cross-section centre radius (inner 238.7, outer 388.8)
 const WIRE_R = 9;       // 18mm wire
-const STANDOFF = 3;     // clearance so it lies ON the surface, not in it
-const TURNS = 30;       // wraps around the body
+const STANDOFF = 2;     // clearance so it lies ON the surface, not in it
+const TURNS = 70;       // wraps — 1971mm round the ring / 70 = 28mm pitch
 const PER_TURN = 26;    // path points per wrap — smoothness of each loop
 const SIDES = 6;        // facets around the wire
 
@@ -78,6 +78,6 @@ for (let k = 1; k + 1 < SIDES; k++) {
 }
 
 return group(
-  importedMesh(BODY, { split: true }),
+  colorize("#8a8f98", importedMesh(BODY, { split: true })),
   colorize("#b87333", polyhedron({ points, faces, orientation: "outward" })),
 );
