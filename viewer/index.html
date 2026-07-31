@@ -342,6 +342,19 @@
       cursor: grab; user-select: none; touch-action: none;
     }
     .card > header:active { cursor: grabbing; }
+    /* Double-click the header: the window takes the screen. Anything that fills
+       the viewport cannot also be dragged, so the grab cursor goes away too. */
+    /* position:fixed, not the card's usual relative — otherwise left/top only
+       nudge it inside the layout. flex:none because a docked card is a flex
+       item in a column, where flex-basis beats height and the window came out
+       short of the screen no matter what height said. */
+    .card.expanded {
+      position: fixed !important; inset: 0 !important; flex: none !important;
+      width: 100vw !important; height: 100vh !important;
+      max-width: none !important; max-height: none !important;
+      border-radius: 0; z-index: 50;
+    }
+    .card.expanded > header { cursor: default; }
     .card.floating { position: fixed; margin: 0; }
     /* resize handle in the bottom-right corner of every card */
     .card { position: relative; }
@@ -806,7 +819,14 @@
       padding: 6px 12px; border-top: 1px solid var(--border);
     }
     #parts-bar[hidden] { display: none; }
-    #parts-bar-label { font: 11px system-ui, sans-serif; color: var(--muted2); flex: none; }
+    #parts-bar-label {
+      font: 11px system-ui, sans-serif; color: var(--muted2); flex: none;
+      background: none; border: 0; padding: 0 2px; cursor: pointer;
+    }
+    #parts-bar-label:hover { color: var(--text); }
+    #parts-bar-label::before { content: "▾ "; }
+    #parts-bar.collapsed #parts-bar-label::before { content: "▸ "; }
+    #parts-bar.collapsed #parts-bar-list { display: none; }
     #parts-bar-list { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
     #parts-bar-list button {
       background: var(--hover); border: 1px solid var(--border); color: var(--text);
@@ -1424,7 +1444,7 @@
            made visible: click a part to put it back on the plate beside
            whatever is already there. -->
       <div id="parts-bar" hidden>
-        <span id="parts-bar-label">On hand</span>
+        <button id="parts-bar-label" title="Parts imported this session — click to hide">On hand</button>
         <span id="parts-bar-list"></span>
       </div>
       <div id="opts">
@@ -4061,14 +4081,58 @@
         if (card.classList.contains("floating")) card.style.zIndex = ++cardZ;
       }, true);
     }
+    // ---- header gestures: double-click fills the screen, right-click closes
+    //
+    // Both live on the header because that is the one strip of every window
+    // that is never content, so neither gesture can collide with what the
+    // window is for. Buttons and fields inside it keep their own behaviour.
+    const preExpand = new WeakMap();      // card -> the geometry to put back
+
+    function toggleExpand(card) {
+      if (card.classList.remove("expanded"), preExpand.has(card)) {
+        const p = preExpand.get(card);    // restore exactly what it was
+        preExpand.delete(card);
+        for (const k of ["left", "top", "width", "height"]) card.style[k] = p[k];
+        return false;
+      }
+      const r = card.getBoundingClientRect();
+      preExpand.set(card, {
+        left: card.style.left, top: card.style.top,
+        width: card.style.width, height: card.style.height,
+      });
+      // A docked card has no left/top of its own; give it the ones it is
+      // already drawn at, so collapsing does not fling it into the corner.
+      if (!card.classList.contains("floating")) {
+        card.style.width = `${r.width}px`;
+        card.classList.add("floating");
+        preExpand.get(card).left = `${r.left}px`;
+        preExpand.get(card).top = `${r.top}px`;
+      }
+      card.style.zIndex = ++cardZ;
+      card.classList.add("expanded");
+      return true;
+    }
+
     for (const headerEl of document.querySelectorAll(".card > header")) {
       const card = headerEl.closest(".card");
+      const ownControl = (e) => e.target.closest("button, input, select, a, #model-name, #model-name-input");
+      headerEl.addEventListener("dblclick", (e) => {
+        if (ownControl(e)) return;
+        toggleExpand(card);
+      });
+      headerEl.addEventListener("contextmenu", (e) => {
+        if (ownControl(e)) return;
+        e.preventDefault();
+        card.classList.remove("expanded");
+        preExpand.delete(card);
+        toggleCard(card, cardButtons[card.id], false);
+      });
       headerEl.addEventListener("pointerdown", (e) => {
         // #model-name is in the exclusion list because the drag's pointer
         // capture retargets the eventual click to the header — the name field
         // never opened, it just silently started a window drag instead.
         if (e.button !== 0 || e.target.closest("button, input, select, a, #model-name, #model-name-input")) return;
-        if (card.classList.contains("maxed")) return;
+        if (card.classList.contains("maxed") || card.classList.contains("expanded")) return;
         const rect = card.getBoundingClientRect();
         if (!card.classList.contains("floating")) {
           card.style.width = `${rect.width}px`;    // flex sizing goes away with the dock
@@ -4524,6 +4588,9 @@
       list.innerHTML = "";
       if (!names.length) { bar.hidden = true; return; }
       bar.hidden = false;
+      // Collapsed state is remembered: someone who does not want this strip
+      // should have to say so once, not once per import.
+      bar.classList.toggle("collapsed", localStorage.getItem("brepcode-parts-collapsed") === "1");
 
       // ONE chip per source FILE, not per part. A multicolour 3MF registers a
       // part per colour — the 4-colour Benchy is eight — and eight chips whose
@@ -4558,7 +4625,15 @@
         });
         list.appendChild(b);
       }
+      $("parts-bar-label").textContent = bar.classList.contains("collapsed")
+        ? `On hand (${groups.size})` : "On hand";
     }
+    $("parts-bar-label").addEventListener("click", () => {
+      const bar = $("parts-bar");
+      const on = bar.classList.toggle("collapsed");
+      localStorage.setItem("brepcode-parts-collapsed", on ? "1" : "");
+      paintPartsBar();
+    });
 
     // Clicking a cheat-sheet item. "Edit a part" items carry a `wrap`: if there's
     // already a model in the editor (e.g. right after Import), wrap THAT model and
