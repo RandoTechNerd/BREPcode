@@ -3852,8 +3852,7 @@
           pushHistory(code.value);
           code.value = code.value.slice(0, site.start) + call + code.value.slice(site.end);
           pushHistory();
-          setStatus("busy", "…");
-          rebuild();
+          buildAfterToolEdit();
           hint.innerHTML = `Swapped that <b>${here}</b> for a <b>${kind}</b>, sized to the same box and centred in the same spot — tweak the numbers to taste.`;
         });
         swapRow.appendChild(b);
@@ -4519,6 +4518,29 @@
       return modelExprSpan()?.expr ?? null;
     }
 
+    // Build after a TOOL wrote the code — drill, fins, emboss, a part chip.
+    //
+    // This is code the user did not type, exactly like an AI reply, so it gets
+    // the same protection an AI reply already had: estimate the cost first and
+    // hold anything ruinous behind the Build button. Without it these paths
+    // called rebuild() straight out and never asked what they were about to
+    // spend. Drilling a multi-part import is a boolean against EVERY part —
+    // measured on the 4-colour Benchy, whose eight solids take ~200s to build
+    // once, a drill took the tab hostage for minutes with no warning at all,
+    // which is indistinguishable from the tool having crashed the app.
+    async function buildAfterToolEdit() {
+      try {
+        const est = dsl.estimateBuild(evaluate(code.value));
+        if (est.sec > (!workerOut ? 45 : 18)) {
+          toggleCard(panel, openBtn, true);
+          holdHeavyBuild(est);
+          return;
+        }
+      } catch { /* a broken tree fails in rebuild with a real message */ }
+      setStatus("busy", "…");
+      await rebuild();
+    }
+
     // Replace just the model expression, leaving everything around it alone.
     function replaceModelExpr(next) {
       const span = modelExprSpan();
@@ -4621,8 +4643,7 @@
           placeImport(parts.length === 1 ? call(parts[0])
             : `group(\n    ${parts.map(call).join(",\n    ")},\n  )`, { add: true, name: stem });
           paintPartsBar();
-          setStatus("busy", "…");
-          scheduleBuild();
+          buildAfterToolEdit();          // adding a second part can double the cost
         });
         list.appendChild(b);
       }
@@ -6733,8 +6754,7 @@ ${joined}`)(...vs);
       }
       code.value = next;
       pushHistory();
-      setStatus("busy", "…");
-      rebuild();
+      buildAfterToolEdit();
     }
 
     // Wrap the current model in difference(model, drill(point, normal, {…})),
@@ -6764,8 +6784,7 @@ ${joined}`)(...vs);
       const m = /text:\s*"([^"]*)"/.exec(code.value);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length - 1, m.index + m[0].length - 1);
       pushHistory();
-      setStatus("busy", "…");
-      rebuild();
+      buildAfterToolEdit();
       hint.innerHTML = `Stamped a <b>${kind}</b> on that face. Type to replace the text; `
         + "<code>module</code> is mm per square (1.2+ scans), <code>base</code> the backing plate. "
         + "The squares are tagged dark and the plate light, so a 2-colour 3MF prints it scannable.";
@@ -6788,8 +6807,7 @@ ${joined}`)(...vs);
       const m = /\bd:\s*(\d+(?:\.\d+)?)/.exec(code.value);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length, m.index + m[0].length);
       pushHistory();
-      setStatus("busy", "…");
-      rebuild();
+      buildAfterToolEdit();
       hint.innerHTML = "Drilled a <b>4mm</b> hole on that face. Change <code>d</code> for width, <code>depth</code> for how deep (or <code>through: true</code> to punch clean through), then rebuild.";
     }
 
@@ -9228,8 +9246,7 @@ ${joined}`)(...vs);
       const m = /positions:\s*\[/.exec(code.value);
       if (m) code.setSelectionRange(m.index, m.index + m[0].length);
       pushHistory();
-      setStatus("busy", "…");
-      rebuild();
+      buildAfterToolEdit();
       const nubTotal = sprueAt.reduce((n, l) => n + l.length, 0);
       hint.innerHTML = `${refit ? "<b>Re-fitted</b> the supports to the model's new position — " : ""}${positions.length} <b>evenly spaced</b> fin${positions.length === 1 ? "" : "s"} on the <b>${side}</b> side with <b>${nubTotal} teeth</b>${skirt ? "" : " and <b>no skirt</b>"}. Each fin adapted to its own spot: its <code>heights</code> entry stops at the face's real top there, its <code>faceAt</code> entry hugs the surface, and every tooth ends <b>${clearance}mm short</b> so a clean print never fuses. Edit <code>positions</code>, <code>heights</code>, <code>faceAt</code>, <code>sprueAt</code>, <code>angle</code>. Moved the model? Press the tool again and it re-probes.`;
     }
@@ -9299,8 +9316,7 @@ ${joined}`)(...vs);
       const m = /pattern:\s*"(\w+)"/.exec(code.value);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length - 1, m.index + m[0].length - 1);
       pushHistory();
-      setStatus("busy", "…");
-      rebuild();
+      buildAfterToolEdit();
       hint.innerHTML = `Wrapped the model in <code>texture()</code> — REAL geometry, so it survives into the STL/3MF. `
         + `Patterns: <code>knurl</code> (diamond grip), <code>fuzzy</code> (fuzzy skin), <code>layers</code>, <code>bumps</code>, <code>waffle</code>. `
         + `Tune <code>depth</code> (mm), <code>scale</code> (pattern size), <code>faces</code> ("sides", "top", "bottom", "all"). `
@@ -9387,8 +9403,7 @@ ${joined}`)(...vs);
       const m = /depth:\s*(\d+(?:\.\d+)?)/.exec(code.value);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length, m.index + m[0].length);
       pushHistory();
-      setStatus("busy", "…");
-      rebuild();
+      buildAfterToolEdit();
       hint.innerHTML = isCylWall
         ? `Wrapping <b>${esc(grid.name)}</b> around that cylinder like a can label — darker pixels stand out further (add <code>invert: true</code> to flip). <code>arc</code> sets how far round it reaches (360 = all the way), <code>start</code> turns it, <code>depth</code> sets the relief. Real geometry — it prints.`
         : `Embossing <b>${esc(grid.name)}</b> onto the flat face — darker pixels stand out further (add <code>invert: true</code> to flip). Tune <code>depth</code>; the relief is real geometry, so it exports.`;
