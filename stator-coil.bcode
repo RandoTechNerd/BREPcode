@@ -1,0 +1,83 @@
+// BREPCODE-SOURCE-V1
+// Stator coil — one continuous wire wound around the body.
+//
+// The cross-section path below is MEASURED off the imported STEP, not guessed:
+// the part is a body of revolution, so every vertex folds onto a single
+// cross-section, and the convex hull of that is the shape a taut wire actually
+// rides on — bridging the channels instead of diving into them, which is what
+// real wire does when you wind it.
+//
+// Import "Stator winding body.stp" first (drag it onto the window), then paste
+// this in. Knobs worth turning: TURNS (how many wraps), STANDOFF (how tightly
+// it hugs), WIRE_R (wire gauge).
+
+const BODY = "Stator winding body.stp";
+const CZ = 388.75;      // ring centre height (z), measured from the import
+const R_MID = 313.7;    // cross-section centre radius (inner 238.7, outer 388.8)
+const WIRE_R = 9;       // 18mm wire
+const STANDOFF = 3;     // clearance so it lies ON the surface, not in it
+const TURNS = 30;       // wraps around the body
+const PER_TURN = 26;    // path points per wrap — smoothness of each loop
+const SIDES = 6;        // facets around the wire
+
+const HULL = [[-75,-151.2],[-63.5,-151.2],[-52.1,-151.2],[-42,-148.8],[-36.4,-138.8],[-30.7,-128.9],[-25,-118.9],[-19.3,-109],[-13.6,-99.1],[-7.9,-89.1],[-2.2,-79.2],[3.5,-69.2],[9.2,-59.3],[14.9,-49.4],[20.6,-39.4],[26.3,-29.5],[32,-19.5],[37.7,-9.6],[43.4,0.4],[48.7,10.5],[52.1,21.4],[54.9,32.5],[57.8,43.6],[60.6,54.7],[63.5,65.8],[66.3,76.9],[69.1,88],[72,99.1],[74.6,110.3],[74.7,121.7],[71.5,132.7],[65.4,142.3],[56.8,149.8],[45.6,151.2],[34.1,151.2],[22.7,151],[11.9,147.5],[3.1,140.2],[-2.9,130.5],[-8.6,120.5],[-14.4,110.6],[-20.1,100.7],[-25.8,90.7],[-31.5,80.8],[-37.2,70.9],[-42.9,60.9],[-48.6,51],[-53.8,40.8],[-58.2,30.2],[-61.8,19.3],[-64.6,8.2],[-66.8,-3],[-69,-14.3],[-71.1,-25.5],[-73.2,-36.8],[-74.9,-48.1],[-75,-59.6],[-75,-71],[-75,-82.5],[-75,-94],[-75,-105.4],[-75,-116.9],[-75,-128.3],[-75,-139.8]];
+
+function nrm(i) {                       // outward normal of the CCW hull
+  const a = HULL[(i - 1 + HULL.length) % HULL.length], b = HULL[(i + 1) % HULL.length];
+  const tx = b[0] - a[0], ty = b[1] - a[1], L = Math.hypot(tx, ty) || 1;
+  return [ty / L, -tx / L];
+}
+
+// walk the cross-section once per turn while creeping around the ring —
+// a toroidal helix, which is what gives it the slight lean you asked for
+function centre(k, total) {
+  const s = ((k / PER_TURN) % 1) * HULL.length;
+  const i = Math.floor(s) % HULL.length, f = s - Math.floor(s), j = (i + 1) % HULL.length;
+  const n0 = nrm(i), n1 = nrm(j), off = WIRE_R + STANDOFF;
+  const u = HULL[i][0] + (HULL[j][0] - HULL[i][0]) * f + (n0[0] + (n1[0] - n0[0]) * f) * off;
+  const w = HULL[i][1] + (HULL[j][1] - HULL[i][1]) * f + (n0[1] + (n1[1] - n0[1]) * f) * off;
+  const th = (k / total) * 2 * Math.PI, r = R_MID + u;
+  return [r * Math.cos(th), w, CZ + r * Math.sin(th)];
+}
+
+const N = TURNS * PER_TURN;
+const line = [];
+for (let k = 0; k <= N; k++) line.push(centre(k, N));
+
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const unit = (a) => { const L = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / L, a[1] / L, a[2] / L]; };
+
+// sweep a circle along the centreline — ONE mesh, no booleans. A hull() per
+// segment would be 780 kernel operations for a single wire.
+const points = [], faces = [];
+let nv = null;
+for (let i = 0; i < line.length; i++) {
+  const p = line[i];
+  const t = unit(sub(line[Math.min(i + 1, line.length - 1)], line[Math.max(i - 1, 0)]));
+  // parallel transport: carry the previous normal forward so the tube cannot twist
+  nv = nv ? unit(sub(nv, [t[0] * dot(nv, t), t[1] * dot(nv, t), t[2] * dot(nv, t)]))
+          : unit(crs(t, Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+  const bv = crs(t, nv);
+  for (let k = 0; k < SIDES; k++) {
+    const a = (k / SIDES) * 2 * Math.PI, c = Math.cos(a) * WIRE_R, s2 = Math.sin(a) * WIRE_R;
+    points.push([p[0] + nv[0] * c + bv[0] * s2, p[1] + nv[1] * c + bv[1] * s2, p[2] + nv[2] * c + bv[2] * s2]);
+  }
+}
+for (let i = 0; i + 1 < line.length; i++) {
+  for (let k = 0; k < SIDES; k++) {
+    const a = i * SIDES + k, b = i * SIDES + (k + 1) % SIDES;
+    faces.push([a, b, b + SIDES], [a, b + SIDES, a + SIDES]);
+  }
+}
+const last = (line.length - 1) * SIDES;       // the wire's two cut ends
+for (let k = 1; k + 1 < SIDES; k++) {
+  faces.push([0, k + 1, k]);
+  faces.push([last, last + k, last + k + 1]);
+}
+
+return group(
+  importedMesh(BODY, { split: true }),
+  colorize("#b87333", polyhedron({ points, faces, orientation: "outward" })),
+);

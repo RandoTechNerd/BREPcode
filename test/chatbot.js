@@ -6,7 +6,7 @@ import {
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
   parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem,
   readClaudeStream, readOpenAIStream, emptyReplyReason, extractApiText, extractApiThinking,
-  localBase, openaiBase,
+  localBase, openaiBase, composeStyle, STYLE_LANGUAGES,
 } from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -677,6 +677,33 @@ console.log("\nOpenAI provider\n");
     extractApiText("openai", { choices: [{ message: { content: "hi" } }] }) === "hi");
   check("a length stop explains itself",
     /token limit/i.test(emptyReplyReason("openai", { choices: [{ finish_reason: "length" }] })));
+}
+
+console.log("\nbuild style — language, approach, passes\n");
+{
+  check("an empty style says nothing", composeStyle({}) === "");
+  check("BREPcode adds no language block", !/OUTPUT LANGUAGE/.test(composeStyle({ language: "brepcode" })));
+  check("OpenSCAD is named", /OUTPUT LANGUAGE — OpenSCAD/.test(composeStyle({ language: "openscad" })));
+  check("JSCAD asks for a real module", /module\.exports/.test(composeStyle({ language: "jscad" })));
+  check("build123d pins ALGEBRA mode",
+    /ALGEBRA/.test(STYLE_LANGUAGES.build123d) && /not builder mode/i.test(STYLE_LANGUAGES.build123d));
+
+  const it = composeStyle({ approach: "iterative" });
+  check("iterative asks for the block, not the statue", /SIMPLEST solid/.test(it) && /sculptor/.test(it));
+  check("...and forbids the cosmetic detail up front", /Leave out fillets/.test(it));
+  check("one shot asks for the finished part", /ONE SHOT/.test(composeStyle({ approach: "oneshot" })));
+
+  // geometry first, always — that is the whole point of the ordering
+  const s = composeStyle({ colour: true, material: false, texture: true, pattern: false, lighting: false });
+  check("geometry is stated first", /GEOMETRY FIRST/.test(s));
+  check("wanted passes are ordered", /1\. COLOUR/.test(s) && /2\. TEXTURE/.test(s), s.slice(0, 200));
+  check("unwanted passes are named as off",
+    /Do NOT spend[^\n]*material[^\n]*pattern[^\n]*lighting/.test(s), s.slice(-160));
+  check("all-off means geometry only",
+    /geometry only/.test(composeStyle({ colour: false, material: false, texture: false, pattern: false, lighting: false })));
+  // an untouched setting must not start dictating priorities
+  check("no pass keys at all => no PRIORITIES block",
+    !/PRIORITIES/.test(composeStyle({ language: "openscad", approach: "oneshot" })));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

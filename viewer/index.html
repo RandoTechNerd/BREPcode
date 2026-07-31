@@ -1560,6 +1560,28 @@
         <div class="row" id="openai-web-note" style="display:none">
           <span class="note" style="flex:1"></span>
         </div>
+        <!-- What the model should answer IN, how hard it should swing on the
+             first reply, and which decorative passes are part of the job at
+             all. All explicit, because guessing any of it from the wording of
+             a request is how you get a texture nobody asked for. -->
+        <div class="row"><label title="What language the AI replies in — the app translates all of them">Language</label>
+          <select id="ai-language">
+            <option value="brepcode">BREPcode (default)</option>
+            <option value="openscad">OpenSCAD</option>
+            <option value="jscad">JSCAD</option>
+            <option value="build123d">build123d (Python)</option>
+            <option value="any">Any — let the AI pick</option>
+          </select>
+        </div>
+        <div class="row"><label title="One finished attempt, or a rough block you refine">Approach</label>
+          <select id="ai-approach">
+            <option value="oneshot">One shot — go for the finished part</option>
+            <option value="iterative">Iterative — rough block, then refine</option>
+          </select>
+        </div>
+        <div class="row"><label title="Geometry always comes first; these are the passes after it">Also do</label>
+          <span id="ai-passes" class="note" style="flex:1; display:flex; flex-wrap:wrap; gap:8px"></span>
+        </div>
         <div class="row"><label>Name</label>
           <input id="ai-botname" placeholder="Rando." />
           <span class="note" style="flex:1">only used if you ask for it</span>
@@ -9518,7 +9540,45 @@ ${joined}`)(...vs);
       })(),
       askDims: aiAskDims.checked,
       botName: aiBotName.value,
+      style: buildStyle(),
     });
+
+    // ---- build style: language, approach, and which passes are wanted ------
+    // Every one of these is a user decision the assistant used to make on its
+    // own from the wording of a request — which is how you get a texture
+    // nobody asked for, or a one-shot showpiece when a rough block would have
+    // been more useful.
+    const AI_PASSES = [
+      ["colour", "Colour"], ["material", "Material"], ["texture", "Texture"],
+      ["pattern", "Pattern"], ["lighting", "Lighting"],
+    ];
+    const passOn = new Set(JSON.parse(localStorage.getItem("brepcode-ai-passes") || "null")
+      // Colour on by default: it costs nothing, and a coloured assembly is
+      // what makes a multi-filament 3MF work. The rest are opt-in.
+      ?? ["colour"]);
+    const aiLanguage = $("ai-language"), aiApproach = $("ai-approach");
+
+    function buildStyle() {
+      const s = { language: aiLanguage.value, approach: aiApproach.value };
+      for (const [k] of AI_PASSES) s[k] = passOn.has(k);
+      return s;
+    }
+    function paintPasses() {
+      const box = $("ai-passes");
+      box.innerHTML = "";
+      for (const [key, label] of AI_PASSES) {
+        const l = document.createElement("label");
+        l.style.cssText = "display:flex; align-items:center; gap:4px; cursor:pointer";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.checked = passOn.has(key); cb.style.width = "auto";
+        cb.addEventListener("change", () => {
+          if (cb.checked) passOn.add(key); else passOn.delete(key);
+          localStorage.setItem("brepcode-ai-passes", JSON.stringify([...passOn]));
+        });
+        l.append(cb, document.createTextNode(label));
+        box.appendChild(l);
+      }
+    }
 
     function populateModels(list, keep) {
       if (!CHAT) {
@@ -9569,6 +9629,11 @@ ${joined}`)(...vs);
     if (aiCfg.provider) aiProvider.value = aiCfg.provider;
     aiKey.value = aiCfg.key || "";
     aiBase.value = aiCfg.baseUrl || "";
+    if (aiCfg.language) aiLanguage.value = aiCfg.language;
+    if (aiCfg.approach) aiApproach.value = aiCfg.approach;
+    paintPasses();
+    aiLanguage.addEventListener("change", saveAiCfg);
+    aiApproach.addEventListener("change", saveAiCfg);
     const aiGem = $("ai-gem");
     aiGem.value = aiCfg.gem ?? DEFAULT_GEM;
     // One-time migration: the old default routed simple asks to the built-in
@@ -9889,6 +9954,7 @@ ${joined}`)(...vs);
       localStorage.setItem("brepcode-ai", JSON.stringify({
         provider: aiProvider.value, model, key: aiKey.value, gem: aiGem.value,
         baseUrl: aiBase.value,
+        language: aiLanguage.value, approach: aiApproach.value,
         harness, askDims: aiAskDims.checked, botName: aiBotName.value,
         emailTo: $("email-to").value,
         fixTries: $("ai-fixtries").value, ccEffort: $("cc-effort").value,
@@ -10596,9 +10662,19 @@ ${joined}`)(...vs);
             + `importedMesh("NAME", { repair: "BASIC" }), and combine them with group(...):\n`
             + onHand.map((n) => `  - ${JSON.stringify(n)}${code.value.includes(JSON.stringify(n)) ? "  (already in the code above)" : ""}`).join("\n")
           : "";
+        // The user's own words, fenced and labelled verbatim. They used to be
+        // tacked on after "Request:" at the end of a wall of context, which on
+        // the Claude Code path read as one more instruction among many — so a
+        // long, specific brief got skimmed and answered from the harness's
+        // defaults instead. Marked off like this it lands the way it would if
+        // it had been pasted straight into a chat: their words, unabridged,
+        // outranking the surrounding scaffolding.
+        const verbatim = `THE USER'S REQUEST, VERBATIM — treat this exactly as if they had typed it`
+          + ` to you directly. It outranks the general guidance above wherever they disagree:\n`
+          + `"""\n${text}\n"""`;
         const context = code.value.trim()
-          ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\nRequest: ${text}`
-          : (parts ? `${parts.trim()}\n\nRequest: ${text}` : text);
+          ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\n${verbatim}`
+          : (parts ? `${parts.trim()}\n\n${verbatim}` : verbatim);
         const msgs = [...chatLog.slice(-8, -1), { role: "user", text: context }];
         const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
           baseUrl: aiBase.value.trim() };

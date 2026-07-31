@@ -1086,6 +1086,62 @@ export function filterHarness(text, disabled = []) {
     .trim();
 }
 
+// ---------------------------------------------------------- build style
+//
+// Which language to answer in, whether to sculpt or one-shot, and which of the
+// decorative passes are even part of the job. All of it is the user's call, so
+// none of it is guessed from the wording of a request.
+
+export const STYLE_LANGUAGES = {
+  // "" = say nothing extra; the harness already teaches BREPcode
+  brepcode: "",
+  openscad: `OUTPUT LANGUAGE — OpenSCAD. Reply with OpenSCAD, not BREPcode: modules, cube/cylinder/sphere/polyhedron, translate/rotate/scale, union/difference/intersection, hull, $fn. The app translates it on the way in. color("red") and color([r,g,b]) carry through to a multi-colour 3MF. No return statement — OpenSCAD is statements, not an expression.`,
+  jscad: `OUTPUT LANGUAGE — JSCAD. Reply with a complete @jscad/modeling module: const { … } = require('@jscad/modeling'), a main() that returns the geometry, and module.exports = { main }. The app runs it as a module, so require() is the only import that works.`,
+  build123d: `OUTPUT LANGUAGE — build123d (Python, ALGEBRA mode). Reply with Python: from build123d import *, then algebra-mode composition (part = Box(…) + Cylinder(…) - Hole(…)), locations via Pos()/Rot() or the * operator. Not builder mode — no "with BuildPart()" context managers, the app's translator reads algebra mode.`,
+  any: `OUTPUT LANGUAGE — your choice. BREPcode, OpenSCAD, JSCAD and build123d (Python, algebra mode) are all accepted and auto-detected; pick whichever expresses this particular part most naturally and stay in it for the whole reply.`,
+};
+
+export const STYLE_ONESHOT = `APPROACH — ONE SHOT. Go for the finished part in a single reply: every feature the request implies, sized and placed, first time. Spend the effort up front rather than leaving obvious work for a follow-up.`;
+
+export const STYLE_ITERATIVE = `APPROACH — ITERATIVE, like a sculptor roughing a block before carving it. Reply with the SIMPLEST solid that has the right overall shape, size and proportions — the block, not the statue. Leave out fillets, chamfers, textures, logos, small bosses and cosmetic detail entirely. Keep it fast to build and easy to read. Then end with up to three one-line offers naming the next cut, most important first ("say: round the edges", "say: add the cable slot"). Each reply refines what is there; do not restart the model.`;
+
+// Order matters and is stated out loud: geometry is the product and the rest is
+// decoration, so a model that spends its budget on a texture and gets the shape
+// wrong has failed at the only part that could not be fixed later.
+const STYLE_PASSES = [
+  ["colour", "COLOUR", "colorize() to tag parts, which also drives per-filament 3MF export"],
+  ["material", "MATERIAL", "the Material panel's presets (PLA, resin, metals, glass); mention the one that suits the part in a single sentence"],
+  ["texture", "TEXTURE", "texture() — real displaced geometry that survives into the export and prints"],
+  ["pattern", "PATTERN", "repeated features: perforations, ribs, grip diamonds, lattice"],
+  ["lighting", "LIGHTING", "glow() and glass() for lit or transparent parts, and a word on the Lighting tab if it would help the look"],
+];
+
+export function composeStyle(style = {}) {
+  const parts = [];
+  const lang = STYLE_LANGUAGES[style.language];
+  if (lang) parts.push(lang);
+  if (style.approach === "iterative") parts.push(STYLE_ITERATIVE);
+  else if (style.approach === "oneshot") parts.push(STYLE_ONESHOT);
+
+  // Only speak about the passes when the user has actually made a choice —
+  // an untouched setting must not start dictating priorities.
+  if (STYLE_PASSES.some(([k]) => style[k] != null)) {
+    const on = STYLE_PASSES.filter(([k]) => style[k]);
+    const off = STYLE_PASSES.filter(([k]) => style[k] === false);
+    let t = `PRIORITIES — work in this order. GEOMETRY FIRST, always: the shape is the product and everything below is decoration. Never let a decorative pass cost shape quality or build time.`;
+    if (on.length) {
+      t += `\nThen, in this order: ` + on.map(([, name], i) => `${i + 1}. ${name} — ${on[i][2]}`).join("; ") + ".";
+    } else {
+      t += `\nNothing else is wanted: geometry only.`;
+    }
+    if (off.length) {
+      t += `\nDo NOT spend a line of code or a sentence on: ${off.map(([, n]) => n.toLowerCase()).join(", ")}.`;
+    }
+    parts.push(t);
+  }
+  return parts.length ? `\n\n${parts.join("\n\n")}` : "";
+}
+
 // Compose the full system string: (possibly user-edited) harness + dimensions
 // policy + assistant name + gem. One function so Gemini and Claude are
 // guaranteed to receive the exact same instructions.
@@ -1096,6 +1152,7 @@ export function composeSystem(opts = {}) {
     // the harness and before the user's own gem so their preferences still have
     // the last word. Empty for a request that mentions none of it.
     + (opts.reference || "")
+    + composeStyle(opts.style)
     + (opts.askDims ? DIMS_ASK : DIMS_ASSUME)
     + (opts.botName?.trim()
       ? `\nYour assistant's name preference: "${opts.botName.trim()}". Use it only if the user asks what you're called.`
