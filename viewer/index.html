@@ -1202,6 +1202,7 @@
       <div id="exp-list">
         <div class="exp-group">Project</div>
         <button data-fmt="bcode">BREPcode<small>editable source</small></button>
+        <button data-fmt="share">Share link<small>the model, in a URL</small></button>
         <button data-fmt="slicer" id="slicer-btn" style="display:none">Open in slicer<small>OrcaSlicer</small></button>
         <div class="exp-group">Mesh</div>
         <button data-fmt="stl">STL<small>3D printing</small></button>
@@ -7247,6 +7248,53 @@ ${joined}`)(...vs);
     // Save the project: the source, the scene it was being viewed in, and the
     // recent undo history. Scene and history are conveniences — the source is
     // the model, and a file stripped down to just that still opens perfectly.
+    // Clipboard writes fail silently on http:// and without permission, so the
+    // link is also shown in a selectable field. A share you cannot copy is not
+    // a share.
+    function shareUrlBox(url) {
+      const box = document.createElement("input");
+      box.readOnly = true;
+      box.value = url;
+      box.style.cssText = "display:block; width:100%; margin-top:6px; font:11px ui-monospace, monospace;"
+        + "background:var(--panel); color:var(--muted3); border:1px solid var(--border);"
+        + "border-radius:6px; padding:4px 6px";
+      box.addEventListener("focus", () => box.select());
+      fixnote.appendChild(box);
+    }
+
+    // Arriving on a share link: the model rides in the fragment. Load it before
+    // the starter shape so nobody watches a cube they did not ask for.
+    async function openSharedModel() {
+      if (!/[#&]m=/.test(location.hash)) return false;
+      try {
+        const exp = await getExporters();
+        const text = await exp.readShareFragment(location.hash);
+        if (!text) return false;
+        const { source, scene } = exp.parseBcodeFile(text);
+        if (!source) return false;
+        code.value = source;
+        pushHistory();
+        if (scene?.material) { Object.assign(mat, scene.material); applyMaterial?.(); }
+        if (Array.isArray(scene?.camera) && Array.isArray(scene?.target)) {
+          camera.position.fromArray(scene.camera);
+          if (Array.isArray(scene.up)) camera.up.fromArray(scene.up);
+          controls.target.fromArray(scene.target);
+          controls.update();
+        }
+        // A shared model is a picture of a part, not a workbench: the floor
+        // grid is scaffolding for building and it is in the way of looking.
+        // The checkbox is still there for anyone who wants it back.
+        const showBox = $("grid-show");
+        if (showBox?.checked) { showBox.checked = false; showBox.dispatchEvent(new Event("change")); }
+        toggleCard(panel, openBtn, true);
+        setStatus("busy", "…");
+        await rebuild();
+        hint.innerHTML = `Opened a <b>shared model</b> — it travelled inside the link, nothing was `
+          + `uploaded. It is fully editable: change it, drill it, export it, or save your own copy.`;
+        return true;
+      } catch { return false; }
+    }
+
     async function exportProject() {
       const src = code.value.trim();
       if (!src) { setStatus("err", "Nothing to save — the editor is empty."); return; }
@@ -7414,6 +7462,41 @@ ${joined}`)(...vs);
           fixnote.innerHTML = `<span style="color:var(--muted3)">Embed on a site: `
             + `<code>&lt;model-viewer src="${base}.glb" camera-controls auto-rotate exposure="${L.exposure}" shadow-intensity="${L.shadow}" style="background:${L.bg}"&gt;&lt;/model-viewer&gt;</code> `
             + `+ the model-viewer script. Or export <b>Embed page</b> for a ready-made HTML.</span>`;
+        } else if (fmt === "share") {
+          // No upload and no account: the recipe travels in the fragment, which
+          // browsers never send to the server, so a part designed for a client
+          // does not pass through anyone's logs on the way to them.
+          const srcNow = code.value.trim();
+          if (!srcNow) throw new Error("nothing to share — the editor is empty");
+          const exp = await getExporters();
+          const text = exp.bcodeFile(srcNow, {
+            name: base,
+            scene: {
+              material: mat,
+              camera: camera.position.toArray().map((n) => +n.toFixed(3)),
+              target: controls.target.toArray().map((n) => +n.toFixed(3)),
+              up: camera.up.toArray(),
+              negatives: negBtn.classList.contains("active"),
+            },
+            history: [],                       // the undo stack is not worth a URL
+          });
+          const frag = await exp.shareFragment(text);
+          if (!frag) {
+            throw new Error("this model is too big for a link — save a .bcode and send the file "
+              + "(models carrying an imported mesh usually are)");
+          }
+          const url = location.origin + location.pathname + frag;
+          try { await navigator.clipboard.writeText(url); } catch { /* http, or no permission */ }
+          size = url.length;
+          const enc = encodeURIComponent(url);
+          const title = encodeURIComponent(`${base} — made with BREPcode`);
+          fixnote.innerHTML =
+            `<span style="color:var(--muted3)">Link copied — <b>${(url.length / 1024).toFixed(1)} KB</b>. `
+            + `Anyone who opens it gets the model, editable, with nothing stored anywhere. Share it: </span>`
+            + `<a href="https://twitter.com/intent/tweet?text=${title}&url=${enc}" target="_blank" rel="noopener">X</a> · `
+            + `<a href="https://www.linkedin.com/sharing/share-offsite/?url=${enc}" target="_blank" rel="noopener">LinkedIn</a> · `
+            + `<a href="https://www.facebook.com/sharer/sharer.php?u=${enc}" target="_blank" rel="noopener">Facebook</a>`;
+          shareUrlBox(url);
         } else if (fmt === "embed") {
           setStatus("busy", "Building a self-contained viewer page…");
           const glb = await modelToGLB();
@@ -7436,6 +7519,7 @@ ${joined}`)(...vs);
     const exportModal = $("export-modal");
     const EXPORT_FORMATS = {
       bcode: { kind: "code", desc: "The project itself — your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
+      share: { kind: "code", desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
       slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
       stl: { kind: "mono", desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
@@ -11201,7 +11285,10 @@ ${joined}`)(...vs);
       try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
     }
 
-    await rebuild();
+    // A share link carries its own model, so it must be checked BEFORE the
+    // default build — otherwise the visitor watches a starter cube appear and
+    // then get replaced, which reads as the link having gone wrong.
+    if (!(await openSharedModel().catch(() => false))) await rebuild();
 
     // The default shape is on screen — now quietly warm the on-demand feature
     // modules (curved export, image tracer, key-locker) during the idle gap, so

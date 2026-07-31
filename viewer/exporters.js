@@ -525,6 +525,61 @@ ${items.join("\n")}
   });
 }
 
+// ------------------------------------------------------ shareable model link
+//
+// A link that IS the model. brepcode.com is a static site with no backend, so
+// it cannot mint /my-bracket — there is nothing to write it to. But a .bcode is
+// small text, and a model is its recipe rather than its triangles, so the whole
+// thing fits in the URL: gzip it, base64url it, and hang it off the fragment.
+//
+// The FRAGMENT specifically (#m=…), not a query string. Everything after # is
+// never sent to the server — it stays in the browser — so a link to a part you
+// designed for a client does not travel through anyone's logs on the way.
+//
+// Anything with an imported mesh baked in will be far too big; that is what the
+// size check is for, and the caller says so plainly rather than producing a
+// link that silently fails to open.
+export const SHARE_LIMIT = 12000;        // chars of URL; comfortably under every browser's cap
+
+const b64url = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const unb64url = (t) => {
+  const s = atob(t.replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+};
+
+async function gzip(text) {
+  const cs = new CompressionStream("gzip");
+  const w = cs.writable.getWriter();
+  w.write(new TextEncoder().encode(text)); w.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+async function gunzip(bytes) {
+  const ds = new DecompressionStream("gzip");
+  const w = ds.writable.getWriter();
+  w.write(bytes); w.close();
+  return new Response(ds.readable).text();
+}
+
+// bcode text -> "#m=…" fragment. Returns null when it will not fit.
+export async function shareFragment(bcodeText) {
+  const packed = b64url(await gzip(String(bcodeText)));
+  return packed.length > SHARE_LIMIT ? null : `#m=${packed}`;
+}
+
+export async function readShareFragment(hash) {
+  const m = /[#&]m=([A-Za-z0-9\-_]+)/.exec(String(hash || ""));
+  if (!m) return null;
+  try { return await gunzip(unb64url(m[1])); } catch { return null; }
+}
+
 // Where the parametric source rides along inside an exported file. A mesh is a
 // dead end — once a part leaves as triangles the recipe that made it is gone,
 // and "I printed this a year ago and want it 3mm taller" means starting over.
