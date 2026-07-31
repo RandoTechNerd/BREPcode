@@ -800,6 +800,22 @@
     }
     #build-now-btn:hover { filter: brightness(1.12); }
     #build-now-btn:disabled { opacity: .6; cursor: default; filter: none; }
+    /* Parts imported this session — click one to add it to the plate. */
+    #parts-bar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 6px 12px; border-top: 1px solid var(--border);
+    }
+    #parts-bar[hidden] { display: none; }
+    #parts-bar-label { font: 11px system-ui, sans-serif; color: var(--muted2); flex: none; }
+    #parts-bar-list { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    #parts-bar-list button {
+      background: var(--hover); border: 1px solid var(--border); color: var(--text);
+      font: 11.5px system-ui, sans-serif; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+      max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #parts-bar-list button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    /* already in the code — still clickable (a second copy is legitimate) */
+    #parts-bar-list button.on { border-color: var(--ok); color: var(--ok); }
     /* ---------- feature history ---------- */
     #history-body { overflow-y: auto; max-height: min(46vh, 420px); padding: 6px 0 8px; }
     .edit-row { display: flex; align-items: center; }
@@ -1401,6 +1417,15 @@
       <div id="build-bar" hidden>
         <span id="build-bar-note"></span>
         <button id="build-now-btn"></button>
+      </div>
+      <!-- Every mesh imported this session stays in memory whether or not the
+           editor still mentions it, so importing a second part does not lose
+           the first — it only stops referencing it. This bar is that memory
+           made visible: click a part to put it back on the plate beside
+           whatever is already there. -->
+      <div id="parts-bar" hidden>
+        <span id="parts-bar-label">On hand</span>
+        <span id="parts-bar-list"></span>
       </div>
       <div id="opts">
         <label title="When off, small typos are patched before building — your text is left as-is.">
@@ -4415,6 +4440,86 @@
       return true;
     }
 
+    // ---- two models on one plate ------------------------------------------
+    //
+    // Importing has always REPLACED the editor, which is right when you import
+    // a thing in order to work on it and wrong when you want a second part
+    // beside the first. Nothing was ever lost — every mesh imported this
+    // session stays registered whether or not the code still mentions it — so
+    // "add" is a matter of writing a group() rather than of keeping data
+    // around.
+    //
+    // group(), not union(): they stay separate solids you can move, colour and
+    // export as separate parts. union() would weld them into one lump.
+    function groupWith(cur, expr) {
+      const m = /^group\s*\(([\s\S]*)\)\s*$/.exec(cur.trim());
+      // Already a group? Splice into it rather than nesting group(group(…)),
+      // which builds the same thing but reads like a mistake.
+      const inner = m ? m[1].trim().replace(/,$/, "") : cur.trim();
+      return `group(\n  ${inner},\n  ${expr},\n)`;
+    }
+
+    // Where to put the newcomer so it lands BESIDE what is already built
+    // rather than inside it. Measured off the current model, so a big part
+    // gets a big step and a small one does not waste the plate.
+    function besideCurrentModel() {
+      const box = new THREE.Box3();
+      for (const m of modelGroup.children) if (m.visible) box.expandByObject(m);
+      if (box.isEmpty()) return 0;
+      return Math.round(box.max.x - box.min.x + 10);
+    }
+
+    // Put an import into the editor: replacing what is there, or adding to it.
+    function placeImport(expr, { add = false, name = "" } = {}) {
+      const cur = currentModelExpr();
+      if (!add || !cur) {
+        if (code.value.trim()) pushHistory(code.value);
+        code.value = /^return\b/.test(code.value.trim()) || expr.includes("group(")
+          ? `return ${expr};` : expr;
+        pushHistory();
+        return;
+      }
+      pushHistory(code.value);
+      const dx = besideCurrentModel();
+      const placed = dx ? `translate([${dx}, 0, 0], ${expr})` : expr;
+      replaceModelExpr(groupWith(cur, placed));
+      pushHistory();
+      hint.innerHTML = `Added <b>${esc(name || "the part")}</b> to the plate`
+        + (dx ? `, <b>${dx}mm</b> to the right of what was already there` : "")
+        + `. Both are separate solids — move either with <code>translate([x, y, z], …)</code>.`;
+    }
+
+    // Everything imported this session, as chips under the editor. This is the
+    // answer to "I imported A, then imported B, and now A is gone": it never
+    // was — the editor just stopped naming it.
+    function paintPartsBar() {
+      const bar = $("parts-bar"), list = $("parts-bar-list");
+      let names = [];
+      try { names = dsl.listImports(); } catch { names = []; }
+      // Textures and hull results register themselves under generated names;
+      // they are intermediates, not parts anyone means to place.
+      names = names.filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n));
+      list.innerHTML = "";
+      if (!names.length) { bar.hidden = true; return; }
+      bar.hidden = false;
+      for (const n of names) {
+        const b = document.createElement("button");
+        const inCode = code.value.includes(JSON.stringify(n));
+        b.textContent = (inCode ? "✓ " : "+ ") + n;
+        b.className = inCode ? "on" : "";
+        b.title = inCode
+          ? `${n} is already in this model — click to add another copy beside it`
+          : `Add ${n} to the plate, beside what is already there`;
+        b.addEventListener("click", () => {
+          placeImport(`importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`, { add: true, name: n });
+          paintPartsBar();
+          setStatus("busy", "…");
+          scheduleBuild();
+        });
+        list.appendChild(b);
+      }
+    }
+
     // Clicking a cheat-sheet item. "Edit a part" items carry a `wrap`: if there's
     // already a model in the editor (e.g. right after Import), wrap THAT model and
     // rebuild — so "import → click 'add a hole' / 'split & fill'" just works. With
@@ -6654,6 +6759,7 @@ ${joined}`)(...vs);
       armModelName();          // first keystroke turns the tagline into the name
       refreshComplete();
       updateHint();
+      paintPartsBar();         // ✓/+ on the chips tracks what the code names
       scheduleBuild();
       // group keystrokes into one history entry
       clearTimeout(histTimer);
@@ -7664,6 +7770,7 @@ ${joined}`)(...vs);
       toggleCard(panel, openBtn, true);
       code.focus();
       pushHistory();
+      paintPartsBar();
       await rebuild();
     }
 
@@ -7948,6 +8055,7 @@ ${joined}`)(...vs);
           toggleCard(panel, openBtn, true);
           code.focus();
           pushHistory();
+          paintPartsBar();
           // Anything slow comes in as a PREVIEW first.
           //
           // Building is what costs the time — the kernel has to turn triangles
@@ -8034,6 +8142,7 @@ ${joined}`)(...vs);
         code.value = call;
         code.focus();
         pushHistory();
+        paintPartsBar();       // the newcomer joins the chips; so does what it replaced
         setStatus("busy", `Importing ${file.name}…`);
         const size = mb >= 1 ? `${mb.toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`;
         hint.innerHTML = stepStats?.openEdges
@@ -8046,6 +8155,7 @@ ${joined}`)(...vs);
             + `You can look at it and measure it, but booleans and slicing need a closed solid — `
             + `re-export it from the source CAD as a solid STEP (AP203/AP214/AP242 b-rep) if you need to cut it.`
           : `Imported <b>${esc(file.name)}</b> (${size}) — it's a real solid now. Edit it: wrap in <code>difference(…, cylinder(…))</code> to drill holes, <code>union(…)</code> to add a frame, or <code>stretch({ axis:'x', by:25 }, …)</code> to make it longer. Press <b>K</b> → “Edit a part” for snippets.`
+            + (hadCode ? ` The model that was here is still loaded — click it under <b>On hand</b> to put both on the plate.` : "")
           + (hadCode ? " Your previous code is one ◀ tap away." : "")
           + (cleaned.removed
             ? ` Cleaned up <b>${cleaned.removed}</b> duplicate face${cleaned.removed === 1 ? "" : "s"} that would have flickered as black patches — the part itself is unchanged.`
@@ -10213,6 +10323,7 @@ ${joined}`)(...vs);
     async function applyGeneratedCode(newCode) {
       code.value = newCode;
       pushHistory();
+      paintPartsBar();
       // An AI model that would freeze the app for half a minute no longer
       // builds unannounced — it waits in the editor behind a Build button.
       // This is the exact failure that ate the goggles: code applied, build
@@ -10452,8 +10563,21 @@ ${joined}`)(...vs);
           + ["x", "y", "z"].map((a) =>
               `  ${a.toUpperCase()}: ${(cbb.max[a] - cbb.min[a]).toFixed(2)} `
               + `(from ${cbb.min[a].toFixed(2)} to ${cbb.max[a].toFixed(2)})`).join("\n");
+        // Every mesh imported this session is still loaded and referenceable
+        // by name, whether or not the current code mentions it. Without this
+        // the assistant could only ever see the ONE part named in the editor,
+        // so "put the bracket next to the case" was unanswerable — it had no
+        // way to know the bracket existed, let alone what it was called.
+        let onHand = [];
+        try { onHand = dsl.listImports().filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n)); } catch { /* none */ }
+        const parts = onHand.length
+          ? `\n\nMeshes already imported in this session — you can place any of them by name with `
+            + `importedMesh("NAME", { repair: "BASIC" }), and combine them with group(...):\n`
+            + onHand.map((n) => `  - ${JSON.stringify(n)}${code.value.includes(JSON.stringify(n)) ? "  (already in the code above)" : ""}`).join("\n")
+          : "";
         const context = code.value.trim()
-          ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}\n\nRequest: ${text}` : text;
+          ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\nRequest: ${text}`
+          : (parts ? `${parts.trim()}\n\nRequest: ${text}` : text);
         const msgs = [...chatLog.slice(-8, -1), { role: "user", text: context }];
         const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
           baseUrl: aiBase.value.trim() };
