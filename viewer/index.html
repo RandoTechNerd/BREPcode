@@ -4498,7 +4498,7 @@
       try { names = dsl.listImports(); } catch { names = []; }
       // Textures and hull results register themselves under generated names;
       // they are intermediates, not parts anyone means to place.
-      names = names.filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n));
+      names = names.filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n) || n.startsWith("__"));
       list.innerHTML = "";
       if (!names.length) { bar.hidden = true; return; }
       bar.hidden = false;
@@ -4803,6 +4803,13 @@
       barcode: codeOp("barcode"),
       text: codeOp("text"),
       stencil: codeOp("stencil"),
+      // Build a mesh from points and faces. It lived only in the JSCAD dialect,
+      // which meant anything GENERATED — a coil swept along a path, a spring, a
+      // lattice — had no route in BREPcode itself: hull() convexifies, and one
+      // kernel boolean per segment is hundreds of ops for a single wire. This
+      // returns an ordinary importedMesh node, so it groups, colours and
+      // exports like any other solid.
+      polyhedron: (...a) => jscadApi.polyhedron(...a),
     });
 
     const names = Object.keys(vocab), values = names.map((n) => vocab[n]);
@@ -10583,7 +10590,7 @@ ${joined}`)(...vs);
         // so "put the bracket next to the case" was unanswerable — it had no
         // way to know the bracket existed, let alone what it was called.
         let onHand = [];
-        try { onHand = dsl.listImports().filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n)); } catch { /* none */ }
+        try { onHand = dsl.listImports().filter((n) => !/^(hull|tex|heightmap)-?\d/i.test(n) || n.startsWith("__")); } catch { /* none */ }
         const parts = onHand.length
           ? `\n\nMeshes already imported in this session — you can place any of them by name with `
             + `importedMesh("NAME", { repair: "BASIC" }), and combine them with group(...):\n`
