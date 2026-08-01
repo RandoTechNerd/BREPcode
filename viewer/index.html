@@ -737,6 +737,13 @@
     #slice-legend { display: flex; gap: 7px; flex-wrap: wrap; font: 10px system-ui, sans-serif; color: var(--muted3); }
     #slice-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 3px; }
     #exp-desc { margin: 0; font: 12px system-ui, sans-serif; color: var(--muted3); min-height: 44px; }
+    #exp-caveat {
+      margin: 0; font: 11.5px system-ui, sans-serif; color: #e8c98a;
+      background: rgba(224, 160, 48, .10); border-left: 2px solid #e0a030;
+      border-radius: 0 6px 6px 0; padding: 6px 9px;
+    }
+    #exp-caveat[hidden] { display: none; }
+    #exp-caveat b { color: #f2dcae; }
     #exp-opts label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font: 11.5px system-ui, sans-serif; color: var(--muted2); }
     #exp-opts label[hidden] { display: none; }
     #exp-opts span { flex: 0 0 44px; }
@@ -1346,6 +1353,9 @@
         </div>
         <div id="exp-body">
         <p id="exp-desc"></p>
+        <!-- Shown only when the CURRENT model hits a known-rough combination.
+             A note, never a block: the export still runs if you want it. -->
+        <p id="exp-caveat" hidden></p>
         <div id="exp-opts">
           <!-- 3MF colour handling: the default keeps colours as filaments; the
                alternative writes plain geometry for one-material printing. -->
@@ -7887,9 +7897,14 @@ ${joined}`)(...vs);
           // Hand it the size the user can see in the status bar — OCCT's own
           // bounding box overstates curved solids (see curvedDrawingSVG).
           const bb = new THREE.Box3().setFromObject(modelGroup);
-          const size = bb.isEmpty() ? null
+          // NB: not `size`. That name belongs to the byte count this whole
+          // switch assigns on its way out, and declaring a const over it here
+          // shadowed it — so the very next line, which writes the file size
+          // back, threw "Assignment to constant variable" and took every
+          // blueprint export down with it, always, silently caught.
+          const dims = bb.isEmpty() ? null
             : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
-          const svg = await curved.curvedDrawingSVG(lastShape, { title: base, size });
+          const svg = await curved.curvedDrawingSVG(lastShape, { title: base, size: dims });
           size = download(`${base}-drawing.svg`, svg, "image/svg+xml");
         } else if (fmt === "glb") {
           setStatus("busy", "Packing GLB for the web…");
@@ -8585,6 +8600,80 @@ ${joined}`)(...vs);
       renderer.render(scene, camera);
     }
 
+    // ---- what this model does badly in this format ------------------------
+    //
+    // Every one of these was measured rather than guessed, and every one still
+    // lets the export run. The point is not to stop anybody: it is that these
+    // failures are QUIET. A mesh exported to STEP opens perfectly happily in
+    // Fusion and is simply useless once it gets there, and nothing anywhere
+    // said so — you find out after sending it to somebody.
+    //
+    // They only appear when the model in front of you actually trips them.
+    function exportContext() {
+      const src = code.value;
+      let tris = 0;
+      for (const m of modelGroup.children) {
+        if (!m.isMesh || !m.visible) continue;
+        const g = m.geometry;
+        if (g?.attributes?.position) tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+      }
+      return {
+        tris: Math.round(tris),
+        // an imported mesh is the source of most of these: it carries
+        // triangles where the format wanted geometry
+        mesh: /\bimportedMesh\s*\(/.test(src),
+        volume: tris ? modelVolume() : 0,
+      };
+    }
+
+    const EXPORT_CAVEATS = [
+      {
+        fmts: ["step"],
+        when: (c) => c.mesh,
+        say: (c) => `<b>A mesh has no CAD geometry to recover.</b> Every triangle becomes its own `
+          + `flat face — measured, 512 triangles made a 199 KB STEP of 224 planes, so this model `
+          + `lands near <b>${Math.max(1, Math.round(c.tris * 0.4 / 1024))} MB</b>. It opens in `
+          + `Fusion or SolidWorks and there is nothing there to edit as a solid.`,
+      },
+      {
+        fmts: ["step-curved"],
+        when: (c) => c.mesh,
+        say: () => `<b>"Curved" cannot invent surfaces the mesh never had.</b> On an imported mesh `
+          + `it measured <b>5× larger</b> than the faceted STEP with <b>zero</b> curved surfaces in `
+          + `it. Use STEP — faceted instead; this option is for models built from code.`,
+      },
+      {
+        fmts: ["svg"],
+        when: (c) => c.mesh && c.tris > 2000,
+        say: (c) => `<b>The drawing projects every edge.</b> At ${(c.tris / 1000).toFixed(0)}k `
+          + `triangles that is thousands of silhouette lines, which reads as a grey smudge rather `
+          + `than a drawing. Simplify the mesh first, or draw from code-built geometry.`,
+      },
+      {
+        fmts: ["share"],
+        when: (c) => c.mesh,
+        say: () => `<b>The mesh has to fit inside the URL.</b> It is gzipped in, but anything past `
+          + `roughly 12 KB compressed will not fit and the export will refuse rather than hand you `
+          + `a broken link. Save a .bcode and send the file if it does.`,
+      },
+      {
+        fmts: ["gcode", "stl", "3mf", "3mf-parts", "slicer"],
+        when: (c) => c.tris > 0 && c.volume < 0.001,
+        say: () => `<b>This model encloses no volume</b> — it is a surface, not a solid. Slicers `
+          + `have nothing to fill: expect walls around nothing, or an empty plate. It usually means `
+          + `an import came in as an open shell rather than sewing into a solid.`,
+      },
+    ];
+
+    function paintCaveat(fmt) {
+      const el = $("exp-caveat");
+      let ctx = null;
+      try { ctx = exportContext(); } catch { el.hidden = true; return; }
+      const hits = EXPORT_CAVEATS.filter((c) => c.fmts.includes(fmt) && c.when(ctx));
+      el.hidden = !hits.length;
+      if (hits.length) el.innerHTML = hits.map((c) => c.say(ctx)).join("<br><br>");
+    }
+
     function expShow(fmt) {
       expSel = fmt;
       localStorage.setItem("brepcode-export-fmt", fmt);
@@ -8600,6 +8689,7 @@ ${joined}`)(...vs);
       }
       // the disclosure only earns its space if something is inside it
       $("exp-more").hidden = !ADVANCED_ROWS.some((id) => !$(id).hidden);
+      paintCaveat(fmt);
       // never let a preview failure become an unhandled rejection — that is
       // what turns a broken preview into a blank box with no explanation
       renderExportPreview(fmt).catch((e) => console.error("preview", e));
