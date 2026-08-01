@@ -7555,8 +7555,12 @@ ${joined}`)(...vs);
         const exp = await getExporters();
         const text = await exp.readShareFragment(location.hash);
         if (!text) return false;
-        const { source, scene } = exp.parseBcodeFile(text);
+        const { source, scene, meshes } = exp.parseBcodeFile(text);
         if (!source) return false;
+        // BEFORE anything builds. rebuild() runs as soon as the source lands,
+        // and a model whose importedMesh() is not registered yet fails on that
+        // first pass — the same ordering the .bcode drop-load depends on.
+        await registerPackedMeshes(exp, meshes);
         code.value = source;
         pushHistory();
         if (scene?.material) { Object.assign(mat, scene.material); applyMaterial?.(); }
@@ -7625,15 +7629,37 @@ ${joined}`)(...vs);
     // The full project as .bcode text, with every imported mesh it depends on
     // gzipped and embedded — so a save reopens in a fresh browser on another
     // machine, which a plain .bcode cannot do.
+    // Every imported mesh THIS source names, gzipped ready to travel with it.
+    //
+    // Shared by every export that has to survive leaving this machine. It is a
+    // function rather than two copies because it already drifted once: the
+    // cloud save embedded its meshes and the share link did not, so a link to
+    // a model built on an imported STL opened on the other end as "no imported
+    // file by that name" and an empty viewport. Anything that writes a .bcode
+    // for elsewhere calls this.
+    async function packUsedMeshes(exp, src) {
+      let used = [];
+      try {
+        // the session may hold more imports than the model mentions
+        used = dsl.listImports().filter((n) => src.includes(JSON.stringify(n)));
+      } catch { used = []; }
+      return exp.packMeshes(used, (n) => dsl.getImport(n));
+    }
+
+    // ...and the other half: register them before anything tries to build.
+    async function registerPackedMeshes(exp, meshes) {
+      if (!meshes) return 0;
+      try {
+        const files = await exp.unpackMeshes(meshes);
+        for (const [n, body] of Object.entries(files)) dsl.registerImport(n, body);
+        return Object.keys(files).length;
+      } catch { return 0; }      // a bad blob must not cost the source
+    }
+
     window.__brepQuicksaveProject = async () => {
       const exp = await getExporters();
       const src = code.value.trim();
-      // only the meshes this model actually names; the session may hold more
-      let used = [];
-      try {
-        used = dsl.listImports().filter((n) => src.includes(JSON.stringify(n)));
-      } catch { used = []; }
-      const meshes = await exp.packMeshes(used, (n) => dsl.getImport(n));
+      const meshes = await packUsedMeshes(exp, src);
       return exp.bcodeFile(src, {
         name: safeModelName(),
         scene: {
@@ -7655,10 +7681,7 @@ ${joined}`)(...vs);
       const exp = await getExporters();
       const parsed = exp.parseBcodeFile(String(text || ""));
       if (!parsed.source) throw new Error("that is not a BREPcode project");
-      if (parsed.meshes) {
-        const files = await exp.unpackMeshes(parsed.meshes);
-        for (const [n, body] of Object.entries(files)) dsl.registerImport(n, body);
-      }
+      await registerPackedMeshes(exp, parsed.meshes);
       const file = new File([text], name || "model.bcode", { type: "text/plain" });
       await openProject(file, new TextEncoder().encode(String(text)).buffer);
       paintPartsBar();
@@ -7849,6 +7872,12 @@ ${joined}`)(...vs);
               negatives: negBtn.classList.contains("active"),
             },
             history: [],                       // the undo stack is not worth a URL
+            // The mesh has to ride along or the link is broken on arrival —
+            // importedMesh() names a file on THIS machine. If that pushes it
+            // past what a URL can hold, shareFragment() returns null and the
+            // "too big for a link" message below is the right answer; a link
+            // that opens empty is not.
+            meshes: await packUsedMeshes(exp, srcNow),
           });
           const frag = await exp.shareFragment(text);
           if (!frag) {
