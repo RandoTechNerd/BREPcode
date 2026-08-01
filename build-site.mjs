@@ -62,6 +62,7 @@ const rewrites = [
   ["/node_modules/@mlc-ai/web-llm/lib/index.js", "./vendor/webllm/index.js"],
   // mesh decimation (lazy-loaded by viewer/simplify.js on the Simplify button)
   ["/node_modules/meshoptimizer/meshopt_simplifier.js", "./vendor/meshopt/meshopt_simplifier.js"],
+  ["/node_modules/clipper-lib/clipper.js", "./vendor/clipper/clipper.js"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -76,6 +77,7 @@ const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), tex
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
   "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "simplify.js",
+  "slicer.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -134,6 +136,10 @@ cpSync("node_modules/@mlc-ai/web-llm/LICENSE", join(OUT, "vendor/webllm/LICENSE"
 mkdirSync(join(OUT, "vendor", "meshopt"), { recursive: true });
 cpSync("node_modules/meshoptimizer/meshopt_simplifier.js", join(OUT, "vendor/meshopt/meshopt_simplifier.js"));
 cpSync("node_modules/meshoptimizer/LICENSE.md", join(OUT, "vendor/meshopt/LICENSE.md"));
+
+// ---- vendor: clipper-lib (polygon offsetting for the slicer, lazy-loaded) ----
+mkdirSync(join(OUT, "vendor", "clipper"), { recursive: true });
+cpSync("node_modules/clipper-lib/clipper.js", join(OUT, "vendor/clipper/clipper.js"));
 
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });

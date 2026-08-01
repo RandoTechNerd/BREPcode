@@ -1209,6 +1209,7 @@
         <button data-fmt="obj">OBJ<small>DCC / games</small></button>
         <button data-fmt="3mf">3MF<small>modern slicers</small></button>
         <button data-fmt="3mf-parts">3MF — parts laid out<small>print plate(s)</small></button>
+        <button data-fmt="gcode">G-code — brick walls<small>staggered perimeters</small></button>
         <div class="exp-group">CAD (solid)</div>
         <button data-fmt="step">STEP<small>faceted</small></button>
         <button data-fmt="step-curved">STEP — curved<small>true surfaces</small></button>
@@ -2356,6 +2357,10 @@
     // offers its Simplify button
     let _simplify;
     const getSimplify = () => (_simplify ??= import("./simplify.js"));
+    // the brick-stagger slicer (mesh only, never the kernel) — loaded the first
+    // time someone exports G-code and not before
+    let _slicer;
+    const getSlicer = () => (_slicer ??= import("./slicer.js"));
 
     let _exp, _bot, _inv;
     const getExporters = () => (_exp ??= import("./exporters.js"));
@@ -7600,6 +7605,39 @@ ${joined}`)(...vs);
             + `<a href="https://www.linkedin.com/sharing/share-offsite/?url=${enc}" target="_blank" rel="noopener">LinkedIn</a> · `
             + `<a href="https://www.facebook.com/sharer/sharer.php?u=${enc}" target="_blank" rel="noopener">Facebook</a>`;
           shareUrlBox(url);
+        } else if (fmt === "gcode") {
+          // Loaded on demand and never touches the kernel — slicing is a mesh
+          // operation, so it cannot slow a build down and nobody who does not
+          // slice pays for the module.
+          setStatus("busy", "Slicing…");
+          const sl = await getSlicer();
+          const tris = [];
+          const tv = new THREE.Vector3();
+          for (const m of modelGroup.children) {
+            if (!m.isMesh || !m.visible) continue;
+            const g = m.geometry, p = g.attributes.position, ix = g.index;
+            m.updateWorldMatrix(true, false);
+            const cnt = ix ? ix.count : p.count;
+            for (let i = 0; i < cnt; i += 3) {
+              const t = [];
+              for (let k = 0; k < 3; k++) {
+                const j = ix ? ix.getX(i + k) : i + k;
+                tv.set(p.getX(j), p.getY(j), p.getZ(j)).applyMatrix4(m.matrixWorld);
+                t.push([tv.x, tv.y, tv.z]);
+              }
+              tris.push(t);
+            }
+          }
+          if (!tris.length) throw new Error("nothing to slice — build the model first");
+          const { gcode, stats } = await sl.sliceToGcode(tris, { name: base }, (done, all) => {
+            if (done % 25 === 0) setStatus("busy", `Slicing… layer ${done}/${all}`);
+          });
+          size = download(`${base}.gcode`, gcode, "text/plain");
+          fixnote.innerHTML = `<span style="color:var(--muted3)">`
+            + `<b>${stats.layers}</b> layers · <b>${stats.wallsPerLayer}</b> walls · `
+            + `<b>${stats.staggeredLayers}</b> staggered · ${stats.filamentMm}mm of filament `
+            + `(${stats.filamentMm3}mm³). Outer wall fixed, inner walls alternate by half a bead. `
+            + `Walls only — no infill or solid top, so treat this as a shell.</span>`;
         } else if (fmt === "embed") {
           setStatus("busy", "Building a self-contained viewer page…");
           const glb = await modelToGLB();
@@ -7628,6 +7666,7 @@ ${joined}`)(...vs);
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
       "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
+      gcode: { kind: "mono", desc: "Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Walls only — no infill or solid top yet." },
       step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
       svg: { kind: "lines", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
