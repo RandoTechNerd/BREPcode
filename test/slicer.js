@@ -7,6 +7,7 @@ import {
   sliceTriangles, chainLoops, offsetLoops, wallsForLayer, sliceToGcode,
   normalizeLoops, differenceLoops, intersectLoops, infillLines,
   planLayers, skinFor, crossesLoops, planSupports, parseGcode, PREVIEW_COLOURS,
+  fillPattern, INFILL_PATTERNS, fillPlaceholders,
   ePerMm, DEFAULTS, PRINTERS, _setClipper,
 } from "../viewer/slicer.js";
 
@@ -278,6 +279,9 @@ console.log("\nG-code\n");
   check("E only ever climbs on a printing move", (() => {
     let lastPrint = -1;
     for (const l of lines) {
+      // G92 resets the extruder's idea of where it is — the purge line ends
+      // with one, and a drop straight after it is correct rather than a bug
+      if (/^G92 E0/.test(l)) { lastPrint = -1; continue; }
       const m = /^G1 X\S+ Y\S+ E([\d.]+)/.exec(l);
       if (!m) continue;
       if (+m[1] < lastPrint) return false;
@@ -325,7 +329,7 @@ console.log("\nretraction\n");
   // A box with a shaft through it: the nozzle must cross from the outer wall
   // to the hole's wall on every layer, which is exactly when it has to retract.
   const { gcode, stats } = await sliceToGcode(boxWithHole(40, 4, 20),
-    { walls: 2, ...PRINTERS.bambu });
+    { walls: 2, ...PRINTERS.bambu_x1 });
   check("it retracted on the long travels", stats.retractions > 10, String(stats.retractions));
   const r = (gcode.match(/; retract/g) || []).length, p = (gcode.match(/; prime/g) || []).length;
   check("every retract is matched by a prime", r === p && r === stats.retractions, `${r} vs ${p}`);
@@ -341,9 +345,9 @@ console.log("\nretraction\n");
       const b = ls.slice(i + 1, i + 6).find((l) => /; prime$/.test(l));
       if (b) pulls.push(+/E([\d.-]+)/.exec(b)[1] - +a[1]);
     }
-    return pulls.length > 10 && pulls.every((d) => near(d, PRINTERS.bambu.retract, 1e-4));
+    return pulls.length > 10 && pulls.every((d) => near(d, PRINTERS.bambu_x1.retract, 1e-4));
   })(), "expected an 0.8mm pull for a Bambu");
-  const bowden = await sliceToGcode(boxWithHole(40, 4, 20), { walls: 2, ...PRINTERS.ender_bowden });
+  const bowden = await sliceToGcode(boxWithHole(40, 4, 20), { walls: 2, ...PRINTERS.ender3 });
   check("a Bowden machine pulls far harder than a direct drive", (() => {
     const pull = (t) => {
       const ls = t.split("\n"), i = ls.findIndex((l) => /; retract$/.test(l));
@@ -367,7 +371,7 @@ console.log("\nretraction\n");
   // THE regression. Adjacent infill strands sit one spacing apart — 2.7mm at
   // 15% — and a rule that retracts on distance alone fires on every one of
   // them, thousands of times, for hops that never leave the material.
-  const solidCube = await sliceToGcode(box(40, 40, 20), { walls: 3, infill: 0.15, ...PRINTERS.bambu });
+  const solidCube = await sliceToGcode(box(40, 40, 20), { walls: 3, infill: 0.15, ...PRINTERS.bambu_x1 });
   check("a cube with no holes barely retracts at all",
     solidCube.stats.retractions < solidCube.stats.layers * 2,
     `${solidCube.stats.retractions} over ${solidCube.stats.layers} layers`);
@@ -385,9 +389,12 @@ console.log("\nit has to land on the bed\n");
   // Anything built with center:true straddles the origin, i.e. sits off the
   // front-left corner of the plate. Half the G-code would be at negative X.
   const centred = box(40, 40, 20, -20, -20, 0);
-  const { gcode } = await sliceToGcode(centred, { walls: 2, ...PRINTERS.bambu });
+  const { gcode } = await sliceToGcode(centred, { walls: 2, ...PRINTERS.bambu_x1 });
+  // measure the PART, not the preamble: the purge line deliberately runs up
+  // the left edge of the bed and would drag the minimum out to X3
+  const partOnly = (t) => t.slice(t.indexOf(";LAYER:0"));
   const xs = [], ys = [];
-  for (const m of gcode.matchAll(/^G[01] X(-?[\d.]+) Y(-?[\d.]+)/gm)) { xs.push(+m[1]); ys.push(+m[2]); }
+  for (const m of partOnly(gcode).matchAll(/^G[01] X(-?[\d.]+) Y(-?[\d.]+)/gm)) { xs.push(+m[1]); ys.push(+m[2]); }
   check("every move is on the plate",
     Math.min(...xs) > 0 && Math.max(...xs) < 256 && Math.min(...ys) > 0 && Math.max(...ys) < 256,
     `X ${Math.min(...xs)}..${Math.max(...xs)}`);
@@ -403,7 +410,7 @@ console.log("\nit has to land on the bed\n");
   check("bed 0 leaves the coordinates where the model was",
     /G[01] X-\d/.test(raw.gcode));
 
-  const ender = await sliceToGcode(centred, { walls: 2, ...PRINTERS.ender_bowden });
+  const ender = await sliceToGcode(centred, { walls: 2, ...PRINTERS.ender3 });
   check("a different bed centres somewhere else",
     /X90\.\d/.test(ender.gcode) || ender.gcode.includes("X 110"),
     "expected a 220mm bed to centre at 110");
@@ -470,7 +477,7 @@ console.log("\nthe preview reads back what was written\n");
 {
   const tee = [...box(10, 10, 10, 15, 15, 0), ...box(40, 40, 6, 0, 0, 10)];
   const { gcode, stats } = await sliceToGcode(tee,
-    { walls: 2, supports: true, name: "tee", ...PRINTERS.bambu });
+    { walls: 2, supports: true, name: "tee", ...PRINTERS.bambu_x1 });
   const { layers, bounds } = parseGcode(gcode);
 
   check("every layer came back", layers.length === stats.layers, String(layers.length));
@@ -515,6 +522,245 @@ console.log("\nthe preview reads back what was written\n");
 
   check("an empty file parses to nothing rather than throwing",
     parseGcode("").layers.length === 0 && parseGcode("").bounds === null);
+}
+
+console.log("\ninfill patterns\n");
+{
+  const region = await normalizeLoops([sq]);
+  const nozzle = 0.4, area = 1600;
+  // Whatever the pattern, the density asked for is the density laid down —
+  // that is the one promise a pattern picker has to keep, or "25% infill"
+  // means something different depending on which one you chose.
+  for (const pat of Object.keys(INFILL_PATTERNS)) {
+    const got = [];
+    for (const d of [0.1, 0.15, 0.25, 0.4]) {
+      // A gyroid's cross-section is a different length at every height, so
+      // its density is only meaningful averaged over a period — the others
+      // are the same on every layer and one sample says it all.
+      const zs = pat === "gyroid" ? [0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7] : [5];
+      let sum = 0;
+      for (const z of zs) sum += runLength(await fillPattern(region, nozzle / d, pat, 0, z));
+      got.push([d, ((sum / zs.length) * nozzle) / area]);
+    }
+    check(`${pat} lays down the density it was asked for`,
+      got.every(([d, g]) => near(g, d, d * 0.08)),
+      got.map(([d, g]) => `${(d * 100).toFixed(0)}->${(g * 100).toFixed(1)}`).join(" "));
+  }
+
+  // ...and none of them may wander outside the region
+  for (const pat of Object.keys(INFILL_PATTERNS)) {
+    const runs = await fillPattern(region, nozzle / 0.15, pat, 0, 5);
+    check(`${pat} stays inside the region`, runs.every((r) =>
+      r.every(([x, y]) => x >= -0.02 && x <= 40.02 && y >= -0.02 && y <= 40.02)));
+  }
+
+  const ang = (runs) => {
+    const a = [];
+    for (const r of runs) {
+      for (let i = 1; i < r.length; i++) {
+        const d = Math.hypot(r[i][0] - r[i - 1][0], r[i][1] - r[i - 1][1]);
+        if (d > 1) a.push(((Math.atan2(r[i][1] - r[i - 1][1], r[i][0] - r[i - 1][0]) * 180 / Math.PI) + 360) % 180);
+      }
+    }
+    return a;
+  };
+  // "back and forth" means exactly that: the same direction on every layer,
+  // so the strands stack instead of crossing
+  const a0 = ang(await fillPattern(region, 2.67, "aligned", 0, 5));
+  const a1 = ang(await fillPattern(region, 2.67, "aligned", 1, 5.2));
+  check("aligned runs the same way on both layers",
+    a0.every((v) => near(v, 0, 0.5) || near(v, 180, 0.5))
+    && a1.every((v) => near(v, 0, 0.5) || near(v, 180, 0.5)));
+  // rectilinear is the opposite: it must cross
+  const r0 = ang(await fillPattern(region, 2.67, "rectilinear", 0, 5));
+  const r1 = ang(await fillPattern(region, 2.67, "rectilinear", 1, 5.2));
+  check("rectilinear turns 90 degrees each layer",
+    near(r0[0], 45, 1) && near(r1[0], 135, 1), `${r0[0]} then ${r1[0]}`);
+  const gridAng = ang(await fillPattern(region, 2.67, "grid", 0, 5));
+  check("grid puts both diagonals on one layer",
+    gridAng.some((v) => near(v, 45, 1)) && gridAng.some((v) => near(v, 135, 1)));
+
+  // The gyroid's whole point is that it is different on every layer and
+  // curved rather than straight — if it came out as straight lines at one
+  // angle it would just be an expensive rectilinear.
+  const g5 = await fillPattern(region, 2.67, "gyroid", 0, 5);
+  const g6 = await fillPattern(region, 2.67, "gyroid", 1, 6.4);
+  // A gyroid is walked in short chords, so measure the direction over a
+  // window of points rather than per segment — and what makes it a curve is
+  // that the direction keeps CHANGING along a single run.
+  const bend = (runs) => {
+    const turns = [];
+    for (const r of runs) {
+      for (let i = 6; i < r.length; i += 3) {
+        const a1 = Math.atan2(r[i - 3][1] - r[i - 6][1], r[i - 3][0] - r[i - 6][0]);
+        const a2 = Math.atan2(r[i][1] - r[i - 3][1], r[i][0] - r[i - 3][0]);
+        turns.push(Math.abs(((a2 - a1) * 180) / Math.PI));
+      }
+    }
+    return turns;
+  };
+  const turns = bend(g5);
+  check("gyroid curves rather than running straight",
+    turns.length > 50 && turns.filter((t) => t > 2).length > turns.length * 0.5,
+    `${turns.filter((t) => t > 2).length} of ${turns.length} chords bend`);
+  check("gyroid changes with height",
+    Math.abs(runLength(g5) - runLength(g6)) > 0.01
+    || JSON.stringify(g5[0]) !== JSON.stringify(g6[0]));
+  check("gyroid is one continuous sweep, not a pile of fragments",
+    g5.length < 40 && g5.some((r) => r.length > 10), `${g5.length} runs`);
+  check("concentric closes its rings", (await fillPattern(region, 2.67, "concentric", 0, 5))
+    .every((r) => near(Math.hypot(r[0][0] - r[r.length - 1][0], r[0][1] - r[r.length - 1][1]), 0, 1e-6)));
+
+  // and each has to survive a hole without printing over it
+  const holed = await differenceLoops(region,
+    await normalizeLoops([[[14, 14], [26, 14], [26, 26], [14, 26]]]));
+  for (const pat of Object.keys(INFILL_PATTERNS)) {
+    const runs = await fillPattern(holed, nozzle / 0.15, pat, 0, 5);
+    const inside = runs.some((r) => r.some(([x, y]) => x > 14.5 && x < 25.5 && y > 14.5 && y < 25.5));
+    if (inside) check(`${pat} avoids a hole`, false);
+  }
+  check("every pattern avoids a hole", true);
+}
+
+console.log("\npainted support regions\n");
+{
+  const tee = [...box(10, 10, 10, 15, 15, 0), ...box(40, 40, 6, 0, 0, 10)];
+  const on = { ...DEFAULTS, walls: 2, supports: true };
+  const { layers } = await planLayers(tee, on);
+  const plain = await planSupports(layers, on);
+  const at = (s, i) => Math.abs(netArea(s[i] || []));
+
+  // block out the left half — nothing may be supported there any more
+  const blocked = await planSupports(layers, { ...on, supportBlock: [[-5, -5, 20, 45]] });
+  check("blocking a region removes support from it",
+    blocked.every((s) => s.every((p) => p.every(([x]) => x >= 19.9))),
+    "found support inside the blocked half");
+  check("...and leaves the rest alone", at(blocked, 20) > 0 && at(blocked, 20) < at(plain, 20),
+    `${at(blocked, 20)} vs ${at(plain, 20)}`);
+
+  // A 45 degree taper holds itself up, so the angle rule generates nothing
+  // anywhere on it — which makes it the honest test of forcing.
+  const taper = [];
+  for (let k = 0; k < 40; k++) taper.push(...box(10 + k * 0.4, 40, 0.2, 20 - (10 + k * 0.4) / 2, 0, k * 0.2));
+  const tl = (await planLayers(taper, on)).layers;
+  const none = await planSupports(tl, on);
+  check("the taper needs no support of its own", none.every((s) => !s.length));
+
+  // it grows outward as it rises, so just outside its footprint there IS
+  // model overhead — exactly where a forced column can stand
+  const forced = await planSupports(tl, { ...on, supportForce: [[0, 0, 40, 40]] });
+  check("forcing a region puts support where the angle would not",
+    forced.some((s) => s.length), "no forced support appeared");
+  check("...and it still keeps clear of the model", (() => {
+    for (let i = 0; i < forced.length; i++) {
+      if (!forced[i]?.length || !tl[i]) continue;
+      const w = 10 + i * 0.4;                    // the taper's width at this layer
+      const inside = forced[i].some((p) => p.some(([x]) =>
+        x > 20 - w / 2 + 0.5 && x < 20 + w / 2 - 0.5));
+      if (inside) return false;
+    }
+    return true;
+  })());
+
+  // blocked beats forced, because "never here" is the one you reach for when
+  // support has landed somewhere you cannot get a tool into to remove it
+  const both = await planSupports(tl,
+    { ...on, supportForce: [[0, 0, 40, 40]], supportBlock: [[-5, -5, 45, 45]] });
+  check("blocked wins over forced", both.every((s) => !s.length));
+}
+
+console.log("\nsupport thresholds\n");
+{
+  // a staircase climbing 0.6mm sideways per 0.2mm layer — 71.6 degrees off
+  // vertical, so a 45 or 60 degree threshold must catch it and an 80 must not
+  const steps = [];
+  for (let k = 0; k < 40; k++) steps.push(...box(10 + k * 1.2, 40, 0.2, 0, 0, k * 0.2));
+  const mk = async (a) => {
+    const o = { ...DEFAULTS, walls: 2, supports: true, supportAngle: a };
+    return planSupports((await planLayers(steps, o)).layers, o);
+  };
+  const any = (s) => s.some((x) => x.length);
+  check("a 30 degree threshold supports it", any(await mk(30)));
+  check("45 supports it too", any(await mk(45)));
+  check("60 still does", any(await mk(60)));
+  check("80 lets it go — that is a steeper wall than the part has", !any(await mk(80)));
+
+  // density has to reach the G-code, not just the options object
+  const tee = [...box(10, 10, 10, 15, 15, 0), ...box(40, 40, 6, 0, 0, 10)];
+  const light = await sliceToGcode(tee, { walls: 2, supports: true, supportDensity: 0.08 });
+  const heavy = await sliceToGcode(tee, { walls: 2, supports: true, supportDensity: 0.3 });
+  check("denser support uses more filament",
+    heavy.stats.supportMm > light.stats.supportMm * 2.5,
+    `${light.stats.supportMm} vs ${heavy.stats.supportMm}`);
+  const far = await sliceToGcode(tee, { walls: 2, supports: true, supportZ: 4 });
+  check("a bigger z gap leaves more air under the overhang",
+    far.stats.supportMm < light.stats.supportMm * 1.6 && far.stats.supportLayers < 49,
+    String(far.stats.supportLayers));
+}
+
+console.log("\nstagger can be turned off\n");
+{
+  const off = await sliceToGcode(box(40, 40, 20), { walls: 3, stagger: false, infill: 0 });
+  check("no layers are reported staggered", off.stats.staggeredLayers === 0);
+  check("the header says so", off.gcode.includes("stagger off"));
+  const on = await sliceToGcode(box(40, 40, 20), { walls: 3, stagger: true, infill: 0 });
+  check("staggering costs filament the straight stack does not",
+    on.stats.filamentMm3 !== off.stats.filamentMm3);
+}
+
+console.log("\ncustom start / end / layer G-code\n");
+{
+  const opt = {
+    walls: 2, infill: 0, topLayers: 0, bottomLayers: 0, name: "custom",
+    startGcode: "; MY START\nM104 S{temp}\nG28\nM117 {name}",
+    endGcode: "; MY END\nM104 S0\nM117 done",
+    layerGcode: "M117 layer {layernum} at {z}",
+  };
+  const { gcode } = await sliceToGcode(box(20, 20, 2), opt);
+  const lines = gcode.split("\n");
+  check("the custom start replaces the built-in one",
+    gcode.includes("; MY START") && !gcode.includes("M190"));
+  check("the custom end replaces the built-in one",
+    gcode.includes("; MY END") && !gcode.includes("M84"));
+  check("placeholders are filled in", gcode.includes("M104 S210") && gcode.includes("M117 custom"));
+  check("an unknown placeholder is left alone rather than blanked",
+    fillPlaceholders("a {nope} b", { x: 1 }) === "a {nope} b");
+  check("layer G-code runs on every layer",
+    (gcode.match(/M117 layer /g) || []).length === 10,
+    String((gcode.match(/M117 layer /g) || []).length));
+  check("...right after the Z move, not before it", (() => {
+    const i = lines.indexOf(";LAYER:3");
+    return /^G1 Z/.test(lines[i + 1]) && /^M117 layer 4/.test(lines[i + 2]);
+  })(), lines.slice(lines.indexOf(";LAYER:3"), lines.indexOf(";LAYER:3") + 3).join(" | "));
+  check("layer numbers and heights are real",
+    gcode.includes("M117 layer 4 at 0.800"), "expected layer 4 at z 0.800");
+
+  const plain = await sliceToGcode(box(20, 20, 2), { walls: 2, infill: 0 });
+  check("leaving them blank keeps the built-in preamble",
+    plain.gcode.includes("M109") && plain.gcode.includes("M84"));
+  check("...which includes a prime line", plain.gcode.includes("purge line"));
+}
+
+console.log("\nprinters\n");
+{
+  check("there is a real spread of machines", Object.keys(PRINTERS).length >= 12,
+    String(Object.keys(PRINTERS).length));
+  check("every one has a bed, a retract and a label", Object.values(PRINTERS).every((p) =>
+    p.label && p.bedX > 0 && p.bedY > 0 && p.retract >= 0 && p.retractSpeed > 0));
+  // a non-square bed is the case that catches centring bugs
+  check("a non-square bed centres on both axes separately", (() => {
+    const p = PRINTERS.prusa_mk4;
+    return p.bedX !== p.bedY;
+  })());
+  const { gcode } = await sliceToGcode(box(40, 40, 4, -20, -20, 0),
+    { walls: 2, ...PRINTERS.prusa_mk4 });
+  const xs = [], ys = [];
+  for (const m of gcode.slice(gcode.indexOf(";LAYER:0"))
+    .matchAll(/^G[01] X(-?[\d.]+) Y(-?[\d.]+)/gm)) { xs.push(+m[1]); ys.push(+m[2]); }
+  check("...and lands the part in the middle of it",
+    near((Math.min(...xs) + Math.max(...xs)) / 2, 125, 0.2)
+    && near((Math.min(...ys) + Math.max(...ys)) / 2, 105, 0.2),
+    `${(Math.min(...xs) + Math.max(...xs)) / 2}, ${(Math.min(...ys) + Math.max(...ys)) / 2}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

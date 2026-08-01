@@ -159,6 +159,95 @@ export async function openLoops(loops, r) {
   return offsetLoops(shrunk, r);
 }
 
+// Drop points that land on top of the one before them.
+//
+// Clipper works in integer microns, so two points closer together than that
+// become a zero-length segment — which is not a shape it has any definition
+// for, and it does not fail cleanly on them: a single degenerate segment sent
+// one 40mm layer of gyroid into an unbounded allocation. Marching squares
+// produces them whenever the field is near zero exactly at a grid corner, so
+// they are ordinary rather than exotic.
+function dedupe(path) {
+  const out = [path[0]];
+  for (let i = 1; i < path.length; i++) {
+    const p = path[i], q = out[out.length - 1];
+    if (Math.abs(p[0] - q[0]) > 1 / SCALE || Math.abs(p[1] - q[1]) > 1 / SCALE) out.push(p);
+  }
+  return out;
+}
+
+// Trim open polylines to a region, keeping only the parts inside it.
+async function clipOpen(paths, region) {
+  const clean = paths.map(dedupe).filter((p) => p.length >= 2);
+  if (!clean.length || !region.length) return [];
+  const C = await getClipper();
+  const c = new C.Clipper();
+  c.AddPaths(clean.map(toClip), C.PolyType.ptSubject, false);
+  c.AddPaths(region.map(toClip), C.PolyType.ptClip, true);
+  const tree = new C.PolyTree();
+  c.Execute(C.ClipType.ctIntersection, tree, C.PolyFillType.pftNonZero, C.PolyFillType.pftNonZero);
+  return C.Clipper.OpenPathsFromPolyTree(tree).map(fromClip).filter((p) => p.length >= 2);
+}
+
+// Loose segments -> polylines. Unlike chainLoops this keeps chains that never
+// close, which is what a contour crossing a boundary gives you.
+export function chainSegments(segs, tol = 1e-3) {
+  const key = (p) => `${Math.round(p[0] / tol)},${Math.round(p[1] / tol)}`;
+  const ends = new Map();
+  segs.forEach((s, i) => {
+    for (const e of [0, 1]) {
+      const k = key(s[e]);
+      if (!ends.has(k)) ends.set(k, []);
+      ends.get(k).push([i, e]);
+    }
+  });
+  const used = new Array(segs.length).fill(false);
+  const out = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    const chain = [segs[i][0], segs[i][1]];
+    for (;;) {
+      const n = (ends.get(key(chain[chain.length - 1])) || []).find(([j]) => !used[j]);
+      if (!n) break;
+      used[n[0]] = true;
+      chain.push(segs[n[0]][1 - n[1]]);
+    }
+    for (;;) {
+      const n = (ends.get(key(chain[0])) || []).find(([j]) => !used[j]);
+      if (!n) break;
+      used[n[0]] = true;
+      chain.unshift(segs[n[0]][1 - n[1]]);
+    }
+    out.push(chain);
+  }
+  return out;
+}
+
+// Greedy nearest-end ordering, flipping each run so its near end comes first.
+// Not optimal — that is the travelling salesman — but it turns a random pile
+// of curves into something that does not cross the part on every strand.
+export function orderRuns(paths) {
+  const left = paths.slice(), out = [];
+  let at = null;
+  while (left.length) {
+    let pick = 0, flip = false, best = Infinity;
+    if (at) {
+      left.forEach((p, i) => {
+        const da = Math.hypot(p[0][0] - at[0], p[0][1] - at[1]);
+        const db = Math.hypot(p[p.length - 1][0] - at[0], p[p.length - 1][1] - at[1]);
+        if (da < best) { best = da; pick = i; flip = false; }
+        if (db < best) { best = db; pick = i; flip = true; }
+      });
+    }
+    const p = left.splice(pick, 1)[0];
+    if (flip) p.reverse();
+    out.push(p);
+    at = p[p.length - 1];
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ fill
 
 // Parallel lines at angleDeg, clipped to the region, ordered so the nozzle
@@ -170,7 +259,6 @@ export async function openLoops(loops, r) {
 // instead of drifting by half a spacing every layer.
 export async function infillLines(region, spacing, angleDeg) {
   if (!region.length || !(spacing > 0) || !Number.isFinite(spacing)) return [];
-  const C = await getClipper();
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of region) {
@@ -190,7 +278,12 @@ export async function infillLines(region, spacing, angleDeg) {
   const tc = cx * nx + cy * ny;
   const lines = [];
   for (let k = Math.ceil((tc - R) / spacing); k <= Math.floor((tc + R) / spacing); k++) {
-    const t = k * spacing;
+    // Half a pitch off the grid, so each strand sits in the MIDDLE of its
+    // band rather than on the edge of one. On a part whose wall happens to
+    // land exactly on a grid line — an axis-aligned box is the obvious case —
+    // the on-the-edge line clips to nothing and the layer comes out one
+    // strand light, which is a whole percent of density at 10%.
+    const t = (k + 0.5) * spacing;
     const px = nx * t, py = ny * t;               // point on the line nearest the origin
     const s = (cx - px) * dx + (cy - py) * dy;    // slide along it to face the region
     lines.push([
@@ -202,14 +295,7 @@ export async function infillLines(region, spacing, angleDeg) {
 
   // open subject paths against a closed clip: the lines come back trimmed to
   // the region, already split around any holes
-  const c = new C.Clipper();
-  c.AddPaths(lines.map(toClip), C.PolyType.ptSubject, false);
-  c.AddPaths(region.map(toClip), C.PolyType.ptClip, true);
-  const tree = new C.PolyTree();
-  c.Execute(C.ClipType.ctIntersection, tree, C.PolyFillType.pftNonZero, C.PolyFillType.pftNonZero);
-  const segs = C.Clipper.OpenPathsFromPolyTree(tree)
-    .map(fromClip)
-    .filter((p) => p.length >= 2);
+  const segs = await clipOpen(lines, region);
 
   // Group the strands into LANES before ordering them. A hole cuts every line
   // that passes it into two pieces, and simply zigzagging down the list then
@@ -223,7 +309,12 @@ export async function infillLines(region, spacing, angleDeg) {
     const b = s[s.length - 1][0] * dx + s[s.length - 1][1] * dy;
     return {
       s,
-      t: Math.round((s[0][0] * nx + s[0][1] * ny) / spacing),
+      // The lines sit at (k + 0.5) * spacing, so take the half back off
+      // before rounding. Leaving it on lands every index exactly on a .5 tie,
+      // where floating point decides which way it goes essentially at random
+      // — neighbouring strands then get different lane numbers, no lane ever
+      // grows, and the nozzle retracts between every single one of them.
+      t: Math.round((s[0][0] * nx + s[0][1] * ny) / spacing - 0.5),
       lo: Math.min(a, b), hi: Math.max(a, b),
     };
   });
@@ -274,6 +365,218 @@ export async function infillLines(region, spacing, angleDeg) {
   return out;
 }
 
+// ------------------------------------------------------- infill patterns
+
+// Rings following the outline inward. Cheap, and the only pattern with no
+// direction to it at all.
+export async function concentricLines(region, spacing) {
+  const out = [];
+  let cur = await offsetLoops(region, -spacing / 2);
+  for (let guard = 0; cur.length && guard < 500; guard++) {
+    for (const p of cur) out.push([...p, p[0]]);
+    cur = await offsetLoops(cur, -spacing);
+  }
+  return out;
+}
+
+// The gyroid: sin(x)cos(y) + sin(y)cos(z) + sin(z)cos(x) = 0.
+//
+// Worth the trouble because it is the one common pattern with no weak
+// direction — every layer's cross-section runs a different way, so it braces
+// the part in X, Y and Z about equally, and no two layers stack into a plane
+// you can split. It also never crosses itself, so the nozzle is not driving
+// over material it already laid.
+//
+// Extracted with marching squares rather than solved algebraically. The
+// closed form needs acos, which goes undefined exactly at the folds where the
+// curve turns around — precisely the places you must not drop — and handling
+// that correctly is more code than marching the grid.
+export function gyroidSegments(bounds, s, z, step) {
+  const w = z / s, sinW = Math.sin(w), cosW = Math.cos(w);
+  const f = (x, y) => {
+    const u = x / s, v = y / s;
+    return Math.sin(u) * Math.cos(v) + Math.sin(v) * cosW + sinW * Math.cos(u);
+  };
+  const nx = Math.max(1, Math.ceil((bounds.maxX - bounds.minX) / step));
+  const ny = Math.max(1, Math.ceil((bounds.maxY - bounds.minY) / step));
+  const segs = [];
+  // one row of samples reused as the next row's bottom edge
+  let row = new Float64Array(nx + 1);
+  for (let i = 0; i <= nx; i++) row[i] = f(bounds.minX + i * step, bounds.minY);
+  for (let j = 0; j < ny; j++) {
+    const y0 = bounds.minY + j * step, y1 = y0 + step;
+    const next = new Float64Array(nx + 1);
+    for (let i = 0; i <= nx; i++) next[i] = f(bounds.minX + i * step, y1);
+    for (let i = 0; i < nx; i++) {
+      const x0 = bounds.minX + i * step, x1 = x0 + step;
+      const a = row[i], b = row[i + 1], c = next[i + 1], d = next[i];
+      const idx = (a > 0 ? 1 : 0) | (b > 0 ? 2 : 0) | (c > 0 ? 4 : 0) | (d > 0 ? 8 : 0);
+      if (idx === 0 || idx === 15) continue;
+      // Each crossing carries the ID of the grid edge it sits on. Neighbouring
+      // cells share that edge exactly, so the pieces can be stitched by
+      // integer identity instead of by comparing coordinates — which matters
+      // because the two cells compute the same point through different
+      // arithmetic, and a last-bit disagreement is enough to make a rounded
+      // coordinate land in a different bucket. On a fine grid that shattered
+      // the contour into thousands of fragments, and the ordering pass, being
+      // quadratic in those, went from milliseconds to out-of-memory.
+      const E = (e) => {
+        if (e === 0) { const t = a / (a - b); return [[x0 + (x1 - x0) * t, y0], (j * (nx + 1) + i) * 2]; }
+        if (e === 1) { const t = b / (b - c); return [[x1, y0 + (y1 - y0) * t], (j * (nx + 1) + i + 1) * 2 + 1]; }
+        if (e === 2) { const t = c / (c - d); return [[x1 + (x0 - x1) * t, y1], ((j + 1) * (nx + 1) + i) * 2]; }
+        const t = d / (d - a); return [[x0, y1 + (y0 - y1) * t], (j * (nx + 1) + i) * 2 + 1];
+      };
+      for (const [p, q] of MARCH[idx]) {
+        const A = E(p), B = E(q);
+        segs.push({ a: A[0], ka: A[1], b: B[0], kb: B[1] });
+      }
+    }
+    row = next;
+  }
+  return segs;
+}
+
+// Stitch keyed segments into polylines by shared edge ID — exact, and linear
+// in the number of segments.
+export function chainKeyed(segs) {
+  const ends = new Map();
+  segs.forEach((sg, i) => {
+    for (const k of [sg.ka, sg.kb]) {
+      const at = ends.get(k);
+      if (at) at.push(i); else ends.set(k, [i]);
+    }
+  });
+  const used = new Array(segs.length).fill(false);
+  const out = [];
+  const grow = (key, push) => {
+    for (;;) {
+      const list = ends.get(key);
+      const nx = list && list.find((j) => !used[j]);
+      if (nx == null) return key;
+      used[nx] = true;
+      const t = segs[nx];
+      const far = t.ka === key ? [t.b, t.kb] : [t.a, t.ka];
+      push(far[0]);
+      key = far[1];
+    }
+  };
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    // Both directions are collected by PUSHING and the backward half reversed
+    // at the end. Growing a chain with unshift is quadratic — every insert
+    // shifts the whole array — and a dense gyroid makes chains tens of
+    // thousands of points long, which was enough to exhaust the heap.
+    const fwd = [segs[i].b], back = [segs[i].a];
+    grow(segs[i].kb, (p) => fwd.push(p));
+    grow(segs[i].ka, (p) => back.push(p));
+    back.reverse();
+    out.push(back.concat(fwd));
+  }
+  return out;
+}
+
+// A grid fine enough to trace the curve, but never so fine that a big plate
+// at a high density turns one layer into millions of cells.
+const MAX_GYROID_CELLS = 400000;
+function gyroidGrid(bounds, s) {
+  let step = s / 10;
+  const w = bounds.maxX - bounds.minX, h = bounds.maxY - bounds.minY;
+  while ((w / step) * (h / step) > MAX_GYROID_CELLS) step *= 1.4;
+  return step;
+}
+
+const MARCH = {
+  1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 2], [0, 1]],
+  6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[2, 0]], 10: [[0, 3], [2, 1]],
+  11: [[2, 1]], 12: [[1, 3]], 13: [[1, 0]], 14: [[0, 3]],
+};
+
+// How much curve a unit-scale gyroid packs into a unit of area.
+//
+// Scaling the pattern by s multiplies lengths by s and areas by s squared, so
+// length per area goes exactly as k/s — PROVIDED the grid is scaled with it
+// too, which is why the step is s/10 rather than an absolute floor. Straight
+// lines at pitch p give 1/p, so matching them is s = k * p, and it holds at
+// every density instead of only the one it was tuned at.
+//
+// The cross-section is not the same length at every height — the gyroid's z
+// period is 2*pi*s — so this averages over a full period. Individual layers
+// still vary a few percent either side, which is true of the pattern itself
+// and not something a slicer can or should flatten out.
+let gyroidK = null;
+function gyroidScale(spacing) {
+  if (gyroidK == null) {
+    const N = 12 * Math.PI;
+    const box = { minX: 0, minY: 0, maxX: N, maxY: N };
+    let total = 0;
+    const STEPS = 8;
+    for (let i = 0; i < STEPS; i++) {
+      const z = (i / STEPS) * 2 * Math.PI;     // one full period at s = 1
+      let L = 0;
+      for (const g of gyroidSegments(box, 1, z, 0.1)) {
+        L += Math.hypot(g.b[0] - g.a[0], g.b[1] - g.a[1]);
+      }
+      total += L / (N * N);
+    }
+    // Measured on the raw contour; what actually reaches the part has been
+    // through chaining, clipping and micron quantisation, each of which
+    // shaves a little. Across 10% to 40% that came to a steady 8%, so the
+    // constant carries it. Note that a gyroid's cross-section is genuinely
+    // not the same length at every height — individual layers land within
+    // about 10% either side of the mean, and that is the pattern, not an
+    // error to tune out.
+    gyroidK = (total / STEPS) * 0.92;
+  }
+  return gyroidK * spacing;
+}
+
+export async function gyroidLines(region, spacing, z) {
+  if (!region.length || !(spacing > 0) || !Number.isFinite(spacing)) return [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of region) {
+    for (const [x, y] of p) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  const s = gyroidScale(spacing);
+  const pad = s;
+  const box = { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+  const segs = gyroidSegments(box, s, z, gyroidGrid(box, s));
+  return orderRuns(await clipOpen(chainKeyed(segs), region));
+}
+
+export const INFILL_PATTERNS = {
+  rectilinear: "Rectilinear — 45°, crossing the layer below",
+  aligned: "Back and forth — same direction every layer",
+  grid: "Grid — both diagonals on every layer",
+  gyroid: "Gyroid — curves, no weak direction",
+  concentric: "Concentric — follows the outline",
+};
+
+// One layer's sparse fill, whichever pattern was asked for.
+export async function fillPattern(region, spacing, pattern, i, z) {
+  switch (pattern) {
+    // Same angle on every layer, so the strands stack into continuous walls
+    // rather than crossing. Stiff along the lines and floppy across them —
+    // which is exactly what you want when you know which way the load comes.
+    case "aligned": return infillLines(region, spacing, 0);
+    // Both diagonals every layer, each at half the density so the total is
+    // what was asked for. The crossings collide with the nozzle, which is the
+    // price of it being braced both ways within a single layer.
+    case "grid": return orderRuns([
+      ...await infillLines(region, spacing * 2, 45),
+      ...await infillLines(region, spacing * 2, 135),
+    ]);
+    case "concentric": return orderRuns(await concentricLines(region, spacing));
+    case "gyroid": return gyroidLines(region, spacing, z);
+    default: return infillLines(region, spacing, 45 + (i % 2) * 90);
+  }
+}
+
 // -------------------------------------------------- crossing the outline
 
 // Do these two points see each other without leaving the part?
@@ -309,20 +612,105 @@ export function crossesLoops(a, b, loops) {
 // centimetres of pull to unload it; a direct drive has millimetres. Getting
 // this wrong is the difference between a clean part and a cobweb, so it is
 // attached to the machine rather than left as a number to guess.
+// A purge line drawn up the left edge before anything else: it gets the
+// pressure up and lets you watch the first extrusion somewhere it does not
+// matter. Called "purge" rather than "prime" on purpose — a retraction's
+// prime is a different thing, and sharing the word makes the two impossible
+// to tell apart when reading the file back.
+const PRIME_LINE = [
+  "G1 Z2 F1200",
+  "G1 X{x0} Y20 F5000",
+  "G1 Z{layer} F1200",
+  "G1 X{x0} Y{y1} E18 F1200 ; purge line",
+  "G1 X{x0h} Y{y1} E20 F1200",
+  "G92 E0",
+];
+
+const GENERIC_START = [
+  "G21 ; millimetres", "G90 ; absolute positioning", "M82 ; absolute extrusion",
+  "M140 S{bed}", "M104 S{temp}", "M190 S{bed}", "M109 S{temp}",
+  "G28 ; home", "G92 E0", ...PRIME_LINE,
+];
+const GENERIC_END = [
+  "M104 S0 ; nozzle off", "M140 S0 ; bed off", "M107 ; fan off",
+  "G91", "G1 Z5 F600 ; lift", "G90", "G28 X0 Y0", "M84 ; steppers off",
+];
+
 export const PRINTERS = {
-  bambu: {
-    label: "Bambu Lab — X1 / P1 / A1",
-    bedX: 256, bedY: 256, retract: 0.8, retractSpeed: 30, zhop: 0.4,
+  bambu_x1: {
+    label: "Bambu Lab X1 / X1C", bedX: 256, bedY: 256,
+    retract: 0.8, retractSpeed: 30, zhop: 0.4,
   },
-  ender_dd: {
-    label: "Ender 3 S1 / V3 — direct drive",
-    bedX: 220, bedY: 220, retract: 1.0, retractSpeed: 40, zhop: 0.2,
+  bambu_p1: {
+    label: "Bambu Lab P1P / P1S", bedX: 256, bedY: 256,
+    retract: 0.8, retractSpeed: 30, zhop: 0.4,
   },
-  ender_bowden: {
-    label: "Ender 3 / Pro / V2 — Bowden",
-    bedX: 220, bedY: 220, retract: 5.0, retractSpeed: 45, zhop: 0.2,
+  bambu_a1: {
+    label: "Bambu Lab A1", bedX: 256, bedY: 256,
+    retract: 0.8, retractSpeed: 30, zhop: 0.4,
+  },
+  bambu_a1m: {
+    label: "Bambu Lab A1 mini", bedX: 180, bedY: 180,
+    retract: 0.8, retractSpeed: 30, zhop: 0.4,
+  },
+  ender3: {
+    label: "Creality Ender 3 / Pro / V2 — Bowden", bedX: 220, bedY: 220,
+    retract: 5.0, retractSpeed: 45, zhop: 0.2,
+  },
+  ender3_s1: {
+    label: "Creality Ender 3 S1 / V3 — direct drive", bedX: 220, bedY: 220,
+    retract: 1.0, retractSpeed: 40, zhop: 0.2,
+  },
+  ender5: {
+    label: "Creality Ender 5 / Plus", bedX: 220, bedY: 220,
+    retract: 4.0, retractSpeed: 45, zhop: 0.2,
+  },
+  cr10: {
+    label: "Creality CR-10 / CR-10S", bedX: 300, bedY: 300,
+    retract: 5.0, retractSpeed: 45, zhop: 0.2,
+  },
+  k1: {
+    label: "Creality K1 / K1 Max", bedX: 220, bedY: 220,
+    retract: 0.5, retractSpeed: 40, zhop: 0.2,
+  },
+  prusa_mk4: {
+    label: "Prusa MK4 / MK3S", bedX: 250, bedY: 210,
+    retract: 0.8, retractSpeed: 35, zhop: 0.4,
+  },
+  prusa_mini: {
+    label: "Prusa MINI / MINI+", bedX: 180, bedY: 180,
+    retract: 3.2, retractSpeed: 40, zhop: 0.2,
+  },
+  voron_250: {
+    label: "Voron 2.4 / Trident 250", bedX: 250, bedY: 250,
+    retract: 0.5, retractSpeed: 45, zhop: 0.2,
+  },
+  voron_350: {
+    label: "Voron 2.4 / Trident 350", bedX: 350, bedY: 350,
+    retract: 0.5, retractSpeed: 45, zhop: 0.2,
+  },
+  sovol_sv06: {
+    label: "Sovol SV06 / SV06 Plus", bedX: 220, bedY: 220,
+    retract: 1.0, retractSpeed: 40, zhop: 0.2,
+  },
+  anycubic_kobra: {
+    label: "Anycubic Kobra 2", bedX: 220, bedY: 220,
+    retract: 1.5, retractSpeed: 40, zhop: 0.2,
+  },
+  generic: {
+    label: "Generic / Marlin", bedX: 200, bedY: 200,
+    retract: 2.0, retractSpeed: 40, zhop: 0.2,
   },
 };
+
+// Anything in the G-code text boxes gets these substituted. Keeping the list
+// short and obvious beats a template language nobody wants to learn.
+export function fillPlaceholders(text, vars) {
+  return String(text).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+}
+
+export const DEFAULT_START_GCODE = GENERIC_START.join("\n");
+export const DEFAULT_END_GCODE = GENERIC_END.join("\n");
 
 // -------------------------------------------------------------- the slice
 
@@ -333,6 +721,7 @@ export const DEFAULTS = {
   topLayers: 4,        // solid skin under a top surface
   bottomLayers: 4,     // ...and over a bottom one
   infill: 0.15,        // 0 = leave it hollow
+  infillPattern: "rectilinear",
   filament: 1.75,
   feed: 1800,          // mm/min, walls
   solidFeed: 2100,     // mm/min, solid skin
@@ -355,6 +744,14 @@ export const DEFAULTS = {
   supportZ: 1,         // layers of air underneath the overhang
   supportDensity: 0.12,
   supportMinArea: 4,   // mm2 — under this it is slice noise, not an overhang
+  // Painted regions, in MODEL coordinates, as [x0, y0, x1, y1]. Blocked wins
+  // over forced, because "definitely not here" is the one you reach for when
+  // the slicer has put support somewhere you cannot reach to remove it.
+  supportBlock: [],
+  supportForce: [],
+  startGcode: "",      // blank = the built-in preamble
+  endGcode: "",
+  layerGcode: "",      // run at every layer change, after the Z move
 };
 
 // One layer's worth of wall loops, outermost first.
@@ -489,15 +886,32 @@ export async function planSupports(layers, opt) {
   const out = new Array(n).fill(null).map(() => []);
   if (!opt.supports) return out;
 
+  const rect = ([x0, y0, x1, y1]) => [
+    [Math.min(x0, x1), Math.min(y0, y1)], [Math.max(x0, x1), Math.min(y0, y1)],
+    [Math.max(x0, x1), Math.max(y0, y1)], [Math.min(x0, x1), Math.max(y0, y1)],
+  ];
+  const forced = (opt.supportForce || []).length
+    ? await normalizeLoops((opt.supportForce || []).map(rect)) : [];
+  const blocked = (opt.supportBlock || []).length
+    ? await normalizeLoops((opt.supportBlock || []).map(rect)) : [];
+
   const reach = opt.layer * Math.tan((opt.supportAngle * Math.PI) / 180);
   const need = new Array(n).fill(null).map(() => []);
-  let carry = [];
+  let carry = [], everAbove = [];
   for (let i = n - 2; i >= 0; i--) {
     const here = layers[i]?.outline || [];
     const above = layers[i + 1]?.outline || [];
     const held = here.length ? await offsetLoops(here, reach) : [];
     carry = await unionLoops(carry, await differenceLoops(above, held));
+    // A painted FORCE region means "hold this up whatever the angle says" —
+    // so it needs a column anywhere there is model somewhere above it, which
+    // is what everAbove tracks on the way down.
+    if (forced.length) {
+      everAbove = await unionLoops(everAbove, above);
+      carry = await unionLoops(carry, await intersectLoops(forced, everAbove));
+    }
     if (here.length) carry = await differenceLoops(carry, here);
+    if (blocked.length) carry = await differenceLoops(carry, blocked);
     carry = carry.filter((p) => Math.abs(polyArea(p)) >= opt.supportMinArea);
     need[i] = carry;
   }
@@ -526,34 +940,36 @@ export async function planSupports(layers, opt) {
 export const ePerMm = (opt) =>
   (opt.layer * opt.nozzle) / (Math.PI * (opt.filament / 2) ** 2);
 
+export function gcodeVars(opt, name, extra = {}) {
+  return {
+    name, temp: opt.temp, bed: opt.bed, nozzle: opt.nozzle, layer: opt.layer,
+    walls: opt.walls, infill: Math.round(opt.infill * 100),
+    bedx: opt.bedX, bedy: opt.bedY,
+    // the prime line runs up the left edge of whatever bed was picked
+    x0: 3, x0h: 3.4, y1: Math.max(40, (opt.bedY || 200) - 20),
+    ...extra,
+  };
+}
+
 export function gcodeHeader(opt, name) {
   const skin = opt.topLayers || opt.bottomLayers
     ? `${opt.bottomLayers} bottom / ${opt.topLayers} top solid layers` : "no solid skin";
+  const stag = opt.stagger
+    ? `brick-staggered perimeters: outer wall fixed, inner walls alternate by ${(opt.nozzle / 2).toFixed(2)}mm`
+    : "stagger off — every wall stacks straight up";
+  const body = (opt.startGcode && opt.startGcode.trim()) || DEFAULT_START_GCODE;
   return [
     `; ${name} — sliced by BREPcode`,
-    `; brick-staggered perimeters: outer wall fixed, inner walls alternate by ${(opt.nozzle / 2).toFixed(2)}mm`,
+    `; ${stag}`,
     `; layer ${opt.layer}mm · nozzle ${opt.nozzle}mm · ${opt.walls} walls`,
-    `; ${Math.round(opt.infill * 100)}% infill · ${skin}`,
-    "G21 ; millimetres",
-    "G90 ; absolute positioning",
-    "M82 ; absolute extrusion",
-    `M140 S${opt.bed}`,
-    `M104 S${opt.temp}`,
-    `M190 S${opt.bed}`,
-    `M109 S${opt.temp}`,
-    "G28 ; home",
-    "G92 E0",
+    `; ${Math.round(opt.infill * 100)}% ${opt.infillPattern} infill · ${skin}`,
+    ...fillPlaceholders(body, gcodeVars(opt, name)).split("\n"),
   ];
 }
 
-export const gcodeFooter = () => [
-  "M104 S0 ; nozzle off",
-  "M140 S0 ; bed off",
-  "M107 ; fan off",
-  "G91", "G1 Z5 F600 ; lift", "G90",
-  "G28 X0 Y0",
-  "M84 ; steppers off",
-];
+export const gcodeFooter = (opt = {}, name = "model") =>
+  fillPlaceholders((opt.endGcode && opt.endGcode.trim()) || DEFAULT_END_GCODE,
+    gcodeVars({ ...DEFAULTS, ...opt }, name)).split("\n");
 
 // --------------------------------------------------------------- preview
 
@@ -716,6 +1132,10 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
 
     z = (i + 1) * opt.layer;
     g.push(`;LAYER:${i}`, `G1 Z${z.toFixed(3)} F${opt.travel}`);
+    if (opt.layerGcode && opt.layerGcode.trim()) {
+      g.push(...fillPlaceholders(opt.layerGcode.trim(),
+        gcodeVars(opt, options.name || "model", { layernum: i + 1, z: z.toFixed(3) })).split("\n"));
+    }
 
     // Walls INNERMOST FIRST, outer wall last. The outer wall is the one the
     // part is measured on and the only one anybody sees, and it comes out
@@ -759,7 +1179,8 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
     }
     if (sparse.length && opt.infill > 0) {
       g.push(";TYPE:FILL");
-      const lines = await infillLines(sparse, opt.nozzle / opt.infill, 45 + (i % 2) * 90);
+      const lines = await fillPattern(sparse, opt.nozzle / opt.infill,
+        opt.infillPattern, i, zmin + i * opt.layer + opt.layer / 2);
       for (const seg of lines) run(seg, false, infillF, "infill");
     }
 
@@ -781,7 +1202,7 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
       for (const seg of lines) run(seg, false, infillF, "support");
     }
   }
-  g.push(...gcodeFooter());
+  g.push(...gcodeFooter(opt, options.name || "model"));
 
   const mm3 = (mm) => +(mm * opt.layer * opt.nozzle).toFixed(1);
   return {
