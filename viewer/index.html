@@ -685,6 +685,24 @@
       border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
       font: 11.5px system-ui, sans-serif; cursor: pointer;
     }
+    /* The format list is a fixed 218px, so on a phone it eats the whole
+       dialog and leaves the description and the option pickers a column too
+       narrow to read. Stack them instead of squeezing. */
+    @media (max-width: 620px) {
+      #export-dialog { flex-direction: column; }
+      #exp-list {
+        flex: 0 0 auto; max-height: 32vh;
+        border-right: 0; border-bottom: 1px solid var(--border);
+      }
+      #exp-side { overflow-y: auto; }
+      #exp-preview { height: 130px; }
+      /* Once the side column scrolls, its children are flex items that will
+         happily shrink below their own text and let it spill over whatever
+         is underneath. The description wraps to several lines at this width,
+         so it has to keep its natural height. */
+      #exp-desc, #exp-opts, #exp-actions { flex: none; }
+      #exp-actions { margin-top: 4px; }
+    }
     #exp-actions { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
     #exp-actions button {
       cursor: pointer; font: 600 12.5px system-ui, sans-serif; padding: 7px 18px; border-radius: 7px;
@@ -1238,6 +1256,18 @@
           <!-- Slicer settings. Nozzle drives the whole slice: wall spacing,
                the outer offset that sets the finished size, and how much
                filament each bead carries. -->
+          <!-- Retraction belongs to the extruder, not the part: a Bowden tube
+               has a metre of springy filament to unload and needs centimetres
+               of pull where a direct drive needs a millimetre. This also sets
+               the bed the G-code gets centred on. -->
+          <label id="printer-row" hidden title="Sets retraction, z-hop and the bed the part is centred on">
+            <span>Printer</span>
+            <select id="slice-printer">
+              <option value="bambu" selected>Bambu Lab — X1 / P1 / A1</option>
+              <option value="ender_dd">Ender 3 S1 / V3 — direct drive</option>
+              <option value="ender_bowden">Ender 3 / Pro / V2 — Bowden</option>
+            </select>
+          </label>
           <label id="nozzle-row" hidden title="The nozzle actually fitted to the printer">
             <span>Nozzle</span>
             <select id="slice-nozzle">
@@ -1265,6 +1295,26 @@
               <option value="3" selected>3</option>
               <option value="4">4</option>
               <option value="5">5</option>
+            </select>
+          </label>
+          <label id="infill-row" hidden title="How dense the buried inside is — none of it is visible">
+            <span>Infill</span>
+            <select id="slice-infill">
+              <option value="0">0% — hollow shell</option>
+              <option value="0.1">10% — light</option>
+              <option value="0.15" selected>15% — standard</option>
+              <option value="0.25">25% — sturdy</option>
+              <option value="0.4">40% — strong</option>
+              <option value="1">100% — solid</option>
+            </select>
+          </label>
+          <label id="skin-row" hidden title="Solid layers closing the top and bottom faces">
+            <span>Skin</span>
+            <select id="slice-skin">
+              <option value="0">none — open top and bottom</option>
+              <option value="2">2 layers</option>
+              <option value="4" selected>4 layers — standard</option>
+              <option value="6">6 layers</option>
             </select>
           </label>
           <label id="plate-row" hidden title="Where a 3MF lands: the model is centred on a plate this size">
@@ -7662,20 +7712,33 @@ ${joined}`)(...vs);
           }
           if (!tris.length) throw new Error("nothing to slice — build the model first");
           const nozzle = +$("slice-nozzle").value, layer = +$("slice-layer").value;
-          const walls = +$("slice-walls").value;
+          const walls = +$("slice-walls").value, infill = +$("slice-infill").value;
+          const skin = +$("slice-skin").value;
+          // The printer preset carries retraction, z-hop and the bed size the
+          // part gets centred on — all facts about the machine, not the model.
+          const printer = sl.PRINTERS[$("slice-printer").value] || sl.PRINTERS.bambu;
           const { gcode, stats } = await sl.sliceToGcode(tris,
-            { name: base, nozzle, layer, walls },
-            (done, all) => { if (done % 25 === 0) setStatus("busy", `Slicing… layer ${done}/${all}`); });
+            { name: base, nozzle, layer, walls, infill, topLayers: skin, bottomLayers: skin,
+              retract: printer.retract, retractSpeed: printer.retractSpeed, zhop: printer.zhop,
+              bedX: printer.bedX, bedY: printer.bedY },
+            (done, all, phase) => {
+              if (done % 25 === 0) setStatus("busy", `${phase}… ${done}/${all}`);
+            });
           size = download(`${base}.gcode`, gcode, "text/plain");
           // A layer taller than about 75% of the nozzle will not bond to the one
           // below. Say it here rather than let it print and fail.
           const tall = layer > nozzle * 0.75;
+          const hrs = Math.floor(stats.minutes / 60), mins = Math.round(stats.minutes % 60);
+          const grams = (stats.filamentMm3 * 1.24 / 1000).toFixed(1);   // PLA, 1.24 g/cm3
           fixnote.innerHTML = `<span style="color:var(--muted3)">`
             + `<b>${nozzle}mm</b> nozzle · <b>${layer}mm</b> layers · `
             + `<b>${stats.layers}</b> of them, <b>${stats.staggeredLayers}</b> staggered · `
-            + `<b>${stats.wallsPerLayer}</b> walls · ${stats.filamentMm}mm of filament `
-            + `(${stats.filamentMm3}mm³). Outer wall fixed, inner walls alternate by `
-            + `${(nozzle / 2).toFixed(2)}mm. Walls only — no infill or solid top, so treat this as a shell.`
+            + `<b>${stats.wallsPerLayer}</b> walls · <b>${Math.round(infill * 100)}%</b> infill · `
+            + `<b>${skin}</b>-layer skin.<br>`
+            + `Walls ${stats.wallMm3}mm³ · skin ${stats.solidMm3}mm³ · infill ${stats.infillMm3}mm³ · `
+            + `<b>${grams}g</b> of PLA, roughly <b>${hrs ? `${hrs}h ` : ""}${mins}m</b> · `
+            + `${stats.retractions} retractions. Centred on the ${printer.bedX}×${printer.bedY} bed. `
+            + `Outer wall fixed, inner walls alternate by ${(nozzle / 2).toFixed(2)}mm.`
             + (tall ? ` <b style="color:var(--warn, #e0a030)">A ${layer}mm layer is tall for a `
               + `${nozzle}mm nozzle — under ${(nozzle * 0.75).toFixed(2)}mm bonds far better.</b>` : "")
             + `</span>`;
@@ -7707,7 +7770,7 @@ ${joined}`)(...vs);
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
       "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
-      gcode: { kind: "mono", desc: "Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Walls only — no infill or solid top yet.", opts: ["nozzle-row", "layer-row", "walls-row"] },
+      gcode: { kind: "mono", desc: "Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Solid top and bottom, sparse infill, retraction, and centred on the bed. No supports — overhangs are on you.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "skin-row"] },
       step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
       svg: { kind: "lines", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
@@ -7868,7 +7931,8 @@ ${joined}`)(...vs);
         b.classList.toggle("sel", b.dataset.fmt === fmt);
       }
       $("exp-desc").textContent = spec.desc;
-      for (const row of ["mf-colour-row", "plate-row", "nozzle-row", "layer-row", "walls-row"]) {
+      for (const row of ["mf-colour-row", "plate-row", "printer-row", "nozzle-row",
+        "layer-row", "walls-row", "infill-row", "skin-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
       }
       renderExportPreview(fmt);
@@ -7903,9 +7967,12 @@ ${joined}`)(...vs);
     // Slicer settings persist: the nozzle fitted to your printer is a fact
     // about the machine, not a per-export decision.
     for (const [id, key, dflt] of [
+      ["slice-printer", "brepcode-printer", "bambu"],
       ["slice-nozzle", "brepcode-nozzle", "0.4"],
       ["slice-layer", "brepcode-layer", "0.2"],
       ["slice-walls", "brepcode-walls", "3"],
+      ["slice-infill", "brepcode-infill", "0.15"],
+      ["slice-skin", "brepcode-skin", "4"],
     ]) {
       const el = $(id);
       const saved = localStorage.getItem(key);
