@@ -698,6 +698,38 @@ console.log("\nsupport thresholds\n");
     String(far.stats.supportLayers));
 }
 
+console.log("\nsupport styles, and arc overhangs\n");
+{
+  const tee = [...box(10, 10, 10, 15, 15, 0), ...box(40, 40, 6, 0, 0, 10)];
+  const fins = await sliceToGcode(tee, { walls: 2, supports: true, supportStyle: "fins" });
+  const grid = await sliceToGcode(tee, { walls: 2, supports: true, supportStyle: "grid" });
+  check("grid support lays down more than fins do",
+    grid.stats.supportMm > fins.stats.supportMm * 1.5,
+    `${fins.stats.supportMm} vs ${grid.stats.supportMm}`);
+  check("both still tag as support",
+    fins.gcode.includes(";TYPE:SUPPORT") && grid.gcode.includes(";TYPE:SUPPORT"));
+
+  // Arc overhangs replace the tower entirely: nothing to remove afterwards,
+  // so there must be NO support material at all, and bridge moves instead.
+  const arc = await sliceToGcode(tee, { walls: 2, supports: true, supportStyle: "arc" });
+  check("arc mode builds no support tower", arc.stats.supportMm === 0, String(arc.stats.supportMm));
+  check("...it prints the overhang itself instead",
+    arc.stats.arcMm > 0 && arc.gcode.includes(";TYPE:BRIDGE"), String(arc.stats.arcMm));
+  check("...on the layer where the slab starts, not throughout",
+    arc.stats.arcLayers > 0 && arc.stats.arcLayers < 6, String(arc.stats.arcLayers));
+  check("arcs run slower than the walls do", (() => {
+    const ls = arc.gcode.split("\n");
+    const i = ls.indexOf(";TYPE:BRIDGE");
+    const f = /F(\d+)/.exec(ls.slice(i + 1, i + 8).find((l) => /^G1 X\S+ Y\S+ E/.test(l)));
+    return f && +f[1] < DEFAULTS.feed;
+  })());
+  check("every arc kind has a colour", PREVIEW_COLOURS.BRIDGE);
+
+  // a shape with nothing overhanging gets no arcs at all
+  const plain = await sliceToGcode(box(40, 40, 20), { walls: 2, supports: true, supportStyle: "arc" });
+  check("a plain box gets no arcs", plain.stats.arcMm === 0 && plain.stats.arcLayers === 0);
+}
+
 console.log("\nstagger can be turned off\n");
 {
   const off = await sliceToGcode(box(40, 40, 20), { walls: 3, stagger: false, infill: 0 });

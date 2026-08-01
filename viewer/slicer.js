@@ -661,8 +661,12 @@ export const PRINTERS = {
     label: "Creality Ender 3 S1 / V3 — direct drive", bedX: 220, bedY: 220,
     retract: 1.0, retractSpeed: 40, zhop: 0.2,
   },
-  ender5: {
-    label: "Creality Ender 5 / Plus", bedX: 220, bedY: 220,
+  ender5_pro: {
+    label: "Creality Ender 5 / 5 Pro", bedX: 220, bedY: 220,
+    retract: 4.0, retractSpeed: 45, zhop: 0.2,
+  },
+  ender5_plus: {
+    label: "Creality Ender 5 Plus", bedX: 350, bedY: 350,
     retract: 4.0, retractSpeed: 45, zhop: 0.2,
   },
   cr10: {
@@ -743,6 +747,7 @@ export const DEFAULTS = {
   supportXY: 0.7,      // sideways gap so it does not weld itself to the model
   supportZ: 1,         // layers of air underneath the overhang
   supportDensity: 0.12,
+  supportStyle: "fins", // fins | grid | arc
   supportMinArea: 4,   // mm2 — under this it is slice noise, not an overhang
   // Painted regions, in MODEL coordinates, as [x0, y0, x1, y1]. Blocked wins
   // over forced, because "definitely not here" is the one you reach for when
@@ -934,6 +939,60 @@ export async function planSupports(layers, opt) {
   return out;
 }
 
+export const SUPPORT_STYLES = {
+  fins: "Fins — thin walls, snap off easily",
+  grid: "Grid — cross-hatched, holds more",
+  arc: "Arc overhangs — no support at all",
+};
+
+// Arc overhangs: printing the overhang ITSELF instead of building a tower
+// under it.
+//
+// The trick, from the Arc Overhang project, is that a bead does not need
+// something directly beneath it — it needs something beneath PART of it. So
+// starting from the material that IS supported and creeping outward one bead
+// at a time, every new arc lands on the arc before it, and a hole or a ledge
+// closes itself over open air with nothing underneath and nothing to remove
+// afterwards.
+//
+// It is the same offsetting the walls already use, run outward instead of in,
+// which is why it costs almost nothing to have. It only works where the
+// overhang is reachable from supported material — a shape floating entirely
+// in mid-air still needs a real column, so this is offered as an alternative
+// style rather than a replacement.
+export async function planArcOverhangs(layers, opt) {
+  const n = layers.length;
+  const out = new Array(n).fill(null).map(() => []);
+  if (!opt.supports || opt.supportStyle !== "arc") return out;
+  const reach = opt.layer * Math.tan((opt.supportAngle * Math.PI) / 180);
+
+  for (let i = 1; i < n; i++) {
+    const here = layers[i]?.outline, below = layers[i - 1]?.outline;
+    if (!here?.length || !below?.length) continue;
+    const held = await offsetLoops(below, reach);
+    if (!held.length) continue;
+    let over = await differenceLoops(here, held);
+    over = over.filter((p) => Math.abs(polyArea(p)) >= opt.supportMinArea);
+    if (!over.length) continue;
+
+    let cur = await intersectLoops(here, held);       // what this layer stands on
+    if (!cur.length) continue;
+    const rings = [];
+    for (let k = 0; k < 160; k++) {
+      const grown = await offsetLoops(cur, opt.nozzle);
+      if (!grown.length) break;
+      // the BOUNDARY of the grown region is the arc; only the stretch of it
+      // lying over open air is worth printing
+      const arc = await clipOpen(grown.map((p) => [...p, p[0]]), over);
+      if (!arc.length) break;
+      rings.push(...arc);
+      cur = await unionLoops(cur, grown);
+    }
+    out[i] = orderRuns(rings);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- G-code
 
 // E per mm of travel: the bead this move lays down, expressed as filament.
@@ -1032,6 +1091,7 @@ export const PREVIEW_COLOURS = {
   SOLID: "#e8c547",
   FILL: "#4d7fd6",
   SUPPORT: "#22b8a6",
+  BRIDGE: "#d264e0",
 };
 
 // tris: [[[x,y,z] x3], …] world space. Returns { gcode, stats }.
@@ -1039,7 +1099,10 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
   const opt = { ...DEFAULTS, ...options };
   const { layers, nLayers, zmin, zmax } = await planLayers(tris, opt,
     (d, t) => onProgress?.(d, t, "Slicing"));
-  const supports = await planSupports(layers, opt);
+  const supports = opt.supportStyle === "arc"
+    ? new Array(layers.length).fill(null).map(() => [])
+    : await planSupports(layers, opt);
+  const arcs = await planArcOverhangs(layers, opt);
 
   // The model sits wherever it sat in the editor, which for anything built
   // with center:true means straddling the origin — half of it at negative X,
@@ -1066,8 +1129,8 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
   const g = gcodeHeader(opt, options.name || "model");
   let E = 0, last = null, z = 0;
   let extrude = 0, travel = 0, retracts = 0, staggered = 0, minutes = 0;
-  let supportLayers = 0;
-  const dist = { wall: 0, solid: 0, infill: 0, support: 0, travel: 0 };
+  let supportLayers = 0, arcLayers = 0;
+  const dist = { wall: 0, solid: 0, infill: 0, support: 0, arc: 0, travel: 0 };
   const wallCounts = [];
 
   let outline = [];
@@ -1198,8 +1261,24 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
       // reaches the top or bottom of a circle. It also means the whole
       // support lifts off as one piece instead of crumbling into strands.
       for (const path of supports[i]) run(path, true, infillF, "support");
-      const lines = await infillLines(supports[i], opt.nozzle / opt.supportDensity, 0);
+      const pitch = opt.nozzle / opt.supportDensity;
+      // Grid keeps the FULL pitch in both directions rather than halving each
+      // — for infill that would change the density you asked for, but support
+      // is not a density, it is a scaffold, and "holds more" has to actually
+      // put more under the part.
+      const lines = opt.supportStyle === "grid"
+        ? [...await infillLines(supports[i], pitch, 0),
+          ...await infillLines(supports[i], pitch, 90)]
+        : await infillLines(supports[i], pitch, 0);
       for (const seg of lines) run(seg, false, infillF, "support");
+    }
+
+    // Arc overhangs go down last and SLOWLY, with the fan hard on: each arc is
+    // bridging onto the one before it and has to freeze before the next lands.
+    if (arcs[i]?.length) {
+      g.push(";TYPE:BRIDGE");
+      arcLayers++;
+      for (const seg of arcs[i]) run(seg, false, Math.round(opt.feed * 0.4), "arc");
     }
   }
   g.push(...gcodeFooter(opt, options.name || "model"));
@@ -1220,6 +1299,9 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
       solidMm: +dist.solid.toFixed(1),
       infillMm: +dist.infill.toFixed(1),
       supportMm: +dist.support.toFixed(1),
+      arcMm: +dist.arc.toFixed(1),
+      arcMm3: mm3(dist.arc),
+      arcLayers,
       travelMm: +dist.travel.toFixed(1),
       wallMm3: mm3(dist.wall),
       solidMm3: mm3(dist.solid),

@@ -644,9 +644,12 @@
     }
     #export-modal[hidden] { display: none; }
     #export-dialog {
-      display: flex; width: min(620px, calc(100vw - 24px)); max-height: min(560px, calc(100vh - 24px));
+      display: flex; width: min(680px, calc(100vw - 24px));
+      height: min(640px, calc(100vh - 24px)); max-height: calc(100vh - 24px);
       background: var(--header); border: 1px solid var(--border); border-radius: 12px;
       box-shadow: 0 12px 44px rgba(0,0,0,.6); overflow: hidden;
+      /* drag the corner — a long option list is easier to read taller */
+      resize: both; min-width: 380px; min-height: 320px;
     }
     #exp-list { flex: 0 0 218px; overflow-y: auto; border-right: 1px solid var(--border); padding-bottom: 8px; }
     #exp-list button {
@@ -661,7 +664,21 @@
       padding: 10px 14px 3px; font-size: 10px; letter-spacing: .09em;
       text-transform: uppercase; color: var(--muted2);
     }
-    #exp-side { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; gap: 9px; }
+    /* The side column is fixed-height, so anything that can grow has to be
+       given its own scroll — otherwise the option rows push the Export button
+       off the bottom of the dialog and overlap the description on the way.
+       Preview, scrubber and actions stay put; only the middle scrolls. */
+    #exp-side { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 12px 14px; gap: 9px; }
+    #exp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; }
+    #exp-preview, #exp-scrub, #exp-desc, #exp-opts, #exp-actions { flex: none; }
+    #exp-more { border-top: 1px solid var(--border); padding-top: 5px; margin-top: 2px; }
+    #exp-more > summary {
+      cursor: pointer; font: 11.5px system-ui, sans-serif; color: var(--muted3);
+      padding: 3px 0; list-style: none; user-select: none;
+    }
+    #exp-more > summary::before { content: "▸ "; }
+    #exp-more[open] > summary::before { content: "▾ "; }
+    #exp-more[hidden] { display: none; }
     #exp-preview {
       position: relative; height: 190px; flex: none; display: grid; place-items: center;
       border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--bg);
@@ -728,6 +745,13 @@
       border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
       font: 11.5px system-ui, sans-serif; cursor: pointer;
     }
+    /* The OPEN list of a native select is drawn by the OS, not by this CSS —
+       on Windows it comes up white, and light text on it is unreadable. The
+       only thing that reaches it is color-scheme, which tells the platform to
+       draw its own widgets dark; the explicit option colours cover the
+       browsers that honour those instead. */
+    select, option, optgroup, input, textarea { color-scheme: dark; }
+    option, optgroup { background: #161b26; color: #e8ecf5; }
     /* The format list is a fixed 218px, so on a phone it eats the whole
        dialog and leaves the description and the option pickers a column too
        narrow to read. Stack them instead of squeezing. */
@@ -1299,7 +1323,7 @@
         <button data-fmt="obj">OBJ<small>DCC / games</small></button>
         <button data-fmt="3mf">3MF<small>modern slicers</small></button>
         <button data-fmt="3mf-parts">3MF — parts laid out<small>print plate(s)</small></button>
-        <button data-fmt="gcode">G-code — brick walls<small>staggered perimeters</small></button>
+        <button data-fmt="gcode">G-code — brick walls<small>BETA · staggered perimeters</small></button>
         <div class="exp-group">CAD (solid)</div>
         <button data-fmt="step">STEP<small>faceted</small></button>
         <button data-fmt="step-curved">STEP — curved<small>true surfaces</small></button>
@@ -1320,6 +1344,7 @@
           <button id="slice-popout" title="Open a big preview, and paint where support may go">Enlarge</button>
           <div id="slice-legend"></div>
         </div>
+        <div id="exp-body">
         <p id="exp-desc"></p>
         <div id="exp-opts">
           <!-- 3MF colour handling: the default keeps colours as filaments; the
@@ -1344,9 +1369,23 @@
           <label id="printer-row" hidden title="Sets retraction, z-hop and the bed the part is centred on">
             <span>Printer</span>
             <select id="slice-printer">
-              <option value="bambu" selected>Bambu Lab — X1 / P1 / A1</option>
-              <option value="ender_dd">Ender 3 S1 / V3 — direct drive</option>
-              <option value="ender_bowden">Ender 3 / Pro / V2 — Bowden</option>
+              <option value="bambu_x1" selected>Bambu Lab X1 / X1C</option>
+              <option value="bambu_p1">Bambu Lab P1P / P1S</option>
+              <option value="bambu_a1">Bambu Lab A1</option>
+              <option value="bambu_a1m">Bambu Lab A1 mini</option>
+              <option value="ender3">Creality Ender 3 / Pro / V2 — Bowden</option>
+              <option value="ender3_s1">Creality Ender 3 S1 / V3 — direct drive</option>
+              <option value="ender5_pro">Creality Ender 5 / 5 Pro</option>
+              <option value="ender5_plus">Creality Ender 5 Plus</option>
+              <option value="cr10">Creality CR-10 / CR-10S</option>
+              <option value="k1">Creality K1 / K1 Max</option>
+              <option value="prusa_mk4">Prusa MK4 / MK3S</option>
+              <option value="prusa_mini">Prusa MINI / MINI+</option>
+              <option value="voron_250">Voron 2.4 / Trident 250</option>
+              <option value="voron_350">Voron 2.4 / Trident 350</option>
+              <option value="sovol_sv06">Sovol SV06 / SV06 Plus</option>
+              <option value="anycubic_kobra">Anycubic Kobra 2</option>
+              <option value="generic">Generic / Marlin</option>
             </select>
           </label>
           <label id="nozzle-row" hidden title="The nozzle actually fitted to the printer">
@@ -1425,17 +1464,23 @@
               <option value="on">on — hold up the overhangs</option>
             </select>
           </label>
+          <label id="style-row" hidden title="How the support is built — or whether it is built at all">
+            <span>Style</span>
+            <select id="slice-style">
+              <option value="fins" selected>Fins — thin walls, snap off easily</option>
+              <option value="grid">Grid — cross-hatched, holds more</option>
+              <option value="arc">Arc overhangs — no support at all</option>
+            </select>
+          </label>
           <!-- Measured from VERTICAL: 0 is a straight wall, 90 is a ceiling.
                A smaller number supports more, because it tolerates less lean. -->
           <label id="angle-row" hidden title="How far past vertical a surface may lean before it needs holding up">
             <span>Overhang</span>
-            <select id="slice-angle">
-              <option value="30">past 30° — support almost everything</option>
-              <option value="40">past 40° — cautious</option>
-              <option value="45" selected>past 45° — standard</option>
-              <option value="55">past 55° — trust the printer</option>
-              <option value="65">past 65° — bridges only</option>
-            </select>
+            <input type="range" id="slice-angle" min="10" max="85" step="1" value="45"
+              style="flex:1;min-width:70px;accent-color:var(--accent);cursor:pointer">
+            <input type="number" id="slice-angle-num" min="10" max="85" step="1" value="45"
+              style="flex:0 0 56px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 5px;font:11.5px system-ui,sans-serif">
+            <span style="flex:0 0 auto">°</span>
           </label>
           <label id="gcode-row" hidden title="Runs verbatim, with {temp} {bed} {layer} {z} {layernum} {name} filled in">
             <span>G-code</span>
@@ -1465,6 +1510,7 @@
               <option value="0x0">Don't move it — keep model coordinates</option>
             </select>
           </label>
+        </div>
         </div>
         <div id="exp-actions">
           <button id="exp-cancel">Cancel</button>
@@ -7912,7 +7958,7 @@ ${joined}`)(...vs);
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
       "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
-      gcode: { kind: "slice", desc: "Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "angle-row", "gcode-row", "gcode-text-row"] },
+      gcode: { kind: "slice", desc: "BETA — check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
       svg: { kind: "lines", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
@@ -7974,6 +8020,7 @@ ${joined}`)(...vs);
         nozzle: +$("slice-nozzle").value, layer: +$("slice-layer").value,
         walls: +$("slice-walls").value, infill: +$("slice-infill").value,
         infillPattern: $("slice-pattern").value,
+        supportStyle: $("slice-style").value,
         topLayers: +$("slice-skin").value, bottomLayers: +$("slice-skin").value,
         stagger: $("slice-stagger").value === "on",
         supports: $("slice-supports").value === "on",
@@ -7983,6 +8030,38 @@ ${joined}`)(...vs);
         retract: p.retract, retractSpeed: p.retractSpeed, zhop: p.zhop,
         bedX: p.bedX, bedY: p.bedY,
       };
+    }
+
+    // Settings that most exports never touch go behind a disclosure, so the
+    // half-dozen that matter — and the Export button — fit without scrolling.
+    const ADVANCED_ROWS = ["walls-row", "skin-row", "pattern-row", "stagger-row",
+      "style-row", "angle-row", "gcode-row", "gcode-text-row"];
+    {
+      const more = document.createElement("details");
+      more.id = "exp-more";
+      more.hidden = true;
+      more.appendChild(Object.assign(document.createElement("summary"),
+        { textContent: "More settings" }));
+      $("exp-opts").appendChild(more);
+      for (const id of ADVANCED_ROWS) { const el = $(id); if (el) more.appendChild(el); }
+    }
+
+    // The overhang threshold reads better as a slider you can also type into:
+    // 45 is the answer most of the time, but the whole point of exposing it is
+    // that some parts want 38 or 62 and a five-option list cannot say that.
+    {
+      const rng = $("slice-angle"), num = $("slice-angle-num");
+      const sync = (from, to) => {
+        const v = Math.max(10, Math.min(85, Math.round(+from.value || 45)));
+        rng.value = String(v); num.value = String(v);
+        localStorage.setItem("brepcode-angle", String(v));
+        void to;
+      };
+      rng.addEventListener("input", () => sync(rng, num));
+      num.addEventListener("input", () => sync(num, rng));
+      for (const el of [rng, num]) el.addEventListener("change", () => renderExportPreview(expSel));
+      const saved = localStorage.getItem("brepcode-angle");
+      if (saved) { rng.value = saved; num.value = saved; }
     }
 
     // Custom G-code lives in localStorage rather than in the dialog, because
@@ -8111,6 +8190,26 @@ ${joined}`)(...vs);
     }
 
     $("slice-scrub").addEventListener("input", () => drawSliceLayer(+$("slice-scrub").value));
+
+    // A canvas drawn before the dialog has laid out gets its size wrong and
+    // comes out blank, which looks exactly like a preview that failed. Rather
+    // than guess at the right moment to draw, redraw whenever the box settles
+    // on a size — including when the dialog is resized by its corner.
+    if (window.ResizeObserver) {
+      let last = "";
+      new ResizeObserver(() => {
+        const cv = $("exp-slice");
+        if (cv.hidden || !sliceCache) return;
+        const k = `${cv.clientWidth}x${cv.clientHeight}`;
+        if (k === last || !cv.clientWidth) return;
+        last = k;
+        drawSliceLayer(+$("slice-scrub").value);
+      }).observe($("exp-preview"));
+      new ResizeObserver(() => {
+        if ($("slice-modal").hidden || !sliceCache) return;
+        drawBig(+$("slice-scrub-big").value);
+      }).observe($("slice-stage"));
+    }
 
     // ---- the enlarged preview, and the support brush ----------------------
     // Painted regions are kept in MODEL coordinates so they survive a change
@@ -8422,9 +8521,11 @@ ${joined}`)(...vs);
       $("exp-desc").textContent = spec.desc;
       for (const row of ["mf-colour-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row",
-        "supports-row", "angle-row", "gcode-row", "gcode-text-row"]) {
+        "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
       }
+      // the disclosure only earns its space if something is inside it
+      $("exp-more").hidden = !ADVANCED_ROWS.some((id) => !$(id).hidden);
       // never let a preview failure become an unhandled rejection — that is
       // what turns a broken preview into a blank box with no explanation
       renderExportPreview(fmt).catch((e) => console.error("preview", e));
@@ -8468,7 +8569,7 @@ ${joined}`)(...vs);
       ["slice-supports", "brepcode-supports", "off"],
       ["slice-pattern", "brepcode-pattern", "rectilinear"],
       ["slice-stagger", "brepcode-stagger", "on"],
-      ["slice-angle", "brepcode-angle", "45"],
+      ["slice-style", "brepcode-support-style", "fins"],
     ]) {
       const el = $(id);
       const saved = localStorage.getItem(key);
@@ -8520,6 +8621,17 @@ ${joined}`)(...vs);
       return (84 + 50 * n === buf.byteLength) ? n : null;     // only trust a exact match
     }
     const MESH_HEAVY = 80000;     // past here: skip cosmetic cleanup, warn it'll be slow
+    // What Simplify aims for by default. Deliberately far below MESH_HEAVY:
+    // the kernel CAN sew 80k triangles into a solid, but on a Benchy that took
+    // minutes where 20k took seconds, and the difference is invisible once
+    // you are drilling holes in it.
+    const SIMPLIFY_TARGET = 25000;
+    // Monochrome, and stroked like the rest of the toolbar rather than being
+    // the one emoji in a set of line icons.
+    const ICON_WAND = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" '
+      + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" '
+      + 'style="vertical-align:-1px;margin-right:5px"><path d="M2 14 10 6"/><path d="M9 5l2 2"/>'
+      + '<path d="M12.5 1.5v3M11 3h3"/><path d="M4.5 2v2M3.5 3h2"/></svg>';
     const MESH_REFUSE = 180000;   // past here: the kernel build freezes the tab
 
     // Drop facets that are exact duplicates of one already kept. Two copies of
@@ -8794,36 +8906,72 @@ ${joined}`)(...vs);
     // reached. Cleared the moment the preview stops being what's on screen.
     let pendingSimplify = null;
 
-    function offerSimplify(el, fileName, objects, partColours, off, totalTris) {
+    function offerSimplify(el, fileName, objects, partColours, off, totalTris) {   // eslint-disable-line no-param-reassign
       pendingSimplify = { fileName, objects, partColours, off, totalTris };
-      const label = `🪄 Simplify to ~${(MESH_HEAVY / 1000).toFixed(0)}k & edit`;
       const buttons = [];
+      // How far to decimate is the one decision that governs how long this
+      // takes, so it is offered rather than assumed. 25k keeps a Benchy
+      // recognisable and builds in seconds; 80k is closer to the original and
+      // can take minutes for the kernel to sew.
+      const simpTarget = document.createElement("select");
+      simpTarget.style.cssText = "font:inherit;margin-left:6px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 5px;cursor:pointer";
+      for (const [v, t] of [[15000, "15k — fastest"], [25000, "25k — recommended"],
+        [40000, "40k — finer"], [80000, "80k — slow to build"]]) {
+        const o = document.createElement("option");
+        o.value = String(v);
+        o.textContent = t;
+        if (v === SIMPLIFY_TARGET) o.selected = true;
+        simpTarget.appendChild(o);
+      }
+      simpTarget.title = "How many triangles to keep. More detail costs kernel time, steeply.";
+      const label = `${ICON_WAND} Simplify & edit`;
 
       async function runSimplify() {
+        const target = +(simpTarget.value || SIMPLIFY_TARGET);
         for (const x of buttons) { x.disabled = true; x.textContent = "simplifying…"; }
-        setStatus("busy", `Decimating ${(totalTris / 1000).toFixed(0)}k → ~${(MESH_HEAVY / 1000).toFixed(0)}k triangles…`);
+        setStatus("busy", `Decimating ${(totalTris / 1000).toFixed(0)}k → ~${(target / 1000).toFixed(0)}k triangles…`);
         await new Promise((r) => setTimeout(r, 30));
+        // Decimation is under a second; it is the KERNEL that takes the time,
+        // and how long depends steeply on how many triangles it is handed.
+        // Measured on a 226k Benchy: the decimation was 0.6s at every target,
+        // and the solid build was seconds at 20k but minutes at 80k.
+        const t0 = performance.now();
+        const tick = setInterval(() => {
+          const s = Math.round((performance.now() - t0) / 1000);
+          if (s > 4) setStatus("busy", `Building the solid — ${s}s. Heavier meshes take longer; the preview stays until it lands.`);
+        }, 1000);
         try {
           const S = await getSimplify();
-          const slim = await S.simplifyObjects(objects, MESH_HEAVY);
+          const slim = await S.simplifyObjects(objects, target);
           const kept = slim.reduce((n, o) => n + o.positions.length / 9, 0);
-          clearMeshPreview();                 // also drops the bar and the offer
+          // The full-resolution triangles are dead weight from here on — a
+          // Benchy's are 16MB of Float64 — and the sewing that follows runs on
+          // this thread. Drop them before it starts rather than making the
+          // kernel share the heap with a copy nobody will read again.
+          objects = null;
           setStatus("busy", `Building ${slim.length} simplified part${slim.length === 1 ? "" : "s"} (${Math.round(kept / 1000)}k triangles)…`);
           await new Promise((r) => setTimeout(r, 30));
           await importObjectsAsParts(fileName, slim, partColours, off);
-          hint.innerHTML = `Simplified <b>${esc(fileName)}</b> from ${(totalTris / 1000).toFixed(0)}k to <b>${Math.round(kept / 1000)}k</b> triangles — it's a real, editable solid now: drill it, cut it, export it. Detail drift is capped at ~1% of the part's size.`;
+          // ...and ONLY now drop the preview. Clearing it first left the
+          // screen empty for however long the kernel took, which reads as a
+          // crash rather than as work in progress.
+          clearMeshPreview();
+          hint.innerHTML = `Simplified <b>${esc(fileName)}</b> from ${(totalTris / 1000).toFixed(0)}k to <b>${Math.round(kept / 1000)}k</b> triangles in ${((performance.now() - t0) / 1000).toFixed(1)}s — it's a real, editable solid now: drill it, cut it, export it. Detail drift is capped at ~1% of the part's size.`;
         } catch (e) {
           for (const x of buttons) { x.disabled = false; x.textContent = "simplify failed — try again"; }
           setStatus("err", `Simplify failed: ${String(e?.message || e).slice(0, 90)}`);
+        } finally {
+          clearInterval(tick);
         }
       }
 
       const b = document.createElement("button");
       b.style.cssText = "font:inherit;padding:2px 9px;margin-left:6px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer;font-weight:700";
-      b.textContent = label;
+      b.innerHTML = label;
       b.addEventListener("click", runSimplify);
       buttons.push(b);
       el.appendChild(b);
+      el.appendChild(simpTarget);
 
       // ...and the same offer under the editor, where the Build button lives.
       // A hint line is easy to scroll past or overwrite; this is the one place
@@ -8832,8 +8980,8 @@ ${joined}`)(...vs);
       buildBarNote.innerHTML = `<b>${esc(fileName)}</b> — ${(totalTris / 1000).toFixed(0)}k triangles is `
         + `too dense to build as a solid. Simplify it to drill, cut and boolean it.`;
       buildNowBtn.disabled = false;
-      buildNowBtn.textContent = label;
-      buildNowBtn.title = `Decimate to about ${(MESH_HEAVY / 1000).toFixed(0)}k triangles and open it as an editable solid`;
+      buildNowBtn.innerHTML = label;
+      buildNowBtn.title = "Decimate the mesh and open it as an editable solid";
       buildNowBtn.onclick = runSimplify;
       buttons.push(buildNowBtn);
     }
