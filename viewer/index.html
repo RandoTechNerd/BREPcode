@@ -676,6 +676,12 @@
       color: var(--muted3); background: color-mix(in srgb, var(--bg) 78%, transparent);
       padding: 1px 7px; border-radius: 999px; pointer-events: none;
     }
+    #exp-slice { width: 100%; height: 100%; display: block; }
+    #exp-scrub { display: flex; align-items: center; gap: 10px; }
+    #exp-scrub[hidden] { display: none; }
+    #slice-scrub { flex: 1; min-width: 0; accent-color: var(--accent); cursor: pointer; }
+    #slice-legend { display: flex; gap: 7px; flex-wrap: wrap; font: 10px system-ui, sans-serif; color: var(--muted3); }
+    #slice-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 3px; }
     #exp-desc { margin: 0; font: 12px system-ui, sans-serif; color: var(--muted3); min-height: 44px; }
     #exp-opts label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font: 11.5px system-ui, sans-serif; color: var(--muted2); }
     #exp-opts label[hidden] { display: none; }
@@ -1238,7 +1244,15 @@
       </div>
       <div id="exp-side">
         <div id="exp-preview"><canvas id="exp-canvas" width="300" height="190"></canvas><pre id="exp-code" hidden></pre>
+          <canvas id="exp-slice" hidden></canvas>
           <span id="exp-preview-tag"></span></div>
+        <!-- Scrubbing the actual sliced toolpath, layer by layer. This is the
+             only way to check where support landed before committing four
+             hours of printing to finding out. -->
+        <div id="exp-scrub" hidden>
+          <input type="range" id="slice-scrub" min="0" max="0" value="0" aria-label="Layer">
+          <div id="slice-legend"></div>
+        </div>
         <p id="exp-desc"></p>
         <div id="exp-opts">
           <!-- 3MF colour handling: the default keeps colours as filaments; the
@@ -1315,6 +1329,13 @@
               <option value="2">2 layers</option>
               <option value="4" selected>4 layers — standard</option>
               <option value="6">6 layers</option>
+            </select>
+          </label>
+          <label id="supports-row" hidden title="Pillars under overhangs steeper than 45°, with a gap so they snap off">
+            <span>Support</span>
+            <select id="slice-supports">
+              <option value="off" selected>off — nothing overhangs</option>
+              <option value="on">on — hold up overhangs past 45°</option>
             </select>
           </label>
           <label id="plate-row" hidden title="Where a 3MF lands: the model is centred on a plate this size">
@@ -7711,19 +7732,26 @@ ${joined}`)(...vs);
             }
           }
           if (!tris.length) throw new Error("nothing to slice — build the model first");
-          const nozzle = +$("slice-nozzle").value, layer = +$("slice-layer").value;
-          const walls = +$("slice-walls").value, infill = +$("slice-infill").value;
-          const skin = +$("slice-skin").value;
           // The printer preset carries retraction, z-hop and the bed size the
           // part gets centred on — all facts about the machine, not the model.
           const printer = sl.PRINTERS[$("slice-printer").value] || sl.PRINTERS.bambu;
-          const { gcode, stats } = await sl.sliceToGcode(tris,
-            { name: base, nozzle, layer, walls, infill, topLayers: skin, bottomLayers: skin,
-              retract: printer.retract, retractSpeed: printer.retractSpeed, zhop: printer.zhop,
-              bedX: printer.bedX, bedY: printer.bedY },
-            (done, all, phase) => {
-              if (done % 25 === 0) setStatus("busy", `${phase}… ${done}/${all}`);
-            });
+          const o = sliceOptions(sl);
+          const nozzle = o.nozzle, layer = o.layer, walls = o.walls;
+          const infill = o.infill, skin = o.topLayers;
+          // The preview already sliced exactly this, so hand back that file
+          // rather than doing it twice — and it guarantees you get what you
+          // were just looking at.
+          const key = JSON.stringify(o) + "|" + modelSignature();
+          let gcode, stats;
+          if (sliceCache && sliceCache.key === key) {
+            ({ gcode, stats } = sliceCache);
+            gcode = gcode.replace(/^; preview\b/, `; ${base}`);
+          } else {
+            ({ gcode, stats } = await sl.sliceToGcode(tris, { name: base, ...o },
+              (done, all, phase) => {
+                if (done % 25 === 0) setStatus("busy", `${phase}… ${done}/${all}`);
+              }));
+          }
           size = download(`${base}.gcode`, gcode, "text/plain");
           // A layer taller than about 75% of the nozzle will not bond to the one
           // below. Say it here rather than let it print and fail.
@@ -7735,8 +7763,9 @@ ${joined}`)(...vs);
             + `<b>${stats.layers}</b> of them, <b>${stats.staggeredLayers}</b> staggered · `
             + `<b>${stats.wallsPerLayer}</b> walls · <b>${Math.round(infill * 100)}%</b> infill · `
             + `<b>${skin}</b>-layer skin.<br>`
-            + `Walls ${stats.wallMm3}mm³ · skin ${stats.solidMm3}mm³ · infill ${stats.infillMm3}mm³ · `
-            + `<b>${grams}g</b> of PLA, roughly <b>${hrs ? `${hrs}h ` : ""}${mins}m</b> · `
+            + `Walls ${stats.wallMm3}mm³ · skin ${stats.solidMm3}mm³ · infill ${stats.infillMm3}mm³`
+            + (stats.supportMm3 ? ` · support ${stats.supportMm3}mm³ on ${stats.supportLayers} layers` : "")
+            + ` · <b>${grams}g</b> of PLA, roughly <b>${hrs ? `${hrs}h ` : ""}${mins}m</b> · `
             + `${stats.retractions} retractions. Centred on the ${printer.bedX}×${printer.bedY} bed. `
             + `Outer wall fixed, inner walls alternate by ${(nozzle / 2).toFixed(2)}mm.`
             + (tall ? ` <b style="color:var(--warn, #e0a030)">A ${layer}mm layer is tall for a `
@@ -7770,7 +7799,7 @@ ${joined}`)(...vs);
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
       "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
-      gcode: { kind: "mono", desc: "Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Solid top and bottom, sparse infill, retraction, and centred on the bed. No supports — overhangs are on you.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "skin-row"] },
+      gcode: { kind: "slice", desc: "Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "skin-row", "supports-row"] },
       step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
       svg: { kind: "lines", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
@@ -7820,13 +7849,154 @@ ${joined}`)(...vs);
       }
     }
 
+    // ---- sliced-toolpath preview -----------------------------------------
+    // The slice is cached against the settings AND the model, so scrubbing
+    // layers is instant and the Export button can hand back the very file the
+    // preview drew instead of doing the work twice.
+    let sliceCache = null;
+
+    function sliceOptions(sl) {
+      const p = sl.PRINTERS[$("slice-printer").value] || sl.PRINTERS.bambu;
+      return {
+        nozzle: +$("slice-nozzle").value, layer: +$("slice-layer").value,
+        walls: +$("slice-walls").value, infill: +$("slice-infill").value,
+        topLayers: +$("slice-skin").value, bottomLayers: +$("slice-skin").value,
+        supports: $("slice-supports").value === "on",
+        retract: p.retract, retractSpeed: p.retractSpeed, zhop: p.zhop,
+        bedX: p.bedX, bedY: p.bedY,
+      };
+    }
+
+    // Cheap identity for "is this the same model as last time" — triangle
+    // count alone would miss a move, so fold in the bounds too.
+    function modelSignature() {
+      let n = 0;
+      const b = new THREE.Box3();
+      for (const m of modelGroup.children) {
+        if (!m.isMesh || !m.visible) continue;
+        const g = m.geometry;
+        n += (g.index ? g.index.count : g.attributes.position.count) / 3;
+        m.updateWorldMatrix(true, false);
+        b.union(new THREE.Box3().setFromObject(m));
+      }
+      return `${n}|${b.min.toArray().concat(b.max.toArray()).map((v) => v.toFixed(2)).join(",")}`;
+    }
+
+    function worldTriangles() {
+      const tris = [], tv = new THREE.Vector3();
+      for (const m of modelGroup.children) {
+        if (!m.isMesh || !m.visible) continue;
+        const g = m.geometry, p = g.attributes.position, ix = g.index;
+        m.updateWorldMatrix(true, false);
+        const cnt = ix ? ix.count : p.count;
+        for (let i = 0; i < cnt; i += 3) {
+          const t = [];
+          for (let k = 0; k < 3; k++) {
+            const j = ix ? ix.getX(i + k) : i + k;
+            tv.set(p.getX(j), p.getY(j), p.getZ(j)).applyMatrix4(m.matrixWorld);
+            t.push([tv.x, tv.y, tv.z]);
+          }
+          tris.push(t);
+        }
+      }
+      return tris;
+    }
+
+    function drawSliceLayer(idx) {
+      const cv = $("exp-slice"), tag = $("exp-preview-tag");
+      if (!sliceCache || !sliceCache.view.layers.length) return;
+      const { layers, bounds } = sliceCache.view;
+      const i = Math.max(0, Math.min(layers.length - 1, idx));
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      const w = cv.clientWidth || 300, h = cv.clientHeight || 190;
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      const ctx = cv.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = 10;
+      const bw = (bounds.maxX - bounds.minX) || 1, bh = (bounds.maxY - bounds.minY) || 1;
+      const s = Math.min((w - 2 * pad) / bw, (h - 2 * pad) / bh);
+      const ox = (w - bw * s) / 2, oy = (h - bh * s) / 2;
+      const X = (x) => ox + (x - bounds.minX) * s;
+      // flip Y: the bed's +Y goes away from you, the canvas's goes down
+      const Y = (y) => h - (oy + (y - bounds.minY) * s);
+
+      const palette = sliceCache.colours;
+      const stroke = (runs, colour, width, alpha) => {
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = width;
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
+        let last = null;
+        for (const r of runs) {
+          const c = colour || palette[r.type] || "#9fb4d6";
+          if (c !== last) { if (last) ctx.stroke(); ctx.beginPath(); ctx.strokeStyle = c; last = c; }
+          ctx.moveTo(X(r.pts[0][0]), Y(r.pts[0][1]));
+          for (let k = 1; k < r.pts.length; k++) ctx.lineTo(X(r.pts[k][0]), Y(r.pts[k][1]));
+        }
+        if (last) ctx.stroke();
+        ctx.globalAlpha = 1;
+      };
+
+      // the layer underneath, ghosted, so it is obvious what this pass is
+      // being laid on top of — and, on a staggered layer, that the inner
+      // walls really did move while the outer one did not
+      if (i > 0) stroke(layers[i - 1].runs, "#7f8ba6", Math.max(1, s * 0.3), 0.25);
+      stroke(layers[i].runs, null, Math.max(1, s * sliceCache.opt.nozzle * 0.85), 1);
+
+      const kinds = [...new Set(layers[i].runs.map((r) => r.type))];
+      $("slice-legend").innerHTML = kinds.map((k) =>
+        `<span><i style="background:${palette[k] || "#9fb4d6"}"></i>${k.toLowerCase().replace("wall-", "")}</span>`).join("");
+      tag.textContent = `layer ${i + 1} / ${layers.length} · z ${layers[i].z.toFixed(2)}mm`;
+    }
+
+    async function renderSlicePreview(mine) {
+      const tag = $("exp-preview-tag"), scrub = $("slice-scrub");
+      const sl = await getSlicer();
+      if (mine !== expToken) return;
+      const opt = sliceOptions(sl);
+      const key = JSON.stringify(opt) + "|" + modelSignature();
+      if (sliceCache && sliceCache.key === key) {
+        scrub.max = String(Math.max(0, sliceCache.view.layers.length - 1));
+        drawSliceLayer(+scrub.value);
+        return;
+      }
+      const tris = worldTriangles();
+      if (!tris.length) { tag.textContent = "nothing to slice yet"; return; }
+      tag.textContent = "slicing…";
+      $("slice-legend").innerHTML = "";
+      const { gcode, stats } = await sl.sliceToGcode(tris, { name: "preview", ...opt },
+        (d, t, phase) => { if (mine === expToken && d % 20 === 0) tag.textContent = `${phase}… ${d}/${t}`; });
+      if (mine !== expToken) return;
+      const view = sl.parseGcode(gcode);
+      sliceCache = { key, view, gcode, stats, opt, colours: sl.PREVIEW_COLOURS };
+      scrub.max = String(Math.max(0, view.layers.length - 1));
+      // Land somewhere worth looking at rather than on the solid bottom
+      // layer, which looks identical on every model. If there is support,
+      // the middle of it is the thing people opened the preview to check.
+      if (+scrub.value > view.layers.length - 1) scrub.value = "0";
+      if (!+scrub.value) {
+        const sup = view.layers.filter((L) => L.runs.some((r) => r.type === "SUPPORT"));
+        scrub.value = String(sup.length
+          ? sup[Math.floor(sup.length / 2)].i
+          : Math.floor(view.layers.length / 2));
+      }
+      drawSliceLayer(+scrub.value);
+    }
+
+    $("slice-scrub").addEventListener("input", () => drawSliceLayer(+$("slice-scrub").value));
+
     async function renderExportPreview(fmt) {
       const mine = ++expToken;
       const spec = EXPORT_FORMATS[fmt] || EXPORT_FORMATS.stl;
       const canvas = $("exp-canvas"), codeBox = $("exp-code"), tag = $("exp-preview-tag");
       const asCode = spec.kind === "code";
-      canvas.hidden = asCode;
+      const asSlice = spec.kind === "slice";
+      $("exp-slice").hidden = !asSlice;
+      $("exp-scrub").hidden = !asSlice;
+      canvas.hidden = asCode || asSlice;
       codeBox.hidden = !asCode;
+      if (asSlice) { await renderSlicePreview(mine); return; }
       if (asCode) {
         codeBox.textContent = (code.value.trim() || "// nothing here yet — the file saves whatever the editor holds")
           .split("\n").slice(0, 13).join("\n");
@@ -7932,7 +8102,7 @@ ${joined}`)(...vs);
       }
       $("exp-desc").textContent = spec.desc;
       for (const row of ["mf-colour-row", "plate-row", "printer-row", "nozzle-row",
-        "layer-row", "walls-row", "infill-row", "skin-row"]) {
+        "layer-row", "walls-row", "infill-row", "skin-row", "supports-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
       }
       renderExportPreview(fmt);
@@ -7973,6 +8143,7 @@ ${joined}`)(...vs);
       ["slice-walls", "brepcode-walls", "3"],
       ["slice-infill", "brepcode-infill", "0.15"],
       ["slice-skin", "brepcode-skin", "4"],
+      ["slice-supports", "brepcode-supports", "off"],
     ]) {
       const el = $(id);
       const saved = localStorage.getItem(key);

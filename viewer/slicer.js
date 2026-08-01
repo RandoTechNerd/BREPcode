@@ -125,6 +125,13 @@ export async function intersectLoops(a, b) {
   return boolOp(a, b, C.ClipType.ctIntersection);
 }
 
+export async function unionLoops(a, b) {
+  if (!a.length) return b;
+  if (!b.length) return a;
+  const C = await getClipper();
+  return boolOp(a, b, C.ClipType.ctUnion);
+}
+
 // ------------------------------------------------------------- offsetting
 
 // Inset (negative delta) or outset the loops. Clipper handles the part people
@@ -342,6 +349,12 @@ export const DEFAULTS = {
   bedX: 256,
   bedY: 256,           // 0 disables centring and leaves model coordinates alone
   stagger: true,       // the whole point
+  supports: false,     // off unless asked: most parts do not need them
+  supportAngle: 45,    // degrees from vertical before an overhang needs holding
+  supportXY: 0.7,      // sideways gap so it does not weld itself to the model
+  supportZ: 1,         // layers of air underneath the overhang
+  supportDensity: 0.12,
+  supportMinArea: 4,   // mm2 — under this it is slice noise, not an overhang
 };
 
 // One layer's worth of wall loops, outermost first.
@@ -456,6 +469,57 @@ function polyArea(p) {
   return s / 2;
 }
 
+// -------------------------------------------------------------- supports
+
+// Where the part needs holding up, layer by layer.
+//
+// A layer can only reach so far past the one below it before the bead has
+// nothing underneath: at `supportAngle` degrees off vertical that reach is
+// `layer * tan(angle)`, which at the usual 45 degrees is exactly one layer
+// height. Anything beyond it is an overhang, and an overhang needs a column
+// standing under it all the way down to the bed or to whatever part of the
+// model is underneath.
+//
+// So this walks DOWNWARD, accumulating: each layer adds its own overhangs to
+// what it inherited from above, and subtracts the model, which is what makes
+// a column stop when it lands on something solid instead of tunnelling
+// through it.
+export async function planSupports(layers, opt) {
+  const n = layers.length;
+  const out = new Array(n).fill(null).map(() => []);
+  if (!opt.supports) return out;
+
+  const reach = opt.layer * Math.tan((opt.supportAngle * Math.PI) / 180);
+  const need = new Array(n).fill(null).map(() => []);
+  let carry = [];
+  for (let i = n - 2; i >= 0; i--) {
+    const here = layers[i]?.outline || [];
+    const above = layers[i + 1]?.outline || [];
+    const held = here.length ? await offsetLoops(here, reach) : [];
+    carry = await unionLoops(carry, await differenceLoops(above, held));
+    if (here.length) carry = await differenceLoops(carry, here);
+    carry = carry.filter((p) => Math.abs(polyArea(p)) >= opt.supportMinArea);
+    need[i] = carry;
+  }
+
+  // Drop the whole column by supportZ layers. That leaves the top of it
+  // sitting in air under the overhang, which is the only reason the support
+  // ever comes off again — printed hard against the underside it fuses, and
+  // you are chiselling.
+  for (let i = 0; i < n; i++) {
+    const src = need[Math.min(n - 1, i + opt.supportZ)];
+    if (!src.length) continue;
+    const here = layers[i]?.outline || [];
+    const clear = here.length ? await offsetLoops(here, opt.supportXY) : [];
+    let s = await differenceLoops(src, clear);
+    // pull in half a bead, the same as the outer wall does, so the strand
+    // sits inside the overhang's footprint instead of half hanging off it
+    s = await offsetLoops(s, -opt.nozzle / 2);
+    out[i] = s.filter((p) => Math.abs(polyArea(p)) >= opt.supportMinArea);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- G-code
 
 // E per mm of travel: the bead this move lays down, expressed as filament.
@@ -491,11 +555,75 @@ export const gcodeFooter = () => [
   "M84 ; steppers off",
 ];
 
+// --------------------------------------------------------------- preview
+
+// Read the emitted G-code back into per-layer polylines for drawing.
+//
+// Parsing the FILE rather than keeping the paths around as they are generated
+// is the whole point: a preview built from a separate code path can disagree
+// with what actually gets printed, and then it is worse than no preview at
+// all. This one can only show what is in the file.
+export function parseGcode(text) {
+  const layers = [];
+  let cur = null, type = "WALL-OUTER", path = null;
+  let x = 0, y = 0;
+  for (const line of text.split("\n")) {
+    if (line.startsWith(";LAYER:")) {
+      cur = { i: +line.slice(7), z: 0, runs: [] };
+      layers.push(cur);
+      path = null;
+      continue;
+    }
+    if (line.startsWith(";TYPE:")) { type = line.slice(6); path = null; continue; }
+    if (!cur || (line[0] !== "G") || (line[1] !== "0" && line[1] !== "1")) continue;
+    const mx = /X(-?[\d.]+)/.exec(line), my = /Y(-?[\d.]+)/.exec(line);
+    if (!mx || !my) {
+      // a bare Z is the layer change; a bare E is a retract or a prime
+      const mz = /Z(-?[\d.]+)/.exec(line);
+      if (mz && !cur.z) cur.z = +mz[1];
+      path = null;
+      continue;
+    }
+    const nx = +mx[1], ny = +my[1];
+    if (line[1] === "1" && / E-?[\d.]+/.test(line)) {
+      if (!path) { path = { type, pts: [[x, y]] }; cur.runs.push(path); }
+      path.pts.push([nx, ny]);
+    } else {
+      path = null;                       // a travel breaks the run
+    }
+    x = nx; y = ny;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const L of layers) {
+    for (const r of L.runs) {
+      for (const [px, py] of r.pts) {
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+    }
+  }
+  return { layers, bounds: layers.length ? { minX, minY, maxX, maxY } : null };
+}
+
+// What each kind of extrusion is drawn as. Support is deliberately the odd
+// one out — the point of looking at a preview is usually to check where it
+// landed.
+export const PREVIEW_COLOURS = {
+  "WALL-OUTER": "#ff8a3d",
+  "WALL-INNER": "#b3592a",
+  SOLID: "#e8c547",
+  FILL: "#4d7fd6",
+  SUPPORT: "#22b8a6",
+};
+
 // tris: [[[x,y,z] x3], …] world space. Returns { gcode, stats }.
 export async function sliceToGcode(tris, options = {}, onProgress) {
   const opt = { ...DEFAULTS, ...options };
   const { layers, nLayers, zmin, zmax } = await planLayers(tris, opt,
     (d, t) => onProgress?.(d, t, "Slicing"));
+  const supports = await planSupports(layers, opt);
 
   // The model sits wherever it sat in the editor, which for anything built
   // with center:true means straddling the origin — half of it at negative X,
@@ -522,7 +650,8 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
   const g = gcodeHeader(opt, options.name || "model");
   let E = 0, last = null, z = 0;
   let extrude = 0, travel = 0, retracts = 0, staggered = 0, minutes = 0;
-  const dist = { wall: 0, solid: 0, infill: 0, travel: 0 };
+  let supportLayers = 0;
+  const dist = { wall: 0, solid: 0, infill: 0, support: 0, travel: 0 };
   const wallCounts = [];
 
   let outline = [];
@@ -633,6 +762,24 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
       const lines = await infillLines(sparse, opt.nozzle / opt.infill, 45 + (i % 2) * 90);
       for (const seg of lines) run(seg, false, infillF, "infill");
     }
+
+    // Support goes down LAST, and at one fixed angle rather than alternating
+    // with the layer. Strands that stack in the same plane make a row of thin
+    // vertical fins: rigid enough to hold an overhang up, and they snap
+    // sideways with a thumbnail. Cross-hatching them would make a solid block
+    // welded to the part, which holds just as well and never comes off.
+    if (supports[i]?.length) {
+      g.push(";TYPE:SUPPORT");
+      supportLayers++;
+      // One loop round each island first. Without it the fill lines stop a
+      // whole spacing short of the extremes — on a round overhang the rim
+      // ends up with nothing under it, because a horizontal line never
+      // reaches the top or bottom of a circle. It also means the whole
+      // support lifts off as one piece instead of crumbling into strands.
+      for (const path of supports[i]) run(path, true, infillF, "support");
+      const lines = await infillLines(supports[i], opt.nozzle / opt.supportDensity, 0);
+      for (const seg of lines) run(seg, false, infillF, "support");
+    }
   }
   g.push(...gcodeFooter());
 
@@ -651,10 +798,13 @@ export async function sliceToGcode(tris, options = {}, onProgress) {
       wallMm: +dist.wall.toFixed(1),
       solidMm: +dist.solid.toFixed(1),
       infillMm: +dist.infill.toFixed(1),
+      supportMm: +dist.support.toFixed(1),
       travelMm: +dist.travel.toFixed(1),
       wallMm3: mm3(dist.wall),
       solidMm3: mm3(dist.solid),
       infillMm3: mm3(dist.infill),
+      supportMm3: mm3(dist.support),
+      supportLayers,
       filamentMm: +E.toFixed(1),
       filamentMm3: +(E * Math.PI * (opt.filament / 2) ** 2).toFixed(1),
       minutes: +minutes.toFixed(1),

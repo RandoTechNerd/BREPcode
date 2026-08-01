@@ -6,7 +6,8 @@ import ClipperLib from "clipper-lib";
 import {
   sliceTriangles, chainLoops, offsetLoops, wallsForLayer, sliceToGcode,
   normalizeLoops, differenceLoops, intersectLoops, infillLines,
-  planLayers, skinFor, crossesLoops, ePerMm, DEFAULTS, PRINTERS, _setClipper,
+  planLayers, skinFor, crossesLoops, planSupports, parseGcode, PREVIEW_COLOURS,
+  ePerMm, DEFAULTS, PRINTERS, _setClipper,
 } from "../viewer/slicer.js";
 
 let pass = 0, fail = 0;
@@ -406,6 +407,114 @@ console.log("\nit has to land on the bed\n");
   check("a different bed centres somewhere else",
     /X90\.\d/.test(ender.gcode) || ender.gcode.includes("X 110"),
     "expected a 220mm bed to centre at 110");
+}
+
+console.log("\nsupports\n");
+{
+  // A T: a 10mm post with a 40mm slab sitting on top of it. The slab hangs
+  // 15mm out past the post on every side with nothing under it, which is the
+  // textbook case for support.
+  const tee = [...box(10, 10, 10, 15, 15, 0), ...box(40, 40, 6, 0, 0, 10)];
+  const on = { ...DEFAULTS, walls: 2, supports: true };
+  const { layers } = await planLayers(tee, on);
+  const sup = await planSupports(layers, on);
+
+  const at = (i) => Math.abs(netArea(sup[i] || []));
+  check("something is holding the slab up", at(20) > 500, String(at(20)));
+  check("...all the way down to the bed", at(2) > 500, String(at(2)));
+  check("the support stops where the slab starts",
+    at(60) === 0, String(at(60)));
+  // the post occupies the middle, so support has to be the ring around it
+  check("it goes round the post, not through it", (() => {
+    const a = at(20);
+    return a > 1000 && a < 1600 - 100;      // 1600 slab minus the 10x10 post and its gap
+  })(), String(at(20)));
+
+  // the gap underneath: the layer directly below the overhang must be clear
+  const overhangLayer = 50;                  // the slab starts at z=10 -> layer 50
+  check("there is a gap left under the overhang",
+    at(overhangLayer - 1) < at(overhangLayer - 3),
+    `${at(overhangLayer - 1)} vs ${at(overhangLayer - 3)}`);
+
+  const off = await planSupports(layers, { ...on, supports: false });
+  check("supports:false generates none", off.every((s) => !s.length));
+
+  // a plain box overhangs nothing
+  const plain = await planLayers(box(40, 40, 20), on);
+  const none = await planSupports(plain.layers, on);
+  check("a box needs no support at all", none.every((s) => !s.length));
+
+  // a 45 degree taper is self-supporting; a steeper one is not
+  const steps = (grow) => {
+    const t = [];
+    for (let k = 0; k < 40; k++) t.push(...box(10 + k * grow * 2, 40, 0.2, 20 - (10 + k * grow * 2) / 2, 0, k * 0.2));
+    return t;
+  };
+  const gentle = await planSupports((await planLayers(steps(0.2), on)).layers, on);
+  const steep = await planSupports((await planLayers(steps(0.9), on)).layers, on);
+  check("a 45 degree wall holds itself up", gentle.every((s) => !s.length));
+  check("...a much shallower one does not", steep.some((s) => s.length));
+
+  const { gcode, stats } = await sliceToGcode(tee, { walls: 2, supports: true });
+  check("support reaches the G-code", gcode.includes(";TYPE:SUPPORT") && stats.supportMm > 0,
+    String(stats.supportMm));
+  check("it is reported separately from the part",
+    stats.supportMm3 > 0 && stats.supportLayers > 20, String(stats.supportLayers));
+  const bare = await sliceToGcode(tee, { walls: 2, supports: false });
+  check("and it costs nothing when it is off",
+    !bare.gcode.includes(";TYPE:SUPPORT") && bare.stats.supportMm === 0);
+  check("...which is the default", DEFAULTS.supports === false);
+}
+
+console.log("\nthe preview reads back what was written\n");
+{
+  const tee = [...box(10, 10, 10, 15, 15, 0), ...box(40, 40, 6, 0, 0, 10)];
+  const { gcode, stats } = await sliceToGcode(tee,
+    { walls: 2, supports: true, name: "tee", ...PRINTERS.bambu });
+  const { layers, bounds } = parseGcode(gcode);
+
+  check("every layer came back", layers.length === stats.layers, String(layers.length));
+  check("the layer numbers are in order", layers.every((L, i) => L.i === i));
+  check("each layer knows its height", layers[10].z > 0 && layers[10].z < layers[40].z,
+    `${layers[10].z} vs ${layers[40].z}`);
+
+  const kinds = new Set(layers.flatMap((L) => L.runs.map((r) => r.type)));
+  check("it distinguishes the kinds of extrusion",
+    ["WALL-OUTER", "WALL-INNER", "SOLID", "FILL", "SUPPORT"].every((k) => kinds.has(k)),
+    [...kinds].join(","));
+  check("every kind has a colour to draw it in",
+    [...kinds].every((k) => PREVIEW_COLOURS[k]), [...kinds].join(","));
+
+  // The claim that makes the preview worth having: what it draws is the same
+  // material the printer will actually lay down, to the millimetre.
+  const drawn = layers.reduce((s, L) => s + L.runs.reduce((t, r) => {
+    for (let i = 1; i < r.pts.length; i++) {
+      t += Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]);
+    }
+    return t;
+  }, 0), 0);
+  const emitted = stats.wallMm + stats.solidMm + stats.infillMm + stats.supportMm;
+  check("the length it draws is the length that gets printed",
+    near(drawn, emitted, emitted * 0.001), `${drawn.toFixed(1)} vs ${emitted.toFixed(1)}`);
+
+  check("travels are not drawn as extrusions", layers.every((L) =>
+    L.runs.every((r) => r.pts.length >= 2)));
+  check("it reports bounds to draw inside",
+    bounds && bounds.maxX > bounds.minX && near(bounds.maxX - bounds.minX, 39.6, 0.1),
+    JSON.stringify(bounds));
+  check("a retract does not start a phantom run", !layers.some((L) =>
+    L.runs.some((r) => r.pts.some(([px, py]) => !Number.isFinite(px) || !Number.isFinite(py)))));
+
+  // support is what people actually open a preview to check
+  const supLayers = layers.filter((L) => L.runs.some((r) => r.type === "SUPPORT"));
+  check("support shows up on the layers it was planned for",
+    supLayers.length === stats.supportLayers, `${supLayers.length} vs ${stats.supportLayers}`);
+  // the tee is 16mm tall, so 80 layers: the slab's own body is the last 30
+  check("...and stops once the slab is reached",
+    !layers[70].runs.some((r) => r.type === "SUPPORT"));
+
+  check("an empty file parses to nothing rather than throwing",
+    parseGcode("").layers.length === 0 && parseGcode("").bounds === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
