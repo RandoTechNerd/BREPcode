@@ -4808,6 +4808,48 @@
       await rebuild();
     }
 
+    // How much material is actually on screen, by the divergence theorem over
+    // every visible triangle.
+    //
+    // Exists so a cutting tool can PROVE it cut. "Did that drill do anything?"
+    // is otherwise a question you answer by squinting at a render — a blind
+    // hole seen at a shallow angle and a boss standing proud of the surface
+    // look remarkably alike — and if the answer is no, nothing anywhere says
+    // so. A number settles it either way.
+    function modelVolume() {
+      let v = 0;
+      const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+      for (const m of modelGroup.children) {
+        if (!m.isMesh || !m.visible) continue;
+        m.updateWorldMatrix(true, false);
+        const g = m.geometry, p = g.attributes.position, ix = g.index;
+        if (!p) continue;
+        const n = ix ? ix.count : p.count;
+        for (let i = 0; i < n; i += 3) {
+          const j0 = ix ? ix.getX(i) : i, j1 = ix ? ix.getX(i + 1) : i + 1, j2 = ix ? ix.getX(i + 2) : i + 2;
+          a.set(p.getX(j0), p.getY(j0), p.getZ(j0)).applyMatrix4(m.matrixWorld);
+          b.set(p.getX(j1), p.getY(j1), p.getZ(j1)).applyMatrix4(m.matrixWorld);
+          c.set(p.getX(j2), p.getY(j2), p.getZ(j2)).applyMatrix4(m.matrixWorld);
+          v += a.dot(b.clone().cross(c)) / 6;
+        }
+      }
+      return Math.abs(v);
+    }
+
+    // Say what the cut actually took out — and say it loudly when it took out
+    // nothing, which is the case that used to look identical to success.
+    function reportCut(before, what, extra = "") {
+      const gone = before - modelVolume();
+      if (gone > 0.05) {
+        hint.innerHTML = `${what} — removed <b>${gone.toFixed(1)}mm³</b>. ${extra}`;
+        return true;
+      }
+      hint.innerHTML = `<b style="color:var(--warn,#e0a030)">Nothing was removed.</b> The cut is in `
+        + `the code but it took no material out — it missed the part, or it started outside it. `
+        + `Move the point, or add <code>through: true</code> to punch clean through. ${extra}`;
+      return false;
+    }
+
     // Replace just the model expression, leaving everything around it alone.
     function replaceModelExpr(next) {
       const span = modelExprSpan();
@@ -7074,8 +7116,11 @@ ${joined}`)(...vs);
       const m = /\bd:\s*(\d+(?:\.\d+)?)/.exec(code.value);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length, m.index + m[0].length);
       pushHistory();
-      buildAfterToolEdit();
-      hint.innerHTML = "Drilled a <b>4mm</b> hole on that face. Change <code>d</code> for width, <code>depth</code> for how deep (or <code>through: true</code> to punch clean through), then rebuild.";
+      const before = modelVolume();
+      buildAfterToolEdit().then(() => {
+        reportCut(before, "Drilled a <b>4mm</b> hole on that face",
+          "Change <code>d</code> for width, <code>depth</code> for how deep.");
+      });
     }
 
     renderer.domElement.addEventListener("pointerup", (e) => {
