@@ -8650,11 +8650,35 @@ ${joined}`)(...vs);
       return (84 + 50 * n === buf.byteLength) ? n : null;     // only trust a exact match
     }
     const MESH_HEAVY = 80000;     // past here: skip cosmetic cleanup, warn it'll be slow
-    // What Simplify aims for by default. Deliberately far below MESH_HEAVY:
-    // the kernel CAN sew 80k triangles into a solid, but on a Benchy that took
-    // minutes where 20k took seconds, and the difference is invisible once
-    // you are drilling holes in it.
-    const SIMPLIFY_TARGET = 25000;
+    // What Simplify aims for by default, and what each choice costs.
+    //
+    // The decimation is not the expensive part — it is 0.6s whatever you ask
+    // for. The cost is the KERNEL, which has to sew every triangle into its
+    // own BREP face, and that grows far faster than the triangle count does.
+    // Measured end to end on a 226k Benchy, by the app's own build timer:
+    //
+    //     2k ->  5.5s     5k -> 25.7s     10k -> 56.4s     25k -> minutes
+    //
+    // Doubling from 5k to 10k costs more than twice the time, and it keeps
+    // getting worse. So the default is low on purpose: the point of
+    // simplifying is to get something you can drill and boolean, and the
+    // detail you lose is not detail you were going to edit.
+    // ...and those are the numbers with nothing else on screen. Through the
+    // actual button, with the full-resolution preview still displayed behind
+    // it, 5k measured 39s rather than 26 — so the estimates below carry that
+    // overhead rather than the laboratory figure.
+    //
+    // The default is the fastest option on purpose. Simplify exists to make a
+    // mesh EDITABLE, and a Benchy you are about to drill a hole through does
+    // not need 5,000 triangles of hull curvature to do it with.
+    const SIMPLIFY_TARGET = 2000;
+    const SIMPLIFY_CHOICES = [
+      [2000, "2k — about 10 seconds"],
+      [5000, "5k — about 40 seconds"],
+      [10000, "10k — a minute and a half"],
+      [25000, "25k — several minutes"],
+    ];
+    const buildEstimate = (tris) => Math.max(3, Math.round(0.0000006 * tris * tris + 0.0035 * tris));
     // Monochrome, and stroked like the rest of the toolbar rather than being
     // the one emoji in a set of line icons.
     const ICON_WAND = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" '
@@ -8944,15 +8968,16 @@ ${joined}`)(...vs);
       // can take minutes for the kernel to sew.
       const simpTarget = document.createElement("select");
       simpTarget.style.cssText = "font:inherit;margin-left:6px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 5px;cursor:pointer";
-      for (const [v, t] of [[15000, "15k — fastest"], [25000, "25k — recommended"],
-        [40000, "40k — finer"], [80000, "80k — slow to build"]]) {
+      for (const [v, t] of SIMPLIFY_CHOICES) {
         const o = document.createElement("option");
         o.value = String(v);
         o.textContent = t;
         if (v === SIMPLIFY_TARGET) o.selected = true;
         simpTarget.appendChild(o);
       }
-      simpTarget.title = "How many triangles to keep. More detail costs kernel time, steeply.";
+      simpTarget.title = "How many triangles to keep. The decimation is instant either way — "
+        + "the wait is the kernel sewing each triangle into a face, and it grows faster than "
+        + "the count does.";
       const label = `${ICON_WAND} Simplify & edit`;
 
       async function runSimplify() {
@@ -8965,9 +8990,14 @@ ${joined}`)(...vs);
         // Measured on a 226k Benchy: the decimation was 0.6s at every target,
         // and the solid build was seconds at 20k but minutes at 80k.
         const t0 = performance.now();
+        const eta = buildEstimate(target);
         const tick = setInterval(() => {
           const s = Math.round((performance.now() - t0) / 1000);
-          if (s > 4) setStatus("busy", `Building the solid — ${s}s. Heavier meshes take longer; the preview stays until it lands.`);
+          if (s > 3) {
+            setStatus("busy", s < eta * 1.5
+              ? `Building the solid — ${s}s of roughly ${eta}s. The preview stays until it lands.`
+              : `Building the solid — ${s}s. Longer than the ~${eta}s estimate; it is still going.`);
+          }
         }, 1000);
         try {
           const S = await getSimplify();
