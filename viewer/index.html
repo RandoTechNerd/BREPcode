@@ -3982,16 +3982,64 @@
     // changes the SURFACE and nothing visible happens to the colour — silently.
     // That reads as "presets stopped working", which is exactly how it was
     // reported, and is why this note exists.
+    // Every colorize("#hex", \u2026) literal in the source, deduped.
+    const codeColourLiterals = () => [...new Set(
+      (code.value.match(/colorize\(\s*["']#[0-9a-fA-F]{3,8}["']/g) || [])
+        .map((s) => /#[0-9a-fA-F]{3,8}/.exec(s)[0].toLowerCase()))];
+
+    // Rewrite them. This edits the user's source, so it goes through history
+    // and can be undone like anything else they typed.
+    function recolourCodeLiterals(hex) {
+      const before = code.value;
+      const next = before.replace(/(colorize\(\s*["'])#[0-9a-fA-F]{3,8}(["'])/g, `$1${hex}$2`);
+      if (next === before) return false;
+      pushHistory(before);
+      code.value = next;
+      pushHistory();
+      return true;
+    }
+
+    // Why the colour picker appears to do nothing, and what to do about it.
+    //
+    // The base colour is only ever a FALLBACK: matForFeature() prefers a
+    // per-shape colour, whether set by right-clicking or written by colorize()
+    // in the code. Two very different sources, and the note used to offer one
+    // remedy for both \u2014 "Clear those", which only ever cleared the right-click
+    // overrides. On a colour 3MF, whose import writes colorize() into the
+    // source, that button was a dead end: the warning was right, the button
+    // did nothing, and the model stayed the colour it came in as. Which reads
+    // exactly like the picker being stuck.
     function noteColourOverride() {
       const box = $("mat-override-note");
       if (!box) return;
+      const mine = Object.keys(featureColors).length;
+      const fromCode = codeColourLiterals();
       const n = new Set([...Object.keys(featureColors), ...Object.keys(codeColors)]).size;
       if (!n) { box.style.display = "none"; return; }
       box.style.display = "";
-      box.innerHTML = `Surface applied \u2014 but <b>${n}</b> shape${n === 1 ? " has its" : "s have their"} `
-        + `own colour, so the colour here is hidden. `
-        + `<button id="mat-override-reset" class="hist-btn" style="font-size:11px; padding:1px 7px">Clear those</button>`;
-      $("mat-override-reset").addEventListener("click", () => $("mat-clearcolor").click());
+      const bits = [`<b>${n}</b> shape${n === 1 ? " has its" : "s have their"} own colour, `
+        + `so the colour picked here is hidden.`];
+      if (mine) {
+        bits.push(`<button id="mat-override-reset" class="hist-btn" style="font-size:11px;padding:1px 7px">`
+          + `Clear my ${mine} override${mine === 1 ? "" : "s"}</button>`);
+      }
+      if (fromCode.length) {
+        bits.push(`${fromCode.length === 1 ? "One colour comes" : `${fromCode.length} colours come`} from `
+          + `<code>colorize()</code> in the code${fromCode.length > 1 ? " \u2014 recolouring merges them into one" : ""}. `
+          + `<button id="mat-recolour-code" class="hist-btn" style="font-size:11px;padding:1px 7px">`
+          + `Recolour the code</button>`);
+      }
+      box.innerHTML = bits.join(" ");
+      $("mat-override-reset")?.addEventListener("click", () => $("mat-clearcolor").click());
+      $("mat-recolour-code")?.addEventListener("click", async () => {
+        if (!recolourCodeLiterals(mat.color)) return;
+        setStatus("busy", "\u2026");
+        await rebuild();
+        noteColourOverride();
+        hint.innerHTML = `Recoloured <b>${fromCode.length}</b> <code>colorize()</code> `
+          + `${fromCode.length === 1 ? "call" : "calls"} to <b>${mat.color}</b> in the code. `
+          + `Undo puts the old colours back.`;
+      });
     }
 
     function applyPreset(p) {
