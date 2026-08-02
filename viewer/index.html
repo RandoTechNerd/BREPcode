@@ -1333,6 +1333,7 @@
         <button data-fmt="bcode">BREPcode<small>editable source</small></button>
         <button data-fmt="share">Share link<small>the model, in a URL</small></button>
         <button data-fmt="slicer" id="slicer-btn" style="display:none">Open in slicer<small>OrcaSlicer</small></button>
+        <button data-fmt="publish" id="publish-btn" style="display:none">Publish to the site<small>brepcode.com/&lt;name&gt;</small></button>
         <div class="exp-group">Mesh</div>
         <button data-fmt="stl">STL<small>3D printing</small></button>
         <button data-fmt="obj">OBJ<small>DCC / games</small></button>
@@ -2014,6 +2015,16 @@
           if (v && st && /built/.test(v.title)) st.textContent = "· " + v.title.replace("built ", "");
         });
       </script></div>
+        <!-- The way in to the private side: the stashed-model gallery and
+             publishing to the site. It used to be a triple-tap on the folder
+             button, which is not something anyone finds twice. -->
+        <button id="gate-btn" class="hist-btn" title="Private stash and publishing — password">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px">
+            <rect x="4" y="10.5" width="16" height="10" rx="2"/>
+            <path id="gate-shackle" d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>
+          </svg>
+        </button>
         <button id="about-docs-btn" class="hist-btn" title="What can it do?">Docs</button>
         <button class="close-btn" data-close="about" title="Close">&times;</button>
       </header>
@@ -2093,10 +2104,23 @@
              relative to the manifest) — or from any URL pasted in the Source
              box, which is where the Lovable Cloud endpoint goes when it lands.
              Nothing here is fetched until the reveal. -->
+        <!-- Asked for by the lock, shown in its place until it is answered. -->
+        <div id="gate-ask" style="display:none">
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+            <b id="gate-ask-title">Private stash</b>
+            <input id="gate-pw" type="password" autocomplete="off" placeholder="password"
+                   style="flex:1; min-width:120px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font:12px system-ui, sans-serif" />
+            <button id="gate-go" class="hist-btn" style="font-size:11.5px">Unlock</button>
+            <button id="gate-cancel" class="hist-btn" style="font-size:11.5px">Cancel</button>
+          </div>
+          <div class="note" id="gate-note" style="margin-top:6px"></div>
+        </div>
         <div id="secret-lib" style="display:none">
           <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
           <div style="display:flex; align-items:center; gap:8px">
             <b>🔒 Stashed models</b>
+            <button id="gate-lock" class="hist-btn" title="Lock it again" style="font-size:11.5px">Lock</button>
             <button id="secret-refresh" class="hist-btn" title="Reload the list">&#8635;</button>
             <span class="note" id="secret-status" style="flex:1"></span>
           </div>
@@ -8245,6 +8269,28 @@ ${joined}`)(...vs);
           fixnote.innerHTML = `<span style="color:var(--muted3)">Embed on a site: `
             + `<code>&lt;model-viewer src="${base}.glb" camera-controls auto-rotate exposure="${L.exposure}" shadow-intensity="${L.shadow}" style="background:${L.bg}"&gt;&lt;/model-viewer&gt;</code> `
             + `+ the model-viewer script. Or export <b>Embed page</b> for a ready-made HTML.</span>`;
+        } else if (fmt === "publish") {
+          // The endpoint lives in quicksave.js, which the SITE serves beside
+          // this page — never in here, so no credential is ever in the bundle
+          // or the exe. Running locally there is nothing to publish to, and
+          // saying so plainly beats a request that fails somewhere in the dark.
+          const pub = window.__brepPublish || window.brepcodePublish;
+          if (typeof pub !== "function") {
+            throw new Error("publishing is only wired up on brepcode.com — this build has no endpoint "
+              + "(quicksave.js is served by the site, not bundled). Use Share link or save a .bcode.");
+          }
+          setStatus("busy", "Publishing…");
+          const text = await window.__brepQuicksaveProject();
+          const thumb = window.__brepQuicksaveSnapshot(900, 600);
+          const res = await pub({ name: base, text, thumb });
+          if (!res?.ok) throw new Error(res?.error || "the site refused it");
+          size = text.length;
+          const url = res.url || `${location.origin}/${res.slug || base}`;
+          try { await navigator.clipboard.writeText(url); } catch { /* no permission */ }
+          fixnote.innerHTML = `<span style="color:var(--muted3)">Published — `
+            + `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a> (link copied). `
+            + `It is in your stash now; publish again to update it.</span>`;
+          loadSecretLibrary();
         } else if (fmt === "share") {
           // No upload and no account: the recipe travels in the fragment, which
           // browsers never send to the server, so a part designed for a client
@@ -8355,7 +8401,9 @@ ${joined}`)(...vs);
           size = download(`${base}.html`, embedPageHTML(glb, base, lookFromMaterial()), "text/html");
           fixnote.innerHTML = `<span style="color:var(--muted3)">Open the HTML anywhere, or drop it on your site — the model, its colours and the lighting are baked in and shown with the free model-viewer component.</span>`;
         }
-        setStatus("ok", `${fmt.toUpperCase()} downloaded — ${(size / 1024).toFixed(0)} KB, ${lastSolids.length} solid${lastSolids.length === 1 ? "" : "s"}.`);
+        // "share" and "publish" put a link on the clipboard; nothing lands in Downloads.
+        const verb = fmt === "share" ? "link copied" : fmt === "publish" ? "published" : "downloaded";
+        setStatus("ok", `${fmt.toUpperCase()} ${verb} — ${(size / 1024).toFixed(0)} KB, ${lastSolids.length} solid${lastSolids.length === 1 ? "" : "s"}.`);
       } catch (e) {
         setStatus("err", `${fmt.toUpperCase()} export failed: ${String(e?.message || e).slice(0, 90)}`);
       }
@@ -8373,6 +8421,7 @@ ${joined}`)(...vs);
       bcode: { kind: "code", desc: "The project itself — your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
       share: { kind: "code", desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
       slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
+      publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link." },
       stl: { kind: "mono", desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
@@ -10338,15 +10387,116 @@ ${joined}`)(...vs);
       }
     }
 
-    function revealSecretLibrary() {
+    // ---- the private side, behind one password ----------------------------
+    //
+    // Two things live back here: the stashed-model gallery, and publishing a
+    // model to the site. Both were reachable only by triple-tapping the folder
+    // button, which is not a thing anyone discovers twice — so it is a lock in
+    // the (i) card now, which is at least a door you can see.
+    //
+    // What the password IS: the key to a lockbox blob kept in localStorage. It
+    // is never stored, only used to decrypt a known token; the right password
+    // is the one that produces it. First use sets it.
+    //
+    // What this is NOT: a security boundary. Every byte of this page is on the
+    // reader's machine and anything client-side can be walked around. It keeps
+    // the private features out of a visitor's way. The thing that actually has
+    // to refuse a stranger is the endpoint on the other side of
+    // __brepQuicksaveProject — this side never sees a credential, by design.
+    const GATE_KEY = "brepcode-gate", GATE_OPEN = "brepcode-gate-open";
+    const GATE_TOKEN = "brepcode-private-v1";
+    let gateOpen = false;
+
+    function paintGate() {
+      $("publish-btn").style.display = gateOpen ? "" : "none";
+      $("gate-btn").classList.toggle("active", gateOpen);
+      $("gate-btn").title = gateOpen
+        ? "Private stash unlocked — click to lock again"
+        : "Private stash and publishing — password";
+      // the shackle swings open when it is
+      const sh = $("gate-shackle");
+      if (sh) sh.setAttribute("d", gateOpen ? "M8 10.5V7a4 4 0 0 1 7-2.6" : "M8 10.5V7a4 4 0 0 1 8 0v3.5");
+    }
+
+    function closeGate() {
+      gateOpen = false;
+      localStorage.removeItem(GATE_OPEN);
+      $("secret-lib").style.display = "none";
+      $("gate-ask").style.display = "none";
+      paintGate();
+    }
+
+    function askGate() {
+      const first = !localStorage.getItem(GATE_KEY);
+      $("gate-ask").style.display = "";
+      $("gate-ask-title").textContent = first ? "Set a password" : "Private stash";
+      $("gate-note").textContent = first
+        ? "Nothing is set yet — the password you type now becomes the one that opens this from here on. It is stored as a lockbox, never as text."
+        : "";
+      $("gate-pw").value = "";
+      toggleCard(aboutCard, aboutBtn, true);
+      $("gate-ask").scrollIntoView({ block: "nearest" });
+      $("gate-pw").focus();
+    }
+
+    async function tryGate() {
+      const pw = $("gate-pw").value;
+      if (!pw) return;
+      const note = $("gate-note");
+      const { lockSecret, unlockSecret } = await getLockbox();
+      const blob = localStorage.getItem(GATE_KEY);
+      if (!blob) {
+        note.textContent = "Setting…";
+        localStorage.setItem(GATE_KEY, await lockSecret(GATE_TOKEN, pw));
+        openGate("Password set — the stash and publishing are open.");
+        return;
+      }
+      note.textContent = "Checking…";
+      try {
+        if (await unlockSecret(blob, pw) !== GATE_TOKEN) throw new Error("wrong");
+        openGate("");
+      } catch {
+        // Say nothing about which part was wrong, and do not offer a reset
+        // here — a "forgot it?" button beside the lock would be the lock.
+        note.textContent = "That is not the password.";
+        $("gate-pw").select();
+      }
+    }
+
+    function openGate(msg) {
+      gateOpen = true;
+      localStorage.setItem(GATE_OPEN, "1");
+      $("gate-ask").style.display = "none";
+      $("gate-pw").value = "";
+      paintGate();
       const lib = $("secret-lib");
-      const opening = lib.style.display === "none";
-      lib.style.display = opening ? "" : "none";      // triple-tap again to hide
-      if (!opening) return;
-      toggleCard(aboutCard, aboutBtn, true);          // it lives in the (i) card
+      lib.style.display = "";
       $("secret-url").value = localStorage.getItem(SECRET_URL_KEY) || "";
       loadSecretLibrary();
       lib.scrollIntoView({ block: "nearest" });
+      if (msg) $("secret-status").textContent = msg;
+    }
+
+    $("gate-btn").addEventListener("click", () => (gateOpen ? closeGate() : askGate()));
+    $("gate-go").addEventListener("click", tryGate);
+    $("gate-cancel").addEventListener("click", () => { $("gate-ask").style.display = "none"; });
+    $("gate-pw").addEventListener("keydown", (e) => { if (e.key === "Enter") tryGate(); });
+    $("gate-lock").addEventListener("click", closeGate);
+    // Unlocked stays unlocked across reloads on this machine — it is a
+    // convenience lock, and making the owner retype it every refresh would
+    // only teach them to leave it open.
+    if (localStorage.getItem(GATE_OPEN) && localStorage.getItem(GATE_KEY)) {
+      gateOpen = true;
+      $("secret-lib").style.display = "";
+      loadSecretLibrary();
+    }
+    paintGate();
+
+    // The old triple-tap still works, but it goes through the lock now —
+    // otherwise the password would be a formality with a back door beside it.
+    function revealSecretLibrary() {
+      if (!gateOpen) { askGate(); return; }
+      closeGate();
     }
     $("secret-refresh").addEventListener("click", loadSecretLibrary);
     $("secret-url-save").addEventListener("click", () => {
