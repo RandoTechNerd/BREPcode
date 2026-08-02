@@ -790,14 +790,15 @@
        base rule with it, and this fell back to a stock white <button> —
        glaring in every theme. Styled in its own right now, so no future
        neighbour's deletion can undress it again. */
-    #chat-img-btn {
+    #chat-img-btn, #chat-see-btn {
       flex: none; align-self: center; display: grid; place-items: center;
       width: 26px; height: 26px; padding: 0;
       background: transparent; border: 0; border-radius: 6px;
       color: var(--muted3); cursor: pointer;
     }
-    #chat-img-btn:hover { color: var(--icon-hover); background: rgba(255, 255, 255, .07); }
-    #chat-img-btn svg { width: 17px; height: 17px; display: block; }
+    #chat-img-btn:hover, #chat-see-btn:hover { color: var(--icon-hover); background: rgba(255, 255, 255, .07); }
+    #chat-img-btn svg, #chat-see-btn svg { width: 17px; height: 17px; display: block; }
+    #chat-see-btn.active { color: var(--accent); background: rgba(122, 92, 255, .16); }
     #chat-img-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px;
       font-size: 12px; color: var(--muted3); }
     #chat-img-chip img { height: 26px; border-radius: 4px; }
@@ -1979,6 +1980,14 @@
         <button id="chat-img-btn" title="Attach an image (a sketch, a photo of the part, a screenshot)">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M21 15l-5-5-9 9"/>
+          </svg>
+        </button>
+        <!-- Lets the chat see the BUILT model instead of only its source, so
+             "cut the tongue out" can be answered with coordinates rather than
+             a request that you describe your own model back to it. -->
+        <button id="chat-see-btn" title="Show the built model to the AI — three rendered views plus a measured silhouette map. Off saves tokens on questions that are not about the geometry.">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3.2"/>
           </svg>
         </button>
         <input id="chat-input" placeholder="e.g. make a box with a cone on top" />
@@ -8600,6 +8609,146 @@ ${joined}`)(...vs);
       renderer.render(scene, camera);
     }
 
+    // ---- showing the model to the AI --------------------------------------
+    //
+    // The chat could read the SOURCE but had never seen the RESULT, which is
+    // why asking it to "cut the tongue out" got a cutter placed by guesswork:
+    // importedMesh("whale.3mf") tells it a mesh exists and absolutely nothing
+    // about where the mouth is. It was reduced to asking the user to describe
+    // their own model back to it in words.
+    //
+    // Two payloads, because the providers are not equal. The silhouettes below
+    // are TEXT and reach every model including the text-only local ones; the
+    // rendered views are attached as images for anything that can see. Both
+    // are measured off the built mesh, so they describe what is actually on
+    // screen rather than what the source hoped for.
+
+    // Project every triangle onto a plane and mark the cells it covers. Not a
+    // proper rasteriser — it walks each triangle barycentrically — but a
+    // silhouette only has to answer "is there material here", and at 4mm a
+    // cell that is what it gets right.
+    function silhouetteMap(tris, a0, a1, cols, rows, bb) {
+      const lo = [bb.min.x, bb.min.y, bb.min.z], hi = [bb.max.x, bb.max.y, bb.max.z];
+      const s0 = (hi[a0] - lo[a0]) || 1, s1 = (hi[a1] - lo[a1]) || 1;
+      const grid = new Uint8Array(cols * rows);
+      const mark = (p) => {
+        const c = Math.min(cols - 1, Math.max(0, Math.floor(((p[a0] - lo[a0]) / s0) * cols)));
+        const r = Math.min(rows - 1, Math.max(0, Math.floor(((p[a1] - lo[a1]) / s1) * rows)));
+        grid[r * cols + c] = 1;
+      };
+      for (const t of tris) {
+        mark(t[0]); mark(t[1]); mark(t[2]);
+        // a big triangle can straddle several cells with none of its corners
+        // inside them, so walk the interior too
+        const n = 4;
+        for (let i = 0; i <= n; i++) {
+          for (let j = 0; i + j <= n; j++) {
+            const u = i / n, v = j / n, w = 1 - u - v;
+            mark([0, 1, 2].map((k) => t[0][k] * w + t[1][k] * u + t[2][k] * v));
+          }
+        }
+      }
+      const out = [];
+      for (let r = rows - 1; r >= 0; r--) {          // top row printed first
+        let line = "";
+        for (let c = 0; c < cols; c++) line += grid[r * cols + c] ? "#" : ".";
+        out.push(line);
+      }
+      return out;
+    }
+
+    // A text picture of the built model: three silhouettes and the numbers
+    // needed to turn a cell back into millimetres.
+    function modelDigest(cols = 36, rows = 20) {
+      const tris = worldTriangles();
+      if (!tris.length) return null;
+      const bb = new THREE.Box3().setFromObject(modelGroup);
+      if (bb.isEmpty()) return null;
+      const sz = { x: bb.max.x - bb.min.x, y: bb.max.y - bb.min.y, z: bb.max.z - bb.min.z };
+      const f = (n) => (+n).toFixed(1);
+      const views = [
+        ["FRONT — looking along +Y. across = X, up = Z", 0, 2],
+        ["SIDE — looking along +X. across = Y, up = Z", 1, 2],
+        ["TOP — looking down -Z. across = X, up = Y", 0, 1],
+      ];
+      const axisMm = [sz.x, sz.y, sz.z];
+      let out = `THE BUILT MODEL, measured from its mesh (not from the source):\n`
+        + `size ${f(sz.x)} x ${f(sz.y)} x ${f(sz.z)} mm, volume ${f(modelVolume())} mm3, `
+        + `${modelGroup.children.filter((m) => m.isMesh).length} mesh part(s)\n`
+        + `bbox  X ${f(bb.min.x)}..${f(bb.max.x)}   Y ${f(bb.min.y)}..${f(bb.max.y)}   Z ${f(bb.min.z)}..${f(bb.max.z)}\n\n`
+        + `Silhouettes below: '#' is material, '.' is empty. Read a feature's cell\n`
+        + `position, then convert to mm with the ranges above — column 0 is the\n`
+        + `low end of the across-axis, the TOP row is the high end of the up-axis.\n`;
+      for (const [label, a0, a1] of views) {
+        out += `\n${label}  (${cols} cols = ${f(axisMm[a0])}mm, ${rows} rows = ${f(axisMm[a1])}mm)\n`;
+        out += silhouetteMap(tris, a0, a1, cols, rows, bb).join("\n") + "\n";
+      }
+      return out;
+    }
+
+    // The same three views as actual pictures, for models that can see. An
+    // orthographic camera on purpose: perspective makes a near feature look
+    // bigger than a far one, and the whole point is reading positions off.
+    function modelViewImages(px = 512) {
+      const bb = new THREE.Box3().setFromObject(modelGroup);
+      if (bb.isEmpty()) return [];
+      const c = bb.getCenter(new THREE.Vector3());
+      const s = bb.getSize(new THREE.Vector3());
+      const reach = Math.max(s.x, s.y, s.z) * 2 + 10;
+      const rt = new THREE.WebGLRenderTarget(px, px);
+      const out = [];
+      const shots = [
+        ["front", new THREE.Vector3(0, -reach, 0), new THREE.Vector3(0, 0, 1)],
+        ["side", new THREE.Vector3(reach, 0, 0), new THREE.Vector3(0, 0, 1)],
+        ["top", new THREE.Vector3(0, 0, reach), new THREE.Vector3(0, 1, 0)],
+      ];
+      const half = Math.max(s.x, s.y, s.z) * 0.62 + 1;
+      const cv = document.createElement("canvas");
+      cv.width = px; cv.height = px;
+      const ctx = cv.getContext("2d");
+      const buf = new Uint8Array(px * px * 4);
+      const prevBg = scene.background;
+      scene.background = new THREE.Color(0x11151f);
+      // The scene's own lights point wherever the user left them, and from a
+      // fixed orthographic angle that routinely came back as a silhouette in
+      // the dark — measured, 2,162 lit pixels out of 262,144. A headlight
+      // riding with the capture camera means every view is lit from where it
+      // is looking, which is the only way three fixed angles can all work.
+      const key = new THREE.DirectionalLight(0xffffff, 2.2);
+      const fill = new THREE.AmbientLight(0xffffff, 0.85);
+      scene.add(key, fill);
+      for (const [name, off, up] of shots) {
+        const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.1, reach * 4);
+        cam.position.copy(c).add(off);
+        cam.up.copy(up);
+        cam.lookAt(c);
+        key.position.copy(cam.position);
+        key.target.position.copy(c);
+        key.target.updateMatrixWorld();
+        renderer.setRenderTarget(rt);
+        renderer.render(scene, cam);
+        renderer.readRenderTargetPixels(rt, 0, 0, px, px, buf);
+        renderer.setRenderTarget(null);
+        const img = ctx.createImageData(px, px);
+        for (let y = 0; y < px; y++) {            // WebGL hands them back bottom-up
+          const src = (px - 1 - y) * px * 4, dst = y * px * 4;
+          img.data.set(buf.subarray(src, src + px * 4), dst);
+        }
+        ctx.putImageData(img, 0, 0);
+        ctx.fillStyle = "#e8ecf5";
+        ctx.font = "bold 18px system-ui, sans-serif";
+        ctx.fillText(`${name}  (${s.x.toFixed(0)} x ${s.y.toFixed(0)} x ${s.z.toFixed(0)} mm)`, 10, 24);
+        out.push({
+          media_type: "image/jpeg",
+          data: cv.toDataURL("image/jpeg", 0.8).split(",")[1],
+        });
+      }
+      scene.remove(key, fill);
+      scene.background = prevBg;
+      rt.dispose();
+      return out;
+    }
+
     // ---- what this model does badly in this format ------------------------
     //
     // Every one of these was measured rather than guessed, and every one still
@@ -10684,6 +10833,24 @@ ${joined}`)(...vs);
     const MAX_CHAT_IMGS = 5;
     let pendingImgs = [];    // [{ ext, b64, mediaType, name, dataUrl }]
     $("chat-img-btn").addEventListener("click", () => $("chat-img-file").click());
+
+    // Whether the chat gets to look at the built model. On by default: the
+    // question people ask most is about the thing on screen, and answering it
+    // blind is how the assistant ends up asking you where your own mouth is.
+    let seeModel = localStorage.getItem("brepcode-see-model") !== "0";
+    const paintSeeBtn = () => {
+      $("chat-see-btn").classList.toggle("active", seeModel);
+      $("chat-see-btn").setAttribute("aria-pressed", String(seeModel));
+    };
+    $("chat-see-btn").addEventListener("click", () => {
+      seeModel = !seeModel;
+      localStorage.setItem("brepcode-see-model", seeModel ? "1" : "0");
+      paintSeeBtn();
+      addMsg("bot", seeModel
+        ? "I'll look at the model from now on — three rendered views and a measured silhouette map ride along with each message, so I can point at features in millimetres instead of guessing."
+        : "I'll stop looking at the model. I still read your code; I just won't see the result, so describe where things are.");
+    });
+    paintSeeBtn();
     // Screenshot -> Ctrl+V into the message box. The paste event carries the
     // image(s) as files; text pastes fall through untouched.
     $("chat-input").addEventListener("paste", (e) => {
@@ -11602,6 +11769,11 @@ ${joined}`)(...vs);
     // Dev helper (console only): brepscript.lockKey(key, password, provider, model)
     // prints the encrypted blob to paste into viewer/locked-key.js.
     window.brepscript = window.brepscript || {};
+    // What the chat is shown when "see the model" is on — exposed so you can
+    // read exactly what it got rather than infer it from the answer.
+    window.brepscript.modelDigest = (...a) => modelDigest(...a);
+    window.brepscript.modelViewImages = (...a) => modelViewImages(...a);
+    window.brepscript.modelVolume = () => modelVolume();
     window.brepscript.lockKey = async (key, password, provider = "gemini", model = "") => {
       const { lockSecret } = await getLockbox();
       const blob = await lockSecret(key, password);
@@ -12010,6 +12182,34 @@ ${joined}`)(...vs);
         // Attached images ride on THIS message only.
         const imgs = pendingImgs.slice();
         clearPendingImg();
+
+        // Show it the model. Only when one is actually built, only when the
+        // user has not attached their own pictures (theirs are the subject;
+        // ours would just crowd them out), and only while the toggle is on —
+        // three renders on every message is a real cost to pay for a
+        // conversation that may never mention the geometry.
+        let sawModel = null;
+        if (seeModel && !imgs.length && modelGroup.children.some((m) => m.isMesh)) {
+          try {
+            const digest = modelDigest();
+            if (digest) {
+              reference = `${reference ? reference + "\n\n" : ""}${digest}`;
+              sawModel = "silhouettes";
+              const vision = !["local", "browser", "claude-code"].includes(cfg.provider);
+              if (vision) {
+                const shots = modelViewImages();
+                if (shots.length) {
+                  msgs[msgs.length - 1].images = shots;
+                  sawModel = `${shots.length} views + silhouettes`;
+                }
+              }
+              logLine(`showed the model: ${sawModel}`);
+            }
+          } catch (e) {
+            logLine(`could not show the model — ${e.message}`);
+          }
+        }
+        void sawModel;
         if (imgs.length && (cfg.provider === "local" || cfg.provider === "browser")) {
           // these small models are text-only, and a vision payload errors the
           // whole request — say so instead of failing
