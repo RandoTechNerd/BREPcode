@@ -12,7 +12,7 @@
 //   index.esm-*, manifold-* (dynamic)
 
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, statSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
+import { dirname, join, posix, resolve, relative, sep } from "node:path";
 import JSZip from "jszip";
 
 const OUT = "dist-site";
@@ -150,7 +150,16 @@ cpSync("node_modules/bwip-js/LICENSE", join(OUT, "vendor/bwip/LICENSE"));
 for (const f of ["favicon.svg", "favicon.png", "apple-touch-icon.png"]) {
   cpSync(`viewer/${f}`, join(OUT, f));
 }
-for (const f of ["dsl.js", "openscad.js", "jscad.js", "py123d.js"]) {
+// Every src module the viewer could reach, discovered rather than listed.
+//
+// This was a hand-maintained list, and adding src/sdf.js to the viewer without
+// also adding it here produced a build whose index.html imported a file that
+// was not in the bundle. A missing ES module import aborts the whole script,
+// so the site and the packaged exe both came up blank — from a change that
+// passed every test, because the tests run against the source tree where the
+// file is obviously present. cli.js is the one exclusion: it is the headless
+// entry point and pulls in node builtins.
+for (const f of readdirSync("src").filter((n) => n.endsWith(".js") && n !== "cli.js")) {
   cpSync(`src/${f}`, join(OUT, "src", f));
 }
 
@@ -238,3 +247,50 @@ const totalRaw = (() => {
 
 console.log(`dist-site: ${(totalRaw / 1e6).toFixed(1)} MB raw, ${kernelFiles.length} kernel files`);
 console.log(`BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
+
+// ---- every relative import in the bundle must resolve to a file in it ----
+//
+// A missing ES module import is not a degraded feature, it is a blank page:
+// the browser aborts the whole script. And it cannot be caught by the tests,
+// which run against the source tree where the file is plainly there — only
+// the BUNDLE is missing it. So the bundle checks itself, and a build that
+// would ship broken fails here instead of on someone's machine.
+{
+  const bad = [];
+  const seen = new Set();
+  const scan = (dir) => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) { scan(p); continue; }
+      if (!/\.(js|mjs|html)$/.test(e)) continue;
+      // vendored libraries are copied wholesale and import each other in ways
+      // that are their business, not ours
+      if (p.includes(`${sep}vendor${sep}`) || p.includes(`${sep}kernel${sep}`)) continue;
+      const text = readFileSync(p, "utf8");
+      // STATIC imports only — `from "./x.js"`. Those are the fatal ones: the
+      // browser resolves them before a line runs, and one miss blanks the
+      // page. A dynamic import() is a different promise entirely, taken at the
+      // moment it is needed and routinely wrapped in a try/catch for exactly
+      // this reason — locked-key.js is deliberately absent from a public
+      // build, and the code that reaches for it already copes.
+      //
+      // The looser pattern this replaced walked from the keyword to the next
+      // quote, ran straight through newlines, and "found" imports inside prose:
+      // the word export in a comment, then a full stop in quotes further down.
+      for (const m of text.matchAll(/\bfrom\s*["'](\.[^"']+)["']/g)) {
+        const target = resolve(dirname(p), m[1]);
+        const key = `${p}|${m[1]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!existsSync(target)) bad.push(`${relative(OUT, p)} imports ${m[1]} — not in the bundle`);
+      }
+    }
+  };
+  scan(OUT);
+  if (bad.length) {
+    console.error("\nbuild-site: the bundle imports files it does not contain:");
+    for (const b of bad) console.error(`  ${b}`);
+    throw new Error(`${bad.length} unresolved import(s) — this build would come up blank`);
+  }
+  console.log(`imports: every relative import in the bundle resolves`);
+}
