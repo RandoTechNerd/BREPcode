@@ -2194,6 +2194,19 @@
             <input type="range" id="mat-opacity" min="20" max="100" value="100" />
             <output id="mat-opacity-o">100%</output>
           </label>
+          <!-- Not the same thing as Opacity above. That blends a face with
+               whatever is behind it, which is an x-ray; this passes light
+               THROUGH the plastic and tints it on the way, which is what a
+               spool of translucent PLA or natural PETG actually looks like. -->
+          <label class="mat-row" title="How the plastic carries light — real refractive indices, and thick sections read deeper than thin ones">
+            <span>Filament</span>
+            <select id="mat-filament">
+              <option value="opaque" selected>Opaque — standard filament</option>
+              <option value="pla">Translucent PLA</option>
+              <option value="petg">PETG — glossy, see-through</option>
+              <option value="natural">Natural / clear</option>
+            </select>
+          </label>
 
           <div class="mat-group">Texture</div>
           <label class="mat-row"><span>Pattern</span>
@@ -3252,12 +3265,73 @@
     // Every solid mesh gets a material from this factory: same texture + shading,
     // its own colour. matForFeature() hands each shape either the shared default
     // material or a per-shape override, keyed by the shape's colour.
+    // Physical rather than Standard, so translucent filament can be what it
+    // actually is: light passing THROUGH the part and picking up its colour on
+    // the way. The opacity slider blends a face with whatever is behind it,
+    // which reads as an x-ray — useful for checking internals, nothing like a
+    // spool of natural PETG. With transmission at 0 this behaves as Standard
+    // did, so nothing already built changes.
     function makeSolidMat(color) {
-      const m = new THREE.MeshStandardMaterial({
+      const m = new THREE.MeshPhysicalMaterial({
         color, metalness: 0.1, roughness: 0.55, emissive: 0x000000, emissiveIntensity: 1,
+        transmission: 0, ior: 1.5, thickness: 0,
       });
       m.onBeforeCompile = injectTex;
       return m;
+    }
+
+    // Real filaments, with their real refractive indices — PLA is about 1.46
+    // and PETG about 1.57, and the difference is visible. `atten` is how many
+    // millimetres of plastic the light crosses before the colour saturates,
+    // which is what makes a thick section read deeper than a thin one.
+    // Transmission REPLACES diffuse rather than adding to it, and what it
+    // samples is whatever else is in the scene. Push it to 0.9 and a part
+    // standing alone on a dark plate has nothing to transmit and simply goes
+    // black — measured, average brightness fell 187 to 92 as it got "clearer".
+    // So these stay moderate enough to keep some diffuse of their own, and
+    // lean on image-based light for the rest. Where there IS something behind
+    // it the effect is unmistakable: a red pillar behind a slab took the
+    // sampled red/blue ratio from 0.66 to 1.10.
+    const FILAMENTS = {
+      opaque: { label: "Opaque — standard filament", t: 0, ior: 1.5, rough: null, atten: 0, env: 1, a: 1 },
+      pla: { label: "Translucent PLA", t: 0.3, ior: 1.46, rough: 0.42, atten: 16, env: 1.8, a: 0.86 },
+      petg: { label: "PETG — glossy, see-through", t: 0.52, ior: 1.57, rough: 0.16, atten: 26, env: 2.4, a: 0.7 },
+      natural: { label: "Natural / clear", t: 0.68, ior: 1.5, rough: 0.08, atten: 55, env: 3, a: 0.55 },
+    };
+
+    // Transmission needs something to refract, and thickness has to be in the
+    // model's own scale or a 200mm part looks like a 2mm one.
+    function applyFilament(m, key, color) {
+      const f = FILAMENTS[key] || FILAMENTS.opaque;
+      m.transmission = f.t;
+      m.ior = f.ior;
+      if (f.t > 0) {
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        const span = bb.isEmpty() ? 20 : bb.getSize(new THREE.Vector3()).length() * 0.35;
+        m.thickness = span;
+        m.attenuationDistance = f.atten;
+        m.attenuationColor.set(color ?? m.color);
+        m.roughness = f.rough;
+        // the diffuse that transmission took away has to come back from
+        // somewhere, or "clearer" just means "darker"
+        m.envMapIntensity = f.env;
+        // Transmission alone samples other GEOMETRY, so a part standing on its
+        // own has nothing to show through it and reads as merely tinted. A
+        // little alpha on top lets the plate and the background come through
+        // as well, which is what actually sells it as plastic you can see into.
+        // Only when the user has not already set their own opacity — that
+        // slider is theirs, and it wins.
+        if (mat.opacity >= 100) {
+          m.transparent = true;
+          m.opacity = f.a;
+          m.depthWrite = false;
+          m.side = THREE.DoubleSide;
+        }
+      } else {
+        m.thickness = 0;
+        m.attenuationDistance = Infinity;
+        m.envMapIntensity = 1;
+      }
     }
     const solidMaterial = makeSolidMat(0x9fb4d6);
     const featureColors = {};          // featureId -> "#hex" per-shape override (right-click menu)
@@ -3316,6 +3390,9 @@
       m.polygonOffsetUnits = solidMaterial.polygonOffsetUnits;
       m.flatShading = solidMaterial.flatShading;
       m.wireframe = solidMaterial.wireframe;
+      // a per-shape colour tints its OWN transmitted light, so a red part and
+      // a blue one beside it stay red and blue when lit through
+      if (m.userData.codeClear == null) applyFilament(m, mat.filament || "opaque", m.color);
       if (m.userData.codeClear == null) {   // glass mats manage their own envMap
         m.envMap = solidMaterial.envMap;
         m.envMapIntensity = solidMaterial.envMapIntensity ?? 1;
@@ -3600,6 +3677,7 @@
     // ------------------------------------------- material & lighting panel
     const MAT_DEFAULTS = {
       color: "#9fb4d6", metal: 10, rough: 55, opacity: 100, emissive: "#000000", emissiveInt: 0,
+      filament: "opaque",
       texture: 0, texDepth: 50, texScale: 30, texRot: 0, texOffX: 0, texOffY: 0,
       flat: false, wire: false,
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
@@ -3698,6 +3776,27 @@
       solidMaterial.wireframe = mat.wire;
       solidMaterial.emissive.set(mat.emissive || "#000000");
       solidMaterial.emissiveIntensity = mat.emissiveInt || 0;
+      // Translucency last, because it overrides roughness with the filament's
+      // own and needs the colour already set to tint what passes through.
+      applyFilament(solidMaterial, mat.filament || "opaque", mat.color);
+      if ((mat.filament || "opaque") !== "opaque") {
+        solidMaterial.userData.wantEnv = true;
+        // scene.environment, not just envMap. Transmission samples what is
+        // BEHIND the part, and on an empty dark plate that is nothing at all —
+        // the plastic came out darker the more translucent it got, which is
+        // the exact opposite of the look. Image-based light gives it something
+        // to carry, so it glows through instead of blackening.
+        ensureEnv().then(() => {
+          if ((mat.filament || "opaque") !== "opaque") {
+            scene.environment = envTex;
+            solidMaterial.envMap = envTex;
+            for (const m of overrideMats.values()) if (m.userData.codeClear == null) m.envMap = envTex;
+          }
+        });
+        if (envTex) { scene.environment = envTex; solidMaterial.envMap = envTex; }
+      } else if (scene.environment) {
+        scene.environment = null;
+      }
       // texture uniforms (shared across all materials)
       sharedTex.kind.value = mat.texture;
       sharedTex.depth.value = pct(mat.texDepth);
@@ -3730,6 +3829,7 @@
       $("mat-glowint").value = Math.round((mat.emissiveInt || 0) * 100);
       $("mat-glowint-o").textContent = Math.round((mat.emissiveInt || 0) * 100) + "%";
       $("mat-texture").value = String(mat.texture);
+      $("mat-filament").value = mat.filament || "opaque";
       for (const [id, v, suf] of [
         ["metal", mat.metal, "%"], ["rough", mat.rough, "%"], ["opacity", mat.opacity, "%"],
         ["tex-depth", mat.texDepth, "%"], ["tex-scale", mat.texScale, ""], ["tex-rot", mat.texRot, "°"],
@@ -3963,6 +4063,21 @@
       refreshOutlines(); saveMat();
     });
     $("mat-texture").addEventListener("change", (e) => { mat.texture = +e.target.value; clearPreset(); applyMaterial(); saveMat(); });
+    $("mat-filament").addEventListener("change", (e) => {
+      mat.filament = e.target.value;
+      clearPreset();
+      applyMaterial();
+      saveMat();
+      // the roughness slider is now showing a number the filament overrode —
+      // say so rather than let it read as a broken control
+      hint.innerHTML = mat.filament === "opaque"
+        ? "Back to <b>opaque</b> filament."
+        : `<b>${FILAMENTS[mat.filament].label}</b> — light passes through and picks up the colour on `
+          + `the way, at the real refractive index (PLA 1.46, PETG 1.57). It shows most where there `
+          + `is something BEHIND it: parts stacked back to front tint each other, while a single part `
+          + `alone on the plate reads as tinted rather than glowing. It sets its own roughness, and `
+          + `the Opacity slider above still overrides it if you want a flat x-ray instead.`;
+    });
     // the colour <input>s are driven by the swatch rows above (SWATCH_ROWS), which
     // also file each pick into the palette — no separate listeners here
     $("mat-glowint").addEventListener("input", (e) => {
