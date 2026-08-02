@@ -9277,11 +9277,17 @@ ${joined}`)(...vs);
     // mesh EDITABLE, and a Benchy you are about to drill a hole through does
     // not need 5,000 triangles of hull curvature to do it with.
     const SIMPLIFY_TARGET = 2000;
+    // Labelled by DETAIL, with the time as a worst case rather than a promise.
+    // How long the kernel takes depends far more on the shape's topology than
+    // on its triangle count: a smooth 89k sphere sewed in 4.3s, while a 5k
+    // Benchy — all separate shells and thin features — took 26. Quoting one
+    // number as if it were the answer was wrong by twenty times in the
+    // friendly direction.
     const SIMPLIFY_CHOICES = [
-      [2000, "2k — about 10 seconds"],
-      [5000, "5k — about 40 seconds"],
-      [10000, "10k — a minute and a half"],
-      [25000, "25k — several minutes"],
+      [2000, "2k — roughest, always quick"],
+      [5000, "5k — good balance (up to ~40s)"],
+      [10000, "10k — more detail (up to ~1½ min)"],
+      [25000, "25k — most detail (can be minutes)"],
     ];
     const buildEstimate = (tris) => Math.max(3, Math.round(0.0000006 * tris * tris + 0.0035 * tris));
     // Monochrome, and stroked like the rest of the toolbar rather than being
@@ -9599,9 +9605,11 @@ ${joined}`)(...vs);
         const tick = setInterval(() => {
           const s = Math.round((performance.now() - t0) / 1000);
           if (s > 3) {
-            setStatus("busy", s < eta * 1.5
-              ? `Building the solid — ${s}s of roughly ${eta}s. The preview stays until it lands.`
-              : `Building the solid — ${s}s. Longer than the ~${eta}s estimate; it is still going.`);
+            // the estimate is an upper bound, not a countdown — a simple shape
+            // routinely beats it several times over
+            setStatus("busy", s < eta
+              ? `Building the solid — ${s}s, allow up to about ${eta}s. The preview stays until it lands.`
+              : `Building the solid — ${s}s. Past the ~${eta}s guide; complex shapes take longer.`);
           }
         }, 1000);
         try {

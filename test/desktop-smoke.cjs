@@ -88,8 +88,19 @@ app.whenReady().then(async () => {
 
     check("the bridge reaches the page", await run("!!window.brepcodeDesktop?.isDesktop"));
     check("the page is still sandboxed", await run("typeof require === 'undefined' && typeof process === 'undefined'"));
-    check("the bridge exposes no way to read the password back",
-      await run("Object.keys(window.brepcodeDesktop).sort().join(',')") === "claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,isDesktop,loadMail,onClaudeProgress,onOpenFile,openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail");
+    // An exact list, deliberately: the bridge is the ONLY hole in the sandbox,
+    // and anything added to it should have to be typed here too. Growing it is
+    // meant to cost a deliberate edit and a moment's thought about what the
+    // page can now reach. aiRelay is the newest — an HTTPS-only, host-
+    // allowlisted, GET/POST relay that exists because a browser will not let
+    // the page POST to an AI endpoint with an Authorization header.
+    const EXPECTED_BRIDGE = "aiRelay,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
+      + "isDesktop,loadMail,onClaudeProgress,onOpenFile,openInSlicer,recoveryList,"
+      + "recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail";
+    const bridgeKeys = await run("Object.keys(window.brepcodeDesktop).sort().join(',')");
+    check("the bridge surface is exactly what was reviewed",
+      bridgeKeys === EXPECTED_BRIDGE,
+      bridgeKeys === EXPECTED_BRIDGE ? "" : `got ${bridgeKeys}`);
 
     check("nothing saved yet", (await run("window.brepcodeDesktop.loadMail()")).config === null);
 
