@@ -2645,6 +2645,7 @@
     const getTrace = () => (_trace ??= import("./trace.js"));
     const getLockbox = () => (_lock ??= import("./lockbox.js"));
     import * as jscadApi from "../src/jscad.js";
+    import * as sdfApi from "../src/sdf.js";
     // More on-demand modules: exporters (only on download/import), the chatbot
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
@@ -5445,6 +5446,71 @@
       // returns an ordinary importedMesh node, so it groups, colours and
       // exports like any other solid.
       polyhedron: (...a) => jscadApi.polyhedron(...a),
+
+      // blend() — a fillet you do not have to find an edge for.
+      //
+      // The kernel's fillet asks "where do these two surfaces meet, and roll a
+      // ball along it". Exact, and on anything organic both slow and fussy: an
+      // imported mesh has thousands of facet edges and no way to say which one
+      // you meant. Measured on a whale with a mouth cut into it, fillet(2, …)
+      // took 92 seconds and turned 2.7k triangles into 67k, because "every
+      // edge" included every facet.
+      //
+      // This describes the shapes as distances instead and lets the join fall
+      // out of the arithmetic: soft-min for union, soft-max for cut, and the
+      // radius follows the angle between the surfaces on its own — tight where
+      // they meet head-on, broad where they graze. `k` is in millimetres and
+      // reads as the fillet radius.
+      //
+      //   blend({ k: 4, cut: true },
+      //     sphere({ r: 40 }),
+      //     translate([0, -30, 10], sphere({ r: 14 })))
+      //
+      // The result is a MESH, so there is nothing exact left to fillet and a
+      // STEP of it is faceted. On a model that was already triangles that
+      // costs nothing.
+      blend: (opts, ...shapes) => {
+        const o = typeof opts === "number" ? { k: opts } : (opts || {});
+        const k = o.k ?? o.r ?? o.radius ?? 2;
+        const res = Math.max(16, Math.min(140, o.res ?? 64));
+        const parts = shapes.flat(Infinity).filter(Boolean);
+        if (parts.length < 1) throw new Error("blend() needs at least one shape");
+        const fields = parts.map((s) => {
+          if (typeof s === "function") return s;
+          if (s && typeof s.sdf === "function") return s.sdf;
+          throw new Error("blend() takes SDF shapes — use sphere3d/box3d/cylinder3d/torus3d "
+            + "with move3d(), not the kernel primitives");
+        });
+        const f = o.cut
+          ? sdfApi.sSubtract(k, fields[0], ...fields.slice(1))
+          : (o.intersect ? sdfApi.sIntersect(k, ...fields) : sdfApi.sUnion(k, ...fields));
+        // Grow the sampled box past the shapes: a blend ADDS material at the
+        // join, and a box drawn tight to the inputs would slice it off.
+        const b = o.bounds || (() => {
+          const all = parts.map((p) => p.bounds);
+          const lo = [0, 1, 2].map((i) => Math.min(...all.map((x) => x[0][i])) - k - 2);
+          const hi = [0, 1, 2].map((i) => Math.max(...all.map((x) => x[1][i])) + k + 2);
+          return [lo, hi];
+        })();
+        const mesh = sdfApi.surfaceNets(f, b, res);
+        if (!mesh.faces.length) throw new Error("blend() produced nothing — check the shapes overlap");
+        return jscadApi.polyhedron({ ...mesh, orientation: "outward" });
+      },
+      // The SDF primitives blend() understands. Deliberately separate names:
+      // these are distance fields, not kernel solids, and quietly accepting one
+      // where the other was meant is how you get a confusing error later.
+      sphere3d: (a = {}) => sdfApi.shape(sdfApi.sdSphere(a.r ?? a.radius ?? 10),
+        [[-(a.r ?? 10), -(a.r ?? 10), -(a.r ?? 10)], [a.r ?? 10, a.r ?? 10, a.r ?? 10]]),
+      box3d: (s = [10, 10, 10]) => sdfApi.shape(sdfApi.sdBox(s[0], s[1], s[2]),
+        [[-s[0] / 2, -s[1] / 2, -s[2] / 2], [s[0] / 2, s[1] / 2, s[2] / 2]]),
+      cylinder3d: (a = {}) => sdfApi.shape(sdfApi.sdCylinder(a.r ?? 5, a.h ?? 20),
+        [[-(a.r ?? 5), -(a.r ?? 5), -(a.h ?? 20) / 2], [a.r ?? 5, a.r ?? 5, (a.h ?? 20) / 2]]),
+      torus3d: (a = {}) => sdfApi.shape(sdfApi.sdTorus(a.R ?? 20, a.t ?? 4),
+        [[-((a.R ?? 20) + (a.t ?? 4)), -((a.R ?? 20) + (a.t ?? 4)), -(a.t ?? 4)],
+          [(a.R ?? 20) + (a.t ?? 4), (a.R ?? 20) + (a.t ?? 4), a.t ?? 4]]),
+      move3d: (off, s) => sdfApi.shape(sdfApi.at(off, s.sdf),
+        [[s.bounds[0][0] + off[0], s.bounds[0][1] + off[1], s.bounds[0][2] + off[2]],
+          [s.bounds[1][0] + off[0], s.bounds[1][1] + off[1], s.bounds[1][2] + off[2]]]),
     });
 
     const names = Object.keys(vocab), values = names.map((n) => vocab[n]);
