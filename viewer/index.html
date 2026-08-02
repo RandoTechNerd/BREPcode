@@ -6792,7 +6792,31 @@ ${joined}`)(...vs);
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
           -((e.clientY - rect.top) / rect.height) * 2 + 1,
         ), camera);
-        const mHit = pickModel(raycaster)[0];
+        // Sliding the whole model is only right when you grabbed the IMPORTED
+        // geometry itself. Grab a handle, a split widget, a cutter's ghost, or
+        // any shape the code actually declares, and that is what you meant.
+        //
+        // This branch used to return unconditionally, so the moment the code
+        // mentioned importedMesh() every drag became "move the model" — and
+        // everything below was unreachable. Cut a mouth into an imported whale,
+        // select it, drag it, and the WHALE moved: the mouth stayed put and the
+        // part it was cut from slid out from under it. The handles were drawn,
+        // they simply could not be used, which is worse than not offering them.
+        const negGrab = pickNegative(raycaster);
+        const modelGrab = pickModel(raycaster)[0];
+        const grabbedFid = negGrab?.object?.userData?.featureId
+          ?? modelGrab?.object?.userData?.featureId;
+        const grabbedSite = (mapText === code.value && featureMap && grabbedFid)
+          ? featureMap[grabbedFid] : null;
+        // an imported mesh IS a feature, so exclude it by name — otherwise
+        // this would swallow the very case the branch exists for
+        const grabbedShape = !!grabbedSite && !/import/i.test(String(grabbedSite.kind || ""));
+        if (raycaster.intersectObjects(handleGroup.children, false).length
+          || raycaster.intersectObjects(splitGroup.children, false).length
+          || negGrab || grabbedShape) {
+          // fall through to the widget/shape handling below
+        } else {
+        const mHit = modelGrab;
         if (mHit && currentModelExpr()) {
           drag = {
             mode: "importMove", span: { label: "the model" },
@@ -6804,6 +6828,7 @@ ${joined}`)(...vs);
           try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
         }
         return;
+        }
       }
 
       // grabbing a mapped shape starts a potential drag instead of an orbit
