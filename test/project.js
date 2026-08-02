@@ -95,5 +95,29 @@ console.log("\nthe hostile cases\n");
   check("a UTF-8 BOM is tolerated", parseBcodeFile("﻿" + CODE).source === CODE);
 }
 
+console.log("\nthe name survives the trip, because a shared link shows it\n");
+{
+  check("a plain name comes back",
+    parseBcodeFile(bcodeFile(CODE, { name: "bracket" })).name === "bracket");
+  check("...and one with spaces and punctuation",
+    parseBcodeFile(bcodeFile(CODE, { name: "Motor mount plate — v2" })).name
+      === "Motor mount plate — v2");
+  // An unnamed model is WRITTEN as "brepcode-model", so that is what comes
+  // back. The landing card is what knows not to caption a part with it.
+  check("an unnamed model reads back as the placeholder it was written with",
+    parseBcodeFile(bcodeFile(CODE, {})).name === "brepcode-model");
+  // The name is read back out of a COMMENT, so the thing to prove is that the
+  // model's own text cannot be mistaken for it.
+  const decoy = `const label = "not the name" — nope;\n${CODE}`;
+  check("a quoted string in the source is not mistaken for the name",
+    parseBcodeFile(bcodeFile(decoy, { name: "real" })).name === "real");
+  check("a file with no header at all has no name", parseBcodeFile(CODE).name === "");
+  check("...and that costs nothing else", parseBcodeFile(CODE).source === CODE);
+  // Newlines are stripped when written; a name that tried to smuggle one in
+  // must not be able to forge a second header line.
+  const sneaky = parseBcodeFile(bcodeFile(CODE, { name: 'a"\n// "b' }));
+  check("a name cannot forge a second header line", !sneaky.name.includes("\n"));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -515,6 +515,17 @@
     }
     #hint b { color: var(--hint-b); font-weight: 600; }
 
+    /* The shared-link landing strip. Deliberately narrower than the editor:
+       it is a caption for the model, not a panel to work in, and it has to
+       leave the part visible above it. */
+    #landing { width: min(430px, calc(100vw - 40px)); }
+    #landing-body { padding: 11px 14px 13px; }
+    #landing-note { font-size: 12.5px; color: var(--muted6); line-height: 1.5; }
+    #landing-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; align-items: stretch; }
+    #landing-export { flex: 1 1 100%; text-align: left; line-height: 1.3; }
+    #landing-export small { display: block; font-size: 11px; opacity: .8; font-weight: 400; margin-top: 2px; }
+    #landing-acts .hist-btn { flex: 1 1 0; min-width: 120px; justify-content: center; padding: 7px 10px; }
+
     #status {
       padding: 9px 14px; font-size: 12.5px; border-top: 1px solid var(--border);
       color: var(--muted); min-height: 36px; display: flex; align-items: center; gap: 9px;
@@ -2428,6 +2439,29 @@
       <div id="trace-foot"><button id="trace-insert" class="hist-btn">Insert as model</button></div>
     </section>
 
+    <!-- Landing strip for a shared link. Someone who opens one is not a user
+         yet: they arrived to LOOK at a part. It names what they are holding and
+         puts the three things they might want next in reach, because otherwise
+         Export is behind an overflow menu they have no reason to open. -->
+    <section id="landing" class="card" aria-label="Shared model">
+      <header>
+        <div><strong id="landing-name">A shared model</strong><span class="sub">shared with you</span></div>
+        <button class="close-btn" data-close="landing" title="Close">&times;</button>
+      </header>
+      <div id="landing-body">
+        <div id="landing-note">
+          It travelled inside the link — nothing was uploaded, and it is not
+          stored anywhere. Drag to spin it.
+        </div>
+        <div id="landing-acts">
+          <button id="landing-export" class="dock-btn">Download it
+            <small>STL, STEP, 3MF, SVG drawing, G-code</small></button>
+          <button id="landing-edit" class="hist-btn">Edit the code</button>
+          <button id="landing-own" class="hist-btn">Start your own</button>
+        </div>
+      </div>
+    </section>
+
     <div id="buttons">
       <button id="open-btn" class="dock-btn"><span class="plus">+</span> Type a model</button>
       <button id="cheat-btn" title="What can I type?" aria-label="Cheat sheet">
@@ -3196,6 +3230,59 @@
       camera.near = Math.max(radius / 1000, 0.001);
       camera.far = Math.max(radius * 1000, 100);
       camera.updateProjectionMatrix();
+      controls.update();
+      framedRadius = radius;
+    }
+
+    // Framing for a shared link, which frameModel() cannot do for two reasons.
+    // It only refits when the model's SIZE changed, so arriving from a share it
+    // keeps the starter model's zoom and the part lands cropped; and it centres
+    // in the whole canvas, when the dock is sitting over the bottom of it.
+    //
+    // So: fit to the band the dock leaves free, and keep only the sender's
+    // viewing DIRECTION — their window was not this window, and their distance
+    // means nothing here.
+    function frameForLanding() {
+      const box = new THREE.Box3().setFromObject(modelGroup);
+      if (box.isEmpty()) return;
+      const centre = box.getCenter(new THREE.Vector3());
+      const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.001);
+
+      const dockTop = $("dock")?.getBoundingClientRect().top ?? innerHeight;
+      // Never surrender more than half the height, or a tall card on a short
+      // window would push the fit out to a speck.
+      const covered = Math.min(Math.max(innerHeight - dockTop, 0), innerHeight * 0.5);
+      const freeH = innerHeight - covered;
+
+      let dir = camera.position.clone().sub(controls.target);
+      if (dir.lengthSq() < 1e-9) dir = new THREE.Vector3(...HOME_DIR);
+      dir.normalize();
+
+      // The band is shorter than the viewport, so its half-angle is smaller —
+      // that, not the full vertical FOV, is what has to hold the part.
+      const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
+      const bandHalf = Math.atan(Math.tan(vHalf) * (freeH / innerHeight));
+      const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+      const dist = (radius / Math.sin(Math.min(bandHalf, hHalf))) * 1.12;
+
+      controls.target.copy(centre);
+      camera.position.copy(centre).addScaledVector(dir, dist);
+      camera.near = Math.max(radius / 1000, 0.001);
+      camera.far = Math.max(radius * 1000, 100);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+
+      // Now slide it up into that band. The pan runs along the camera's own
+      // screen-up (matrix column 1), not camera.up: with Z-up those part company
+      // the moment the view is tilted, and the wrong axis skews the part
+      // sideways instead of lifting it.
+      if (covered > 40) {
+        const worldPerPx = 2 * dist * Math.tan(vHalf) / innerHeight;
+        const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+        const shift = up.multiplyScalar(-worldPerPx * covered / 2);
+        camera.position.add(shift);
+        controls.target.add(shift);
+      }
       controls.update();
       framedRadius = radius;
     }
@@ -7964,7 +8051,7 @@ ${joined}`)(...vs);
         const exp = await getExporters();
         const text = await exp.readShareFragment(location.hash);
         if (!text) return false;
-        const { source, scene, meshes } = exp.parseBcodeFile(text);
+        const { source, scene, meshes, name } = exp.parseBcodeFile(text);
         if (!source) return false;
         // BEFORE anything builds. rebuild() runs as soon as the source lands,
         // and a model whose importedMesh() is not registered yet fails on that
@@ -7984,9 +8071,22 @@ ${joined}`)(...vs);
         // The checkbox is still there for anyone who wants it back.
         const showBox = $("grid-show");
         if (showBox?.checked) { showBox.checked = false; showBox.dispatchEvent(new Event("change")); }
-        toggleCard(panel, openBtn, true);
+        // The sender's name rides along, so the visitor sees what they were
+        // sent rather than "brepcode-model", and a download inherits it.
+        if (name && name !== "brepcode-model") { modelName = name.slice(0, 60); paintName(); }
+
+        // The editor deliberately stays SHUT. Someone opening a share link came
+        // to look at a part, and a code panel over the lower half of it is the
+        // wrong first impression — "Edit the code" on the landing card is one
+        // click away for the people who want it.
+        toggleCard(panel, openBtn, false);
+        toggleCard($("landing"), null, true);
+        $("landing-name").textContent = modelName || "A shared model";
         setStatus("busy", "…");
         await rebuild();
+        // After the build, because the part's size is not known until it exists,
+        // and after the card is open, because its height decides the framing.
+        frameForLanding();
         hint.innerHTML = `Opened a <b>shared model</b> — it travelled inside the link, nothing was `
           + `uploaded. It is fully editable: change it, drill it, export it, or save your own copy.`;
         return true;
@@ -9224,6 +9324,23 @@ ${joined}`)(...vs);
       exportModal.hidden = false;
       expShow(EXPORT_FORMATS[expSel] ? expSel : "stl");
     });
+    // The landing card's three doors. Export is the one that matters: it lives
+    // in the editor header behind an overflow menu, which a visitor who has
+    // never opened the editor will never find.
+    $("landing-export")?.addEventListener("click", () => $("export-btn").click());
+    $("landing-edit")?.addEventListener("click", () => {
+      toggleCard($("landing"), null, false);
+      toggleCard(panel, openBtn, true);
+      code.focus();
+    });
+    $("landing-own")?.addEventListener("click", () => {
+      // A NEW tab, not this one. "Start your own" should not be a trapdoor that
+      // throws away the model they were sent — it is still only in this page.
+      const fresh = location.origin + location.pathname;
+      const win = window.open(fresh, "_blank");
+      if (!win) location.href = fresh;      // popup blocked: go, rather than do nothing
+    });
+
     $("exp-list").addEventListener("click", (e) => {
       const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
       if (fmt) expShow(fmt);

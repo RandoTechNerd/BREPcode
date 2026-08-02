@@ -719,8 +719,14 @@ export function parseBcodeFile(text) {
       } catch { scene = null; }      // a corrupted block must not cost the source
     }
   }
+  // The name is only ever written into the header comment, so it is the one
+  // piece of the file that has to be read back out of prose. A file with no
+  // header, or a hand-edited one, simply has no name — the caller falls back.
+  const named = /^\/\/\s*"([^"\n]*)"\s+—/m.exec(body);
+
   return {
     source: stripSourceHeader(body),
+    name: named ? named[1].trim() : "",
     scene: scene?.scene ?? null,
     history: Array.isArray(scene?.history) ? scene.history : [],
     // Still gzipped — unpackMeshes() is async, so the caller decides when.
