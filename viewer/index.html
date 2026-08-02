@@ -522,6 +522,13 @@
     #status.ok { color: var(--ok); }
     #status.err { color: var(--err); }
     #status.busy { color: var(--busy); }
+    #build-cancel {
+      margin-left: auto; flex: none; cursor: pointer; color: inherit;
+      background: transparent; border: 1px solid currentColor; border-radius: 6px;
+      opacity: .65; padding: 1px 8px; font: 12px system-ui, sans-serif; line-height: 1.4;
+    }
+    #build-cancel:hover { opacity: 1; background: rgba(255, 255, 255, .09); }
+    #build-cancel[hidden] { display: none; }
 
     /* The ring spinner grew up into the build cube (see .bcube below) — same
        compositor guarantee, more story. #spin is just its slot now. The cube
@@ -1756,7 +1763,7 @@
       </div>
       <div id="complete"></div>
       <div id="hint"></div>
-      <div id="status"><span id="spin"></span><span id="status-text">Starting&hellip;</span></div>
+      <div id="status"><span id="spin"></span><span id="status-text">Starting&hellip;</span><button id="build-cancel" hidden title="Stop this build and put the model back the way it was (Esc)">✕</button></div>
     </section>
 
     <!-- feature history -->
@@ -5521,7 +5528,18 @@ ${joined}`)(...vs);
     }
 
     const statusText = $("status-text");
-    const setStatus = (cls, msg) => { status.className = cls; statusText.textContent = msg; };
+    // The X only means anything while something is running, and only offers to
+    // put things back when there IS something to put back.
+    const setStatus = (cls, msg) => {
+      status.className = cls;
+      statusText.textContent = msg;
+      const c = $("build-cancel");
+      if (c) c.hidden = cls !== "busy";
+    };
+
+    // The source of the last build that actually finished, and the line that
+    // reported it. Reverting is just going back to these.
+    let lastBuiltSource = null, lastGoodStatus = null;
 
     // The build-cube markup (styles: .bcube in the stylesheet). One factory so
     // the status bar and the chat waiting bubble show the same little story.
@@ -5763,7 +5781,9 @@ ${joined}`)(...vs);
         const bb = new THREE.Box3().setFromObject(modelGroup);
         const dims = bb.isEmpty() ? "" :
           ` · ${["x", "y", "z"].map((a) => (bb.max[a] - bb.min[a]).toFixed(1)).join(" × ")} mm`;
-        setStatus("ok", `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms`);
+        lastBuiltSource = typed;
+        lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms`;
+        setStatus("ok", lastGoodStatus);
 
         // Library shims announce their approximations; show them next to the fix note.
         const warns = lastLang === "openscad" ? getWarnings() : [];
@@ -5844,6 +5864,53 @@ ${joined}`)(...vs);
       setStatus("busy", "…");
       scheduleBuild();
     }
+    // Stop the build and put the model back.
+    //
+    // Instant, and it needs no cache to be: while a build runs, the PREVIOUS
+    // model is still the one on screen — nothing is torn down until the new
+    // result arrives. So reverting is only a matter of dropping the in-flight
+    // build and winding the source back to whatever last finished. The thing
+    // the user wants to see is already in front of them.
+    //
+    // Which is the accidental-drag case exactly: nudge a handle, watch a
+    // 40-second rebuild start, and the only options were to sit through it or
+    // to undo and sit through a SECOND one.
+    function cancelBuildAndRevert() {
+      if (status.className !== "busy") return false;
+      token++;                       // any result still coming is now stale
+      cancelWorkerBuild();
+      clearHeavyHold();
+      if (histTimer) { clearTimeout(histTimer); histTimer = null; }
+      const changed = lastBuiltSource != null && code.value.trim() !== lastBuiltSource;
+      if (changed) {
+        restoring = true;
+        code.value = lastBuiltSource;
+        restoring = false;
+        // Land the history on the state we just restored, so the next undo
+        // goes back one FURTHER rather than replaying the edit we abandoned.
+        const at = hist.stack.lastIndexOf(lastBuiltSource);
+        if (at >= 0) hist.i = at; else pushHistory(lastBuiltSource);
+        updateHistButtons();
+        closeComplete();
+        updateHint();
+        if (histCard.classList.contains("open")) renderHistory();
+      }
+      setStatus(lastGoodStatus ? "ok" : "", lastGoodStatus || "Build cancelled.");
+      hint.innerHTML = changed
+        ? "Build cancelled and the code put back to the last one that finished — the model on screen never changed, so there was nothing to rebuild."
+        : "Build cancelled. The code is unchanged; press ▶ Build or edit it to start again.";
+      return true;
+    }
+    $("build-cancel").addEventListener("click", cancelBuildAndRevert);
+    // Esc reaches it without hunting for the X, but must not steal Escape from
+    // someone typing in the editor or a dialog.
+    addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || status.className !== "busy") return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (cancelBuildAndRevert()) e.preventDefault();
+    });
+
     undoBtn.addEventListener("click", () => restoreHistory(-1));
     redoBtn.addEventListener("click", () => restoreHistory(1));
     $("hist-undo").addEventListener("click", () => restoreHistory(-1));
