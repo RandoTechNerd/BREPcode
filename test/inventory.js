@@ -4,6 +4,7 @@
 import {
   parseSTL, parseOBJ, parse3MF, parseModelFile,
   parse3MFObjects, parse3MFPartColours, parse3MFColourGroups,
+  unzipEntry,
 } from "../viewer/inventory.js";
 import { stlTo3MF, colored3MF } from "../viewer/exporters.js";
 import { build, toSTL, cube } from "../index.js";
@@ -220,6 +221,69 @@ ${cube(2)}
   z2.file("3D/3dmodel.model", model);
   const colourless = await parse3MFPartColours(await z2.generateAsync({ type: "uint8array" }));
   check("a colourless file yields nulls, never a throw", colourless.every((c) => !c));
+}
+
+console.log("\nzip reading, including ZIP64\n");
+{
+  // Built by hand so the ZIP64 version differs from the ordinary one in exactly
+  // the way that matters: a 0xFFFFFFFF sentinel where an offset should be.
+  const body = enc.encode("<model>hello</model>");
+  const name = enc.encode("3D/3dmodel.model");
+  const u16 = (v) => [v & 255, (v >> 8) & 255];
+  const u32 = (v) => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+  const u64 = (v) => [...u32(v), 0, 0, 0, 0];
+
+  const zip = (zip64) => {
+    const b = [];
+    const put = (a) => b.push(...a);
+    // local file header, stored (method 0)
+    put([0x50, 0x4b, 3, 4]); put(u16(20)); put(u16(0)); put(u16(0)); put(u16(0)); put(u16(0));
+    put(u32(0)); put(u32(body.length)); put(u32(body.length));
+    put(u16(name.length)); put(u16(0)); put([...name]); put([...body]);
+
+    const cdStart = b.length;
+    const extra = zip64 ? [...u16(0x0001), ...u16(8), ...u64(0)] : [];
+    put([0x50, 0x4b, 1, 2]); put(u16(45)); put(u16(45)); put(u16(0)); put(u16(0));
+    put(u16(0)); put(u16(0)); put(u32(0)); put(u32(body.length)); put(u32(body.length));
+    put(u16(name.length)); put(u16(extra.length)); put(u16(0));
+    put(u16(0)); put(u16(0)); put(u32(0));
+    put(zip64 ? u32(0xffffffff) : u32(0));          // local header offset
+    put([...name]); put(extra);
+    const cdSize = b.length - cdStart;
+
+    if (zip64) {
+      const z64 = b.length;
+      put([0x50, 0x4b, 6, 6]); put(u64(44)); put(u16(45)); put(u16(45));
+      put(u32(0)); put(u32(0)); put(u64(1)); put(u64(1)); put(u64(cdSize)); put(u64(cdStart));
+      put([0x50, 0x4b, 6, 7]); put(u32(0)); put(u64(z64)); put(u32(1));
+    }
+    put([0x50, 0x4b, 5, 6]); put(u16(0)); put(u16(0));
+    put(u16(zip64 ? 0xffff : 1)); put(u16(zip64 ? 0xffff : 1));
+    put(zip64 ? u32(0xffffffff) : u32(cdSize));
+    put(zip64 ? u32(0xffffffff) : u32(cdStart));
+    put(u16(0));
+    return new Uint8Array(b);
+  };
+
+  const want = "<model>hello</model>";
+  const plain = await unzipEntry(zip(false), /3dmodel\.model$/);
+  check("an ordinary zip still reads", new TextDecoder().decode(plain) === want,
+    new TextDecoder().decode(plain));
+  // The regression this exists for: 0xFFFFFFFF is a "the real number is in the
+  // ZIP64 record" flag, not an offset. Read literally it sends the reader four
+  // gigabytes past the end, which is how a 219KB 3MF died on "Offset is outside
+  // the bounds of the DataView". Small files get written this way routinely —
+  // any writer that is streaming and does not know the final size yet.
+  const big = await unzipEntry(zip(true), /3dmodel\.model$/);
+  check("a ZIP64 zip reads too, rather than running off the end",
+    new TextDecoder().decode(big) === want, new TextDecoder().decode(big));
+
+  let refused = false;
+  try { await unzipEntry(new Uint8Array(10), /./); } catch { refused = true; }
+  check("something too small to be a zip is refused, not read anyway", refused);
+  let missing = false;
+  try { await unzipEntry(zip(false), /nothing\.here$/); } catch { missing = true; }
+  check("a name that is not in the zip says so", missing);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

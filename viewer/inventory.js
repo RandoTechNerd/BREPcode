@@ -90,37 +90,113 @@ async function inflateRaw(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-export async function unzipEntry(buf, namePattern) {
-  const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  // find End Of Central Directory (scan back through the trailing comment)
+// ZIP64. A 32-bit field holding 0xFFFFFFFF (or a 16-bit one holding 0xFFFF) is
+// not a value — it is a flag saying "the real number is in the ZIP64 record".
+// Taking it literally is how a 219KB file asks to be read at offset 4,294,967,295
+// and the whole import dies with "Offset is outside the bounds of the DataView".
+//
+// It is not only huge archives that need this: plenty of writers emit ZIP64
+// unconditionally when they are streaming and do not know the final size yet,
+// which is exactly how an ordinary 3MF from a slicer ends up here.
+const U32_MAX = 0xffffffff;
+const U16_MAX = 0xffff;
+
+// Read the central directory's position and entry count, consulting the ZIP64
+// records when the ordinary fields are sentinels.
+function centralDirectory(bytes, dv) {
   let eocd = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65535); i--) {
-    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (i + 4 <= bytes.length && dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
   if (eocd < 0) throw new Error("not a zip (no central directory)");
-  const count = dv.getUint16(eocd + 10, true);
-  let p = dv.getUint32(eocd + 16, true);
+
+  let count = dv.getUint16(eocd + 10, true);
+  let offset = dv.getUint32(eocd + 16, true);
+  if (count !== U16_MAX && offset !== U32_MAX) return { count, offset };
+
+  // The ZIP64 locator sits immediately before the end record.
+  const loc = eocd - 20;
+  if (loc < 0 || dv.getUint32(loc, true) !== 0x07064b50) {
+    throw new Error("this zip needs ZIP64 but has no ZIP64 locator");
+  }
+  const z64 = Number(dv.getBigUint64(loc + 8, true));
+  if (z64 < 0 || z64 + 56 > bytes.length || dv.getUint32(z64, true) !== 0x06064b50) {
+    throw new Error("this zip's ZIP64 record is missing or unreadable");
+  }
+  if (count === U16_MAX) count = Number(dv.getBigUint64(z64 + 32, true));
+  if (offset === U32_MAX) offset = Number(dv.getBigUint64(z64 + 48, true));
+  return { count, offset };
+}
+
+// An entry's own oversized fields live in extra-field block 0x0001, in a fixed
+// order but only for the fields that were sentinels — so the order they are
+// consumed in has to match which ones actually overflowed.
+function zip64Extra(dv, at, len, need) {
+  let p = at;
+  const end = at + len;
+  while (p + 4 <= end) {
+    const id = dv.getUint16(p, true);
+    const size = dv.getUint16(p + 2, true);
+    if (id === 0x0001) {
+      let q = p + 4;
+      const got = {};
+      if (need.uncomp && q + 8 <= end) { got.uncomp = Number(dv.getBigUint64(q, true)); q += 8; }
+      if (need.comp && q + 8 <= end) { got.comp = Number(dv.getBigUint64(q, true)); q += 8; }
+      if (need.local && q + 8 <= end) { got.local = Number(dv.getBigUint64(q, true)); q += 8; }
+      return got;
+    }
+    p += 4 + size;
+  }
+  return {};
+}
+
+// Walk the central directory once. Both readers below use this, so ZIP64 is
+// handled in one place rather than in two that can drift apart.
+function* zipEntries(bytes, dv) {
+  const { count, offset } = centralDirectory(bytes, dv);
+  let p = offset;
   const dec = new TextDecoder();
   for (let i = 0; i < count; i++) {
-    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    if (p + 46 > bytes.length || dv.getUint32(p, true) !== 0x02014b50) break;
     const method = dv.getUint16(p + 10, true);
-    const compSize = dv.getUint32(p + 20, true);
+    let compSize = dv.getUint32(p + 20, true);
+    const uncSize = dv.getUint32(p + 24, true);
     const nameLen = dv.getUint16(p + 28, true);
     const extraLen = dv.getUint16(p + 30, true);
     const commentLen = dv.getUint16(p + 32, true);
-    const localOff = dv.getUint32(p + 42, true);
+    let localOff = dv.getUint32(p + 42, true);
     const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    if (compSize === U32_MAX || localOff === U32_MAX || uncSize === U32_MAX) {
+      const big = zip64Extra(dv, p + 46 + nameLen, extraLen, {
+        uncomp: uncSize === U32_MAX, comp: compSize === U32_MAX, local: localOff === U32_MAX,
+      });
+      if (big.comp !== undefined) compSize = big.comp;
+      if (big.local !== undefined) localOff = big.local;
+    }
     p += 46 + nameLen + extraLen + commentLen;
-    if (!namePattern.test(name)) continue;
-    // the local header repeats name/extra lengths — read them from there
-    const lNameLen = dv.getUint16(localOff + 26, true);
-    const lExtraLen = dv.getUint16(localOff + 28, true);
-    const start = localOff + 30 + lNameLen + lExtraLen;
-    const data = bytes.subarray(start, start + compSize);
-    if (method === 0) return data;
-    if (method === 8) return await inflateRaw(data);
-    throw new Error(`unsupported zip method ${method}`);
+    yield { name, method, compSize, localOff };
+  }
+}
+
+// Where an entry's bytes actually start: the local header repeats the name and
+// extra lengths, and they can differ from the central directory's.
+function entryData(bytes, dv, { localOff, compSize }) {
+  if (localOff + 30 > bytes.length) throw new Error("zip entry points past the end of the file");
+  const lNameLen = dv.getUint16(localOff + 26, true);
+  const lExtraLen = dv.getUint16(localOff + 28, true);
+  const start = localOff + 30 + lNameLen + lExtraLen;
+  return bytes.subarray(start, Math.min(start + compSize, bytes.length));
+}
+
+export async function unzipEntry(buf, namePattern) {
+  const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (const e of zipEntries(bytes, dv)) {
+    if (!namePattern.test(e.name)) continue;
+    const data = entryData(bytes, dv, e);
+    if (e.method === 0) return data;
+    if (e.method === 8) return await inflateRaw(data);
+    throw new Error(`unsupported zip method ${e.method}`);
   }
   throw new Error("entry not found in zip");
 }
@@ -130,32 +206,12 @@ export async function unzipEntry(buf, namePattern) {
 export async function unzipEntries(buf, namePattern) {
   const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let eocd = -1;
-  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65535); i--) {
-    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd < 0) throw new Error("not a zip (no central directory)");
-  const count = dv.getUint16(eocd + 10, true);
-  let p = dv.getUint32(eocd + 16, true);
-  const dec = new TextDecoder();
   const out = new Map();
-  for (let i = 0; i < count; i++) {
-    if (dv.getUint32(p, true) !== 0x02014b50) break;
-    const method = dv.getUint16(p + 10, true);
-    const compSize = dv.getUint32(p + 20, true);
-    const nameLen = dv.getUint16(p + 28, true);
-    const extraLen = dv.getUint16(p + 30, true);
-    const commentLen = dv.getUint16(p + 32, true);
-    const localOff = dv.getUint32(p + 42, true);
-    const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
-    p += 46 + nameLen + extraLen + commentLen;
-    if (!namePattern.test(name)) continue;
-    const lNameLen = dv.getUint16(localOff + 26, true);
-    const lExtraLen = dv.getUint16(localOff + 28, true);
-    const startAt = localOff + 30 + lNameLen + lExtraLen;
-    const data = bytes.subarray(startAt, startAt + compSize);
-    if (method === 0) out.set(name, data);
-    else if (method === 8) out.set(name, await inflateRaw(data));
+  for (const e of zipEntries(bytes, dv)) {
+    if (!namePattern.test(e.name)) continue;
+    const data = entryData(bytes, dv, e);
+    if (e.method === 0) out.set(e.name, data);
+    else if (e.method === 8) out.set(e.name, await inflateRaw(data));
   }
   return out;
 }
