@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>__BREPCODE_NAME__ — BREPcode</title>
+<!--
+  The page at brepcode.com/<slug>. Server-side substitutions:
+
+    __BREPCODE_NAME__      the model's display name, HTML-escaped
+    __BREPCODE_SLUG__      the url slug
+    __BREPCODE_THUMB__     url of the thumbnail image
+    __BREPCODE_BCODE__     url of the .bcode text
+    __BREPCODE_GLB__       url of the .glb, or "" when none was uploaded
+    __BREPCODE_VISITOR__   the visitor object as JSON
+
+  What this page offers is decided by the visitor flags, through the same
+  module the editor uses to write them, so the two cannot drift apart.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0f16; --card: #131926; --border: #24304a;
+    --text: #e8ecf8; --muted: #93a1bf; --accent: #5b7cfa;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { color-scheme: light;
+      --bg: #f5f7fa; --card: #fff; --border: #dde3ee;
+      --text: #101827; --muted: #5a6a86; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 18px 22px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 19px; font-weight: 650; }
+  header .by { color: var(--muted); font-size: 13px; }
+  header .by a { color: inherit; }
+  main { max-width: 1100px; margin: 0 auto; padding: 22px; }
+  #stage { position: relative; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; aspect-ratio: 3 / 2; }
+  #stage img, #stage canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+  #hint { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted);
+    background: color-mix(in srgb, var(--card) 82%, transparent); padding: 3px 9px;
+    border-radius: 999px; pointer-events: none; }
+  #acts { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+  button, a.btn { font: inherit; cursor: pointer; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    padding: 9px 15px; text-decoration: none; display: inline-flex;
+    flex-direction: column; line-height: 1.25; }
+  button:hover, a.btn:hover { border-color: var(--accent); }
+  .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  small { font-size: 11px; opacity: .78; }
+  #note { margin-top: 14px; color: var(--muted); font-size: 13px; }
+  footer { padding: 26px 22px; color: var(--muted); font-size: 12.5px; text-align: center; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>__BREPCODE_NAME__</h1>
+  <span class="by">a model made with <a href="/">BREPcode</a></span>
+</header>
+
+<main>
+  <div id="stage">
+    <img id="thumb" src="__BREPCODE_THUMB__" alt="__BREPCODE_NAME__" />
+    <div id="hint" hidden>drag to spin · scroll to zoom</div>
+  </div>
+  <div id="acts"></div>
+  <p id="note"></p>
+</main>
+
+<footer>Built in the browser with <a href="/">BREPcode</a>.</footer>
+
+<script type="module">
+import { normalizeVisitor, isPreviewOnly } from "/src/visitor.js";
+
+const NAME  = "__BREPCODE_NAME__";
+const SLUG  = "__BREPCODE_SLUG__";
+const BCODE = "__BREPCODE_BCODE__";
+// Empty when the model was published without the spin option, in which case
+// no GLB was uploaded at all.
+const GLB   = "__BREPCODE_GLB__";
+const visitor = normalizeVisitor(JSON.parse(`__BREPCODE_VISITOR__`));
+
+const acts = document.getElementById("acts");
+const note = document.getElementById("note");
+
+// The source is fetched once and shared by every action that needs it, so
+// clicking three buttons does not pull the same file three times.
+let bcodePromise = null;
+const bcode = () => (bcodePromise ??= fetch(BCODE, { cache: "no-store" }).then((r) => {
+  if (!r.ok) throw new Error(`could not load the model (HTTP ${r.status})`);
+  return r.text();
+}));
+
+function addButton(label, sub, onClick, primary = false) {
+  const b = document.createElement("button");
+  if (primary) b.className = "primary";
+  b.innerHTML = `<span></span><small></small>`;
+  b.firstChild.textContent = label;
+  b.lastChild.textContent = sub;
+  b.addEventListener("click", onClick);
+  acts.appendChild(b);
+  return b;
+}
+
+function save(filename, text, mime = "text/plain") {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// "Open it in BREPcode" is the whole point of publishing something you still
+// intend to change. The editor exposes __brepOpenQuicksave, so the handoff is
+// the .bcode text and nothing else — this page needs to know nothing about how
+// a model is loaded.
+if (visitor.edit) {
+  addButton("Open in BREPcode", "edit this model", async () => {
+    try {
+      const text = await bcode();
+      sessionStorage.setItem("brepcode-handoff", JSON.stringify({ name: NAME, text }));
+      location.href = "/#open=handoff";
+    } catch (e) { note.textContent = String(e.message || e); }
+  }, true);
+}
+
+if (visitor.model) {
+  addButton("Download the model", "the editable .bcode source", async () => {
+    try { save(`${SLUG}.bcode`, await bcode()); }
+    catch (e) { note.textContent = String(e.message || e); }
+  });
+  // STL/3MF/STEP are produced by the kernel, which lives in the editor rather
+  // than on this page. Sending someone there with the model already loaded is
+  // honest and costs one click; re-implementing the exporters here would mean
+  // a second copy of them to keep correct.
+  addButton("Download STL, 3MF or STEP", "opens the exporter with this model", async () => {
+    try {
+      const text = await bcode();
+      sessionStorage.setItem("brepcode-handoff", JSON.stringify({ name: NAME, text }));
+      location.href = "/#open=handoff&export=1";
+    } catch (e) { note.textContent = String(e.message || e); }
+  });
+}
+
+if (visitor.svg) {
+  addButton("Download the drawing", "3-view SVG, drawn in the editor", async () => {
+    try {
+      const text = await bcode();
+      sessionStorage.setItem("brepcode-handoff", JSON.stringify({ name: NAME, text }));
+      location.href = "/#open=handoff&export=svg";
+    } catch (e) { note.textContent = String(e.message || e); }
+  });
+}
+
+if (visitor.html) {
+  addButton("Download this page", "self-contained, host it anywhere", async () => {
+    try {
+      const text = await bcode();
+      sessionStorage.setItem("brepcode-handoff", JSON.stringify({ name: NAME, text }));
+      location.href = "/#open=handoff&export=embed";
+    } catch (e) { note.textContent = String(e.message || e); }
+  });
+}
+
+// Spinning it needs geometry, and the thumbnail is a picture. The editor
+// uploads a GLB alongside the model whenever this box is ticked, and the page
+// shows it with <model-viewer> — the same component the "standalone page"
+// export uses, so both routes look the same. Serve the script from the site;
+// a published page should not depend on someone else's CDN staying up.
+//
+// Strictly a progressive upgrade: if there is no GLB, or the component fails
+// to load, the thumbnail is already on screen and the page still works.
+if (visitor.orbit && GLB) {
+  const mv = document.createElement("script");
+  mv.type = "module";
+  mv.src = "/vendor/model-viewer.min.js";
+  mv.onload = () => {
+    const el = document.createElement("model-viewer");
+    el.setAttribute("src", GLB);
+    el.setAttribute("alt", NAME);
+    el.setAttribute("camera-controls", "");
+    el.setAttribute("auto-rotate", "");
+    el.setAttribute("shadow-intensity", "1");
+    el.style.cssText = "width:100%; height:100%; background:transparent";
+    const stage = document.getElementById("stage");
+    stage.appendChild(el);
+    document.getElementById("thumb")?.remove();
+    document.getElementById("hint").hidden = false;
+  };
+  mv.onerror = () => { /* thumbnail stays; nothing to undo */ };
+  document.head.appendChild(mv);
+}
+
+if (isPreviewOnly(visitor)) {
+  note.textContent = "This model was published as a preview. Ask whoever sent it "
+    + "if you need the file.";
+}
+</script>
+</body>
+</html>

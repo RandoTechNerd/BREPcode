@@ -2738,6 +2738,7 @@
     const getLockbox = () => (_lock ??= import("./lockbox.js"));
     import * as jscadApi from "../src/jscad.js";
     import * as sdfApi from "../src/sdf.js";
+    import { VISITOR_DEFAULTS, visitorSummary } from "../src/visitor.js";
     // More on-demand modules: exporters (only on download/import), the chatbot
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
@@ -8087,6 +8088,40 @@ ${joined}`)(...vs);
 
     // Arriving on a share link: the model rides in the fragment. Load it before
     // the starter shape so nobody watches a cube they did not ask for.
+    // "Open in BREPcode" on a published page. The model travels in
+    // sessionStorage rather than the URL because a .bcode carrying a mesh does
+    // not fit in one — that is the whole reason share links have a size limit —
+    // and sessionStorage is per-tab, so it cannot leak into another window.
+    //
+    // Read once and immediately cleared: a handoff is a delivery, not a
+    // setting, and leaving it behind would make every later reload of this tab
+    // reopen someone else's model instead of the user's own work.
+    const HANDOFF_KEY = "brepcode-handoff";
+    async function openHandoff() {
+      if (!/[#&]open=handoff\b/.test(location.hash)) return false;
+      let payload = null;
+      try { payload = JSON.parse(sessionStorage.getItem(HANDOFF_KEY) || "null"); } catch { payload = null; }
+      try { sessionStorage.removeItem(HANDOFF_KEY); } catch { /* private mode */ }
+      if (!payload?.text) return false;
+      try {
+        setStatus("busy", "Opening…");
+        await window.__brepOpenQuicksave({ name: payload.name, text: payload.text });
+      } catch { return false; }        // a bad handoff falls through to the starter model
+
+      // The page may have sent them here to get a file rather than to edit.
+      // Honour that by opening the export dialog on the format they asked for.
+      const want = /[#&]export=([a-z0-9-]+)/i.exec(location.hash)?.[1];
+      if (want) {
+        const fmt = want === "1" ? "stl" : want;
+        $("export-btn").click();
+        if (EXPORT_FORMATS[fmt]) expShow(fmt);
+      }
+      // Drop the fragment so a refresh does not try to replay a handoff that
+      // has already been consumed.
+      try { history.replaceState(null, "", location.pathname + location.search); } catch { /* file:// */ }
+      return true;
+    }
+
     async function openSharedModel() {
       if (!/[#&]m=/.test(location.hash)) return false;
       try {
@@ -8428,7 +8463,18 @@ ${joined}`)(...vs);
           // it; sending it every time means an older page republished with the
           // boxes changed gets the new answer rather than keeping the old one.
           const visitor = visitorOptions();
-          const res = await pub({ name: base, text, thumb, visitor });
+          // A GLB only when the page is allowed to spin it. Uploading geometry
+          // for a page that will only ever show a still is wasted bytes, and
+          // the checkbox would be quietly untrue if we did not send it when it
+          // IS ticked — the thumbnail cannot be orbited.
+          let glb = null;
+          if (visitor.orbit) {
+            setStatus("busy", "Publishing — packing the viewable model…");
+            try {
+              glb = base64OfBuffer(await modelToGLB());
+            } catch { glb = null; }   // no GLB just means the page falls back to the thumbnail
+          }
+          const res = await pub({ name: base, text, thumb, visitor, glb });
           if (!res?.ok) throw new Error(res?.error || "the site refused it");
           size = text.length;
           const url = res.url || `${location.origin}/${res.slug || base}`;
@@ -9388,26 +9434,21 @@ ${joined}`)(...vs);
     }
     function paintPubSummary() {
       const o = visitorOptions();
-      const can = [];
-      if (o.orbit) can.push("spin it");
-      if (o.model) can.push("download the model");
-      if (o.svg) can.push("download the drawing");
-      if (o.html) can.push("take a standalone page");
-      if (o.edit) can.push("open it in BREPcode");
       const el = $("pub-summary");
       if (!el) return;
-      el.textContent = can.length
-        ? `Visitors can ${can.join(", ").replace(/, ([^,]*)$/, " and $1")}.`
-        : "Preview only — visitors get the still thumbnail and nothing else.";
+      // The same function the published page uses to decide what to offer, so
+      // this sentence cannot promise something the page will not do.
+      el.textContent = visitorSummary(o);
       localStorage.setItem(PUB_KEY, JSON.stringify(o));
     }
     (function restorePubOptions() {
       let saved = null;
       try { saved = JSON.parse(localStorage.getItem(PUB_KEY) || "null"); } catch { saved = null; }
-      if (saved) {
-        for (const [k, id] of Object.entries(PUB_BOXES)) {
-          const el = $(id); if (el && typeof saved[k] === "boolean") el.checked = saved[k];
-        }
+      // No saved answer yet: start from the shared defaults rather than
+      // whatever the markup happens to say, so both sides open the same way.
+      const start = saved || VISITOR_DEFAULTS;
+      for (const [k, id] of Object.entries(PUB_BOXES)) {
+        const el = $(id); if (el && typeof start[k] === "boolean") el.checked = start[k];
       }
       for (const id of Object.values(PUB_BOXES)) {
         $(id)?.addEventListener("change", paintPubSummary);
@@ -9706,9 +9747,16 @@ ${joined}`)(...vs);
         negBtn.click();
         restored.push("negatives overlay");
       }
-      // The name drives export filenames, so a reopened project exports as itself.
+      // The name drives export filenames, so a reopened project exports as
+      // itself. paintName() matters as much as the assignment: without it the
+      // caption in the header kept whatever the last model was called, so an
+      // opened project exported correctly while claiming to be something else.
       const stem = file.name.replace(/\.bcode$/i, "");
-      if (stem) { modelName = stem; localStorage.setItem("brepcode-modelname", modelName); }
+      if (stem) {
+        modelName = stem;
+        localStorage.setItem("brepcode-modelname", modelName);
+        paintName();
+      }
 
       toggleCard(panel, openBtn, true);
       hint.innerHTML = `Opened <b>${esc(file.name)}</b> — this is the real model, not a mesh, so every dimension is still editable.`
@@ -13286,10 +13334,12 @@ ${joined}`)(...vs);
       try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
     }
 
-    // A share link carries its own model, so it must be checked BEFORE the
-    // default build — otherwise the visitor watches a starter cube appear and
-    // then get replaced, which reads as the link having gone wrong.
-    if (!(await openSharedModel().catch(() => false))) await rebuild();
+    // A share link and a handoff both carry their own model, so both must be
+    // checked BEFORE the default build — otherwise the visitor watches a
+    // starter cube appear and then get replaced, which reads as the link having
+    // gone wrong.
+    if (!(await openHandoff().catch(() => false))
+      && !(await openSharedModel().catch(() => false))) await rebuild();
 
     // The default shape is on screen — now quietly warm the on-demand feature
     // modules (curved export, image tracer, key-locker) during the idle gap, so
