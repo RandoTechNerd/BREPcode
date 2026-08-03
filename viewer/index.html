@@ -2397,6 +2397,19 @@
             <input type="range" id="mat-rim" min="0" max="250" value="0" />
             <output id="mat-rim-o">0%</output>
           </label>
+          <!-- Exposure is the one control that moves the whole picture at once,
+               which is what you want when the four lights are balanced and the
+               result is simply too dark or too bright. Defaults to 100% — the
+               look every existing model already has. -->
+          <label class="mat-row"><span>Exposure</span>
+            <input type="range" id="mat-exposure" min="20" max="250" value="100" />
+            <output id="mat-exposure-o">100%</output>
+          </label>
+          <label class="mat-row" title="Rolls bright highlights off gently instead of letting them clip flat. Most noticeable on glow-in-the-dark and on metals.">
+            <span>Filmic highlights</span>
+            <input type="checkbox" id="mat-filmic" />
+            <output id="mat-filmic-o" class="note">off</output>
+          </label>
 
           <div class="mat-group">Colour</div>
           <label class="mat-row"><span>Key tint</span>
@@ -3846,6 +3859,9 @@
       selOutline: true, selOutlineCol: "#3b9dff",
       grabCol: "#2e76f2", ballCol: "#eaf1ff",
       ambient: 55, key: 150, fill: 50, rim: 0,
+      // 100 = 1.0 and filmic off is exactly the renderer's old behaviour, so a
+      // model saved before these existed opens looking the same.
+      exposure: 100, filmic: false,
       // per-light tints: fillcol/rimcol empty = follow the old single-tint
       // behaviour, so stored settings from before the split load unchanged
       lightcol: "#ffffff", fillcol: "", rimcol: "", bg: "#0b0f16",
@@ -3971,6 +3987,23 @@
       }
       // push shading props (not colour) to every per-shape override material
       for (const m of overrideMats.values()) syncMatProps(m);
+      // Exposure and the tone curve belong to the renderer, not to a material.
+      // Switching the curve rewrites every shader, so materials are only marked
+      // dirty when it actually CHANGES — doing it on every paint would recompile
+      // the whole scene on each slider tick.
+      //
+      // LINEAR, not NONE, when filmic is off: toneMappingExposure is applied by
+      // the tone-mapping stage, so under NoToneMapping the exposure slider is
+      // silently dead. Linear is a bare multiply — at 100% it is pixel-for-pixel
+      // what NoToneMapping produced, so nothing changes for anyone who leaves it
+      // alone, and the slider works for anyone who does not.
+      const wantTone = mat.filmic ? THREE.ACESFilmicToneMapping : THREE.LinearToneMapping;
+      if (renderer.toneMapping !== wantTone) {
+        renderer.toneMapping = wantTone;
+        solidMaterial.needsUpdate = true;
+        for (const m of overrideMats.values()) m.needsUpdate = true;
+      }
+      renderer.toneMappingExposure = pct(mat.exposure);
       ambientLight.intensity = pct(mat.ambient);
       keyLight.intensity = pct(mat.key);
       keyLight.color.set(mat.lightcol);
@@ -3996,12 +4029,15 @@
         ["metal", mat.metal, "%"], ["rough", mat.rough, "%"], ["opacity", mat.opacity, "%"],
         ["tex-depth", mat.texDepth, "%"], ["tex-scale", mat.texScale, ""], ["tex-rot", mat.texRot, "°"],
         ["tex-offx", mat.texOffX, ""], ["tex-offy", mat.texOffY, ""],
-        ["ambient", mat.ambient, "%"], ["key", mat.key, "%"], ["fill", mat.fill, "%"], ["rim", mat.rim, "%"]]) {
+        ["ambient", mat.ambient, "%"], ["key", mat.key, "%"], ["fill", mat.fill, "%"], ["rim", mat.rim, "%"],
+        ["exposure", mat.exposure, "%"]]) {
         const el = $(`mat-${id}`); if (el) el.value = v;
         const o = $(`mat-${id}-o`); if (o) o.textContent = v + suf;
       }
       $("mat-flat").checked = mat.flat;
       $("mat-wire").checked = mat.wire;
+      $("mat-filmic").checked = !!mat.filmic;
+      $("mat-filmic-o").textContent = mat.filmic ? "on" : "off";
       $("mat-outline").checked = !!mat.outline;
       $("mat-outlinecol").value = mat.outlineCol || "#0d1117";
       $("mat-outlineangle").value = mat.outlineAngle ?? 20;
@@ -4245,10 +4281,12 @@
     bindRange("mat-tex-rot", "texRot"); bindRange("mat-tex-offx", "texOffX"); bindRange("mat-tex-offy", "texOffY");
     bindRange("mat-ambient", "ambient"); bindRange("mat-key", "key");
     bindRange("mat-fill", "fill"); bindRange("mat-rim", "rim");
+    bindRange("mat-exposure", "exposure");
     const bindCheck = (id, key) => $(id).addEventListener("change", (e) => {
       mat[key] = e.target.checked; applyMaterial(); saveMat();
     });
     bindCheck("mat-flat", "flat"); bindCheck("mat-wire", "wire");
+    bindCheck("mat-filmic", "filmic");
     // outlines live outside the material, so they re-trace rather than re-shade
     $("mat-outline").addEventListener("change", (e) => {
       mat.outline = e.target.checked;
