@@ -678,6 +678,23 @@
     #exp-list button.sel { background: var(--accent); color: #fff; }
     #exp-list button.sel small { color: rgba(255,255,255,.75); }
     #exp-list small { color: var(--muted4); margin-left: 7px; }
+    /* Publishing options: a checklist, not the label/control rows the other
+       formats use — each line is a sentence about what someone else may do. */
+    #publish-row { display: block; margin: 2px 0 4px; }
+    #publish-row .pub-head {
+      display: block; font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+      color: var(--muted2); margin-bottom: 5px;
+    }
+    #publish-row .pub-opt {
+      display: flex; align-items: flex-start; gap: 8px; padding: 4px 0;
+      cursor: pointer; font-size: 12.5px; color: var(--text);
+    }
+    #publish-row .pub-opt input { margin: 2px 0 0; flex: none; }
+    #publish-row .pub-opt small {
+      display: block; color: var(--muted4); font-size: 11px; margin-top: 1px; line-height: 1.35;
+    }
+    #pub-summary { margin-top: 7px; font-size: 11.5px; color: var(--muted3); line-height: 1.45; }
+
     #exp-list .exp-group {
       padding: 10px 14px 3px; font-size: 10px; letter-spacing: .09em;
       text-transform: uppercase; color: var(--muted2);
@@ -1377,6 +1394,23 @@
              A note, never a block: the export still runs if you want it. -->
         <p id="exp-caveat" hidden></p>
         <div id="exp-opts">
+          <!-- What a visitor to brepcode.com/<name> is allowed to do. Publishing
+               is the one export whose audience is not you, so it is the one that
+               needs saying out loud. Everything off is a still picture. -->
+          <div id="publish-row" hidden>
+            <span class="pub-head">Visitors to the page can</span>
+            <label class="pub-opt"><input type="checkbox" id="pub-orbit" checked />
+              <span>Spin and zoom it<small>otherwise they see the still thumbnail</small></span></label>
+            <label class="pub-opt"><input type="checkbox" id="pub-model" checked />
+              <span>Download the model<small>STL, 3MF and STEP</small></span></label>
+            <label class="pub-opt"><input type="checkbox" id="pub-svg" />
+              <span>Download the drawing<small>the 3-view SVG</small></span></label>
+            <label class="pub-opt"><input type="checkbox" id="pub-html" />
+              <span>Download a standalone page<small>self-contained HTML they can host</small></span></label>
+            <label class="pub-opt"><input type="checkbox" id="pub-edit" checked />
+              <span>Open it in BREPcode<small>hands the model back to the editor, ready to change</small></span></label>
+            <div class="note" id="pub-summary"></div>
+          </div>
           <!-- 3MF colour handling: the default keeps colours as filaments; the
                alternative writes plain geometry for one-material printing. -->
           <label id="mf-colour-row" hidden>
@@ -2783,12 +2817,20 @@
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
     keyLight.position.set(60, -80, 120);
     scene.add(keyLight);
+    // Fill and rim are placed for a Z-UP scene, which is what this one is.
+    // They used to sit at z -40 and z -120: classic three-point coordinates
+    // written for a Y-up world, which here put both of them UNDER the build
+    // plate shining at the model's underside. Their sliders moved the intensity
+    // and changed nothing you could see — the lighting looked stuck because
+    // two of the four lights were aimed at faces the camera never shows.
+    // Fill sits front-left and above, opposite the key; rim sits behind and
+    // above, where it grazes the far edges instead of the floor.
     const fillLight = new THREE.DirectionalLight(0x88aaff, 0.5);
-    fillLight.position.set(-70, 60, -40);
+    fillLight.position.set(-90, -55, 45);
     scene.add(fillLight);
     // rim/back light for edge pop — off by default
     const rimLight = new THREE.DirectionalLight(0xffffff, 0);
-    rimLight.position.set(0, 40, -120);
+    rimLight.position.set(0, 95, 85);
     scene.add(rimLight);
 
     // Grid colours come from the theme; the grid itself is recreated on theme
@@ -8382,13 +8424,18 @@ ${joined}`)(...vs);
           setStatus("busy", "Publishing…");
           const text = await window.__brepQuicksaveProject();
           const thumb = window.__brepQuicksaveSnapshot(900, 600);
-          const res = await pub({ name: base, text, thumb });
+          // `visitor` says what the published page may offer. The site enforces
+          // it; sending it every time means an older page republished with the
+          // boxes changed gets the new answer rather than keeping the old one.
+          const visitor = visitorOptions();
+          const res = await pub({ name: base, text, thumb, visitor });
           if (!res?.ok) throw new Error(res?.error || "the site refused it");
           size = text.length;
           const url = res.url || `${location.origin}/${res.slug || base}`;
           try { await navigator.clipboard.writeText(url); } catch { /* no permission */ }
           fixnote.innerHTML = `<span style="color:var(--muted3)">Published — `
             + `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a> (link copied). `
+            + `${esc($("pub-summary").textContent)} `
             + `It is in your stash now; publish again to update it.</span>`;
           loadSecretLibrary();
         } else if (fmt === "share") {
@@ -8521,7 +8568,7 @@ ${joined}`)(...vs);
       bcode: { kind: "code", desc: "The project itself — your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
       share: { kind: "code", desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
       slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
-      publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link." },
+      publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
       stl: { kind: "mono", desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
@@ -9301,7 +9348,7 @@ ${joined}`)(...vs);
         b.classList.toggle("sel", b.dataset.fmt === fmt);
       }
       $("exp-desc").textContent = spec.desc;
-      for (const row of ["mf-colour-row", "plate-row", "printer-row", "nozzle-row",
+      for (const row of ["publish-row", "mf-colour-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row",
         "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
@@ -9324,6 +9371,50 @@ ${joined}`)(...vs);
       exportModal.hidden = false;
       expShow(EXPORT_FORMATS[expSel] ? expSel : "stl");
     });
+    // ---- what a published page lets a visitor do ---------------------------
+    //
+    // These ride along in the publish payload. Nothing here enforces them —
+    // enforcement is the site's job, since the site is what serves the page —
+    // but the choice has to be made HERE, because this is where the person who
+    // owns the model is standing.
+    const PUB_KEY = "brepcode-publish-visitor";
+    const PUB_BOXES = { orbit: "pub-orbit", model: "pub-model", svg: "pub-svg",
+      html: "pub-html", edit: "pub-edit" };
+
+    function visitorOptions() {
+      const o = {};
+      for (const [k, id] of Object.entries(PUB_BOXES)) o[k] = !!$(id)?.checked;
+      return o;
+    }
+    function paintPubSummary() {
+      const o = visitorOptions();
+      const can = [];
+      if (o.orbit) can.push("spin it");
+      if (o.model) can.push("download the model");
+      if (o.svg) can.push("download the drawing");
+      if (o.html) can.push("take a standalone page");
+      if (o.edit) can.push("open it in BREPcode");
+      const el = $("pub-summary");
+      if (!el) return;
+      el.textContent = can.length
+        ? `Visitors can ${can.join(", ").replace(/, ([^,]*)$/, " and $1")}.`
+        : "Preview only — visitors get the still thumbnail and nothing else.";
+      localStorage.setItem(PUB_KEY, JSON.stringify(o));
+    }
+    (function restorePubOptions() {
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(PUB_KEY) || "null"); } catch { saved = null; }
+      if (saved) {
+        for (const [k, id] of Object.entries(PUB_BOXES)) {
+          const el = $(id); if (el && typeof saved[k] === "boolean") el.checked = saved[k];
+        }
+      }
+      for (const id of Object.values(PUB_BOXES)) {
+        $(id)?.addEventListener("change", paintPubSummary);
+      }
+      paintPubSummary();
+    })();
+
     // The landing card's three doors. Export is the one that matters: it lives
     // in the editor header behind an overflow menu, which a visitor who has
     // never opened the editor will never find.
