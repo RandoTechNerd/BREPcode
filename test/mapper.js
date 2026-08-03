@@ -1,4 +1,4 @@
-import { mapTraceToSites, primitiveSites } from "../viewer/assist.js";
+import { mapTraceToSites, primitiveSites, drillParts } from "../viewer/assist.js";
 let pass=0, fail=0;
 const ck=(l,ok,d="")=>{ ok?(pass++,console.log("  PASS  "+l)):(fail++,console.log("  FAIL  "+l+(d?"  — "+d:""))); };
 
@@ -30,6 +30,46 @@ console.log("\ndrill() is a site, and leaving it out broke more than drills\n");
      m && text.slice(m.dr.start, m.dr.start + 5) === "drill", m && text.slice(m.dr.start, m.dr.start + 8));
   ck("...and the cylinder to the cylinder call",
      m && text.slice(m.cy.start, m.cy.start + 8) === "cylinder", m && text.slice(m.cy.start, m.cy.start + 8));
+}
+
+console.log("\ndrillParts: the numbers a handle is allowed to rewrite\n");
+{
+  const parts = (t) => drillParts(t, primitiveSites(t)[0]);
+  const at = (t, s) => t.slice(s.start, s.end);
+
+  const a = "drill([30, 20, 20], [0, 0, 1], { d: 8, depth: 15 })";
+  const pa = parts(a);
+  ck("point and direction are told apart",
+     JSON.stringify(pa.point) === "[30,20,20]" && JSON.stringify(pa.dir) === "[0,0,1]");
+  ck("the spans cover exactly the vectors",
+     at(a, pa.pointSpan) === "[30, 20, 20]" && at(a, pa.dirSpan) === "[0, 0, 1]",
+     `${at(a, pa.pointSpan)} / ${at(a, pa.dirSpan)}`);
+  ck("width and depth land on their own digits",
+     at(a, pa.diaSpan) === "8" && at(a, pa.depthSpan) === "15");
+
+  // r is a RADIUS. Treating it as a diameter would double the hole the first
+  // time anyone dragged the rim, silently, on a part about to be printed.
+  const pr = parts("drill([1,2,3],[0,0,1],{r:2.5})");
+  ck("r is read as a radius and reported as a diameter", pr.dia === 5 && pr.fromRadius === true,
+     `${pr.dia} fromRadius=${pr.fromRadius}`);
+  ck("...and its span still points at the r digits, not a made-up one",
+     "drill([1,2,3],[0,0,1],{r:2.5})".slice(pr.diaSpan.start, pr.diaSpan.end) === "2.5");
+
+  ck("dia is accepted as a spelling of d", parts("drill([1,2,3],[0,0,1],{dia:6})").dia === 6);
+  // Absent options mean drill()'s own defaults, and a null span is how the
+  // caller knows it must ADD the option rather than rewrite one.
+  const pd = parts("drill([1,2,3],[0,0,1])");
+  ck("a bare drill reports the defaults", pd.dia === 4 && pd.depth === 12);
+  ck("...with no spans, so the handle knows to write the option in",
+     pd.diaSpan === null && pd.depthSpan === null);
+  ck("through is noticed", parts("drill([1,2,3],[0,0,1],{d:4,through:true})").through === true);
+  ck("...and is false when absent", parts("drill([1,2,3],[0,0,1],{d:4})").through === false);
+  // Anything that is not a drill must return null rather than a half-parse,
+  // or a handle would rewrite characters in the middle of another call.
+  const cyl = "cylinder({ r: 4, h: 10 })";
+  ck("a cylinder is not mistaken for a drill", drillParts(cyl, primitiveSites(cyl)[0]) === null);
+  ck("a drill missing its direction is refused",
+     drillParts("drill([1,2,3])", primitiveSites("drill([1,2,3])")[0]) === null);
 }
 
 console.log("\nmapTraceToSites: exact match maps everything\n");

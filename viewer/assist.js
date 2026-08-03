@@ -998,6 +998,50 @@ export function dragSpanFor(text, site) {
 
 // The number to edit when resizing `site` along world axis 0/1/2 (x/y/z).
 // Returns {numStart, numEnd, value, label} with offsets absolute in `text`.
+// A drill's four editable parts, with the exact span of each so a drag rewrites
+// one number and leaves the rest of the line — spacing, comments, option order —
+// exactly as the author wrote it.
+//
+//   drill([x, y, z], [nx, ny, nz], { d: 4, depth: 12 })
+//
+// Returns null unless the call really is a drill with both vectors present,
+// because a half-parsed one would let a handle rewrite the wrong characters.
+export function drillParts(text, site) {
+  if (!site || site.kind !== "drill") return null;
+  const s = text.slice(site.start, site.end);
+  const vec = /\[\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\]/g;
+  const pm = vec.exec(s);
+  if (!pm) return null;
+  const dm = vec.exec(s);
+  if (!dm) return null;
+  const span = (m) => ({ start: site.start + m.index, end: site.start + m.index + m[0].length });
+  const num = (re, fallback) => {
+    const m = re.exec(s);
+    if (!m) return { value: fallback, start: -1, end: -1 };
+    const at = m.index + m[0].length - m[1].length;
+    return { value: parseFloat(m[1]), start: site.start + at, end: site.start + at + m[1].length };
+  };
+  // d wins over dia/diameter, and r is doubled — the same precedence drill()
+  // itself applies, so what the handle shows is what the kernel bored.
+  let dia = num(/\bd\s*:\s*(-?\d+\.?\d*)/, null);
+  if (dia.start < 0) dia = num(/\b(?:dia|diameter)\s*:\s*(-?\d+\.?\d*)/, null);
+  let fromRadius = false;
+  if (dia.start < 0) {
+    const r = num(/\br\s*:\s*(-?\d+\.?\d*)/, null);
+    if (r.start >= 0) { dia = { ...r, value: r.value * 2 }; fromRadius = true; }
+  }
+  if (dia.start < 0) dia = { value: 4, start: -1, end: -1 };     // drill()'s own default
+  const depth = num(/\b(?:depth|h)\s*:\s*(-?\d+\.?\d*)/, 12);
+  const through = /\bthrough\s*:\s*true/.test(s);
+  return {
+    point: [parseFloat(pm[1]), parseFloat(pm[2]), parseFloat(pm[3])], pointSpan: span(pm),
+    dir: [parseFloat(dm[1]), parseFloat(dm[2]), parseFloat(dm[3])], dirSpan: span(dm),
+    dia: dia.value, diaSpan: dia.start < 0 ? null : { start: dia.start, end: dia.end }, fromRadius,
+    depth: depth.value, depthSpan: depth.start < 0 ? null : { start: depth.start, end: depth.end },
+    through,
+  };
+}
+
 export function findResizeTarget(text, site, axis) {
   const s = text.slice(site.start, site.end);
   const numMatches = [...s.matchAll(/-?\d+\.?\d*/g)];

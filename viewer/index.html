@@ -2781,6 +2781,7 @@
       swapTarget, wordAt, numberAt, optionAt, optionTarget, primitiveSites, mapTraceToSites, convertPrimitiveCall,
       isBrepscriptModule, prepareBrepscriptModule, declaredNames, fixDanglingReturn, looseShapeCount,
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
+      drillParts,
     } from "./assist.js";
 
     // A password-locked API key (see lockbox.js) is OPTIONAL, and viewer/locked-key.js
@@ -6798,6 +6799,9 @@ ${joined}`)(...vs);
       if (bb.isEmpty()) return;
       selected = { fid };
       highlightMeshesOf(fid);
+      // A drill's numbers are a point, a direction, a width and a depth — none
+      // of which the world-axis face handles can express. It gets its own.
+      if (site.kind === "drill" && spawnDrillHandles(fid, site, bb)) return;
       const c = bb.getCenter(new THREE.Vector3());
       const size = bb.getSize(new THREE.Vector3());
       // generous floor: on small parts (a 20mm sphere) 1.2mm handles were
@@ -7038,6 +7042,73 @@ ${joined}`)(...vs);
       return raycaster.ray.intersectPlane(plane, out) ? out : null;
     }
 
+    // Ray onto an arbitrary plane. A drill can point anywhere, so its handles
+    // cannot use the Z-plane the other drags assume.
+    function rayToFreePlane(e, origin, normal) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ), camera);
+      const n = normal.clone().normalize();
+      const plane = new THREE.Plane(n, -n.dot(origin));
+      const out = new THREE.Vector3();
+      return raycaster.ray.intersectPlane(plane, out) ? out : null;
+    }
+
+    // Something perpendicular to n, chosen so it never degenerates: crossing
+    // with the world axis n leans on least.
+    function perpTo(n) {
+      const a = Math.abs(n.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      return new THREE.Vector3().crossVectors(n, a).normalize();
+    }
+
+    // A drill's three handles, in the drill's OWN frame rather than the world's.
+    //
+    // The face/corner handles every other shape gets are built on an
+    // axis-aligned bounding box and edited along world axes, which is exactly
+    // wrong for a bore that can point anywhere: "grow along +X" means nothing to
+    // a hole drilled at 30 degrees. So a drill gets its own three, each one
+    // sitting on the thing it changes — the rim for width, the far end for
+    // depth, and a stalk out along the bore for aim.
+    function spawnDrillHandles(fid, site, bb) {
+      const P = drillParts(code.value, site);
+      if (!P) return false;
+      const n = new THREE.Vector3(...P.dir);
+      if (n.lengthSq() < 1e-9) n.set(0, 0, 1);
+      n.normalize();
+      const entry = new THREE.Vector3(...P.point);
+      const size = bb.getSize(new THREE.Vector3());
+      const handleScale = currentTheme === "super" ? 0.5 : 1;
+      const s = Math.min(Math.max(Math.max(size.x, size.y, size.z) * 0.16, 2.4), 6) * handleScale;
+      const u = perpTo(n);
+
+      // width: on the rim, where the bore meets the surface
+      addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
+        h.scale.setScalar(s * 0.5);
+        h.position.copy(entry).addScaledVector(u, P.dia / 2);
+      }, { kind: "drillDia", fid, site });
+
+      // depth: at the bottom of the bore. Meaningless on a through hole, which
+      // is bored to a fixed 1000mm and is not a number anyone wants to drag.
+      if (!P.through) {
+        addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
+          h.scale.setScalar(s * 0.5);
+          h.position.copy(entry).addScaledVector(n, -P.depth);
+        }, { kind: "drillDepth", fid, site });
+      }
+
+      // aim: out along the bore, above the surface, so it never sits inside the
+      // material where it could not be clicked
+      addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
+        h.scale.setScalar(s * 0.42);
+        h.position.copy(entry).addScaledVector(n, Math.max(P.depth * 0.6, s * 3));
+      }, { kind: "drillAim", fid, site });
+
+      handleGroup.updateMatrixWorld(true);
+      return true;
+    }
+
     renderer.domElement.addEventListener("pointerdown", (e) => {
       downAt = [e.clientX, e.clientY];
       // Imported model: dragging ON the mesh slides it around the plate (cheap —
@@ -7125,7 +7196,29 @@ ${joined}`)(...vs);
         if (hSite) {
           const fbb = new THREE.Box3();
           fbb.copy(featureBox(H.fid));
-          if (H.kind === "face") {
+          if (H.kind === "drillDia" || H.kind === "drillDepth" || H.kind === "drillAim") {
+            const P = drillParts(code.value, hSite);
+            if (P) {
+              const n = new THREE.Vector3(...P.dir);
+              if (n.lengthSq() < 1e-9) n.set(0, 0, 1);
+              n.normalize();
+              drag = {
+                mode: H.kind, fid: H.fid, site: hSite, parts: P,
+                axis3: n, entry: new THREE.Vector3(...P.point),
+                // Sighting plane: for width, the rim's own plane; for depth and
+                // aim, one that faces the camera, so a drag reads the same
+                // whichever way the part is turned.
+                camN: camera.position.clone().sub(controls.target).normalize(),
+                value: H.kind === "drillDia" ? P.dia : P.depth,
+                handles: handleGroup.children.filter((h) => h.userData.handle?.kind === H.kind),
+                // The release path resets every dragged mesh; a drill drags no
+                // model geometry, only its own handles, so it hands over an
+                // empty list rather than nothing at all.
+                meshes: [],
+                moved: false,
+              };
+            }
+          } else if (H.kind === "face") {
             const target = findResizeTarget(code.value, hSite, H.axis);
             if (target) {
               const outDir = new THREE.Vector3();
@@ -7397,6 +7490,45 @@ ${joined}`)(...vs);
         return;
       }
 
+      if (drag.mode === "drillDia" || drag.mode === "drillDepth" || drag.mode === "drillAim") {
+        const n = drag.axis3, entry = drag.entry;
+        const r1 = (v) => Math.round(v * 10) / 10;        // mm, to a tenth
+        const r2 = (v) => Math.round(v * 100) / 100;      // a direction component
+        if (drag.mode === "drillDia") {
+          // The rim lives in the plane the bore passes through, so that plane is
+          // where the cursor is read. Distance from the axis IS the radius.
+          const p = rayToFreePlane(e, entry, n);
+          if (!p) return;
+          drag.next = Math.max(r1(p.distanceTo(entry) * 2), 0.2);
+          for (const h of drag.handles) {
+            h.position.copy(entry).addScaledVector(perpTo(n), drag.next / 2);
+          }
+          hint.innerHTML = `Bore <b>${drag.next}mm</b> across.`;
+        } else if (drag.mode === "drillDepth") {
+          // Sighted on a plane that contains the axis and faces the camera, so
+          // the drag reads the same however the part is turned.
+          const side = new THREE.Vector3().crossVectors(n, drag.camN);
+          const face = side.lengthSq() < 1e-6 ? perpTo(n) : new THREE.Vector3().crossVectors(side, n).normalize();
+          const p = rayToFreePlane(e, entry, face);
+          if (!p) return;
+          drag.next = Math.max(r1(p.clone().sub(entry).dot(n) * -1), 0.2);
+          for (const h of drag.handles) h.position.copy(entry).addScaledVector(n, -drag.next);
+          hint.innerHTML = `Bore <b>${drag.next}mm</b> deep.`;
+        } else {
+          const p = rayToFreePlane(e, entry, drag.camN);
+          if (!p) return;
+          const v = p.clone().sub(entry);
+          if (v.lengthSq() < 1e-6) return;
+          v.normalize();
+          drag.nextDir = [r2(v.x), r2(v.y), r2(v.z)];
+          for (const h of drag.handles) {
+            h.position.copy(entry).addScaledVector(v, Math.max(drag.parts.depth * 0.6, 3));
+          }
+          hint.innerHTML = `Aimed <b>[${drag.nextDir.join(", ")}]</b>.`;
+        }
+        drag.moved = true;
+        return;
+      }
       if (drag.mode === "resize") {
         let amount;
         if (drag.axis === 2) {
@@ -7515,6 +7647,38 @@ ${joined}`)(...vs);
             ? `translate([${r1(+lead[1] + d.x)}, ${r1(+lead[2] + d.y)}, ${r1(+lead[3] + d.z)}], ${lead[4].trim()})`
             : `translate([${r1(d.x)}, ${r1(d.y)}, ${r1(d.z)}], ${expr})`;
           next = text.slice(0, span.start) + moved + text.slice(span.end);
+        }
+      } else if (drag.mode === "drillDia" || drag.mode === "drillDepth" || drag.mode === "drillAim") {
+        const P = drag.parts;
+        if (drag.mode === "drillAim") {
+          next = drag.nextDir
+            ? text.slice(0, P.dirSpan.start) + `[${drag.nextDir.join(", ")}]` + text.slice(P.dirSpan.end)
+            : text;
+        } else {
+          const isDia = drag.mode === "drillDia";
+          const span = isDia ? P.diaSpan : P.depthSpan;
+          // r: half a diameter. Editing it as though it were a diameter would
+          // double the hole the moment anyone dragged it.
+          const value = isDia && P.fromRadius ? drag.next / 2 : drag.next;
+          if (drag.next == null) {
+            next = text;
+          } else if (span) {
+            next = text.slice(0, span.start) + String(value) + text.slice(span.end);
+          } else {
+            // The option was never written — the call was relying on drill()'s
+            // default. Add it rather than silently doing nothing, keeping the
+            // author's own spacing style by copying what the call already uses.
+            const key = isDia ? "d" : "depth";
+            const opts = /\{([\s\S]*)\}\s*\)\s*$/.exec(text.slice(drag.site.start, drag.site.end));
+            if (opts) {
+              const at = drag.site.start + opts.index + 1;
+              const pad = /^\s/.test(opts[1]) ? " " : "";
+              next = text.slice(0, at) + `${pad}${key}: ${value},` + text.slice(at);
+            } else {
+              const close = drag.site.end - 1;
+              next = text.slice(0, close) + `, { ${key}: ${value} }` + text.slice(close);
+            }
+          }
         }
       } else if (drag.mode === "stretch") {
         // 1. rewrite both sizes (descending offset so spans stay valid)
