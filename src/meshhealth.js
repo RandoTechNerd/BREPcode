@@ -52,7 +52,12 @@ export function inspectMesh({ points, faces }) {
     if (seen.has(k)) duplicateFaces++; else seen.add(k);
   }
 
-  const V = points.length, F = kept.length, E = undirected.size;
+  // Count only vertices some face actually uses. A point left behind by a
+  // deleted face is not part of the surface, and counting it puts Euler's
+  // formula out by one — which is how a repaired cube reported "genus -0.5".
+  const used = new Set();
+  for (const [a, b, c] of kept) { used.add(a); used.add(b); used.add(c); }
+  const V = used.size, F = kept.length, E = undirected.size;
   const chi = V - E + F;
   return {
     triangles: F, vertices: V, edges: E,

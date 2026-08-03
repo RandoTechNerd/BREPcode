@@ -29,7 +29,7 @@ export async function simplifyObjects(objects, targetTris = 80000) {
   if (total <= targetTris) return objects;
   const ratio = targetTris / total;
 
-  return objects.map((o) => {
+  const reduced = objects.map((o) => {
     const soup = o.positions;
     const tris = soup.length / 9;
     const budget = Math.max(200, Math.round(tris * ratio));
@@ -73,4 +73,41 @@ export async function simplifyObjects(objects, targetTris = 80000) {
     if (!out.length) return o;
     return { ...o, positions: Float64Array.from(out) };
   });
+
+  // Simplification breaks the mesh, every time, and nothing used to notice.
+  //
+  // Measured on a real 3DBenchy: the original file is flawless — no open edges,
+  // no edges shared by three faces, no flipped winding. Every reduction comes
+  // back with a handful of non-manifold edges, and not only the aggressive
+  // ones: 5 at a target of 2,000 and still 4 at 50,000. The kernel sews that
+  // into something it reports as "1 solid" and then refuses to subtract from,
+  // so difference() keeps the cutter as a second body — which is why drilling a
+  // simplified model appeared to do nothing at all, and why the app blamed the
+  // cut for missing.
+  //
+  // The faults are tiny and local, so repairing them costs almost nothing and
+  // changes the shape by nothing: volume drift measured at 0.000% across every
+  // target. Done here rather than at the call site because every route into
+  // simplification needs it.
+  // Each object comes back carrying `watertight`, because the caller has to
+  // know: a sound mesh must be handed to the kernel WITHOUT its repair option,
+  // and a broken one with it. See the note where the code is generated.
+  return await Promise.all(reduced.map(async (o, i) => {
+    if (o === objects[i]) return o;                 // untouched, nothing to check
+    try {
+      const { weldTriangles, inspectMesh } = await import("../src/meshhealth.js");
+      const mesh = weldTriangles(Float32Array.from(o.positions));
+      if (inspectMesh(mesh).watertight) return { ...o, watertight: true };
+      const { repairMesh } = await import("../src/meshrepair.js");
+      const fixed = repairMesh(mesh);
+      if (!inspectMesh(fixed).watertight) return { ...o, watertight: false };
+      const flat = [];
+      for (const [a, b, c] of fixed.faces) {
+        for (const v of [a, b, c]) flat.push(...fixed.points[v]);
+      }
+      return { ...o, positions: Float64Array.from(flat), repaired: true, watertight: true };
+    } catch {
+      return o;             // a repair that throws must not cost the simplify
+    }
+  }));
 }

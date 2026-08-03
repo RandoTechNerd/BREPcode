@@ -12,12 +12,22 @@
 // winding produces patches oriented against their neighbours, which turns one
 // fault into two.
 //
-// What this does NOT attempt: edges shared by more than two faces. That is
-// geometry meeting along a seam — two shells fused, or a surface folded onto
-// itself — and there is no repair that does not first decide which of the
-// surfaces the author meant to keep. Guessing produces a mesh that passes the
-// check and is the wrong shape, which is worse than being told it cannot be
-// fixed automatically.
+// Edges shared by more than two faces get their own step, between the two,
+// because they are what a SIMPLIFIER leaves behind and a simplified mesh is
+// the main thing arriving here broken. Measured on a real 3DBenchy: the
+// original is flawless — no open edges, no over-used edges, no winding clashes
+// — and every reduction meshoptimizer produces has a handful of over-used
+// edges, at 50,000 triangles as much as at 2,000. The kernel then sews it into
+// something it calls a solid but will not subtract from, so difference() keeps
+// the cutter as a second body and a drill appears to do nothing.
+//
+// The defects are few — one to seven edges out of thousands — so the repair is
+// to delete the offending faces and patch the hole that leaves. Which face to
+// delete is a judgement, and the one taken here is: the face taking part in
+// the most over-used edges, breaking ties by smallest area, since a spurious
+// sliver is both the likeliest artefact and the least missed. That is a
+// heuristic and it is allowed to be, because the alternative is refusing to
+// repair the single most common way a mesh arrives broken.
 
 const key = (u, v) => (u < v ? `${u}_${v}` : `${v}_${u}`);
 
@@ -159,10 +169,74 @@ function fillHoles(points, faces) {
   return { points: pts, faces: out, filled: loops.length, patches };
 }
 
+function triArea(points, [ia, ib, ic]) {
+  const A = points[ia], B = points[ib], C = points[ic];
+  const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+  const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+  const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  return Math.hypot(n[0], n[1], n[2]) / 2;
+}
+
+// Delete faces until no edge is shared by more than two of them.
+//
+// Greedy and therefore terminating: every pass removes at least one face, and
+// there are finitely many. The holes this opens are filled by the later step,
+// which is why this has to run before it.
+function resolveOverusedEdges(points, faces) {
+  let out = faces.map((f) => f.slice());
+  let removed = 0;
+  for (let guard = 0; guard < out.length; guard++) {
+    const edgeFaces = new Map();
+    for (let fi = 0; fi < out.length; fi++) {
+      const [a, b, c] = out[fi];
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const k = key(u, v);
+        const bucket = edgeFaces.get(k);
+        if (bucket) bucket.push(fi); else edgeFaces.set(k, [fi]);
+      }
+    }
+    // How many over-used edges each face is implicated in.
+    const blame = new Map();
+    for (const owners of edgeFaces.values()) {
+      if (owners.length <= 2) continue;
+      for (const fi of owners) blame.set(fi, (blame.get(fi) || 0) + 1);
+    }
+    if (!blame.size) break;
+
+    // Which face to drop, and this is the part that has to be right rather
+    // than merely decisive. Smallest-area alone gets it exactly backwards: a
+    // stray fin welded to a cube is LARGER than the cube's own triangles, so
+    // area picks a wall of the cube, and patching that hole with a centroid fan
+    // cuts the corner off — measured, an 8000mm3 cube came back as 6333.
+    //
+    // A fin is recognisable by being attached along one edge and free along its
+    // others, so the signal is BOUNDARY edges: the more of a face's edges
+    // belong to nobody else, the more it is a flap rather than part of the
+    // surface. Blame and area only break ties after that.
+    let worst = -1, worstFree = -1, worstBlame = -1, worstArea = Infinity;
+    for (const [fi, n] of blame) {
+      const [a, b, c] = out[fi];
+      let free = 0;
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        if ((edgeFaces.get(key(u, v)) || []).length === 1) free++;
+      }
+      const area = triArea(points, out[fi]);
+      const better = free > worstFree
+        || (free === worstFree && n > worstBlame)
+        || (free === worstFree && n === worstBlame && area < worstArea);
+      if (better) { worst = fi; worstFree = free; worstBlame = n; worstArea = area; }
+    }
+    if (worst < 0) break;
+    out = out.filter((_, i) => i !== worst);
+    removed++;
+  }
+  return { faces: out, removed };
+}
+
 export function repairMesh({ points, faces }) {
   const report = {
     degenerateRemoved: 0, duplicatesRemoved: 0,
-    facesReoriented: 0, shellsFlipped: 0,
+    facesReoriented: 0, shellsFlipped: 0, facesRemovedAtJunctions: 0,
     holesFilled: 0, patchTriangles: 0,
     unrepairable: null,
   };
@@ -179,31 +253,32 @@ export function repairMesh({ points, faces }) {
     clean.push(f.slice());
   }
 
-  // An edge shared by three or more faces survives every step below and still
-  // fails the check, so say so rather than let it look repaired.
-  const shared = new Map();
-  for (const [a, b, c] of clean) {
-    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
-      shared.set(key(u, v), (shared.get(key(u, v)) || 0) + 1);
-    }
-  }
-  let overused = 0;
-  for (const n of shared.values()) if (n > 2) overused++;
-  if (overused) {
-    report.unrepairable = `${overused} edge${overused === 1 ? "" : "s"} shared by more than two `
-      + "faces — two surfaces meet there, and which one to keep is not something this can guess";
-  }
+  // 2. edges owned by three or more faces. Before the winding pass, because a
+  // non-manifold junction has no consistent orientation to find — the walk
+  // arrives at the same face from two surfaces and flips it back and forth.
+  const un = resolveOverusedEdges(points, clean);
+  report.facesRemovedAtJunctions = un.removed;
+  clean = un.faces;
 
-  // 2. winding
+  // 3. winding
   const wound = makeWindingConsistent(clean);
   report.facesReoriented = wound.flipped;
   clean = wound.faces;
 
-  // 3. inside-out shells. Consistent but inverted is still wrong, and it is the
-  // fault that looks fine on screen right up until the slicer prints the
-  // negative of the part.
-  for (const component of wound.components) {
-    if (signedVolume(points, clean, component) < 0) {
+  // 4. holes — including any opened by step 2
+  const filled = fillHoles(points, clean);
+  report.holesFilled = filled.filled;
+  report.patchTriangles = filled.patches;
+  const pts = filled.points;
+  clean = filled.faces;
+
+  // 5. inside-out shells, LAST: the sign of a volume is meaningless while the
+  // surface still has holes in it, so this has to follow the filling.
+  const finalWind = makeWindingConsistent(clean);
+  report.facesReoriented += finalWind.flipped;
+  clean = finalWind.faces;
+  for (const component of finalWind.components) {
+    if (signedVolume(pts, clean, component) < 0) {
       for (const fi of component) {
         const g = clean[fi];
         clean[fi] = [g[0], g[2], g[1]];
@@ -212,12 +287,24 @@ export function repairMesh({ points, faces }) {
     }
   }
 
-  // 4. holes
-  const filled = fillHoles(points, clean);
-  report.holesFilled = filled.filled;
-  report.patchTriangles = filled.patches;
+  // Only now is it honest to say whether anything is left. Reporting up front
+  // claimed defeat on faults that the steps above go on to fix.
+  const left = new Map();
+  for (const [a, b, c] of clean) {
+    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+      left.set(key(u, v), (left.get(key(u, v)) || 0) + 1);
+    }
+  }
+  let stillOverused = 0, stillOpen = 0;
+  for (const n of left.values()) { if (n > 2) stillOverused++; else if (n === 1) stillOpen++; }
+  if (stillOverused || stillOpen) {
+    const bits = [];
+    if (stillOverused) bits.push(`${stillOverused} edge${stillOverused === 1 ? "" : "s"} still shared by more than two faces`);
+    if (stillOpen) bits.push(`${stillOpen} edge${stillOpen === 1 ? "" : "s"} still open`);
+    report.unrepairable = `${bits.join(" and ")} — this one needs a dedicated repair tool`;
+  }
 
-  return { points: filled.points, faces: filled.faces, report };
+  return { points: pts, faces: clean, report };
 }
 
 // A repaired mesh has to get back into the app, and the app imports files. A
@@ -255,6 +342,7 @@ export function repairSummary(report) {
   }
   if (report.facesReoriented) bits.push(`re-oriented ${report.facesReoriented} face${report.facesReoriented === 1 ? "" : "s"}`);
   if (report.shellsFlipped) bits.push(`turned ${report.shellsFlipped} inside-out shell${report.shellsFlipped === 1 ? "" : "s"} the right way`);
+  if (report.facesRemovedAtJunctions) bits.push(`removed ${report.facesRemovedAtJunctions} face${report.facesRemovedAtJunctions === 1 ? "" : "s"} at non-manifold junctions`);
   if (report.duplicatesRemoved) bits.push(`removed ${report.duplicatesRemoved} duplicate face${report.duplicatesRemoved === 1 ? "" : "s"}`);
   if (report.degenerateRemoved) bits.push(`dropped ${report.degenerateRemoved} zero-area face${report.degenerateRemoved === 1 ? "" : "s"}`);
   if (!bits.length) return "nothing needed changing";

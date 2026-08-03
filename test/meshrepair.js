@@ -4,7 +4,7 @@
 // swallowing the model is worse than no repair.
 
 import { repairMesh, toBinaryStl, repairSummary } from "../src/meshrepair.js";
-import { inspectMesh, inspectBinaryStl } from "../src/meshhealth.js";
+import { inspectMesh, inspectBinaryStl, weldTriangles } from "../src/meshhealth.js";
 import { boxMesh, cylinderMesh } from "../src/meshbool.js";
 import { meshVolume } from "../src/sdf.js";
 
@@ -114,20 +114,104 @@ console.log("\na sound mesh is left alone\n");
     && repairSummary(f2.report) === "nothing needed changing");
 }
 
-console.log("\nwhat it cannot fix, it says so about\n");
+console.log("\na stray fin welded to an edge is removed, not paid for by the model\n");
 {
-  // Three faces meeting on one edge: two surfaces fused along a seam. No repair
-  // can pick which surface was meant without inventing intent.
+  // Three faces meeting on one edge. The repair has to delete one of them, and
+  // WHICH one is the whole question: the fin is bigger than the cube's own
+  // triangles, so choosing by smallest area picks a wall of the cube instead,
+  // and patching that hole cuts the corner off. That version measured 6333
+  // where the answer is 8000. Volume is therefore the assertion, not tidiness.
   const cube = boxMesh([20, 20, 20]);
   const fin = clone(cube);
   const [a, b] = fin.faces[0];
   fin.points.push([0, 0, 40]);
   fin.faces.push([a, b, fin.points.length - 1]);
+  check("the damage is real", !inspectMesh(fin).watertight);
+
   const fixed = repairMesh(fin);
-  check("the over-used edge is reported as unrepairable",
-    /more than two/.test(fixed.report.unrepairable || ""), String(fixed.report.unrepairable));
-  check("...and the repair does not pretend otherwise",
-    !inspectMesh(fixed).watertight || fixed.report.unrepairable);
+  const after = inspectMesh(fixed);
+  check("the junction is resolved", after.overusedEdges === 0 && after.watertight,
+    JSON.stringify(after));
+  check("the FIN is what got deleted, not a wall of the cube",
+    near(meshVolume(fixed), 8000, 1), `${meshVolume(fixed).toFixed(1)}`);
+  check("...leaving the original 12 triangles", fixed.faces.length === 12, `${fixed.faces.length}`);
+  check("...and a closed surface of genus 0", after.chi === 2 && after.genus === 0,
+    `chi ${after.chi} genus ${after.genus}`);
+  check("it reports removing a junction face", fixed.report.facesRemovedAtJunctions === 1,
+    JSON.stringify(fixed.report));
+  check("...and claims nothing is left unfixed", fixed.report.unrepairable === null,
+    String(fixed.report.unrepairable));
+}
+
+console.log("\nthe simplifier's own signature, which is what this is really for\n");
+{
+  // meshoptimizer leaves a handful of non-manifold edges behind on every
+  // reduction — measured on a real 3DBenchy, 5 at a target of 2,000 and still
+  // 4 at 50,000, from a source file with none. The kernel sews that into
+  // something it calls a solid and then will not subtract from, so a drill
+  // silently does nothing. These are the two shapes that fault takes, built
+  // deterministically so the test does not depend on how meshoptimizer behaves
+  // on any particular day.
+
+  // 1. a face duplicated with REVERSED winding: over-used edges, winding
+  //    clashes and a duplicate at once, and no free edge to give it away.
+  const flap = clone(boxMesh([20, 20, 20]));
+  const [a, b, c] = flap.faces[0];
+  flap.faces.push([a, c, b]);
+  const before1 = inspectMesh(flap);
+  check("a reversed duplicate reads as all three faults at once",
+    before1.overusedEdges === 3 && before1.windingClashes === 3 && before1.duplicateFaces === 1,
+    JSON.stringify(before1));
+  const fixed1 = repairMesh(flap);
+  const after1 = inspectMesh(fixed1);
+  check("...and repairs to watertight", after1.watertight, JSON.stringify(after1));
+  check("...with the volume EXACTLY intact", near(meshVolume(fixed1), 8000, 0.01),
+    `${meshVolume(fixed1).toFixed(2)}`);
+  check("...and the original 12 triangles", fixed1.faces.length === 12, `${fixed1.faces.length}`);
+
+  // 2. two closed solids welded along a shared wall — four faces on those
+  //    edges, and every face fully attached, so the free-edge signal that
+  //    identifies a fin is no help here and blame has to carry it.
+  const two = { points: [], faces: [] };
+  for (const dx of [0, 20]) {
+    const m = boxMesh([20, 20, 20]);
+    const off = two.points.length;
+    for (const p of m.points) two.points.push([p[0] + dx, p[1], p[2]]);
+    for (const f of m.faces) two.faces.push(f.map((i) => i + off));
+  }
+  const welded = weldTriangles(two.faces.flatMap((f) => f.flatMap((i) => two.points[i])));
+  const before2 = inspectMesh(welded);
+  check("two solids sharing a wall read as over-used edges",
+    before2.overusedEdges === 4 && !before2.watertight, JSON.stringify(before2));
+  const fixed2 = repairMesh(welded);
+  const after2 = inspectMesh(fixed2);
+  check("...and repair merges them into one closed solid",
+    after2.watertight && after2.genus === 0, JSON.stringify(after2));
+  check("...keeping both cubes' volume exactly", near(meshVolume(fixed2), 16000, 0.01),
+    `${meshVolume(fixed2).toFixed(2)}`);
+  check("...by deleting the shared wall, not by hollowing anything",
+    fixed2.report.facesRemovedAtJunctions === 4, JSON.stringify(fixed2.report));
+}
+
+console.log("\nrepair never quietly eats the model\n");
+{
+  // The failure mode that matters most: a repair that "succeeds" by deleting
+  // real geometry. Every case here must come back within a whisker of the
+  // volume it started with.
+  const cases = [
+    ["a hole", (m) => { m.faces = m.faces.slice(1); return m; }],
+    ["a whole face", (m) => { m.faces = m.faces.slice(2); return m; }],
+    ["flipped faces", (m) => { m.faces = m.faces.map((f, i) => (i % 3 === 0 ? [f[0], f[2], f[1]] : f)); return m; }],
+    ["a duplicate", (m) => { m.faces = [...m.faces, m.faces[0].slice()]; return m; }],
+    ["a zero-area sliver", (m) => { m.faces = [...m.faces, [0, 1, 1]]; return m; }],
+  ];
+  for (const [label, damage] of cases) {
+    const fixed = repairMesh(damage(clone(boxMesh([20, 20, 20]))));
+    const v = meshVolume(fixed);
+    check(`${label}: volume within 2% of the original`, near(v, 8000, 8000 * 0.02),
+      `${v.toFixed(1)}`);
+    check(`${label}: ...and watertight`, inspectMesh(fixed).watertight);
+  }
 }
 
 console.log("\nit comes back as a file the app can open\n");

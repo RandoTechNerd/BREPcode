@@ -9888,9 +9888,26 @@ ${joined}`)(...vs);
         names.push(partName);
       }
       if (code.value.trim()) pushHistory(code.value);
+      // repair: "BASIC" ONLY when the mesh needs it, and this is not a tidiness
+      // preference — the option breaks booleans.
+      //
+      // It was added because a mesh with small defects builds and displays but
+      // dies on export with "Not manifold", and the kernel's repair fixes that.
+      // What it also does, measured on the same watertight 1,990-triangle
+      // Benchy: without the option a cut removes 602mm3 and returns one solid;
+      // WITH it the same cut returns two solids and the volume goes UP by the
+      // cutter's own 5,993 — the kernel keeps the cutter instead of subtracting
+      // it. That is why drilling a simplified model did nothing at all.
+      //
+      // So a mesh that is already sound is handed over untouched. One that is
+      // not still gets the option, because a broken export is worse than a
+      // broken boolean on a mesh that could not have been cut cleanly anyway.
       const call = (n, i) => {
         const c = partColours?.[i];
-        const mesh = `importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`;
+        const sound = objects[i]?.watertight === true;
+        const mesh = sound
+          ? `importedMesh(${JSON.stringify(n)})`
+          : `importedMesh(${JSON.stringify(n)}, { repair: "BASIC" })`;
         return c ? `colorize(${JSON.stringify(c)}, ${mesh})` : mesh;
       };
       code.value = names.length === 1

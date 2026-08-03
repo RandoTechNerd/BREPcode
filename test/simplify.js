@@ -89,5 +89,33 @@ console.log("\nsimplify\n");
   check("an already-light mesh is left alone", same.positions === soup);
 }
 
+console.log("\nwhatever comes out is sound, and says so honestly\n");
+{
+  // Simplification used to hand back a mesh with non-manifold edges. The kernel
+  // sews that into something it reports as a solid and then will not subtract
+  // from — which is why drilling a simplified model did nothing at all, while
+  // the app blamed the cut for missing the part. The output is now checked and
+  // repaired, and each part carries a `watertight` flag the code generator uses
+  // to decide whether to ask the kernel for ITS repair pass — which itself
+  // breaks booleans, so it must only be used on a mesh that needs it.
+  const { inspectMesh, weldTriangles } = await import("../src/meshhealth.js");
+  const soup = Float64Array.from(sphereSoup(20, 120, 120));
+  for (const target of [1500, 4000]) {
+    const out = await simplifyObjects([{ positions: soup }], target);
+    const o = out[0];
+    const stats = inspectMesh(weldTriangles(Float32Array.from(o.positions)));
+    check(`${target}: the result is watertight`, stats.watertight, JSON.stringify(stats));
+    // The flag is what the generator trusts, so it must never disagree with the
+    // mesh it describes.
+    check(`${target}: ...and the flag agrees with the mesh`,
+      o.watertight === stats.watertight, `flag ${o.watertight} vs ${stats.watertight}`);
+  }
+  // Already under the target: passed straight through, and deliberately NOT
+  // flagged — the generator reads an absent flag as "not known sound", which is
+  // the safe direction to be wrong in.
+  const small = await simplifyObjects([{ positions: Float64Array.from(sphereSoup(5, 8, 8)) }], 999999);
+  check("an untouched part is passed straight through", small[0].watertight === undefined);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
