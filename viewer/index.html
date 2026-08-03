@@ -2752,6 +2752,7 @@
     import * as jscadApi from "../src/jscad.js";
     import * as sdfApi from "../src/sdf.js";
     import { VISITOR_DEFAULTS, visitorSummary } from "../src/visitor.js";
+    import { inspectMesh, weldTriangles, healthSummary } from "../src/meshhealth.js";
     // More on-demand modules: exporters (only on download/import), the chatbot
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
@@ -9913,6 +9914,45 @@ ${joined}`)(...vs);
     // reached. Cleared the moment the preview stops being what's on screen.
     let pendingSimplify = null;
 
+    // Whether the mesh is actually BROKEN, which is a different question from
+    // whether it is big — and the one people assume the answer to. A model that
+    // will not fillet is nearly always fine and merely enormous: the real
+    // 3DBenchy has no open edges, no non-manifold junctions, no flipped faces
+    // and no duplicates, and still cannot be sewn, because it is 225,154
+    // separate facets. Saying so stops the hunt for a fault that is not there —
+    // and when there IS one, names it instead of failing later with "the kernel
+    // refused it".
+    //
+    // Runs off the critical path: it costs about two seconds on a mesh that
+    // size, and the preview is already on screen by then.
+    function reportMeshHealth(el, objects) {
+      const line = document.createElement("div");
+      line.className = "note";
+      line.style.marginTop = "6px";
+      line.textContent = "checking the mesh…";
+      el.appendChild(line);
+      setTimeout(() => {
+        try {
+          let total = 0;
+          for (const o of objects) total += o.positions.length;
+          const coords = new Float32Array(total);
+          let at = 0;
+          for (const o of objects) { coords.set(o.positions, at); at += o.positions.length; }
+          const stats = inspectMesh(weldTriangles(coords));
+          line.textContent = healthSummary(stats);
+          if (!stats.watertight) {
+            // Not a refusal — plenty of open meshes still slice and print. It
+            // is the KERNEL that will not sew them, and that is worth knowing
+            // before waiting for a build that cannot succeed.
+            line.textContent += " — the kernel needs a closed surface, so a solid build may fail";
+            line.style.color = "var(--warn, #e0a030)";
+          }
+        } catch {
+          line.remove();               // a health note is never worth an error
+        }
+      }, 40);
+    }
+
     function offerSimplify(el, fileName, objects, partColours, off, totalTris) {   // eslint-disable-line no-param-reassign
       pendingSimplify = { fileName, objects, partColours, off, totalTris };
       const buttons = [];
@@ -9987,6 +10027,7 @@ ${joined}`)(...vs);
       buttons.push(b);
       el.appendChild(b);
       el.appendChild(simpTarget);
+      reportMeshHealth(el, objects);
 
       // ...and the same offer under the editor, where the Build button lives.
       // A hint line is easy to scroll past or overwrite; this is the one place
@@ -10352,8 +10393,46 @@ ${joined}`)(...vs);
         }
         rebuild();
       } catch (err) {
-        setStatus("err", `Import failed: ${String(err?.message || err).slice(0, 100)}`);
+        const why = String(err?.message || err);
+        setStatus("err", `Import failed: ${why.slice(0, 100)}`);
+        // "Not manifold" is true and useless — it does not say WHICH edges, or
+        // whether the file is subtly broken or catastrophically so, and it
+        // reads like a verdict on the app rather than on the file. The health
+        // check knows the answer, so run it and say what is actually wrong.
+        if (/manifold|not closed|open edge/i.test(why)) diagnoseFailedImport(file);
       }
+    }
+
+    // Why the kernel refused a mesh, in the terms the person can act on.
+    //
+    // Re-reads the file rather than reaching for the buffer the import used:
+    // that one is scoped inside the try that just threw, and widening its scope
+    // to serve the error path would put the whole import at the mercy of this.
+    // A second read of a file already in the page cache is cheap.
+    async function diagnoseFailedImport(file) {
+      try {
+        const { inspectBinaryStl } = await import("../src/meshhealth.js");
+        const stats = inspectBinaryStl(new Uint8Array(await file.arrayBuffer()));
+        if (!stats) return;
+        if (stats.watertight) {
+          // Sound but refused — so the fault is size or shape, not damage, and
+          // the worst outcome here would be sending someone off to "repair" a
+          // file with nothing wrong with it.
+          hint.innerHTML = `<b>${esc(file.name)}</b> is <b>watertight</b> — `
+            + `${stats.triangles.toLocaleString("en-US")} triangles, nothing to repair. `
+            + `The kernel still refused it, which points at its size or a self-intersection `
+            + `rather than a hole. Try Simplify, or slice and print it as a mesh.`;
+          return;
+        }
+        const bits = [];
+        if (stats.openEdges) bits.push(`<b>${stats.openEdges.toLocaleString("en-US")} open edge${stats.openEdges === 1 ? "" : "s"}</b> (holes in the surface)`);
+        if (stats.overusedEdges) bits.push(`<b>${stats.overusedEdges}</b> edge${stats.overusedEdges === 1 ? "" : "s"} shared by more than two faces`);
+        if (stats.windingClashes) bits.push(`<b>${stats.windingClashes}</b> face${stats.windingClashes === 1 ? "" : "s"} wound the wrong way`);
+        hint.innerHTML = `<b>${esc(file.name)}</b> is not a closed surface: ${bits.join(", ")}. `
+          + `The kernel can only sew a solid from a mesh with no gaps. It will still `
+          + `display, slice and export as a mesh — repair it in the tool that made it, `
+          + `or in a mesh repairer, and drop it in again.`;
+      } catch { /* a diagnosis is never worth a second error */ }
     }
 
     // ---- model inventory: a folder on disk as a thumbnail gallery ---------
