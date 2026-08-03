@@ -870,13 +870,18 @@ const round3 = (n) => Math.round(n * 1000) / 1000;
 // the whole call. Textual order equals emission order for straight-line code —
 // the viewer verifies the kind sequence against the compile trace before
 // trusting the mapping.
-const PRIM_WORDS = /\b(freeform|hull|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh)\s*\(/g;
+const PRIM_WORDS = /\b(freeform|hull|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh|drill)\s*\(/g;
 const KIND_CODES = {
   cube: ["P.CU"], cuboid: ["P.CU"],
   sphere: ["P.S"], spheroid: ["P.S"],
   cylinder: ["P.CY", "P.CO"], cyl: ["P.CY", "P.CO"],
   cone: ["P.CO"], torus: ["P.T"],
   importedMesh: ["IMPORT3D"],
+  // drill() is a cylinder under an xform, so it reaches the trace as one P.CY
+  // and nothing else. Leaving it out did not merely make drilled holes
+  // unclickable: the trace then held a P.CY the source could not account for,
+  // the counts disagreed, and EVERY cylinder in the document lost its handles.
+  drill: ["P.CY"],
   // hull() (and freeform(), which is a hull of corner markers) builds its
   // children in a THROWAWAY history and re-imports the result, so it reaches
   // the trace as a single IMPORT3D no matter how many shapes went in.

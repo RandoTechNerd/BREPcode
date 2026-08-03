@@ -7583,6 +7583,22 @@ ${joined}`)(...vs);
       } else {
         const { span, delta } = drag;
         const head = text.slice(0, span.start);
+        // A drill already carries its position: it is the first argument, and
+        // that is the number someone reading the code expects to see change.
+        // Wrapping it in a translate() would work and would be worse — the
+        // point would then say one thing and the hole sit somewhere else.
+        const body = text.slice(span.start, span.end);
+        const bore = /^drill\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/.exec(body);
+        if (bore) {
+          const p = [r1(+bore[1] + delta.x), r1(+bore[2] + delta.y), r1(+bore[3] + delta.z)];
+          next = text.slice(0, span.start)
+            + `drill([${p.join(", ")}]` + body.slice(bore[0].length)
+            + text.slice(span.end);
+          code.value = next;
+          pushHistory();
+          buildAfterToolEdit();
+          return;
+        }
         const wrap = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/.exec(head);
         if (wrap) {
           const [nx, ny, nz] = [r1(+wrap[1] + delta.x), r1(+wrap[2] + delta.y), r1(+wrap[3] + delta.z)];

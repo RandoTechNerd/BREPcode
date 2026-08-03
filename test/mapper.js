@@ -9,6 +9,29 @@ ck("freeform is one site", primitiveSites("freeform([[0,0,0],[1,0,0],[0,1,0],[0,
 ck("a cube beside a hull still counts",
    primitiveSites("group(hull(cube([1,1,1]),cube([2,2,2])), cube([3,3,3]))").length===2);
 
+console.log("\ndrill() is a site, and leaving it out broke more than drills\n");
+{
+  // A drill is a cylinder under an xform, so it reaches the trace as one P.CY.
+  // While it was not a recognised call site, the trace held a P.CY the source
+  // could not account for — which did NOT merely make the hole unclickable.
+  // The counts disagreed, so the mapper dropped the whole P.CY code, and every
+  // ordinary cylinder in the same document lost its handles too.
+  ck("a drill is one site",
+     primitiveSites("difference(cube([9,9,9]), drill([1,2,3],[0,0,1],{d:4}))").length === 2);
+  ck("...and it is a cylinder to the trace",
+     primitiveSites("drill([1,2,3],[0,0,1],{d:4})")[0].codes.includes("P.CY"));
+
+  const text = "difference(union(cube([60,40,20]), cylinder({d:12,h:14})), drill([45,20,20],[0,0,1],{d:8}))";
+  const trace = [{ id: "cu", code: "P.CU" }, { id: "cy", code: "P.CY" }, { id: "dr", code: "P.CY" }];
+  const m = mapTraceToSites(trace, text);
+  ck("a model with BOTH a cylinder and a drill maps all three", m && m.cu && m.cy && m.dr,
+     JSON.stringify(m && Object.keys(m)));
+  ck("...the drill maps to the drill call",
+     m && text.slice(m.dr.start, m.dr.start + 5) === "drill", m && text.slice(m.dr.start, m.dr.start + 8));
+  ck("...and the cylinder to the cylinder call",
+     m && text.slice(m.cy.start, m.cy.start + 8) === "cylinder", m && text.slice(m.cy.start, m.cy.start + 8));
+}
+
 console.log("\nmapTraceToSites: exact match maps everything\n");
 {
   const text="difference(cube([10,10,10]), cylinder({r:2,h:20}))";
