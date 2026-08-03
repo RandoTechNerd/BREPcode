@@ -88,8 +88,9 @@ export function weldTriangles(coords, { places = 4 } = {}) {
   return { points, faces };
 }
 
-// Binary STL straight to a verdict, without building a THREE geometry first.
-export function inspectBinaryStl(buffer) {
+// Binary STL to indexed geometry. Returns null when the bytes are not a binary
+// STL — a truncated file or an ASCII one — rather than guessing.
+export function meshFromBinaryStl(buffer) {
   const dv = new DataView(buffer.buffer ?? buffer, buffer.byteOffset ?? 0, buffer.byteLength);
   if (dv.byteLength < 84) return null;
   const n = dv.getUint32(80, true);
@@ -99,7 +100,13 @@ export function inspectBinaryStl(buffer) {
     const o = 84 + i * 50 + 12;                            // skip the normal
     for (let k = 0; k < 9; k++) coords[i * 9 + k] = dv.getFloat32(o + k * 4, true);
   }
-  return inspectMesh(weldTriangles(coords));
+  return weldTriangles(coords);
+}
+
+// Binary STL straight to a verdict, without building a THREE geometry first.
+export function inspectBinaryStl(buffer) {
+  const mesh = meshFromBinaryStl(buffer);
+  return mesh ? inspectMesh(mesh) : null;
 }
 
 // Deliberately NO time estimator here. The viewer already has one —
