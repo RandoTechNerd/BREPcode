@@ -4,7 +4,7 @@
 // right will save the part that gets printed.
 
 import {
-  meshUnion, meshSubtract, meshIntersect, meshSubtractAll, boxMesh, cylinderMesh,
+  meshUnion, meshSubtract, meshIntersect, meshSubtractAll, boxMesh, cylinderMesh, MAX_FACES,
 } from "../src/meshbool.js";
 import { meshVolume } from "../src/sdf.js";
 
@@ -161,6 +161,54 @@ console.log("\nit is fast enough to be worth having\n");
   check(`${sphereish.faces.length} triangles cut in ${ms}ms`, ms < 5000, `${ms}ms`);
   check("...and the result has geometry", cut.faces.length > 100, `${cut.faces.length} faces`);
   check("...and less volume than it started with", meshVolume(cut) < meshVolume(sphereish));
+  // The size that matters. A small case can be closed by luck; this one cannot.
+  check("...and is closed at that size", isClosed(cut).closed, JSON.stringify(isClosed(cut)));
+  // Curved surfaces meeting a flat cut is where near-duplicate vertices come
+  // from, and near-duplicates are what made the stitcher run away. Two cutters
+  // that also overlap EACH OTHER is the nastiest arrangement of that.
+  const twice = meshSubtract(
+    meshSubtract(sphereish, cylinderMesh({ r: 6, h: 60, segments: 32 })),
+    cylinderMesh({ r: 6, h: 60, segments: 32, centre: [7, 0, 0] }));
+  check("two overlapping cutters still close", isClosed(twice).closed,
+    JSON.stringify(isClosed(twice)));
+  check("...and removed more than one did", meshVolume(twice) < meshVolume(cut));
+}
+
+console.log("\nand it refuses the sizes it is bad at\n");
+{
+  // The honest limit. This module goes quadratic — 22 seconds at 18k triangles,
+  // 61 at 33k — so past a point the kernel it was meant to beat is the faster
+  // answer. Refusing loudly is the only version of that which does not waste a
+  // minute of someone's time first.
+  const big = (() => {
+    const points = [], faces = [];
+    const N = 90;                       // ~16k triangles, over the limit
+    for (let i = 0; i <= N; i++) {
+      for (let j = 0; j <= N; j++) {
+        points.push([i, j, (i * j) % 7]);
+      }
+    }
+    const at = (i, j) => i * (N + 1) + j;
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        faces.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+        faces.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+      }
+    }
+    return { points, faces };
+  })();
+  check("a mesh over the limit is refused, not silently ground through",
+    big.faces.length > MAX_FACES && (() => {
+      try { meshSubtract(big, boxMesh([10, 10, 10])); return false; }
+      catch (e) { return /past the \d+ this handles/.test(String(e.message)); }
+    })(), `${big.faces.length} triangles`);
+  check("...and the message says what to do instead", (() => {
+    try { meshSubtract(big, boxMesh([10, 10, 10])); return false; }
+    catch (e) { return /Simplify|kernel/.test(String(e.message)); }
+  })());
+  // And the sizes it IS good at still go through.
+  check("a mesh under the limit still runs",
+    meshVolume(meshSubtract(boxMesh([20, 20, 20]), boxMesh([10, 10, 10], [0, 0, 5]))) > 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
