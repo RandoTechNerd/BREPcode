@@ -9,6 +9,7 @@
 //
 // So: pull every `name(` the harness names, and check each one against what the
 // evaluator actually receives.
+import { readFileSync } from "node:fs";
 import { DEFAULT_HARNESS } from "../viewer/chatbot.js";
 import * as dsl from "../index.js";
 
@@ -21,7 +22,10 @@ const check = (label, ok, detail = "") => {
 // What the viewer puts in front of the evaluator: every function the DSL
 // exports, plus the lazily-loaded text/code engine. Kept in sync by the check
 // two blocks down rather than by hope.
-const VIEWER_EXTRAS = ["qrcode", "datamatrix", "barcode", "text", "stencil"];
+const VIEWER_EXTRAS = ["qrcode", "datamatrix", "barcode", "text", "stencil",
+  // blend() and the distance-field shapes it takes. Not in the DSL: they are
+  // built in the viewer, where the SDF meshers live.
+  "blend", "sphere3d", "box3d", "cylinder3d", "torus3d", "move3d"];
 // Namespaces, not callables — a model reaches these as primitives.cube(...)
 const JSCAD_NAMESPACES = ["primitives", "booleans", "transforms", "colors", "jscad"];
 
@@ -60,6 +64,23 @@ check("every word the prompt promises actually exists",
 // The specific regression that prompted all this.
 check("colorize exists", typeof dsl.colorize === "function");
 check("glow exists", typeof dsl.glow === "function");
+
+// VIEWER_EXTRAS is the one hand-written list left, and a hand-written list is
+// exactly what this suite exists to distrust: anything added to it is treated
+// as real without evidence, which would let the prompt promise a viewer word
+// that was renamed or never written. So check them against the viewer itself.
+{
+  const viewer = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  // Loose on the VALUE — these are written several ways (an arrow function, a
+  // call to a factory, a lazily-bound operator) and pinning the shape would
+  // make this fail on a refactor rather than on a real absence. Strict on the
+  // KEY, which is the part the prompt actually promises.
+  const absent = VIEWER_EXTRAS.filter((n) =>
+    !new RegExp(`\\n\\s*${n}\\s*:\\s*[A-Za-z_$({]`).test(viewer));
+  check("every viewer-only word is really defined in the viewer",
+    absent.length === 0,
+    absent.length ? `CLAIMED BUT NOT FOUND: ${absent.join(", ")}` : "");
+}
 
 // And the reverse direction, as a nudge rather than a failure: a capable word
 // nobody is told about may as well not exist.

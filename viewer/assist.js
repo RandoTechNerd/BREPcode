@@ -50,6 +50,37 @@ export const SPECS = [
     snippet: "revolve(360, polygon([[0, 0], [12, 0], [12, 3], [6, 20], [5, 20], [10, 4], [0, 4]]))", argStart: 8,
     hint: "Spins a 2D profile around the x=0 axis — vases, knobs, turned parts. Keep all points at x ≥ 0, touching x = 0.",
   },
+  {
+    name: "blend", group: "Smooth & lathe", sig: "blend({ k }, shapeA, shapeB)",
+    snippet: "blend({ k: 6 },\n  sphere3d({ r: 20 }),\n  move3d([26, 0, 0], sphere3d({ r: 14 })))", argStart: 6,
+    hint: "Melts shapes together with a soft join instead of a seam. k = the blend"
+      + " in mm. Add cut: true to subtract one softly. Needs the 3d shapes below, not cube/sphere.",
+  },
+  {
+    name: "sphere3d", group: "Smooth & lathe", sig: "sphere3d({ r })",
+    snippet: "sphere3d({ r: 20 })", argStart: 9,
+    hint: "A blendable ball. Only blend() takes these — everything else wants sphere().",
+  },
+  {
+    name: "box3d", group: "Smooth & lathe", sig: "box3d([X, Y, Z])",
+    snippet: "box3d([30, 20, 12])", argStart: 6,
+    hint: "A blendable box, centred on the origin. For blend() only.",
+  },
+  {
+    name: "cylinder3d", group: "Smooth & lathe", sig: "cylinder3d({ r, h })",
+    snippet: "cylinder3d({ r: 8, h: 30 })", argStart: 11,
+    hint: "A blendable rod, centred on the origin. For blend() only.",
+  },
+  {
+    name: "torus3d", group: "Smooth & lathe", sig: "torus3d({ R, t })",
+    snippet: "torus3d({ R: 20, t: 5 })", argStart: 8,
+    hint: "A blendable ring — R = ring radius, t = thickness. For blend() only.",
+  },
+  {
+    name: "move3d", group: "Smooth & lathe", sig: "move3d([x, y, z], shape3d)",
+    snippet: "move3d([26, 0, 0], sphere3d({ r: 14 }))", argStart: 7,
+    hint: "Moves a blendable shape. translate() is for ordinary shapes; these need this.",
+  },
 
   // --- editing imported / existing parts ----------------------------------
   // These carry a `wrap`: click one with a model already in the editor (e.g.
