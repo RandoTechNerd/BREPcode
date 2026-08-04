@@ -1,0 +1,18 @@
+{
+  "name": "brep-io-kernel",
+  "version": "1.0.306",
+  "type": "module",
+  "description": "Vendored runtime build of the BREP.io kernel. See LICENSE.md.",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mmiscool/BREP.io"
+  },
+  "main": "./dist-kernel/brep-kernel.js",
+  "exports": {
+    ".": "./dist-kernel/brep-kernel.js"
+  },
+  "peerDependencies": {
+    "three": "*"
+  }
+}

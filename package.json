@@ -28,10 +28,12 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@jscad/modeling": "^2.13.0",
     "@mlc-ai/web-llm": "^0.2.84",
-    "brep-io-kernel": "^1.0.306",
+    "brep-io-kernel": "file:./vendor/brep-io-kernel",
     "bwip-js": "^4.11.2",
     "clipper-lib": "^6.4.2",
+    "jszip": "^3.10.1",
     "meshoptimizer": "^1.2.0",
     "nodemailer": "^9.0.3",
     "replicad": "^0.23.1",
