@@ -173,6 +173,11 @@ const norm = (s) => String(s || "")
   .normalize("NFD").replace(/[̀-ͯ]/g, "")     // ombré -> ombre
   .toLowerCase()
   .replace(/cookie\s*cad|cookiecad/g, " ")
+  // A possessive, BEFORE the punctuation is stripped. Otherwise "witch's
+  // elixir" becomes "witchs", which no longer prefixes "witchcraft" and the
+  // spool goes unfound — while the identical "witch elixir" matches fine.
+  // Nobody would ever guess the apostrophe was the problem.
+  .replace(/['’ʼ]s\b/g, "")
   .replace(/\b(pla|petg|tpu|filament|spool|elixir|clear|with|and|the)\b/g, " ")
   .replace(/[^a-z0-9]+/g, "");
 

@@ -311,12 +311,34 @@ console.log("\nthe wait is announced before it is spent\n");
   check("one piece needs no warning", pieceNote([{ hole: false, points: star(5, 30, 14) }]) === "");
   check("...and holes are not pieces",
     pieceNote([{ hole: false, points: star(5, 30, 14) }, { hole: true, points: star(4, 5, 2) }]) === "");
+  // LOOPS has a star at the origin and a second one out at x+44 — genuinely
+  // apart, so genuinely two cutters.
   const many = pieceNote(LOOPS);
-  check("two pieces do get a warning", many.length > 0, many);
-  check("...it says how many", /^2 separate pieces/.test(many), many);
-  check("...that this means two cutters, not one", /2 cutters/.test(many), many);
-  check("...and gives a real number rather than 'may be slow'",
-    /\d+ s for/.test(many), many);
+  check("two pieces that are really apart do get a warning", many.length > 0, many);
+  check("...and are called two cutters", /2 separate pieces/.test(many) && /2 cutters/.test(many), many);
+
+  // The one this check exists for. A traced salmon arrives as four outlines —
+  // body, tail, fin, gill — that all OVERLAP, so their blades fuse into a
+  // single cutter. Counting outlines and announcing "4 cutters" told the user
+  // something false about what comes off the printer, and it said it during a
+  // demo before anyone noticed.
+  const ring = (cx, r) => Array.from({ length: 16 }, (_, i) => {
+    const a = (i / 16) * Math.PI * 2;
+    return [+(cx + Math.cos(a) * r).toFixed(2), +(Math.sin(a) * r).toFixed(2)];
+  });
+  const fused = pieceNote([0, 6, 12, 18].map((cx) => ({ hole: false, points: ring(cx, 10) })));
+  check("four OVERLAPPING outlines are one cutter, not four",
+    /fuse into one cutter/.test(fused) && !/4 cutters/.test(fused), fused);
+  check("...and the build cost is still reported, because that is per outline",
+    /\d+ s for/.test(fused), fused);
+  const apart = pieceNote([0, 60, 120].map((cx) => ({ hole: false, points: ring(cx, 10) })));
+  check("three outlines far apart really are three cutters",
+    /3 separate pieces/.test(apart) && /3 cutters/.test(apart), apart);
+  check("...and two touching plus one apart is two cutters",
+    /2 cutters/.test(pieceNote([0, 6, 90].map((cx) => ({ hole: false, points: ring(cx, 10) })))),
+    pieceNote([0, 6, 90].map((cx) => ({ hole: false, points: ring(cx, 10) }))));
+  check("a warning under three outlines does not quote a build time",
+    !/\d+ s for/.test(pieceNote([0, 60].map((cx) => ({ hole: false, points: ring(cx, 10) })))));
 }
 
 console.log("\nthe Toolbox entry is wired to things that exist\n");

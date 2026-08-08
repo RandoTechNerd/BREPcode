@@ -205,6 +205,23 @@ console.log("\nnaming a spool the way a person would\n");
   check("the accent on Ombré is irrelevant",
     findSpool("Pink Ombré")?.id === findSpool("pink ombre")?.id);
 
+  // Nor must an apostrophe. Found in a demo rehearsal: "witch elixir" matched
+  // and "witch's elixir" did not, because the possessive survived long enough
+  // to turn "witch" into "witchs", which no longer prefixes "witchcraft".
+  // Nobody would ever guess the apostrophe was the problem — they would just
+  // conclude the feature does not work, in front of the people who make the
+  // filament.
+  for (const [q, want] of [
+    ["witch's elixir", "cc-witchcraft"],
+    ["witch’s elixir", "cc-witchcraft"],        // the curly one a phone types
+    ["cookiecad's unicorn", "cc-unicorn"],
+    ["the mermaid's petg", "cc-mermaid"],
+  ]) {
+    check(`a possessive does not break "${q}"`, findSpool(q)?.id === want, findSpool(q)?.id ?? "null");
+  }
+  check("...and it still matches without one",
+    findSpool("witch elixir")?.id === "cc-witchcraft");
+
   // Not-found must be NULL, never a near miss. Quietly demoing the wrong
   // filament to the people who make it is the failure that matters here.
   for (const q of ["", null, undefined, "nonsense", "star stuff", "black pla", "galaxy"]) {

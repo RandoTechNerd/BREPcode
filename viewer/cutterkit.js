@@ -320,11 +320,47 @@ export const KINDS = [
 // its arms is the failure this whole file exists to avoid — so the answer is to
 // say so first. A wait you were warned about is a wait; the same wait unannounced
 // is a hang.
+//
+// OUTLINES and PIECES are different counts, and saying so wrongly is worse
+// than saying nothing. A traced salmon comes in as four outlines — body, tail,
+// fin, gill — that all overlap, so their blades fuse into ONE cutter. Counting
+// outlines and calling them "4 cutters" told the user something false about
+// what would come off the printer.
+//
+// Build cost still tracks OUTLINES, because each one is its own offset and
+// boolean. So the two are reported separately: how long it will take comes
+// from the outline count, how many cutters they get comes from the groups.
+function pieceGroups(solid) {
+  const box = (l) => {
+    const xs = l.points.map((p) => p[0]), ys = l.points.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  };
+  const boxes = solid.map(box);
+  // Bounding boxes, not true polygon intersection: overlapping boxes on
+  // outlines that do not quite touch would merge two groups into one and
+  // UNDER-report the count. That is the safe direction to be wrong in — it
+  // promises fewer separate cutters than you might get, never more.
+  const parent = boxes.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const hit = (a, b) => !(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]);
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (hit(boxes[i], boxes[j])) parent[find(i)] = find(j);
+    }
+  }
+  return new Set(boxes.map((_, i) => find(i))).size;
+}
+
 export function pieceNote(loops) {
-  const n = (loops || []).filter((l) => !l.hole).length;
+  const solid = (loops || []).filter((l) => !l.hole);
+  const n = solid.length;
   if (n <= 1) return "";
-  return `${n} separate pieces — that is ${n} cutters, and the build grows steeply`
-    + ` past three (about 12 s for three, 35 s for five)`;
+  const groups = pieceGroups(solid);
+  const slow = n >= 3
+    ? " — the build grows steeply past three outlines (about 12 s for three, 35 s for five)"
+    : "";
+  if (groups === 1) return `${n} overlapping outlines that fuse into one cutter${slow}`;
+  return `${n} outlines in ${groups} separate pieces — that is ${groups} cutters${slow}`;
 }
 
 export function makeKit(kind, loops, opts) {
