@@ -302,5 +302,39 @@ await js("namespaced form works",
     jscad.transforms.translateX(10, jscad.primitives.cuboid({ size: [10, 10, 10] })),
   ), (r, l) => check(l, near(volumeOf(r), 2000, 2), `got ${volumeOf(r).toFixed(1)}`));
 
+console.log("\nhull and minkowski exist in BOTH languages, so the name cannot decide\n");
+{
+  // The bug this pins down: `minkowski(3, cube([20,20,20]))` is ordinary
+  // BREPcode, but the detector listed "minkowski" as an OpenSCAD-only word and
+  // handed the whole file to the translator, which answered "that OpenSCAD
+  // produced no solids" about code that was never OpenSCAD. hull() had the same
+  // fault and escaped it only by luck — the usual way to write one includes an
+  // options object, and an earlier rule bails on those.
+  const brepcode = [
+    ["minkowski with a radius", "minkowski(3, cube([20, 20, 20]))"],
+    ["minkowski with a ball", "minkowski(cube([20,20,20]), sphere({ r: 3 }))"],
+    ["hull with an options object", "hull(translate([-12,0,0], cylinder({r:4,h:8})), translate([12,0,0], cylinder({r:4,h:8})))"],
+    ["hull with none — the case that used to slip through", "hull(cube([1,1,1]), sphere({r:2}))"],
+    ["roundedGrow", "roundedGrow(3, cube([20, 20, 20]))"],
+  ];
+  for (const [label, src] of brepcode) {
+    check(`BREPcode is not mistaken for OpenSCAD: ${label}`, looksLikeOpenSCAD(src) === false, src.slice(0, 60));
+  }
+
+  // ...and the real thing is still recognised, by the shape of the call rather
+  // than by the name: OpenSCAD writes these with no arguments and a block.
+  const openscad = [
+    ["minkowski() { … }", "minkowski() { cube([20,20,20]); sphere(r=3); }"],
+    ["hull() { … }", "hull() { cube([1,1,1]); sphere(r=2); }"],
+    ["polyhedron(points=…, faces=…);", "polyhedron(points=[[0,0,0],[1,0,0],[0,1,0],[0,0,1]], faces=[[0,1,2]]);"],
+    ["a plain cube statement", "cube([10,10,10]);"],
+    ["difference with a block", "difference() { cube([10,10,10]); translate([0,0,-1]) cylinder(h=12, r=3); }"],
+  ];
+  for (const [label, src] of openscad) {
+    check(`still detected as OpenSCAD: ${label}`, looksLikeOpenSCAD(src) === true, src.slice(0, 60));
+  }
+}
+
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

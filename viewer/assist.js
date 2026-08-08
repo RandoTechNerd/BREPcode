@@ -187,6 +187,44 @@ export const SPECS = [
     snippet: "hull(\n  translate([-12, 0, 0], cylinder({ r: 4, h: 8, $fn: 48 })),\n  translate([12, 0, 0], cylinder({ r: 4, h: 8, $fn: 48 })),\n)", argStart: 5,
     hint: "Wraps the shapes in one convex skin (a smooth swept connector). Also works in pasted OpenSCAD as hull().",
   },
+  {
+    name: "roundedGrow", group: "Combine", sig: "roundedGrow(mm, shape)",
+    snippet: "roundedGrow(3,\n  cube([20, 20, 20]),\n)", argStart: 14,
+    hint: "Grows the whole part by that many mm and rounds every outside edge to the same radius — a 20mm cube becomes a 26mm cube with 3mm rounds. This is OpenSCAD's minkowski() with a sphere, and pasted minkowski() { part(); sphere(r); } is translated to it.",
+  },
+  {
+    // Listed under the name people arrive with. Autocomplete only offers words
+    // it knows, so leaving this out meant typing "mink" suggested nothing and
+    // the operation stayed invisible to anyone who had not read roundedGrow.
+    name: "minkowski", group: "Combine", sig: "minkowski(mm, shape)",
+    snippet: "minkowski(3,\n  cube([20, 20, 20]),\n)", argStart: 11,
+    hint: "The same thing as roundedGrow — OpenSCAD's name for it, accepted so the word you already know works. minkowski(part, sphere({ r: 3 })) is accepted too. Grows the part by that much and rounds every outside edge.",
+  },
+  {
+    name: "roundedShrink", group: "Combine", sig: "roundedShrink(mm, shape)",
+    snippet: "roundedShrink(2,\n  cube([20, 20, 20]),\n)", argStart: 16,
+    hint: "Takes an even layer off the whole part — a 20mm cube becomes 16mm. Outside corners stay sharp (there is nothing outside them to round); INSIDE corners get rounded to that radius, which is the useful half. Handy for clearance: shrink a copy of a part to make a pocket it drops into.",
+  },
+
+  {
+    // The shape whose absence kept getting papered over by hand: before this,
+    // every cable, bowden tube and bent handle was written as a chain of
+    // cylinders with spheres dropped at the joints — one solid per segment,
+    // one per joint, and a visible kink at every bend.
+    name: "tube", group: "Combine", sig: "tube(path, { r })",
+    snippet: "tube([\n  [0, 0, 0],\n  [40, 0, 0],\n  [40, 30, 0],\n], { r: 2 })", argStart: 0,
+    hint: "Sweeps a round profile along a list of points — cables, bowden tubes, handles, hoops, bent rod. ONE solid however many bends, and the corners are real arcs. Options: sides (facets, default 16), bend (corner radius, defaults to 1.5x r), closed: true to join the ends into a loop, caps: \"flat\", and r as a LIST of radii to taper.",
+  },
+  {
+    name: "helix", group: "Combine", sig: "helix({ r, turns, pitch })",
+    snippet: "tube(helix({ r: 12, turns: 4, pitch: 5 }), { r: 1.6 })", argStart: 0,
+    hint: "A coil as a list of points — feed it to tube(). This is how you print a wire coiled up flat. r is the coil radius, pitch is the rise per turn (use pitch 0 for a flat spiral), r2 tapers it to a cone.",
+  },
+  {
+    name: "circlePath", group: "Combine", sig: "circlePath({ r })",
+    snippet: "tube(circlePath({ r: 30 }), { r: 3, closed: true })", argStart: 0,
+    hint: "A ring of points for a hoop or an O-ring. Pass closed: true to tube() so it joins up with no end caps.",
+  },
 
   // --- text & codes -------------------------------------------------------
   {
@@ -253,6 +291,7 @@ export const DIALECTS = [
     works: [
       "cube, sphere, cylinder, square, circle, polygon",
       "linear_extrude, offset, hull",
+      "minkowski() { part(); sphere(r); } — the rounding form, translated to roundedGrow",
       "translate, rotate, scale, mirror",
       "union, difference, intersection",
       "module and function definitions, children()",
@@ -263,7 +302,7 @@ export const DIALECTS = [
     limits: [
       "rotate_extrude — only linear_extrude is wired",
       "text() — not wired into the DSL yet",
-      "minkowski, projection, surface, polyhedron",
+      "minkowski with anything but a sphere; projection, surface, polyhedron",
       "import(), multmatrix(), resize()",
     ],
     sample: `difference() {
@@ -284,7 +323,8 @@ export const DIALECTS = [
       "2D primitives: polygon, rectangle, roundedRectangle, square, circle, ellipse, star, triangle",
       "booleans: union, subtract, intersect",
       "transforms: translate/rotate/scale/mirror (+ X/Y/Z variants)",
-      "hulls: hull, hullChain — this is how you loft/flare/taper (no minkowski needed)",
+      "hulls: hull, hullChain — this is how you loft/flare/taper",
+      "roundedGrow(mm, shape) rounds EVERY outside edge at once and grows the part by mm; roundedShrink(mm, shape) takes an even layer off and rounds inside corners. This is minkowski-with-a-sphere.",
       "extrusions: extrudeLinear, extrudeRotate (lathe)",
       "expansions: offset / expand — 2D outlines only",
       "colors: colorize, glow, hexToRgb, rgbToHex, colorToRgba",
@@ -704,8 +744,6 @@ const NOT_HERE = {
   rotate_extrude: "not supported yet — only linear extrusion is",
   circle: "use cylinder({ r, h }) for a round solid, or polygon(...) + linearExtrude",
   square: "use cube([X, Y, Z]), or polygon(...) + linearExtrude",
-  hull: "not implemented",
-  minkowski: "not implemented",
   fillet: "not wired up yet — it needs edge selection",
   chamfer: "not wired up yet — it needs edge selection",
   extrude: "not wired up yet",
@@ -870,7 +908,7 @@ const round3 = (n) => Math.round(n * 1000) / 1000;
 // the whole call. Textual order equals emission order for straight-line code —
 // the viewer verifies the kind sequence against the compile trace before
 // trusting the mapping.
-const PRIM_WORDS = /\b(freeform|hull|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh|drill)\s*\(/g;
+const PRIM_WORDS = /\b(freeform|hull|roundedGrow|roundedShrink|minkowski|tube|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh|drill)\s*\(/g;
 const KIND_CODES = {
   cube: ["P.CU"], cuboid: ["P.CU"],
   sphere: ["P.S"], spheroid: ["P.S"],
@@ -886,6 +924,18 @@ const KIND_CODES = {
   // children in a THROWAWAY history and re-imports the result, so it reaches
   // the trace as a single IMPORT3D no matter how many shapes went in.
   freeform: ["IMPORT3D"], hull: ["IMPORT3D"],
+  // The rounded offset works the same way: the child is built in a throwaway
+  // history, the union is assembled on the mesh, and the whole thing arrives as
+  // ONE import. Without these three entries the child was counted as a site
+  // that never appears in the trace — a phantom that pushed every later shape
+  // out of step, and left the offset result itself unclickable.
+  roundedGrow: ["IMPORT3D"], roundedShrink: ["IMPORT3D"], minkowski: ["IMPORT3D"],
+  // A swept tube is generated from its point list and imported as one mesh, so
+  // it too is a single IMPORT3D. Its argument is an array of numbers rather
+  // than shapes, so unlike hull() there is nothing inside it to swallow —
+  // helix() and circlePath() return plain point lists and never reach the
+  // trace at all, which is why they are absent from PRIM_WORDS.
+  tube: ["IMPORT3D"],
 };
 
 export function primitiveSites(text) {
@@ -903,7 +953,11 @@ export function primitiveSites(text) {
     }
     if (end < 0) continue;
     if (m.index < swallowUntil) continue;          // nested inside a hull
-    if (m[1] === "hull" || m[1] === "freeform") swallowUntil = end;
+    // These build their children in a throwaway history and re-import the
+    // result, so nothing written inside one ever reaches the trace.
+    if (["hull", "freeform", "roundedGrow", "roundedShrink", "minkowski"].includes(m[1])) {
+      swallowUntil = end;
+    }
     sites.push({ kind: m[1], start: m.index, end, codes: KIND_CODES[m[1]] });
   }
   return sites;

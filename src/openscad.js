@@ -7,8 +7,11 @@
 // ranges, module definitions and calls, for loops, if/else, the 3D primitives,
 // the three booleans, and the transforms.
 //
-// Deliberately unsupported (each raises a clear error): the 2D subsystem and
-// anything that extrudes it, hull, minkowski, surface, import, projection.
+// hull() and minkowski() are supported too — minkowski() in the form everyone
+// actually writes, a part and a sphere, which is a rounded offset.
+//
+// Deliberately unsupported (each raises a clear error): surface, projection,
+// and minkowski with something other than a sphere.
 
 import * as dsl from "./dsl.js";
 import { Euler, Quaternion, Vector3, MathUtils } from "three";
@@ -361,10 +364,13 @@ const BUILTIN_FUNCS = {
   str: (...a) => a.join(""),
 };
 
-const UNSUPPORTED = {
+// Exported so the chat harness can WARN about these before a model writes them
+// rather than after. A hand-kept list in the prompt drifts from this one
+// silently; test/toolfit.js reads this object and fails if the prompt is missing
+// any key, so the two can only agree.
+export const UNSUPPORTED = {
   rotate_extrude: "not supported yet — only linear_extrude is",
   text: "text isn't wired into the DSL yet",
-  minkowski: "minkowski() isn't implemented",
   projection: "projection() isn't implemented",
   surface: "surface() isn't implemented",
   import: "import() isn't implemented",
@@ -372,6 +378,26 @@ const UNSUPPORTED = {
   multmatrix: "multmatrix() isn't implemented",
   resize: "resize() isn't implemented",
 };
+
+// The other half of the story: modules that DO exist but refuse some of their
+// arguments. These throw rather than warn, so a model that reaches for one
+// loses the whole build — worth naming in the prompt for the same reason.
+export const LIMITED = {
+  linear_extrude: "twist and scale are refused — use tube() or cone() for a taper",
+  polygon: "a second path (a hole) is refused — difference() two polygons instead",
+};
+
+// The modules the prompt is allowed to advertise. Not a hand-kept list in the
+// sense that matters: test/toolfit.js runs each one through the translator and
+// fails if it warns "isn't a known module", so a rename downstream breaks the
+// test rather than quietly turning the prompt into a lie.
+export const MODULES = [
+  "cube", "sphere", "cylinder", "torus",
+  "square", "circle", "polygon", "linear_extrude",
+  "translate", "rotate", "scale", "mirror",
+  "union", "difference", "intersection", "hull", "minkowski", "offset",
+  "color", "render", "group", "children", "echo", "assert",
+];
 
 // ------------------------------------------------------------- 2D profiles
 //
@@ -862,6 +888,32 @@ function evalCall(stmt, scope) {
       return dsl.hull(...kids);
     }
 
+    // minkowski() { shape(); sphere(r); } — rounding every outside edge of a
+    // part by r — is what the operation is used for in practice, and it is
+    // exactly a rounded offset, so that is the case handled. Minkowski with a
+    // cube or an arbitrary second shape is a different, much larger operation;
+    // it stays unimplemented rather than being silently approximated, because a
+    // part that came out the wrong SHAPE would be worse than one that warned.
+    case "minkowski": {
+      const kids = collectChildren(stmt, scope).filter(Boolean);
+      if (!kids.length) return null;
+      if (kids.length === 1) return kids[0];
+      if (kids.some(isProfile)) {
+        throw new Error("minkowski() of 2D shapes isn't supported — use offset() on the outline, or linear_extrude() first.");
+      }
+      if (kids.length > 2) {
+        throw new Error(`minkowski() with ${kids.length} shapes isn't supported — BREPcode handles the common form, a shape and a sphere.`);
+      }
+      const ball = kids[1];
+      const r = (ball?.kind === "prim" && ball.code === "P.S")
+        ? (ball.params?.radius ?? ball.params?.r)
+        : null;
+      if (!(r > 0)) {
+        throw new Error("minkowski() is supported when the second shape is a sphere — minkowski() { part(); sphere(r=2); } rounds every outside edge by 2.");
+      }
+      return dsl.roundedGrow(r, kids[0]);
+    }
+
     case "offset": {
       const child = childShape(stmt, scope);
       if (!child) return null;
@@ -1193,11 +1245,20 @@ export function looksLikeOpenSCAD(src) {
     /\b(include|use)\s*</.test(s) ||
     /\$fn\s*=/.test(s) ||
     // identifiers that only exist in OpenSCAD (supported or not)
-    /\b(linear_extrude|rotate_extrude|polyhedron|hull|minkowski|projection|surface|children|echo)\s*\(/.test(s) ||
-    // polygon/square/circle collide with BREPcode's own 2D vocabulary, so only
-    // count them as OpenSCAD when used statement-style (trailing semicolon),
-    // never as a JS argument like revolve(360, polygon([...]))
-    /\b(polygon|square|circle)\s*\([^;{]*\)\s*;/.test(s) ||
+    /\b(linear_extrude|rotate_extrude|projection|surface|children|echo)\s*\(/.test(s) ||
+    // hull() and minkowski() exist in BOTH languages now, so the NAME cannot
+    // decide which one this is — the shape of the call has to. OpenSCAD writes
+    // them with NO arguments and a block after; BREPcode passes the shapes as
+    // arguments. Listing the bare name here meant `minkowski(3, cube([20,20,20]))`
+    // — ordinary BREPcode — was handed to this translator, which then reported
+    // "that OpenSCAD produced no solids" about code that was never OpenSCAD.
+    // hull() had the same fault and only escaped it by luck: the usual way to
+    // write one includes an options object, and the rule above bails on those.
+    /\b(hull|minkowski)\s*\(\s*\)/.test(s) ||
+    // polygon/square/circle/polyhedron collide with BREPcode's own vocabulary,
+    // so only count them as OpenSCAD when used statement-style (trailing
+    // semicolon), never as a JS argument like revolve(360, polygon([...]))
+    /\b(polygon|square|circle|polyhedron)\s*\([^;{]*\)\s*;/.test(s) ||
     // juxtaposed calls — `translate([...]) cube(...)` — which is a syntax error in JS
     /\)\s*[A-Za-z_$][\w$]*\s*\(/.test(s) ||
     /\b(union|difference|intersection|translate|rotate|scale|mirror)\s*\([^)]*\)\s*\{/.test(s) ||

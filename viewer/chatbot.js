@@ -966,8 +966,9 @@ REPLY SHAPE: one short sentence, then ONE fenced code block of complete runnable
 // instead of inventing — the easier job. This is where the wider vocabulary
 // unlocks, one step at a time, exactly the way a person sands after shaping.
 export const POLISH_HARNESS = `You improve existing BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. The code you are given ALREADY BUILDS — keep its structure and sizes, refine it.
-YOU MAY NOW ALSO USE: fillet(r, shape) rounds all edges (r 1-2 typical) · chamfer(c, shape) bevels · cone({r1,r2,h}) · torus({R,r}) · colorize("#hex", shape) per part · scale([x,y,z], shape) · mirror([1,0,0], shape).
+YOU MAY NOW ALSO USE: tube(path, {r}) sweeps a round profile along a point list — cables, bowden tubes, handles, hoops; ONE solid however many bends, with real arcs at the corners, so replace any chain of cylinders-and-spheres you find with it · helix({r,turns,pitch}) and circlePath({r}) give it point lists · fillet(r, shape) rounds all edges (r 1-2 typical) · chamfer(c, shape) bevels · roundedGrow(mm, shape) — also spelled minkowski(mm, shape) — rounds EVERY outside edge and corner at once and grows the part by that much on every face (a 20mm cube becomes 26mm at 3) · roundedShrink(mm, shape) takes an even layer off · cone({r1,r2,h}) · torus({R,r}) · colorize("#hex", shape) per part · scale([x,y,z], shape) · mirror([1,0,0], shape).
 POLISH MEANS: fillet or chamfer edges a hand touches · colorize each logical part differently · swap a crude block for a cone/torus where the real object is round · keep every screw hole and mating size EXACTLY as it is.
+ROUNDING, WHICH TO REACH FOR: fillet(r) when the part must keep its size — it rounds in place. roundedGrow(mm) when the whole thing should read as soft and pillowy, or when fillet() fails on the shape; it is the one that works on an imported mesh. It GROWS the part, so never use it on a mating face, a shaft or a bore — say in your sentence that the outside got mm bigger. Never use it to round a single edge.
 Do not add new features the user never asked for. Do not rename the consts.
 REPLY SHAPE: one short sentence saying what you refined, then ONE fenced code block of the COMPLETE improved code ending in a return. Nothing after the fence.`;
 
@@ -979,12 +980,30 @@ You are not a chatbot that discusses CAD — you are the tool that does it. Neve
 If the request is not about building a model at all — a question about the app, a browser, a bug, anything else — say in one sentence that you only build models, and write NO code block. Do not answer it with JavaScript. Your code block is executed to build the part, so a reply containing browser code (fetch, document, window, localStorage…) is refused by the app and the user just sees a warning. One honest sentence is far more useful than a snippet that will not run.
 
 LANGUAGE — BREPcode (JavaScript). This vocabulary is the whole language; nothing else exists:
-cube([x,y,z]) corner-at-origin; cylinder({r,h,$fn}) +Z from z=0; cone({r1,r2,h}); sphere({r}); torus({r,tube}); polygon([[x,y],...]) + linearExtrude({h}, profile); union(...); difference(target,...cutters); intersection(...); translate([x,y,z],s); rotate([rx,ry,rz],s) degrees; scale([x,y,z],s); mirror([nx,ny,nz],s); fillet(r,s); chamfer(d,s); revolve(angle, polygon([...])) about x=0; stretch({axis:'x'|'y'|'z', by:mm, at:pos}, s) cuts at a plane and widens the middle — a NEGATIVE by removes that much from the middle instead (scale a part up then stretch it back down to thicken its walls/rails while keeping the original outside size; anything in the removed slab is deleted); hull(...shapes) wraps everything in one convex skin — THE tool for flares, bells, tapers, lofts (stack sized discs up Z and hull them; there is no minkowski/loft); drill([x,y,z],[nx,ny,nz],{d,depth,through}) bores into a face along its normal; group(...) keeps parts separate (assemblies).
+cube([x,y,z]) corner-at-origin; cylinder({r,h,$fn}) +Z from z=0; cone({r1,r2,h}); sphere({r}); torus({r,tube}); polygon([[x,y],...]) + linearExtrude({h}, profile); union(...); difference(target,...cutters); intersection(...); translate([x,y,z],s); rotate([rx,ry,rz],s) degrees; scale([x,y,z],s); mirror([nx,ny,nz],s); fillet(r,s); chamfer(d,s); revolve(angle, polygon([...])) about x=0; stretch({axis:'x'|'y'|'z', by:mm, at:pos}, s) cuts at a plane and widens the middle — a NEGATIVE by removes that much from the middle instead (scale a part up then stretch it back down to thicken its walls/rails while keeping the original outside size; anything in the removed slab is deleted); hull(...shapes) wraps everything in one convex skin — for lofting between two or three PROFILES that do not follow a path (a flared foot, a bell, a boss blending into a plate). If the taper runs ALONG a line or round a bend, that is tube() with a radius list, not hull: hulling a row of discs along a path is the slow way to write a sweep and produces about seven times the triangles; roundedGrow(mm, shape) grows the part by mm and rounds EVERY outside edge to that radius, roundedShrink(mm, shape) takes an even layer off and rounds inside corners; minkowski(mm, shape) is the same thing under the name it has elsewhere and is accepted, as is minkowski(shape, sphere({r})); drill([x,y,z],[nx,ny,nz],{d,depth,through}) bores into a face along its normal; group(...) keeps parts separate (assemblies).
 text({text, size, height, mode}) makes real 3D letters: union(plate, text(...)) embosses them, difference(plate, text({..., mode:'deboss'})) engraves them. stencil({text, size, thickness}) makes a spray/paint stencil — letters cut through a plate with auto tabs holding the counters (O, A, 0…).
 Codes (ONLY when the user explicitly asks for one): qrcode({text}), datamatrix({text}) — datamatrix also takes {label:"…"} to print human-readable text under it — and barcode({text}); options {module, relief, base}. Codes are raised; print them in a contrasting filament (2-colour). Never add a code unprompted.
 Colour: colorize([r,g,b], shape) tags a colour; a model with 2+ colours exports to 3MF as a colour group so a multi-material printer assigns a filament per colour (great for a coloured embossed label).
 Soft joins: blend({k}, a, b) melts shapes into one another instead of leaving a seam — k is the blend in mm and reads like a fillet radius. It takes its OWN shapes: sphere3d({r}), box3d([x,y,z]), cylinder3d({r,h}), torus3d({R,t}), moved with move3d([x,y,z], s) — all centred on the origin, unlike cube/cylinder. blend({k, cut:true}, a, b) subtracts b with a soft rim; blend({k, intersect:true}, a, b) keeps the overlap. Reach for it on organic, moulded or hand-held forms — handles meeting bodies, a spout off a jug, a fairing — where fillet() would have to find an edge. The result is a mesh, so blend last and do not fillet() it afterwards.
 Surface texture: texture({pattern, depth, scale, faces}, shape) displaces REAL geometry — the pattern survives into the exported STL/3MF. pattern: "knurl" (diamond grip), "fuzzy" (fuzzy skin), "layers", "bumps" (grip dots), "waffle"; faces: "sides" (default), "top", "bottom", "all"; depth in mm, scale = pattern size in mm. Use it when the user wants grip, knurling, fuzzy skin or a tactile finish. heightmap() also exists but its image grid comes from the app's Photo emboss tool — never fabricate map data yourself.
+tube(path, {r}) — THE tool for anything that FOLLOWS A LINE, and far wider than it sounds. Pipes, spouts, elbows, funnels, horns, nozzles, ducts, handles, hoops, bent rod, cable and bowden runs. It sweeps a round profile along a list of points and rounds every corner into a real arc, so a 90-degree elbow is one point in the path, not a construction. tube([[0,0,0],[40,0,0],[40,30,0]], {r:2}). Options: r as a LIST of radii, one per point, TAPERS it — that is how you get a funnel, a horn or a cone-to-pipe transition in one call · sides (facets, auto from the radius) · bend (corner radius, defaults to 3x r; 0 for a mitre) · closed:true for a loop, no caps · caps:"flat" to leave the ends open. helix({r,turns,pitch}) and circlePath({r}) return point lists to feed it (pitch 0 = a flat spiral, which is how a cable prints without supports).
+A HOLLOW pipe or funnel is two tubes on the same path: difference(tube(path,{r:outer}), tube(longerPath,{r:inner})). Make the inner path overshoot both open ends so no face lands exactly on a face.
+THERE IS A SHELF OF COMMON PARTS, already written and already building: standoffs and insert bosses, keyhole and zip-tie slots, gussets, snap hooks and their catches, dovetails, living and pin hinges, enclosure shells with lid rebates, vents, honeycomb, knobs, handles, hooks, foot recesses, label plates and a pillow block. Reach for one before modelling it by hand, then change its options — they are all parametric. Ask for #shelf to get the list with every call and its numbers; do not guess a name from this sentence.
+STANDARD HARDWARE IS ALREADY WRITTEN — never recall a clearance hole or a bearing size, call for it. bearingPocket("608") is the seat, bearing("608") the part; screwHole("M3",{depth,head:"socket"|"button"|"flat",tap,close}) cuts DOWNWARD from z=0 so you place it where the head goes; insertBore("M3") for a heat-set insert; nutPocket("M3",{captive:true}) for a hex nut, with a slide-in slot if you ask; magnetPocket(d,h); plus screw()/nut() for a fit check. Every one is bored oversize by a stated fit and carries the real standard number, so "an M3 clearance hole" is 3.4 and not 3.2 without you having to know that. See #parts for the full range and the fits.
+NEVER build a wire or tube as a chain of cylinders with spheres at the joints. That was the old workaround and it is now wrong: it costs one solid per segment plus one per joint, so a five-bend wire was eleven solids and a twenty-second build, and it still shows a kink at every bend. One tube() call is ONE solid with real arcs however many bends it has. If you find yourself writing a helper that unions cylinders end to end, the answer is tube().
+PICK THE RIGHT TOOL BEFORE YOU WRITE. Most failed replies are not bugs — they are the right shape built with the wrong verb, and they fail slowly.
+· Follows a line, bends, or tapers along its length — pipe, spout, elbow, funnel, horn, duct, handle, cable → tube() with a radius list. MEASURED: a 90-degree tapering funnel is 1,280 triangles in 0.35s with tube(); the same funnel hand-rolled as hulled discs along the arc is 8,824 triangles in 16.3s. Same part, 46x the wait.
+· Two or three flat PROFILES blended, not along a path → hull().
+· A wall standing on an outline, a blade, an inset or outset of a 2D shape → OpenSCAD's offset(). BREPcode has NO offset; insetting points yourself self-intersects the moment the outline turns inward.
+· Rounding an existing edge → fillet()/chamfer(). Rounding EVERYTHING and growing the part → roundedGrow().
+· Two shapes melting together with no edge to find → blend().
+· A box with rounded vertical corners → hull() of four corner cylinders. Not roundedGrow(), which rounds all twelve edges and hands every later boolean a heavy mesh (44s vs 5s, same silhouette).
+IF YOU ARE HAND-ROLLING, STOP. Writing a loop that hulls discs along a path means you wanted tube(). Writing a loop that nudges polygon points inward means you wanted OpenSCAD offset(). Writing a helper that unions cylinders end to end means you wanted tube(). In each case the built-in is faster, shorter and already handles the corner cases you are about to hit.
+BUILD COST — these four cost real seconds and are easy to avoid. A rounded box is hull() of four corner cylinders (one cheap convex solid), NOT roundedGrow(), which rounds all twelve edges and hands every later boolean a heavy mesh — 44s vs 5s on the same silhouette. Merge same-coloured disjoint parts with union() into one solid (81 solids took 18.9s, the same model as 35 took 13s) — EXCEPT parts that each span the whole model diagonally, whose bounding boxes all overlap; unioning four of those cost 9s on its own. Leave tube()'s bend at its default; forcing it tight makes the inside of the arc weld into slivers the kernel must repair (12.7s for four thin strands). Keep every tube path monotonic — a point that doubles back makes a self-intersecting mesh.
+PLACING DETAIL ON A FACE: a recessed bay cut into a box, inset from the walls, does NOT lower those walls — they still run to full height. Work out where a badge, screen or port goes from the FACE it sits on, not from the floor of the pocket behind it. To show the inside of an enclosure, LINE the cavity with thin panels; a solid dark block the size of the chamber hides whatever was in there.
+FILAMENT BY NAME — ALWAYS use the comment form, on its own line at the TOP of the code: // filament: witchcraft
+It works in every language you can write here. The JS call filament("x") only exists in BREPcode, and a cookie cutter is written as OpenSCAD, where it is silently ignored — so the comment is the form that always applies. The same line also survives being saved and reopened.
+filament("witchcraft") sets the viewer's spool — real Cookiecad filaments, so "make a heart cutter in Witchcraft" or "print the star in Funfetti" is ONE request you answer in code, not prose. Names: funfetti, unicorn, ruby, witchcraft, mermaid, darkmagic, fairyfloss, golddust, pinkombre (case and spacing do not matter; "Pink Ombré", "gold dust" and "PETG Witchcraft" all work). Write it as a statement before the return — filament("funfetti"); return cutter; — or wrap a shape: filament("unicorn", cutter). Viewer only: the STL is identical whichever spool is named, so never let it change the geometry. If the user names a filament you do not recognise, say so and list these nine rather than guessing.
 Looks (viewer only, geometry/export unchanged): glow(color, intensity, shape) is a lit LED/lamp/screen — glow("#ff3b30", 2, sphere({r:2.5})) reads as a powered LED. glass(opacity, shape) is optically clear with a real reflection — lenses, LCD windows, acrylic covers; glass(cylinder({r:12, h:2})) for a binocular lens, glass(0.15, thinCube) for a display window. Use them whenever the object being modelled would have lit or transparent parts.
 
 RULES
@@ -1009,9 +1028,10 @@ APP FEATURES BEYOND THE CODE — you know the whole app, so requests these panel
 - Visual texture patterns (Material tab dropdown): fuzzy skin, diamond plate, wood grain, camo, polka dots, brushed steel, zebra stripes, checker, grid — with depth, scale, rotate and move sliders. These are viewer looks; a texture that must PRINT is texture() in code.
 - Lighting tab: ambient/key/fill/rim strengths, a colour per light, background colour.
 - Auto-colour with a shade slider (Neon, Glow, light-to-dark families); right-click any shape to recolour or swap just it.
-- Toolbox (wrench in the editor header): Drill a clicked face, Fin supports at a clicked face's angle, Surface texture, Photo emboss (an image as relief on a clicked face), scannable QR/DataMatrix codes on a face.
+- Toolbox (wrench in the editor header): Drill a clicked face, Fin supports at a clicked face's angle, Surface texture, Photo emboss (an image as relief on a clicked face), scannable QR/DataMatrix codes on a face, a searchable Parts shelf that drops a ready-made part into the code, and a Cookie cutter maker.
 - Import: STL, OBJ, 3MF (multicolour), SVG, STEP, .bcode projects. Export: STL, OBJ, 3MF (colour-aware), STEP (curved analytic surfaces — fillets stay round), SVG blueprint (3-view + isometric engineering drawing), GLB, self-contained embed page, .bcode.
 - The ⚙ chat settings hold the model/provider (including a free in-browser WebGPU model — no key, no install — and free local servers), this mission text, and #section toggle chips.
+- Chat shortcuts, typed straight into the message box: #tag pulls a subject's reference in by name (type # for the list — #cookiecutter, #batt, #pipes and so on), -#tag leaves one out, and /simple, /complex, /brep, /scad, /jscad, /py change the approach or output language for that one message. They are stripped before the message reaches you, so you will never see them — describe them if asked, and do not tell anyone to type them at you as a way of talking to you.
 
 #speed
 SPEED
@@ -1036,7 +1056,16 @@ ENGINEERING DRAWINGS — when an attached image is a dimensioned drawing sheet (
 
 #languages
 OTHER LANGUAGES
-The editor also accepts pasted OpenSCAD, JSCAD (a whole @jscad/modeling module with main() and module.exports), and build123d/CadQuery Python (algebra mode) — the app auto-detects and translates them. If the user's code or question is in one of those languages, STAY in that language: reply with a complete model in it and the app will build it. OpenSCAD color("red")/color([r,g,b]) is supported and carries through to a multi-colour 3MF. Asked to convert between languages? Output the target language in the code block.`;
+The editor also accepts pasted OpenSCAD, JSCAD (a whole @jscad/modeling module with main() and module.exports), and build123d/CadQuery Python (algebra mode) — the app auto-detects and translates them. If the user's code or question is in one of those languages, STAY in that language: reply with a complete model in it and the app will build it. OpenSCAD color("red")/color([r,g,b]) is supported and carries through to a multi-colour 3MF. Asked to convert between languages? Output the target language in the code block.
+
+WHAT THE OPENSCAD TRANSLATOR DOES NOT HAVE. This is a translator, not OpenSCAD itself. These eight modules are ABSENT — writing one is silently skipped, so the part comes out missing a piece and nothing says why:
+· rotate_extrude() — no lathe. A revolved profile is BREPcode revolve(); a funnel, spout, vase or bell is tube() with a radius list, which is better anyway.
+· text() — no lettering. Use BREPcode text() or stencil().
+· import() — no STL/DXF loading. Files come in through the app's Import button.
+· polyhedron() — no raw mesh. Build it from primitives, or hull() a point cloud.
+· projection(), surface(), multmatrix(), resize() — absent, no substitute.
+Two more exist but REFUSE arguments, and these throw and lose the whole build: linear_extrude() rejects twist and scale (a tapered extrude is cylinder(r1, r2) or tube()), and polygon() rejects a second path, so cut holes with difference() of two polygons.
+Everything else you would reach for is there: cube, sphere, cylinder, torus, square, circle, polygon, linear_extrude, translate, rotate, scale, mirror, union, difference, intersection, hull, minkowski, offset, color, for, if, let, modules, functions and list comprehensions.`;
 
 // Kept for compatibility with older stored settings.
 export const SYSTEM_PROMPT = DEFAULT_HARNESS;
@@ -1104,10 +1133,14 @@ export function filterHarness(text, disabled = []) {
 export const STYLE_LANGUAGES = {
   // "" = say nothing extra; the harness already teaches BREPcode
   brepcode: "",
-  openscad: `OUTPUT LANGUAGE — OpenSCAD. Reply with OpenSCAD, not BREPcode: modules, cube/cylinder/sphere/polyhedron, translate/rotate/scale, union/difference/intersection, hull, $fn. The app translates it on the way in. color("red") and color([r,g,b]) carry through to a multi-colour 3MF. No return statement — OpenSCAD is statements, not an expression.`,
+  openscad: `OUTPUT LANGUAGE — OpenSCAD. Reply with OpenSCAD, not BREPcode: modules, cube/cylinder/sphere, square/circle/polygon, linear_extrude, translate/rotate/scale/mirror, union/difference/intersection, hull, minkowski, offset, $fn. The app translates it on the way in. color("red") and color([r,g,b]) carry through to a multi-colour 3MF. No return statement — OpenSCAD is statements, not an expression. Re-read WHAT THE OPENSCAD TRANSLATOR DOES NOT HAVE before you write: rotate_extrude, text, import, polyhedron, projection, surface, multmatrix and resize are absent here, and a funnel or vase written with rotate_extrude comes out empty.`,
   jscad: `OUTPUT LANGUAGE — JSCAD. Reply with a complete @jscad/modeling module: const { … } = require('@jscad/modeling'), a main() that returns the geometry, and module.exports = { main }. The app runs it as a module, so require() is the only import that works.`,
   build123d: `OUTPUT LANGUAGE — build123d (Python, ALGEBRA mode). Reply with Python: from build123d import *, then algebra-mode composition (part = Box(…) + Cylinder(…) - Hole(…)), locations via Pos()/Rot() or the * operator. Not builder mode — no "with BuildPart()" context managers, the app's translator reads algebra mode.`,
-  any: `OUTPUT LANGUAGE — your choice. BREPcode, OpenSCAD, JSCAD and build123d (Python, algebra mode) are all accepted and auto-detected; pick whichever expresses this particular part most naturally and stay in it for the whole reply.`,
+  any: `OUTPUT LANGUAGE — your choice, but choose on the GEOMETRY, not on taste, and stay in one language for the whole reply. They are auto-detected on the way in.
+· BREPcode is the default and the only one with tube(), blend(), fillet(), chamfer(), roundedGrow(), texture(), text(), drill(), stretch() and the scannable codes. Anything that sweeps, blends, rounds, letters or textures belongs here.
+· OpenSCAD ONLY when you need offset() — a real polygon inset/outset, which is cookie-cutter blades, anything traced from artwork, and 2D shells. BREPcode has no offset, so this is not a preference, it is the only route. Reach for it too when the user pasted OpenSCAD and expects edits back in it. Do NOT pick it for a revolved shape: this translator has no rotate_extrude.
+· JSCAD and build123d when the user asked for them, or is clearly working in one. Neither reaches the BREPcode-only verbs above, so a part needing a sweep or a fillet is worse off in them.
+Mixing is what fails: filament("x") and every other BREPcode verb is invisible to the OpenSCAD translator. If a cutter needs a spool named, use the comment form.`,
 };
 
 export const STYLE_ONESHOT = `APPROACH — ONE SHOT. Go for the finished part in a single reply: every feature the request implies, sized and placed, first time. Spend the effort up front rather than leaving obvious work for a follow-up.`;
@@ -1124,6 +1157,27 @@ const STYLE_PASSES = [
   ["pattern", "PATTERN", "repeated features: perforations, ribs, grip diamonds, lattice"],
   ["lighting", "LIGHTING", "glow() and glass() for lit or transparent parts, and a word on the Lighting tab if it would help the look"],
 ];
+
+// A /simple or /scad typed into ONE message. Returns the block that goes in the
+// volatile half of the system prompt, or "" when nothing was overridden.
+//
+// It restates the full instruction rather than saying "be simpler", because the
+// settings block above says the opposite in as many words and a one-line
+// contradiction loses to a paragraph. Naming the command that caused it also
+// gives the user something to recognise when they wonder why the reply changed
+// shape.
+export function composeOverride({ approach = null, language = null } = {}) {
+  const bits = [];
+  if (approach) {
+    bits.push(`${approach === "iterative" ? STYLE_ITERATIVE : STYLE_ONESHOT}`);
+  }
+  if (language && STYLE_LANGUAGES[language]) bits.push(STYLE_LANGUAGES[language]);
+  if (!bits.length) return "";
+  const said = [approach && `/${approach === "iterative" ? "simple" : "complex"}`,
+    language && `/${{ brepcode: "brep", openscad: "scad", jscad: "jscad", build123d: "py" }[language]}`]
+    .filter(Boolean).join(" and ");
+  return `\n\nFOR THIS MESSAGE ONLY — the user typed ${said}, which OVERRIDES the approach and language settings stated earlier. Where the two disagree, this wins.\n\n${bits.join("\n\n")}`;
+}
 
 export function composeStyle(style = {}) {
   const parts = [];
@@ -1151,22 +1205,97 @@ export function composeStyle(style = {}) {
   return parts.length ? `\n\n${parts.join("\n\n")}` : "";
 }
 
-// Compose the full system string: (possibly user-edited) harness + dimensions
-// policy + assistant name + gem. One function so Gemini and Claude are
-// guaranteed to receive the exact same instructions.
-export function composeSystem(opts = {}) {
-  return (opts.harness?.trim() || DEFAULT_HARNESS)
-    // Subject knowledge pulled from viewer/recipes/ for THIS message only — the
-    // exact cell dimensions, the holder rules, the fins reference. Placed after
-    // the harness and before the user's own gem so their preferences still have
-    // the last word. Empty for a request that mentions none of it.
-    + (opts.reference || "")
+// What the viewer is doing to the picture, in a sentence, or "" if it is doing
+// nothing unusual.
+//
+// This exists because of a real dead end. The Material panel's filament setting
+// is GLOBAL — it is copied onto every shape's material, so with "Natural /
+// clear" selected the whole model renders see-through and no colorize() in the
+// code can make any of it opaque. The user asked for it to be less transparent;
+// the assistant, seeing only the code, dutifully rewrote the geometry; the
+// model looked identical because the code was never the cause. Repeat as often
+// as you like.
+//
+// The assistant cannot see the screen. So tell it what the screen is set to,
+// and only when that setting is capable of causing the confusion.
+export const FILAMENT_LOOK = {
+  pla: "Translucent PLA",
+  petg: "PETG — glossy, see-through",
+  natural: "Natural / clear",
+};
+
+export function viewerNote({ filament = "opaque", preset = "" } = {}) {
+  const look = FILAMENT_LOOK[filament];
+  if (!look) return "";
+  return `
+
+VIEWER STATE (not part of the model)
+The Material panel's filament is set to "${look}", which draws EVERY shape see-through — this is a display setting and it is copied onto all parts, so it overrides whatever colours the code sets. If the user says the model looks transparent, washed out, ghostly, or that the colours will not change: that is this setting, NOT the code. Tell them in one sentence to open the Material panel (the cube icon) and set Filament back to "Opaque — standard filament", and do NOT rewrite the model to try to fix it. Only glass(...) shapes in the code are meant to be see-through.${preset ? ` The active material preset is "${preset}".` : ""}`;
+}
+
+// Compose the system prompt in TWO pieces, split by how often each changes.
+//
+// This split is the whole reason replies are cheap after the first one. Every
+// provider caches on a PREFIX: the longest run of leading tokens identical to
+// last time. The base instructions are ~5,300 tokens and do not change all
+// session, so they should be that prefix — but the per-message reference block
+// used to sit in the MIDDLE of them, which moved the first differing token to
+// somewhere around token 3,000 and made the whole thing uncacheable. Every
+// "make it 2mm taller" paid full price for instructions the model had already
+// been sent a dozen times.
+//
+// So: everything that holds still goes first, everything that changes per
+// message goes last. Claude then gets an explicit cache_control breakpoint at
+// the seam (see buildApiRequest); OpenAI and Gemini cache stable prefixes
+// automatically and need nothing but the ordering.
+export function composeSystemParts(opts = {}) {
+  // STABLE — identical for every message until the user changes a setting.
+  const stable = (opts.harness?.trim() || DEFAULT_HARNESS)
+    // What the VIEWER is currently doing to the picture. Without this the
+    // assistant cannot tell a model that is transparent from a model being
+    // DISPLAYED transparently, and the two need opposite answers: one is a code
+    // change, the other is a control the user has to move. Guessing wrong costs
+    // the user a full rebuild that changes nothing they can see — which is
+    // exactly what happened. Empty when the viewer is on its defaults.
+    //
+    // Stable rather than volatile on purpose: it only moves when the user moves
+    // a control, so it costs one cache miss a session, not one per message.
+    + (opts.viewer || "")
     + composeStyle(opts.style)
     + (opts.askDims ? DIMS_ASK : DIMS_ASSUME)
     + (opts.botName?.trim()
       ? `\nYour assistant's name preference: "${opts.botName.trim()}". Use it only if the user asks what you're called.`
       : "")
     + (opts.gem ? `\n\nUser preferences (their "gem"):\n${opts.gem}` : "");
+
+  // VOLATILE — looked up per message, so it can never be part of the prefix.
+  const volatile = ""
+    // A /simple or /scad on THIS message only. It lives here rather than with
+    // the ordinary style settings above for one reason: those settings are the
+    // cached prefix, so folding an override into them would make a one-word
+    // shortcut cost a full re-read of the instructions. It is stated as an
+    // override rather than a replacement so the model knows which way to
+    // resolve the disagreement it is about to notice.
+    + (opts.override || "")
+    // What this machine has already learned the hard way: the first-attempt
+    // mistakes that keep repeating here, and the closest thing it has built
+    // before. Empty on a fresh install, so nothing changes until there is
+    // something real to say. See src/lessons.js.
+    + (opts.lessons || "")
+    // Subject knowledge pulled from viewer/recipes/ for THIS message only — the
+    // exact cell dimensions, the holder rules, the fins reference. Empty for a
+    // request that mentions none of it.
+    + (opts.reference || "");
+
+  return { stable, volatile };
+}
+
+// The full system string, for callers that just want one. Kept because the
+// desktop app and the tests use it, and because having one definition of the
+// order means the two cannot drift.
+export function composeSystem(opts = {}) {
+  const { stable, volatile } = composeSystemParts(opts);
+  return stable + volatile;
 }
 
 // The "local" provider talks OpenAI-compatible chat completions — the lingua
@@ -1211,8 +1340,17 @@ export function openaiBase(baseUrl) {
 // custom temperature; sending the old shape is a hard 400, not a warning.
 const isReasoningModel = (m) => /^(o\d|gpt-5|gpt-4\.5)/i.test(String(m || ""));
 
+// Below this, marking a cache breakpoint costs more than it saves: providers
+// only cache reasonably long prefixes, and a short system prompt is cheap
+// anyway. The real one here is ~5,300 tokens, so this never trips in practice —
+// it exists so a user who deletes most of their harness does not end up paying
+// a cache-WRITE premium (a write costs more than a plain read) on something too
+// small to ever be read back.
+const CACHE_FLOOR = 4000;   // characters, ~1,000 tokens
+
 export function buildApiRequest({ provider, model, key, baseUrl }, messages, opts = {}) {
-  const system = composeSystem(opts);
+  const { stable, volatile } = composeSystemParts(opts);
+  const system = stable + volatile;
   if (provider === "openai") {
     const budget = isReasoningModel(model)
       ? { max_completion_tokens: 16000 }
@@ -1316,7 +1454,21 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
           // request timeouts.
           max_tokens: 32000,
           ...(opts.stream ? { stream: true } : {}),
-          system,
+          // Two system blocks with a cache breakpoint between them. The first
+          // holds still all session and is marked cacheable; the second is the
+          // per-message lookup and never could be. A read costs about a tenth
+          // of a fresh write, so from the second message on the instructions
+          // are close to free — and the reply starts sooner, which is the part
+          // you actually feel.
+          //
+          // One block, not two, when there is nothing volatile: an empty
+          // trailing block is rejected by the API.
+          system: stable.length >= CACHE_FLOOR
+            ? [
+              { type: "text", text: stable, cache_control: { type: "ephemeral" } },
+              ...(volatile ? [{ type: "text", text: volatile }] : []),
+            ]
+            : system,
           messages: messages.map((m) => ({
             role: m.role === "assistant" ? "assistant" : "user",
             // an attached image becomes a content block ahead of the text
@@ -1478,6 +1630,45 @@ export async function readClaudeStream(resp, onProgress) {
   return { content: blocks.filter(Boolean), stop_reason: stopReason, ...(error ? { error } : {}) };
 }
 
+// What the request actually cost, for the log line.
+//
+// This exists so the caching is VISIBLE. A cache that silently stops working —
+// because a setting crept into the stable half, or a provider changed its
+// rules — looks exactly like a cache that is working, and the only symptom is
+// a bill. "cached 5,261" in the log every turn after the first is the proof;
+// its absence is the alarm.
+//
+// Every provider spells it differently and any of them may send nothing, so a
+// missing number reads as "not reported", never as zero.
+export function usageNote(provider, json) {
+  const u = provider === "gemini" ? json?.usageMetadata : json?.usage;
+  if (!u) return "";
+  const n = (v) => (Number.isFinite(+v) ? +v : 0);
+  const bits = [];
+  if (provider === "gemini") {
+    const cached = n(u.cachedContentTokenCount);
+    const inTok = n(u.promptTokenCount);
+    if (inTok) bits.push(`in ${inTok}`);
+    if (cached) bits.push(`cached ${cached}`);
+    if (n(u.candidatesTokenCount)) bits.push(`out ${n(u.candidatesTokenCount)}`);
+  } else if (provider === "claude") {
+    // Anthropic reports the three separately, and they do NOT overlap: fresh
+    // input, tokens written INTO the cache this turn, and tokens read back
+    // out of it. A write costs more than plain input and a read costs about a
+    // tenth, so telling them apart is the whole point.
+    if (n(u.input_tokens)) bits.push(`in ${n(u.input_tokens)}`);
+    if (n(u.cache_creation_input_tokens)) bits.push(`cache write ${n(u.cache_creation_input_tokens)}`);
+    if (n(u.cache_read_input_tokens)) bits.push(`cached ${n(u.cache_read_input_tokens)}`);
+    if (n(u.output_tokens)) bits.push(`out ${n(u.output_tokens)}`);
+  } else {
+    if (n(u.prompt_tokens)) bits.push(`in ${n(u.prompt_tokens)}`);
+    const cached = n(u.prompt_tokens_details?.cached_tokens);
+    if (cached) bits.push(`cached ${cached}`);
+    if (n(u.completion_tokens)) bits.push(`out ${n(u.completion_tokens)}`);
+  }
+  return bits.length ? `tokens: ${bits.join(" · ")}` : "";
+}
+
 // When a reply carries no text at all, say WHY instead of "Empty response" —
 // the difference between a user retrying sensibly and giving up.
 export function emptyReplyReason(provider, json) {
@@ -1592,4 +1783,94 @@ export function modelScore(id) {
   const wb = s.match(/-([\d.]+)b-instruct-q\d/);
   if (wb) v += Math.min(18, parseFloat(wb[1]) * 3);
   return v;
+}
+
+// --------------------------------------------------------- prior art lookup
+//
+// "Has somebody already made this?" — asked only when the request names
+// something recognisable (see src/priorart.js, which decides that and is
+// deliberately biased towards not asking).
+//
+// A SEPARATE, small request rather than a tool added to the generation call.
+// Attaching a search tool to the main request changes the shape of the reply,
+// and everything downstream — the fence parser, the retry loop, the code
+// extractor — is built around the shape it has now. One cheap extra call that
+// can fail on its own is worth more than a clever one that can break building.
+//
+// Only providers whose SERVERS can search are supported: doing it from the page
+// is impossible anyway, since a browser cannot fetch a search engine across
+// origins. Anything else returns null and the feature simply does not appear.
+export function priorArtRequest({ provider, key, model, subject, sites = [] }) {
+  const ask = `Search the web and tell me whether a ready-made 3D-printable model of "${subject}" already exists.`
+    + ` Prefer ${sites.join(", ")}.`
+    + ` Reply with ONLY a JSON array, no prose, at most 4 items, each`
+    + ` {"title":"...","url":"https://...","site":"printables.com","licence":"CC-BY-NC or unknown"}.`
+    + ` Use the real page URL for each model. If you find nothing relevant, reply with [].`;
+
+  if (provider === "claude") {
+    return {
+      url: "https://api.anthropic.com/v1/messages",
+      options: {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1200,
+          tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
+          messages: [{ role: "user", content: ask }],
+        }),
+      },
+    };
+  }
+  if (provider === "gemini") {
+    return {
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tools: [{ google_search: {} }],
+          contents: [{ role: "user", parts: [{ text: ask }] }],
+        }),
+      },
+    };
+  }
+  return null;                 // this provider cannot search; say nothing
+}
+
+// Pull the results out of whatever the provider sent back. Defensive on
+// purpose: this is a bonus feature and a malformed answer must cost nothing
+// more than the feature not appearing.
+export function parsePriorArt(text, { safeUrl = (u) => u } = {}) {
+  const s = String(text || "");
+  const start = s.indexOf("[");
+  const end = s.lastIndexOf("]");
+  if (start < 0 || end <= start) return [];
+  let rows;
+  try { rows = JSON.parse(s.slice(start, end + 1)); } catch { return []; }
+  if (!Array.isArray(rows)) return [];
+
+  const out = [];
+  const seen = new Set();
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const url = safeUrl(r.url);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    let host = "";
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep blank */ }
+    out.push({
+      title: String(r.title || "Untitled").slice(0, 120),
+      url,
+      site: String(r.site || host).slice(0, 60),
+      licence: String(r.licence || r.license || "unknown").slice(0, 60),
+    });
+    if (out.length >= 4) break;
+  }
+  return out;
 }

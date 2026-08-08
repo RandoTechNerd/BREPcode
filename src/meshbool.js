@@ -406,7 +406,11 @@ export function stitchTJunctions(mesh, { tol = EPS * 2, maxFaces = 4e6 } = {}) {
 // of every point on the two edges touching that corner; drop those and the
 // points are unused again, which is the T-junction back. Ear clipping picks
 // corners that actually have area, so every point ends up used.
-function earClip(points, loop) {
+// Exported because the rounded offset re-triangulates whole planar regions
+// with it — a CSG union leaves a flat face as hundreds of fragments, and
+// clipping the region's outline back to a handful of triangles is what makes
+// the result small enough for the kernel to import quickly.
+export function earClip(points, loop) {
   if (loop.length < 3) return [];
   if (loop.length === 3) return [loop.slice()];
 
@@ -508,11 +512,16 @@ const copyMesh = ({ points, faces }) => ({
   faces: faces.map((f) => f.slice()),
 });
 
-function op(kind, meshA, meshB) {
+// maxFaces is an option rather than a constant because one caller knows more
+// than this module does. The rounded offset feeds it a long run of small,
+// mostly-disjoint primitives whose intermediate result is bigger than any mesh
+// a user would hand us, and it has already checked that the shape is worth it.
+// Everyone else gets the default, which is the number that keeps this fast.
+function op(kind, meshA, meshB, { maxFaces = MAX_FACES } = {}) {
   const total = (meshA.faces?.length || 0) + (meshB.faces?.length || 0);
-  if (total > MAX_FACES) {
+  if (total > maxFaces) {
     throw new Error(
-      `mesh boolean refused: ${total} triangles is past the ${MAX_FACES} this handles quickly `
+      `mesh boolean refused: ${total} triangles is past the ${maxFaces} this handles quickly `
       + "(it goes quadratic above that). Simplify the mesh first, or let the kernel do it.");
   }
   if (!boxesOverlap(bounds(meshA), bounds(meshB))) {
@@ -550,9 +559,9 @@ function op(kind, meshA, meshB) {
   return stitchTJunctions(toMesh(allPolygons(merged)));
 }
 
-export const meshUnion = (a, b) => op("union", a, b);
-export const meshSubtract = (a, b) => op("subtract", a, b);
-export const meshIntersect = (a, b) => op("intersect", a, b);
+export const meshUnion = (a, b, opts) => op("union", a, b, opts);
+export const meshSubtract = (a, b, opts) => op("subtract", a, b, opts);
+export const meshIntersect = (a, b, opts) => op("intersect", a, b, opts);
 
 // Fold a list the way difference(target, ...cutters) reads.
 export function meshSubtractAll(target, cutters) {

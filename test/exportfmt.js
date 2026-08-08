@@ -4,6 +4,7 @@
 import { cube, cylinder, difference, translate, build, toSTL } from "../index.js";
 import {
   stlToObj, stlTo3MF, colored3MF, splitConnectedParts, layoutOnPlates, partsPlate3MF,
+  embedPage, MV_CDN,
 } from "../viewer/exporters.js";
 import JSZip from "jszip";
 
@@ -176,6 +177,57 @@ const tetra = (ox, oy, oz, color) => ({
     files.map((f) => f.suffix).join(" "));
   const total = files.reduce((n, f) => n + f.parts, 0);
   check("...and no part is lost in the split", total === 3, String(total));
+}
+
+console.log("\nthe shared page is a way IN, not a dead end\n");
+{
+  // The page someone is actually handed. Two things about it are easy to get
+  // quietly wrong: it shows nothing for seconds while megabytes of base64 GLB
+  // decode, and it offers no route back to the source.
+  const GLB = "R0lGODlhAQABAAAAACw=";        // stand-in; the builder never parses it
+  const look = { bg: "#101820", exposure: 1.1, shadow: 0.8 };
+
+  const bare = embedPage({ glbBase64: GLB, title: "bracket", look });
+  check("it is a whole document", bare.trim().startsWith("<!doctype html>"));
+  check("the model is inlined, so the file stands alone",
+    bare.includes("data:model/gltf-binary;base64," + GLB));
+  check("the viewer script is the pinned model-viewer", bare.includes(MV_CDN));
+  check("the editor lighting travels with it",
+    bare.includes('exposure="1.1"') && bare.includes('shadow-intensity="0.8"')
+      && bare.includes("#101820"));
+  check("it credits BREPcode", /brepcode\.com/.test(bare));
+
+  // Without a poster there is nothing to reveal, so the lazy attributes must
+  // NOT be claimed — in the markup they would simply be untrue.
+  check("no poster => no reveal attributes",
+    !bare.includes("poster=") && !bare.includes('reveal="auto"'));
+
+  const full = embedPage({
+    glbBase64: GLB, title: "bracket", look,
+    poster: "data:image/jpeg;base64,AAAA",
+    editUrl: "https://brepcode.com/#m=abc-123",
+  });
+  check("a poster is shown first", full.includes('poster="data:image/jpeg;base64,AAAA"'));
+  check("...and the model is swapped in as soon as it is ready", full.includes('reveal="auto"'));
+  check("...starting that load AT ONCE, not on scroll", full.includes('loading="eager"'));
+  check("the edit link is offered", full.includes("https://brepcode.com/#m=abc-123"));
+  check("...and says what it does", /Edit the code/.test(full));
+
+  // No link beats a broken one: when the model will not fit in a URL the
+  // caller passes nothing, and the button must simply not appear.
+  check("no edit url => no button", !/Edit the code/.test(bare));
+
+  // The title is a filename a person typed, and the url is built from it.
+  const nasty = embedPage({ glbBase64: GLB, title: "</title><script>x</script>" });
+  check("the title cannot break out of the document",
+    !nasty.includes("<script>x</script>") && nasty.includes("&lt;/title&gt;"));
+  const nastyUrl = embedPage({ glbBase64: GLB, title: "t", editUrl: 'https://x/"onmouseover="y' });
+  check("...nor can the edit url break out of its attribute",
+    !nastyUrl.includes('"onmouseover="y'));
+
+  let threw = "";
+  try { embedPage({ title: "no model" }); } catch (e) { threw = e.message; }
+  check("a page with no model is refused, by name", /base64 GLB/.test(threw), threw);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

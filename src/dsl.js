@@ -450,6 +450,170 @@ export function hull(...children) {
   return node({ kind: "hull", children: kids, fix: IDENTITY });
 }
 
+// --------------------------------------------------- rounded grow / shrink
+//
+// Minkowski with a ball, built rather than sampled: a tube along every convex
+// edge, a sphere at every convex corner, and each face swept out by r to span
+// between them. Their union has no gap anywhere, because every point within r
+// of the surface is within r of a face, an edge or a corner.
+//
+//   roundedGrow(3, cube([20, 20, 20]))     a 26mm cube with 3mm rounds
+//   roundedGrow(-2, myPart)                shrink and round instead
+//
+// Positive grows and rounds the OUTSIDE corners; negative shrinks and rounds
+// the inside ones. The part does not keep its original size — that is the
+// point of it.
+//
+// Everything it makes is a real primitive, so the result is still kernel
+// geometry: the flats are exactly flat, the rounds are exactly round, and it
+// can still be filleted, cut and exported as a meaningful STEP. That is what
+// this buys over the sampled offset in offset3d.js, which returns a mesh and
+// ends that chain. The cost is one primitive per triangle, convex edge and
+// convex corner, so it is for parts with tens of faces, not for imported
+// meshes with thousands — and it says so rather than grinding.
+export function roundedGrow(opts, ...children) {
+  const o = typeof opts === "number" ? {} : (opts || {});
+  const amount = typeof opts === "number" ? opts : (o.r ?? o.radius ?? o.amount ?? o.by);
+  if (!Number.isFinite(amount) || amount === 0) {
+    throw new TypeError("roundedGrow() needs a distance in mm — positive to grow, negative to shrink");
+  }
+  const kids = collect(children);
+  if (!kids.length) throw new Error("roundedGrow() needs a shape to work on");
+  const child = kids.length === 1 ? kids[0] : union(kids);
+  return node({
+    kind: "roundify",
+    amount,
+    fn: o.$fn ?? o.fn ?? 24,
+    child,
+    fix: IDENTITY,
+  });
+}
+
+// A round profile swept along a path: cables, bowden tubes, handles, hoops,
+// bent rod, piping — anything whose shape is a LINE rather than a block.
+//
+//   tube([[0,0,0], [40,0,0], [40,40,0]], { r: 2 })
+//
+// This replaces a pattern that kept getting written by hand (and by the AI):
+// a chain of cylinders with spheres dropped at the joints to fake a bend. That
+// chain is one solid per segment plus one per joint, so a five-bend wire was
+// eleven solids and eleven booleans, and it still had visible kinks because a
+// cylinder cannot curve. A sweep is ONE solid whatever the bend count, and the
+// corners are real arcs — see src/sweep.js for the frame maths.
+//
+// Options, all optional:
+//   r      radius, or a list of radii (one per point) to taper
+//   sides  facets around the tube, default 16
+//   bend   corner radius; defaults to 1.5x r, set 0 for mitred corners
+//   closed join the last point back to the first, and drop the end caps
+//   caps   "round" (default) or "flat"
+export function tube(path, opts = {}) {
+  const o = typeof opts === "number" ? { r: opts } : (opts || {});
+  if (!Array.isArray(path) || path.length === 0) {
+    throw new TypeError(
+      "tube() sweeps a round profile along a path: tube([[0,0,0], [40,0,0], [40,40,0]], { r: 2 })");
+  }
+  const r = o.r ?? o.radius ?? o.d ?? o.diameter;
+  if (r === undefined) throw new TypeError("tube() needs a radius: tube(path, { r: 2 })");
+  const radius = (o.d ?? o.diameter) !== undefined
+    ? (Array.isArray(r) ? r.map((v) => v / 2) : r / 2)
+    : r;
+  return node({
+    kind: "tube",
+    path,
+    opts: {
+      r: radius,
+      // "auto" picks the facet count from the radius — see autoSides() in
+      // sweep.js for why a fixed default is wrong at both ends.
+      sides: o.sides ?? o.$fn ?? o.fn ?? "auto",
+      caps: o.caps ?? "round",
+      closed: !!(o.closed ?? o.loop),
+      bend: o.bend ?? o.bendRadius ?? null,
+      bendSegments: o.bendSegments ?? 6,
+    },
+    fix: IDENTITY,
+  });
+}
+
+// Point lists for the two paths people ask for by name. These return plain
+// arrays, not shapes, so they compose with anything: pass one to tube(), or
+// slice it, or map over it.
+//
+// helix() is what "coil the wire up so it prints flat" needs — the request that
+// started all this.
+export function helix({
+  r = 10, radius, turns = 3, pitch = 4, height, start = 0, steps = 24, r2, taper,
+} = {}) {
+  const R0 = radius ?? r;
+  const R1 = r2 ?? taper ?? R0;
+  const n = Math.max(3, Math.round(steps * Math.abs(turns)));
+  const rise = height !== undefined ? height / n : (pitch * turns) / n;
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const a = (start + turns * 360 * t) * Math.PI / 180;
+    const rad = R0 + (R1 - R0) * t;
+    pts.push([rad * Math.cos(a), rad * Math.sin(a), rise * i]);
+  }
+  return pts;
+}
+
+// A circle as a point list, for a hoop: tube(circlePath({ r: 30 }), { r: 3, closed: true })
+export function circlePath({ r = 10, radius, steps = 48, z = 0 } = {}) {
+  const R = radius ?? r;
+  const n = Math.max(3, Math.round(steps));
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pts.push([R * Math.cos(a), R * Math.sin(a), z]);
+  }
+  return pts;
+}
+
+// The word people actually type.
+//
+// "minkowski" is what this operation is called everywhere else, so it is what
+// someone reaches for — in the editor, and in a request to the AI, which then
+// writes it back as JavaScript. Leaving it undefined meant the answer to
+// "round every edge" was the error "minkowski is not defined", which is true
+// and useless: the feature was right there under a name they had no reason to
+// guess.
+//
+// Both spellings are accepted, because both get written:
+//
+//   minkowski(3, part)                    the BREPcode form
+//   minkowski(part, sphere({ r: 3 }))     OpenSCAD's form, typed into JS
+//
+// Pasted OpenSCAD never reaches here — openscad.js translates minkowski()
+// itself — so this is purely for code written as BREPcode.
+export function minkowski(a, b, ...rest) {
+  if (typeof a === "number") return roundedGrow(a, b, ...rest);
+
+  // The OpenSCAD shape-and-a-ball form. Only a sphere has a meaning we can
+  // honour; anything else is a different and much larger operation, and
+  // guessing a radius from it would silently build the wrong part.
+  const ball = b;
+  if (ball && ball.kind === "prim" && ball.code === "P.S") {
+    const r = ball.params?.radius ?? ball.params?.r;
+    if (r > 0) return roundedGrow(r, a, ...rest);
+  }
+  throw new TypeError(
+    "minkowski() rounds a part with a ball: minkowski(3, part) grows it by 3mm and rounds every "
+    + "outside edge. minkowski(part, sphere({ r: 3 })) works too. Rolling one part around another "
+    + "shape isn't supported — use roundedGrow() for the rounding, or hull() to bridge shapes.");
+}
+
+// Same operation, named for the direction, because "grow by -2" reads worse
+// than "shrink by 2" at the point of use.
+export function roundedShrink(opts, ...children) {
+  const o = typeof opts === "number" ? {} : (opts || {});
+  const amount = typeof opts === "number" ? opts : (o.r ?? o.radius ?? o.amount ?? o.by);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new TypeError("roundedShrink() needs a positive distance in mm");
+  }
+  return roundedGrow({ ...o, r: -Math.abs(amount) }, ...children);
+}
+
 // ------------------------------------------------------------- freeform
 //
 // A solid defined by its CORNERS rather than by width/depth/height. This is what
@@ -1481,6 +1645,128 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       return target;
     }
 
+    if (n.kind === "roundify") {
+      // Build the child on its own so we can read its real surface, work out
+      // where its faces, rims and corners are, and then assemble the shell out
+      // of primitives. Same scratch-history trick hull() uses; the child never
+      // reaches the main history, so only the finished shape renders.
+      const scratch = new partHistory.constructor();
+      await compile(n.child, scratch);
+      await scratch.runHistory({ throwOnFeatureError: true });
+
+      // Read the real TRIANGLES, which means honouring the index buffer.
+      //
+      // hull() reads the same attributes and ignores the index, and it is right
+      // to: a convex hull only wants the point cloud, and the order points
+      // arrive in cannot change the answer. An offset is the opposite — it is
+      // built entirely from which points form which triangle. Walking the
+      // position buffer three at a time turns a cube's six indexed quads into
+      // eight triangles joining unrelated corners, and the shape being offset is
+      // then a nonsense polyhedron. It offsets perfectly happily, and the
+      // kernel rejects the result as "Not manifold", which is a fair verdict on
+      // the offset of a shape that was never a solid.
+      const soup = [];
+      for (const s of (scratch.scene?.children || [])) {
+        if (s.type !== "SOLID") continue;
+        s.updateMatrixWorld(true);
+        s.traverse((o) => {
+          const g = o.type === "FACE" ? o.geometry : null;
+          const pa = g?.attributes?.position;
+          if (!pa) return;
+          const v = new Vector3();
+          const take = (i) => {
+            v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+            soup.push(v.x, v.y, v.z);
+          };
+          if (g.index) for (let i = 0; i < g.index.count; i++) take(g.index.getX(i));
+          else for (let i = 0; i < pa.count; i++) take(i);
+        });
+      }
+      if (soup.length < 9) throw new Error("roundedGrow(): the shape has no surface to offset");
+
+      const { weldTriangles } = await import("./meshhealth.js");
+      const { buildRoundedOffset } = await import("./roundbuild.js");
+      const mesh = weldTriangles(Float32Array.from(soup));
+
+      // The whole offset is assembled on the mesh, and the kernel receives one
+      // finished solid. Handing the KERNEL the assembly was tried four ways and
+      // all four failed: one linearExtrude per prism did not finish in ten
+      // minutes; every prism in a single STL came back NotManifold, rightly,
+      // since a pile of touching prisms is not a surface; repairing that STL
+      // did close, but only by swallowing the cavity in the middle, so it was
+      // right by luck of a heuristic rather than by construction; and handing
+      // over thirty-two separate imports to union timed out with no output.
+      //
+      // Our own boolean does it in well under a second for a blocky part,
+      // because it can order the work — see roundbuild.js for why the order is
+      // the entire trick.
+      const out = buildRoundedOffset(mesh, n.amount, {
+        segments: n.fn || "auto",
+        rings: n.fn ? Math.max(2, Math.round(n.fn / 2)) : "auto",
+      });
+
+      let stl = "solid offset\n";
+      for (const f of out.mesh.faces) {
+        stl += "facet normal 0 0 0\nouter loop\n";
+        for (const i of f) {
+          const p = out.mesh.points[i];
+          stl += `vertex ${p[0]} ${p[1]} ${p[2]}\n`;
+        }
+        stl += "endloop\nendfacet\n";
+      }
+      stl += "endsolid offset\n";
+
+      await ensureImportClonePatch(partHistory);
+      const name = `__offset${hullSeq++}`;
+      let data = stl;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+      if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
+      IMPORTS.set(name, data);
+      const f = await partHistory.newFeature("IMPORT3D");
+      f.inputParams.fileToImport = data;
+      f.inputParams.meshRepairLevel = "NONE";
+      // The STL already carries the shape's real position, so centring it would
+      // move the offset away from the thing it was offset from.
+      f.inputParams.centerMesh = false;
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      return f.inputParams.id;
+    }
+
+    if (n.kind === "tube") {
+      // Nothing to build first: a tube is generated straight from its point
+      // list, so unlike hull/roundify there is no scratch history and no kernel
+      // round-trip on the way in. That is why a bent wire costs about as much
+      // as a cylinder.
+      const { sweepTube } = await import("./sweep.js");
+      const out = sweepTube(n.path, n.opts);
+
+      let stl = "solid tube\n";
+      for (const f of out.faces) {
+        stl += "facet normal 0 0 0\nouter loop\n";
+        for (const i of f) {
+          const p = out.points[i];
+          stl += `vertex ${p[0]} ${p[1]} ${p[2]}\n`;
+        }
+        stl += "endloop\nendfacet\n";
+      }
+      stl += "endsolid tube\n";
+
+      await ensureImportClonePatch(partHistory);
+      const name = `__tube${hullSeq++}`;
+      let data = stl;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+      if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
+      IMPORTS.set(name, data);
+      const f = await partHistory.newFeature("IMPORT3D");
+      f.inputParams.fileToImport = data;
+      f.inputParams.meshRepairLevel = "NONE";
+      // The points are already where the caller put them; centring would slide
+      // the wire off the thing it was routed around.
+      f.inputParams.centerMesh = false;
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      return f.inputParams.id;
+    }
+
     if (n.kind === "hull") {
       // Build the children in a throwaway history so we can read their real
       // surface vertices, take the 3D convex hull of them all, and import that
@@ -1577,3 +1863,15 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   await emit(root, IDENTITY);
   return partHistory;
 }
+
+// Standard hardware — bearings, screws, inserts, nuts, magnets — as callable
+// parts rather than numbers to be recalled. Re-exported here so the viewer
+// (which builds its vocabulary from this module) and the CLI both get them
+// without a second registration step. See src/parts.js for why the circular
+// import between the two is safe.
+export * from "./parts.js";
+
+// Common printed parts — standoffs, snap fits, hinges, shells, vents. Same
+// reasoning as parts.js above: re-exported here so the viewer vocabulary and
+// the CLI both pick them up with no second registration step.
+export * from "./shelf.js";

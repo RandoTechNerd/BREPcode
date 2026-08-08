@@ -4,6 +4,11 @@ title: Neodymium magnets & pockets
 match: magnet, magnets, neodymium, magnetic
 ---
 
+**Call for it, do not build it by hand.** `magnetPocket(6, 3)` cuts the pocket for
+a 6x3 disc at the press fit below. The numbers here are the ones it uses — see
+#parts.
+
+
 Common disc magnets (Ø × thick): **6×2, 6×3, 8×3, 10×2, 10×3, 12×3, 15×3, 20×3**.
 Cubes: 5 and 10. Default assumption when unstated: **Ø8 × 3**.
 

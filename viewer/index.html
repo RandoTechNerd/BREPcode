@@ -8,6 +8,63 @@
   <meta name="keywords" content="code CAD, browser CAD, OpenSCAD online, JSCAD, parametric modeling, STL export, STEP export, 3D printing, BREP" />
   <meta name="author" content="RandoTechNerd" />
   <meta name="theme-color" content="#0b0f16" />
+  <meta name="brepcode-build" content="BUILDSTAMP" />
+  <script>
+    // ---- stale-copy check: the closest a static site gets to a push ----
+    //
+    // Nothing here is hashed or versioned in its filename, so a browser that
+    // fetched index.html and the modules once will happily keep serving them
+    // until its cache decides otherwise. On a phone — especially one where the
+    // page has been added to the home screen, which has no reload gesture and
+    // its own long-lived cache — that can mean weeks on a build from before a
+    // feature existed. The symptom is not an error: the old code simply has no
+    // tube(), so a model that uses it dies with "tube is not defined" and the
+    // app looks broken rather than out of date.
+    //
+    // So: ask the server, bypassing every cache, what the current build is. If
+    // it disagrees with the one baked into this HTML, this copy is stale.
+    // Reloading is not enough — a plain reload can be served the same cached
+    // HTML — so navigate to a URL the cache has never seen (?b=<build>), which
+    // is guaranteed to miss and fetch the real thing.
+    //
+    // Guards, because an auto-navigating page that gets this wrong is far worse
+    // than a stale one:
+    //   - one attempt per session, recorded BEFORE navigating, so a
+    //     misconfigured host can never put it in a reload loop
+    //   - any failure at all (offline, 404 on a dev server, malformed json)
+    //     is silent and changes nothing
+    //   - the model in the editor is untouched; autosave has already stored it
+    // window.__bcStale records what the check decided, so "why didn't it
+    // update?" is answerable from a phone's console instead of by guesswork.
+    (function () {
+      var S = (window.__bcStale = { step: "start" });
+      try {
+        var meta = document.querySelector('meta[name="brepcode-build"]');
+        var here = meta && meta.content;
+        S.here = here;
+        // Split the sentinel so the build's own find-and-replace cannot rewrite
+        // this comparison. It did: the built file read `here === "<the stamp>"`,
+        // which is trivially true, so the check bailed on every load and the
+        // whole thing silently did nothing.
+        if (!here || here === "BUILD" + "STAMP") { S.step = "unstamped (dev build)"; return; }
+        if (sessionStorage.getItem("bc-freshened")) { S.step = "already refreshed once"; return; }
+        S.step = "fetching";
+        fetch("version.json", { cache: "no-store" })
+          .then(function (r) { S.status = r.status; return r.ok ? r.json() : null; })
+          .then(function (v) {
+            S.server = v && v.build;
+            if (!v || !v.build) { S.step = "no version.json"; return; }
+            if (v.build === here) { S.step = "up to date"; return; }
+            S.step = "stale — refreshing";
+            sessionStorage.setItem("bc-freshened", v.build);
+            var u = new URL(location.href);
+            u.searchParams.set("b", String(v.build).replace(/[^\w.-]+/g, "-"));
+            location.replace(u.toString());
+          })
+          .catch(function (e) { S.step = "fetch failed"; S.err = String(e); });
+      } catch (e) { S.step = "threw"; S.err = String(e); }
+    })();
+  </script>
   <link rel="canonical" href="https://brepcode.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="BREPcode" />
@@ -850,7 +907,8 @@
       position: absolute; right: 8px; top: 100%; z-index: 41; display: none;
       flex-direction: column; min-width: 250px;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; padding: 5px 0;
+      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden auto; padding: 5px 0;
+      scrollbar-width: thin;
     }
     #tools-menu.open { display: flex; }
     #tools-menu button {
@@ -883,7 +941,8 @@
       position: absolute; right: 8px; top: 100%; z-index: 40; display: none;
       flex-direction: column; min-width: 180px;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden; padding: 4px 0;
+      box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden auto; padding: 4px 0;
+      scrollbar-width: thin;
     }
     #more-menu.open { display: flex; }
     #more-menu button {
@@ -900,6 +959,7 @@
       position: absolute; z-index: 40; display: none; padding: 8px;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 8px 30px rgba(0,0,0,.55); min-width: 180px;
+      overflow: hidden auto; scrollbar-width: thin;
     }
     #shape-menu.open { display: block; }
     #shape-menu .sm-title { font-size: 11px; color: var(--muted2); padding: 2px 4px 6px; }
@@ -1008,7 +1068,24 @@
     }
     .quick-chip:hover { background: var(--accent); color: #fff; }
     .msg.bot.thinking { color: var(--muted); font-style: italic; }
-    #chat-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+    #chat-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); position: relative; }
+    /* # and / autocomplete. Opens UPWARD: the chat input sits at the bottom of
+       the card, so a list dropping down would fall off it. */
+    #chat-complete {
+      display: none; position: absolute; left: 12px; right: 12px; bottom: calc(100% - 8px);
+      max-height: 210px; overflow-y: auto; z-index: 12;
+      background: var(--header); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 -6px 24px rgba(0,0,0,.5); padding: 4px 0; scrollbar-width: thin;
+    }
+    #chat-complete.open { display: block; }
+    #chat-complete button {
+      display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+      background: none; border: 0; color: var(--text); font: 12.5px system-ui, sans-serif;
+      padding: 5px 11px; cursor: pointer;
+    }
+    #chat-complete button:hover, #chat-complete button.on { background: var(--hover-strong); }
+    #chat-complete code { font: 600 12px ui-monospace, monospace; color: var(--accent); flex: none; }
+    #chat-complete small { color: var(--muted2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #chat-input {
       flex: 1; background: var(--input-bg); color: var(--text2); border: 1px solid var(--border);
       border-radius: 8px; padding: 8px 10px; font: 13px system-ui, sans-serif; outline: none;
@@ -1047,6 +1124,14 @@
     #gem-edit-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); }
     #gem-edit-btn.active { color: var(--accent-soft2); }
     #chat-settings .note { color: var(--muted3); font-size: 11px; }
+    /* A sentence explaining a setting is worth having and not worth reading
+       twice. These fade in when the pointer is on the row (or the control has
+       keyboard focus, so this is not a mouse-only affordance) and sit invisible
+       otherwise. Faded rather than removed: the space stays reserved, so
+       revealing one cannot shift the row under the pointer. */
+    #chat-settings .hint-hover { opacity: 0; transition: opacity .12s ease; }
+    #chat-settings .row:hover > .hint-hover,
+    #chat-settings .row:focus-within > .hint-hover { opacity: 1; }
     #ai-check { flex: none; min-width: 18px; text-align: center; font-size: 13px; }
     #ai-check.ok { color: var(--ok); }
     #ai-check.bad { color: var(--err); }
@@ -1205,6 +1290,86 @@
     #trace-foot { padding: 8px 14px; border-top: 1px solid var(--border); }
     #trace-foot .hist-btn { font-size: 12.5px; }
     #trace-foot .hist-btn:disabled { color: var(--disabled); cursor: default; }
+
+    /* ---------- parts shelf ---------- */
+    #shelf-body { padding: 10px 12px; overflow-y: auto; max-height: min(64vh, 560px); width: 330px; }
+    #shelf-q {
+      width: 100%; box-sizing: border-box; padding: 6px 9px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--input-bg, var(--panel));
+      color: inherit; font: inherit; font-size: 12.5px; margin-bottom: 8px;
+    }
+    #shelf-q:focus { border-color: var(--border-focus); outline: none; }
+    #shelf-list h4 {
+      margin: 10px 0 4px; font: 600 10.5px system-ui, sans-serif; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted2);
+    }
+    #shelf-list h4:first-child { margin-top: 0; }
+    #shelf-list button {
+      display: block; width: 100%; text-align: left; background: none; color: inherit;
+      border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; cursor: pointer; font: inherit;
+    }
+    #shelf-list button:hover { background: var(--hover-strong); border-color: var(--border); }
+    /* the label row: name on the left, CUT badge pinned right, never overlapping */
+    #shelf-list .row { display: flex; align-items: baseline; gap: 8px; }
+    #shelf-list b { font-size: 12.5px; font-weight: 600; flex: 1; min-width: 0; }
+    #shelf-list .cut {
+      flex: none; font: 600 9.5px system-ui, sans-serif; letter-spacing: .06em;
+      color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 4px;
+    }
+    #shelf-list small { display: block; font-size: 11px; color: var(--muted2); line-height: 1.35; margin-top: 1px; }
+    #shelf-list code { display: block; font: 11px ui-monospace, monospace; color: var(--muted); margin-top: 3px; word-break: break-all; }
+    #shelf-none { font-size: 11.5px; color: var(--muted2); padding: 6px 2px; }
+    #shelf-foot { padding: 8px 12px; border-top: 1px solid var(--border); }
+    #shelf-foot small { font-size: 11px; color: var(--muted2); line-height: 1.45; }
+
+    /* ---------- cookie cutter ---------- */
+    #cutter-body { padding: 10px 14px; overflow-y: auto; max-height: min(62vh, 540px); width: 320px; }
+    #cutter-search { display: flex; gap: 6px; }
+    #cutter-q {
+      flex: 1; min-width: 0; padding: 5px 8px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--input-bg, var(--panel));
+      color: inherit; font: inherit; font-size: 12.5px;
+    }
+    #cutter-search .hist-btn { font-size: 12.5px; flex: none; }
+    /* Fixed cell size and object-fit: contain, so a wide icon and a tall one
+       both sit centred in the same square instead of stretching. */
+    #cutter-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+      gap: 4px; margin-top: 8px; max-height: 210px; overflow-y: auto;
+    }
+    #cutter-grid:empty { margin-top: 0; }
+    #cutter-grid button {
+      aspect-ratio: 1; display: grid; place-items: center; padding: 4px;
+      border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;
+    }
+    #cutter-grid button:hover { background: var(--hover-strong); }
+    #cutter-grid button.active { border-color: var(--accent); background: var(--hover-strong); }
+    #cutter-grid img { width: 100%; height: 100%; object-fit: contain; }
+    #cutter-opts { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+    #cutter-kinds { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+    #cutter-kinds button {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+      width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+      background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+    }
+    #cutter-kinds button:hover { background: var(--hover-strong); }
+    #cutter-kinds b { font-size: 12.5px; font-weight: 600; }
+    #cutter-kinds small { font-size: 11px; color: var(--muted2); }
+    #cutter-stat { margin-top: 8px; font-size: 11.5px; color: var(--muted2); min-height: 16px; }
+    #cutter-foot { padding: 8px 14px; border-top: 1px solid var(--border); }
+    #cutter-foot small { font-size: 11px; color: var(--muted2); line-height: 1.4; }
+
+    /* The Toolbox submenu. Indented and hairlined on the left so it reads as
+       belonging to the row above it rather than as four more top-level tools. */
+    #cutter-sub-rows { display: none; flex-direction: column; }
+    #cutter-sub-rows.open { display: flex; }
+    #tools-menu #cutter-sub-rows button {
+      padding-left: 30px; position: relative;
+    }
+    #tools-menu #cutter-sub-rows button::before {
+      content: ""; position: absolute; left: 17px; top: 4px; bottom: 4px;
+      border-left: 1px solid var(--border);
+    }
 
     /* ---------- assistant "thinking" details ---------- */
     .msg.bot details { margin: 0; }
@@ -1418,6 +1583,18 @@
             <select id="mf-colour">
               <option value="colour">Colours → filaments (multi-material)</option>
               <option value="mono">Model only — single material, no colour</option>
+            </select>
+          </label>
+          <!-- A 3MF can name the printer, process and filaments it was prepared
+               for, and a slicer that has those presets picks them up on open.
+               Without it OrcaSlicer has nothing to match and invents a project
+               preset named after the file — which is why an exported part shows
+               as "(part.3mf)" in every dropdown and has to be set up by hand. -->
+          <label id="mf-printer-row" hidden title="Names the printer, process and filaments inside the file so the slicer opens ready to send">
+            <span>Prepare for</span>
+            <select id="mf-printer">
+              <option value="">Any slicer — geometry and colours only</option>
+              <option value="snapmaker-u1">Snapmaker U1 — 4 tool heads, ready to slice</option>
             </select>
           </label>
           <!-- A 3MF carries a position, and a slicer's plate origin is its
@@ -1727,6 +1904,31 @@
             </svg>
             <span><b>QR code on a face</b><small>click a face to stamp it</small></span>
           </button>
+          <!-- The shelf. Not a click-a-face tool like the ones above — it puts
+               a ready-made part into the code — so it sits with the cutter at
+               the bottom rather than among them. -->
+          <button id="shelf-row">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1.5 3.5h13M1.5 8h13M1.5 12.5h13" />
+              <rect x="3" y="1.4" width="3.2" height="2.1" /><rect x="8.4" y="1.4" width="4.6" height="2.1" />
+              <rect x="3" y="5.9" width="4.6" height="2.1" /><rect x="9.8" y="5.9" width="3.2" height="2.1" />
+            </svg>
+            <span><b>Parts shelf</b><small>hinges, snaps, vents, standoffs — already written</small></span>
+          </button>
+          <!-- Cookie cutter. Last of the actions, and the only one with a
+               submenu: what it can offer depends on whether there is already
+               an outline to cut around, so the row asks the editor before it
+               decides. With one, the four kits expand in place; without one,
+               the icon-search card opens to go and find a shape first. -->
+          <button id="cutter-row" aria-expanded="false">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 2.2c1.5 1.4 2.6 1.1 3.6 1.9 1.4 1.1 1.6 3.2.6 4.6-.7 1-.6 1.6-.3 2.6.3 1-.4 2-1.4 2.1-1 .1-1.4-.5-2.5-.5s-1.5.6-2.5.5c-1-.1-1.7-1.1-1.4-2.1.3-1 .4-1.6-.3-2.6C2.8 7.3 3 5.2 4.4 4.1c1-.8 2.1-.5 3.6-1.9z" />
+            </svg>
+            <span><b>Cookie cutter</b><small id="cutter-row-hint">blade, stamp, stencil or roller</small></span>
+          </button>
+          <div id="cutter-sub-rows"></div>
           <!-- A MODE, not an action, so it is a checkbox and it lives last:
                ticking it changes what a corner drag does, and the conversion it
                performs is one-way. Nobody should meet it by accident. -->
@@ -1936,18 +2138,14 @@
         </div>
         <label class="row" style="cursor:pointer"><label style="cursor:pointer">Dimensions</label>
           <input type="checkbox" id="ai-askdims" style="width:auto" />
-          <span class="note" style="flex:1">checked = the AI asks for key measurements before building; unchecked = it assumes and builds immediately</span>
+          <span class="note hint-hover" style="flex:1">checked = the AI asks for key measurements before building; unchecked = it assumes and builds immediately</span>
         </label>
-        <div class="row" id="gem-row" style="display: none">
-          <label>Gem</label><textarea id="ai-gem" rows="5" spellcheck="false"></textarea>
-        </div>
-        <div class="note" id="gem-note" style="display: none">
-          Sent with every AI request. Clear it to restore the default.
-          Add a line mentioning the “built-in” assistant to let simple asks skip the API.
-        </div>
+        <!-- Directly under Dimensions, and BEFORE the gem rows: those are hidden
+             most of the time, but opening the gem used to push the mission
+             editor away from the setting it belongs next to. -->
         <div class="row"><label>Harness</label>
           <button id="harness-edit-btn" class="hist-btn" style="font-size:12px">Edit the mission…</button>
-          <span class="note" style="flex:1">the full instruction set sent to the AI — same for Gemini and Claude</span>
+          <span class="note hint-hover" style="flex:1">the full instruction set sent to the AI — same for Gemini and Claude</span>
         </div>
         <div class="row" id="harness-row" style="display: none">
           <label>Mission</label><textarea id="ai-harness" rows="10" spellcheck="false"></textarea>
@@ -1960,6 +2158,24 @@
           e.g. OpenSCAD rules AND JSCAD rules and you tick whichever applies. Marker lines are never sent.
         </div>
         <div id="harness-tags" style="display:none; flex-wrap:wrap; gap:6px; padding:4px 0 6px"></div>
+        <!-- What the chat has learned on this machine. Desktop only: the row
+             stays hidden without the bridge. A black box you cannot inspect is
+             not something anyone should let near their prompts, so this shows
+             the actual rules and offers the door out. -->
+        <div class="row" id="learn-row" style="display:none">
+          <label>Learning</label>
+          <span id="learn-status" class="note" style="flex:1"></span>
+          <button id="learn-open" class="hist-btn" style="font-size:12px" title="Open the folder holding lessons.json and the session logs">Files</button>
+          <button id="learn-forget" class="hist-btn" style="font-size:12px" title="Delete everything learned on this machine">Forget</button>
+        </div>
+        <div class="note" id="learn-detail" style="display:none; font-size:11px; line-height:1.5"></div>
+        <div class="row" id="gem-row" style="display: none">
+          <label>Gem</label><textarea id="ai-gem" rows="5" spellcheck="false"></textarea>
+        </div>
+        <div class="note" id="gem-note" style="display: none">
+          Sent with every AI request. Clear it to restore the default.
+          Add a line mentioning the “built-in” assistant to let simple asks skip the API.
+        </div>
         <div class="row" id="unlock-row" style="display: none">
           <label>Password</label>
           <input id="unlock-pw" type="password" placeholder="unlock the shared key" />
@@ -2043,8 +2259,11 @@
             <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3.2"/>
           </svg>
         </button>
-        <input id="chat-input" placeholder="e.g. make a box with a cone on top" />
+        <input id="chat-input" placeholder="e.g. make a box with a cone on top" autocomplete="off" />
         <button id="chat-send">Send</button>
+        <!-- Typing # or / here offers the real subject tags and commands. It
+             sits inside the input row so it can anchor to the field. -->
+        <div id="chat-complete" role="listbox" aria-label="Tags and commands"></div>
       </div>
       <input type="file" id="chat-img-file" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none" />
     </section>
@@ -2070,6 +2289,7 @@
             <path id="gate-shackle" d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>
           </svg>
         </button>
+        <button id="tour-btn" class="hist-btn" title="Guided tour of every control, then the three pasted languages">Tour</button>
         <button id="about-docs-btn" class="hist-btn" title="What can it do?">Docs</button>
         <button class="close-btn" data-close="about" title="Close">&times;</button>
       </header>
@@ -2235,6 +2455,11 @@
           <button class="mat-tab" data-tab="lighting">Lighting</button>
           <button class="mat-tab" data-tab="grid">Grid</button>
         </div>
+        <!-- In the HEADER, not the footer. The footer button is below three
+             tabs' worth of sliders, so the one control you reach for when the
+             view has gone strange was the one you had to go hunting for. -->
+        <button id="mat-reset-top" class="hist-btn"
+                title="Put every material and lighting setting back to the baseline">Reset</button>
         <button class="close-btn" data-close="material" title="Close">&times;</button>
       </header>
       <div id="mat-body">
@@ -2451,7 +2676,13 @@
           </div>
         </div>
       </div>
-      <div id="mat-foot"><button id="mat-reset" class="hist-btn">Reset to defaults</button></div>
+      <div id="mat-foot">
+        <button id="mat-reset" class="hist-btn">Reset to defaults</button>
+        <small style="display:block;margin-top:7px;opacity:.6;font-size:11px">
+          Named spool colours inspired by
+          <a href="https://cookiecad.com" target="_blank" rel="noopener">Cookiecad</a> filament.
+        </small>
+      </div>
     </section>
 
     <!-- image trace -->
@@ -2484,6 +2715,56 @@
         <div id="trace-stat"></div>
       </div>
       <div id="trace-foot"><button id="trace-insert" class="hist-btn">Insert as model</button></div>
+    </section>
+
+    <!-- the parts shelf: browse what is already written instead of modelling
+         it again. Rows come from src/shelf.js's index, never a copy, so a part
+         added there appears here with no second edit. -->
+    <section id="shelf" class="card" aria-label="Parts shelf">
+      <header>
+        <div><strong>Parts shelf</strong><span class="sub" id="shelf-sub">already written, already building</span></div>
+        <button class="close-btn" data-close="shelf" title="Close">&times;</button>
+      </header>
+      <div id="shelf-body">
+        <input id="shelf-q" type="search" placeholder="search — hinge, vent, standoff, knob…"
+               autocomplete="off" spellcheck="false" />
+        <div id="shelf-list" aria-live="polite"></div>
+      </div>
+      <div id="shelf-foot">
+        <small>Click a part to drop its call into the editor. Everything is
+        parametric — change the numbers after. <b>CUT</b> parts get subtracted.</small>
+      </div>
+    </section>
+
+    <!-- cookie cutter — the icon-search half of the Toolbox entry.
+         When there is already an outline on the plate the Toolbox expands a
+         submenu instead and this card never opens; it exists for the other
+         case, where the shape has to come from somewhere first. -->
+    <section id="cutter" class="card" aria-label="Cookie cutter">
+      <header>
+        <div><strong>Cookie cutter</strong><span class="sub" id="cutter-sub">pick a shape</span></div>
+        <button class="close-btn" data-close="cutter" title="Close">&times;</button>
+      </header>
+      <div id="cutter-body">
+        <div id="cutter-search">
+          <input id="cutter-q" type="search" placeholder="heart, star, gingerbread, salmon…"
+                 autocomplete="off" spellcheck="false" />
+          <button id="cutter-go" class="hist-btn">Search</button>
+        </div>
+        <div id="cutter-grid" aria-live="polite"></div>
+        <div id="cutter-opts" hidden>
+          <div class="mat-row"><span>Size (mm)</span>
+            <input type="range" id="cutter-size" min="30" max="160" value="70" />
+            <output id="cutter-size-o">70</output>
+          </div>
+          <div id="cutter-kinds"></div>
+        </div>
+        <div id="cutter-stat"></div>
+      </div>
+      <div id="cutter-foot">
+        <small>Icons from <a href="https://iconify.design" target="_blank" rel="noopener">Iconify</a> —
+        check the licence of the set before selling prints.</small>
+      </div>
     </section>
 
     <!-- Landing strip for a shared link. Someone who opens one is not a user
@@ -2753,6 +3034,7 @@
     import * as sdfApi from "../src/sdf.js";
     import { VISITOR_DEFAULTS, visitorSummary } from "../src/visitor.js";
     import { inspectMesh, weldTriangles, healthSummary } from "../src/meshhealth.js";
+    import { repairMesh } from "../src/meshrepair.js";
     // More on-demand modules: exporters (only on download/import), the chatbot
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
@@ -3363,14 +3645,39 @@
       kind: { value: 0 }, depth: { value: 0.5 }, scale: { value: 1.0 },
       rot: { value: 0.0 }, offset: { value: new THREE.Vector2(0, 0) },
     };
+    // The named-spool effects, shared by every material the same way sharedTex
+    // is — one object, so switching spool updates all of them at once without
+    // recompiling a single shader. All off until a spool is chosen.
+    const sharedFx = {
+      grad: { value: 0 },
+      gradA: { value: new THREE.Color(1, 1, 1) },
+      gradB: { value: new THREE.Color(1, 1, 1) },
+      gradC: { value: new THREE.Color(1, 1, 1) },
+      lo: { value: 0 }, hi: { value: 1 },
+      flake: { value: 0 }, flakeD: { value: 20 }, flakeS: { value: 0.05 },
+      flakeK: { value: 2 }, flakeC: { value: new THREE.Color(1, 1, 1) },
+      rainbow: { value: 0 },
+    };
     function injectTex(shader) {
       Object.assign(shader.uniforms, {
         uTexKind: sharedTex.kind, uTexDepth: sharedTex.depth, uTexScale: sharedTex.scale,
         uTexRot: sharedTex.rot, uTexOffset: sharedTex.offset,
+        // ---- named-spool effects (see viewer/filaments.js) ----
+        // Every one of these defaults to OFF. Until somebody picks a Cookiecad
+        // spool this adds a handful of uniforms and two dead branches, and
+        // changes nothing about what is drawn.
+        uFxGrad: sharedFx.grad, uFxGradA: sharedFx.gradA, uFxGradB: sharedFx.gradB,
+        uFxGradC: sharedFx.gradC, uFxLo: sharedFx.lo, uFxHi: sharedFx.hi,
+        uFxFlake: sharedFx.flake, uFxFlakeD: sharedFx.flakeD, uFxFlakeS: sharedFx.flakeS,
+        uFxFlakeK: sharedFx.flakeK, uFxFlakeC: sharedFx.flakeC, uFxRainbow: sharedFx.rainbow,
       });
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvTexPos = position;");
+        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;")
+        // WORLD position, not object position: the gradient runs bottom-to-top
+        // through the finished part, and a solid that was translate()d has an
+        // object origin nowhere near the bed.
+        .replace("#include <begin_vertex>",
+          "#include <begin_vertex>\nvTexPos = position;\nvFxWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
 
       const HELPERS = `
         uniform int uTexKind; uniform float uTexDepth; uniform float uTexScale;
@@ -3420,13 +3727,55 @@
           if(uTexKind==7){ return mix(vec3(0.06),vec3(1.0),tHeight(P)); }          // zebra B/W
           if(uTexKind==8){ return mix(vec3(0.14),vec3(1.0),tHeight(P)); }          // checker B/W
           return vec3(1.0);
+        }
+
+        // ---- named-spool effects ----
+        uniform float uFxGrad; uniform vec3 uFxGradA, uFxGradB, uFxGradC;
+        uniform float uFxLo, uFxHi;
+        uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow;
+        uniform vec3 uFxFlakeC;
+        varying vec3 vFxWorld;
+
+        // Three stops up the part. Two-stop ombres arrive here already widened
+        // to three by fxFor(), so there is nothing to branch on.
+        vec3 fxGradient() {
+          float span = max(uFxHi - uFxLo, 0.0001);
+          float u = clamp((vFxWorld.z - uFxLo) / span, 0.0, 1.0);
+          return u < 0.5 ? mix(uFxGradA, uFxGradB, u * 2.0)
+                         : mix(uFxGradB, uFxGradC, (u - 0.5) * 2.0);
+        }
+
+        // Suspended flake. Space is diced into cells, one speck per cell, and
+        // most cells are empty — that sparseness is what reads as glitter
+        // rather than noise. Each speck gets its own facing direction, so it
+        // flashes as the part turns instead of glowing constantly, which is the
+        // whole difference between glitter and a light coat of paint.
+        vec3 fxFlake(vec3 nrm) {
+          vec3 cell = floor(vFxWorld * uFxFlakeD);
+          float h = tHash(cell);
+          if (h > uFxFlakeS) return vec3(0.0);
+          vec3 tint = uFxFlakeC;
+          if (uFxRainbow > 0.5) {
+            tint = 0.5 + 0.5 * cos(6.28318 * (tHash(cell + 3.7) + vec3(0.0, 0.33, 0.67)));
+          }
+          vec3 facet = normalize(vec3(tHash(cell + 11.0), tHash(cell + 23.0), tHash(cell + 41.0)) - 0.5);
+          float flash = pow(max(dot(normalize(nrm), facet), 0.0), 3.0);
+          return tint * uFxFlakeK * (0.25 + 0.75 * flash);
         }`;
 
       shader.fragmentShader = shader.fragmentShader
         .replace("#include <common>", "#include <common>\n" + HELPERS)
         .replace("#include <color_fragment>", `#include <color_fragment>
           if ((uTexKind >= 3 && uTexKind <= 5) || uTexKind == 7 || uTexKind == 8)
-            diffuseColor.rgb *= tTint(tCoord(vTexPos));`)
+            diffuseColor.rgb *= tTint(tCoord(vTexPos));
+          // A gradient spool REPLACES the part colour — on the real thing the
+          // filament is the colour, and mixing the two just makes mud.
+          if (uFxGrad > 0.5) diffuseColor.rgb = fxGradient();`)
+        // Flake is emissive, not diffuse: a speck that only reflects the key
+        // light disappears the moment it faces away, and real glitter does the
+        // opposite — it is brightest at the angle nothing else is.
+        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+          if (uFxFlake > 0.5) totalEmissiveRadiance += fxFlake(normal);`)
         .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
           if (uTexKind > 0 && uTexDepth > 0.0) {
             vec3 P = tCoord(vTexPos);
@@ -3934,6 +4283,9 @@
 
     const pct = (v) => v / 100;
     function applyMaterial() {
+      // A rebuilt model is a different height, and the gradient runs bottom to
+      // top of THIS part — so the ramp is re-anchored every time.
+      try { applySpoolFx(); } catch { /* before the picker exists */ }
       solidMaterial.color.set(mat.color);
       solidMaterial.metalness = pct(mat.metal);
       solidMaterial.roughness = pct(mat.rough);
@@ -4313,8 +4665,111 @@
       refreshOutlines(); saveMat();
     });
     $("mat-texture").addEventListener("change", (e) => { mat.texture = +e.target.value; clearPreset(); applyMaterial(); saveMat(); });
+    // ---- named spools (Cookiecad), loaded last ------------------------
+    //
+    // Deliberately the LAST thing this page fetches. Nobody should wait on a
+    // colour swatch to start modelling, so the module is pulled in on idle
+    // after the first build — or the moment the Material panel is opened, if
+    // that happens first. Until it lands the picker simply shows the four
+    // generic filaments, which is what it has always shown.
+    let _fil, spoolsReady = null, FIL = null;
+    const getFilaments = () => (_fil ??= import("./filaments.js"));
+
+    // The user's own lighting, held while a named spool is borrowing the rig.
+    // Taken ONCE, on the way in from a generic filament, and put back the
+    // moment one is chosen again — so a spool is a suggestion you can walk out
+    // of, not a one-way door through someone's carefully set scene.
+    let lightBackup = null, bgBackup = null;
+    function applySpoolLook(spool) {
+      if (!FIL) return;
+      const look = FIL.lookFor(spool.id);
+      if (!look) return;
+      if (!lightBackup) {
+        lightBackup = Object.fromEntries(FIL.LOOK_KEYS.map((k) => [k, mat[k]]));
+        bgBackup = matUserBg;
+      }
+      for (const k of FIL.LOOK_KEYS) if (look[k] !== undefined) mat[k] = look[k];
+      // the background only takes effect once the user "owns" it; a spool that
+      // sets one is making that choice on their behalf, and it is undone below
+      if (look.bg !== undefined) matUserBg = true;
+    }
+    function restoreUserLook() {
+      if (!lightBackup) return;
+      Object.assign(mat, lightBackup);
+      matUserBg = bgBackup;
+      lightBackup = null; bgBackup = null;
+    }
+    function loadSpools() {
+      return (spoolsReady ??= getFilaments().then((F) => {
+        FIL = F;
+        const sel = $("mat-filament");
+        if (!sel || sel.querySelector("optgroup")) return F;
+        for (const { family, spools } of F.byFamily()) {
+          const g = document.createElement("optgroup");
+          g.label = `${family} — Cookiecad`;
+          for (const s of spools) {
+            // Registered into FILAMENTS so applyFilament(), the hint text and
+            // the saved-material round-trip all keep working unchanged.
+            FILAMENTS[s.id] = {
+              label: s.label, t: s.t, ior: F.FAMILY[s.family].ior,
+              rough: s.rough ?? F.FAMILY[s.family].rough,
+              atten: s.atten, env: F.FAMILY[s.family].env, a: s.a, spool: s,
+            };
+            const o = document.createElement("option");
+            o.value = s.id;
+            o.textContent = s.label;
+            g.appendChild(o);
+          }
+          sel.appendChild(g);
+        }
+        // a spool restored from a previous session can be selected now
+        if (mat.filament && FILAMENTS[mat.filament]) sel.value = mat.filament;
+        applySpoolFx();
+        return F;
+      }).catch(() => null));
+    }
+
+    // Push the chosen spool's gradient/flake into the shared uniforms. The Z
+    // range comes from the model's own bounding box, so the ramp runs from the
+    // first layer to the last however tall the part is.
+    function applySpoolFx() {
+      const entry = FILAMENTS[mat.filament];
+      const spool = entry?.spool;
+      if (!spool || !_fil) {
+        sharedFx.grad.value = 0;
+        sharedFx.flake.value = 0;
+        return;
+      }
+      _fil.then((F) => {
+        const fx = F.fxFor(spool);
+        sharedFx.grad.value = fx.grad;
+        sharedFx.gradA.value.setRGB(...fx.gradA);
+        sharedFx.gradB.value.setRGB(...fx.gradB);
+        sharedFx.gradC.value.setRGB(...fx.gradC);
+        sharedFx.flake.value = fx.flake;
+        sharedFx.flakeD.value = fx.flakeDensity;
+        sharedFx.flakeS.value = fx.flakeSize;
+        sharedFx.flakeK.value = fx.flakeStrength;
+        sharedFx.flakeC.value.setRGB(...fx.flakeColour);
+        sharedFx.rainbow.value = fx.flakeRainbow;
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        if (!bb.isEmpty()) { sharedFx.lo.value = bb.min.z; sharedFx.hi.value = bb.max.z; }
+      });
+    }
+
     $("mat-filament").addEventListener("change", (e) => {
       mat.filament = e.target.value;
+      // A named spool IS a colour, so it takes over the default material.
+      // Shapes given their own colorize() keep theirs — a four-filament model
+      // does not collapse to one hue just because a spool was picked.
+      const sp = FILAMENTS[mat.filament]?.spool;
+      if (sp) {
+        mat.color = sp.base;
+        applySpoolLook(sp);          // lighting + opacity tuned for THIS spool
+      } else {
+        restoreUserLook();           // back to a generic filament: hand it back
+      }
+      applySpoolFx();
       clearPreset();
       applyMaterial();
       saveMat();
@@ -4338,16 +4793,31 @@
       }
       clearPreset(); applyMaterial(); saveMat();
     });
-    $("mat-reset").addEventListener("click", () => {
+    // Everything back to baseline. This is the button you press when the view
+    // has gone strange and you do not want to work out why — so it has to put
+    // back EVERY layer, not just the ones with sliders.
+    function resetLook() {
       // Reset the LOOK, keep the palette: colours the user added are their own
       // work, not part of the material, and silently binning them on a reset is
       // both surprising and unrecoverable.
       const keepCustom = mat.custom || {};
       mat = { ...MAT_DEFAULTS, custom: keepCustom }; matUserBg = false;
+      // A named spool leaves two things behind that MAT_DEFAULTS knows nothing
+      // about: the gradient/flake uniforms in the shader, and the snapshot of
+      // the lighting it borrowed. Without these two lines a reset left a model
+      // still glittering, and the next time you stepped off a spool it would
+      // restore the pre-spool lighting straight over your fresh defaults.
+      sharedFx.grad.value = 0;
+      sharedFx.flake.value = 0;
+      lightBackup = null; bgBackup = null;
       clearPreset();
       applyTheme(localStorage.getItem("brepcode-theme") || "dark");   // restores themed background
       applyMaterial(); saveMat();
-    });
+      hint.innerHTML = "Materials and lighting are back to the baseline — "
+        + "colours in your <b>code</b> are untouched, and your saved swatches are still there.";
+    }
+    $("mat-reset").addEventListener("click", resetLook);
+    $("mat-reset-top").addEventListener("click", resetLook);
     applyMaterial();
 
     // -------------------------------------------- per-shape colours
@@ -4897,7 +5367,10 @@
       panel: openBtn, cheatsheet: cheatBtn, about: aboutBtn,
       history: histBtn, chat: chatBtn, material: matBtn,
     };
-    matBtn.addEventListener("click", () => toggleCard(matCard, matBtn));
+    matBtn.addEventListener("click", () => {
+      loadSpools();                       // no-op after the first time
+      toggleCard(matCard, matBtn);
+    });
 
     openBtn.addEventListener("click", () => {
       if (toggleCard(panel, openBtn)) { code.focus(); updateHint(); }
@@ -4952,7 +5425,11 @@
       const KEY_ROWS = [
         [["E"], "Editor"], [["M"], "Material"], [["H"], "History"],
         [["C"], "Chat"], [["K"], "Cheat sheet"], [["I"], "Info / about"],
+        [["Ctrl", "+ any"], "…hold Ctrl for all of these while typing in the editor"],
+        [["Ctrl", "C"], "stays COPY — the chat card has no in-editor key"],
         [["←", "→"], "Spin the view"], [["↑", "↓"], "Tilt the view"],
+        [["U"], "Tidy the code to how it actually builds"],
+        [["Ctrl", "U"], "…same, while typing in the editor"],
         [["Home"], "Reset to home view"], [["Esc"], "Close open cards"],
       ];
       for (const [ks, label] of KEY_ROWS) {
@@ -5597,7 +6074,120 @@
     const vocab = Object.fromEntries(
       Object.entries(dsl).filter(([k, v]) => typeof v === "function" && k !== "compile"),
     );
+      // A kernel primitive as a distance field, or null if it is not one.
+    // translate() is followed because "a sphere over there" is the commonest
+    // thing anyone blends; a rotate or a scale is not, and guessing at one
+    // would produce a shape that quietly disagrees with the kernel's.
+    const primitiveField = (node, off = [0, 0, 0]) => {
+      if (!node || typeof node !== "object") return null;
+      if (node.kind === "xform") {
+        const m = node.matrix?.elements;
+        if (!m) return null;
+        // translation only: the rotation/scale block must be identity
+        const identity = [0, 1, 2, 4, 5, 6, 8, 9, 10].every(
+          (i) => Math.abs(m[i] - (i % 5 === 0 ? 1 : 0)) < 1e-9);
+        if (!identity) return null;
+        return primitiveField(node.child, [off[0] + m[12], off[1] + m[13], off[2] + m[14]]);
+      }
+      if (node.kind !== "prim") return null;
+      const P = node.params || {};
+      const mv = (f, c, half) => sdfApi.shape(
+        sdfApi.at([off[0] + c[0], off[1] + c[1], off[2] + c[2]], f),
+        [[off[0] + c[0] - half[0], off[1] + c[1] - half[1], off[2] + c[2] - half[2]],
+          [off[0] + c[0] + half[0], off[1] + c[1] + half[1], off[2] + c[2] + half[2]]]);
+      if (node.code === "P.CU") {
+        const [x, y, z] = [P.sizeX, P.sizeY, P.sizeZ];
+        // cube() sits corner-at-origin; sdBox is centred.
+        return mv(sdfApi.sdBox(x, y, z), [x / 2, y / 2, z / 2], [x / 2, y / 2, z / 2]);
+      }
+      if (node.code === "P.S") {
+        const r = P.radius;
+        return mv(sdfApi.sdSphere(r), [0, 0, 0], [r, r, r]);
+      }
+      if (node.code === "P.CY") {
+        const { radius: r, height: h } = P;
+        // cylinder() rises +Z from z=0; sdCylinder is centred on the origin.
+        return mv(sdfApi.sdCylinder(r, h), [0, 0, h / 2], [r, r, h / 2]);
+      }
+      if (node.code === "P.T") {
+        const R = P.majorRadius, t = P.tubeRadius;
+        return mv(sdfApi.sdTorus(R, t), [0, 0, 0], [R + t, R + t, t]);
+      }
+      return null;
+    };
+
     // JSCAD code can be pasted in too: its namespaces are in scope.
+    // Set the spool from the SOURCE, whatever language it is written in.
+    //
+    // vocab.filament below only exists for BREPcode, and the first thing anyone
+    // asks for — a cookie cutter — is written as OpenSCAD, where a JavaScript
+    // verb is simply not there. Tested: `filament("witchcraft");` above a cutter
+    // was swallowed by the OpenSCAD translator without a word, and the model
+    // built in whatever spool happened to be selected. A comment works in every
+    // language BREPcode accepts, so that is the form that always applies:
+    //
+    //     // filament: witchcraft
+    //
+    // Ignored entirely when the name is not one of the nine, with the list — an
+    // unrecognised filament must never resolve to a near neighbour.
+    function applyFilamentDirective(src) {
+      const m = /(?:^|\n)\s*(?:\/\/|#)\s*filament\s*:\s*([^\n\r]+)/i.exec(src || "");
+      if (!m) return;
+      const want = m[1].trim().replace(/[;,.]+$/, "");
+      const go = (F) => {
+        const sp = F.findSpool(want);
+        if (!sp) {
+          hint.innerHTML = `<b>// filament: ${esc(want)}</b> — no such spool. `
+            + `Try one of: ${F.spoolNames().join(", ")}.`;
+          return;
+        }
+        if (mat.filament === sp.id) return;
+        mat.filament = sp.id;
+        mat.color = sp.base;
+        applySpoolLook(sp);
+        applySpoolFx();
+        applyMaterial();
+        saveMat();
+      };
+      if (FIL) go(FIL); else loadSpools().then((F) => F && go(F));
+    }
+
+    // filament("witchcraft")            — set it, carry on
+    // filament("funfetti", shape)       — set it and return the shape
+    //
+    // The AI could always WRITE a cookie cutter, and could never say what to
+    // print it in: the spool is a Material-panel setting, and nothing in the
+    // language reached it. So "make a heart cutter in Witchcraft" was two
+    // requests, one of which the assistant had to answer in prose.
+    //
+    // Viewer-only, like glow() and glass(): geometry and every export are
+    // untouched, so the STL is identical whichever spool is named.
+    Object.assign(vocab, {
+      filament: (name, shape) => {
+      const set = (F) => {
+        const sp = F.findSpool(name);
+        if (!sp) {
+          // Loud, and with the list — a silently ignored filament() is how you
+          // end up demoing the wrong colour to the people who make it.
+          hint.innerHTML = `<b>filament(${esc(JSON.stringify(name))})</b> — no such spool. `
+            + `Try one of: ${F.spoolNames().join(", ")}.`;
+          return;
+        }
+        if (mat.filament === sp.id) return;          // already there, no churn
+        mat.filament = sp.id;
+        mat.color = sp.base;
+        applySpoolLook(sp);
+        applySpoolFx();
+        applyMaterial();
+        saveMat();
+      };
+      // The module is lazy, so the first call in a session lands a moment late;
+      // the build does not wait on it and nothing re-runs.
+        if (FIL) set(FIL); else loadSpools().then((F) => F && set(F));
+        return shape;
+      },
+    });
+
     Object.assign(vocab, {
       primitives: jscadApi.primitives,
       booleans: jscadApi.booleans,
@@ -5672,8 +6262,18 @@
         const fields = parts.map((s) => {
           if (typeof s === "function") return s;
           if (s && typeof s.sdf === "function") return s.sdf;
-          throw new Error("blend() takes SDF shapes — use sphere3d/box3d/cylinder3d/torus3d "
-            + "with move3d(), not the kernel primitives");
+          // An ordinary cube() or sphere() is a KERNEL solid, not a distance
+          // field, and smooth-min needs a distance at every point in space.
+          // But for the plain primitives we know the exact field, so there is
+          // no reason to make anyone learn a second vocabulary to blend a box:
+          // convert them here, honouring each one's own placement convention
+          // (cube corner-at-origin, cylinder rising from z=0, sphere centred).
+          const asField = primitiveField(s);
+          if (asField) return asField.sdf;
+          throw new Error("blend() can take cube, sphere, cylinder and torus — including "
+            + "inside translate() — or the sdf shapes sphere3d/box3d/cylinder3d/torus3d. "
+            + "A combined shape (a difference, a union, an import) has no distance field, "
+            + "so blend those pieces before you cut them.");
         });
         const f = o.cut
           ? sdfApi.sSubtract(k, fields[0], ...fields.slice(1))
@@ -5681,14 +6281,20 @@
         // Grow the sampled box past the shapes: a blend ADDS material at the
         // join, and a box drawn tight to the inputs would slice it off.
         const b = o.bounds || (() => {
-          const all = parts.map((p) => p.bounds);
+          const all = parts.map((p) => p.bounds || primitiveField(p)?.bounds).filter(Boolean);
           const lo = [0, 1, 2].map((i) => Math.min(...all.map((x) => x[0][i])) - k - 2);
           const hi = [0, 1, 2].map((i) => Math.max(...all.map((x) => x[1][i])) + k + 2);
           return [lo, hi];
         })();
-        const mesh = sdfApi.surfaceNets(f, b, res);
-        if (!mesh.faces.length) throw new Error("blend() produced nothing — check the shapes overlap");
-        return jscadApi.polyhedron({ ...mesh, orientation: "outward" });
+        // surfaceNets stops wherever the surface meets the wall of its
+        // sampling box, leaving the mesh OPEN there — which reached the kernel
+        // as "Not manifold" for a reason that had nothing to do with the blend.
+        // solidNets widens the window until the shape fits inside it, which
+        // fixes the cause; capping the hole would flatten a shape that was
+        // still going. Repair is kept as the last resort for numerical nicks.
+        const out = sdfApi.solidNets(f, b, res, { repair: repairMesh });
+        if (!out.mesh.faces.length) throw new Error("blend() produced nothing — check the shapes overlap");
+        return jscadApi.polyhedron({ ...out.mesh, orientation: "outward" });
       },
       // The SDF primitives blend() understands. Deliberately separate names:
       // these are distance fields, not kernel solids, and quietly accepting one
@@ -5844,6 +6450,7 @@ ${joined}`)(...vs);
       // something that is no longer in the editor is worse than no button.
       clearHeavyHold();
       const typed = code.value.trim();
+      applyFilamentDirective(typed);
       if (!typed) {
         // A cleared editor must not leave a ghost model with a stale click-map —
         // nor a preview of an import the code no longer mentions.
@@ -7322,7 +7929,11 @@ ${joined}`)(...vs);
       // markers), so fall back to its own site or clicking it would select
       // nothing and its corners would be uneditable after the first drag.
       const site = hit && mapFresh ? featureMap[hit.object.userData.featureId] : null;
-      if (!hit) clearHandles();          // clicked empty space: drop the selection
+      // Deliberately NOT dropping the selection here. This runs on pointerDOWN,
+      // and a press on empty space is just as likely to be the start of an
+      // orbit as it is a click — so clearing here made a selected part lose its
+      // handles the instant you went to turn the view. pointerup does it
+      // instead, after the click-versus-drag distance check.
       if (site) {
         const fid = hit.object.userData.featureId;
 
@@ -7883,7 +8494,12 @@ ${joined}`)(...vs);
       // a cutter was never in the pick set — the click found no hit and this
       // handler returned before it could say anything at all.
       if (!hit) hit = pickNegative(raycaster);
-      if (!hit) return;
+      // Clicking empty space drops the selection — but only HERE, on pointerup,
+      // and only when the pointer barely moved (checked above). Doing it on
+      // pointerdown meant the press that STARTS an orbit deselected the part
+      // before the drag had even happened: pick a shape, go to turn the view,
+      // and its handles vanished under your hand.
+      if (!hit) { clearHandles(); return; }
 
       // dimensions of everything that came from the same primitive
       const fid = hit.object.userData.featureId;
@@ -7919,6 +8535,24 @@ ${joined}`)(...vs);
         e.preventDefault();       // make select-all reliable inside the pane
         code.select();
         return;
+      }
+      // Ctrl+U (Cmd+U on a Mac), because the cursor is IN the editor here and a
+      // bare letter has to type itself. NOT Shift+U: that is how you type a
+      // capital U, and this is a project where `text({ text: "U1" })` is a
+      // thing people write. The browser's view-source binding on Ctrl+U is
+      // preventDefault-able, and in the desktop app nothing else claims it.
+      // In the editor every shortcut needs Ctrl (Cmd on a Mac), because a bare
+      // letter has to type itself. Ctrl+C, X, V, A, Z and Y are deliberately
+      // NOT in this list — losing copy and paste in a code editor would be a
+      // far worse trade than a missing shortcut, so the chat card has no
+      // in-editor key at all rather than stealing Ctrl+C.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+        const k = e.key.toLowerCase();
+        if (k === "u") { e.preventDefault(); tidySyntax(); return; }
+        if ("emhki".includes(k) && k.length === 1 && runCardShortcut(k)) {
+          e.preventDefault();
+          return;
+        }
       }
       if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         const dir = e.key === "ArrowUp" ? 1 : -1;
@@ -8145,6 +8779,14 @@ ${joined}`)(...vs);
         : `3MF exports will be centred on a ${plateSel.value.replace("x", " × ")} mm plate.`);
     });
     plateSel.addEventListener("click", (e) => e.stopPropagation());   // don't close the menu
+    // A chosen printer knows its own bed, and centring on someone else's puts
+    // the part off the plate the moment it opens. Falls back to the plate
+    // dropdown when no printer is named.
+    function plateFor(printerKey, exp) {
+      const p = printerKey && exp?.PRINTERS?.[printerKey];
+      return p ? { x: p.bed[0], y: p.bed[1] } : currentPlate();
+    }
+
     function currentPlate() {
       const [x, y] = (plateSel.value || "256x256").split("x").map(Number);
       return x > 0 && y > 0 ? { x, y } : null;      // null = don't move it
@@ -8250,7 +8892,6 @@ ${joined}`)(...vs);
     // A self-contained page: the model inlined as a data-URI GLB, shown with
     // Google's free <model-viewer> web component (loaded from a public CDN).
     // A designer drops this on their site, or copies the <model-viewer> tag.
-    const MV_CDN = "https://unpkg.com/@google/model-viewer@4.0.0/dist/model-viewer.min.js";
     // Translate the live lighting/material panel into model-viewer attributes so
     // the exported page looks like the editor: background colour, overall
     // brightness (exposure), and shadow strength all follow the Lighting tab.
@@ -8262,30 +8903,18 @@ ${joined}`)(...vs);
         shadow: +clamp(mat.key / 150, 0.2, 1.4).toFixed(2),
       };
     }
-    function embedPageHTML(glb, title, look) {
-      const uri = `data:model/gltf-binary;base64,${base64OfBuffer(glb)}`;
-      const L = look || lookFromMaterial();
-      return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc(title)}</title>
-<script type="module" src="${MV_CDN}"></scr` + `ipt>
-<style>
-  html, body { margin: 0; height: 100%; background: ${L.bg}; }
-  model-viewer { width: 100%; height: 100%; --poster-color: ${L.bg}; }
-</style>
-</head>
-<body>
-  <!-- Made with BREPcode (brepcode.com). Viewer: Google <model-viewer> (free, Apache-2.0).
-       Lighting exported from the editor: exposure ${L.exposure}, shadow ${L.shadow}, background ${L.bg}. -->
-  <model-viewer src="${uri}" alt="${esc(title)}"
-    camera-controls auto-rotate touch-action="pan-y"
-    shadow-intensity="${L.shadow}" exposure="${L.exposure}" tone-mapping="neutral"
-    style="background:${L.bg}"></model-viewer>
-</body>
-</html>`;
+    // The page builder lives in exporters.js so it can be tested; this is the
+    // thin adaptor that turns the live buffer and material panel into its
+    // arguments. One implementation, not two.
+    async function embedPageHTML(glb, title, look, opts = {}) {
+      const exp = await getExporters();
+      return exp.embedPage({
+        glbBase64: base64OfBuffer(glb),
+        title,
+        look: look || lookFromMaterial(),
+        poster: opts.poster || "",
+        editUrl: opts.editUrl || "",
+      });
     }
 
     // Save the project: the source, the scene it was being viewed in, and the
@@ -8461,19 +9090,25 @@ ${joined}`)(...vs);
       } catch { return 0; }      // a bad blob must not cost the source
     }
 
+    // The scene as it stands, for anything that saves a project. Three savers
+    // had their own copy of this literal and the 3MF was about to be a fourth.
+    // A field added to one and forgotten in the others is the kind of bug that
+    // only shows up as a file coming back without its camera.
+    const currentScene = () => ({
+      material: mat,
+      camera: camera.position.toArray().map((n) => +n.toFixed(3)),
+      target: controls.target.toArray().map((n) => +n.toFixed(3)),
+      up: camera.up.toArray(),
+      negatives: negBtn.classList.contains("active"),
+    });
+
     window.__brepQuicksaveProject = async () => {
       const exp = await getExporters();
       const src = code.value.trim();
       const meshes = await packUsedMeshes(exp, src);
       return exp.bcodeFile(src, {
         name: safeModelName(),
-        scene: {
-          material: mat,
-          camera: camera.position.toArray().map((n) => +n.toFixed(3)),
-          target: controls.target.toArray().map((n) => +n.toFixed(3)),
-          up: camera.up.toArray(),
-          negatives: negBtn.classList.contains("active"),
-        },
+        scene: currentScene(),
         history: hist.stack,
         meshes,
       });
@@ -8500,13 +9135,7 @@ ${joined}`)(...vs);
       const base = safeModelName();
       const text = exp.bcodeFile(src, {
         name: base,
-        scene: {
-          material: mat,
-          camera: camera.position.toArray().map((n) => +n.toFixed(3)),
-          target: controls.target.toArray().map((n) => +n.toFixed(3)),
-          up: camera.up.toArray(),
-          negatives: negBtn.classList.contains("active"),
-        },
+        scene: currentScene(),
         history: hist.stack,
       });
       const size = download(`${base}.bcode`, text, "text/plain");
@@ -8534,7 +9163,12 @@ ${joined}`)(...vs);
         slicerInfo = slicerInfo || await window.brepcodeDesktop.slicerInfo();
         const groups = colorGroupsForExport();
         const distinct = new Set(groups.map((g) => g.color)).size;
-        const opts = { source: code.value.trim(), plate: currentPlate() };
+        const slicerPrinter = $("mf-printer")?.value || "";
+        const opts = {
+          source: code.value.trim(), printer: slicerPrinter,
+          plate: plateFor(slicerPrinter, exp) ?? currentPlate(),
+          scene: currentScene(), history: hist.stack,
+        };
         const bytes = distinct > 1 ? exp.colored3MF(groups, base, opts)
                                    : exp.stlTo3MF(await exportSTL(), base, opts);
         const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
@@ -8593,16 +9227,44 @@ ${joined}`)(...vs);
           const wantMono = $("mf-colour").value === "mono";
           const distinct = wantMono ? 1 : new Set(groups.map((g) => g.color)).size;
           const plate = currentPlate();
-          const opts3mf = { source: src, plate };
+          // The project rides inside the 3MF as well as the source: it is a
+          // zip, so the whole .bcode goes in as its own part and the file
+          // comes home with its scene and undo history intact. Slicers read
+          // 3D/3dmodel.model and ignore the rest.
+          const printerKey = $("mf-printer").value || "";
+          const opts3mf = {
+            source: src, plate: plateFor(printerKey, exp) ?? plate, printer: printerKey,
+            scene: currentScene(), history: hist.stack,
+          };
           size = download(`${base}.3mf`,
             distinct > 1 ? exp.colored3MF(groups, base, opts3mf)
                          : exp.stlTo3MF(await exportSTL(), base, opts3mf),
             "model/3mf");
-          const placed = plate
-            ? `Placed in the middle of a ${plate.x} × ${plate.y} mm plate (change that under <b>Plate</b> in this menu).`
+          // The plate the file was ACTUALLY centred on, which is the printer's
+          // own bed when one is chosen. Reporting the dropdown's value instead
+          // said "256 × 256" about a part that had just been centred on a 270mm
+          // Snapmaker bed — right placement, wrong sentence.
+          const usedPlate = opts3mf.plate;
+          const placed = usedPlate
+            ? `Placed in the middle of a ${usedPlate.x} × ${usedPlate.y} mm plate`
+              + `${printerKey && exp.PRINTERS?.[printerKey] ? ` — the ${exp.PRINTERS[printerKey].label}'s own bed` : ""}`
+              + " (change that under <b>Plate</b> in this menu)."
             : "Kept at its model coordinates, as you asked under <b>Plate</b>.";
           fixnote.innerHTML = `<span style="color:var(--muted3)">${placed}`
             + (distinct > 1 ? ` ${distinct} colours written as a 3MF colour group — a multi-material slicer (Bambu, Prusa, Orca) will offer a filament per colour.` : "")
+            // A printer has a fixed number of tool heads, and asking for more
+            // colours than it has is not a preference the slicer can honour —
+            // the extra ones are assigned to heads that do not exist. Said here
+            // because the file still looks fine: it opens, it slices, and the
+            // colours past the fourth quietly come out wrong on the plate.
+            + (() => {
+              const p = printerKey && exp.PRINTERS?.[printerKey];
+              if (!p || distinct <= p.nozzles) return "";
+              return ` <b>${distinct} colours on a ${p.nozzles}-head ${p.label}</b> — only the first`
+                + ` ${p.nozzles} get a filament; anything past that prints in the wrong colour.`
+                + ` Share a colour between parts (a dark body and a dark spool can be the same filament)`
+                + ` to bring it down to ${p.nozzles}.`;
+            })()
             + `</span>`;
         } else if (fmt === "3mf-parts") {
           // The assembled 3MF above exports the cap ON the jar, because that is
@@ -8615,7 +9277,11 @@ ${joined}`)(...vs);
           const groups = colorGroupsForExport();
           if (!groups.length) throw new Error("build the model first");
           const plate = currentPlate() ?? undefined;   // "keep coordinates" makes no sense here
-          const files = exp.partsPlate3MF(groups, base, { source: src, plate, gap: 8 });
+          const partsPrinter = $("mf-printer").value || "";
+          const files = exp.partsPlate3MF(groups, base, {
+            source: src, plate: plateFor(partsPrinter, exp) ?? plate, printer: partsPrinter,
+            gap: 8, scene: currentScene(), history: hist.stack,
+          });
           if (!files.length) throw new Error("no printable geometry");
           size = 0;
           for (const f of files) size += download(`${base}${f.suffix}.3mf`, f.bytes, "model/3mf");
@@ -8693,7 +9359,26 @@ ${joined}`)(...vs);
               glb = base64OfBuffer(await modelToGLB());
             } catch { glb = null; }   // no GLB just means the page falls back to the thumbnail
           }
-          const res = await pub({ name: base, text, thumb, visitor, glb });
+          // "Open it in BREPcode" is a promise on the publish panel, and until
+          // now nothing was sent that could keep it: the site was handed the
+          // .bcode text and left to reimplement gzip + base64url + the fragment
+          // format to build an editor link. So build it HERE, from the exact
+          // text being published — the two can never disagree — and hand over a
+          // finished URL the page only has to put in an anchor.
+          //
+          // null when the model will not fit in a URL (an imported mesh usually
+          // does that). The page then simply does not offer the button, which
+          // is the honest outcome; a link that opens an empty editor is worse
+          // than no link.
+          let editUrl = null;
+          if (visitor.edit) {
+            try {
+              const exp2 = await getExporters();
+              const frag = await exp2.shareFragment(text);
+              if (frag) editUrl = location.origin + location.pathname + frag;
+            } catch { editUrl = null; }
+          }
+          const res = await pub({ name: base, text, thumb, visitor, glb, editUrl });
           if (!res?.ok) throw new Error(res?.error || "the site refused it");
           size = text.length;
           const url = res.url || `${location.origin}/${res.slug || base}`;
@@ -8701,6 +9386,10 @@ ${joined}`)(...vs);
           fixnote.innerHTML = `<span style="color:var(--muted3)">Published — `
             + `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a> (link copied). `
             + `${esc($("pub-summary").textContent)} `
+            + (visitor.edit && !editUrl
+              ? `<b style="color:var(--warn, #e0a030)">The “open in BREPcode” button is off for this one: `
+                + `the model is too big to travel in a URL — an imported mesh usually is.</b> `
+              : "")
             + `It is in your stash now; publish again to update it.</span>`;
           loadSecretLibrary();
         } else if (fmt === "share") {
@@ -8712,13 +9401,7 @@ ${joined}`)(...vs);
           const exp = await getExporters();
           const text = exp.bcodeFile(srcNow, {
             name: base,
-            scene: {
-              material: mat,
-              camera: camera.position.toArray().map((n) => +n.toFixed(3)),
-              target: controls.target.toArray().map((n) => +n.toFixed(3)),
-              up: camera.up.toArray(),
-              negatives: negBtn.classList.contains("active"),
-            },
+            scene: currentScene(),
             history: [],                       // the undo stack is not worth a URL
             // The mesh has to ride along or the link is broken on arrival —
             // importedMesh() names a file on THIS machine. If that pushes it
@@ -8810,8 +9493,26 @@ ${joined}`)(...vs);
         } else if (fmt === "embed") {
           setStatus("busy", "Building a self-contained viewer page…");
           const glb = await modelToGLB();
-          size = download(`${base}.html`, embedPageHTML(glb, base, lookFromMaterial()), "text/html");
-          fixnote.innerHTML = `<span style="color:var(--muted3)">Open the HTML anywhere, or drop it on your site — the model, its colours and the lighting are baked in and shown with the free model-viewer component.</span>`;
+          // A still of what is on screen right now, so the page shows the model
+          // the instant it opens instead of a blank background while megabytes
+          // of base64 GLB are decoded.
+          let poster = "";
+          try { poster = window.__brepQuicksaveSnapshot(900, 600) || ""; } catch { poster = ""; }
+          // ...and a way back into the editor, built from the same project text
+          // a Share link would carry. Null when the model is too big for a URL.
+          let embedEdit = "";
+          try {
+            const exp3 = await getExporters();
+            const frag = await exp3.shareFragment(await window.__brepQuicksaveProject());
+            if (frag) embedEdit = "https://brepcode.com/" + frag;
+          } catch { embedEdit = ""; }
+          size = download(`${base}.html`,
+            await embedPageHTML(glb, base, lookFromMaterial(), { poster, editUrl: embedEdit }), "text/html");
+          fixnote.innerHTML = `<span style="color:var(--muted3)">Open the HTML anywhere, or drop it on your site — the model, its colours and the lighting are baked in and shown with the free model-viewer component.`
+            + (embedEdit
+              ? ` It carries an <b>Edit the code</b> link that reopens the model in BREPcode.`
+              : ` <b style="color:var(--warn, #e0a030)">No “edit the code” link on this one — the model is too big to travel in a URL.</b>`)
+            + `</span>`;
         }
         // "share" and "publish" put a link on the clipboard; nothing lands in Downloads.
         const verb = fmt === "share" ? "link copied" : fmt === "publish" ? "published" : "downloaded";
@@ -8836,7 +9537,7 @@ ${joined}`)(...vs);
       publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
       stl: { kind: "mono", desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
       obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
-      "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "plate-row"] },
+      "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "mf-printer-row", "plate-row"] },
       "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
       gcode: { kind: "slice", desc: "BETA — check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
@@ -9613,7 +10314,7 @@ ${joined}`)(...vs);
         b.classList.toggle("sel", b.dataset.fmt === fmt);
       }
       $("exp-desc").textContent = spec.desc;
-      for (const row of ["publish-row", "mf-colour-row", "plate-row", "printer-row", "nozzle-row",
+      for (const row of ["publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row",
         "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
@@ -10322,13 +11023,21 @@ ${joined}`)(...vs);
         // import a mesh, and swapping their editor out from under them on a
         // guess is not our call.
         let embedded = "";
+        let embeddedProject = null;      // scene + undo history, 3MF only
         try {
           const exp = await getExporters();
           if (ext === "3mf") {
             const inv = await getInventory();
             const part = await inv.unzipEntry(new Uint8Array(buf), /BREPcode\.source\.js$/i);
-            embedded = exp.stripSourceHeader(new TextDecoder().decode(part));
+            // The part IS a .bcode, so read it as one: that recovers the scene
+            // and the undo history as well as the source. Files written before
+            // the part carried anything but source still parse — a .bcode with
+            // no scene block is exactly what they are.
+            embeddedProject = exp.parseBcodeFile(new TextDecoder().decode(part));
+            embedded = embeddedProject.source;
           } else if (isAsciiStl) {
+            // An STL has no container, so the source travels alone; there is
+            // nowhere to put a scene without inventing a second convention.
             embedded = exp.extractSourceFromStl(new TextDecoder().decode(buf));
           }
         } catch { /* no source in there — the overwhelmingly normal case */ }
@@ -10585,10 +11294,21 @@ ${joined}`)(...vs);
         if (embedded) {
           $("restore-src-btn").addEventListener("click", () => {
             pushHistory(code.value);            // ◀ still gets the mesh import back
+            // Its own undo history next, so ◀ keeps walking back through how the
+            // part was built rather than stopping at the import. Same order
+            // openProject() uses for a .bcode, because it is the same payload.
+            const steps = embeddedProject?.history || [];
+            for (const step of steps) pushHistory(step);
             code.value = embedded;
             code.focus();
             pushHistory();
-            hint.innerHTML = `Restored the original BREPcode for <b>${esc(file.name)}</b> — every dimension is editable again. ◀ goes back to the imported mesh.`;
+            const scene = embeddedProject?.scene;
+            const back = [];
+            if (scene?.material) { Object.assign(mat, scene.material); applyMaterial?.(); saveMat?.(); back.push("material"); }
+            if (steps.length) back.push(`${steps.length} undo step${steps.length === 1 ? "" : "s"}`);
+            hint.innerHTML = `Restored the original BREPcode for <b>${esc(file.name)}</b> — every dimension is editable again.`
+              + (back.length ? ` Its ${back.join(" and ")} came back with it.` : "")
+              + " ◀ goes back to the imported mesh.";
             rebuild();
           });
         }
@@ -11683,6 +12403,31 @@ ${joined}`)(...vs);
         : `Embossing <b>${esc(grid.name)}</b> onto the flat face — darker pixels stand out further (add <code>invert: true</code> to flip). Tune <code>depth</code>; the relief is real geometry, so it exports.`;
     }
 
+    // A flyout hangs below its button, so on a short window — a laptop, or a
+    // card the user has dragged low — the bottom of the list falls off the
+    // screen with no way to reach it. A max-height in CSS cannot fix this:
+    // these menus float inside a draggable card, so where they land is not
+    // known until they open. Measure instead, and only cap when the list
+    // genuinely does not fit. When it does, the cap is removed entirely, so a
+    // roomy window shows no scrollbar and no clipped shadow.
+    function fitFlyout(el) {
+      el.style.maxHeight = "";
+      if (!el.classList.contains("open")) return;
+      const room = innerHeight - el.getBoundingClientRect().top - 10;
+      if (el.scrollHeight > room) el.style.maxHeight = `${Math.max(120, room)}px`;
+    }
+    const flyouts = ["tools-menu", "more-menu", "shape-menu"].map((id) => $(id)).filter(Boolean);
+    for (const el of flyouts) {
+      // Watch the class rather than every place that opens one, so a flyout
+      // added later is covered without anyone remembering this. Deferred a
+      // frame because the shape menu is positioned after it is opened, and
+      // measuring before that would read the wrong top. Only "class" is
+      // watched, so writing maxHeight here cannot re-trigger the observer.
+      new MutationObserver(() => requestAnimationFrame(() => fitFlyout(el)))
+        .observe(el, { attributes: true, attributeFilter: ["class"] });
+    }
+    addEventListener("resize", () => flyouts.forEach(fitFlyout));
+
     // Toolbox dropdown — the model-editing tools in one place. Rows click the
     // real (hidden) buttons, so each tool has exactly one implementation.
     const toolsMenu = $("tools-menu");
@@ -11704,6 +12449,307 @@ ${joined}`)(...vs);
     addEventListener("pointerdown", (e) => {
       if (!toolsMenu.contains(e.target) && e.target !== $("tools-btn")) toolsMenu.classList.remove("open");
     });
+
+    // ---------------------------------------------------------- parts shelf
+    //
+    // Browse what is already written instead of modelling it again. Rows are
+    // built from src/shelf.js's own index — a part added there appears here
+    // with no second edit, and a part removed cannot linger as a dead row.
+    //
+    // Clicking one INSERTS ITS CALL at the caret rather than replacing the
+    // model: parts are meant to be composed into what you already have, and
+    // wiping someone's work to show them a knob would be a poor trade.
+    {
+      const shelfCard = $("shelf"), shelfList = $("shelf-list"), shelfQ = $("shelf-q");
+      let SHELF = null;
+
+      const insertPart = (p) => {
+        const v = code.value;
+        const at = code.selectionStart ?? v.length;
+        // A cut is only meaningful inside a difference(), so it goes in
+        // commented rather than pretending it will do something on its own.
+        const snippet = p.cut ? `${p.sample}   // subtract this` : p.sample;
+        pushHistory(v);
+        code.value = v.slice(0, at) + snippet + v.slice(code.selectionEnd ?? at);
+        const pos = at + snippet.length;
+        code.focus();
+        code.setSelectionRange(pos, pos);
+        pushHistory();
+        rebuild();
+        updateHint();
+      };
+
+      function paintShelf() {
+        const q = shelfQ.value.trim().toLowerCase();
+        const hit = (p) => !q || [p.label, p.blurb, p.id, p.group]
+          .some((s) => s.toLowerCase().includes(q));
+        shelfList.textContent = "";
+        let shown = 0;
+        for (const g of [...new Set(SHELF.map((p) => p.group))]) {
+          const parts = SHELF.filter((p) => p.group === g && hit(p));
+          if (!parts.length) continue;
+          const h = document.createElement("h4");
+          h.textContent = g;
+          shelfList.appendChild(h);
+          for (const p of parts) {
+            shown++;
+            const b = document.createElement("button");
+            b.type = "button";
+            b.title = p.sample;
+            b.innerHTML = `<span class="row"><b></b></span><small></small><code></code>`;
+            b.querySelector("b").textContent = p.label;
+            b.querySelector("small").textContent = p.blurb;
+            b.querySelector("code").textContent = p.sample;
+            if (p.cut) {
+              const tag = document.createElement("span");
+              tag.className = "cut";
+              tag.textContent = "CUT";
+              b.querySelector(".row").appendChild(tag);
+            }
+            b.addEventListener("click", () => { insertPart(p); toggleCard(shelfCard, null, false); });
+            shelfList.appendChild(b);
+          }
+        }
+        if (!shown) {
+          const none = document.createElement("div");
+          none.id = "shelf-none";
+          none.textContent = `Nothing matches "${shelfQ.value.trim()}".`;
+          shelfList.appendChild(none);
+        }
+      }
+
+      $("shelf-row").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        toolsMenu.classList.remove("open");
+        if (!SHELF) {
+          const m = await import("../src/shelf.js");
+          SHELF = m.shelfIndex();
+          $("shelf-sub").textContent = `${SHELF.length} parts, already building`;
+        }
+        paintShelf();
+        toggleCard(shelfCard, null, true);
+        shelfQ.focus();
+        shelfQ.select();
+      });
+      shelfQ.addEventListener("input", () => SHELF && paintShelf());
+      shelfQ.addEventListener("keydown", (e) => {
+        // Enter takes the first thing on screen, so a search and a return is
+        // the whole interaction.
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        shelfList.querySelector("button")?.click();
+      });
+    }
+
+    // ------------------------------------------------------- cookie cutter
+    //
+    // One Toolbox row with two behaviours, chosen by what is already on the
+    // plate. There IS an outline — a traced photo, a polygon someone wrote —
+    // so the four kits expand under the row and cut around it at the size it
+    // already is. There is not, so the shape has to come from somewhere: the
+    // card opens on Iconify and the kits appear once one is picked.
+    //
+    // The outline is read from the SOURCE, not from the built mesh. Slicing
+    // geometry would need the kernel, a finished build, and a guess about
+    // which z is the interesting one; the text already says what the outline
+    // is, and says it for OpenSCAD and BREPcode in the same words.
+    {
+      const cutterCard = $("cutter"), cutterRow = $("cutter-row");
+      const subRows = $("cutter-sub-rows"), rowHint = $("cutter-row-hint");
+      const grid = $("cutter-grid"), stat = $("cutter-stat"), opts = $("cutter-opts");
+      const sizeIn = $("cutter-size"), sizeOut = $("cutter-size-o");
+
+      let CK = null;                          // the generators, loaded on first use
+      const getCK = async () => (CK ??= await import("./cutterkit.js"));
+      let iconSrc = null;                     // the chosen icon's SVG text
+      let iconLoops = null;                   // ...as loops, at the current size
+
+      const span = (loops) => {
+        let lo = Infinity, hi = -Infinity, lo2 = Infinity, hi2 = -Infinity;
+        for (const l of loops) for (const [x, y] of l.points) {
+          if (x < lo) lo = x; if (x > hi) hi = x;
+          if (y < lo2) lo2 = y; if (y > hi2) hi2 = y;
+        }
+        return Math.round(Math.max(hi - lo, hi2 - lo2));
+      };
+
+      async function emit(kind, loops, extra = {}) {
+        const { makeKit } = await getCK();
+        try {
+          applyGeneratedCode(makeKit(kind, loops, extra));
+          toggleCard(panel, openBtn, true);
+        } catch (err) {
+          // A refused outline is the interesting failure — holes with nothing
+          // around them, a two-point loop — and it says which, so say it
+          // rather than leaving a button that looks broken.
+          setStatus("err", String(err.message || err));
+        }
+      }
+
+      // The submenu, built from KINDS so a kit added there appears here.
+      async function fillSubRows(loops) {
+        const { KINDS } = await getCK();
+        subRows.textContent = "";
+        for (const k of KINDS) {
+          const b = document.createElement("button");
+          b.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14"></svg>`
+            + `<span><b></b><small></small></span>`;
+          b.querySelector("b").textContent = k.label;
+          b.querySelector("small").textContent = k.blurb;
+          b.addEventListener("click", () => {
+            toolsMenu.classList.remove("open");
+            subRows.classList.remove("open");
+            emit(k.id, loops);
+          });
+          subRows.appendChild(b);
+        }
+        const other = document.createElement("button");
+        other.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none"
+          stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.3" /><path d="M10.2 10.2 14 14" /></svg>
+          <span><b>Search an icon instead…</b><small>ignore what is on the plate</small></span>`;
+        other.addEventListener("click", () => {
+          toolsMenu.classList.remove("open");
+          subRows.classList.remove("open");
+          openSearch();
+        });
+        subRows.appendChild(other);
+      }
+
+      function openSearch() {
+        toggleCard(cutterCard, null, true);
+        $("cutter-q").focus();
+      }
+
+      cutterRow.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const { loopsFromCode } = await getCK();
+        const loops = loopsFromCode(code.value);
+        if (!loops.length) {
+          toolsMenu.classList.remove("open");
+          subRows.classList.remove("open");
+          openSearch();
+          return;
+        }
+        const open = !subRows.classList.contains("open");
+        cutterRow.setAttribute("aria-expanded", String(open));
+        if (open) {
+          const { pieceNote } = await getCK();
+          rowHint.textContent = pieceNote(loops)
+            || `cut around the ${span(loops)} mm outline on the plate`;
+          await fillSubRows(loops);
+        }
+        subRows.classList.toggle("open", open);
+        // The flyout was measured when it opened; four more rows can push it
+        // past the bottom of the window, and the observer only watches the
+        // menu's own class. Re-fit, then make sure the rows that just appeared
+        // are the ones in view.
+        fitFlyout(toolsMenu);
+        if (open) subRows.lastElementChild?.scrollIntoView({ block: "nearest" });
+      });
+      // The hint advertises what the row will DO, so it has to be right before
+      // the menu is on screen — not after someone has clicked to find out.
+      $("tools-btn").addEventListener("click", async () => {
+        subRows.classList.remove("open");
+        cutterRow.setAttribute("aria-expanded", "false");
+        if (!toolsMenu.classList.contains("open")) return;
+        const { loopsFromCode } = await getCK();
+        const loops = loopsFromCode(code.value);
+        const solid = loops.filter((l) => !l.hole).length;
+        rowHint.textContent = !loops.length
+          ? "search an icon — blade, stamp, stencil or roller"
+          : solid > 1
+            ? `${solid} pieces on the plate, ${span(loops)} mm across`
+            : `cut around the ${span(loops)} mm outline on the plate`;
+      });
+
+      // ---- icon search
+      let searchSeq = 0;
+      async function runSearch() {
+        const q = $("cutter-q").value.trim();
+        if (!q) return;
+        const mine = ++searchSeq;
+        stat.textContent = "Searching…";
+        grid.textContent = "";
+        try {
+          const { searchIcons, iconPreview } = await getCK();
+          const names = await searchIcons(q);
+          if (mine !== searchSeq) return;     // a later search already answered
+          stat.textContent = names.length
+            ? `${names.length} icon${names.length === 1 ? "" : "s"} — pick one`
+            : `nothing for "${q}" — try a plainer word`;
+          for (const name of names) {
+            const b = document.createElement("button");
+            b.title = name;
+            const img = document.createElement("img");
+            img.src = iconPreview(name, 48);
+            img.alt = name;
+            img.loading = "lazy";
+            b.appendChild(img);
+            b.addEventListener("click", () => pickIcon(name, b));
+            grid.appendChild(b);
+          }
+        } catch (err) {
+          if (mine !== searchSeq) return;
+          stat.textContent = `Icon search failed — ${err.message || err}`;
+        }
+      }
+      $("cutter-go").addEventListener("click", runSearch);
+      $("cutter-q").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); runSearch(); }
+      });
+
+      async function reloops() {
+        const { svgToLoops } = await import("./svg.js");
+        iconLoops = await svgToLoops(iconSrc, { maxSize: +sizeIn.value });
+        return iconLoops;
+      }
+
+      async function pickIcon(name, btn) {
+        for (const b of grid.querySelectorAll("button")) b.classList.toggle("active", b === btn);
+        stat.textContent = `Loading ${name}…`;
+        try {
+          const { iconSvg } = await getCK();
+          iconSrc = await iconSvg(name);
+          await reloops();
+          $("cutter-sub").textContent = name;
+          opts.hidden = false;
+          await fillKinds();
+          const { pieceNote } = await getCK();
+          // Say the cost BEFORE the click, not after: this is the difference
+          // between a wait and an apparent hang.
+          stat.textContent = pieceNote(iconLoops)
+            || `${iconLoops.length} loop${iconLoops.length === 1 ? "" : "s"} — pick a kit`;
+        } catch (err) {
+          // The common one is an outline-only icon, which has nothing to cut
+          // around. svgToLoops says exactly that, so pass it through.
+          opts.hidden = true;
+          stat.textContent = String(err.message || err);
+        }
+      }
+
+      async function fillKinds() {
+        const { KINDS } = await getCK();
+        const box = $("cutter-kinds");
+        box.textContent = "";
+        for (const k of KINDS) {
+          const b = document.createElement("button");
+          b.innerHTML = "<b></b><small></small>";
+          b.querySelector("b").textContent = k.label;
+          b.querySelector("small").textContent = k.blurb;
+          b.addEventListener("click", async () => {
+            // Re-derive at the CURRENT slider value: the size can have moved
+            // since the icon was picked, and generating the old one would
+            // quietly ignore the control the user just used.
+            await reloops();
+            toggleCard(cutterCard, null, false);
+            emit(k.id, iconLoops, { size: +sizeIn.value });
+          });
+          box.appendChild(b);
+        }
+      }
+
+      sizeIn.addEventListener("input", () => { sizeOut.value = sizeIn.value; });
+    }
 
     // "More tools" (⋮) overflow menu — the collapsed header buttons on narrow
     // screens. Each item just triggers the real button so behaviour never forks.
@@ -12124,6 +13170,10 @@ ${joined}`)(...vs);
       askDims: aiAskDims.checked,
       botName: aiBotName.value,
       style: buildStyle(),
+      // The filament setting is global and beats every per-shape colour, so an
+      // assistant that cannot see it will keep answering "the model looks
+      // transparent" with a rewrite that changes nothing. "" when it is opaque.
+      viewer: CHAT ? CHAT.viewerNote({ filament: mat.filament || "opaque" }) : "",
     });
 
     // ---- build style: language, approach, and which passes are wanted ------
@@ -13078,12 +14128,228 @@ ${joined}`)(...vs);
     };
     let autoFixTries = 0;
 
+    // ---- learning from this machine's own build history --------------------
+    //
+    // The loop worth closing: attempt 1 fails, the error goes back, attempt 2
+    // or 3 works — and all of it is lost when the window shuts, so the next
+    // session repeats the same first-attempt mistakes. Here the outcome of
+    // every chat build is written down and folded back into the next prompt.
+    //
+    // DESKTOP ONLY. The website has no disk to write to, and accumulating one
+    // person's history in a browser store helps nobody.
+    const LEARNS = !!window.brepcodeDesktop?.lessonsLoad;
+    let lessonStore = null;              // loaded once, kept in memory
+    let lessonPrompt = "";               // the REQUEST, not the retry text
+    let lessonFirstError = "";           // what attempt 1 failed with
+
+    async function lessonsReady() {
+      if (!LEARNS) return null;
+      if (!lessonStore) {
+        try { lessonStore = await window.brepcodeDesktop.lessonsLoad(); }
+        catch { lessonStore = null; }
+      }
+      return lessonStore;
+    }
+
+    // The block that rides on the next prompt: the rules this machine keeps
+    // tripping over, plus the closest thing it has already built successfully.
+    async function lessonsFor(prompt) {
+      const store = await lessonsReady();
+      if (!store) return "";
+      try {
+        const L = await import("../src/lessons.js");
+        return L.lessonBlock(store, prompt);
+      } catch { return ""; }
+    }
+
+    // Called once per finished exchange, success or failure.
+    async function rememberBuild({ ok, error, attempts, code }) {
+      if (!LEARNS || !lessonPrompt) return;
+      try {
+        const L = await import("../src/lessons.js");
+        lessonStore = L.recordBuild(await lessonsReady(), {
+          prompt: lessonPrompt, ok, error, attempts, code,
+        });
+        await window.brepcodeDesktop.lessonsSave(lessonStore);
+        // The readable half: one line per exchange, for a human — or a model —
+        // to read back later and see where first attempts keep going wrong.
+        await window.brepcodeDesktop.lessonsAppend({
+          prompt: lessonPrompt, ok, error, attempts, code,
+          provider: aiCfg.provider, model: aiCfg.model,
+        });
+      } catch { /* learning is a bonus; it must never break a build */ }
+    }
+
+    // ---- has somebody already made this? ------------------------------------
+    //
+    // Asked ONLY when the request names something recognisable — a product, a
+    // brand, a model number. src/priorart.js decides that, and is deliberately
+    // biased towards not asking: interrupting "make me a 40mm spacer" with a
+    // list of other people's downloads is worse than never mentioning it.
+    //
+    // Runs alongside the build rather than before it, so the model is being
+    // written while this looks. The user chooses at the end: keep what was
+    // built, or take the one that already exists.
+    let priorArtSeq = 0;
+    async function maybeOfferPriorArt(text, cfg) {
+      const mine = ++priorArtSeq;
+      let PA;
+      try { PA = await import("../src/priorart.js"); } catch { return; }
+      const named = PA.namedSubject(text);
+      if (!named) return;
+      if (!CHAT) return;
+      const req = CHAT.priorArtRequest({
+        provider: cfg.provider, key: cfg.key, model: cfg.model,
+        subject: named.subject, sites: PA.MODEL_SITES,
+      });
+      if (!req) return;                       // this provider's server cannot search
+      let found = [];
+      try {
+        const resp = await aiFetch(req.url, req.options);
+        if (!resp.ok) return;
+        found = CHAT.parsePriorArt(CHAT.extractApiText(await resp.json()), { safeUrl: PA.safeModelUrl });
+      } catch { return; }                     // a bonus feature fails silently
+      if (!found.length || mine !== priorArtSeq) return;
+      showPriorArt(named.subject, found, PA);
+    }
+
+    function showPriorArt(subject, found, PA) {
+      const el = addMsg("bot", "");
+      const can = !!window.brepcodeDesktop?.fetchModel;
+      el.innerHTML = `Somebody may already have made a <b>${esc(subject)}</b>. `
+        + `Keep the one I'm building, or start from one of these:`;
+      const list = document.createElement("div");
+      list.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:8px";
+      for (const r of found) {
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid var(--border); border-radius:8px; padding:7px 9px";
+        row.innerHTML = `<div style="font-weight:600">${esc(r.title)}</div>`
+          + `<div class="note" style="font-size:11px">${esc(r.site)} · licence: ${esc(r.licence)}</div>`;
+        const bar = document.createElement("div");
+        bar.style.cssText = "display:flex; gap:6px; margin-top:6px; flex-wrap:wrap";
+        const open = document.createElement("button");
+        open.className = "hist-btn"; open.style.fontSize = "12px"; open.textContent = "Open the page";
+        open.addEventListener("click", () => window.open(r.url, "_blank", "noopener"));
+        bar.appendChild(open);
+        // The download only exists where it can work. A browser cannot fetch a
+        // file from another site at all, so on the web the link IS the answer.
+        if (can && PA.looksLikeModelFile(r.url)) {
+          const dl = document.createElement("button");
+          dl.className = "hist-btn"; dl.style.fontSize = "12px";
+          dl.textContent = "Download & import";
+          dl.addEventListener("click", () => grabPriorArt(r, dl, PA));
+          bar.appendChild(dl);
+        }
+        row.appendChild(bar);
+        list.appendChild(row);
+      }
+      el.appendChild(list);
+      const warn = document.createElement("div");
+      warn.className = "note";
+      warn.style.cssText = "margin-top:8px; font-size:11px; line-height:1.45";
+      warn.textContent = PA.DOWNLOAD_WARNING;
+      el.appendChild(warn);
+    }
+
+    async function grabPriorArt(r, btn, PA) {
+      btn.disabled = true;
+      btn.textContent = "Downloading…";
+      try {
+        const got = await window.brepcodeDesktop.fetchModel(r.url);
+        if (!got?.ok) { btn.disabled = false; btn.textContent = `Failed — ${got?.error || "unknown"}`; return; }
+        const bin = atob(got.base64);
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        btn.textContent = `Imported ${(got.bytes / 1048576).toFixed(1)}MB`;
+        // Straight into the ordinary import path — this is somebody else's mesh
+        // and it gets exactly the same treatment as one dragged in by hand.
+        await importMeshFile(new File([buf], got.name || "downloaded.stl"));
+        addMsg("bot", `Imported <b>${esc(got.name || "the model")}</b> from ${esc(r.site)}. `
+          + `It is not mine and I have not checked it — open the source page before you print or share it.`);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = `Failed — ${String(e.message || e).slice(0, 40)}`;
+      }
+    }
+
+    // ---- what the chat has learned, shown rather than hidden ---------------
+    //
+    // A store that quietly shapes every prompt is not something to leave
+    // invisible. This says what it has picked up, opens the files, and offers
+    // to forget it — the history is a record of somebody's work and they get
+    // to end it.
+    async function paintLearning() {
+      const row = $("learn-row"), detail = $("learn-detail");
+      if (!LEARNS) { row.style.display = "none"; detail.style.display = "none"; return; }
+      row.style.display = "flex";
+      const store = await lessonsReady();
+      let L;
+      try { L = await import("../src/lessons.js"); } catch { return; }
+      const builds = store?.builds?.length || 0;
+      const rules = L.houseRules(store || L.emptyStore());
+      $("learn-status").textContent = builds || rules.length
+        ? `${builds} build${builds === 1 ? "" : "s"} remembered · ${rules.length} house rule${rules.length === 1 ? "" : "s"}`
+        : "nothing learned yet — it starts after your first few chat builds";
+      if (rules.length) {
+        detail.style.display = "block";
+        detail.innerHTML = "<b>Rules it is sending with every request:</b><br>"
+          + rules.map((r) => `· ${esc(r.rule)} <span style="opacity:.6">(seen ${r.count}×)</span>`).join("<br>");
+      } else {
+        detail.style.display = "none";
+      }
+    }
+    if (LEARNS) {
+      $("learn-open").addEventListener("click", () => window.brepcodeDesktop.lessonsReveal());
+      $("learn-forget").addEventListener("click", async () => {
+        await window.brepcodeDesktop.lessonsForget();
+        lessonStore = null;
+        await paintLearning();
+        setStatus("ok", "Forgot everything learned on this machine.");
+      });
+      $("gear-btn")?.addEventListener("click", () => { paintLearning(); });
+      paintLearning();
+    }
+
     async function sendChat() {
-      const text = chatInput.value.trim();
-      if (!text) return;
+      const raw = chatInput.value.trim();
+      if (!raw) return;
       chatInput.value = "";
-      if (text !== RETRY_TEXT) autoFixTries = 0;   // a real request, fresh budget
-      const userEl = addMsg("user", text);
+
+      // #tags and /commands steer the request; they are not part of it. The
+      // bubble keeps what was typed — it is their message and they should see
+      // it back — but everything downstream works on the cleaned text, because
+      // "-#wires" reads to a model as a requirement to leave wires off the
+      // PART, which is the opposite of what it means.
+      //
+      // A failure here must never cost the message: if the library will not
+      // load, the text goes as typed and matching falls back to keywords.
+      let dir = null;
+      try {
+        const R = await getRecipes();
+        dir = R.parseDirectives(raw, await R.loadManifest());
+      } catch { /* no library — send it as typed */ }
+      // A message that was ONLY directives has no request left in it; send what
+      // they typed so the model has something to answer.
+      const text = dir?.any && dir.text ? dir.text : raw;
+      if (dir?.any) {
+        logLine(`steered: ${[
+          ...dir.force.map((t) => "+#" + t), ...dir.drop.map((t) => "-#" + t),
+          dir.approach && `/${dir.approach === "iterative" ? "simple" : "complex"}`,
+          dir.language && `/${dir.language}`,
+        ].filter(Boolean).join(" ")}`);
+      }
+      // A mistyped tag is worth one quiet line: silently ignoring it is how
+      // someone concludes the feature does not work.
+      if (dir?.unknown.length) {
+        logLine(`not a command, left in the message: ${dir.unknown.join(" ")}`);
+      }
+
+      if (text !== RETRY_TEXT) {
+        autoFixTries = 0;                          // a real request, fresh budget
+        lessonPrompt = text;                       // ...and what it was actually for
+        lessonFirstError = "";
+      }
+      const userEl = addMsg("user", raw);
       // The attached images appear IN the sent bubble. They used to vanish from
       // the chip on send with nothing to show they went — the model would answer
       // about "the photo" while the user wondered if it ever saw one.
@@ -13269,6 +14535,12 @@ ${joined}`)(...vs);
 
         logLine(`request → ${cfg.provider} · ${cfg.model}`);
 
+        // Look for prior art ALONGSIDE the build, never before it. The model is
+        // being written while this searches, so the answer costs no waiting —
+        // and a failed search costs nothing at all. Only fires when the request
+        // names something recognisable, and only on a retry-free first ask.
+        if (text !== RETRY_TEXT) maybeOfferPriorArt(text, cfg);
+
         // Pull in only the reference material this message is actually about.
         // A miss costs nothing and must never block the request, so a broken
         // library degrades to the old behaviour rather than failing the build.
@@ -13279,7 +14551,11 @@ ${joined}`)(...vs);
           // an importedMesh() on screen is a question about an import, but the
           // sentence alone says nothing that would match — and the import rules
           // are precisely what stops the model inventing a bounding box.
-          const ref = await R.referenceFor(text, { code: code.value });
+          const ref = await R.referenceFor(text, {
+            code: code.value,
+            // What the user asked for by name beats what the keywords guessed.
+            force: dir?.force || [], drop: dir?.drop || [],
+          });
           reference = ref.text;
           if (ref.questions.length) {
             reference += `\n\nSTILL UNKNOWN — ${ref.questions.map((q) => q.ask).join(" ")}`
@@ -13289,6 +14565,16 @@ ${joined}`)(...vs);
         } catch (e) {
           logLine(`reference lookup skipped — ${e.message}`);
         }
+
+        // What this machine has learned from its own failed builds. Computed
+        // ONCE here rather than inside each provider branch, because it used to
+        // be computed inside two of the three: the desktop relay and the local
+        // model got it, and the ordinary API path — Claude, Gemini, OpenAI,
+        // which is how nearly everyone actually uses this — silently did not.
+        // The lessons feature was simply switched off for most users and there
+        // was no symptom to notice, only first replies that kept repeating
+        // mistakes this install had already seen.
+        const lessons = await lessonsFor(text);
 
         // Attached images ride on THIS message only.
         const imgs = pendingImgs.slice();
@@ -13341,7 +14627,12 @@ ${joined}`)(...vs);
             if (saved?.ok) imagePaths.push(saved.path);
             else addMsg("bot", `Couldn't attach ${im.name || "an image"} (${saved?.error || "unknown"}) — sending without it.`);
           }
-          const system = CHAT.composeSystem({ reference, ...harnessOpts() });
+          const system = CHAT.composeSystem({
+            reference, lessons, ...harnessOpts(),
+            // /simple or /scad for this message only. Rides in the volatile
+            // half so a one-word shortcut cannot invalidate the cached prefix.
+            override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }),
+          });
           ccProgress = (s) => {
             logLine(s);
             const m = /writing… ([\d,]+) characters/.exec(s);
@@ -13415,7 +14706,7 @@ ${joined}`)(...vs);
             ho.botName = "";
             ho.gem = "";
           }
-          const system = CHAT.composeSystem({ reference: reference.slice(0, 1500), ...ho });
+          const system = CHAT.composeSystem({ reference: reference.slice(0, 1500), lessons, ...ho });
           // The untouched starter cube sent as "current model code" is another
           // echo trigger: the model thinks it must relate the request to a
           // drilled box it never asked about. A fresh session sends the bare
@@ -13450,7 +14741,9 @@ ${joined}`)(...vs);
             const wantStream = !isDesktop
               && (cfg.provider === "claude" || cfg.provider === "local" || cfg.provider === "openai");
             const { url, options } = buildApiRequest(cfg, msgs,
-              { includeThoughts: wantThoughts, stream: wantStream, reference, ...harnessOpts() });
+              { includeThoughts: wantThoughts, stream: wantStream, reference, ...harnessOpts(),
+                lessons,
+                override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
             const resp = await aiFetch(url, options);
             if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
               let lastPaint = 0;
@@ -13478,6 +14771,12 @@ ${joined}`)(...vs);
           answer = extractApiText(cfg.provider, json);
           if (!answer) throw new Error(CHAT.emptyReplyReason(cfg.provider, json));
           reasoning = extractApiThinking(cfg.provider, json);
+          // Proof the prompt cache is working. From the second message on this
+          // should show a "cached" figure roughly the size of the instructions;
+          // if it stops appearing, something has crept into the stable half of
+          // the system prompt and every reply is quietly paying full price.
+          const used = CHAT.usageNote(cfg.provider, json);
+          if (used) logLine(used);
         }
 
         let fence = answer.match(/```[\w]*\n([\s\S]*?)```/);
@@ -13518,6 +14817,9 @@ ${joined}`)(...vs);
             // make. Two attempts, then it is genuinely stuck and they should see
             // it rather than watch us burn their API quota in a loop.
             autoFixTries++;
+            // Only the FIRST failure of a request teaches anything about first
+            // attempts; the retries are the model repairing its own mistake.
+            if (autoFixTries === 1) lessonFirstError = r.detail || "build failed";
             if (autoFixTries <= maxAutoFix()) {
               addMsg("bot", `That didn't build — ${r.detail} Fixing it (attempt ${autoFixTries} of ${maxAutoFix()})…`);
               chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
@@ -13528,8 +14830,18 @@ ${joined}`)(...vs);
             addMsg("bot", `⚠️ Still not building after ${maxAutoFix()} tries: ${r.detail}`);
             chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
             quickReplies([RETRY_TEXT], ["⚠ Try once more"]);
+            // Gave up. Worth recording precisely BECAUSE it never worked — this
+            // is the kind that should shape the next first attempt.
+            rememberBuild({ ok: false, error: lessonFirstError || r.detail, attempts: autoFixTries });
           } else {
             if (r.warned) addMsg("bot", `Built — but note: ${r.warned}`);
+            // It built. Store the code that ended up working and, if the first
+            // attempt had failed, what it failed with — that pair is the whole
+            // lesson: this request, this mistake, this is what right looks like.
+            rememberBuild({
+              ok: true, error: lessonFirstError,
+              attempts: autoFixTries + 1, code: fence[1].trim(),
+            });
             // The sculptor's second pass, offered rather than automatic: at
             // in-browser token speeds an auto-polish would double every wait,
             // and a blocky part that IS what the user wanted needs no pass 2.
@@ -13602,7 +14914,104 @@ ${joined}`)(...vs);
     }
 
     $("chat-send").addEventListener("click", sendChat);
+    // ------------------------------------------- # and / autocomplete
+    //
+    // The subject library has always matched on keywords, which works but is a
+    // guess the user can neither see nor correct. Typing # here lists the real
+    // tags — so the feature stops being invisible, and a tag their wording
+    // would have missed is one keystroke away.
+    //
+    // The list is built from the SHIPPED manifest, never a hand-written copy:
+    // a tag that stops existing has to stop being offered, or this becomes a
+    // menu of things that quietly do nothing.
+    const chatComplete = $("chat-complete");
+    let ccItems = [], ccIndex = 0, ccFrom = 0;
+
+    const closeChatComplete = () => {
+      chatComplete.classList.remove("open");
+      chatComplete.textContent = "";
+      ccItems = [];
+    };
+
+    async function chatCompleteOptions(sigil, word) {
+      const w = word.toLowerCase();
+      if (sigil === "/") {
+        const R = await getRecipes();
+        return Object.entries(R.COMMANDS)
+          .filter(([k]) => k.startsWith(w))
+          .map(([k, v]) => ({ insert: `/${k}`, label: `/${k}`, hint: v.blurb }));
+      }
+      const R = await getRecipes();
+      const man = await R.loadManifest();
+      return (man.recipes || [])
+        .filter((r) => r.tag.toLowerCase().startsWith(w))
+        .map((r) => ({ insert: `#${r.tag}`, label: `#${r.tag}`, hint: r.title || "" }))
+        .slice(0, 40);
+    }
+
+    function paintChatComplete() {
+      chatComplete.textContent = "";
+      ccItems.forEach((it, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = i === ccIndex ? "on" : "";
+        b.innerHTML = "<code></code><small></small>";
+        b.querySelector("code").textContent = it.label;
+        b.querySelector("small").textContent = it.hint;
+        // mousedown, not click: click fires after the input has already lost
+        // focus, and blur closes the list out from under the pointer.
+        b.addEventListener("mousedown", (ev) => { ev.preventDefault(); acceptChatComplete(i); });
+        chatComplete.appendChild(b);
+      });
+      chatComplete.classList.toggle("open", ccItems.length > 0);
+      chatComplete.querySelector("button.on")?.scrollIntoView({ block: "nearest" });
+    }
+
+    function acceptChatComplete(i) {
+      const it = ccItems[i];
+      if (!it) return;
+      const v = chatInput.value;
+      const caret = chatInput.selectionStart ?? v.length;
+      chatInput.value = v.slice(0, ccFrom) + it.insert + " " + v.slice(caret);
+      const pos = ccFrom + it.insert.length + 1;
+      chatInput.setSelectionRange(pos, pos);
+      closeChatComplete();
+      chatInput.focus();
+    }
+
+    let ccSeq = 0;
+    chatInput.addEventListener("input", async () => {
+      const v = chatInput.value;
+      const caret = chatInput.selectionStart ?? v.length;
+      // The token being typed RIGHT NOW: a # or / that starts a word, back from
+      // the caret. Anchoring to the caret rather than the whole field is what
+      // lets someone go back and fix a tag mid-sentence.
+      const m = /(^|\s)([#/])([a-z0-9]*)$/i.exec(v.slice(0, caret));
+      if (!m) return closeChatComplete();
+      ccFrom = caret - m[2].length - m[3].length;
+      const mine = ++ccSeq;
+      let opts = [];
+      try { opts = await chatCompleteOptions(m[2], m[3]); } catch { /* no library, no list */ }
+      if (mine !== ccSeq) return;          // a later keystroke already answered
+      ccItems = opts;
+      ccIndex = 0;
+      paintChatComplete();
+    });
+    chatInput.addEventListener("blur", () => setTimeout(closeChatComplete, 120));
+
     chatInput.addEventListener("keydown", (e) => {
+      // While the list is open it owns the arrows, Tab, Enter and Escape —
+      // otherwise Enter would send a half-typed "#coo" as a message.
+      if (ccItems.length) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          ccIndex = (ccIndex + (e.key === "ArrowDown" ? 1 : ccItems.length - 1)) % ccItems.length;
+          paintChatComplete();
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); acceptChatComplete(ccIndex); return; }
+        if (e.key === "Escape") { e.preventDefault(); closeChatComplete(); return; }
+      }
       if (e.key !== "Enter") return;
       // Empty input + a ✓ chip waiting = Enter IS the go-ahead
       if (!chatInput.value.trim()) {
@@ -13638,21 +15047,104 @@ ${joined}`)(...vs);
 
     updateHint();
 
+    // ---- U: make the forgiveness permanent --------------------------------
+    //
+    // Loose syntax already BUILDS — a missing comma, a smart quote pasted from
+    // a web page, a stray semicolon. autoFix() repairs it on the way to the
+    // kernel and then throws the repair away, so the editor keeps showing the
+    // broken version and the next person to read it learns the wrong thing.
+    //
+    // This writes the repair back. Same function the build uses, so what you
+    // see afterwards is exactly what was being built all along, and it goes
+    // through history so a single undo puts your text back.
+    function tidySyntax() {
+      const src = code.value;
+      if (!src.trim()) return;
+      const { code: fixed, notes } = autoFix(src);
+      if (fixed === src) {
+        hint.innerHTML = "Nothing to tidy — that is already exactly how it builds.";
+        return;
+      }
+      pushHistory(src);
+      code.value = fixed;
+      pushHistory();
+      code.focus();
+      // The hint, not the status line: rebuild() is about to overwrite the
+      // status with the triangle count, and WHAT was changed is the whole
+      // point of pressing the key.
+      hint.innerHTML = notes.length
+        ? `Tidied — ${esc(notes.join("; "))}. This is the code that was being built all along; <b>undo</b> puts your version back.`
+        : "Tidied to the code that was already being built. <b>Undo</b> puts your version back.";
+      rebuild();
+    }
+
     // ---- keyboard shortcuts (ignored while typing in a field) --------------
     const cardFor = { e: [panel, openBtn], m: [matCard, matBtn], h: [histCard, histBtn],
       c: [chatCard, chatBtn], k: [cheat, cheatBtn], i: [aboutCard, aboutBtn] };
+
+    // The letters, as one action, so the bare key and the Ctrl key in the
+    // editor can never drift apart.
+    function runCardShortcut(k) {
+      const entry = cardFor[k];
+      if (!entry) return false;
+      const [card, btn] = entry;
+      const open = toggleCard(card, btn);
+      if (open && card === panel) code.focus();
+      if (open && card === histCard) renderHistory();
+      if (open && card === chatCard) { ensureChat(); $("chat-input").focus(); }
+      return true;
+    }
+
+    // ---- guided tour --------------------------------------------------
+    //
+    // Lazy, like every other optional module: someone who never presses Tour
+    // never downloads it. The tour is handed the two things it cannot do for
+    // itself — put code in the editor, and open a card before pointing inside
+    // it — and owns everything else.
+    let _tour;
+    const getTour = () => (_tour ??= import("./tour.js"));
+    let stopTour = null;
+    $("tour-btn").addEventListener("click", async () => {
+      if (stopTour) { stopTour(); stopTour = null; return; }   // second press cancels
+      const { startTour } = await getTour();
+      // Out of the way: the tour points AT the About card's button, so leaving
+      // the card itself open would cover the thing being explained.
+      toggleCard(aboutCard, aboutBtn, false);
+      stopTour = startTour({
+        setCode: (src) => {
+          pushHistory(code.value);        // the tour's samples are undoable
+          code.value = src;
+          pushHistory();
+          updateHint();
+          rebuild();
+        },
+        openCard: (id) => {
+          const entry = Object.values(cardFor).find(([c]) => c && c.id === id);
+          if (entry) toggleCard(entry[0], entry[1], true);
+        },
+        // the bullets on the opening card ARE the build cube from the status
+        // bar — one definition of it, reused rather than redrawn
+        cubeHTML: buildCubeHTML,
+        onFinish: () => { stopTour = null; },
+      });
+    });
+
+    // brepcode.com/tour — a link you can hand someone. The site is static, so
+    // /tour is a folder whose index.html bounces here with ?tour=1; #tour works
+    // too, for a link pasted by hand. The delay lets the first build finish, so
+    // the opening spotlight has a laid-out page to point at rather than an
+    // empty one.
+    if (/[?&]tour=1(&|$)/.test(location.search) || /^#tour$/i.test(location.hash)) {
+      setTimeout(() => $("tour-btn").click(), 1400);
+    }
     document.addEventListener("keydown", (e) => {
       const a = document.activeElement;
       if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.isContentEditable)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (cardFor[k]) {
-        const [card, btn] = cardFor[k];
-        const open = toggleCard(card, btn);
-        if (open && card === panel) code.focus();
-        if (open && card === histCard) renderHistory();
-        if (open && card === chatCard) { ensureChat(); $("chat-input").focus(); }
-      } else if (e.key === "ArrowLeft") snapView("left");
+      if (k === "u") { tidySyntax(); }
+      else if (runCardShortcut(k)) { /* handled */ }
+      else if (e.key === "ArrowLeft") snapView("left");
       else if (e.key === "ArrowRight") snapView("right");
       else if (e.key === "ArrowUp") snapView("up");
       else if (e.key === "ArrowDown") snapView("down");
@@ -13722,6 +15214,10 @@ ${joined}`)(...vs);
     // the first click on any of them is instant. Never blocks; failures are fine.
     const warm = () => { getCurved().catch(() => {}); getTrace().catch(() => {}); getLockbox().catch(() => {}); };
     (window.requestIdleCallback || ((f) => setTimeout(f, 800)))(warm);
+    // Dead last, on a second idle beat: the named spools are the least urgent
+    // thing in the app — a colour nobody has asked for yet.
+    (window.requestIdleCallback || ((f) => setTimeout(f, 2500)))(
+      () => setTimeout(() => { try { loadSpools(); } catch { /* fine */ } }, 1200));
   </script>
 </body>
 </html>

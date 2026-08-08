@@ -4,6 +4,11 @@ title: Heat-set threaded inserts
 match: heat set, heatset, heat-set, threaded insert, threaded inserts, brass insert, brass inserts, ruthex, voron insert
 ---
 
+**Call for it, do not build it by hand.** `insertBore("M3")` cuts the hole at the
+insert's own diameter and 1mm deeper than it is long, which is the rule this page
+states. The numbers below are the ones it uses — see #parts.
+
+
 Standard brass heat-set inserts (Ruthex / E3D style). Columns: **thread ·
 hole Ø · insert length (typical) · minimum boss Ø**:
 

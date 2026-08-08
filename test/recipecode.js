@@ -69,5 +69,62 @@ for (const file of readdirSync(DIR).filter((f) => f.endsWith(".md") && f !== "RE
 
 check("the library actually contains examples to check", total > 0, `${total} found`);
 
+console.log("\na cutter made from a traced outline keeps ALL of the shape\n");
+{
+  // The workflow: somebody traces a gingerbread man, gets an extrusion, and
+  // says "make this a cookie cutter". A traced figure arrives as SEVERAL closed
+  // loops — a body and two detached arms — and the failure everyone hits is
+  // that the arms quietly do not survive the offset, so the cutter is a
+  // gingerbread torso. This proves every loop makes it through.
+  const { fromOpenSCAD } = await import("../src/openscad.js");
+  const SCAD = `
+H = 15; WALL = 0.9;
+body = [[0,40],[10,34],[12,22],[26,20],[26,12],[12,8],[14,-8],[6,-24],[-6,-24],[-14,-8],
+        [-12,8],[-26,12],[-26,20],[-12,22],[-10,34]];
+armL = [[-34,26],[-27,30],[-25,22],[-32,19]];
+armR = [[34,26],[32,19],[25,22],[27,30]];
+module ring(pts) {
+  linear_extrude(H) difference() {
+    offset(delta=WALL/2) polygon(pts);
+    offset(delta=-WALL/2) polygon(pts);
+  }
+}
+ring(body); ring(armL); ring(armR);
+`;
+  let xs = [], ys = [], facets = 0, err = "";
+  try {
+    const stl = toSTL(await build(fromOpenSCAD(SCAD)), "t");
+    facets = (stl.match(/facet normal/g) || []).length;
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)];
+    xs = v.map((m) => +m[1]); ys = v.map((m) => +m[2]);
+  } catch (e) { err = String(e.message || e); }
+
+  check("a multi-loop traced outline builds as a cutter", facets > 100, err || `${facets} facets`);
+  // The arms sit beyond |x| = 26. If a loop were dropped the extent collapses
+  // to the body and this is the assertion that catches it.
+  check("...with the DETACHED ARMS still on it",
+    Math.max(...xs) > 30 && Math.min(...xs) < -30,
+    `x extent ${Math.min(...xs).toFixed(1)}..${Math.max(...xs).toFixed(1)}`);
+  check("...and the full height of the figure",
+    Math.max(...ys) > 39 && Math.min(...ys) < -23,
+    `y extent ${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}`);
+  // A wall, not a slab: the outline is hollow, so the footprint area is a
+  // fraction of the solid shape's.
+  check("...and it is a WALL, not a filled slab", facets < 900, `${facets} facets`);
+}
+
+console.log("\nthe recipe tells the model not to throw parts away\n");
+{
+  const cc = readFileSync(new URL("../viewer/recipes/cookiecutter.md", import.meta.url), "utf8");
+  check("it covers converting a shape that is already on screen",
+    /ALREADY on screen/i.test(cc));
+  check("...saying copy the existing points verbatim", /verbatim/i.test(cc));
+  check("...keep every loop", /Keep every loop/i.test(cc));
+  check("...and never drop a feature to make the offset behave",
+    /Never delete a feature/i.test(cc));
+  check("specks are distinguished from real limbs",
+    /never a real limb or\s+fin/i.test(cc));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

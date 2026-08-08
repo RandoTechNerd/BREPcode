@@ -8,6 +8,7 @@
 // convenience.
 import {
   stlWithSource, extractSourceFromStl, stripSourceHeader, stlTo3MF, colored3MF, SOURCE_MARKER, SOURCE_PART,
+  parseBcodeFile, HISTORY_KEEP,
 } from "../viewer/exporters.js";
 import { unzipEntry } from "../viewer/inventory.js";
 import * as dsl from "../index.js";
@@ -171,6 +172,66 @@ console.log("\n3MF\n");
 check("the part name is stable (old files must keep loading)",
   SOURCE_PART === "Metadata/BREPcode.source.js");
 check("the marker is stable", SOURCE_MARKER === "BREPCODE-SOURCE-V1");
+
+console.log("\n3MF carries the whole project, not just the source\n");
+{
+  // A .3mf is a zip, so the part inside it IS a .bcode. Export, hand the file
+  // to a slicer, get it back a year later, and the scene and the undo history
+  // are still in there — not just the text of the model.
+  const SCENE = { material: { color: "#d4af37", metal: 0.4 }, camera: [10, 20, 30], negatives: true };
+  const HIST = ["return cube([10,10,10]);", "return cube([20,10,10]);", "return cube([20,20,10]);"];
+  const zip = stlTo3MF(stl, "part", { source: CODE, scene: SCENE, history: HIST });
+  const part = new TextDecoder().decode(await unzipEntry(zip, /BREPcode\.source\.js$/i));
+  const back = parseBcodeFile(part);
+
+  check("the source still comes back exactly", back.source === CODE.trim(),
+    JSON.stringify(back.source.slice(0, 50)));
+  check("the scene comes back", JSON.stringify(back.scene) === JSON.stringify(SCENE),
+    JSON.stringify(back.scene));
+  check("the undo history comes back, in order",
+    JSON.stringify(back.history) === JSON.stringify(HIST), JSON.stringify(back.history));
+  check("and the name the file was saved under", back.name === "part", back.name);
+
+  // THE thing that must not change. A slicer reads 3D/3dmodel.model and nothing
+  // else; if carrying a scene moved one vertex we would have traded a real file
+  // for a convenience.
+  const plain = stlTo3MF(stl, "part");
+  const types = new TextDecoder().decode(await unzipEntry(zip, /Content_Types/i));
+  check("the geometry a slicer reads is byte-identical",
+    new TextDecoder().decode(await unzipEntry(zip, /\.model$/i))
+    === new TextDecoder().decode(await unzipEntry(plain, /\.model$/i)));
+  check("...and every part still has a declared content type",
+    /Extension="model"/.test(types) && /Extension="js"/.test(types), types);
+
+  // Files written before the part carried anything but source must keep
+  // opening. parseBcodeFile treats a body with no scene block as exactly that,
+  // so this checks we did not start REQUIRING one.
+  const old = parseBcodeFile(new TextDecoder().decode(
+    await unzipEntry(stlTo3MF(stl, "part", { source: CODE }), /BREPcode\.source\.js$/i)));
+  check("a source-only part still parses", old.source === CODE.trim());
+  check("...with an empty history rather than a throw",
+    Array.isArray(old.history) && old.history.length === 0);
+  check("...and no scene", old.scene === null);
+
+  // The colour exporter is a separate writer and has to carry it too.
+  const g = (color, z) => ({ color, verts: [[0, 0, z], [10, 0, z], [0, 10, z]], tris: [[0, 1, 2]] });
+  const cz = colored3MF([g("#d4af37", 0), g("#2b2b2b", 5)], "part",
+    { source: CODE, scene: SCENE, history: HIST });
+  const cpart = parseBcodeFile(new TextDecoder().decode(await unzipEntry(cz, /BREPcode\.source\.js$/i)));
+  check("the colour 3MF carries the history too",
+    JSON.stringify(cpart.history) === JSON.stringify(HIST), JSON.stringify(cpart.history));
+  check("...and the scene", JSON.stringify(cpart.scene) === JSON.stringify(SCENE));
+
+  // History is capped so a long session cannot bloat a print file.
+  const huge = Array.from({ length: 200 }, (_, i) => `return cube([${i},1,1]);`);
+  const capped = parseBcodeFile(new TextDecoder().decode(await unzipEntry(
+    stlTo3MF(stl, "part", { source: CODE, history: huge }), /BREPcode\.source\.js$/i)));
+  check("a 200-step history is capped, keeping the most recent",
+    capped.history.length === HISTORY_KEEP
+    && capped.history[capped.history.length - 1] === huge[huge.length - 1],
+    `${capped.history.length}`);
+}
+
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

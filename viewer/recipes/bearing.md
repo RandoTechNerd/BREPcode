@@ -4,6 +4,13 @@ title: Ball bearings
 match: bearing, bearings, 608, 608zz, 625, 626, 688, 623, 6001, 6201, 6800, 6802, skate bearing
 ---
 
+**Call for it, do not build it by hand.** `bearingPocket("608")` cuts the seat at
+the press fit below, `bearingPocket("608", { slip: true })` at the slip fit, and
+`bearing("608")` is the bearing itself for a fit check. The numbers in this page
+are the ones those functions use — see #parts. Reach for the table only when you
+need a figure the functions do not give you.
+
+
 Common bearings, **bore × outer Ø × width** (mm):
 
 - 608 (skateboard, the default if unspecified): 8 × 22 × 7

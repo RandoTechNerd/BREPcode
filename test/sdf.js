@@ -5,8 +5,9 @@
 import {
   sdSphere, sdBox, sdCylinder, sdTorus, at, scaled,
   smin, smax, sUnion, sIntersect, sSubtract,
-  surfaceNets, meshVolume,
+  surfaceNets, meshVolume, solidNets,
 } from "../src/sdf.js";
+import { repairMesh } from "../src/meshrepair.js";
 
 let pass = 0, fail = 0;
 function check(label, ok, detail = "") {
@@ -150,6 +151,68 @@ console.log("\nintersection\n");
   check("...without eating the lens", meshVolume(soft) > meshVolume(m) * 0.85,
     `${(meshVolume(soft) / meshVolume(m)).toFixed(3)}x`);
 }
+
+console.log("\na blend must not be open where it met its own sampling box\n");
+{
+  // surfaceNets stops wherever the surface reaches the wall of the box it is
+  // sampled in, and leaves the mesh OPEN there. That mesh goes to polyhedron
+  // and into the kernel, which rejects it as "Not manifold" — for a reason
+  // that has nothing to do with the blend and everything to do with the window
+  // it was looked at through. Measured on two blended spheres at res 40:
+  // roomy bounds 0 open edges, bounds touching the surface 228, bounds cutting
+  // through it 856.
+  const S = (x, r) => at([x, 0, 0], sdSphere(r));
+  const f = sUnion(4, S(-8, 10), S(8, 10));
+
+  const openEdges = (m) => {
+    const seen = new Map();
+    for (const [a, b, c] of m.faces) {
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const k = u < v ? `${u}_${v}` : `${v}_${u}`;
+        seen.set(k, (seen.get(k) || 0) + 1);
+      }
+    }
+    let n = 0;
+    for (const c of seen.values()) if (c === 1) n++;
+    return n;
+  };
+
+  // The defect itself, so this test fails if surfaceNets ever silently changes.
+  check("raw sampling really is open when the box clips the shape",
+    openEdges(surfaceNets(f, [[-14, -8, -8], [14, 8, 8]], 40)) > 0);
+
+  for (const [label, b] of [
+    ["room to spare", [[-24, -14, -14], [24, 14, 14]]],
+    ["touching the surface", [[-18, -10, -10], [18, 10, 10]]],
+    ["cutting through it", [[-14, -8, -8], [14, 8, 8]]],
+  ]) {
+    const r = solidNets(f, b, 40, { repair: repairMesh });
+    check(`closed with bounds ${label}`, openEdges(r.mesh) === 0, `${openEdges(r.mesh)} open`);
+  }
+
+  // It must fix the CAUSE — a bigger window — not cap the hole, which would
+  // flatten a shape that was still going. A capped result is smaller.
+  const roomy = solidNets(f, [[-24, -14, -14], [24, 14, 14]], 40, { repair: repairMesh });
+  const tight = solidNets(f, [[-14, -8, -8], [14, 8, 8]], 40, { repair: repairMesh });
+  check("the clipped one grew its window rather than capping", tight.grew > 0, `${tight.grew}`);
+  check("...and did not need repairing afterwards", tight.repaired === false);
+  check("...ending up the same size as the one that always fitted",
+    Math.abs(meshVolume(tight.mesh) / meshVolume(roomy.mesh) - 1) < 0.05,
+    `${meshVolume(tight.mesh).toFixed(0)} vs ${meshVolume(roomy.mesh).toFixed(0)}`);
+
+  // A blend that already fits must not be touched at all.
+  check("a shape that fits is left alone", roomy.grew === 0 && roomy.repaired === false);
+
+  // The other field combinations blend() offers.
+  for (const [label, field, b] of [
+    ["subtract", sSubtract(3, S(0, 12), S(9, 8)), [[-16, -14, -14], [20, 14, 14]]],
+    ["intersect", sIntersect(3, S(-5, 11), S(5, 11)), [[-18, -13, -13], [18, 13, 13]]],
+    ["a torus", sdTorus(14, 4), [[-20, -20, -7], [20, 20, 7]]],
+  ]) {
+    check(`${label} stays closed`, openEdges(solidNets(field, b, 32, { repair: repairMesh }).mesh) === 0);
+  }
+}
+
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

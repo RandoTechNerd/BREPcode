@@ -104,5 +104,65 @@ console.log("\nmapTraceToSites: degrades per shape instead of globally\n");
   const m=mapTraceToSites([{id:"x",code:"P.T"}],"cube([1,1,1])");
   ck("nothing mappable still returns null", m===null);
 }
+console.log("\na verb that swallows its children must say so\n");
+{
+  // The drill lesson, again. roundedGrow/minkowski build their child in a
+  // throwaway history and re-import the result, so the child NEVER reaches the
+  // trace. Leaving them out of the swallow list made the child a phantom site:
+  // the sequences went out of step, the offset result itself was unclickable,
+  // and every later shape was at risk of losing its handles too.
+  const src = "union(\n  roundedGrow(3, cube([20,20,20])),\n  translate([40,0,0], sphere({r:8})),\n)";
+  const kinds = primitiveSites(src).map((s) => s.kind);
+  ck("the offset is the site, not the cube inside it",
+    JSON.stringify(kinds) === JSON.stringify(["roundedGrow", "sphere"]), JSON.stringify(kinds));
+
+  const trace = [{ id: "I1", code: "IMPORT3D" }, { id: "S1", code: "P.S" }];
+  const map = mapTraceToSites(trace, src) || {};
+  ck("...so both shapes map", !!map.I1 && !!map.S1, JSON.stringify(Object.keys(map)));
+  ck("...and the offset result is clickable", map.I1?.kind === "roundedGrow", map.I1?.kind);
+
+  for (const [word, code] of [["minkowski", "P.CY"], ["roundedShrink", "P.CY"]]) {
+    const s2 = `union(\n  ${word}(2, cube([10,10,10])),\n  cylinder({r:5,h:9}),\n)`;
+    const m2 = mapTraceToSites([{ id: "I1", code: "IMPORT3D" }, { id: "C1", code }], s2) || {};
+    ck(`${word}() swallows its child too`, !!m2.I1 && !!m2.C1,
+      JSON.stringify(primitiveSites(s2).map((x) => x.kind)));
+  }
+}
+
+
+console.log("\ntube() is one site; its path helpers are not sites at all\n");
+{
+  // A swept tube is generated and imported as one mesh, so it reaches the trace
+  // as a single IMPORT3D. helix() and circlePath() return plain point ARRAYS
+  // and never build anything, so counting either of them as a call site would
+  // invent a shape the trace has no entry for — the same desync that once cost
+  // every cylinder in the document its handles.
+  ck("a tube is one site", primitiveSites("tube([[0,0,0],[9,0,0]], { r: 2 })").length === 1);
+  ck("...mapping to one IMPORT3D",
+     primitiveSites("tube([[0,0,0],[9,0,0]], { r: 2 })")[0].codes[0] === "IMPORT3D");
+  ck("helix() is not a site",
+     primitiveSites("tube(helix({ r: 12, turns: 3 }), { r: 2 })").length === 1);
+  ck("circlePath() is not a site",
+     primitiveSites("tube(circlePath({ r: 20 }), { r: 3, closed: true })").length === 1);
+
+  // The real document shape: tubes interleaved with ordinary primitives. The
+  // kinds must come out in source order, one per built solid, or the mapping
+  // slides and the wrong shape lights up when you click.
+  const mixed = primitiveSites(`group(
+    tube([[0,0,0],[9,0,0]], { r: 1.6 }),
+    cube([10, 10, 10]),
+    tube(helix({ r: 14, turns: 4 }), { r: 1.8 }),
+    cylinder({ r: 5, h: 20 }),
+    tube(circlePath({ r: 22 }), { r: 3, closed: true }),
+  )`);
+  ck("five shapes, five sites", mixed.length === 5, `${mixed.length}`);
+  ck("...in source order with the right kinds",
+     mixed.map((s) => s.kind).join(",") === "tube,cube,tube,cylinder,tube",
+     mixed.map((s) => s.kind).join(","));
+  ck("...and the trace codes line up",
+     mixed.map((s) => s.codes[0]).join(",") === "IMPORT3D,P.CU,IMPORT3D,P.CY,IMPORT3D",
+     mixed.map((s) => s.codes[0]).join(","));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail?1:0);

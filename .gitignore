@@ -31,3 +31,12 @@ viewer/secret-models/
 # brute-force the password offline, so it stays local by default — see the
 # note in README about supplying your own key.
 viewer/locked-key.js
+
+# One-off experiments left at the root while answering a question — a minkowski
+# probe, a constructive rounded-box sketch, a script that regenerates a folder
+# of test STLs. Kept on disk because they are occasionally handy to re-run;
+# out of the repo because they are notes, not source.
+/m2.js
+/rb.mjs
+/gen_shapes.mjs
+/stlout/

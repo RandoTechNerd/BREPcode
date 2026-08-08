@@ -49,3 +49,47 @@ export async function svgToStl(svgText, { height = 3, maxSize = 60, name = "svg"
   }
   return `solid ${name}\n${F.join("\n")}\nendsolid ${name}\n`;
 }
+
+// svgText -> OUTLINE LOOPS in mm, ready to offset into a cutter.
+//
+// svgToStl above gives a solid, which is a dead end for a cutter: a blade is a
+// polygon offset, and an offset needs POINTS. So this returns the same shapes
+// as flat point loops instead — outer contours and their holes, in the same
+// millimetre space (centred, y-flipped, scaled to maxSize).
+//
+// `divisions` is how finely curves are sampled. Higher is smoother and slower
+// to offset; 12 is plenty for an icon at cookie size.
+export async function svgToLoops(svgText, { maxSize = 70, divisions = 12 } = {}) {
+  await loadSvg();
+  const data = new SVGLoader().parse(svgText);
+  const shapes = [];
+  for (const path of data.paths) for (const s of SVGLoader.createShapes(path)) shapes.push(s);
+  if (!shapes.length) {
+    throw new Error("no filled shapes in that SVG — an outline-only icon has nothing to cut around");
+  }
+
+  // Collect first, measure second: every loop has to be scaled by the SAME
+  // factor or the holes stop lining up with the outline they belong to.
+  const raw = [];
+  for (const s of shapes) {
+    raw.push({ pts: s.getPoints(divisions), hole: false });
+    for (const h of s.holes || []) raw.push({ pts: h.getPoints(divisions), hole: true });
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const { pts } of raw) for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const w = maxX - minX, h = maxY - minY;
+  const scale = maxSize / Math.max(w || 1, h || 1);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+
+  const round = (n) => +(n * scale).toFixed(3);
+  return raw.map(({ pts, hole }) => ({
+    hole,
+    // y is flipped because SVG counts downwards and the plate does not
+    points: pts.map((p) => [round(p.x - cx), round(-(p.y - cy))]),
+  })).filter((l) => l.points.length >= 3);
+}

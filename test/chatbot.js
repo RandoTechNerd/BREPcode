@@ -4,10 +4,11 @@
 import {
   respond, buildModelsRequest, extractModels, modelScore,
   parseResize, resizeCode, parseFaceEdit, faceEditCode, parseScale, scaleCode,
-  parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem,
+  parseOp, opCode, EPS, buildApiRequest, harnessTags, filterHarness, composeSystem, composeSystemParts, usageNote,
   readClaudeStream, readOpenAIStream, emptyReplyReason, extractApiText, extractApiThinking,
   localBase, openaiBase, composeStyle, STYLE_LANGUAGES,
 } from "../viewer/chatbot.js";
+import * as CB from "../viewer/chatbot.js";
 import { looksLikeOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
 import * as dsl from "../src/dsl.js";
@@ -540,6 +541,114 @@ console.log("\nmodel ranking\n");
     sys.includes("Jscad rule.") && !sys.includes("Scad rule A."));
 }
 
+// ---- prompt caching: the stable prefix has to actually be stable ----------
+//
+// Every provider caches on a PREFIX — the leading tokens identical to last
+// time. The reference block used to sit in the MIDDLE of the instructions,
+// which put the first differing token about 3,000 in and made the whole
+// ~5,300-token base uncacheable. Every follow-up paid full price for
+// instructions the model had already been sent.
+//
+// So what is checked here is not "caching is switched on" but the property
+// that makes it work: two different messages must produce the SAME stable
+// half, and everything that differs must land in the volatile half.
+{
+  const NL = String.fromCharCode(10, 10);   // the blank line each block starts with
+  const base = { harness: "MISSION.", gem: "prefer metric", botName: "Bo", askDims: false };
+  const a = composeSystemParts({ ...base, reference: NL + "REF A", lessons: NL + "LESSON A" });
+  const b = composeSystemParts({ ...base, reference: NL + "REF B", lessons: "" });
+
+  check("two different messages share an identical stable half",
+    a.stable === b.stable, "the prefix moves, so nothing downstream can cache");
+  check("the per-message reference is NOT in the stable half",
+    !a.stable.includes("REF A") && !b.stable.includes("REF B"));
+  check("...it is in the volatile half", a.volatile.includes("REF A"));
+  check("lessons are volatile too — they are looked up per message",
+    a.volatile.includes("LESSON A") && !a.stable.includes("LESSON A"));
+  check("the user's own gem stays in the STABLE half",
+    a.stable.includes("prefer metric") && !a.volatile.includes("prefer metric"));
+  check("the viewer note is stable — it moves when a control moves, not per message",
+    composeSystemParts({ ...base, viewer: NL + "VIEWER" }).stable.includes("VIEWER"));
+
+  // The split must not change what the model is actually told.
+  check("stable + volatile is exactly the old single string",
+    composeSystem({ ...base, reference: NL + "REF A", lessons: NL + "LESSON A" })
+      === a.stable + a.volatile);
+  // Reference now comes AFTER the user's gem, so its precedence can no longer
+  // be implied by position. It has to be stated.
+  check("the harness still leads, so the prefix is the big stable thing",
+    a.stable.startsWith("MISSION."));
+
+  // Claude gets an explicit breakpoint at the seam.
+  const req = (opts) => JSON.parse(buildApiRequest(
+    { provider: "claude", model: "claude-opus-4-8", key: "k" },
+    [{ role: "user", text: "hi" }], opts).options.body);
+  const big = "M".repeat(9000);
+  const withRef = req({ harness: big, reference: NL + "REF A" });
+  check("claude: the system prompt is split into blocks", Array.isArray(withRef.system),
+    typeof withRef.system);
+  check("...the first block carries the cache breakpoint",
+    withRef.system[0].cache_control?.type === "ephemeral");
+  check("...and it is the STABLE one", withRef.system[0].text.startsWith(big));
+  check("...the reference rides in a second, uncached block",
+    withRef.system[1]?.text.includes("REF A") && !withRef.system[1].cache_control);
+  const noRef = req({ harness: big });
+  check("no reference means one block, not an empty trailing one — the API rejects those",
+    noRef.system.length === 1);
+  check("...which still carries the breakpoint",
+    noRef.system[0].cache_control?.type === "ephemeral");
+  // Two messages, same settings: the cached block must be byte-identical or
+  // the cache never hits.
+  check("the cached block is byte-identical across messages",
+    req({ harness: big, reference: NL + "A" }).system[0].text
+      === req({ harness: big, reference: NL + "B" }).system[0].text);
+  // A harness someone has emptied out is too small to be worth a cache WRITE,
+  // which costs more than a plain read.
+  const tiny = req({ harness: "short mission" });
+  check("a tiny harness is sent as a plain string, with no cache write",
+    typeof tiny.system === "string", JSON.stringify(tiny.system).slice(0, 80));
+
+  // The other two providers cache stable prefixes on their own — they need the
+  // ORDER and nothing else, so the only thing to check is that they still get
+  // the whole prompt and it still starts with the stable part.
+  for (const provider of ["openai", "gemini"]) {
+    const body = JSON.parse(buildApiRequest({ provider, model: "m", key: "k" },
+      [{ role: "user", text: "hi" }], { harness: big, reference: NL + "REF A" }).options.body);
+    const sys = provider === "openai"
+      ? body.messages[0].content
+      : body.systemInstruction.parts[0].text;
+    check(`${provider}: gets the whole prompt`, sys.includes(big) && sys.includes("REF A"));
+    check(`${provider}: ...stable part first, so its own prefix cache can hit`,
+      sys.indexOf(big) < sys.indexOf("REF A"));
+  }
+}
+
+// ---- the cache has to be VISIBLE, or a broken one looks like a working one
+{
+  const claude = usageNote("claude", { usage: {
+    input_tokens: 412, cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 5261, output_tokens: 900 } });
+  check("claude: a cache READ is reported", /cached 5261/.test(claude), claude);
+  check("...and told apart from fresh input", /in 412/.test(claude), claude);
+  check("...a zero is left out rather than printed as 'cache write 0'",
+    !/cache write/.test(claude), claude);
+  check("claude: a cache WRITE reads differently from a read",
+    /cache write 5261/.test(usageNote("claude", { usage: {
+      input_tokens: 12, cache_creation_input_tokens: 5261, output_tokens: 5 } })));
+  check("gemini: its own spelling is understood",
+    /cached 4000/.test(usageNote("gemini", { usageMetadata: {
+      promptTokenCount: 5000, cachedContentTokenCount: 4000, candidatesTokenCount: 700 } })));
+  check("openai: and its nested one",
+    /cached 3072/.test(usageNote("openai", { usage: {
+      prompt_tokens: 5000, prompt_tokens_details: { cached_tokens: 3072 }, completion_tokens: 40 } })));
+  // A provider that reports nothing must read as "not reported", never as a
+  // confident zero — silence is not evidence the cache missed.
+  check("no usage block means no claim at all", usageNote("claude", {}) === "");
+  check("...and neither does an empty one", usageNote("claude", { usage: {} }) === "");
+  check("a garbled number does not become NaN in the log",
+    !/NaN/.test(usageNote("claude", { usage: { input_tokens: "?", output_tokens: 9 } })));
+}
+
 // ---- streamed Claude replies + the "no response" bug -----------------------
 {
   // a synthetic SSE body: thinking first, then text, then the stop reason
@@ -704,6 +813,49 @@ console.log("\nbuild style — language, approach, passes\n");
   // an untouched setting must not start dictating priorities
   check("no pass keys at all => no PRIORITIES block",
     !/PRIORITIES/.test(composeStyle({ language: "openscad", approach: "oneshot" })));
+}
+
+console.log("\nthe model is told what the VIEWER is doing to the picture\n");
+{
+  const { viewerNote } = CB;
+  check("an opaque viewer says nothing at all", viewerNote({ filament: "opaque" }) === "");
+  check("...and so does a missing setting", viewerNote() === "" && viewerNote({}) === "");
+  check("an unknown filament is not invented into a warning",
+    viewerNote({ filament: "titanium" }) === "");
+
+  for (const f of ["pla", "petg", "natural"]) {
+    const n = viewerNote({ filament: f });
+    check(`${f}: the see-through setting is reported`, /see-through/i.test(n), n.slice(0, 60));
+  }
+  const nat = viewerNote({ filament: "natural" });
+  check("it names the control the user has to move",
+    /Material panel/.test(nat) && /Opaque/.test(nat), nat.slice(0, 120));
+  // The failure this exists to stop: a rebuild that cannot possibly help.
+  check("it forbids rewriting the model over a display setting",
+    /do NOT rewrite/i.test(nat), nat);
+  check("...and says the setting beats the code's colours",
+    /overrides/i.test(nat) && /colour/i.test(nat));
+  check("glass() is exempted, or every lens becomes a bug report",
+    /glass\(/.test(nat));
+
+  check("the note reaches the composed system prompt",
+    /Material panel/.test(composeSystem({ viewer: nat })));
+  check("...and an opaque viewer leaves the prompt as it was",
+    composeSystem({ viewer: "" }) === composeSystem({}));
+}
+
+console.log("\nwires are swept, not chained\n");
+{
+  const both = CB.DEFAULT_HARNESS + CB.POLISH_HARNESS;
+  check("tube() is offered for cables and bowden tubes",
+    /tube\(path/.test(CB.DEFAULT_HARNESS) && /bowden/i.test(CB.DEFAULT_HARNESS));
+  check("helix() is offered for a coiled cable", /helix\(/.test(CB.DEFAULT_HARNESS));
+  check("the old cylinder+sphere chain is named and forbidden",
+    /NEVER build a wire or tube as a chain of cylinders/.test(CB.DEFAULT_HARNESS));
+  check("polish knows to replace a chain it finds",
+    /tube\(path/.test(CB.POLISH_HARNESS) && /replace any chain/i.test(CB.POLISH_HARNESS));
+  check("both passes agree the sweep is one solid",
+    (both.match(/ONE solid/g) || []).length >= 2);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

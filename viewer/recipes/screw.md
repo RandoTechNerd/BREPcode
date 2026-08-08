@@ -4,6 +4,13 @@ title: Metric screws, nuts & printed holes (ISO)
 match: screw, screws, bolt, bolts, m2, m2.5, m3, m4, m5, m6, m8, countersunk, counterbore, cap head, socket head, hex nut, nut pocket, captive nut, tap, clearance hole, threaded hole
 ---
 
+**Call for it, do not build it by hand.** `screwHole("M3", { depth, head })`
+cuts the clearance hole and its head recess; `{ close: true }` for the tight
+clearance, `{ tap: true }` for the self-tapping pilot. `nutPocket("M3")` cuts the
+hex pocket at the right across-flats size, `{ captive: true }` adds the slide-in
+slot. The numbers below are the ones those functions use — see #parts.
+
+
 All ISO metric coarse. Columns: **thread pitch · clearance hole (normal) · tight
 clearance · screw-forms-its-own-thread pilot (printed plastic)**:
 

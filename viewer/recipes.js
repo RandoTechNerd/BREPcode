@@ -45,6 +45,82 @@ async function loadRecipe(file) {
   return _files.get(file);
 }
 
+// ---------------------------------------------------------------- directives
+//
+// Keyword matching is good but it is a guess, and a guess the user cannot see
+// or correct. These let them say it outright:
+//
+//   #cookiecutter   pull that subject in even though my wording missed it
+//   -#wires         leave it out even though my wording hit it
+//   /simple         rough block for THIS message, whatever the setting says
+//   /scad           answer in OpenSCAD for THIS message
+//
+// Directives are stripped before the message is sent. The model should read a
+// request, not a control panel — and "-#wires" in particular reads as a
+// requirement to leave wires off the PART, which is the opposite of the intent.
+//
+// A per-message override deliberately lands in the VOLATILE half of the system
+// prompt (see composeSystemParts). Putting it with the ordinary style settings
+// would change the cached prefix, so one /simple would cost a full re-read of
+// the instructions — a shortcut that makes the reply slower is not a shortcut.
+
+export const COMMANDS = {
+  simple: { approach: "iterative", blurb: "rough block first, refine after" },
+  complex: { approach: "oneshot", blurb: "go for the finished part in one reply" },
+  brep: { language: "brepcode", blurb: "answer in BREPcode" },
+  scad: { language: "openscad", blurb: "answer in OpenSCAD" },
+  jscad: { language: "jscad", blurb: "answer in JSCAD" },
+  py: { language: "build123d", blurb: "answer in build123d (Python)" },
+};
+
+// A directive is a WHOLE token. Without that, "#2 pencil" and a stray "1/2"
+// both look like commands, and the sizes in "cut it 1/2 inch" would vanish out
+// of the message on their way to the model.
+const TOKEN = /(^|\s)(-?)([#/])([a-z0-9]+)(?=$|[\s,.;:!?])/gi;
+
+export function parseDirectives(text, manifest) {
+  const known = new Set((manifest?.recipes || []).map((r) => r.tag.toLowerCase()));
+  const force = [], drop = [], unknown = [];
+  let approach = null, language = null, cleaned = String(text ?? "");
+
+  const cut = [];
+  for (const m of cleaned.matchAll(TOKEN)) {
+    const [, lead, minus, sigil, word] = m;
+    const w = word.toLowerCase();
+    if (sigil === "#") {
+      // Only a REAL tag is a directive. An unknown #word is far more likely to
+      // be someone's ordinary writing — a #2 pencil, a #6 screw — so it stays
+      // in the message untouched and is merely reported, in case it was a typo
+      // for a tag they meant.
+      if (!known.has(w)) { unknown.push(`#${word}`); continue; }
+      (minus ? drop : force).push(w);
+    } else {
+      const cmd = COMMANDS[w];
+      if (!cmd) { unknown.push(`/${word}`); continue; }
+      if (cmd.approach) approach = cmd.approach;
+      if (cmd.language) language = cmd.language;
+    }
+    cut.push({ start: m.index + lead.length, end: m.index + m[0].length });
+  }
+  // Right to left, so an earlier splice cannot move a later index.
+  for (const c of cut.reverse()) cleaned = cleaned.slice(0, c.start) + cleaned.slice(c.end);
+  cleaned = cleaned.replace(/[ \t]{2,}/g, " ").trim();
+
+  return {
+    text: cleaned,
+    force: [...new Set(force)],
+    // Dropping wins over forcing. "#wires -#wires" is a user who changed their
+    // mind mid-sentence, and leaving it out is the recoverable half of that.
+    drop: [...new Set(drop)],
+    approach,
+    language,
+    unknown,
+    // Did they actually steer anything? The caller needs to know whether to
+    // show the chip and whether to build an override block at all.
+    any: !!(force.length || drop.length || approach || language),
+  };
+}
+
 // Frontmatter is metadata for the matcher, not for the model — the model gets
 // the prose only.
 export function stripFrontmatter(text) {
@@ -103,6 +179,13 @@ export function matchRecipes(text, manifest, opts = {}) {
   for (const r of entries) {
     if ((r.match || []).some((term) => termMatches(term, haystack))) hit.set(r.tag, r);
   }
+  // An explicit #tag beats the keyword guess. Added BEFORE the parent pass, so
+  // forcing a child still drags its parent in — "#AAA" alone should still carry
+  // the general battery rules, exactly as a keyword match would.
+  for (const t of opts.force || []) {
+    const r = entries.find((e) => e.tag.toLowerCase() === String(t).toLowerCase());
+    if (r) hit.set(r.tag, r);
+  }
 
   // A matched child pulls its parent in for context even when the parent's own
   // keywords never appeared — "a AAA holder" never says "battery".
@@ -110,6 +193,17 @@ export function matchRecipes(text, manifest, opts = {}) {
     if (r.parent && !hit.has(r.parent)) {
       const p = entries.find((e) => e.tag === r.parent);
       if (p) hit.set(p.tag, p);
+    }
+  }
+
+  // -#tag last, so it beats both the keyword guess and an explicit #tag. A
+  // parent dropped this way takes its children with it: keeping ##AAA after
+  // "-#batt" would leave the cell dimensions with none of the rules that make
+  // sense of them.
+  for (const t of opts.drop || []) {
+    const tag = String(t).toLowerCase();
+    for (const [k, r] of [...hit]) {
+      if (k.toLowerCase() === tag || String(r.parent || "").toLowerCase() === tag) hit.delete(k);
     }
   }
 
@@ -147,6 +241,7 @@ export async function referenceFor(text, opts = {}) {
   }
   const { matched, questions } = matchRecipes(text, manifest, opts);
   if (!matched.length) return { text: "", tags: [], questions: [] };
+  const forced = new Set((opts.force || []).map((t) => String(t).toLowerCase()));
 
   const parts = [];
   for (const r of matched) {
@@ -157,8 +252,16 @@ export async function referenceFor(text, opts = {}) {
   if (!parts.length) return { text: "", tags: [], questions: [] };
 
   return {
-    text: `\n\nREFERENCE — pulled in because this request mentions ${matched.map((r) => "#" + r.tag).join(", ")}. `
-      + `Treat it as established fact and build from it; do not re-derive or contradict it.\n\n`
+    // This block used to sit BEFORE the user's own preferences, so those got
+    // the last word by position. It now comes last instead — everything that
+    // holds still has to lead, or none of it can be cached — so the precedence
+    // is stated outright rather than implied by ordering. Saying it is the more
+    // robust form anyway: position is a weak signal and one sentence is not.
+    text: `\n\nREFERENCE — ${matched.every((r) => forced.has(r.tag.toLowerCase()))
+      ? `the user asked for ${matched.map((r) => "#" + r.tag).join(", ")} by name`
+      : `pulled in because this request mentions ${matched.map((r) => "#" + r.tag).join(", ")}`}. `
+      + `Treat it as established fact and build from it; do not re-derive or contradict it. `
+      + `Where it conflicts with the user's own preferences above, THEIR preferences win.\n\n`
       + parts.join("\n\n"),
     tags: matched.map((r) => r.tag),
     questions,

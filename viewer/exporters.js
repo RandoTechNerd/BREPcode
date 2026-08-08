@@ -343,10 +343,10 @@ ${used.map((hex, i) => `    <part id="${firstObject + i}" subtype="normal_part">
   // each part uses, project_settings says what colour each extruder holds.
   // We wrote only the first half — so our own coloured exports re-imported
   // GREY (and slicers showed default filament colours). Both halves now ship.
-  const project = `{\n  "filament_colour": [${used.map((hex) => `"${hex}"`).join(", ")}]\n}\n`;
-  return threeMfPackage(model, name, opts.source, [
+  const project = projectPart(opts, used);
+  return threeMfPackage(model, name, opts, [
     ["Metadata/model_settings.config", settings],
-    ["Metadata/project_settings.config", project],
+    ...(project ? [["Metadata/project_settings.config", project]] : []),
   ]);
 }
 
@@ -513,16 +513,100 @@ ${items.join("\n")}
 </model>
 `;
     const config = `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${settings.join("\n")}\n</config>\n`;
-    const project = `{\n  "filament_colour": [${palette.map((hex) => `"${hex}"`).join(", ")}]\n}\n`;
+    const project = projectPart(opts, palette);
     return {
       suffix: plates.length > 1 ? `-plate${pi + 1}` : "",
       parts: placed.length,
-      bytes: threeMfPackage(model, name, opts.source, [
+      bytes: threeMfPackage(model, name, opts, [
         ["Metadata/model_settings.config", config],
-        ["Metadata/project_settings.config", project],
+        ...(project ? [["Metadata/project_settings.config", project]] : []),
       ]),
     };
   });
+}
+
+// ----------------------------------------------------------- printer presets
+//
+// A 3MF can name the printer, the process and the filaments it was prepared
+// for, and a slicer that has those presets installed selects them on open.
+// Without it OrcaSlicer has nothing to match, so it invents a project preset
+// named after the file — which is why an exported part shows up as
+// "(stator.3mf)" in every dropdown and has to be set up by hand before it can
+// be sent to the printer.
+//
+// These are matched by STRING against the slicer's own preset names, so they
+// have to be spelled exactly as the vendor profile spells them. The names below
+// are read from OrcaSlicer's bundled Snapmaker profiles, not guessed:
+//   resources/profiles/Snapmaker/machine/Snapmaker U1 (0.4 nozzle).json
+//   resources/profiles/Snapmaker/process/0.20 Standard @Snapmaker U1 (0.4 nozzle).json
+//   resources/profiles/Snapmaker/filament/Snapmaker PLA @U1.json
+// A name that does not match is not an error — the slicer just falls back to
+// whatever was selected last, which is exactly the old behaviour.
+export const PRINTERS = {
+  "snapmaker-u1": {
+    label: "Snapmaker U1",
+    blurb: "4 tool heads, 270 × 270 × 270 mm",
+    printer: "Snapmaker U1 (0.4 nozzle)",
+    process: "0.20 Standard @Snapmaker U1 (0.4 nozzle)",
+    filament: "Snapmaker PLA @U1",
+    filamentType: "PLA",
+    model: "Snapmaker U1",
+    variant: "0.4",
+    // The U1 is a TOOLCHANGER: four separate heads, not one head fed by a
+    // splitter. Its profile inherits fdm_toolchanger and lists four nozzles, so
+    // every filament array below has to be four long or the slicer reads a
+    // printer with fewer tools than it has.
+    nozzles: 4,
+    nozzleDiameter: "0.4",
+    bed: [270, 270],
+    height: 270,
+  },
+};
+
+// Colours for extruders the model does not use. A tool head with no filament
+// named is still a tool head, and leaving the slot empty makes the slicer
+// invent one.
+const SPARE_COLOURS = ["#FFFFFF", "#000000", "#FF6A13", "#1E88E5"];
+
+// The project preset a slicer reads on open. `palette` is the model's own
+// colours, in extruder order.
+export function projectSettings(printerKey, palette = []) {
+  const p = PRINTERS[printerKey];
+  if (!p) return null;
+  const n = p.nozzles;
+  const colours = [];
+  for (let i = 0; i < n; i++) {
+    colours.push(palette[i] || SPARE_COLOURS[i % SPARE_COLOURS.length]);
+  }
+  const times = (v) => Array.from({ length: n }, () => v);
+  return {
+    // what the slicer matches against its installed presets
+    printer_settings_id: p.printer,
+    print_settings_id: p.process,
+    filament_settings_id: times(p.filament),
+    printer_model: p.model,
+    printer_variant: p.variant,
+    nozzle_diameter: times(p.nozzleDiameter),
+    filament_colour: colours,
+    filament_type: times(p.filamentType),
+    // Orca reads these to know the file is a project rather than a bare mesh.
+    from: "project",
+    name: "project_settings",
+    version: APP_VERSION,
+  };
+}
+
+// The project_settings part, whichever writer is asking.
+//
+// With no printer chosen this stays exactly what it was — the palette alone,
+// which is what makes a re-imported colour 3MF come back coloured. Choose one
+// and it also names the presets, so the slicer opens on the right machine with
+// the right filaments instead of a project named after the file.
+function projectPart(opts, palette = []) {
+  const full = projectSettings(opts?.printer, palette);
+  if (full) return `${JSON.stringify(full, null, 1)}\n`;
+  if (!palette.length) return null;
+  return `{\n  "filament_colour": [${palette.map((hex) => `"${hex}"`).join(", ")}]\n}\n`;
 }
 
 // ------------------------------------------------------ shareable model link
@@ -590,18 +674,20 @@ export async function readShareFragment(hash) {
 export const SOURCE_PART = "Metadata/BREPcode.source.js";
 export const SOURCE_MARKER = "BREPCODE-SOURCE-V1";
 
-const sourceHeader = (name) =>
-  `// ${SOURCE_MARKER}\n`
-  + `// The BREPcode that generated "${name}". Paste it into BREPcode.com to get\n`
-  + `// the editable, parametric model back — or just read it to see how it was made.\n`
-  + `// Exported by BREPcode-${APP_VERSION}.\n\n`;
-
 // The OPC wrapper both 3MF writers share. Every part in the package needs a
-// declared content type, so the source brings its own Default. Slicers read
-// 3D/3dmodel.model and ignore the rest — Bambu and Orca both ship extra
+// declared content type, so the project part brings its own Default. Slicers
+// read 3D/3dmodel.model and ignore the rest — Bambu and Orca both ship extra
 // Metadata/ parts of their own, so this is a well-trodden path, not a hack.
-function threeMfPackage(model, name, code, extra = []) {
-  const source = code ? String(code).trim() : "";
+//
+// `project` is either a source string or the same {source, scene, meshes,
+// history} a .bcode is written from. It is written with bcodeFile(), so the
+// part inside the zip IS a .bcode: rename it and it opens. That is the whole
+// reason the scene and the undo history can ride along at all — the format for
+// carrying them already existed, and inventing a second one for the 3MF would
+// have meant two things to keep in step.
+function threeMfPackage(model, name, project, extra = []) {
+  const p = (project && typeof project === "object") ? project : { source: project };
+  const source = p.source ? String(p.source).trim() : "";
   const hasConfig = extra.some(([p]) => /\.config$/i.test(p));
   return storedZip([
     ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
@@ -616,7 +702,11 @@ ${hasConfig ? ` <Default Extension="config" ContentType="application/xml"/>\n` :
 </Relationships>
 `],
     ["3D/3dmodel.model", model],
-    ...(source ? [[SOURCE_PART, sourceHeader(name) + source + "\n"]] : []),
+    ...(source
+      ? [[SOURCE_PART, bcodeFile(source, {
+        name, scene: p.scene, meshes: p.meshes, history: p.history,
+      })]]
+      : []),
     // Slicer-side metadata, e.g. Metadata/model_settings.config — which is
     // where OrcaSlicer actually reads per-part colour from.
     ...extra,
@@ -810,5 +900,74 @@ ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).joi
  </build>
 </model>
 `;
-  return threeMfPackage(model, name, opts.source);
+  const project = projectPart(opts);
+  return threeMfPackage(model, name, opts,
+    project ? [["Metadata/project_settings.config", project]] : []);
+}
+
+// ------------------------------------------------- self-contained embed page
+//
+// A single HTML file carrying the model, shown with Google's model-viewer.
+// Pure string-building, and it lives HERE rather than in the page so it can be
+// tested: this file is the one people hand to a client or drop on a site, and
+// the two things most likely to be quietly wrong about it — that it takes an
+// age to show anything, and that it is a dead end with no way back to the
+// source — are exactly the things a test can pin.
+export const MV_CDN = "https://unpkg.com/@google/model-viewer@4.0.0/dist/model-viewer.min.js";
+
+const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+export function embedPage({
+  glbBase64, title = "model", look = {}, poster = "", editUrl = "",
+} = {}) {
+  if (!glbBase64) throw new Error("embedPage() needs the model as base64 GLB");
+  const bg = look.bg || "#0e0f1a";
+  const exposure = look.exposure ?? 1;
+  const shadow = look.shadow ?? 1;
+  const uri = `data:model/gltf-binary;base64,${glbBase64}`;
+
+  // The GLB is a base64 data URI, so on a detailed part this document is
+  // megabytes and model-viewer must decode all of it before the first frame.
+  // A poster fixes that: the still is a few KB, appears immediately, and gets
+  // swapped for the real thing the moment the model is ready. `loading="eager"`
+  // starts that work AT ONCE rather than waiting for the element to scroll into
+  // view — the aim is to be quick, not to defer — and `reveal="auto"` performs
+  // the swap without being asked.
+  const mv = `<model-viewer src="${uri}" alt="${escHtml(title)}"`
+    + (poster ? ` poster="${poster}" loading="eager" reveal="auto"` : "")
+    + ` camera-controls auto-rotate touch-action="pan-y"`
+    + ` shadow-intensity="${shadow}" exposure="${exposure}" tone-mapping="neutral"`
+    + ` style="background:${bg}"></model-viewer>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escHtml(title)}</title>
+<script type="module" src="${MV_CDN}"></scr` + `ipt>
+<style>
+  html, body { margin: 0; height: 100%; background: ${bg}; }
+  model-viewer { width: 100%; height: 100%; --poster-color: ${bg}; }
+  .bc-bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px;
+    align-items: center; padding: 9px 13px; font: 12.5px system-ui, sans-serif;
+    color: #cfe0f2; background: linear-gradient(to top, rgba(6,10,16,.82), rgba(6,10,16,0)); }
+  .bc-bar a { color: #7fd4ff; text-decoration: none; }
+  .bc-bar a:hover { text-decoration: underline; }
+  .bc-edit { margin-left: auto; border: 1px solid rgba(127,212,255,.45); border-radius: 7px;
+    padding: 5px 11px; background: rgba(20,32,48,.72); white-space: nowrap; }
+</style>
+</head>
+<body>
+  <!-- Made with BREPcode (brepcode.com). Viewer: Google model-viewer (free, Apache-2.0).
+       Lighting exported from the editor: exposure ${exposure}, shadow ${shadow}, background ${bg}. -->
+  ${mv}
+  <div class="bc-bar">
+    <span>${escHtml(title)}</span>
+    <span style="opacity:.6">made with <a href="https://brepcode.com" target="_blank" rel="noopener">BREPcode</a></span>
+    ${editUrl ? `<a class="bc-edit" href="${escHtml(editUrl)}" target="_blank" rel="noopener">Edit the code &rarr;</a>` : ""}
+  </div>
+</body>
+</html>`;
 }

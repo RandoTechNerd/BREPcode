@@ -76,7 +76,7 @@ const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), tex
 //   node build-site.mjs --with-locked-key  -> key included (private hand-off)
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
-  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "simplify.js",
+  "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "simplify.js", "tour.js", "filaments.js", "cutterkit.js",
   "slicer.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
@@ -92,8 +92,43 @@ try {
   const { execSync } = await import("node:child_process");
   stamp += " · " + execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim();
 } catch { /* not a git checkout — the date alone still answers the question */ }
+// BUILDSTAMP appears TWICE — the About tooltip and the <meta> the stale-copy
+// check reads — so this is a split/join, not a .replace(), which would only
+// ever fix the first one and leave the check comparing against the literal.
+const BUILD = `built ${stamp}`;
 writeFileSync(join(OUT, "index.html"),
-  rewrite(readFileSync("viewer/index.html", "utf8")).replace("BUILDSTAMP", `built ${stamp}`));
+  rewrite(readFileSync("viewer/index.html", "utf8")).split("BUILDSTAMP").join(BUILD));
+
+// What the running page asks for, with the cache bypassed, to find out whether
+// it is the current build. Deliberately tiny and at the site root: it is
+// fetched on every load, including on a phone over mobile data.
+writeFileSync(join(OUT, "version.json"), JSON.stringify({ build: BUILD }) + "\n");
+
+// ---- /tour : a URL you can put on a slide -----------------------------
+// A static host has no rewrite rules, so a real path means a real folder. This
+// one bounces to the app with ?tour=1, which auto-starts the walkthrough.
+// Belt and braces: the meta refresh covers a browser with JS disabled, the
+// script covers a host that strips meta refresh, and the link covers both
+// failing — nobody should ever land on a blank page.
+mkdirSync(join(OUT, "tour"), { recursive: true });
+writeFileSync(join(OUT, "tour", "index.html"),
+`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BREPcode — guided tour</title>
+<meta name="description" content="A two-minute guided tour of BREPcode: browser CAD where the model is code. OpenSCAD, JSCAD and build123d all run in the same tab." />
+<link rel="canonical" href="https://brepcode.com/" />
+<meta http-equiv="refresh" content="0; url=../index.html?tour=1" />
+<script>location.replace("../index.html?tour=1");</script>
+<style>body{background:#0b0f16;color:#dbe6f2;font:15px/1.6 system-ui,sans-serif;
+  display:grid;place-items:center;height:100vh;margin:0;text-align:center}
+a{color:#7fd4ff}</style>
+</head>
+<body><p>Starting the tour&hellip;<br /><a href="../index.html?tour=1">Open BREPcode</a></p></body>
+</html>
+`);
 for (const f of VIEWER_JS) {
   if (!existsSync(`viewer/${f}`)) continue;      // locked-key.js is optional by design
   writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));

@@ -11,6 +11,7 @@
 // evaluator actually receives.
 import { readFileSync } from "node:fs";
 import { DEFAULT_HARNESS } from "../viewer/chatbot.js";
+import { UNSUPPORTED, LIMITED, MODULES } from "../src/openscad.js";
 import * as dsl from "../index.js";
 
 let pass = 0, fail = 0;
@@ -25,7 +26,9 @@ const check = (label, ok, detail = "") => {
 const VIEWER_EXTRAS = ["qrcode", "datamatrix", "barcode", "text", "stencil",
   // blend() and the distance-field shapes it takes. Not in the DSL: they are
   // built in the viewer, where the SDF meshers live.
-  "blend", "sphere3d", "box3d", "cylinder3d", "torus3d", "move3d"];
+  "blend", "sphere3d", "box3d", "cylinder3d", "torus3d", "move3d",
+  // names a Cookiecad spool for the viewer; geometry and exports untouched
+  "filament"];
 // Namespaces, not callables — a model reaches these as primitives.cube(...)
 const JSCAD_NAMESPACES = ["primitives", "booleans", "transforms", "colors", "jscad"];
 
@@ -46,6 +49,20 @@ const NOT_VOCAB = new Set([
   "main", "color",
 ]);
 
+// The same section names OpenSCAD's own modules — the ones that work, and the
+// ones it WARNS are absent so a model does not reach for them. Those are not
+// claims about BREPcode's evaluator, so they are not checked against it.
+//
+// Sourced from the translator, never typed here, and deliberately intersected
+// with what BREPcode lacks: a word it also has (cube, hull, difference, text…)
+// stays checked, so this cannot become a hole big enough to hide a real
+// regression. What IS exempted is verified harder in test/toolfit.js, which
+// runs each supported module through fromOpenSCAD and fails if the prompt
+// advertises one the translator does not know.
+const OPENSCAD_ONLY = new Set(
+  [...MODULES, ...Object.keys(UNSUPPORTED), ...Object.keys(LIMITED)]
+    .filter((n) => !real.has(n)));
+
 // No space before the paren. Prose puts one there — "a colour (great for…)",
 // "the app (a browser CAD app)" — and code never does, so this alone separates
 // a claim about the vocabulary from an ordinary English aside.
@@ -56,10 +73,16 @@ const unique = [...new Set(named)].sort();
 
 check("the harness names some vocabulary at all", unique.length > 10, `${unique.length}`);
 
-const missing = unique.filter((n) => !real.has(n));
+const missing = unique.filter((n) => !real.has(n) && !OPENSCAD_ONLY.has(n));
 check("every word the prompt promises actually exists",
   missing.length === 0,
   missing.length ? `PROMISED BUT MISSING: ${missing.join(", ")}` : "");
+
+// The other direction — that the prompt names every module the translator has,
+// and none that it lacks — is test/toolfit.js's job. It has to be, because it
+// needs the plumbing exclusions (render/group/children/echo/assert are real
+// modules a model never types by name) and encoding those here would just be
+// the same list written twice.
 
 // The specific regression that prompted all this.
 check("colorize exists", typeof dsl.colorize === "function");

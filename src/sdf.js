@@ -199,3 +199,61 @@ export function meshVolume({ points, faces }) {
   }
   return Math.abs(v);
 }
+
+// ------------------------------------------------- a blend you can actually print
+//
+// surfaceNets samples a field inside a box, and anywhere the surface reaches
+// the WALL of that box it simply stops — leaving a hole where the mesh should
+// have closed. Measured on two blended spheres at res 40:
+//
+//     bounds with room to spare   0 open edges   watertight
+//     bounds touching the surface 228 open edges broken
+//     bounds cutting the shape    856 open edges broken
+//
+// That mesh then goes to polyhedron() and into the kernel, which is where a
+// blend turns into "Not manifold" — for a reason that has nothing to do with
+// the blend and everything to do with the window it was sampled through.
+//
+// So: notice, and fix the actual cause. A surface touching the wall means the
+// window was too small, and the right answer is a bigger window — not a patch
+// over the hole, which would cap the shape off flat where it was still going.
+// Repair is the last resort, for numerical nicks rather than truncation.
+export function solidNets(f, bounds, res = 48, opts = {}) {
+  const { grow = 0.18, tries = 2, repair = null } = opts;
+  let [lo, hi] = [bounds[0].slice(), bounds[1].slice()];
+  let mesh = surfaceNets(f, [lo, hi], res);
+  let grew = 0;
+
+  const openCount = (m) => {
+    const seen = new Map();
+    for (const [a, b, c] of m.faces) {
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const k = u < v ? `${u}_${v}` : `${v}_${u}`;
+        seen.set(k, (seen.get(k) || 0) + 1);
+      }
+    }
+    let n = 0;
+    for (const c of seen.values()) if (c === 1) n++;
+    return n;
+  };
+
+  while (openCount(mesh) > 0 && grew < tries) {
+    // Widen by a share of the current span, in every direction — the surface
+    // could be leaving through any wall, and finding out which costs more than
+    // simply giving it room.
+    const pad = [0, 1, 2].map((i) => (hi[i] - lo[i]) * grow);
+    lo = lo.map((v, i) => v - pad[i]);
+    hi = hi.map((v, i) => v + pad[i]);
+    mesh = surfaceNets(f, [lo, hi], res);
+    grew++;
+  }
+
+  const open = openCount(mesh);
+  let repaired = false;
+  if (open > 0 && typeof repair === "function") {
+    const fixed = repair(mesh);
+    mesh = { points: fixed.points, faces: fixed.faces };
+    repaired = true;
+  }
+  return { mesh, bounds: [lo, hi], grew, repaired, openEdges: open };
+}

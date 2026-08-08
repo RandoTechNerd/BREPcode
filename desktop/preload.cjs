@@ -36,6 +36,20 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   recoveryRead: (file) => ipcRenderer.invoke("recovery:read", file),
   recoveryReveal: () => ipcRenderer.invoke("recovery:reveal"),
 
+  // What the chat has learned on this machine. Desktop only — the website has
+  // no disk and no business accumulating one person's history. lessons.json
+  // feeds the next prompt; sessions/*.jsonl is the readable log.
+  lessonsLoad: () => ipcRenderer.invoke("lessons:load"),
+  lessonsSave: (store) => ipcRenderer.invoke("lessons:save", store),
+  lessonsAppend: (entry) => ipcRenderer.invoke("lessons:append", entry),
+  lessonsWhere: () => ipcRenderer.invoke("lessons:where"),
+  lessonsReveal: () => ipcRenderer.invoke("lessons:reveal"),
+  lessonsForget: () => ipcRenderer.invoke("lessons:forget"),
+
+  // Fetch a model file found online. Desktop only, because a browser cannot
+  // fetch across origins at all. Every brake is on the main-process side.
+  fetchModel: (url) => ipcRenderer.invoke("model:fetch", url),
+
   // Which slicer is installed, and what version — the renderer asks BEFORE
   // exporting so it can stamp the right version into the 3MF it is about to
   // build, which is what stops OrcaSlicer showing its "old version" dialog.
