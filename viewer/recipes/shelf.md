@@ -1,17 +1,15 @@
 ---
 tag: shelf
 title: The parts shelf — common printed parts, already written
-match: standoff, boss, pcb mount, keyhole, wall mount, hang on the wall, zip tie, cable tie, gusset, brace, snap fit, snap hook, snap catch, clip, latch, dovetail, living hinge, hinge, knuckle hinge, enclosure, case, box with a lid, shell, lid, rebate, vent, louvre, louver, air vent, honeycomb, lightening, knob, knurled, handle, drawer pull, hook, coat hook, rubber foot, label plate, nameplate, pillow block, bearing block, shelf, parts shelf, common parts, prebuilt, pre-built
+match: standoff, boss, pcb mount, keyhole, wall mount, hang on the wall, zip tie, cable tie, gusset, brace, snap fit, snap hook, snap catch, clip, latch, dovetail, living hinge, hinge, knuckle hinge, enclosure, case, box with a lid, shell, lid, rebate, vent, louvre, louver, air vent, honeycomb, lightening, knob, knurled, handle, drawer pull, hook, coat hook, rubber foot, label plate, nameplate, pillow block, bearing block, shelf, parts shelf, common parts, prebuilt, pre-built, pcb standoff, pcb mount, raspberry pi, arduino, uno, pico, esp32, dev board, port cutout, panel mount, usb cutout, hdmi cutout, gridfinity, gridfinity bin, gridfinity baseplate, storage bin, organiser, organizer, cable clip, bolt circle, slot, elongated hole
 ---
 
-Twenty-one parts that are already written, already build, and already have the
-awkward number right. Reach for one instead of modelling it — then change the
-options, because every one is parametric.
+Parts already written, already building, with the awkward number right. Reach
+for one instead of modelling it, then change the options — all parametric.
 
 Anything named `…Slot`, `…Pocket`, `…Hole` or `…Catch` is a **negative you
-subtract**. Four more are cuts without saying so in the name: `livingHinge`,
-`lidLip`, `vent` and `honeycomb` — the first two always, the last two unless
-you pass `{ solid: true }`.
+subtract**. So are `livingHinge`, `lidLip`, `portCutout` and `slot`, plus
+`vent` and `honeycomb` unless you pass `{ solid: true }`.
 
 ## Mounting
 
@@ -59,10 +57,41 @@ labelPlate({ w: 40, h: 12, t: 1.5 })          // rounded plate to put text() on
 bearingBlock("608", { wall: 4 })              // pillow block, bored right through
 ```
 
+## Electronics
+
+Boards are centred on the origin, so a plate for a Pi is one call at 0,0.
+Known boards: **pi4** (also 3 and 5), **pizero**, **pico**, **uno**.
+
+```
+pcbStandoffs("pi4", { h: 6 })                 // posts at the board's own holes
+pcbPlate("pi4", { t: 3, h: 6 })               // a plate with those posts on it
+portCutout("usb-c", { t: 3 })                 // CUT — panel hole, cuts along +Y
+```
+
+`portCutout` knows usb-a, usb-c, micro-usb, hdmi, mini-hdmi, rj45, microsd, sd,
+xt60, xt30, rocker, barrel, audio, banana, fuse, button12, button16, pot. A
+pair is a rectangle, a single number is a round hole; either way the size is
+the CUT, already including the clearance a moulded cable shroud needs.
+
+## Storage — Gridfinity
+
+```
+gridfinityBin({ x: 2, y: 1, u: 3 })           // 2x1 cells, 3 units tall
+gridfinityBase({ x: 2, y: 2 })                // the sockets they drop into
+```
+
+## Handling — the rest
+
+```
+slot({ d: 4, len: 20, depth: 6 })             // CUT — a screw can slide along it
+cableClip({ d: 6, t: 1.6, w: 8 })             // spring clip round a cable
+boltCircle(6, 20, cylinder({ d: 3.4, h: 10 }))  // copies evenly round a circle
+```
+
 ## Putting them together
 
-Shelf parts are ordinary shapes — union them on, subtract the cuts, move them
-where you want. A box with vents, feet and a lid rebate is four calls:
+Ordinary shapes: union them on, subtract the cuts, move them. A box with vents,
+feet and a lid rebate is four calls:
 
 ```js
 const W = 60, D = 40, H = 25;
@@ -78,20 +107,30 @@ return difference(
 ## The numbers that decide whether it works
 
 - **A snap hook is a spring, and `t` is its stiffness.** 1.6mm in PLA flexes and
-  returns; 3mm does not bend, it breaks. Always pair it with `snapCatch()` using
-  the same `w` and `lip` — that is the whole reason the catch takes those
-  arguments instead of its own.
-- **A living hinge leaves 0.4mm.** Thicker will not fold, thinner tears on the
-  first bend. It must run along the layer lines, not across them.
-- **`shell()` rounds only the uprights.** That is deliberate: four hulled
-  cylinders build in a fraction of the time of rounding every edge, and a
-  rounded top edge is not usually what an enclosure wants.
-- **`vent()` slots run the SHORT way and are round-ended.** A square end starts
-  a crack; a long horizontal slot sags as it bridges.
-- **`knob()` cuts its flutes.** So the diameter you ask for is the diameter you
-  get — adding flutes instead would make it bigger than you said.
+  returns; 3mm breaks. Pair it with `snapCatch()` on the same `w` and `lip` —
+  that is why the catch takes those arguments rather than its own.
+- **A living hinge leaves 0.4mm.** Thicker will not fold, thinner tears. Run it
+  along the layer lines, not across them.
+- **`shell()` rounds only the uprights** — four hulled cylinders, far cheaper
+  than rounding every edge, and a rounded top is rarely what a case wants.
+- **`vent()` slots run the SHORT way, round-ended.** Square ends start cracks;
+  a long horizontal slot sags as it bridges.
+- **`knob()` cuts its flutes**, so the diameter you ask for is what you get.
 - **`bearingBlock()` bores right through.** A blind seat traps the bearing
   forever and leaves the shaft nowhere to go.
+- **`portCutout()` cuts along +Y, not down Z.** It is the one break in the
+  convention, and a deliberate one: a port is always in a vertical wall, and
+  making every caller wrap it in a rotate is a rotation to get wrong. Put it at
+  the wall's inside face and it runs outward through it. Rectangles get a
+  45-degree roof by default so the top edge is not an unsupported bridge.
+- **An Arduino Uno's holes are NOT a rectangle.** `pcbStandoffs("uno")` has the
+  real four positions; laying them out as a rectangle by eye is the commonest
+  reason a printed Arduino case will not close.
+- **A Gridfinity bin gets one plinth per CELL.** A 2×1 bin has two, not one
+  stretched across — that is what drops into a baseplate. `gridfinityBin()`
+  does it; the profile is the published 0.8 / 1.8 / 2.15 stack, and a test
+  checks a bin actually seats in a baseplate this code generated. Test-print
+  one before committing to a batch if it has to mate with someone else's.
 
 Every part validates its arguments and refuses bad ones by name, so a mistake
 is a message rather than a shape that is quietly wrong.

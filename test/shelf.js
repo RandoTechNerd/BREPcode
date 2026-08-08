@@ -41,6 +41,12 @@ async function measure(shape) {
 }
 const near = (a, b, tol = 0.1) => Math.abs(a - b) <= tol;
 
+// Match a number as PROSE writes it. The recipes write 13.0 and 14.0; a JS
+// number literal of 13.0 is 13, and `${13}` is "13". A string compare calls
+// that a disagreement when the two agree perfectly well, so the trailing zero
+// is optional and the decimal point is escaped rather than left as "any char".
+const numRe = (n) => String(n).replace(".", "\\.") + (Number.isInteger(n) ? "(\\.0)?" : "");
+
 // Run a sample exactly as the picker would insert it and the model would write
 // it — through the real vocabulary, not by calling the function directly.
 const vocab = { ...dsl, ...shelf };
@@ -58,10 +64,36 @@ console.log("\nthe index is a real index\n");
   // ...and the reverse: a part written and never shelved is a part nobody can
   // find, which is the same as not having written it.
   const exported = Object.keys(shelf).filter((k) => typeof shelf[k] === "function"
-    && !["shelfIndex", "shelfGroups"].includes(k));
+    // lookups and helpers that return DATA rather than geometry — they are
+    // not parts and have nothing to browse
+    && !["shelfIndex", "shelfGroups", "pcbSpec", "pcbHoles"].includes(k));
   const unshelved = exported.filter((k) => !SHELF.some((p) => p.id === k));
   check("every part written is on the shelf", unshelved.length === 0, unshelved.join(", "));
-  check("the groups are few enough to scan", shelfGroups().length <= 6, shelfGroups().join(", "));
+  check("the groups are few enough to scan", shelfGroups().length <= 8, shelfGroups().join(", "));
+  check("every part carries search keywords", SHELF.every((p) => p.keywords?.trim()),
+    SHELF.filter((p) => !p.keywords?.trim()).map((p) => p.id).join(", "));
+
+  // The words a PERSON types, against the same fields the picker searches.
+  // Found the hard way: "arduino" returned nothing while pcbStandoffs("uno")
+  // sat right there, because the blurb said "uno" and nobody searches for that.
+  const search = (q) => SHELF.filter((p) => [p.label, p.blurb, p.id, p.group, p.keywords || ""]
+    .some((s) => s.toLowerCase().includes(q.toLowerCase())));
+  for (const [term, want] of [
+    ["arduino", "pcbStandoffs"], ["raspberry pi", "pcbStandoffs"], ["esp32", "pcbStandoffs"],
+    ["usb", "portCutout"], ["ethernet", "portCutout"], ["sd card", "portCutout"],
+    ["gridfinity", "gridfinityBin"], ["storage", "gridfinityBin"],
+    ["enclosure", "shell"], ["case", "shell"], ["project box", "shell"],
+    ["snap fit", "snapHook"], ["latch", "snapHook"], ["clip", "snapHook"],
+    ["coat hook", "hook"], ["nameplate", "labelPlate"], ["cooling", "vent"],
+    ["louver", "vent"], ["spacer", "standoff"], ["heat set", "screwBoss"],
+    ["cable tie", "zipTieSlot"], ["wall mount", "keyholeSlot"], ["608", "bearingBlock"],
+    ["flexure", "livingHinge"], ["print in place", "pinHinge"], ["dial", "knob"],
+    ["organizer", "gridfinityBin"], ["organiser", "gridfinityBin"],
+  ]) {
+    const found = search(term);
+    check(`searching "${term}" finds ${want}`, found.some((p) => p.id === want),
+      found.length ? `found ${found.map((p) => p.id).join(", ")}` : "found nothing at all");
+  }
   check("shelfIndex() hands out copies, not the live list",
     shelfIndex()[0] !== SHELF[0] && shelfIndex()[0].id === SHELF[0].id);
   // The naming rule, in the direction that is actually safe to promise.
@@ -207,6 +239,146 @@ console.log("\nthe traps each part exists to avoid\n");
   check("...and has real material in it", bbVol > 1000, `${bbVol.toFixed(0)} mm³`);
 }
 
+console.log("\nboards: the pattern is the board's, not a rectangle drawn by eye\n");
+{
+  const { PCBS, pcbSpec, pcbHoles } = shelf;
+  // Every board's numbers are cross-checked against #devboard, which was
+  // written and reviewed first. Two copies of a dimension is how a model gets
+  // told 58 x 49 in one place and something else in the other.
+  const md = readFileSync(new URL("../viewer/recipes/board.md", import.meta.url), "utf8");
+  for (const [id, b] of Object.entries(PCBS)) {
+    check(`#devboard agrees on the ${id} outline`,
+      new RegExp(`${b.w}\\s*×\\s*${b.d}`).test(md), `code says ${b.w} x ${b.d}`);
+    if (b.hx) {
+      check(`...and on its ${b.hx} x ${b.hy} hole pattern`,
+        new RegExp(`\\*\\*${b.hx}\\s*×\\s*${b.hy}\\*\\*`).test(md), `code says ${b.hx} x ${b.hy}`);
+    }
+  }
+  // The Uno is the one that matters: its holes are famously NOT a rectangle,
+  // and laying them out as one is why a printed Arduino case will not close.
+  const uno = pcbHoles("uno");
+  check("the Uno has four holes", uno.length === 4);
+  const xs = new Set(uno.map((p) => +p[0].toFixed(1)));
+  const ys = new Set(uno.map((p) => +p[1].toFixed(1)));
+  check("...and they are NOT a rectangle", xs.size > 2 || ys.size > 2,
+    `${xs.size} distinct x, ${ys.size} distinct y — that is a rectangle`);
+  for (const [x, y] of uno) {
+    check(`...(${x.toFixed(1)}, ${y.toFixed(1)}) is inside the board outline`,
+      Math.abs(x) <= PCBS.uno.w / 2 && Math.abs(y) <= PCBS.uno.d / 2);
+  }
+  check("a rectangular board really is a rectangle", (() => {
+    const h = pcbHoles("pi4");
+    return h.length === 4 && new Set(h.map((p) => Math.abs(p[0]))).size === 1;
+  })());
+  // A RECTANGULAR pattern must be centred, or a plate drawn round it is off by
+  // half a board. The Uno is deliberately exempt: its holes are asymmetric, so
+  // their centroid is genuinely NOT the board centre — demanding otherwise
+  // would be demanding the wrong shape.
+  for (const [id, b] of Object.entries(PCBS)) {
+    if (!b.hx) continue;
+    const h = pcbHoles(id);
+    const cx = h.reduce((n, p) => n + p[0], 0) / h.length;
+    const cy = h.reduce((n, p) => n + p[1], 0) / h.length;
+    check(`${id}: the hole pattern is centred on the origin`,
+      Math.abs(cx) < 0.01 && Math.abs(cy) < 0.01, `centre is ${cx.toFixed(1)}, ${cy.toFixed(1)}`);
+  }
+  // ...and the Uno's four points are checked against the recipe individually,
+  // since a centroid tells you nothing about an asymmetric pattern.
+  for (const [px, py] of PCBS.uno.points) {
+    check(`#devboard lists the Uno hole at (${px}, ${py})`,
+      new RegExp(`\\(${numRe(px)},\\s*${numRe(py)}\\)`).test(md),
+      "the recipe and the table disagree");
+  }
+  const st = await measure(shelf.pcbStandoffs("pi4", { h: 6 }));
+  check("pi4 standoffs span the 58 x 49 pattern",
+    near(st.x, 58 + PCBS.pi4.hole * 2, 0.3) && near(st.y, 49 + PCBS.pi4.hole * 2, 0.3),
+    `${st.x.toFixed(1)} x ${st.y.toFixed(1)}`);
+  const pl = await measure(shelf.pcbPlate("pi4", { margin: 3 }));
+  check("...and a plate for it is the board plus its margin",
+    near(pl.x, 85 + 6, 0.3), `${pl.x.toFixed(1)}`);
+  let t = "";
+  try { pcbSpec("teensy"); } catch (e) { t = e.message; }
+  check("an unknown board lists the real ones", /pi4/.test(t) && /isn't known/.test(t), t);
+  check("board names are forgiving about case and spacing",
+    pcbSpec("Pi 4").w === 85 && pcbSpec("PIZERO").w === 65);
+}
+
+console.log("\ngridfinity: a bin this code made must seat in a base it made\n");
+{
+  const { GRID, gridfinityBin, gridfinityBase } = shelf;
+  const md = readFileSync(new URL("../viewer/recipes/gridfinity.md", import.meta.url), "utf8");
+  check("#gridfinity agrees on the 42mm pitch", md.includes(`${GRID.pitch} × ${GRID.pitch}`));
+  check("...on the 41.5 footprint", md.includes(`${GRID.foot} × ${GRID.foot}`));
+  check("...on the r3.75 corner", md.includes(`${GRID.r}`));
+  check("...on the 7mm height unit", md.includes(`**${GRID.unit}mm**`));
+  check("...and on the 0.8 / 1.8 / 2.15 plinth profile",
+    md.includes(`${GRID.chamferLo}mm 45°`) && md.includes(`${GRID.straight}mm straight`)
+      && md.includes(`${GRID.chamferHi}mm 45°`));
+  check("the three steps really add up to the stated base height",
+    near(GRID.chamferLo + GRID.straight + GRID.chamferHi, GRID.base, 0.001), `${GRID.base}`);
+
+  const bin = await measure(gridfinityBin({ x: 1, y: 1, u: 3 }));
+  check("a 1x1x3 bin is 41.5 across", near(bin.x, GRID.foot, 0.15), `${bin.x.toFixed(2)}`);
+  check("...and 21 tall (3 x 7, base included)", near(bin.z, 21, 0.05), `${bin.z.toFixed(2)}`);
+  const two = await measure(gridfinityBin({ x: 2, y: 1, u: 3 }));
+  check("a 2x1 bin is one pitch wider, not two footprints",
+    near(two.x, GRID.foot + GRID.pitch, 0.15), `${two.x.toFixed(2)}`);
+  check("...and is hollow", two.vol < 2 * 42 * 42 * 21 * 0.5, `${two.vol.toFixed(0)} mm³`);
+
+  const base = await measure(gridfinityBase({ x: 2, y: 2 }));
+  check("a 2x2 baseplate is 84 square", near(base.x, 84, 0.05) && near(base.y, 84, 0.05),
+    `${base.x.toFixed(1)} x ${base.y.toFixed(1)}`);
+
+  // THE check. Everything above is a number agreeing with another number; this
+  // is the bin and the baseplate meeting. A plinth that does not drop into the
+  // socket is the only failure that matters, and no dimension check catches it.
+  const seated = dsl.difference(
+    dsl.translate([0, 0, 5 - GRID.base], gridfinityBin({ x: 1, y: 1, u: 2, solid: true })),
+    gridfinityBase({ x: 1, y: 1, h: 5 }),
+  );
+  const solo = await measure(gridfinityBin({ x: 1, y: 1, u: 2, solid: true }));
+  const left = await measure(seated);
+  // What is left is the part of the bin ABOVE the plate. If the plinth were
+  // fouling the socket, some of the plinth would survive too and the leftover
+  // would be measurably taller than the bin's body.
+  check("a bin drops into a baseplate this code generated",
+    near(left.z, 14 - 5 + GRID.base, 0.3),
+    `${left.z.toFixed(2)} of bin left above the plate — the plinth is fouling`);
+  check("...and the plinth is a real fraction of the bin", solo.vol > left.vol,
+    `${solo.vol.toFixed(0)} vs ${left.vol.toFixed(0)}`);
+}
+
+console.log("\nports: the size is the CUT, and it goes through the wall\n");
+{
+  const { PORTS, portCutout } = shelf;
+  const md = readFileSync(new URL("../viewer/recipes/connectors.md", import.meta.url), "utf8");
+  for (const [name, spec] of Object.entries(PORTS)) {
+    const re = Array.isArray(spec)
+      ? new RegExp(`${numRe(spec[0])}\\s*×\\s*${numRe(spec[1])}`)
+      : new RegExp(`${numRe(spec)}\\b`);
+    check(`#ports agrees on the ${name} cutout`, re.test(md),
+      `code says ${Array.isArray(spec) ? spec.join(" x ") : spec}`);
+  }
+  const usbc = await measure(portCutout("usb-c", { t: 3 }));
+  check("a usb-c cutout is 10 wide", near(usbc.x, PORTS["usb-c"][0], 0.05), `${usbc.x.toFixed(2)}`);
+  // It cuts along +Y — the one break in the shelf's convention, made on purpose.
+  check("...and runs through the wall along +Y, overshooting both faces",
+    near(usbc.y, 3 + 2, 0.05) && usbc.yMin < -0.9, `y ${usbc.yMin.toFixed(2)}..${usbc.yMax.toFixed(2)}`);
+  const round = await measure(portCutout("barrel", { t: 3 }));
+  check("a barrel jack is a round hole of the stated diameter",
+    near(round.x, PORTS.barrel, 0.05) && near(round.z, PORTS.barrel, 0.05), `${round.x.toFixed(2)}`);
+  // The roof: a flat-topped rectangle prints its top edge as an unsupported
+  // bridge, so the default adds a 45-degree peak.
+  const hdmi = await measure(portCutout("hdmi", { t: 3 }));
+  const square = await measure(portCutout("hdmi", { t: 3, arch: false }));
+  check("a rectangular cutout gets a roof by default", hdmi.z > square.z,
+    `${hdmi.z.toFixed(2)} vs ${square.z.toFixed(2)}`);
+  check("...and it can be turned off", near(square.z, PORTS.hdmi[1], 0.05), `${square.z.toFixed(2)}`);
+  let t = "";
+  try { portCutout("firewire"); } catch (e) { t = e.message; }
+  check("an unknown port lists the real ones", /usb-c/.test(t) && /isn't known/.test(t), t);
+}
+
 console.log("\nbad input is refused by name, never silently absorbed\n");
 {
   // A part that quietly accepts nonsense produces a shape that looks fine and
@@ -275,7 +447,15 @@ console.log("\nthe picker is wired to the index, not to a copy of it\n");
     /p\.cut \? `\$\{p\.sample\}   \/\/ subtract this`/.test(HTML));
   check("...and it is undoable", /pushHistory\(v\);[\s\S]{0,200}code\.value = v\.slice/.test(HTML));
   check("the search has an empty state rather than a blank panel", /shelf-none/.test(HTML));
-  check("Enter takes the first result", /shelfList\.querySelector\("button"\)\?\.click\(\)/.test(HTML));
+  check("the list is keyboard-navigable", /e\.key === "ArrowDown"[\s\S]{0,300}highlight\(\)/.test(HTML));
+  check("Enter takes whatever is highlighted", /all\[active\]\?\.click\(\)/.test(HTML));
+  check("Escape closes it", /e\.key === "Escape"[\s\S]{0,80}toggleCard\(shelfCard/.test(HTML));
+  check("the picker searches keywords, not just labels", /p\.keywords \|\| ""/.test(HTML));
+  // An insert must survive a build that then fails to parse — the paste has
+  // already happened and is undoable; losing it because the model broke is not
+  // a trade anyone would choose.
+  check("a failed rebuild does not swallow the insert",
+    /try \{ rebuild\(\); \} catch/.test(HTML));
   check("the row does not go through the Toolbox delegate",
     !/<button id="shelf-row"[^>]*data-act/.test(HTML));
 }

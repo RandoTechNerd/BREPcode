@@ -444,6 +444,260 @@ export function bearingBlock(id = "608", opts = {}) {
   return difference(body, seat, bolt(-holeX), bolt(holeX));
 }
 
+// ------------------------------------------------------------------ PCB
+//
+// Board outlines and their mounting patterns. The numbers come from #devboard,
+// which was already written and reviewed; a test cross-checks these against it
+// so the prose and the code cannot drift apart.
+//
+// Boards are centred on the origin, because that is what makes them easy to
+// place: a plate for a Pi is `pcbPlate("pi4")` at 0,0, not an exercise in
+// remembering which corner the datum was.
+export const PCBS = {
+  pi4: {
+    label: "Raspberry Pi 3 / 4 / 5", w: 85, d: 56, hole: 2.7, screw: "M2.5",
+    // four holes on a rectangle, 3.5 in from each board corner
+    hx: 58, hy: 49,
+  },
+  pizero: { label: "Pi Zero / Zero 2", w: 65, d: 30, hole: 2.7, screw: "M2.5", hx: 58, hy: 23 },
+  pico: { label: "Pi Pico / Pico 2", w: 51, d: 21, hole: 2.1, screw: "M2", hx: 47, hy: 11.4 },
+  uno: {
+    label: "Arduino Uno / Leonardo", w: 68.6, d: 53.3, hole: 3.2, screw: "M3",
+    // The Uno's holes are NOT a rectangle, which is the single most common way
+    // a printed Arduino case comes out unusable. Measured from the bottom-left
+    // corner with the USB on the left.
+    points: [[14.0, 2.5], [15.3, 50.6], [66.0, 17.8], [66.0, 45.7]],
+  },
+};
+
+export const pcbSpec = (id) => {
+  const k = String(id).trim().toLowerCase().replace(/[\s_-]/g, "");
+  const hit = PCBS[k] ?? PCBS[Object.keys(PCBS).find((n) => n.toLowerCase() === k)];
+  if (!hit) throw new Error(`shelf: board "${id}" isn't known — try ${Object.keys(PCBS).join(", ")}`);
+  return hit;
+};
+
+// Where the holes are, centred on the board. One place, so the standoffs and
+// the plate cannot disagree about it.
+export function pcbHoles(id) {
+  const b = pcbSpec(id);
+  if (b.points) return b.points.map(([x, y]) => [x - b.w / 2, y - b.d / 2]);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => [sx * b.hx / 2, sy * b.hy / 2]);
+}
+
+// Standoffs at a board's own mounting holes.
+//
+// The bore is the board's hole minus a little, so an M2.5 self-taps into it —
+// which is how a Pi is actually mounted, rather than with a nut nobody can
+// reach under the board.
+export function pcbStandoffs(id = "pi4", opts = {}) {
+  const b = pcbSpec(id);
+  const h = pos(opts.h ?? 6, "h");
+  const bore = opts.bore != null ? pos(opts.bore, "bore") : Math.max(1, b.hole - 0.5);
+  const od = opts.od != null ? pos(opts.od, "od") : b.hole * 2;
+  return group(...pcbHoles(id).map(([x, y]) =>
+    translate([x, y, 0], standoff({ h, id: bore, od, $fn: opts.$fn ?? SIDES }))));
+}
+
+// A plate the size of the board with those standoffs already on it.
+export function pcbPlate(id = "pi4", opts = {}) {
+  const b = pcbSpec(id);
+  const t = pos(opts.t ?? 3, "t");
+  const margin = opts.margin ?? 3;
+  const r = Math.min(opts.r ?? 3, (b.w + margin * 2) / 2 - 0.01);
+  const h = pos(opts.h ?? 6, "h");
+  const $fn = opts.$fn ?? SIDES;
+  const W = b.w + margin * 2, D = b.d + margin * 2;
+  const c = (sx, sy) => translate([sx * (W / 2 - r), sy * (D / 2 - r), 0], cylinder({ r, h: t, $fn }));
+  return union(hull(c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)),
+    translate([0, 0, t], pcbStandoffs(id, { h, ...opts })));
+}
+
+// -------------------------------------------------------------- gridfinity
+//
+// The open Gridfinity standard. Numbers from #gridfinity, cross-checked by the
+// tests against that recipe.
+//
+// The plinth is the whole trick, and it falls out neatly: every step of the
+// profile insets by the same amount as its corner radius shrinks, so all four
+// corner centres sit at ±17.0 at EVERY height. That makes the plinth four
+// stacks of cones rather than a lofted shell — cheap to build and exactly the
+// spec rather than an approximation of it.
+export const GRID = {
+  pitch: 42,        // one cell
+  foot: 41.5,       // bin footprint, 0.5 total clearance
+  r: 3.75,          // outer corner radius at the top of the plinth
+  unit: 7,          // one height unit
+  base: 4.75,       // plinth height: 0.8 chamfer + 1.8 straight + 2.15 chamfer
+  chamferLo: 0.8,
+  straight: 1.8,
+  chamferHi: 2.15,
+};
+// r at each step, and the corner centre they all share
+const G_RTOP = GRID.r;                                   // 3.75 at 41.5 wide
+const G_RMID = G_RTOP - GRID.chamferHi;                  // 1.60 at 37.2
+const G_RLOW = G_RMID - GRID.chamferLo;                  // 0.80 at 35.6
+const G_C = GRID.foot / 2 - G_RTOP;                      // 17.0, for all of them
+
+// One cell's plinth, centred on the origin, sitting on z=0.
+function plinth(grow = 0) {
+  const corners = (rBot, rTop, z, h) => hull(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) =>
+    translate([sx * G_C, sy * G_C, z],
+      cylinder({ r1: rBot + grow, r2: rTop + grow, h, $fn: 32 }))));
+  return union(
+    corners(G_RLOW, G_RMID, 0, GRID.chamferLo),
+    corners(G_RMID, G_RMID, GRID.chamferLo, GRID.straight),
+    corners(G_RMID, G_RTOP, GRID.chamferLo + GRID.straight, GRID.chamferHi),
+  );
+}
+
+// A Gridfinity bin: x by y cells, u height units tall, hollowed.
+export function gridfinityBin(opts = {}) {
+  const x = Math.max(1, Math.round(opts.x ?? 1));
+  const y = Math.max(1, Math.round(opts.y ?? 1));
+  const u = Math.max(1, Math.round(opts.u ?? 3));
+  const wall = pos(opts.wall ?? 1.2, "wall");
+  const H = u * GRID.unit;
+  if (H <= GRID.base) throw new Error(`shelf: a ${u}u bin is shorter than the ${GRID.base}mm plinth — use u 1 or more`);
+  const $fn = opts.$fn ?? 32;
+
+  // one plinth per CELL — that is what drops into a baseplate
+  const feet = [];
+  for (let i = 0; i < x; i++) {
+    for (let j = 0; j < y; j++) {
+      feet.push(translate([(i - (x - 1) / 2) * GRID.pitch, (j - (y - 1) / 2) * GRID.pitch, 0], plinth()));
+    }
+  }
+  const W = x * GRID.pitch - (GRID.pitch - GRID.foot);
+  const D = y * GRID.pitch - (GRID.pitch - GRID.foot);
+  const box = (w, d, rad, z, h) => hull(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) =>
+    translate([sx * (w / 2 - rad), sy * (d / 2 - rad), z], cylinder({ r: rad, h, $fn }))));
+
+  const body = union(...feet, box(W, D, GRID.r, GRID.base, H - GRID.base));
+  if (opts.solid) return body;
+  const floor = opts.floor ?? GRID.base + 1.2;
+  return difference(body, box(W - wall * 2, D - wall * 2, Math.max(0.1, GRID.r - wall), floor, H - floor + 0.01));
+}
+
+// A baseplate: x by y sockets that those plinths drop into.
+export function gridfinityBase(opts = {}) {
+  const x = Math.max(1, Math.round(opts.x ?? 2));
+  const y = Math.max(1, Math.round(opts.y ?? 2));
+  const fit = opts.fit ?? 0.25;    // on the radius, so the bin is not a press fit
+  const h = pos(opts.h ?? 5, "h");
+  const slab = translate([-x * GRID.pitch / 2, -y * GRID.pitch / 2, 0],
+    cube([x * GRID.pitch, y * GRID.pitch, h]));
+  const sockets = [];
+  for (let i = 0; i < x; i++) {
+    for (let j = 0; j < y; j++) {
+      sockets.push(translate(
+        [(i - (x - 1) / 2) * GRID.pitch, (j - (y - 1) / 2) * GRID.pitch, h - GRID.base],
+        plinth(fit)));
+    }
+  }
+  return difference(slab, ...sockets);
+}
+
+// ------------------------------------------------------------------ ports
+//
+// Panel cutouts for connectors. These are the CUT sizes from #ports — body
+// plus the clearance a moulded cable shroud needs — not the connector body.
+// A number pair is a rectangle; a single number is a round hole.
+export const PORTS = {
+  "usb-a": [13.0, 5.5], "usb-c": [10.0, 4.2], "micro-usb": [8.6, 4.0],
+  hdmi: [15.4, 6.0], "mini-hdmi": [11.6, 3.6], rj45: [17.0, 14.5],
+  microsd: [12.0, 1.8], sd: [24.5, 2.5], xt60: [16.0, 8.2], xt30: [11.0, 6.0],
+  rocker: [21.2, 15.2],
+  barrel: 8.2, audio: 6.2, banana: 12.2, fuse: 12.2,
+  button12: 12.2, button16: 16.2, pot: 7.2,
+};
+
+// A port cutout through a wall.
+//
+// This one cuts along +Y, NOT down Z like the rest of the shelf. That is a
+// deliberate break: a port is always in a vertical wall, and making every
+// caller wrap it in rotate([90,0,0]) is a rotation to get wrong. Place it at
+// the wall's inside face and it runs outward through it.
+//
+// Rectangular cutouts get a 45-degree roof by default, because a flat-topped
+// rectangle prints its top edge as an unsupported bridge and it sags into the
+// opening. Pass { arch: false } to keep it square.
+export function portCutout(name = "usb-c", opts = {}) {
+  const key2 = String(name).trim().toLowerCase().replace(/[\s_]/g, "-");
+  const spec = PORTS[key2];
+  if (spec === undefined) {
+    throw new Error(`shelf: port "${name}" isn't known — try ${Object.keys(PORTS).join(", ")}`);
+  }
+  const t = pos(opts.t ?? 3, "t");
+  const $fn = opts.$fn ?? SIDES;
+  // 1mm before the wall and 1mm past it: a cutter that stops level with a face
+  // leaves two surfaces in one plane and prints a skin across the opening.
+  const depth = t + 2;
+  if (!Array.isArray(spec)) {
+    const d = pos(opts.d ?? spec, "d");
+    return translate([0, -1, 0], rotate([-90, 0, 0], cylinder({ d, h: depth, $fn })));
+  }
+  const [w, h] = [opts.w != null ? pos(opts.w, "w") : spec[0],
+    opts.h != null ? pos(opts.h, "h") : spec[1]];
+  const body = translate([-w / 2, -1, -h / 2], cube([w, depth, h]));
+  if (opts.arch === false || h < 3) return body;
+  // a 45-degree peak on top, so nothing has to bridge flat across the opening
+  const roof = translate([0, -1, h / 2], rotate([-90, 0, 0],
+    linearExtrude({ h: depth }, polygon([[-w / 2, 0], [w / 2, 0], [0, w / 2]]))));
+  return union(body, roof);
+}
+
+// ------------------------------------------------------------------ common
+
+// A rounded slot — a hole you can slide a screw along. CUT THIS.
+//
+// Round-ended, always: a square-ended slot starts a crack at the corner, and
+// it is the shape a slot is anyway once you have drilled both ends.
+export function slot(opts = {}) {
+  const d = pos(opts.d ?? 4, "d");
+  const len = pos(opts.len ?? 20, "len");   // centre to centre of the ends
+  const depth = pos(opts.depth ?? 6, "depth");
+  const $fn = opts.$fn ?? SIDES;
+  const end = (x) => translate([x, 0, -0.01], cylinder({ d, h: depth + 0.02, $fn }));
+  return hull(end(-len / 2), end(len / 2));
+}
+
+// A spring clip that snaps round a cable or a rod.
+export function cableClip(opts = {}) {
+  const d = pos(opts.d ?? 6, "d");          // cable diameter
+  const t = pos(opts.t ?? 1.6, "t");        // wall — this is the spring
+  const w = pos(opts.w ?? 8, "w");          // how wide the clip is
+  const mouth = opts.mouth ?? d * 0.75;     // the gap it snaps through
+  const $fn = opts.$fn ?? SIDES;
+  const ring = difference(
+    cylinder({ d: d + t * 2, h: w, $fn }),
+    translate([0, 0, -0.5], cylinder({ d, h: w + 1, $fn })),
+    // the mouth, opening along +X
+    translate([0, -mouth / 2, -0.5], cube([d / 2 + t + 1, mouth, w + 1])),
+  );
+  if (!opts.base) return ring;
+  const b = pos(opts.base, "base");
+  return union(ring, translate([-(d / 2 + t), -b / 2, 0], cube([1.6, b, w])));
+}
+
+// Place copies of a shape evenly round a circle. A helper rather than a part,
+// and on the shelf because a bolt circle done by hand is a page of sines.
+export function boltCircle(n = 6, r = 20, shape = null, opts = {}) {
+  const count = Math.max(1, Math.round(num(n, "n")));
+  const rad = pos(r, "r");
+  // Bare, it is six M3 clearance holes — the commonest bolt circle there is,
+  // and something you can see rather than an error about a missing argument.
+  const what = shape ?? cylinder({ d: 3.4, h: 10, $fn: SIDES });
+  const start = num(opts.start ?? 0, "start");
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const a = start + (i / count) * 360;
+    out.push(rotate([0, 0, a], translate([rad, 0, 0],
+      opts.spin === false ? rotate([0, 0, -a], what) : what)));
+  }
+  return union(...out);
+}
+
 // ------------------------------------------------------------ the index
 //
 // The machine-readable shelf. The picker UI, the #shelf recipe and the tests
@@ -455,73 +709,134 @@ export function bearingBlock(id = "608", opts = {}) {
 export const SHELF = [
   { id: "standoff", label: "Standoff / boss", group: "Mounting", cut: false,
     blurb: "post with a hole down it, for mounting a PCB",
+    keywords: "pcb, spacer, post, pillar, mount",
     sample: `standoff({ h: 8, id: 3.2, wall: 2 })` },
   { id: "screwBoss", label: "Insert boss", group: "Mounting", cut: false,
     blurb: "boss sized for a heat-set insert, bore already cut",
+    keywords: "heat set, insert, threaded, m3 boss",
     sample: `screwBoss("M3", { h: 9 })` },
   { id: "keyholeSlot", label: "Keyhole slot", group: "Mounting", cut: true,
     blurb: "hang the part on a screw already in the wall",
+    keywords: "wall mount, hang, picture, teardrop",
     sample: `keyholeSlot({ head: 8, shank: 4.2, drop: 12 })` },
   { id: "zipTieSlot", label: "Zip-tie slots", group: "Mounting", cut: true,
     blurb: "a pair of slots a cable tie threads through",
+    keywords: "cable tie, zip tie, tiewrap, cable management",
     sample: `zipTieSlot({ w: 5, gap: 12 })` },
   { id: "cornerGusset", label: "Corner gusset", group: "Mounting", cut: false,
     blurb: "triangular brace between two walls, prints support-free",
+    keywords: "brace, rib, stiffener, triangle, support",
     sample: `cornerGusset({ l: 15, t: 3 })` },
 
   { id: "snapHook", label: "Snap hook", group: "Joining", cut: false,
     blurb: "cantilever clip with a lead-in ramp",
+    keywords: "snap fit, clip, latch, catch, cantilever, battery cover",
     sample: `snapHook({ w: 6, t: 1.6, l: 10, lip: 1.2 })` },
   { id: "snapCatch", label: "Snap catch window", group: "Joining", cut: true,
     blurb: "the window a snapHook clicks into, from the same numbers",
+    keywords: "snap fit, clip, latch, window, keeper",
     sample: `snapCatch({ w: 6, lip: 1.2, t: 2 })` },
   { id: "dovetail", label: "Dovetail tongue", group: "Joining", cut: false,
     blurb: "slide-together joint, printed lying down",
+    keywords: "joint, slide, tongue, interlock",
     sample: `dovetail({ w: 12, neck: 7, d: 6, h: 8 })` },
   { id: "dovetailSlot", label: "Dovetail socket", group: "Joining", cut: true,
     blurb: "the socket for it, with the clearance applied",
+    keywords: "joint, slide, socket, interlock",
     sample: `dovetailSlot({ w: 12, neck: 7, d: 6, h: 8 })` },
   { id: "livingHinge", label: "Living hinge", group: "Joining", cut: true,
     blurb: "cut a panel down to 0.4mm so it folds",
+    keywords: "flexure, fold, bend, thin, flexible",
     sample: `livingHinge({ l: 40, w: 3, t: 3 })` },
   { id: "pinHinge", label: "Pin hinge", group: "Joining", cut: false,
     blurb: "interleaved knuckle hinge and its pin, printed as one",
+    keywords: "knuckle hinge, door, lid, barrel, print in place",
     sample: `pinHinge({ len: 40, knuckles: 5, pin: 3 })` },
 
   { id: "shell", label: "Enclosure shell", group: "Enclosure", cut: false,
     blurb: "hollow box with rounded vertical corners",
+    keywords: "enclosure, case, box, housing, project box",
     sample: `shell({ size: [60, 40, 25], wall: 2, r: 3 })` },
   { id: "lidLip", label: "Lid rebate", group: "Enclosure", cut: true,
     blurb: "cut a half-wall rebate so a lid sits INTO the shell",
+    keywords: "lid, cover, rebate, lip, tongue and groove",
     sample: `lidLip({ size: [60, 40], wall: 2, depth: 3 })` },
   { id: "vent", label: "Vent slots", group: "Enclosure", cut: true,
     blurb: "cut a row of round-ended louvre holes",
+    keywords: "louvre, louver, airflow, cooling, grille, fan",
     sample: `vent({ w: 40, h: 20, slot: 3, gap: 3, t: 4 })` },
   { id: "honeycomb", label: "Honeycomb panel", group: "Enclosure", cut: true,
     blurb: "hex lightening pattern — cut holes, or { solid } for the ribs",
+    keywords: "hex, lightening, infill, grille, lattice, weight",
     sample: `honeycomb({ w: 60, h: 40, cell: 8, wall: 1.6, t: 4 })` },
 
   { id: "knob", label: "Knurled knob", group: "Handling", cut: false,
     blurb: "fluted grip, flutes cut so the diameter is what you asked for",
+    keywords: "dial, grip, thumbwheel, knurl, control",
     sample: `knob({ d: 30, h: 12, flutes: 12 })` },
   { id: "handle", label: "D handle", group: "Handling", cut: false,
     blurb: "bar on two feet — drawer pull, lid, case",
+    keywords: "grip, pull, drawer, carry, bar",
     sample: `handle({ span: 60, rise: 25, r: 5 })` },
   { id: "hook", label: "Wall hook", group: "Handling", cut: false,
     blurb: "plate, arm and an upturned lip",
+    keywords: "coat hook, peg, hanger, wall",
     sample: `hook({ plate: [30, 4, 40], reach: 30 })` },
   { id: "footPocket", label: "Rubber foot recess", group: "Handling", cut: true,
     blurb: "recess for a stick-on foot",
+    keywords: "rubber feet, bumper, pad, anti slip",
     sample: `footPocket({ d: 12, h: 2 })` },
   { id: "labelPlate", label: "Label plate", group: "Handling", cut: false,
     blurb: "rounded raised plate to put text() on",
+    keywords: "nameplate, badge, sign, tag, text",
     sample: `labelPlate({ w: 40, h: 12, t: 1.5 })` },
 
   { id: "bearingBlock", label: "Pillow block", group: "Motion", cut: false,
     blurb: "a bearing held in a bolt-down block, bored right through",
+    keywords: "pillow block, axle, shaft, journal, 608",
     sample: `bearingBlock("608", { wall: 4 })` },
+
+  { id: "pcbStandoffs", label: "PCB standoffs", group: "Electronics", cut: false,
+    blurb: "posts at a board's own holes — pi4, pizero, pico, uno",
+    keywords: "raspberry pi, arduino, uno, pico, esp32, board, devboard, electronics",
+    sample: `pcbStandoffs("pi4", { h: 6 })` },
+  { id: "pcbPlate", label: "PCB mounting plate", group: "Electronics", cut: false,
+    blurb: "a plate the size of the board with the standoffs already on it",
+    keywords: "raspberry pi, arduino, uno, pico, board, devboard, tray, carrier",
+    sample: `pcbPlate("pi4", { t: 3, h: 6 })` },
+  { id: "portCutout", label: "Port cutout", group: "Electronics", cut: true,
+    blurb: "cut a panel hole for USB-C, HDMI, RJ45, a barrel jack… (cuts along +Y)",
+    keywords: "usb, usb-c, hdmi, ethernet, rj45, jack, barrel, sd card, connector, panel, socket, switch, button",
+    sample: `portCutout("usb-c", { t: 3 })` },
+
+  { id: "gridfinityBin", label: "Gridfinity bin", group: "Storage", cut: false,
+    blurb: "x by y cells, u units tall, with the real plinth profile",
+    keywords: "storage, drawer, organiser, organizer, tray, bin, tool",
+    sample: `gridfinityBin({ x: 2, y: 1, u: 3 })` },
+  { id: "gridfinityBase", label: "Gridfinity baseplate", group: "Storage", cut: false,
+    blurb: "the sockets those plinths drop into",
+    keywords: "storage, drawer, organiser, organizer, baseplate, grid",
+    sample: `gridfinityBase({ x: 2, y: 2 })` },
+
+  { id: "slot", label: "Rounded slot", group: "Handling", cut: true,
+    blurb: "cut a slot a screw can slide along, round-ended so it cannot crack",
+    keywords: "elongated hole, adjustment, obround, oval hole",
+    sample: `slot({ d: 4, len: 20, depth: 6 })` },
+  { id: "cableClip", label: "Cable clip", group: "Handling", cut: false,
+    blurb: "spring clip that snaps round a cable or rod",
+    keywords: "wire clip, cord, tubing, p clip, routing",
+    sample: `cableClip({ d: 6, t: 1.6, w: 8 })` },
+  { id: "boltCircle", label: "Bolt circle", group: "Handling", cut: false,
+    blurb: "place copies of a shape evenly round a circle",
+    keywords: "pattern, array, circular, polar, hole pattern, flange",
+    sample: `boltCircle(6, 20, cylinder({ d: 3.4, h: 10 }))` },
 ];
 
+// What a person actually TYPES. The picker searches these as well as the
+// label and blurb, because someone looking for an Arduino mount types
+// "arduino" — and before this list existed, that search returned nothing while
+// pcbStandoffs("uno") sat right there.
+//
 // Everything the picker and the recipe need, without either of them importing
 // the geometry. Kept as a function so the list can never be mutated by a caller.
 export const shelfIndex = () => SHELF.map((p) => ({ ...p }));

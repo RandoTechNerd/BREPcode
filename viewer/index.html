@@ -1308,7 +1308,8 @@
       display: block; width: 100%; text-align: left; background: none; color: inherit;
       border: 1px solid transparent; border-radius: 7px; padding: 6px 8px; cursor: pointer; font: inherit;
     }
-    #shelf-list button:hover { background: var(--hover-strong); border-color: var(--border); }
+    #shelf-list button:hover, #shelf-list button.on { background: var(--hover-strong); border-color: var(--border); }
+    #shelf-list button.on { border-color: var(--accent); }
     /* the label row: name on the left, CUT badge pinned right, never overlapping */
     #shelf-list .row { display: flex; align-items: baseline; gap: 8px; }
     #shelf-list b { font-size: 12.5px; font-weight: 600; flex: 1; min-width: 0; }
@@ -12475,13 +12476,31 @@ ${joined}`)(...vs);
         code.focus();
         code.setSelectionRange(pos, pos);
         pushHistory();
-        rebuild();
+        // A part dropped into a half-written line can fail to PARSE, and the
+        // rebuild would throw before the text is even on screen. The insert
+        // has already happened and is undoable; a broken build is the editor's
+        // job to report, not a reason to lose the paste.
+        try { rebuild(); } catch { /* the editor shows the error itself */ }
         updateHint();
+      };
+
+      // Keyboard: the list is 29 parts now, so arrowing through it has to work
+      // as well as clicking. `active` is an index into the buttons currently
+      // on screen, which is why it is reset by every repaint.
+      let active = 0;
+      const rows = () => [...shelfList.querySelectorAll("button")];
+      const highlight = () => {
+        const all = rows();
+        all.forEach((b, i) => b.classList.toggle("on", i === active));
+        all[active]?.scrollIntoView({ block: "nearest" });
       };
 
       function paintShelf() {
         const q = shelfQ.value.trim().toLowerCase();
-        const hit = (p) => !q || [p.label, p.blurb, p.id, p.group]
+        // Keywords are in here because people search for the thing, not the
+        // function: "arduino" used to find nothing while pcbStandoffs("uno")
+        // sat on the shelf.
+        const hit = (p) => !q || [p.label, p.blurb, p.id, p.group, p.keywords || ""]
           .some((s) => s.toLowerCase().includes(q));
         shelfList.textContent = "";
         let shown = 0;
@@ -12516,6 +12535,8 @@ ${joined}`)(...vs);
           none.textContent = `Nothing matches "${shelfQ.value.trim()}".`;
           shelfList.appendChild(none);
         }
+        active = 0;
+        highlight();
       }
 
       $("shelf-row").addEventListener("click", async (e) => {
@@ -12533,11 +12554,20 @@ ${joined}`)(...vs);
       });
       shelfQ.addEventListener("input", () => SHELF && paintShelf());
       shelfQ.addEventListener("keydown", (e) => {
-        // Enter takes the first thing on screen, so a search and a return is
-        // the whole interaction.
+        const all = rows();
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          if (!all.length) return;
+          e.preventDefault();
+          active = (active + (e.key === "ArrowDown" ? 1 : all.length - 1)) % all.length;
+          highlight();
+          return;
+        }
+        if (e.key === "Escape") { e.preventDefault(); toggleCard(shelfCard, null, false); return; }
+        // Enter takes whatever is highlighted, which with no arrowing is the
+        // first result — so search-and-return stays the whole interaction.
         if (e.key !== "Enter") return;
         e.preventDefault();
-        shelfList.querySelector("button")?.click();
+        all[active]?.click();
       });
     }
 
