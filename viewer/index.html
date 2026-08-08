@@ -2509,6 +2509,13 @@
               <option value="natural">Natural / clear</option>
             </select>
           </label>
+          <!-- Only means anything on a spool that HAS flake, so the row hides
+               itself the rest of the time rather than sitting there greyed and
+               inviting a drag that does nothing. -->
+          <div class="mat-row" id="mat-sparkle-row" style="display:none"><span>Sparkle</span>
+            <input type="range" id="mat-sparkle" min="0" max="250" value="100" />
+            <output id="mat-sparkle-o">1.0×</output>
+          </div>
 
           <div class="mat-group">Texture</div>
           <label class="mat-row"><span>Pattern</span>
@@ -3658,6 +3665,11 @@
       flake: { value: 0 }, flakeD: { value: 20 }, flakeS: { value: 0.05 },
       flakeK: { value: 2 }, flakeC: { value: new THREE.Color(1, 1, 1) },
       rainbow: { value: 0 },
+      // The Sparkle dial in the Material panel. 1 is the spool as specified;
+      // above that the flashes get brighter AND tighter, which is what reads
+      // as "more glittery" rather than just "brighter" — a wide soft highlight
+      // is a shiny surface, a narrow blinding one is a speck of foil.
+      sparkle: { value: 1 },
     };
     function injectTex(shader) {
       Object.assign(shader.uniforms, {
@@ -3671,6 +3683,7 @@
         uFxGradC: sharedFx.gradC, uFxLo: sharedFx.lo, uFxHi: sharedFx.hi,
         uFxFlake: sharedFx.flake, uFxFlakeD: sharedFx.flakeD, uFxFlakeS: sharedFx.flakeS,
         uFxFlakeK: sharedFx.flakeK, uFxFlakeC: sharedFx.flakeC, uFxRainbow: sharedFx.rainbow,
+        uFxSparkle: sharedFx.sparkle,
       });
       shader.vertexShader = shader.vertexShader
         .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;")
@@ -3733,7 +3746,7 @@
         // ---- named-spool effects ----
         uniform float uFxGrad; uniform vec3 uFxGradA, uFxGradB, uFxGradC;
         uniform float uFxLo, uFxHi;
-        uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow;
+        uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow, uFxSparkle;
         uniform vec3 uFxFlakeC;
         varying vec3 vFxWorld;
 
@@ -3746,26 +3759,107 @@
                          : mix(uFxGradB, uFxGradC, (u - 0.5) * 2.0);
         }
 
-        // Suspended flake. Space is diced into cells, one speck per cell, and
-        // most cells are empty — that sparseness is what reads as glitter
-        // rather than noise. Each speck gets its own facing direction, so it
-        // flashes as the part turns instead of glowing constantly, which is the
-        // whole difference between glitter and a light coat of paint.
-        vec3 fxFlake(vec3 nrm) {
-          vec3 cell = floor(vFxWorld * uFxFlakeD);
-          float h = tHash(cell);
-          if (h > uFxFlakeS) return vec3(0.0);
-          vec3 tint = uFxFlakeC;
+        // The flake tint for a cell — colour, or a rainbow drawn from the cell
+        // itself so a speck keeps its colour as the part turns.
+        vec3 fxFlakeTint(vec3 cell) {
           if (uFxRainbow > 0.5) {
-            tint = 0.5 + 0.5 * cos(6.28318 * (tHash(cell + 3.7) + vec3(0.0, 0.33, 0.67)));
+            vec3 c = 0.5 + 0.5 * cos(6.28318 * (tHash(cell + 3.7) + vec3(0.0, 0.33, 0.67)));
+            // Saturate hard. The raw cosine palette never lets a channel reach
+            // zero, so every speck carries a lot of white — which is invisible
+            // added onto the pale, nearly clear body that rainbow glitter
+            // actually ships in. Pushing each channel away from the middle
+            // gives specks that read as RED, GREEN, BLUE rather than as
+            // slightly tinted white.
+            c = clamp((c - 0.35) / 0.65, 0.0, 1.0);
+            return mix(vec3(1.0), c, 0.85);
           }
-          vec3 facet = normalize(vec3(tHash(cell + 11.0), tHash(cell + 23.0), tHash(cell + 41.0)) - 0.5);
-          float flash = pow(max(dot(normalize(nrm), facet), 0.0), 3.0);
-          return tint * uFxFlakeK * (0.25 + 0.75 * flash);
+          return uFxFlakeC;
+        }`;
+
+      // The glint itself has to live HERE, after <lights_pars_begin>, because
+      // that is where three declares directionalLights[]. Put it up with the
+      // other helpers at <common> and it will not compile — the struct does not
+      // exist yet.
+      //
+      // WHY THIS IS NOT THE ORIGINAL VERSION. The first one lit a speck from
+      // dot(surfaceNormal, someRandomDirection), which never looked at the
+      // light or the eye at all. It shimmered slightly as the part turned and
+      // that was the whole effect — it could not do the thing glitter actually
+      // does, which is BLAZE for an instant when the flake happens to bisect
+      // the light and your eye, then vanish. Three faults, all fixed below:
+      //
+      //   1. No light in the equation. Now every speck is a tiny mirror and
+      //      gets a real specular test against each light's half-vector, so a
+      //      flake lights up exactly when it lines up and goes dark when it
+      //      does not. Move the light or the model and the field of specks
+      //      changes completely — that is the effect.
+      //   2. Facets pointed anywhere on the sphere, so half of them faced INTO
+      //      the plastic and could never catch anything. Real flake is
+      //      suspended nearly flat and tilted a little, so the facet is now the
+      //      surface normal jittered rather than a random direction.
+      //   3. A constant 0.25 floor meant every speck glowed a bit all the time,
+      //      which is the "light coat of paint" look. The floor is gone; a
+      //      speck is either flashing or invisible.
+      //
+      // Peak brightness deliberately runs past 1.0 so the centre of a flash
+      // clips to white. That blow-out is what reads as a speck GLOWING rather
+      // than merely being a pale dot.
+      const FLAKE = `
+        // One layer of specks at a given cell frequency.
+        vec3 fxFlakeLayer(vec3 nrm, vec3 V, float freq, float cover, float sharp, float gain) {
+          vec3 cell = floor(vFxWorld * freq);
+          if (tHash(cell) > cover) return vec3(0.0);
+          // Suspended nearly flat, tilted a little — not pointing anywhere.
+          vec3 jitter = vec3(tHash(cell + 11.0), tHash(cell + 23.0), tHash(cell + 41.0)) - 0.5;
+          vec3 facet = normalize(nrm + jitter * 1.35);
+          vec3 tint = fxFlakeTint(cell);
+          vec3 acc = vec3(0.0);
+          #if NUM_DIR_LIGHTS > 0
+            for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+              vec3 H = normalize(directionalLights[i].direction + V);
+              acc += directionalLights[i].color * pow(max(dot(facet, H), 0.0), sharp);
+            }
+          #endif
+          #if NUM_POINT_LIGHTS > 0
+            for (int i = 0; i < NUM_POINT_LIGHTS; i++) {
+              vec3 H = normalize(normalize(pointLights[i].position + vViewPosition) + V);
+              acc += pointLights[i].color * pow(max(dot(facet, H), 0.0), sharp);
+            }
+          #endif
+          return tint * acc * gain;
+        }
+
+        vec3 fxFlake(vec3 nrm) {
+          vec3 N = normalize(nrm);
+          vec3 V = normalize(vViewPosition);
+          float s = max(uFxSparkle, 0.0);
+          // Sparkle drives BRIGHTNESS ONLY, and the exponents are constants.
+          //
+          // The first attempt tied the exponent to sparkle as well, on the
+          // theory that a tighter lobe is glitterier. It is exactly backwards:
+          // tightening the lobe means fewer flakes fall inside it, so turning
+          // sparkle up made the surface SPARSER and dimmer — the gain rose and
+          // the hit rate fell faster. Measured by eye at sparkle 2.0 against
+          // 1.0 and the higher setting was visibly less glittery.
+          //
+          // So: 70 for the coarse layer, wide enough that a decent number of
+          // flakes catch something from three lights, tight enough that each
+          // one is a point rather than a sheen. 34 for the fine layer, because
+          // sub-pixel specks need a broader lobe to survive being averaged
+          // down. Sparkle then multiplies what is left, squared, so the dial
+          // has real travel at the top end.
+          vec3 g = fxFlakeLayer(N, V, uFxFlakeD, uFxFlakeS, 70.0, 1.0)
+                 + fxFlakeLayer(N, V, uFxFlakeD * 2.7, uFxFlakeS * 0.55, 34.0, 0.5);
+          // Grazing angles show more flake, because you are looking along the
+          // plastic and through more of it. Subtle, but it is why a curved
+          // glittered part sparkles most around its silhouette.
+          float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.5);
+          return g * uFxFlakeK * s * s * (1.0 + 1.6 * fres);
         }`;
 
       shader.fragmentShader = shader.fragmentShader
         .replace("#include <common>", "#include <common>\n" + HELPERS)
+        .replace("#include <lights_pars_begin>", "#include <lights_pars_begin>\n" + FLAKE)
         .replace("#include <color_fragment>", `#include <color_fragment>
           if ((uTexKind >= 3 && uTexKind <= 5) || uTexKind == 7 || uTexKind == 8)
             diffuseColor.rgb *= tTint(tCoord(vTexPos));
@@ -4205,6 +4299,9 @@
     const MAT_DEFAULTS = {
       color: "#9fb4d6", metal: 10, rough: 55, opacity: 100, emissive: "#000000", emissiveInt: 0,
       filament: "opaque",
+      // 1 = the spool as specified. The dial goes to 2.5 for anyone who
+      // wants it unmistakable rather than accurate.
+      sparkle: 1,
       texture: 0, texDepth: 50, texScale: 30, texRot: 0, texOffX: 0, texOffY: 0,
       flat: false, wire: false,
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
@@ -4380,6 +4477,8 @@
       $("mat-glowint-o").textContent = Math.round((mat.emissiveInt || 0) * 100) + "%";
       $("mat-texture").value = String(mat.texture);
       $("mat-filament").value = mat.filament || "opaque";
+      $("mat-sparkle").value = Math.round((mat.sparkle ?? 1) * 100);
+      $("mat-sparkle-o").textContent = `${(mat.sparkle ?? 1).toFixed(1)}×`;
       for (const [id, v, suf] of [
         ["metal", mat.metal, "%"], ["rough", mat.rough, "%"], ["opacity", mat.opacity, "%"],
         ["tex-depth", mat.texDepth, "%"], ["tex-scale", mat.texScale, ""], ["tex-rot", mat.texRot, "°"],
@@ -4666,6 +4765,16 @@
       refreshOutlines(); saveMat();
     });
     $("mat-texture").addEventListener("change", (e) => { mat.texture = +e.target.value; clearPreset(); applyMaterial(); saveMat(); });
+    // Sparkle writes straight to the shared uniform — no rebuild, no material
+    // swap, no recompile. Every solid shares one uniform object, so dragging
+    // this re-lights the whole model on the next frame, which is what makes it
+    // feel like a dial rather than a setting.
+    $("mat-sparkle").addEventListener("input", (e) => {
+      mat.sparkle = +e.target.value / 100;
+      $("mat-sparkle-o").textContent = `${mat.sparkle.toFixed(1)}×`;
+      sharedFx.sparkle.value = mat.sparkle;
+      saveMat();
+    });
     // ---- named spools (Cookiecad), loaded last ------------------------
     //
     // Deliberately the LAST thing this page fetches. Nobody should wait on a
@@ -4739,6 +4848,7 @@
       if (!spool || !_fil) {
         sharedFx.grad.value = 0;
         sharedFx.flake.value = 0;
+        $("mat-sparkle-row").style.display = "none";
         return;
       }
       _fil.then((F) => {
@@ -4753,6 +4863,9 @@
         sharedFx.flakeK.value = fx.flakeStrength;
         sharedFx.flakeC.value.setRGB(...fx.flakeColour);
         sharedFx.rainbow.value = fx.flakeRainbow;
+        // The dial only exists for spools that actually carry flake.
+        $("mat-sparkle-row").style.display = fx.flake ? "" : "none";
+        sharedFx.sparkle.value = mat.sparkle ?? 1;
         const bb = new THREE.Box3().setFromObject(modelGroup);
         if (!bb.isEmpty()) { sharedFx.lo.value = bb.min.z; sharedFx.hi.value = bb.max.z; }
       });
@@ -15058,6 +15171,12 @@ ${joined}`)(...vs);
     // Handle for the console: brepscript.scene, .camera, .rebuild(), etc.
     Object.assign(window.brepscript, {
       THREE, scene, camera, renderer, controls, modelGroup, rebuild, dsl, exportSTL, facetedSTEP,
+      // The live filament-effect uniforms. Every material shares this one
+      // object, so nudging a value here re-lights the whole model on the next
+      // frame with no recompile — which is the only practical way to tune a
+      // look like glitter, where the right number is whatever stops looking
+      // wrong rather than anything you can derive.
+      sharedFx,
       // the chat's apply path, so the heavy-model gate can be driven by a test
       // rather than only by a live API key
       applyGeneratedCode,

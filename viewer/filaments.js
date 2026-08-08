@@ -34,6 +34,18 @@ export const FAMILY = {
 // a     alpha, so a part standing alone still reads as translucent
 // grad  colour stops BOTTOM -> TOP; 2 or 3 of them
 // flake { density, size, strength, colour, rainbow }
+//
+// density is CELLS PER MILLIMETRE, which is the number that was wrong. The
+// first pass used 20-34, giving flake 0.03-0.05mm across — a fifth the size of
+// real glitter and, at any normal zoom, several specks per PIXEL. The GPU
+// dutifully averaged them into a faint sheen, which is why it read as a
+// pearlescent coat rather than glitter. Real flake is 0.2-0.5mm, so density
+// belongs around 2-4. Nothing else about the shader mattered until this was
+// right.
+//
+// size is the fraction of cells that hold a speck, so it is coverage, not a
+// dimension. Below about 0.08 the surface looks clean; above 0.25 the specks
+// touch and it goes back to being a coat of paint.
 export const SPOOLS = [
   // ---------------------------------------------------------------- PLA
   {
@@ -42,7 +54,7 @@ export const SPOOLS = [
     label: "Funfetti Clear · rainbow glitter",
     base: "#dfe7ec",
     t: 0.66, atten: 46, a: 0.60, rough: 0.16,
-    flake: { density: 22, size: 0.055, strength: 2.6, colour: "#ffffff", rainbow: true },
+    flake: { density: 2.4, size: 0.19, strength: 3.0, colour: "#ffffff", rainbow: true },
   },
   {
     id: "cc-unicorn",
@@ -67,7 +79,7 @@ export const SPOOLS = [
     label: "Witchcraft · violet with cyan flake",
     base: "#5326b8",
     t: 0.24, atten: 11, a: 0.94,
-    flake: { density: 34, size: 0.10, strength: 2.2, colour: "#8fe8ff", rainbow: false },
+    flake: { density: 3.0, size: 0.16, strength: 2.8, colour: "#8fe8ff", rainbow: false },
   },
   {
     id: "cc-mermaid",
@@ -83,7 +95,7 @@ export const SPOOLS = [
     label: "Dark Magic · near-black translucent",
     base: "#241a3a",
     t: 0.40, atten: 9, a: 0.82,
-    flake: { density: 26, size: 0.035, strength: 1.5, colour: "#b79bff", rainbow: false },
+    flake: { density: 3.6, size: 0.10, strength: 2.2, colour: "#b79bff", rainbow: false },
   },
 
   // ---------------------------------------------------------------- TPU
@@ -94,7 +106,7 @@ export const SPOOLS = [
     base: "#b98cf0",
     t: 0.28, atten: 24, a: 0.88,
     grad: ["#ff9ad5", "#b98cf0", "#7fc4ff"],
-    flake: { density: 20, size: 0.05, strength: 1.6, colour: "#ffffff", rainbow: true },
+    flake: { density: 2.8, size: 0.15, strength: 2.4, colour: "#ffffff", rainbow: true },
   },
   {
     id: "cc-golddust",
@@ -102,7 +114,7 @@ export const SPOOLS = [
     label: "Gold Dust · clear with gold flake",
     base: "#e6ded0",
     t: 0.58, atten: 42, a: 0.64,
-    flake: { density: 24, size: 0.07, strength: 2.4, colour: "#ffc95e", rainbow: false },
+    flake: { density: 2.2, size: 0.17, strength: 3.2, colour: "#ffc95e", rainbow: false },
   },
   {
     id: "cc-pinkombre",
@@ -136,8 +148,11 @@ export const LOOK_KEYS = [
 ];
 
 export const LOOKS = {
-  // clear body, rainbow flake — backlight hard, keep the room dark so specks pop
-  "cc-funfetti": { key: 118, fill: 42, rim: 130, ambient: 46, exposure: 122, opacity: 86, bg: "#0a0d14" },
+  // Clear body, rainbow flake. Backlit HARD originally, which blew the body
+  // to white and left the coloured specks nowhere to read — the one spool whose
+  // whole name is its glitter, and you could not see it. Backlight and exposure
+  // pulled down to leave headroom for the flake.
+  "cc-funfetti": { key: 112, fill: 38, rim: 88, ambient: 34, exposure: 104, opacity: 88, bg: "#0a0d14" },
   // a ramp has to be READ, so light it evenly and do not blow out the top
   "cc-unicorn": { key: 145, fill: 78, rim: 48, ambient: 66, exposure: 106, opacity: 100, bg: "#0d1018" },
   // jewel tone: it should glow from behind like held-up glass

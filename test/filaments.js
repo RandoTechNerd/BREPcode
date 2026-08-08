@@ -119,6 +119,30 @@ console.log("\nfxFor gives the shader exactly what it expects\n");
     check(`${s.id}: every uniform is a finite number`, nums.every(Number.isFinite),
       JSON.stringify(nums.filter((n) => !Number.isFinite(n))));
   }
+
+  // FLAKE HAS TO BE THE SIZE OF REAL FLAKE, and nothing here checked that.
+  //
+  // density is cells per millimetre, so 1/density is how big a speck is. The
+  // first version shipped 20-34, which is flake 0.03-0.05mm across — a fifth
+  // the size of real glitter, and at any normal zoom several specks per PIXEL.
+  // The GPU averaged them into a faint pearlescent sheen. Every number was
+  // finite, every test passed, and the feature did not do the one thing it is
+  // named after. A plausibility band is the only kind of check that catches a
+  // whole effect being at the wrong physical scale.
+  //
+  // Real glitter in filament is roughly 0.2-0.5mm, so 2-5 cells/mm. The band
+  // is widened a little at both ends to leave room for taste.
+  for (const s of SPOOLS.filter((x) => x.flake)) {
+    const mm = 1 / s.flake.density;
+    check(`${s.id}: flake is ${mm.toFixed(2)}mm — the size real glitter is`,
+      mm >= 0.15 && mm <= 0.7,
+      `density ${s.flake.density} gives ${mm.toFixed(3)}mm; under 0.15 it is sub-pixel dust, over 0.7 it is confetti`);
+    // Coverage: below about 0.08 the surface looks clean, above 0.25 the
+    // specks touch and it goes back to being a coat of paint.
+    check(`${s.id}: ...at a coverage that reads as sparse specks`,
+      s.flake.size >= 0.06 && s.flake.size <= 0.26, `${s.flake.size}`);
+    check(`${s.id}: ...and bright enough to flash`, s.flake.strength >= 1.5, `${s.flake.strength}`);
+  }
 }
 
 console.log("\nevery spool brings lighting that suits it — and gives it back\n");
@@ -303,6 +327,60 @@ console.log("\nthe page can actually drive it\n");
   check("...and on opening the Material panel", /loadSpools\(\);\s*\/\/ no-op/.test(HTML));
   check("effects default to OFF so an unused feature costs nothing",
     /grad: \{ value: 0 \}/.test(HTML) && /flake: \{ value: 0 \}/.test(HTML));
+}
+
+console.log("\nthe glint is a real specular test against the real lights\n");
+{
+  // What "sparkle" actually means, and what the first version could not do.
+  //
+  // Glitter blazes for an instant when a flake happens to bisect the light and
+  // your eye, then vanishes. That needs the LIGHT and the VIEW in the
+  // equation. The original lit a speck from dot(surfaceNormal, randomDir) —
+  // neither of them — so it shimmered faintly as the part turned and that was
+  // the whole effect. These pin the three things that make it work.
+  check("a speck is tested against the half-vector of light and eye",
+    /normalize\(directionalLights\[i\]\.direction \+ V\)/.test(HTML),
+    "no half-vector — the flake cannot know where the light is");
+  check("...for point lights too", /NUM_POINT_LIGHTS/.test(HTML));
+  check("...using the view direction", /vec3 V = normalize\(vViewPosition\)/.test(HTML));
+  // It has to be INJECTED at lights_pars_begin, which is where three declares
+  // directionalLights[]. Put it in the HELPERS block at <common> instead and
+  // the shader will not compile — the struct does not exist yet. Checking
+  // where it is injected, not where the string happens to sit in this file.
+  check("the glint is injected at lights_pars_begin, where the lights exist",
+    /\.replace\("#include <lights_pars_begin>", "#include <lights_pars_begin>\\n" \+ FLAKE\)/.test(HTML),
+    "injected somewhere else — directionalLights[] would not be declared yet");
+  check("...and is not in the block that goes at <common>",
+    !(/const HELPERS = `([^`]*)`/.exec(HTML)?.[1] ?? "").includes("fxFlakeLayer"));
+
+  // Flakes lie nearly flat in the plastic. Random directions over the whole
+  // sphere put half of them facing INTO the part, where they can never catch
+  // anything — half the glitter simply missing.
+  check("a facet is the surface normal jittered, not a random direction",
+    /normalize\(nrm \+ jitter \* [\d.]+\)/.test(HTML));
+  // No floor: a speck is flashing or it is invisible. A constant baseline is
+  // what makes glitter read as a pale coat of paint.
+  check("there is no always-on baseline glow",
+    !/0\.25 \+ 0\.75 \* flash/.test(HTML));
+  check("two scales of flake, so it is not one lonely size",
+    (HTML.match(/fxFlakeLayer\(N, V,/g) || []).length === 2);
+  check("grazing angles show more flake", /float fres = pow\(1\.0 - clamp\(dot\(N, V\)/.test(HTML));
+
+  // The dial.
+  check("sparkle is a uniform every material shares", /sparkle: \{ value: 1 \}/.test(HTML));
+  check("...exposed as a slider", /id="mat-sparkle"/.test(HTML));
+  check("...whose row hides on spools with no flake",
+    /\$\("mat-sparkle-row"\)\.style\.display = fx\.flake \? "" : "none"/.test(HTML));
+  check("...and writes straight to the uniform, with no rebuild",
+    /sharedFx\.sparkle\.value = mat\.sparkle;/.test(HTML));
+  check("...and is remembered", /sparkle: 1,/.test(HTML));
+  // Sparkle must drive BRIGHTNESS only. Tying the exponent to it as well made
+  // turning it UP produce a sparser, dimmer surface, because a tighter lobe
+  // catches fewer flakes than the extra gain adds back.
+  check("sparkle scales gain, and the exponents are constants",
+    /fxFlakeLayer\(N, V, uFxFlakeD, uFxFlakeS, 70\.0, 1\.0\)/.test(HTML)
+      && /\* s \* s \*/.test(HTML),
+    "an exponent that moves with sparkle makes the dial work backwards");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
