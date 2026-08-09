@@ -54,10 +54,45 @@ console.log("\nThe module is the compatibility rule\n");
   // The two numbers a machine is actually assembled from.
   check("centre distance is m(z1+z2)/2", g.centre === 60, String(g.centre));
   check("ratio is z2/z1", g.ratio === 2, String(g.ratio));
-  check("...and says so in the form people write it", g.ratioText === "2:1", g.ratioText);
+  check("...and says so in the form people write it", g.ratioText === "2:1 reduction", g.ratioText);
+  check("...with the bare number available too", g.ratioNumber === "2:1", g.ratioNumber);
+  check("a bigger driven gear is a reduction", g.sense === "reduction" && g.stepUp === false);
+  check("speedFactor says how much faster the output turns", g.speedFactor === 0.5, String(g.speedFactor));
   check("two external gears counter-rotate", g.reverses === true);
   check("20:40 is not a hunting pair", g.huntingTeeth === false);
   check("...but 20:41 is", gearMath(2, 20, 41).huntingTeeth === true);
+}
+
+console.log("\nSpeed-ups are said the way people say them\n");
+{
+  // Found by building a hand-crank centrifuge. A centrifuge is a SPEED-UP —
+  // crank slowly, spin fast — and so are a drill, a fan, a flywheel and an egg
+  // beater. The old ratioText reported one as "0.33:1": true, and a phrase no
+  // human has ever used. Since ratioText is what gets pasted into the sentence
+  // the user reads, it has to be the phrase and not the arithmetic.
+  const up = gearMath(1.5, 51, 17);       // the centrifuge that found this
+  check("a step-up says step-up", up.ratioText === "3:1 step-up", up.ratioText);
+  check("...and never a fraction", !/^0\./.test(up.ratioText), up.ratioText);
+  check("...with the number the fast-to-slow way round", up.ratioNumber === "3:1", up.ratioNumber);
+  check("...and speedFactor answers 'how many turns per crank'",
+    up.speedFactor === 3, String(up.speedFactor));
+  check("...flagged as a step-up", up.stepUp === true && up.sense === "step-up");
+
+  const down = gearMath(1.5, 10, 50);
+  check("a reduction says reduction", down.ratioText === "5:1 reduction", down.ratioText);
+  check("...and is not flagged as a step-up", down.stepUp === false);
+  check("...its speedFactor is under 1", down.speedFactor === 0.2, String(down.speedFactor));
+
+  const same = gearMath(1.5, 20, 20);
+  check("equal gears are direct drive", same.ratioText === "1:1 (direct)", same.ratioText);
+  check("...neither up nor down", same.stepUp === false && same.sense === "direct");
+
+  // Whichever way round, the printed number is always the big one over 1 — so
+  // "3:1" never means two different things depending on which gear drives.
+  for (const [a, b] of [[51, 17], [17, 51], [12, 36], [36, 12]]) {
+    const g = gearMath(1.5, a, b);
+    check(`${a}->${b} prints the fast-to-slow number`, g.ratioNumber === "3:1", g.ratioNumber);
+  }
 }
 
 console.log("\nWhat it refuses, and what it merely warns about\n");
@@ -278,8 +313,16 @@ console.log("\nA train's ratio is first to last, and idlers only flip it\n");
   check("a train of one is refused",
     (() => { try { gearTrain(2, [10]); return false; } catch { return true; } })());
   // A big reduction, stated the way a description would state it.
-  check("8 → 64 reads as 8:1", gearTrain(1.5, [8, 64]).ratioText === "8:1");
-  check("12 → 25 reads as 2.08:1", gearTrain(1.5, [12, 25]).ratioText === "2.08:1");
+  check("8 → 64 reads as an 8:1 reduction", gearTrain(1.5, [8, 64]).ratioText === "8:1 reduction",
+    gearTrain(1.5, [8, 64]).ratioText);
+  check("12 → 25 reads as 2.08:1", gearTrain(1.5, [12, 25]).ratioText === "2.08:1 reduction",
+    gearTrain(1.5, [12, 25]).ratioText);
+  // A train that SPEEDS UP is exactly as common as one that slows down, and it
+  // used to report "0.33:1" — arithmetically true, and a thing no person says.
+  const up = gearTrain(1.5, [51, 17]);
+  check("a speeding-up train says step-up, not a fraction",
+    up.ratioText === "3:1 step-up", up.ratioText);
+  check("...and knows which way round it is", up.stepUp === true && up.speedFactor === 3);
 }
 
 console.log("\nThe other gear shapes build\n");

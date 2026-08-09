@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { DEFAULT_HARNESS } from "../viewer/chatbot.js";
 import { UNSUPPORTED, LIMITED, MODULES } from "../src/openscad.js";
 import * as dsl from "../index.js";
+import * as jscadOnly from "../src/jscad.js";
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -63,6 +64,20 @@ const OPENSCAD_ONLY = new Set(
   [...MODULES, ...Object.keys(UNSUPPORTED), ...Object.keys(LIMITED)]
     .filter((n) => !real.has(n)));
 
+// Same idea for the JSCAD layer. The harness has to be able to name a function
+// that exists in JSCAD and NOT here — roundedCuboid() is the one that caught a
+// real model out: a plausible name, a real JSCAD word, and "not defined" here,
+// which throws away the whole build. Warning about it means writing it down,
+// and writing it down looked to this checker like a promise.
+//
+// Derived from src/jscad.js rather than typed, exactly like OPENSCAD_ONLY, and
+// intersected with what BREPcode lacks. So if roundedCuboid is ever added to
+// the DSL the exemption evaporates on its own, and if it is dropped from the
+// JSCAD layer the harness line starts failing again.
+const JSCAD_ONLY = new Set(
+  Object.keys(jscadOnly)
+    .filter((n) => typeof jscadOnly[n] === "function" && !real.has(n)));
+
 // No space before the paren. Prose puts one there — "a colour (great for…)",
 // "the app (a browser CAD app)" — and code never does, so this alone separates
 // a claim about the vocabulary from an ordinary English aside.
@@ -73,10 +88,30 @@ const unique = [...new Set(named)].sort();
 
 check("the harness names some vocabulary at all", unique.length > 10, `${unique.length}`);
 
-const missing = unique.filter((n) => !real.has(n) && !OPENSCAD_ONLY.has(n));
+const missing = unique.filter((n) =>
+  !real.has(n) && !OPENSCAD_ONLY.has(n) && !JSCAD_ONLY.has(n));
 check("every word the prompt promises actually exists",
   missing.length === 0,
   missing.length ? `PROMISED BUT MISSING: ${missing.join(", ")}` : "");
+
+// The exemption cuts both ways: a name is only allowed through because the
+// harness is WARNING about it. If it ever appears without a warning nearby, the
+// prompt is quietly advertising something the evaluator does not have.
+{
+  // Only the ones JSCAD_ONLY is carrying on its own. offset() and polyhedron()
+  // are OpenSCAD modules too, already exempt above and already warned about in
+  // the translator's own words — policing them here would just demand the
+  // OpenSCAD section be reworded to suit this test.
+  const mine = [...JSCAD_ONLY].filter((n) => unique.includes(n) && !OPENSCAD_ONLY.has(n));
+  check("the harness does name a JSCAD-only word", mine.length > 0, `${mine.length}`);
+  for (const n of mine) {
+    const at = DEFAULT_HARNESS.indexOf(`${n}(`);
+    const around = DEFAULT_HARNESS.slice(Math.max(0, at - 400), at + 400);
+    check(`${n}() is named only to say it does NOT exist`,
+      /DO NOT EXIST|does not exist|not exist here|are not here/i.test(around),
+      `…${around.slice(360, 470)}…`);
+  }
+}
 
 // The other direction — that the prompt names every module the translator has,
 // and none that it lacks — is test/toolfit.js's job. It has to be, because it

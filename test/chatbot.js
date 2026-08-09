@@ -891,7 +891,19 @@ console.log("\nwires are swept, not chained\n");
     /two gears mesh only if they share a module/i.test(on));
   check("it warns about the undercut floor", /Under 17 teeth undercuts/.test(on));
   check("it asks for the ratio to be said out loud",
-    /State the ratio in words/.test(on));
+    /Quote \.ratioText verbatim/.test(on));
+  // The centrifuge that exposed this: a step-up drive is a completely different
+  // gear arrangement from a reduction, and nothing said so.
+  check("it says to decide reduction vs step-up before picking teeth",
+    /DECIDE WHICH WAY THE DRIVE GOES BEFORE PICKING TEETH/.test(on));
+  check("...with both directions named by example",
+    /winch, a hoist or a lifting mechanism is a REDUCTION/.test(on)
+    && /centrifuge, a drill, a fan/.test(on));
+  check("it warns that gears are slow to build",
+    /A GEAR IS EXPENSIVE TO BUILD/.test(on));
+  check("it says a machine needs more than its gears",
+    /A MACHINE IS MORE THAN ITS GEARS/.test(on)
+    && /clearance checked between parts that MOVE/.test(on));
   // The classic gear-train error, named explicitly: in a simple train the
   // middle gears cancel, so multiplying the stage ratios is wrong.
   check("it names the first-to-last ratio trap",
@@ -907,7 +919,10 @@ console.log("\nwires are swept, not chained\n");
   // And the shapes the section describes must be the shapes they return.
   const g = dsl.gearMath(2, 12, 36);
   check("gearMath returns the centre distance and ratio the section promises",
-    g.centre === 48 && g.ratio === 3 && g.ratioText === "3:1" && Array.isArray(g.warnings));
+    g.centre === 48 && g.ratio === 3 && g.ratioText === "3:1 reduction"
+    && Array.isArray(g.warnings), g.ratioText);
+  check("...and the step-up fields the section now names",
+    typeof g.speedFactor === "number" && typeof g.stepUp === "boolean");
   const t = dsl.gearTrain(2, [12, 36, 12, 48]);
   check("gearTrain returns axles, ratio and warnings",
     Array.isArray(t.axles) && t.axles.length === 4 && typeof t.ratio === "number"

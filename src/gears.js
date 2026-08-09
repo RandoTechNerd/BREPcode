@@ -122,9 +122,14 @@ export function gearMath(module, teeth1, teeth2, opts = {}) {
     // The only two numbers a machine actually gets assembled from.
     centre: (m * (z1 + z2)) / 2,
     ratio: z2 / z1,
-    // Said as people say it, because "3.5:1" is what goes in the description
-    // and "0.2857" is what goes in a bug report.
-    ratioText: `${(z2 / z1).toFixed(z2 % z1 === 0 ? 0 : 2)}:1`,
+    // How much FASTER the output turns than the input. The reciprocal of the
+    // ratio, and the number a person actually asks for: "how many times does
+    // the rotor go round per turn of the handle?"
+    speedFactor: z1 / z2,
+    // A drive that makes the output turn FASTER than the input. Half of all
+    // real mechanisms: centrifuges, drills, fans, flywheels, egg beaters.
+    stepUp: z1 > z2,
+    ...ratioWords(z1, z2),
     // Which way the output turns. Two external gears in mesh ALWAYS counter-
     // rotate — the classic mistake in a hand-built train, and the reason an
     // idler exists at all.
@@ -142,6 +147,25 @@ export function gearMath(module, teeth1, teeth2, opts = {}) {
 }
 
 function gcd(a, b) { while (b) { [a, b] = [b, a % b]; } return a; }
+
+// Say the ratio the way a person says it.
+//
+// A ratio under 1 is a SPEED-UP, and it is not a rare case — a centrifuge, a
+// drill, a fan, a flywheel and an egg beater are all speed-ups. Reporting one
+// as "0.33:1" is arithmetically true and no human has ever said it; the phrase
+// is "3:1 step-up". Since ratioText is the string that gets pasted into the
+// sentence the user reads, it has to be the phrase and not the arithmetic.
+//
+// The convention both halves obey: the number is always the ratio of the FAST
+// side to the slow side, and the word says which end is which.
+function ratioWords(z1, z2) {
+  const n = z1 > z2 ? z1 / z2 : z2 / z1;
+  const round = Number.isInteger(n) ? 0 : 2;
+  const num = `${n.toFixed(round)}:1`;
+  if (z1 === z2) return { ratioText: "1:1 (direct)", ratioNumber: "1:1", sense: "direct" };
+  const sense = z1 > z2 ? "step-up" : "reduction";
+  return { ratioText: `${num} ${sense}`, ratioNumber: num, sense };
+}
 
 // A whole train, laid out. Give it tooth counts in order and it returns where
 // each axle goes and what the train actually does — including the thing that
@@ -167,12 +191,18 @@ export function gearTrain(module, teeth, opts = {}) {
   // it survives right up until the thing is built and turns far too fast.
   const overall = zs[zs.length - 1] / zs[0];
   const meshes = zs.length - 1;
+  const first = zs[0], last = zs[zs.length - 1];
   return {
     module: m,
     axles,
     stages,
     ratio: overall,
-    ratioText: `${overall.toFixed(Number.isInteger(overall) ? 0 : 2)}:1`,
+    speedFactor: first / last,
+    stepUp: first > last,
+    // Same wording rule as a pair: the number is fast-to-slow and the word says
+    // which end is which. A train that speeds up is just as common as one that
+    // slows down, and "0.25:1" is not a thing anyone says.
+    ...ratioWords(first, last),
     // Each mesh reverses; an odd number of meshes means the output turns the
     // other way from the input.
     reverses: meshes % 2 === 1,
