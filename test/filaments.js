@@ -178,9 +178,31 @@ console.log("\nevery spool brings lighting that suits it — and gives it back\n
   check("see-through spools get more BACK light than solid ones",
     avg(clear, "rim") > avg(solid, "rim"),
     `clear rim ${avg(clear, "rim").toFixed(0)} vs solid ${avg(solid, "rim").toFixed(0)}`);
-  check("...and more exposure, so the light through them registers",
-    avg(clear, "exposure") > avg(solid, "exposure"),
-    `${avg(clear, "exposure").toFixed(0)} vs ${avg(solid, "exposure").toFixed(0)}`);
+  // This used to assert the OPPOSITE — that clear spools get MORE exposure,
+  // "so the light through them registers". That was the same wrong intuition
+  // that produced the blow-out bug. A near-clear spool has a PALE body, so it
+  // is the first thing to clip: Funfetti and Gold Dust were sitting at 250 of
+  // 255 with zero visible flake, on the two spools whose whole selling point
+  // is the flake. What they need is BACK light, checked above, and LESS
+  // exposure so there is headroom left for a speck to be brighter than the
+  // body it sits in.
+  check("...and LESS exposure, because a pale body clips first",
+    avg(clear, "exposure") < avg(solid, "exposure"),
+    `clear ${avg(clear, "exposure").toFixed(0)} vs solid ${avg(solid, "exposure").toFixed(0)}`);
+  // The cap belongs on PALE bodies only. Dark Magic runs exposure 128 and is
+  // right to: a near-black body has enormous headroom, and measured on a flat
+  // face it does not clip at all. What cannot take it is a light body, which
+  // reaches 255 and takes its own flake with it.
+  const lumOf = (hex) => {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  };
+  for (const s of SPOOLS) {
+    if (lumOf(s.base) < 0.55) continue;          // dark bodies can take the light
+    check(`${s.id}: pale body, so it is not exposed into clipping`,
+      LOOKS[s.id].exposure <= 112,
+      `base luminance ${lumOf(s.base).toFixed(2)} at exposure ${LOOKS[s.id].exposure}`);
+  }
   check("...and are shown less than fully opaque",
     avg(clear, "opacity") < avg(solid, "opacity"),
     `${avg(clear, "opacity").toFixed(0)} vs ${avg(solid, "opacity").toFixed(0)}`);
@@ -327,6 +349,53 @@ console.log("\nthe page can actually drive it\n");
   check("...and on opening the Material panel", /loadSpools\(\);\s*\/\/ no-op/.test(HTML));
   check("effects default to OFF so an unused feature costs nothing",
     /grad: \{ value: 0 \}/.test(HTML) && /flake: \{ value: 0 \}/.test(HTML));
+}
+
+console.log("\nnothing reflects hard enough to white out a flat face\n");
+{
+  // THE BUG THIS BAND EXISTS FOR. envMapIntensity was 2.0 / 2.6 / 1.5, and on
+  // a curved part that looks like gloss — only a small patch of a sphere faces
+  // the bright part of the environment at once. A FLAT top face mirrors ONE
+  // patch across its whole area, so pointed anywhere near the room's ceiling
+  // light it went to solid white.
+  //
+  // Measured on a 70mm slab in Witchcraft, a deep violet, viewed from above:
+  // the top face came back RGB [249,249,250] with 95.6% of its pixels clipped
+  // and ZERO specks. With envMapIntensity forced to 0 the same pixel read
+  // [52,21,107] — the violet it should always have been. It was not the
+  // glitter that was missing; the whole face was blown out and the glitter had
+  // nowhere to show. Every real part — a cutter, a plate, a box — is mostly
+  // flat, which is why this was the common case and not the rare one.
+  for (const [fam, v] of Object.entries(FAMILY)) {
+    check(`${fam}: env stays low enough that a flat face keeps its colour`,
+      v.env > 0 && v.env <= 0.8,
+      `env ${v.env} — above about 0.8 a flat top mirrors the environment to white`);
+    // A printed surface has layer lines. 0.13 was polished glass, which is
+    // what made the mirror a mirror.
+    check(`${fam}: roughness is a printed surface, not glass`,
+      v.rough >= 0.25, `rough ${v.rough}`);
+  }
+  for (const s of SPOOLS) {
+    if (s.env !== undefined) {
+      check(`${s.id}: its env override is lower still`, s.env > 0 && s.env <= FAMILY[s.family].env,
+        `${s.env} vs family ${FAMILY[s.family].env}`);
+    }
+    if (s.rough !== undefined) {
+      check(`${s.id}: its roughness override is not glass either`, s.rough >= 0.25, `${s.rough}`);
+    }
+  }
+  // The override has to actually reach the material, or the two clear spools
+  // go back to being white.
+  check("fxFor honours a per-spool env", (() => {
+    const clear = SPOOLS.find((x) => x.env !== undefined);
+    return clear && fxFor(clear).env === clear.env;
+  })());
+  check("...and falls back to the family when there is none", (() => {
+    const plain = SPOOLS.find((x) => x.env === undefined);
+    return plain && fxFor(plain).env === FAMILY[plain.family].env;
+  })());
+  check("the viewer reads the override too, not just the family",
+    /env: s\.env \?\? F\.FAMILY\[s\.family\]\.env/.test(HTML));
 }
 
 console.log("\nthe glint is a real specular test against the real lights\n");

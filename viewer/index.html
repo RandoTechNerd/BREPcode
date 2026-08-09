@@ -4823,7 +4823,7 @@
             FILAMENTS[s.id] = {
               label: s.label, t: s.t, ior: F.FAMILY[s.family].ior,
               rough: s.rough ?? F.FAMILY[s.family].rough,
-              atten: s.atten, env: F.FAMILY[s.family].env, a: s.a, spool: s,
+              atten: s.atten, env: s.env ?? F.FAMILY[s.family].env, a: s.a, spool: s,
             };
             const o = document.createElement("option");
             o.value = s.id;

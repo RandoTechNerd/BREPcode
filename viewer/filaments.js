@@ -23,10 +23,28 @@
 
 // Per-family physical constants. A gradient PLA and a gradient PETG should not
 // look the same: PETG is glossier and refracts harder, TPU is soft and matte.
+//
+// env WAS 2.0 / 2.6 / 1.5 and those numbers hid the whole feature on flat
+// parts. envMapIntensity that high, on a surface as smooth as 0.13, makes a
+// mirror — and a FLAT top face mirrors one patch of the environment across its
+// entire area. Pointed anywhere near the room's ceiling light it went to solid
+// white: no flake, and not even the right colour. Measured on a 70mm slab in
+// Witchcraft, a deep violet: the top face came back RGB [249,249,250] with
+// 95.6% of its pixels clipped and ZERO specks. Setting envMapIntensity to 0
+// gave [52,21,107], the violet it should have been all along.
+//
+// It survived because the rigs were judged on a SPHERE, where only a small
+// patch of the surface faces the bright part of the environment at any moment.
+// Every real part — a cutter, a plate, a box — is mostly flat.
+//
+// The values below keep the sphere almost exactly as it was (specks 3.54% ->
+// 3.46%, and it stops clipping) while the flat top goes from 0% specks to
+// 5.6%. Roughness comes up at the same time: a printed surface has layer
+// lines, and 0.13 is polished glass.
 export const FAMILY = {
-  PLA: { ior: 1.46, rough: 0.34, env: 2.0 },
-  PETG: { ior: 1.57, rough: 0.13, env: 2.6 },
-  TPU: { ior: 1.47, rough: 0.58, env: 1.5 },
+  PLA: { ior: 1.46, rough: 0.40, env: 0.50 },
+  PETG: { ior: 1.57, rough: 0.30, env: 0.55 },
+  TPU: { ior: 1.47, rough: 0.62, env: 0.40 },
 };
 
 // t     transmission (how much light passes through)
@@ -53,7 +71,7 @@ export const SPOOLS = [
     family: "PLA",
     label: "Funfetti Clear · rainbow glitter",
     base: "#dfe7ec",
-    t: 0.66, atten: 46, a: 0.60, rough: 0.16,
+    t: 0.66, atten: 46, a: 0.60, rough: 0.30, env: 0.14,
     flake: { density: 2.4, size: 0.19, strength: 3.0, colour: "#ffffff", rainbow: true },
   },
   {
@@ -69,7 +87,7 @@ export const SPOOLS = [
     family: "PLA",
     label: "Ruby Red Elixir",
     base: "#c0182c",
-    t: 0.46, atten: 15, a: 0.78, rough: 0.20,
+    t: 0.46, atten: 15, a: 0.78, rough: 0.32,
   },
 
   // --------------------------------------------------------------- PETG
@@ -113,7 +131,7 @@ export const SPOOLS = [
     family: "TPU",
     label: "Gold Dust · clear with gold flake",
     base: "#e6ded0",
-    t: 0.58, atten: 42, a: 0.64,
+    t: 0.58, atten: 42, a: 0.64, env: 0.20,
     flake: { density: 2.2, size: 0.17, strength: 3.2, colour: "#ffc95e", rainbow: false },
   },
   {
@@ -166,7 +184,7 @@ export const LOOKS = {
   // pastel gradient on matte TPU: soft and open, no hard highlights
   "cc-fairyfloss": { key: 136, fill: 82, rim: 72, ambient: 68, exposure: 107, opacity: 98, bg: "#0e1017" },
   // warm flake wants a warm backlight, or the gold reads grey
-  "cc-golddust": { key: 126, fill: 46, rim: 128, ambient: 46, exposure: 119, opacity: 86, rimcol: "#ffd9a0", bg: "#0a0a0d" },
+  "cc-golddust": { key: 112, fill: 44, rim: 82, ambient: 34, exposure: 103, opacity: 86, rimcol: "#ffd9a0", bg: "#0a0a0d" },
   // matte needs FILL above all — lit like the others it looks dead flat
   "cc-pinkombre": { key: 142, fill: 92, rim: 42, ambient: 74, exposure: 104, opacity: 100, bg: "#0f1016" },
 };
@@ -255,7 +273,10 @@ export function fxFor(spool) {
     flakeColour: hexToRgb(f ? f.colour : "#ffffff"),
     flakeRainbow: f && f.rainbow ? 1 : 0,
     // the physical half, merged with the family defaults
-    t: spool.t, ior: fam.ior, env: fam.env,
+    // env is overridable per spool for the same reason rough is: the two
+    // NEARLY CLEAR spools have pale bodies that any reflection pushes to white,
+    // and white flake on a white body is not glitter, it is nothing.
+    t: spool.t, ior: fam.ior, env: spool.env ?? fam.env,
     rough: spool.rough ?? fam.rough,
     atten: spool.atten, a: spool.a,
     base: spool.base,
