@@ -858,6 +858,125 @@ console.log("\nwires are swept, not chained\n");
     (both.match(/ONE solid/g) || []).length >= 2);
 }
 
+// ---- machine mode ---------------------------------------------------------
+//
+// A gear drawn by eye binds, and a render cannot show it — so the prompt has to
+// name the gear vocabulary and the two rules that make a set of gears actually
+// mesh. It is a #section rather than always-on text: it costs real tokens, and
+// most models are not machines.
+{
+  console.log("\nMachine mode\n");
+  const H = CB.DEFAULT_HARNESS;
+  check("#machine is a togglable section", harnessTags(H).includes("machine"));
+
+  const on = filterHarness(H, []);
+  const off = filterHarness(H, ["machine"]);
+  check("switching it off removes it from what is sent", off.length < on.length,
+    `${on.length} -> ${off.length}`);
+  check("...and takes the gear vocabulary with it",
+    /gearMath/.test(on) && !/gearMath/.test(off));
+  check("...leaving the rest of the mission untouched",
+    off.length > 20000 && /BREPcode/.test(off), `${off.length} chars`);
+
+  // The two instructions that are the whole point. Without the first the model
+  // draws teeth by hand; without the second it types a centre distance it
+  // worked out itself, and the axles land in the wrong place.
+  check("it says to call the gear functions rather than draw teeth",
+    /CALL THE GEAR FUNCTIONS, never draw teeth/.test(on));
+  check("it forbids typing a centre distance",
+    /NEVER TYPE A CENTRE DISTANCE/.test(on));
+  check("it names gearMath and gearTrain as the source of both",
+    /gearMath\(module, z1, z2\)/.test(on) && /gearTrain\(module, \[z1, z2/.test(on));
+  check("it says the module is what makes gears compatible",
+    /two gears mesh only if they share a module/i.test(on));
+  check("it warns about the undercut floor", /Under 17 teeth undercuts/.test(on));
+  check("it asks for the ratio to be said out loud",
+    /State the ratio in words/.test(on));
+  // The classic gear-train error, named explicitly: in a simple train the
+  // middle gears cancel, so multiplying the stage ratios is wrong.
+  check("it names the first-to-last ratio trap",
+    /the ratio is FIRST tooth count to LAST/.test(on) && /multiplying the stages/.test(on));
+  check("it points at the recipe for the depth", /Read #machine for the rest/.test(on));
+
+  // Every function the section promises must actually exist, or the section is
+  // teaching a model to call something that is not there.
+  const dsl = await import("../index.js");
+  for (const fn of ["gear", "gearWithHub", "ringGear", "rack", "gearPair", "gearMath", "gearTrain"]) {
+    check(`${fn}() is reachable from the DSL`, typeof dsl[fn] === "function");
+  }
+  // And the shapes the section describes must be the shapes they return.
+  const g = dsl.gearMath(2, 12, 36);
+  check("gearMath returns the centre distance and ratio the section promises",
+    g.centre === 48 && g.ratio === 3 && g.ratioText === "3:1" && Array.isArray(g.warnings));
+  const t = dsl.gearTrain(2, [12, 36, 12, 48]);
+  check("gearTrain returns axles, ratio and warnings",
+    Array.isArray(t.axles) && t.axles.length === 4 && typeof t.ratio === "number"
+    && Array.isArray(t.warnings));
+}
+
+// ---- the mission, painted as source ---------------------------------------
+//
+// A highlight layer behind a see-through textarea. The invariant that makes it
+// safe is that the overlay reproduces the text EXACTLY and styles it with
+// colour only — anything that changes metrics (weight, size, spacing, or extra
+// characters like a "// " comment prefix) re-wraps one layer and not the other,
+// and the caret ends up under the wrong glyph.
+{
+  console.log("\nThe mission, painted as source\n");
+  const { readFileSync } = await import("node:fs");
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+
+  check("the mission has a highlight layer behind the textarea",
+    /<pre id="harness-hl" aria-hidden="true"><\/pre>\s*\n\s*<textarea id="ai-harness"/.test(HTML));
+  check("it is painted from the same parse the chips and the sender use",
+    /CHAT\.harnessSections\(text\)/.test(HTML));
+  check("a switched-off block is struck through and faded",
+    /\.off-body \{ opacity: \.34; text-decoration: line-through; \}/.test(HTML));
+  check("the marker line is coloured differently when its block is off",
+    /#harness-hl \.sec\.off \{/.test(HTML));
+
+  // Metrics have to be shared, and the panel's blanket rule outranks a bare
+  // "#harness-code > textarea", so both selectors are scoped through the panel.
+  for (const sel of ["#chat-settings #harness-code > pre", "#chat-settings #harness-code > textarea"]) {
+    check(`${sel} outranks the panel's blanket input rule`, HTML.includes(sel));
+  }
+  check("the two layers share one font/padding/wrapping declaration",
+    /#chat-settings #harness-code > pre,\s*\n\s*#chat-settings #harness-code > textarea \{[\s\S]{0,400}white-space: pre-wrap/.test(HTML));
+  check("the text layer is transparent but the caret is not",
+    /color: transparent; caret-color: var\(--text\)/.test(HTML));
+  check("they scroll together",
+    /aiHarness\.addEventListener\("scroll"[\s\S]{0,180}pre\.scrollTop = aiHarness\.scrollTop/.test(HTML));
+
+  // ---- a pasted image, full size ------------------------------------------
+  console.log("\nPasted images open full size\n");
+  check("there is a viewer to open them in", /<div id="img-zoom" hidden>/.test(HTML));
+  check("it fills most of the window without overflowing it",
+    /max-width: 94vw; max-height: 86vh; object-fit: contain/.test(HTML));
+  check("the chip strip's thumbnails are clickable",
+    /zoomable\(img, \(\) => pendingImgs\.map/.test(HTML));
+  check("...and so are the ones in a sent bubble",
+    /zoomable\(im, \(\) => sent, i\)/.test(HTML));
+  check("both say so before they are clicked",
+    /#chat-img-chip img, \.msg img\.zoomable \{ cursor: zoom-in; \}/.test(HTML));
+
+  // The pending strip is read LIVE (removing an image must not leave the viewer
+  // pointing at it) while a sent bubble's list is FROZEN (pendingImgs is emptied
+  // for the next message, so a live read would zoom into nothing).
+  check("the pending strip passes a live list",
+    /\(\) => pendingImgs\.map\(\(q\) => \(\{ src: q\.dataUrl, name: q\.name \}\)\)/.test(HTML));
+  check("a sent bubble freezes its own copy",
+    /const sent = pendingImgs\.map\(\(p\) => \(\{ src: p\.dataUrl, name: p\.name \}\)\);/.test(HTML));
+
+  check("Escape, and the arrows, are stopped so they do not reach what is underneath",
+    /if \(\$\("img-zoom"\)\.hidden\) return;[\s\S]{0,320}e\.stopPropagation\(\); closeZoom\(\)/.test(HTML));
+  check("closing drops the data URL rather than holding it decoded",
+    /\$\("img-zoom-pic"\)\.removeAttribute\("src"\)/.test(HTML));
+  check("the arrows only appear when there is somewhere to go",
+    /\$\("img-zoom-prev"\)\.hidden = !many/.test(HTML));
+  check("the bar's own buttons do not close it",
+    /if \(e\.target\.closest\("#img-zoom-bar"\)\) return;/.test(HTML));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
 

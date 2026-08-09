@@ -280,6 +280,110 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
     /glbFailed = String\(err\?\.message \|\| err\);/.test(HTML));
   check("...and the user is told the page will be a still",
     /will show the still thumbnail, not a `\s*\+ `model you can spin/.test(HTML));
+
+  // ---- the consolidated list --------------------------------------------
+  //
+  // Twelve rows became six. Anything that PICKS BETWEEN outputs is a dropdown,
+  // because the dialog exports exactly one thing; the single checkbox does not
+  // choose between exports, it changes the one output — and says so.
+  console.log("\nExport dialog: one row, several files\n");
+
+  const listRows = [...HTML.matchAll(/<button data-fmt="([^"]+)"(?:\s+data-group="([^"]+)")?/g)]
+    .map((m) => ({ fmt: m[1], group: m[2] || null }));
+  check("the list is down to nine rows (four of them conditional)",
+    listRows.length === 9, `${listRows.length}: ${listRows.map((r) => r.fmt).join(", ")}`);
+  for (const gone of ["stl", "obj", "3mf-parts", "step-curved", "embed"]) {
+    check(`"${gone}" no longer has a row of its own`,
+      !listRows.some((r) => r.fmt === gone));
+  }
+  for (const [fmt, group] of [["3mf", "mesh"], ["step", "step"], ["glb", "glb"]]) {
+    check(`"${fmt}" leads the ${group} group`,
+      listRows.some((r) => r.fmt === fmt && r.group === group));
+  }
+
+  // The dropdowns must offer exactly the formats the group claims, or a
+  // variant becomes unreachable — which is how an export silently disappears.
+  const optionsOf = (id) => {
+    const block = HTML.match(new RegExp(`<select id="${id}">([\\s\\S]*?)</select>`));
+    return block ? [...block[1].matchAll(/value="([^"]+)"/g)].map((m) => m[1]) : [];
+  };
+  const meshOpts = optionsOf("mesh-variant");
+  check("Mesh offers 3MF, laid-out 3MF, STL and OBJ",
+    JSON.stringify(meshOpts) === JSON.stringify(["3mf", "3mf-parts", "stl", "obj"]), meshOpts.join(","));
+  check("...defaulting to 3MF, which is the one that carries colour",
+    meshOpts[0] === "3mf");
+  const stepOpts = optionsOf("step-variant");
+  check("STEP offers faceted and true-curved",
+    JSON.stringify(stepOpts) === JSON.stringify(["step", "step-curved"]), stepOpts.join(","));
+  check("...defaulting to faceted, which needs no 11 MB download",
+    stepOpts[0] === "step");
+  check("the GLB box names the extension it changes the file to",
+    /id="glb-wrap"[\s\S]{0,220}<b>\.html<\/b>[\s\S]{0,80}<b>\.glb<\/b>/.test(HTML));
+
+  // Every format the dialog can land on needs an extension, or the filename
+  // line has nothing to say and quietly renders blank.
+  for (const fmt of ["stl", "obj", "3mf", "3mf-parts", "step", "step-curved", "svg", "glb", "embed"]) {
+    check(`"${fmt}" declares the extension it writes`,
+      new RegExp(`"?${fmt.replace(/[-]/g, "\\-")}"?: \\{ kind: "[a-z]+", ext: "`).test(HTML));
+  }
+
+  // ---- rows that hide must actually collapse -----------------------------
+  //
+  // An ID selector outranks the browser's own `[hidden] { display: none }`.
+  // #publish-row set `display: block` that way and so kept 600px of height on
+  // every format that was not Publish, shoving the real options a screenful
+  // below the fold of a panel that looked empty. Any row the dialog toggles
+  // with .hidden and also styles by ID needs the guard said out loud.
+  console.log("\nHidden option rows collapse\n");
+  const TOGGLED = ["publish-row", "mesh-variant-row", "step-variant-row", "glb-wrap-row",
+    "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row", "layer-row",
+    "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row",
+    "style-row", "angle-row", "gcode-row", "gcode-text-row"];
+  for (const id of TOGGLED) {
+    const rule = HTML.match(new RegExp(`#${id}\\s*\\{([^}]*)\\}`));
+    if (!rule || !/display\s*:/.test(rule[1])) continue;   // no ID display rule, nothing to beat
+    check(`#${id} sets display by ID, so it guards [hidden]`,
+      new RegExp(`#${id}\\[hidden\\]\\s*\\{[^}]*display\\s*:\\s*none`).test(HTML),
+      rule[1].trim());
+  }
+
+  // ---- the blueprint button ---------------------------------------------
+  console.log("\nBlueprint button\n");
+  check("the drawing is built ahead of the click, not during it",
+    /bpIdle = setTimeout\(\(\) => \{ buildBlueprint\(\)/.test(HTML));
+  check("...but not before the user has ever asked for one (11 MB)",
+    /if \(!bpWarm\) return;/.test(HTML));
+  check("pressing it once earns the background rebuilds",
+    /localStorage\.setItem\(BP_WARM_KEY, "1"\);/.test(HTML));
+  // A popup blocker eats any window opened after an await, so the ordering
+  // inside the handler is the whole feature, not a detail. Compare positions
+  // rather than matching a span — the code between them is allowed to grow.
+  {
+    const body = HTML.slice(HTML.indexOf('$("blueprint-btn")?.addEventListener("click"'));
+    const opened = body.indexOf('window.open("", "_blank")');
+    const firstAwait = body.indexOf("await ");
+    check("the tab is opened inside the click, before any await",
+      opened > -1 && firstAwait > -1 && opened < firstAwait,
+      `open at ${opened}, first await at ${firstAwait}`);
+  }
+  check("a superseded drawing is revoked, not leaked",
+    /URL\.revokeObjectURL\(bp\.url\)/.test(HTML));
+  check("the ready dot goes out the moment the source diverges",
+    /paintBlueprintBtn\(\);\s*\n\s*scheduleBuild\(\);/.test(HTML));
+  check("the exe hands it to the OS, which does have tabs",
+    /desktop\?\.openBlueprint/.test(HTML));
+  check("a blocked popup falls back to a file, and says so",
+    /Your browser blocked the tab/.test(HTML));
+
+  const BP = readFileSync(new URL("../desktop/blueprint.cjs", import.meta.url), "utf8");
+  check("the desktop handler refuses anything that is not an SVG",
+    /\^\\s\*<\(\\\?xml\|svg\)\\b/.test(BP));
+  check("...and reports openPath's message rather than assuming success",
+    /const err = await shell\.openPath\(file\);\s*\n\s*if \(err\)/.test(BP));
+  const PRELOAD = readFileSync(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  check("the bridge exposes it", /openBlueprint: \(name, svg\)/.test(PRELOAD));
+  const MAIN = readFileSync(new URL("../desktop/main.cjs", import.meta.url), "utf8");
+  check("the main process registers it", /blueprint\.register\(\);/.test(MAIN));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

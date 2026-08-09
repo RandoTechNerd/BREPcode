@@ -73,6 +73,10 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   // GET/POST, and the handful of headers such a call legitimately carries.
   aiRelay: (req) => ipcRenderer.invoke("ai:relay", req),
 
+  // The 3-view drawing, handed to the OS so it opens in a real browser tab —
+  // the exe has no tabs of its own. Text in, nothing back but ok/error.
+  openBlueprint: (name, svg) => ipcRenderer.invoke("blueprint:open", { name, svg }),
+
   // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
   // The page registers a callback and gets { name, text } for each one.
   onOpenFile: (cb) => ipcRenderer.on("open-file", (_e, payload) => cb(payload)),

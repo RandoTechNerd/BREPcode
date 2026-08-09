@@ -456,6 +456,14 @@
     .hist-btn:hover:not(:disabled) { background: var(--border); color: #fff; }
     .hist-btn:disabled { color: var(--disabled); cursor: default; }
     .hist-btn.active { background: var(--accent, #5b8cff); color: #fff; }
+    /* A drawing is sitting ready behind this button — a dot, not a colour
+       change, because the button does the same thing either way. */
+    #blueprint-btn { position: relative; }
+    #blueprint-btn.bp-ready::after {
+      content: ""; position: absolute; top: 3px; right: 3px;
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--accent, #5b8cff);
+    }
 
     /* ---------- cheat sheet ---------- */
     /* flex-grow + min-height so the list never collapses to a sliver on short
@@ -737,7 +745,13 @@
     #exp-list small { color: var(--muted4); margin-left: 7px; }
     /* Publishing options: a checklist, not the label/control rows the other
        formats use — each line is a sentence about what someone else may do. */
+    /* An ID selector outranks the browser's own `[hidden] { display: none }`,
+       so this block kept its 600px of height on every format that is NOT
+       Publish — shoving the real option rows a screenful below the fold, where
+       they could only be found by scrolling a panel that looked empty. The
+       [hidden] clause has to be said explicitly to win it back. */
     #publish-row { display: block; margin: 2px 0 4px; }
+    #publish-row[hidden] { display: none; }
     #publish-row .pub-head {
       display: block; font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
       color: var(--muted2); margin-bottom: 5px;
@@ -838,7 +852,101 @@
     #exp-caveat b { color: #f2dcae; }
     #exp-opts label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font: 11.5px system-ui, sans-serif; color: var(--muted2); }
     #exp-opts label[hidden] { display: none; }
+    /* ---- a pasted image, full size ---------------------------------------- */
+    #img-zoom {
+      position: fixed; inset: 0; z-index: 300;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; padding: 3vh 3vw; background: rgba(6, 9, 14, .92);
+      backdrop-filter: blur(3px);
+    }
+    #img-zoom[hidden] { display: none; }
+    #img-zoom-pic {
+      /* Most of the window, never more: an image bigger than the viewport that
+         you have to scroll is worse than the thumbnail it replaced. */
+      max-width: 94vw; max-height: 86vh; object-fit: contain;
+      border-radius: 8px; box-shadow: 0 12px 48px rgba(0, 0, 0, .6);
+      background: #11151d;
+    }
+    #img-zoom-bar {
+      display: flex; align-items: center; gap: 12px;
+      font: 12px system-ui, sans-serif; color: var(--muted2);
+    }
+    #img-zoom-bar button {
+      background: rgba(255, 255, 255, .08); border: 1px solid var(--border);
+      color: var(--muted2); border-radius: 6px; padding: 2px 9px; cursor: pointer;
+      font-size: 11px; line-height: 1.6;
+    }
+    #img-zoom-bar button:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+    #img-zoom-bar button[hidden] { display: none; }
+    #img-zoom-close {
+      position: absolute; top: 14px; right: 18px;
+      background: none; border: none; color: var(--muted3);
+      font-size: 26px; line-height: 1; cursor: pointer; padding: 4px 8px;
+    }
+    #img-zoom-close:hover { color: #fff; }
+    /* Every thumbnail that opens the viewer says so before it is clicked. */
+    #chat-img-chip img, .msg img.zoomable { cursor: zoom-in; }
+
+    /* ---- the mission, as source -------------------------------------------
+       A <pre> highlight layer behind a see-through <textarea>. The two MUST
+       lay text out identically or the caret drifts away from the glyphs, so
+       every metric below is shared and the highlighting is allowed to change
+       colour and background ONLY — never weight, size, spacing or content.
+       That rules out the obvious "// " prefix on a disabled block: it would
+       add two characters the textarea does not have, and every line after it
+       would sit two columns off. */
+    #harness-code { position: relative; flex: 1; min-width: 0; }
+    /* Scoped through #chat-settings on purpose. The panel's blanket
+       "#chat-settings select, input, textarea" rule has the same specificity as
+       a bare "#harness-code > textarea" and sits later in this sheet, so it won
+       the font and padding — and the overlay, which kept mine, wrapped its text
+       at different points. Same characters, different layout: the caret sat
+       under the wrong glyph and the colours slid off the words. */
+    #chat-settings #harness-code > pre,
+    #chat-settings #harness-code > textarea {
+      margin: 0; width: 100%; height: 190px; box-sizing: border-box;
+      padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+      font: 11.5px/1.55 ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+      white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+      tab-size: 2; overflow-y: auto; overflow-x: hidden;
+    }
+    #chat-settings #harness-code > pre {
+      position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background: #0e121a; color: var(--muted2);
+    }
+    #chat-settings #harness-code > textarea {
+      position: relative; z-index: 1; resize: vertical;
+      background: transparent; border-color: transparent;
+      color: transparent; caret-color: var(--text);
+    }
+    #chat-settings #harness-code > textarea:focus {
+      outline: none; border-color: var(--accent, #5b8cff);
+    }
+    /* The section marker line — the thing that starts a switchable block. */
+    #harness-hl .sec { color: #7fd6a6; background: rgba(127, 214, 166, .10); }
+    #harness-hl .sec.off { color: #e08a7a; background: rgba(224, 138, 122, .12); }
+    /* A block that is switched off: struck through and faded, which is a
+       colour change only — line-through does not move a single glyph. */
+    #harness-hl .off-body { opacity: .34; text-decoration: line-through; }
+    /* The always-sent preamble before the first marker, so it reads as the
+       part no toggle can remove. */
+    #harness-hl .always { color: #b9c4da; }
     #exp-opts span { flex: 0 0 44px; }
+    /* A checkbox that reads as a sentence needs the whole column, not the 44px
+       label gutter — and it has to be able to wrap onto a second line. */
+    #exp-opts span.opt-check {
+      flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 7px;
+      line-height: 1.45;
+    }
+    #exp-opts span.opt-check input { margin-top: 1px; flex: none; }
+    #exp-opts span.opt-check b { color: var(--text); font-weight: 600; }
+    /* The name of the file you are about to get. It sits under the options
+       because every option above it can change the extension. */
+    #exp-filename {
+      margin-top: 7px; font: 11px ui-monospace, Menlo, Consolas, monospace;
+      color: var(--muted3);
+    }
+    #exp-filename b { color: var(--text); font-weight: 600; }
     #exp-opts select {
       flex: 1; min-width: 0; background: var(--panel); color: var(--text);
       border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
@@ -1520,6 +1628,21 @@
     </div>
   </div>
 
+  <!-- A pasted image, big enough to actually read.
+       In the chat an attachment is a 26px chip and a 130px thumbnail, which is
+       fine for "yes, something is attached" and useless for "IS that the right
+       screenshot?" — the one question a person actually has. Clicking either
+       opens it here at full size. -->
+  <div id="img-zoom" hidden>
+    <img id="img-zoom-pic" alt="" />
+    <div id="img-zoom-bar">
+      <button id="img-zoom-prev" title="Previous image (←)">&#9664;</button>
+      <span id="img-zoom-name"></span>
+      <button id="img-zoom-next" title="Next image (→)">&#9654;</button>
+    </div>
+    <button id="img-zoom-close" title="Close (Esc)">&times;</button>
+  </div>
+
   <div id="export-modal" hidden>
     <div id="export-dialog" role="dialog" aria-label="Export">
       <div id="exp-list">
@@ -1529,18 +1652,17 @@
         <button data-fmt="slicer" id="slicer-btn" style="display:none">Open in slicer<small>OrcaSlicer</small></button>
         <button data-fmt="publish" id="publish-btn" style="display:none">Publish to the site<small>brepcode.com/&lt;name&gt;</small></button>
         <div class="exp-group">Mesh</div>
-        <button data-fmt="stl">STL<small>3D printing</small></button>
-        <button data-fmt="obj">OBJ<small>DCC / games</small></button>
-        <button data-fmt="3mf">3MF<small>modern slicers</small></button>
-        <button data-fmt="3mf-parts">3MF — parts laid out<small>print plate(s)</small></button>
+        <!-- One entry, not four. A mesh is a mesh; STL vs 3MF vs OBJ is a
+             container choice, and "parts laid out" is a layout choice — both
+             belong in a dropdown, because the dialog exports exactly one
+             thing and a checkbox would imply it could do two. -->
+        <button data-fmt="3mf" data-group="mesh">Mesh<small>STL, 3MF, OBJ</small></button>
         <button data-fmt="gcode">G-code — brick walls<small>BETA · staggered perimeters</small></button>
         <div class="exp-group">CAD (solid)</div>
-        <button data-fmt="step">STEP<small>faceted</small></button>
-        <button data-fmt="step-curved">STEP — curved<small>true surfaces</small></button>
+        <button data-fmt="step" data-group="step">STEP<small>faceted or true curves</small></button>
         <div class="exp-group">Drawing / Web</div>
         <button data-fmt="svg">SVG blueprint<small>3-view drawing</small></button>
-        <button data-fmt="glb">GLB<small>web viewers</small></button>
-        <button data-fmt="embed">Embed page<small>HTML + viewer</small></button>
+        <button data-fmt="glb" data-group="glb">GLB<small>web viewers</small></button>
       </div>
       <div id="exp-side">
         <div id="exp-preview"><canvas id="exp-canvas" width="300" height="190"></canvas><pre id="exp-code" hidden></pre>
@@ -1577,6 +1699,36 @@
               <span>Open it in BREPcode<small>hands the model back to the editor, ready to change</small></span></label>
             <div class="note" id="pub-summary"></div>
           </div>
+          <!-- Which container the mesh goes in. 3MF leads because it is the one
+               that carries colour, units and the source together; STL and OBJ
+               are here for tools that will not read it. -->
+          <label id="mesh-variant-row" hidden>
+            <span>Format</span>
+            <select id="mesh-variant">
+              <option value="3mf">3MF — modern slicers, keeps colour</option>
+              <option value="3mf-parts">3MF — parts laid out on the plate</option>
+              <option value="stl">STL — universal, geometry only</option>
+              <option value="obj">OBJ — DCC and games</option>
+            </select>
+          </label>
+          <!-- Faceted STEP is triangles wearing a solid's clothes; curved is the
+               real thing, at the cost of an 11 MB kernel download. -->
+          <label id="step-variant-row" hidden>
+            <span>Surfaces</span>
+            <select id="step-variant">
+              <option value="step">Faceted — triangulated, instant</option>
+              <option value="step-curved">True curved surfaces — cylinders stay cylinders</option>
+            </select>
+          </label>
+          <!-- The one real checkbox in the dialog: it does not pick between two
+               exports, it changes the single output. Saying ".html" out loud
+               matters because the file you get is no longer a model file. -->
+          <label id="glb-wrap-row" hidden>
+            <span></span>
+            <span class="opt-check"><input type="checkbox" id="glb-wrap" />
+              Wrap it in a viewer page — saves a <b>.html</b> you can open or host,
+              instead of a <b>.glb</b></span>
+          </label>
           <!-- 3MF colour handling: the default keeps colours as filaments; the
                alternative writes plain geometry for one-material printing. -->
           <label id="mf-colour-row" hidden>
@@ -1753,6 +1905,10 @@
             </select>
           </label>
         </div>
+        <!-- The answer to "what am I actually about to get?", built from the
+             same table the exporter reads, so it cannot promise a .glb and
+             hand over a .html. -->
+        <div id="exp-filename"></div>
         </div>
         <div id="exp-actions">
           <button id="exp-cancel">Cancel</button>
@@ -1846,6 +2002,18 @@
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
                  style="vertical-align: -1px">
               <path d="M8 2.2v8M4.8 7l3.2 3.2L11.2 7M2.8 13.2h10.4" />
+            </svg>
+          </button>
+          <!-- The blueprint used to be reachable only by exporting a file and
+               opening it yourself. It is the one output you want to LOOK at
+               rather than keep, so it gets a button that just shows it. -->
+          <button id="blueprint-btn" class="hist-btn ovf" title="Open the 3-view blueprint in a tab">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                 style="vertical-align: -1px">
+              <rect x="2.1" y="2.6" width="11.8" height="10.8" rx="1.1" />
+              <path d="M2.1 6.4h11.8M6.6 6.4v7" />
+              <path d="M8.8 8.6h3.1M8.8 11h3.1" opacity=".65" />
             </svg>
           </button>
           <button id="refresh-btn" class="hist-btn ovf" title="Rebuild now">&#8635;</button>
@@ -1951,6 +2119,7 @@
           <button data-act="trace-btn">Trace image…</button>
           <button data-act="import-btn">Import STL / OBJ / 3MF…</button>
           <button data-act="export-btn">Export…</button>
+          <button data-act="blueprint-btn">Blueprint in a tab</button>
           <button data-act="refresh-btn">Rebuild now</button>
           <button data-act="undo-btn">Undo</button>
           <button data-act="redo-btn">Redo</button>
@@ -2148,8 +2317,18 @@
           <button id="harness-edit-btn" class="hist-btn" style="font-size:12px">Edit the mission…</button>
           <span class="note hint-hover" style="flex:1">the full instruction set sent to the AI — same for Gemini and Claude</span>
         </div>
+        <!-- The mission reads like source, because that is what it is: a long
+             document with named blocks that can be switched off. A plain grey
+             textarea gave no way to SEE which chunk a toggle had disabled — the
+             chip said "✕ #machine" and the text below looked exactly the same.
+             The highlight layer sits behind a transparent textarea, so the
+             thing stays fully editable. -->
         <div class="row" id="harness-row" style="display: none">
-          <label>Mission</label><textarea id="ai-harness" rows="10" spellcheck="false"></textarea>
+          <label>Mission</label>
+          <div id="harness-code">
+            <pre id="harness-hl" aria-hidden="true"></pre>
+            <textarea id="ai-harness" rows="10" spellcheck="false"></textarea>
+          </div>
         </div>
         <div class="note" id="harness-note" style="display: none">
           This is the model's whole job description — mission, language, reference sizes, holder recipe.
@@ -6819,6 +6998,7 @@ ${joined}`)(...vs);
         lastBuiltSource = typed;
         lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms`;
         setStatus("ok", lastGoodStatus);
+        blueprintStale();     // the drawing on hand is now of the previous model
 
         // Library shims announce their approximations; show them next to the fix note.
         const warns = lastLang === "openscad" ? getWarnings() : [];
@@ -8756,6 +8936,10 @@ ${joined}`)(...vs);
       refreshComplete();
       updateHint();
       paintPartsBar();         // ✓/+ on the chips tracks what the code names
+      // The drawing we are holding is of the text as it WAS. Say so now rather
+      // than when the rebuild lands seconds later — until then the dot would
+      // be promising a blueprint of a model the user has already changed.
+      paintBlueprintBtn();
       scheduleBuild();
       // group keystrokes into one history entry
       clearTimeout(histTimer);
@@ -9724,6 +9908,123 @@ ${joined}`)(...vs);
       }
     }
 
+    // ---- the blueprint, kept warm ------------------------------------------
+    //
+    // The 3-view drawing was reachable only by exporting a file and finding it
+    // yourself, which is the wrong shape for the one output you want to LOOK
+    // at rather than keep. It gets a button that just shows it.
+    //
+    // Making one is expensive — an 11 MB precision kernel, then three real
+    // projections — far too slow to sit behind a click. So it is built AHEAD of
+    // the click, on idle, and the button opens what is already sitting there.
+    //
+    // It is not built ahead on your first visit: nobody should pay an 11 MB
+    // download for a button they never press. The first press earns the right,
+    // and from then on every rebuild quietly refreshes the drawing.
+    const BP_WARM_KEY = "brepcode-blueprint-warm";
+    let bpWarm = localStorage.getItem(BP_WARM_KEY) === "1";
+    let bp = null;            // the drawing on hand: { source, svg, url }
+    let bpBuilding = null;    // in flight, so two triggers make one drawing
+    let bpIdle = 0;
+
+    function bpDrop() {
+      // An object URL is a live handle on a blob; dropping the variable without
+      // revoking leaks the whole drawing for the life of the page.
+      if (bp) { try { URL.revokeObjectURL(bp.url); } catch { /* already gone */ } }
+      bp = null;
+    }
+
+    function blueprintStale() {
+      bpDrop();
+      paintBlueprintBtn();
+      if (!bpWarm) return;
+      clearTimeout(bpIdle);
+      // Long enough that typing does not start a projection per keystroke.
+      bpIdle = setTimeout(() => { buildBlueprint().catch(() => {}); }, 1500);
+    }
+
+    async function buildBlueprint() {
+      if (bpBuilding) return bpBuilding;
+      if (!lastShape) throw new Error("build the model first");
+      const source = code.value;
+      bpBuilding = (async () => {
+        const curved = await getCurved();
+        await curved.loadReplicad();
+        // The size the user can see in the status bar — OCCT's own bounding box
+        // overstates curved solids (see curvedDrawingSVG).
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        const dims = bb.isEmpty() ? null : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
+        const svg = await curved.curvedDrawingSVG(lastShape, { title: safeModelName(), size: dims });
+        bpDrop();
+        bp = { source, svg, url: URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) };
+        paintBlueprintBtn();
+        return bp;
+      })().finally(() => { bpBuilding = null; });
+      return bpBuilding;
+    }
+
+    function paintBlueprintBtn() {
+      const b = $("blueprint-btn");
+      if (!b) return;
+      const ready = !!bp && bp.source === code.value;
+      b.classList.toggle("bp-ready", ready);
+      b.title = ready ? "Open the 3-view blueprint in a tab — ready"
+        : bpWarm ? "Open the 3-view blueprint in a tab"
+        : "Open the 3-view blueprint in a tab — the first one loads the precision kernel (≈ 11 MB)";
+    }
+
+    // A holding page for the tab we opened before the drawing existed. Without
+    // it the user stares at a blank about:blank and assumes it broke.
+    const BP_WAIT_HTML = `<!doctype html><meta charset="utf-8"><title>Blueprint…</title>`
+      + `<body style="margin:0;display:grid;place-items:center;height:100vh;`
+      + `background:#11151d;color:#8a95ab;font:14px system-ui,sans-serif">`
+      + `Projecting the blueprint…</body>`;
+
+    $("blueprint-btn")?.addEventListener("click", async () => {
+      if (!lastShape) { setStatus("err", "Build a model first — a blueprint needs geometry."); return; }
+      const fresh = bp && bp.source === code.value ? bp : null;
+      const desktop = window.brepcodeDesktop;
+      // The exe denies window.open outright (main.cjs), so it takes the other
+      // road: write the drawing out and let the OS open it in a real browser.
+      let win = null;
+      if (!desktop?.openBlueprint) {
+        // The tab MUST be opened inside the click or a popup blocker eats it —
+        // which is why it is opened before the drawing exists, not after.
+        win = window.open("", "_blank");
+        if (win) {
+          try { win.document.write(BP_WAIT_HTML); win.document.close(); }
+          catch { /* a locked-down window still navigates fine */ }
+        }
+      }
+      // Pressing it once is what earns the background rebuilds from here on.
+      bpWarm = true;
+      localStorage.setItem(BP_WARM_KEY, "1");
+      try {
+        if (!fresh) {
+          setStatus("busy", bp ? "Projecting the blueprint…"
+            : "Loading precision CAD kernel (first time ≈ 11 MB)…");
+        }
+        const made = fresh || await buildBlueprint();
+        if (desktop?.openBlueprint) {
+          const res = await desktop.openBlueprint(safeModelName(), made.svg);
+          if (!res?.ok) throw new Error(res?.error || "the system could not open it");
+          setStatus("ok", lastGoodStatus);
+        } else if (win && !win.closed) {
+          win.location.replace(made.url);
+          setStatus("ok", lastGoodStatus);
+        } else {
+          // Popup blocked. Downloading it is not what was asked for, so say so
+          // rather than letting a file appear with no explanation.
+          download(`${safeModelName()}-drawing.svg`, made.svg, "image/svg+xml");
+          setStatus("ok", "Your browser blocked the tab — the blueprint downloaded instead.");
+        }
+      } catch (e) {
+        if (win && !win.closed) win.close();
+        setStatus("err", `Blueprint failed — ${e?.message || e}`);
+      }
+    });
+    paintBlueprintBtn();
+
     // ---- the export dialog ------------------------------------------------
     // A dozen formats stopped fitting in a dropdown. The dialog gives each one
     // a sentence of context and — the real point — a PREVIEW of what comes
@@ -9737,18 +10038,78 @@ ${joined}`)(...vs);
       share: { kind: "code", desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
       slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
       publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
-      stl: { kind: "mono", desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
-      obj: { kind: "mono", desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
-      "3mf": { kind: "color", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mf-colour-row", "mf-printer-row", "plate-row"] },
-      "3mf-parts": { kind: "parts", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["plate-row"] },
+      stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
+      obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
+      "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "plate-row"] },
+      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["mesh-variant-row", "plate-row"] },
       gcode: { kind: "slice", desc: "BETA — check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
-      step: { kind: "mono", desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
-      "step-curved": { kind: "mono", desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
-      svg: { kind: "lines", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
-      glb: { kind: "color", desc: "The web's 3D format, colours and materials included — drops into <model-viewer>, three.js, Babylon, Blender." },
-      embed: { kind: "color", desc: "A single self-contained HTML page with the model and a viewer inside — host it anywhere, no dependencies." },
+      step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
+      "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
+      svg: { kind: "lines", ext: "-drawing.svg", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
+      glb: { kind: "color", ext: ".glb", opts: ["glb-wrap-row"], desc: "The web's 3D format, colours and materials included — drops into <model-viewer>, three.js, Babylon, Blender." },
+      embed: { kind: "color", ext: ".html", opts: ["glb-wrap-row"], desc: "A single self-contained HTML page with the model and a viewer inside — host it anywhere, no dependencies." },
     };
-    let expSel = localStorage.getItem("brepcode-export-fmt") || "stl";
+    // ---- one list entry, several files it could write ----------------------
+    //
+    // The dialog exports exactly ONE thing when you press Export, so anything
+    // that picks BETWEEN outputs has to be a dropdown — a checkbox would be
+    // lying about what the button can do. The exception is `glb`, where the
+    // box does not choose between two exports: it changes the single output,
+    // which is why it says out loud that the extension becomes .html.
+    //
+    // The format ids underneath are unchanged. This is a grouping of the list,
+    // not a rewrite of the exporter, so `exportAs("3mf-parts")` still means
+    // exactly what it always did.
+    const EXPORT_GROUPS = {
+      mesh: { pick: "mesh-variant", row: "mesh-variant-row", members: ["3mf", "3mf-parts", "stl", "obj"] },
+      step: { pick: "step-variant", row: "step-variant-row", members: ["step", "step-curved"] },
+      glb: { box: "glb-wrap", row: "glb-wrap-row", members: ["glb", "embed"], off: "glb", on: "embed" },
+    };
+    const GROUP_OF = {};
+    for (const [g, spec] of Object.entries(EXPORT_GROUPS)) {
+      for (const m of spec.members) GROUP_OF[m] = g;
+    }
+    // What each group is currently set to, so coming back to "Mesh" returns you
+    // to the format you last chose rather than snapping back to the default.
+    const GROUP_KEY = "brepcode-export-groups";
+    let groupPick = { mesh: "3mf", step: "step", glb: "glb" };
+    try {
+      const saved = JSON.parse(localStorage.getItem(GROUP_KEY) || "null");
+      for (const g of Object.keys(groupPick)) {
+        if (saved && EXPORT_GROUPS[g].members.includes(saved[g])) groupPick[g] = saved[g];
+      }
+    } catch { /* a corrupt entry just means the defaults */ }
+
+    function syncGroupControls(fmt) {
+      const g = GROUP_OF[fmt];
+      if (g) {
+        groupPick[g] = fmt;
+        localStorage.setItem(GROUP_KEY, JSON.stringify(groupPick));
+      }
+      const mesh = $("mesh-variant"), step = $("step-variant"), wrap = $("glb-wrap");
+      if (mesh) mesh.value = groupPick.mesh;
+      if (step) step.value = groupPick.step;
+      if (wrap) wrap.checked = groupPick.glb === "embed";
+    }
+
+    // The literal filename. Built from the same `ext` the exporter uses, so the
+    // dialog cannot promise a .glb and hand back a .html.
+    function paintExpFilename(fmt) {
+      const el = $("exp-filename");
+      if (!el) return;
+      const spec = EXPORT_FORMATS[fmt];
+      if (fmt === "share") { el.innerHTML = "Copies a <b>link</b> to your clipboard — no file."; return; }
+      if (fmt === "publish") { el.innerHTML = "Puts up a <b>page</b> on the site — no file."; return; }
+      if (fmt === "slicer") { el.innerHTML = "Hands a <b>3MF</b> straight to the slicer."; return; }
+      const base = safeModelName();
+      if (fmt === "bcode") { el.innerHTML = `Saves <b>${esc(base)}.bcode</b>`; return; }
+      if (fmt === "gcode") { el.innerHTML = `Saves <b>${esc(base)}.gcode</b>`; return; }
+      const ext = spec?.ext || "";
+      if (!ext) { el.textContent = ""; return; }
+      const many = fmt === "3mf-parts" ? "  (numbered, if it needs more than one plate)" : "";
+      el.innerHTML = `Saves <b>${esc(base + ext)}</b>${esc(many)}`;
+    }
+    let expSel = localStorage.getItem("brepcode-export-fmt") || "3mf";
     let expPrev = null;      // lazy: { renderer, scene, camera, holder, mono }
     let expToken = 0;
 
@@ -10512,11 +10873,16 @@ ${joined}`)(...vs);
       expSel = fmt;
       localStorage.setItem("brepcode-export-fmt", fmt);
       const spec = EXPORT_FORMATS[fmt] || EXPORT_FORMATS.stl;
+      // A grouped entry stays lit for every format inside it — picking "OBJ"
+      // from the Mesh dropdown must not un-highlight the row you picked it in.
       for (const b of document.querySelectorAll("#exp-list [data-fmt]")) {
-        b.classList.toggle("sel", b.dataset.fmt === fmt);
+        const g = b.dataset.group;
+        b.classList.toggle("sel", g ? GROUP_OF[fmt] === g : b.dataset.fmt === fmt);
       }
+      syncGroupControls(fmt);
       $("exp-desc").textContent = spec.desc;
-      for (const row of ["publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
+      for (const row of ["mesh-variant-row", "step-variant-row", "glb-wrap-row",
+        "publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row",
         "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
@@ -10524,6 +10890,7 @@ ${joined}`)(...vs);
       // the disclosure only earns its space if something is inside it
       $("exp-more").hidden = !ADVANCED_ROWS.some((id) => !$(id).hidden);
       paintCaveat(fmt);
+      paintExpFilename(fmt);
       // never let a preview failure become an unhandled rejection — that is
       // what turns a broken preview into a blank box with no explanation
       renderExportPreview(fmt).catch((e) => console.error("preview", e));
@@ -10537,7 +10904,7 @@ ${joined}`)(...vs);
       // dialog, so the Export click runs without waiting on a fetch.
       getExporters().then((exp) => exp.loadGenerateSTEP().catch(() => {})).catch(() => {});
       exportModal.hidden = false;
-      expShow(EXPORT_FORMATS[expSel] ? expSel : "stl");
+      expShow(EXPORT_FORMATS[expSel] ? expSel : "3mf");
     });
     // ---- what a published page lets a visitor do ---------------------------
     //
@@ -10595,14 +10962,27 @@ ${joined}`)(...vs);
       if (!win) location.href = fresh;      // popup blocked: go, rather than do nothing
     });
 
+    // Clicking a grouped row returns you to the variant you last used, not to
+    // the group's default — otherwise choosing OBJ, wandering off and coming
+    // back silently hands you a 3MF.
+    const listPick = (el) => {
+      const g = el?.dataset.group;
+      return g ? (groupPick[g] || el.dataset.fmt) : el?.dataset.fmt;
+    };
     $("exp-list").addEventListener("click", (e) => {
-      const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
+      const fmt = listPick(e.target.closest("[data-fmt]"));
       if (fmt) expShow(fmt);
     });
     $("exp-list").addEventListener("dblclick", (e) => {
-      const fmt = e.target.closest("[data-fmt]")?.dataset.fmt;
+      const fmt = listPick(e.target.closest("[data-fmt]"));
       if (fmt) { closeExportModal(); exportAs(fmt); }
     });
+    // The dropdowns and the one checkbox re-enter expShow, which repaints the
+    // description, the option rows and the filename for the format they chose.
+    $("mesh-variant")?.addEventListener("change", (e) => expShow(e.target.value));
+    $("step-variant")?.addEventListener("change", (e) => expShow(e.target.value));
+    $("glb-wrap")?.addEventListener("change", (e) =>
+      expShow(e.target.checked ? EXPORT_GROUPS.glb.on : EXPORT_GROUPS.glb.off));
     $("exp-go").addEventListener("click", () => { closeExportModal(); exportAs(expSel); });
     $("exp-cancel").addEventListener("click", closeExportModal);
     exportModal.addEventListener("pointerdown", (e) => {
@@ -13274,6 +13654,78 @@ ${joined}`)(...vs);
       };
       rd.readAsDataURL(f);
     }
+    // ---- a pasted image, full size -----------------------------------------
+    //
+    // A 26px chip answers "is something attached". It cannot answer "is that
+    // the RIGHT screenshot", which is the question people actually have, and
+    // there was no way to find out short of re-opening the file.
+    //
+    // Takes a LIST rather than one image because attachments come in sets of up
+    // to five: having opened one, the next thing you want is the one beside it,
+    // not to close this and aim at another 26px target.
+    let zoomSet = [], zoomAt = 0;
+
+    function paintZoom() {
+      const pic = $("img-zoom-pic"), name = $("img-zoom-name");
+      const item = zoomSet[zoomAt];
+      if (!item) return closeZoom();
+      pic.src = item.src;
+      pic.alt = item.name || "pasted image";
+      const many = zoomSet.length > 1;
+      name.textContent = many
+        ? `${zoomAt + 1} of ${zoomSet.length}${item.name ? ` — ${item.name}` : ""}`
+        : (item.name || "");
+      // The arrows only exist when there is somewhere to go.
+      $("img-zoom-prev").hidden = !many;
+      $("img-zoom-next").hidden = !many;
+    }
+
+    function openZoom(list, index = 0) {
+      zoomSet = (list || []).filter((i) => i && i.src);
+      if (!zoomSet.length) return;
+      zoomAt = Math.max(0, Math.min(zoomSet.length - 1, index));
+      $("img-zoom").hidden = false;
+      paintZoom();
+    }
+    function closeZoom() {
+      $("img-zoom").hidden = true;
+      // Drop the data URL so a 5 MB screenshot is not held decoded in a hidden
+      // element for the rest of the session.
+      $("img-zoom-pic").removeAttribute("src");
+      zoomSet = [];
+    }
+    const stepZoom = (d) => {
+      if (zoomSet.length < 2) return;
+      zoomAt = (zoomAt + d + zoomSet.length) % zoomSet.length;
+      paintZoom();
+    };
+
+    // Make an <img> open the viewer, as one of `list`.
+    function zoomable(img, list, index) {
+      img.classList.add("zoomable");
+      img.addEventListener("click", (e) => { e.stopPropagation(); openZoom(list(), index); });
+    }
+
+    $("img-zoom").addEventListener("click", (e) => {
+      // The backdrop and the picture both close it. Clicking the image is the
+      // natural "I'm done looking" gesture, and the bar's buttons stop their
+      // own events before they reach here.
+      if (e.target.closest("#img-zoom-bar")) return;
+      closeZoom();
+    });
+    $("img-zoom-close").addEventListener("click", closeZoom);
+    $("img-zoom-prev").addEventListener("click", (e) => { e.stopPropagation(); stepZoom(-1); });
+    $("img-zoom-next").addEventListener("click", (e) => { e.stopPropagation(); stepZoom(1); });
+    // Capture, and stop the event: Escape otherwise reaches the export dialog's
+    // handler and the card-closing one behind it, so one press would shut the
+    // viewer AND whatever was open underneath.
+    addEventListener("keydown", (e) => {
+      if ($("img-zoom").hidden) return;
+      if (e.key === "Escape") { e.stopPropagation(); closeZoom(); }
+      else if (e.key === "ArrowLeft") { e.stopPropagation(); stepZoom(-1); }
+      else if (e.key === "ArrowRight") { e.stopPropagation(); stepZoom(1); }
+    }, true);
+
     // The chip strip shows EVERY pending image, each with its own remove — so
     // "wrong screenshot" costs one click, not re-attaching the other four.
     function renderImgChips() {
@@ -13284,7 +13736,10 @@ ${joined}`)(...vs);
       pendingImgs.forEach((p, i) => {
         const img = document.createElement("img");
         img.src = p.dataUrl;
-        img.title = p.name || "pasted image";
+        img.title = `${p.name || "pasted image"} — click to see it full size`;
+        // A live list, read at click time: removing an image re-renders the
+        // strip, and a snapshot taken now would zoom into one that is gone.
+        zoomable(img, () => pendingImgs.map((q) => ({ src: q.dataUrl, name: q.name })), i);
         const x = document.createElement("button"); x.textContent = "✕";
         x.title = `Remove ${p.name || "this image"}`;
         x.addEventListener("click", () => { pendingImgs.splice(i, 1); renderImgChips(); });
@@ -13367,7 +13822,41 @@ ${joined}`)(...vs);
     // chat, no model list, while the 3D viewer (earlier in the file) ran fine.
     const harnessOff = new Set();
 
+    // ---- the mission, painted as source ------------------------------------
+    //
+    // Built from the SAME harnessSections() parse the chips and the sender use,
+    // so what you see struck through is exactly what is not being sent. A
+    // second parser here would be a second opinion, and the two would drift.
+    //
+    // The text is reproduced character for character — highlighting only wraps
+    // spans around it. That is what keeps the caret under the glyph the user
+    // thinks they are typing on.
+    function paintHarnessCode() {
+      const pre = $("harness-hl");
+      if (!pre) return;
+      const text = aiHarness.value;
+      if (!CHAT) { pre.textContent = text; return; }
+      const secs = CHAT.harnessSections(text);
+      let html = "";
+      for (const [i, s] of secs.entries()) {
+        // harnessSections() drops the marker line itself (it is metadata, never
+        // prompt), so put it back for display — the user wrote it and needs to
+        // see it. Everything except the first block was preceded by one.
+        if (s.tag) {
+          const off = harnessOff.has(s.tag);
+          html += `<span class="sec${off ? " off" : ""}">#${esc(s.tag)}</span>\n`;
+          html += `<span class="${off ? "off-body" : ""}">${esc(s.lines.join("\n"))}</span>`;
+        } else {
+          html += `<span class="always">${esc(s.lines.join("\n"))}</span>`;
+        }
+        if (i < secs.length - 1) html += "\n";
+      }
+      pre.innerHTML = html;
+      pre.scrollTop = aiHarness.scrollTop;
+    }
+
     function refreshHarnessTags() {
+      paintHarnessCode();
       const box = $("harness-tags");
       if (!box) return;
       const tags = CHAT ? CHAT.harnessTags(aiHarness.value) : [];
@@ -13548,10 +14037,23 @@ ${joined}`)(...vs);
       row.style.display = show ? "flex" : "none";
       note.style.display = show ? "block" : "none";
       $("harness-edit-btn").classList.toggle("active", show);
-      if (show) aiHarness.focus();
+      // The highlight layer is painted from CHAT's parse, and CHAT is lazy —
+      // opening the editor is the moment it has to be there, or the mission
+      // shows as one undifferentiated wall with no sections marked.
+      if (show) {
+        aiHarness.focus();
+        if (CHAT) paintHarnessCode();
+        else ensureChat().then(refreshHarnessTags).catch(() => {});
+      }
+    });
+    // The two layers scroll as one, or the colours slide off the words.
+    aiHarness.addEventListener("scroll", () => {
+      const pre = $("harness-hl");
+      if (pre) pre.scrollTop = aiHarness.scrollTop;
     });
     aiHarness.addEventListener("change", () => {
       if (!aiHarness.value.trim() && CHAT) aiHarness.value = CHAT.DEFAULT_HARNESS;  // clear = default
+      paintHarnessCode();       // "clear = default" refills it; repaint the refill
       saveAiCfg();
     });
     aiAskDims.addEventListener("change", saveAiCfg);
@@ -14587,12 +15089,18 @@ ${joined}`)(...vs);
       if (pendingImgs.length && userEl) {
         const row = document.createElement("div");
         row.style.cssText = "display:flex; flex-wrap:wrap; gap:4px; margin-top:6px";
-        for (const p of pendingImgs) {
+        // Frozen here, not read live: these belong to a message that has been
+        // SENT. pendingImgs is emptied straight afterwards for the next one, so
+        // a live reference would leave every old bubble zooming into nothing.
+        const sent = pendingImgs.map((p) => ({ src: p.dataUrl, name: p.name }));
+        sent.forEach((p, i) => {
           const im = document.createElement("img");
-          im.src = p.dataUrl;
+          im.src = p.src;
           im.style.cssText = "max-width:130px; max-height:100px; border-radius:6px";
+          im.title = `${p.name || "attached image"} — click to see it full size`;
+          zoomable(im, () => sent, i);
           row.appendChild(im);
-        }
+        });
         userEl.appendChild(row);
       }
       chatLog.push({ role: "user", text });

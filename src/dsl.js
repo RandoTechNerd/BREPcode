@@ -1875,3 +1875,9 @@ export * from "./parts.js";
 // reasoning as parts.js above: re-exported here so the viewer vocabulary and
 // the CLI both pick them up with no second registration step.
 export * from "./shelf.js";
+
+// Gears, and the arithmetic that makes a set of them mesh. Re-exported for the
+// same reason again — but the important export is gearMath/gearTrain, which
+// are pure numbers: a machine's axle positions and ratio come out of them, so
+// they cannot disagree with the teeth that were actually cut.
+export * from "./gears.js";

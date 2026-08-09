@@ -17,6 +17,7 @@ const { pathToFileURL } = require("node:url");
 const fs = require("node:fs");
 const mail = require("./mail.cjs");
 const recovery = require("./recovery.cjs");
+const blueprint = require("./blueprint.cjs");
 const lessons = require("./lessons.cjs");
 const fetchmodel = require("./fetchmodel.cjs");
 const slicer = require("./slicer.cjs");
@@ -192,6 +193,7 @@ Close this window, then start the new one again. (Check ⓘ About — the versio
 if (!EMBEDDED) app.whenReady().then(() => {
   mail.register();          // SMTP over IPC; a browser cannot do this at all
   recovery.register();      // crash snapshots into the OS temp folder
+  blueprint.register();     // hand the 3-view drawing to the OS, which has tabs
   lessons.register();       // what the chat has learned, in Documents/BREPcode/learning
   fetchmodel.register();    // one-click download of a model found online
   slicer.register();        // "open this in my slicer" — impossible from a web page
