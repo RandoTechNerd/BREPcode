@@ -398,6 +398,50 @@ console.log("\nnothing reflects hard enough to white out a flat face\n");
     /env: s\.env \?\? F\.FAMILY\[s\.family\]\.env/.test(HTML));
 }
 
+console.log("\na material owns its own finish — the filament does not trump it\n");
+{
+  // Picking Concrete used to leave whatever filament was already set sitting on
+  // top of it, and a spool wins every argument: it overrides roughness and
+  // envMapIntensity, adds transmission and glitter, and borrows the lighting.
+  // So Concrete came out as glittery translucent concrete lit for a clear
+  // spool, with nothing to explain it — the Filament row two down still read
+  // "Funfetti". Concrete should be concrete. Concrete AND Funfetti is still one
+  // click away, in the order that reads as deliberate.
+  check("there is a NONE option, so a material needs no filament chosen",
+    /None — the material's own finish/.test(HTML));
+  check("...and it is the first one in the list",
+    HTML.indexOf('value="opaque"') < HTML.indexOf('value="pla"'));
+  check("a preset resets the filament to None", /mat\.filament = "opaque";/.test(HTML));
+  check("...and syncs the dropdown, so the UI cannot disagree with the state",
+    /\$\("mat-filament"\)\.value = "opaque";/.test(HTML));
+  check("...hands back any lighting a spool borrowed",
+    /const hadSpool = FILAMENTS\[mat\.filament\]\?\.spool;[\s\S]{0,400}restoreUserLook\(\);/.test(HTML));
+  check("...clears the gradient and glitter with it",
+    /applySpoolFx\(\);\s*\/\/ and clear/.test(HTML));
+  check("...and says so rather than dropping the spool silently",
+    /filament set back to <b>None<\/b>/.test(HTML));
+
+  // The borrowed rig must not outlive the spool. Persisting it made a
+  // suggestion into a one-way door: after a reload the borrowed values WERE
+  // the user's settings and there was nothing left to restore. Caught with the
+  // filament reading "None" and the saved lights still Witchcraft's.
+  check("a borrowed lighting rig is never what gets saved",
+    /JSON\.stringify\(lightBackup \? \{ \.\.\.mat, \.\.\.lightBackup \} : mat\)/.test(HTML));
+
+  // Metals are almost entirely reflection. With no environment map a
+  // metalness-0.9 surface mirrors nothing and renders near-black: Gold measured
+  // rgb [26,23,17] against its own #e6b422, which is to say picking Gold did
+  // not give you gold. [63,57,33] with the environment at 2.
+  for (const metal of ["Titanium", "Aluminum", "Steel", "Brass", "Copper", "Gold"]) {
+    const row = new RegExp(`name: "${metal}"[^}]*\\}`).exec(HTML)?.[0] ?? "";
+    check(`${metal} reflects something, or it is not metal`,
+      /reflect: true/.test(row) && /envInt: 2/.test(row), row.slice(0, 90));
+  }
+  check("the None branch uses the MATERIAL's env, not a blanket 1",
+    /m\.envMapIntensity = mat\.envInt \?\? 1;/.test(HTML));
+  check("...and a preset records what it wants", /envInt: p\.envInt \?\? 1,/.test(HTML));
+}
+
 console.log("\nthe glint is a real specular test against the real lights\n");
 {
   // What "sparkle" actually means, and what the first version could not do.

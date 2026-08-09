@@ -2503,7 +2503,7 @@
           <label class="mat-row" title="How the plastic carries light — real refractive indices, and thick sections read deeper than thin ones">
             <span>Filament</span>
             <select id="mat-filament">
-              <option value="opaque" selected>Opaque — standard filament</option>
+              <option value="opaque" selected>None — the material's own finish</option>
               <option value="pla">Translucent PLA</option>
               <option value="petg">PETG — glossy, see-through</option>
               <option value="natural">Natural / clear</option>
@@ -3913,8 +3913,12 @@
     // lean on image-based light for the rest. Where there IS something behind
     // it the effect is unmistakable: a red pillar behind a slab took the
     // sampled red/blue ratio from 0.66 to 1.10.
+    // "opaque" is the NONE entry, and it is first for that reason: a material
+    // should not need a filament chosen before it looks like itself. Concrete
+    // is concrete; picking a spool on top is a deliberate extra, not a step you
+    // have to take.
     const FILAMENTS = {
-      opaque: { label: "Opaque — standard filament", t: 0, ior: 1.5, rough: null, atten: 0, env: 1, a: 1 },
+      opaque: { label: "None — the material's own finish", t: 0, ior: 1.5, rough: null, atten: 0, env: 1, a: 1 },
       pla: { label: "Translucent PLA", t: 0.3, ior: 1.46, rough: 0.42, atten: 16, env: 1.8, a: 0.86 },
       petg: { label: "PETG — glossy, see-through", t: 0.52, ior: 1.57, rough: 0.16, atten: 26, env: 2.4, a: 0.7 },
       natural: { label: "Natural / clear", t: 0.68, ior: 1.5, rough: 0.08, atten: 55, env: 3, a: 0.55 },
@@ -3949,9 +3953,12 @@
           m.side = THREE.DoubleSide;
         }
       } else {
+        // No filament: the MATERIAL decides. A blanket 1 here was what made a
+        // metal preset unable to ask for the reflections it needs to look like
+        // metal at all.
         m.thickness = 0;
         m.attenuationDistance = Infinity;
-        m.envMapIntensity = 1;
+        m.envMapIntensity = mat.envInt ?? 1;
       }
     }
     const solidMaterial = makeSolidMat(0x9fb4d6);
@@ -4329,19 +4336,24 @@
       { name: "Resin", color: "#cfc7e6", metal: 2, rough: 15, opacity: 100 },
       { name: "TPU", color: "#26262b", metal: 0, rough: 82, opacity: 100 },
       { name: "Carbon fiber", color: "#25282d", metal: 8, rough: 38, opacity: 100 },
-      // metals
-      { name: "Titanium", color: "#9299a1", metal: 92, rough: 34, opacity: 100 },
-      { name: "Aluminum", color: "#c7ccd2", metal: 88, rough: 30, opacity: 100 },
-      { name: "Steel", color: "#8a9098", metal: 85, rough: 38, opacity: 100 },
-      { name: "Brass", color: "#c9a227", metal: 85, rough: 32, opacity: 100 },
-      { name: "Copper", color: "#b4673a", metal: 88, rough: 28, opacity: 100 },
-      { name: "Gold", color: "#e6b422", metal: 92, rough: 22, opacity: 100 },
+      // METALS REFLECT, and that is nearly all they do. Without an environment
+      // map a metalness-0.9 surface has nothing to mirror and renders almost
+      // black: Gold measured rgb [26,23,17] on screen against its own #e6b422,
+      // which is to say picking Gold did not give you gold. reflect loads the
+      // room environment on first use, envInt 2 is where it stops getting
+      // better (measured [54,48,28] at 1, [63,57,33] at 2, [66,63,36] at 3).
+      { name: "Titanium", color: "#9299a1", metal: 92, rough: 34, opacity: 100, reflect: true, envInt: 2 },
+      { name: "Aluminum", color: "#c7ccd2", metal: 88, rough: 30, opacity: 100, reflect: true, envInt: 2 },
+      { name: "Steel", color: "#8a9098", metal: 85, rough: 38, opacity: 100, reflect: true, envInt: 2 },
+      { name: "Brass", color: "#c9a227", metal: 85, rough: 32, opacity: 100, reflect: true, envInt: 2 },
+      { name: "Copper", color: "#b4673a", metal: 88, rough: 28, opacity: 100, reflect: true, envInt: 2 },
+      { name: "Gold", color: "#e6b422", metal: 92, rough: 22, opacity: 100, reflect: true, envInt: 2 },
       // natural / ceramic
       { name: "Balsa", color: "#d9c49a", metal: 0, rough: 88, opacity: 100, texture: 3 },
       { name: "Oak wood", color: "#b5843f", metal: 0, rough: 80, opacity: 100, texture: 3 },
       { name: "Stone", color: "#8d8b86", metal: 0, rough: 92, opacity: 100 },
       { name: "Concrete", color: "#9a9a94", metal: 0, rough: 95, opacity: 100 },
-      { name: "Ceramic", color: "#f0ece3", metal: 0, rough: 22, opacity: 100 },
+      { name: "Ceramic", color: "#f0ece3", metal: 0, rough: 22, opacity: 100, reflect: true, envInt: 0.8 },
       // see-through — reflect: the env map loads on first use for a real
       // optically-clear look (lenses, LCD windows) instead of flat tint
       { name: "Glass", color: "#cfe6ef", metal: 0, rough: 6, opacity: 26, reflect: true },
@@ -4508,7 +4520,18 @@
       $("tex-depth-lbl").textContent = mat.texture === 1 ? "Thickness" : "Depth";
       $("tex-scale-lbl").textContent = mat.texture === 1 ? "Point dist." : "Scale";
     }
-    const saveMat = () => localStorage.setItem("brepcode-material", JSON.stringify(mat));
+    // Save the user's OWN lighting, never a rig a spool is currently borrowing.
+    //
+    // A spool takes the lights over while it is selected and hands them back
+    // when you leave it — the comment on lightBackup calls that "a suggestion
+    // you can walk out of, not a one-way door". Persistence was quietly making
+    // it a one-way door: the borrowed values went into localStorage, so after a
+    // reload they WERE your settings, lightBackup was null, and there was
+    // nothing left to give back. Caught with the filament reading "None" and
+    // the saved lights still reading 168/56/108/44/114 — Witchcraft's rig, on a
+    // scene with no spool selected.
+    const saveMat = () => localStorage.setItem("brepcode-material",
+      JSON.stringify(lightBackup ? { ...mat, ...lightBackup } : mat));
 
     // tabs
     for (const tab of document.querySelectorAll(".mat-tab")) {
@@ -4695,11 +4718,34 @@
     }
 
     function applyPreset(p) {
+      // A PRESET OWNS THE FINISH, so it clears the filament first.
+      //
+      // Without this, Concrete arrived on top of whatever filament was already
+      // set and lost: a spool overrides roughness and envMapIntensity, adds
+      // transmission and glitter, and borrows the whole lighting rig. Picking
+      // Concrete while Funfetti was selected gave you glittery translucent
+      // concrete lit for a clear spool — and nothing said why, because the
+      // Filament dropdown was two rows further down still reading "Funfetti".
+      //
+      // Concrete should be concrete. Concrete AND Funfetti is still one click
+      // away — pick the preset, then the spool — which is the order that reads
+      // as deliberate rather than as a leftover.
+      const hadSpool = FILAMENTS[mat.filament]?.spool;
+      if (mat.filament !== "opaque") {
+        mat.filament = "opaque";
+        $("mat-filament").value = "opaque";
+        restoreUserLook();     // hand back any lighting a spool had borrowed
+      }
+
       Object.assign(mat, {
         color: p.color, metal: p.metal, rough: p.rough, opacity: p.opacity,
         emissive: p.emissive || "#000000", emissiveInt: p.emissiveInt || 0,
         texture: p.texture || 0,
+        // How much environment this material wants when no filament is set.
+        // A metal needs a lot, a matte plastic needs the default.
+        envInt: p.envInt ?? 1,
       });
+      applySpoolFx();          // and clear the gradient/glitter uniforms with it
       if (p.lights) Object.assign(mat, p.lights);        // glow dims the scene
       if (p.bg) { mat.bg = p.bg; matUserBg = true; }      // glow darkens the background
       // See-through and showroom presets get REAL reflections — the env map
@@ -4715,6 +4761,14 @@
       applyMaterial(); saveMat();
       noteColourOverride();
       for (const el of document.querySelectorAll(".mat-preset")) el.classList.toggle("active", el.dataset.name === p.name);
+      // Say that the spool went. Silently dropping a setting the user chose is
+      // how a control earns a reputation for being broken — and this one leaves
+      // a visible mark, since the glitter and the lighting both change.
+      if (hadSpool) {
+        hint.innerHTML = `<b>${esc(p.name)}</b> — filament set back to <b>None</b>, so this is `
+          + `${esc(p.name.toLowerCase())} and nothing else. Want it glittery? Pick the spool again `
+          + `now and you get <b>${esc(p.name)} + ${esc(hadSpool.label.split("·")[0].trim())}</b>.`;
+      }
     }
     for (const p of MATERIAL_PRESETS) {
       const b = document.createElement("button");
