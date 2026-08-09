@@ -7,6 +7,7 @@ import {
   embedPage, MV_CDN,
 } from "../viewer/exporters.js";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
 
 let pass = 0, fail = 0;
 function check(label, ok, detail = "") {
@@ -228,6 +229,57 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   let threw = "";
   try { embedPage({ title: "no model" }); } catch (e) { threw = e.message; }
   check("a page with no model is refused, by name", /base64 GLB/.test(threw), threw);
+}
+
+// ---- a shared link has to be openable by someone ELSE ---------------------
+//
+// The desktop app serves itself over a private app:// scheme (file:// gives ES
+// modules an opaque origin, so app:// is the fix for that — see
+// desktop/main.cjs). location.origin there is "app://bundle", so a share link
+// built from the current origin came out as app://bundle/index.html#m=... —
+// a URL only that one exe can resolve. Reported as "the URL doesn't work in
+// the exe, but it's the same zip as the site": the model in the fragment was
+// always fine, it was the address in front of it that nobody could open.
+{
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  console.log("\na share link points somewhere a stranger can open\n");
+
+  check("the app knows its public home", /const PUBLIC_SITE = "https:\/\/brepcode\.com\/";/.test(HTML));
+  check("...and only trusts the current origin on http(s)",
+    /\/\^https\?:\$\/\.test\(location\.protocol\)/.test(HTML));
+  check("the share link is built from it", /const url = shareBase\(\) \+ frag;/.test(HTML));
+  check("...and so is the published page's edit link",
+    /if \(frag\) editUrl = shareBase\(\) \+ frag;/.test(HTML));
+  check("no share URL is still built from the raw origin",
+    !/const url = location\.origin \+ location\.pathname \+ frag;/.test(HTML));
+  // The embed page is hosted on someone else's site, so ITS edit link must be
+  // absolute and public — never this origin, not even in a browser.
+  check("the embed page links to the public site, not wherever it was made",
+    /embedEdit = PUBLIC_SITE \+ frag;/.test(HTML));
+
+  // The predicate itself, against every scheme this app actually runs under.
+  const SITE = "https://brepcode.com/";
+  const shareBase = (protocol, origin, pathname) =>
+    (/^https?:$/.test(protocol) ? origin + pathname : SITE);
+  for (const [proto, origin, path, want, why] of [
+    ["https:", "https://brepcode.com", "/", "https://brepcode.com/", "the live site"],
+    ["http:", "http://localhost:5320", "/viewer/index.html",
+      "http://localhost:5320/viewer/index.html", "a local dev server"],
+    ["app:", "app://bundle", "/index.html", SITE, "the desktop exe"],
+    ["file:", "file://", "/C:/x/index.html", SITE, "opened straight off disk"],
+  ]) {
+    check(`${why} -> ${want}`, shareBase(proto, origin, path) === want,
+      shareBase(proto, origin, path));
+  }
+
+  // Publishing without a GLB gives a page showing a PHOTOGRAPH of the model
+  // rather than the model. That is allowed — a still page beats no page — but
+  // it must not happen silently, which is how "the published page is just an
+  // ugly pic" became a mystery instead of a message.
+  check("a failed GLB pack is reported, not swallowed",
+    /glbFailed = String\(err\?\.message \|\| err\);/.test(HTML));
+  check("...and the user is told the page will be a still",
+    /will show the still thumbnail, not a `\s*\+ `model you can spin/.test(HTML));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

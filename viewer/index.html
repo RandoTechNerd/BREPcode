@@ -9262,6 +9262,24 @@ ${joined}`)(...vs);
     // had their own copy of this literal and the 3MF was about to be a fourth.
     // A field added to one and forgotten in the others is the kind of bug that
     // only shows up as a file coming back without its camera.
+    // Where a shared link should POINT, which is not always where we are.
+    //
+    // In a browser it is this page. In the desktop app it is NOT: the exe
+    // serves itself over a private app:// scheme (see desktop/main.cjs — file://
+    // gives modules an opaque origin, so app:// is the fix for that), and
+    // location.origin there is "app://bundle". A share link built from it comes
+    // out as app://bundle/index.html#m=... — a URL only that one exe can open,
+    // which is exactly why sharing "did not work in the exe" while the same
+    // bundle worked on the site. The model itself was always fine; it was the
+    // address in front of it that nobody else could resolve.
+    //
+    // So: the real origin when there is one, and the public site when there is
+    // not. The fragment is the whole model either way.
+    const PUBLIC_SITE = "https://brepcode.com/";
+    const shareBase = () => (/^https?:$/.test(location.protocol)
+      ? location.origin + location.pathname
+      : PUBLIC_SITE);
+
     const currentScene = () => ({
       material: mat,
       camera: camera.position.toArray().map((n) => +n.toFixed(3)),
@@ -9520,12 +9538,20 @@ ${joined}`)(...vs);
           // for a page that will only ever show a still is wasted bytes, and
           // the checkbox would be quietly untrue if we did not send it when it
           // IS ticked — the thumbnail cannot be orbited.
-          let glb = null;
+          let glb = null, glbFailed = "";
           if (visitor.orbit) {
             setStatus("busy", "Publishing — packing the viewable model…");
             try {
               glb = base64OfBuffer(await modelToGLB());
-            } catch { glb = null; }   // no GLB just means the page falls back to the thumbnail
+            } catch (err) {
+              // NOT silent. Losing the GLB is the difference between a page
+              // that shows the model and a page that shows a photograph of it,
+              // and swallowing the reason is why "the published page is just an
+              // ugly pic" was a mystery rather than a message. The publish
+              // still goes ahead — a still page beats no page — but it says so.
+              glb = null;
+              glbFailed = String(err?.message || err);
+            }
           }
           // "Open it in BREPcode" is a promise on the publish panel, and until
           // now nothing was sent that could keep it: the site was handed the
@@ -9543,7 +9569,7 @@ ${joined}`)(...vs);
             try {
               const exp2 = await getExporters();
               const frag = await exp2.shareFragment(text);
-              if (frag) editUrl = location.origin + location.pathname + frag;
+              if (frag) editUrl = shareBase() + frag;
             } catch { editUrl = null; }
           }
           const res = await pub({ name: base, text, thumb, visitor, glb, editUrl });
@@ -9557,6 +9583,14 @@ ${joined}`)(...vs);
             + (visitor.edit && !editUrl
               ? `<b style="color:var(--warn, #e0a030)">The “open in BREPcode” button is off for this one: `
                 + `the model is too big to travel in a URL — an imported mesh usually is.</b> `
+              : "")
+            // The one that matters most: without the GLB the page is a
+            // photograph, not a model, and that is exactly the complaint this
+            // message exists to pre-empt.
+            + (glbFailed
+              ? `<b style="color:var(--warn, #e0a030)">The page will show the still thumbnail, not a `
+                + `model you can spin: packing the 3D file failed — ${esc(glbFailed)}. `
+                + `Publish again and it will retry.</b> `
               : "")
             + `It is in your stash now; publish again to update it.</span>`;
           loadSecretLibrary();
@@ -9583,7 +9617,7 @@ ${joined}`)(...vs);
             throw new Error("this model is too big for a link — save a .bcode and send the file "
               + "(models carrying an imported mesh usually are)");
           }
-          const url = location.origin + location.pathname + frag;
+          const url = shareBase() + frag;
           try { await navigator.clipboard.writeText(url); } catch { /* http, or no permission */ }
           size = url.length;
           const enc = encodeURIComponent(url);
@@ -9672,7 +9706,7 @@ ${joined}`)(...vs);
           try {
             const exp3 = await getExporters();
             const frag = await exp3.shareFragment(await window.__brepQuicksaveProject());
-            if (frag) embedEdit = "https://brepcode.com/" + frag;
+            if (frag) embedEdit = PUBLIC_SITE + frag;
           } catch { embedEdit = ""; }
           size = download(`${base}.html`,
             await embedPageHTML(glb, base, lookFromMaterial(), { poster, editUrl: embedEdit }), "text/html");
