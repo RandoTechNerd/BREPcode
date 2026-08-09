@@ -34,16 +34,35 @@ const GEAR_Z = DECK + 2;             // gears float 2 mm clear of the deck
 const SHAFT = 5;                     // 5 mm steel rod
 
 // ---- the rotor ------------------------------------------------------------
+//
+// A FIXED-ANGLE rotor leans each tube so its CLOSED TIP points down and
+// OUTWARD. That is the whole point of the angle: spinning throws the pellet to
+// the outer wall near the bottom of the tube, where you can pour the liquid off
+// it. Tilt them the other way — mouth outward, tip toward the middle — and the
+// pellet forms on the wrong wall, up near the cap, and pours straight back out.
 const TUBE_D = 11.4;                 // 1.5 mL tube is 10.8 across the rim, + fit
+const TUBE_L = 39;                   // whole tube including its cap
 const TILT = 20;                     // degrees from vertical
 const TUBES = 6;
-const ROTOR_R = 32, ROTOR_H = 28;
-const MOUTH_R = 23;                  // where a pocket breaks the top face
+const ROTOR_R = 36, ROTOR_H = 30;
+const MOUTH_R = 17;                  // where a pocket breaks the top face — INNER
 const POCKET = 26;                   // how deep the tube sits
 
 const ROTOR_Z = GEAR_Z + GEAR_H + 2;
-// The crank arm sweeps over the rotor, so it has to clear the top of it.
-const ARM_Z = ROTOR_Z + ROTOR_H + 4;
+
+// A tube is longer than its pocket, so 13 mm of it stands proud of the rotor,
+// leaning inward as it rises. THAT is what the crank has to clear, not the
+// rotor — the disc is 12 mm below the top of the tubes standing in it. Missing
+// this is how a handle ends up flicking the caps off on every turn.
+const STICKS_OUT = TUBE_L - POCKET;
+// The last term is the one that is easy to drop: the tube's top face is a
+// TILTED circle, so its high edge stands (D/2)·sin(TILT) above where the axis
+// ends. Leaving it out put the top 1.9 mm lower than the mesh actually
+// measures, and ate most of the clearance that was supposed to be there.
+const TUBE_TOP = ROTOR_Z + ROTOR_H
+  + STICKS_OUT * Math.cos(TILT * Math.PI / 180)
+  + (TUBE_D / 2) * Math.sin(TILT * Math.PI / 180);
+const ARM_Z = TUBE_TOP + 5;          // measured off the tubes, not the disc
 
 // ---- base -----------------------------------------------------------------
 const X0 = -(g.gears[0].tip / 2) - 6;          // clear of the crank gear
@@ -96,14 +115,17 @@ const pinion = translate([g.centre, 0, GEAR_Z],
   rotate([0, 0, 180 / ROTOR_T],
     gear({ module: M, teeth: ROTOR_T, h: GEAR_H, bore: SHAFT + 0.4 })));
 
-// One tube pocket, standing on its tip and leaning out by TILT. Six of these
-// converge as they go down — at 20° they stay 14.1 mm apart at the deepest
-// point, which clears an 11.4 mm tube. Tilt them further and they merge.
-const tipR = MOUTH_R - POCKET * Math.sin(TILT * Math.PI / 180);
+// One pocket, standing on its tip. The tip sits at the OUTER radius and the
+// mouth leans inward as it rises, so rotate by −TILT: that tips the cylinder's
+// +Z axis toward −x, which is up-and-inward from the tip.
+//
+// Six of them spread apart as they go down, so the tight spot is the MOUTH
+// circle — 17 mm between axes there, which clears an 11.4 mm tube.
+const tipR = MOUTH_R + POCKET * Math.sin(TILT * Math.PI / 180);
 const tipZ = ROTOR_H - POCKET * Math.cos(TILT * Math.PI / 180);
 const pocket = (i) => rotate([0, 0, (360 * i) / TUBES],
   translate([tipR, 0, tipZ],
-    rotate([0, TILT, 0], union(
+    rotate([0, -TILT, 0], union(
       // run long so it breaks the top face cleanly
       cylinder({ r: TUBE_D / 2, h: POCKET + 25, $fn: 40 }),
       // 1.5 mL tubes are conical at the bottom
@@ -113,15 +135,31 @@ const pocket = (i) => rotate([0, 0, (360 * i) / TUBES],
 const rotor = translate([g.centre, 0, ROTOR_Z], difference(
   union(
     cylinder({ r: ROTOR_R, h: ROTOR_H, $fn: 96 }),
-    cylinder({ r: 9, h: ROTOR_H + 4, $fn: 48 }),      // hub around the shaft
+    cylinder({ r: 8, h: ROTOR_H + 4, $fn: 48 }),      // hub around the shaft
   ),
   translate([0, 0, -0.5], cylinder({ r: SHAFT / 2 + 0.15, h: ROTOR_H + 6, $fn: 32 })),
   ...Array.from({ length: TUBES }, (_, i) => pocket(i)),
 ));
 
+// Six ghost tubes, to SEE that the closed tips point outward and that the caps
+// stand clear of the crank. Off by default — they are not part of the print.
+const SHOW_TUBES = false;
+// ghostTube, not tube: tube() is a DSL function (it sweeps a profile along a
+// path), and `const tube` shadows it into a redeclaration error.
+const ghostTube = (i) => rotate([0, 0, (360 * i) / TUBES],
+  translate([tipR, 0, tipZ],
+    rotate([0, -TILT, 0], union(
+      cylinder({ r: TUBE_D / 2 - 0.3, h: TUBE_L, $fn: 32 }),
+      translate([0, 0, -4], cone({ r1: 0.8, r2: TUBE_D / 2 - 0.3, h: 4, $fn: 32 })),
+    ))));
+const tubes = SHOW_TUBES
+  ? [translate([g.centre, 0, ROTOR_Z],
+      union(...Array.from({ length: TUBES }, (_, i) => ghostTube(i))))]
+  : [];
+
 // Still missing, and worth saying out loud rather than pretending otherwise:
 // a LID (a rotor that can throw a tube wants one), and bearings — the rotor
 // runs on a bare printed hub here, which will wear oval. A 625 (5 mm bore)
 // pressed into the hub and the base post is the fix.
-return group(base, crankGear, crank, pinion, rotor);
+return group(base, crankGear, crank, pinion, rotor, ...tubes);
 };
