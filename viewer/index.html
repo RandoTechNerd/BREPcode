@@ -10257,6 +10257,22 @@ ${joined}`)(...vs);
     let bp = null;            // the drawing on hand: { source, svg, url }
     let bpBuilding = null;    // in flight, so two triggers make one drawing
     let bpIdle = 0;
+    // The pre-build's brakes. The projection runs replicad ON THE MAIN THREAD,
+    // and for an organic model (hull chains, high $fn) it runs for MINUTES —
+    // which, fired automatically 1.5s after every rebuild, is an app that
+    // freezes every time you type. That is precisely what kept "failing" the
+    // orca bobble in the desktop app: the kernel build itself was fine in the
+    // worker; the silent blueprint that followed it was the hang.
+    //
+    // Two gates. A model whose KERNEL build ran long gets no pre-build — the
+    // projection is reliably worse than the build. And a projection that ran
+    // long, even for a light-looking model, turns pre-building off for the
+    // session. Neither touches the BUTTON: clicking still projects anything,
+    // with the busy status up front, because that wait is one the user chose.
+    const BP_AUTO_MS = 3000;      // kernel build above this -> no auto rebuild
+    const BP_SLOW_MS = 8000;      // one projection above this -> off for the session
+    let bpSlowSession = false;
+    const bpTooHeavy = () => bpSlowSession || lastBuildMs > BP_AUTO_MS;
 
     function bpDrop() {
       // An object URL is a live handle on a blob; dropping the variable without
@@ -10268,7 +10284,7 @@ ${joined}`)(...vs);
     function blueprintStale() {
       bpDrop();
       paintBlueprintBtn();
-      if (!bpWarm) return;
+      if (!bpWarm || bpTooHeavy()) return;
       clearTimeout(bpIdle);
       // Long enough that typing does not start a projection per keystroke.
       bpIdle = setTimeout(() => { buildBlueprint().catch(() => {}); }, 1500);
@@ -10279,6 +10295,7 @@ ${joined}`)(...vs);
       if (!lastShape) throw new Error("build the model first");
       const source = code.value;
       bpBuilding = (async () => {
+        const t0 = performance.now();
         const curved = await getCurved();
         await curved.loadReplicad();
         // The size the user can see in the status bar — OCCT's own bounding box
@@ -10288,6 +10305,9 @@ ${joined}`)(...vs);
         const svg = await curved.curvedDrawingSVG(lastShape, { title: safeModelName(), size: dims });
         bpDrop();
         bp = { source, svg, url: URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) };
+        // A projection this slow must never fire itself again — the next one
+        // arrives 1.5s after a rebuild, on the main thread, uninvited.
+        if (performance.now() - t0 > BP_SLOW_MS) bpSlowSession = true;
         paintBlueprintBtn();
         return bp;
       })().finally(() => { bpBuilding = null; });
@@ -10300,6 +10320,7 @@ ${joined}`)(...vs);
       const ready = !!bp && bp.source === code.value;
       b.classList.toggle("bp-ready", ready);
       b.title = ready ? "Open the 3-view blueprint in a tab — ready"
+        : bpWarm && bpTooHeavy() ? "Open the 3-view blueprint in a tab — this model is heavy, so it projects when you click (the app pauses while it works)"
         : bpWarm ? "Open the 3-view blueprint in a tab"
         : "Open the 3-view blueprint in a tab — the first one loads the precision kernel (≈ 11 MB)";
     }

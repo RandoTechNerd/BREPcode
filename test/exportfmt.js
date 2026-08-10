@@ -352,7 +352,7 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   check("the drawing is built ahead of the click, not during it",
     /bpIdle = setTimeout\(\(\) => \{ buildBlueprint\(\)/.test(HTML));
   check("...but not before the user has ever asked for one (11 MB)",
-    /if \(!bpWarm\) return;/.test(HTML));
+    /if \(!bpWarm \|\| bpTooHeavy\(\)\) return;/.test(HTML));
   check("pressing it once earns the background rebuilds",
     /localStorage\.setItem\(BP_WARM_KEY, "1"\);/.test(HTML));
   // A popup blocker eats any window opened after an await, so the ordering
@@ -374,6 +374,19 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
     /desktop\?\.openBlueprint/.test(HTML));
   check("a blocked popup falls back to a file, and says so",
     /Your browser blocked the tab/.test(HTML));
+  // The pre-build's brakes, found by an orca. The projection runs replicad on
+  // the MAIN thread, and an organic hull-chain model turns it into minutes —
+  // fired automatically 1.5s after every rebuild, that is an app that freezes
+  // every time you type. The kernel build itself was never the problem: it
+  // runs in the worker with single-digit-ms stalls.
+  check("a heavy model gets no automatic blueprint rebuild",
+    /if \(!bpWarm \|\| bpTooHeavy\(\)\) return;/.test(HTML));
+  check("...heavy meaning the kernel build itself ran long",
+    /lastBuildMs > BP_AUTO_MS/.test(HTML));
+  check("one slow projection turns pre-building off for the session",
+    /performance\.now\(\) - t0 > BP_SLOW_MS\) bpSlowSession = true;/.test(HTML));
+  check("...and the button says the wait now belongs to the click",
+    /projects when you click/.test(HTML));
 
   const BP = readFileSync(new URL("../desktop/blueprint.cjs", import.meta.url), "utf8");
   check("the desktop handler refuses anything that is not an SVG",

@@ -440,6 +440,28 @@
       ]
     },
     {
+      "tag": "mascot",
+      "title": "Mascots, logos & figurines",
+      "file": "mascot.md",
+      "match": [
+        "mascot",
+        "logo",
+        "character",
+        "figurine",
+        "bobble",
+        "bobblehead",
+        "toy",
+        "orca",
+        "penguin",
+        "blob character",
+        "cute",
+        "kawaii",
+        "chibi",
+        "plush",
+        "cartoon"
+      ]
+    },
+    {
       "tag": "mount",
       "title": "Brackets and wall mounts",
       "file": "mount.md",
