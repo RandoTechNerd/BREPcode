@@ -40,3 +40,9 @@ viewer/locked-key.js
 /rb.mjs
 /gen_shapes.mjs
 /stlout/
+
+# scratch probes — throwaway measurement scripts keep riding into commits via
+# `git add -A`. Real root-level .mjs is build-site.mjs and rb.mjs only.
+/*.mjs
+!/build-site.mjs
+!/rb.mjs
