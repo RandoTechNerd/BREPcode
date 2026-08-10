@@ -363,7 +363,18 @@ console.log("\nthe Toolbox entry is wired to things that exist\n");
 
   // Position: the user asked for it at the BOTTOM of the Toolbox. The one
   // thing below it is the free-form checkbox, which is a mode, not a tool.
-  const menu = HTML.slice(HTML.indexOf('<div id="tools-menu">'), HTML.indexOf('<div id="more-menu">'));
+  // Sliced by ID rather than by the exact opening tag: adding an attribute to
+  // the menu (data-flip, when it learned to open upward) made indexOf return
+  // -1, and the slice silently became the whole file from position -1. Three
+  // checks then failed with nothing wrong in the app.
+  const openTag = (id) => {
+    const at = HTML.indexOf(`id="${id}"`);
+    return at < 0 ? -1 : HTML.lastIndexOf("<", at);
+  };
+  const menuFrom = openTag("tools-menu"), menuTo = openTag("more-menu");
+  check("the Toolbox and the overflow menu are both in the document",
+    menuFrom > -1 && menuTo > menuFrom, `${menuFrom} .. ${menuTo}`);
+  const menu = HTML.slice(menuFrom, menuTo);
   const rows = [...menu.matchAll(/data-act="([\w-]+)"|id="(cutter-row)"/g)].map((m) => m[1] || m[2]);
   check("the cutter is the last tool in the Toolbox",
     rows[rows.length - 1] === "cutter-row", rows.join(" > "));

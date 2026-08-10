@@ -1019,10 +1019,14 @@
       scrollbar-width: thin;
     }
     #tools-menu.open { display: flex; }
+    /* 6px, not 8. Ten rows at 46px tall need 460px, and a Toolbox opened from a
+       panel sitting low on the screen has closer to 400 — so two entries fell
+       below the fold of a menu that looked complete, which is indistinguishable
+       from the tool not existing. Four pixels a row buys back both. */
     #tools-menu button {
       display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
       background: none; border: 0; color: var(--text); font: inherit;
-      padding: 8px 13px; cursor: pointer;
+      padding: 6px 13px; cursor: pointer;
     }
     #tools-menu button:hover { background: var(--hover-strong); }
     /* The one mode in an otherwise action-only menu, so it is set apart by a
@@ -2072,7 +2076,7 @@
           <button class="close-btn" data-close="panel" title="Close">&times;</button>
         </div>
         <!-- toolbox: the model-editing tools, with an icon + a word each -->
-        <div id="tools-menu">
+        <div id="tools-menu" data-flip="1">
           <button data-act="drill-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2176,7 +2180,7 @@
             <span><b>Free-form corners <small class="beta">beta</small></b><small>drag one corner on its own to skew</small></span>
           </label>
         </div>
-        <div id="more-menu">
+        <div id="more-menu" data-flip="1">
           <button data-act="tools-btn">Toolbox…</button>
           <button data-act="trace-btn">Trace image…</button>
           <button data-act="import-btn">Import STL / OBJ / 3MF…</button>
@@ -13113,11 +13117,41 @@ ${joined}`)(...vs);
     // known until they open. Measure instead, and only cap when the list
     // genuinely does not fit. When it does, the cap is removed entirely, so a
     // roomy window shows no scrollbar and no clipped shadow.
+    // Capping the height was only half of it. A ten-entry Toolbox under a panel
+    // sitting low on the screen gets scrolled down to about six visible rows,
+    // and a menu that LOOKS complete and is not reads as "that tool does not
+    // exist" — which is exactly how the Gridfinity row went missing. So a menu
+    // anchored below its button (data-flip) also gets to open UPWARD when
+    // there is more room that way.
+    //
+    // Only data-flip menus: the shape menu is positioned by script with an
+    // inline top, and resetting that here would drop it in the wrong place.
     function fitFlyout(el) {
       el.style.maxHeight = "";
+      if (el.dataset.flip) { el.style.top = ""; el.style.bottom = ""; }
       if (!el.classList.contains("open")) return;
-      const room = innerHeight - el.getBoundingClientRect().top - 10;
-      if (el.scrollHeight > room) el.style.maxHeight = `${Math.max(120, room)}px`;
+      const top = el.getBoundingClientRect().top;      // measured hanging below
+      const below = innerHeight - top - 10;
+      const wanted = el.scrollHeight;
+      if (wanted <= below) return;                     // fits as it is: no cap, no scrollbar
+      // Space above the menu's natural top is space it would have if flipped.
+      const above = top - 10;
+      if (el.dataset.flip && above > below) {
+        el.style.top = "auto";
+        el.style.bottom = "100%";
+        el.style.maxHeight = `${Math.max(120, above)}px`;
+        // Then MEASURE, and take off whatever still hangs over the top edge.
+        // The arithmetic above is of the space available; what a max-height
+        // actually buys depends on padding, borders and the box model, and
+        // guessing at that is how a menu ends up 34px off the screen. One
+        // correction pass costs a layout read and is always right.
+        const over = -el.getBoundingClientRect().top;
+        if (over > 0) {
+          el.style.maxHeight = `${Math.max(120, above - over - 2)}px`;
+        }
+      } else {
+        el.style.maxHeight = `${Math.max(120, below)}px`;
+      }
     }
     const flyouts = ["tools-menu", "more-menu", "shape-menu"].map((id) => $(id)).filter(Boolean);
     for (const el of flyouts) {
