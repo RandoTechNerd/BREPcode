@@ -1400,6 +1400,55 @@
     #trace-foot .hist-btn:disabled { color: var(--disabled); cursor: default; }
 
     /* ---------- parts shelf ---------- */
+    /* ---- Gridfinity picker ------------------------------------------------ */
+    #gfin-body { padding: 10px 12px; overflow-y: auto; max-height: min(72vh, 640px); width: 300px; }
+    .gfin-seg { display: flex; gap: 0; margin-bottom: 10px; }
+    .gfin-seg button {
+      flex: 1; background: var(--panel); color: var(--muted2);
+      border: 1px solid var(--border); padding: 5px 0; cursor: pointer;
+      font: 12px system-ui, sans-serif;
+    }
+    .gfin-seg button:first-child { border-radius: 6px 0 0 6px; }
+    .gfin-seg button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+    .gfin-seg button.on { background: var(--accent, #5b8cff); border-color: var(--accent, #5b8cff); color: #fff; }
+    /* The grid itself. 12 columns of fixed cells — a table-size picker, which
+       is a control people already know how to use without being told. */
+    #gfin-grid {
+      display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px;
+      margin: 0 0 8px; touch-action: none;
+    }
+    #gfin-grid i {
+      display: block; aspect-ratio: 1; border-radius: 2px;
+      background: var(--hover); border: 1px solid transparent; cursor: pointer;
+    }
+    #gfin-grid i.lit { background: var(--accent, #5b8cff); border-color: var(--accent, #5b8cff); }
+    #gfin-read {
+      display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;
+      font: 12px system-ui, sans-serif;
+    }
+    #gfin-read b { color: var(--text); font-size: 13px; }
+    #gfin-read span { color: var(--muted3); font: 11.5px ui-monospace, Consolas, monospace; }
+    .gfin-row { display: flex; align-items: center; gap: 8px; padding: 3px 0;
+      font: 11.5px system-ui, sans-serif; color: var(--muted2); }
+    .gfin-row > span:first-child { flex: 0 0 52px; }
+    .gfin-row select, .gfin-row input {
+      flex: 1; min-width: 0; background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+      font: 11.5px system-ui, sans-serif;
+    }
+    .gfin-row button { flex: 0 0 auto; font-size: 11.5px; padding: 3px 10px; }
+    .gfin-check { display: flex; align-items: flex-start; gap: 7px; padding: 5px 0 2px;
+      font: 11.5px system-ui, sans-serif; color: var(--muted2); line-height: 1.45; }
+    .gfin-check input { margin-top: 1px; }
+    #gfin-binopts[hidden] { display: none; }
+    #gfin-drawer { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
+    #gfin-fitnote { font-size: 11px; line-height: 1.5; margin-top: 4px; }
+    #gfin-foot { padding: 9px 12px; border-top: 1px solid var(--border); }
+    #gfin-go {
+      width: 100%; background: var(--accent, #5b8cff); border: 1px solid var(--accent, #5b8cff);
+      color: #fff; border-radius: 7px; padding: 6px 0; cursor: pointer;
+      font: 12.5px system-ui, sans-serif;
+    }
     #shelf-body { padding: 10px 12px; overflow-y: auto; max-height: min(64vh, 560px); width: 330px; }
     #shelf-q {
       width: 100%; box-sizing: border-box; padding: 6px 9px; border-radius: 6px;
@@ -2084,6 +2133,19 @@
               <rect x="3" y="5.9" width="4.6" height="2.1" /><rect x="9.8" y="5.9" width="3.2" height="2.1" />
             </svg>
             <span><b>Parts shelf</b><small>hinges, snaps, vents, standoffs — already written</small></span>
+          </button>
+          <!-- Gridfinity. Its own row rather than a shelf entry, because the
+               thing you have to choose is a SIZE, and a size is picked far
+               better by dragging across a grid than by typing two numbers. -->
+          <button id="gfin-row">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.6" y="1.6" width="5.4" height="5.4" rx="1.2" />
+              <rect x="9" y="1.6" width="5.4" height="5.4" rx="1.2" />
+              <rect x="1.6" y="9" width="5.4" height="5.4" rx="1.2" />
+              <rect x="9" y="9" width="5.4" height="5.4" rx="1.2" />
+            </svg>
+            <span><b>Gridfinity grid</b><small>drag out a bin or a baseplate</small></span>
           </button>
           <!-- Cookie cutter. Last of the actions, and the only one with a
                submenu: what it can offer depends on whether there is already
@@ -2920,6 +2982,65 @@
       <div id="shelf-foot">
         <small>Click a part to drop its call into the editor. Everything is
         parametric — change the numbers after. <b>CUT</b> parts get subtracted.</small>
+      </div>
+    </section>
+
+    <!-- Gridfinity, sized by dragging across a grid.
+         Typing gridfinityBin({x: 4, y: 3, u: 3}) is fine once you know it
+         exists; picking 4 × 3 off a grid is how everyone already chooses a
+         table size, and it shows the millimetres while you do it — which is
+         the number that decides whether it fits the drawer. -->
+    <section id="gfin" class="card" aria-label="Gridfinity">
+      <header>
+        <div><strong>Gridfinity</strong><span class="sub" id="gfin-sub">drag out a size</span></div>
+        <button class="close-btn" data-close="gfin" title="Close">&times;</button>
+      </header>
+      <div id="gfin-body">
+        <div class="gfin-seg" id="gfin-kind" role="radiogroup" aria-label="What to make">
+          <button data-kind="bin" class="on" role="radio" aria-checked="true">Bin</button>
+          <button data-kind="base" role="radio" aria-checked="false">Baseplate</button>
+        </div>
+        <!-- 12 x 12 is the whole useful range: a 12-cell run is 504mm, wider
+             than any drawer this is going in. -->
+        <div id="gfin-grid" role="application" aria-label="Choose a size in cells"></div>
+        <div id="gfin-read"><b id="gfin-cells">1 × 1</b><span id="gfin-mm"></span></div>
+
+        <div id="gfin-binopts">
+          <label class="gfin-row"><span>Height</span>
+            <select id="gfin-u">
+              <option value="2">2u — 18.4mm · small parts, hardware</option>
+              <option value="3" selected>3u — 25.4mm · general purpose</option>
+              <option value="4">4u — 32.4mm</option>
+              <option value="5">5u — 39.4mm</option>
+              <option value="6">6u — 46.4mm · things standing up</option>
+              <option value="9">9u — 67.4mm · tall</option>
+            </select>
+          </label>
+          <label class="gfin-row"><span>Inside</span>
+            <select id="gfin-div">
+              <option value="">One compartment</option>
+              <option value="split">Split — two</option>
+              <option value="quad">Quad — four</option>
+              <option value="thirds">Thirds — three</option>
+              <option value="six">Six — 3 × 2</option>
+            </select>
+          </label>
+          <label class="gfin-check"><input type="checkbox" id="gfin-lip" checked />
+            <span>Stacking lip — other bins can sit on this one</span></label>
+        </div>
+
+        <div id="gfin-drawer">
+          <div class="gfin-row"><span>Drawer</span>
+            <input id="gfin-dw" type="number" min="42" step="1" placeholder="width" />
+            <input id="gfin-dd" type="number" min="42" step="1" placeholder="depth" />
+            <button id="gfin-fit" class="hist-btn">Fit</button>
+          </div>
+          <div class="note" id="gfin-fitnote">Know the drawer instead? Put its inside
+            measurements in and the grid sets itself.</div>
+        </div>
+      </div>
+      <div id="gfin-foot">
+        <button id="gfin-go">Put it in the editor</button>
       </div>
     </section>
 
@@ -13149,6 +13270,148 @@ ${joined}`)(...vs);
         if (e.key !== "Enter") return;
         e.preventDefault();
         all[active]?.click();
+      });
+    }
+
+    // ---------------------------------------------------------- Gridfinity
+    //
+    // A table-size picker, because that is the control everybody already knows
+    // how to use: drag across the grid, watch the millimetres, let go.
+    //
+    // The millimetres are the point. "4 × 3" means nothing when you are stood
+    // at a drawer; "168 × 126 mm" is the number that decides whether it fits,
+    // and it is on screen the whole time you are choosing. The other direction
+    // works too — put the drawer's inside measurements in and the grid sets
+    // itself, which is the request people actually arrive with.
+    {
+      const card = $("gfin"), grid = $("gfin-grid");
+      const MAX = 12;                       // 12 cells is 504mm — wider than any drawer
+      const PITCH = 42, FOOT = 41.5, UNIT = 7, LIP = 4.4;
+      let gx = 2, gy = 2, kind = "bin", locked = false;
+
+      // Built once. Each cell knows its own coordinates, so hover and click are
+      // one handler on the container rather than 144 listeners.
+      for (let j = 0; j < MAX; j++) {
+        for (let i = 0; i < MAX; i++) {
+          const c = document.createElement("i");
+          c.dataset.x = String(i + 1);
+          c.dataset.y = String(j + 1);
+          grid.appendChild(c);
+        }
+      }
+      const cells = [...grid.children];
+
+      const paint = (x, y) => {
+        for (const c of cells) {
+          c.classList.toggle("lit", +c.dataset.x <= x && +c.dataset.y <= y);
+        }
+        const W = x * PITCH - (PITCH - FOOT), D = y * PITCH - (PITCH - FOOT);
+        $("gfin-cells").textContent = `${x} × ${y}`;
+        // A bin is its footprint; a baseplate is whole cells. Showing the bin's
+        // 41.5-per-cell size as if it were 42 is exactly the error that has
+        // someone print a grid 0.5mm too wide for the drawer they measured.
+        $("gfin-mm").textContent = kind === "bin"
+          ? `${W} × ${D} mm  ·  ${(+$("gfin-u").value * UNIT + ($("gfin-lip").checked ? LIP : 0)).toFixed(1)} tall`
+          : `${x * PITCH} × ${y * PITCH} mm  ·  ${x * y} cells`;
+      };
+      const hover = (e) => {
+        if (locked) return;
+        const c = e.target.closest("i");
+        if (c) paint(+c.dataset.x, +c.dataset.y);
+      };
+      grid.addEventListener("pointermove", hover);
+      grid.addEventListener("pointerdown", (e) => {
+        const c = e.target.closest("i");
+        if (!c) return;
+        gx = +c.dataset.x; gy = +c.dataset.y;
+        locked = true;                       // stop hover repainting over the choice
+        paint(gx, gy);
+      });
+      // Leaving the grid without choosing puts the current selection back,
+      // rather than leaving it lit wherever the pointer happened to exit.
+      grid.addEventListener("pointerleave", () => { locked = false; paint(gx, gy); });
+
+      for (const b of $("gfin-kind").querySelectorAll("button")) {
+        b.addEventListener("click", () => {
+          kind = b.dataset.kind;
+          for (const o of $("gfin-kind").querySelectorAll("button")) {
+            const on = o === b;
+            o.classList.toggle("on", on);
+            o.setAttribute("aria-checked", String(on));
+          }
+          $("gfin-binopts").hidden = kind !== "bin";
+          paint(gx, gy);
+        });
+      }
+      for (const id of ["gfin-u", "gfin-div", "gfin-lip"]) {
+        $(id).addEventListener("change", () => paint(gx, gy));
+      }
+
+      // Drawer -> grid. Same floor() the DSL's gridfinityFit does, and it has
+      // to be floor: a bin is 41.5 across but a CELL is 42, so the last column
+      // still needs a full 42 and rounding up gives a grid that will not go in.
+      const fit = () => {
+        const w = +$("gfin-dw").value, d = +$("gfin-dd").value;
+        const note = $("gfin-fitnote");
+        if (!(w > 0) || !(d > 0)) {
+          note.textContent = "Put both inside measurements in and the grid sets itself.";
+          return;
+        }
+        const x = Math.floor(w / PITCH), y = Math.floor(d / PITCH);
+        if (!x || !y) {
+          note.innerHTML = `<b>${w} × ${d}mm holds no full cell</b> — one cell needs 42 × 42.`;
+          return;
+        }
+        gx = Math.min(MAX, x); gy = Math.min(MAX, y);
+        paint(gx, gy);
+        const over = x > MAX || y > MAX;
+        note.innerHTML = `<b>${x} × ${y} cells</b> — ${x * PITCH} × ${y * PITCH}mm, `
+          + `leaving ${(w - x * PITCH).toFixed(1)} across and ${(d - y * PITCH).toFixed(1)} front to back.`
+          + (over ? ` Capped at ${MAX} here — write the bigger number in the code.` : "");
+      };
+      $("gfin-fit").addEventListener("click", fit);
+      for (const id of ["gfin-dw", "gfin-dd"]) {
+        $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fit(); } });
+      }
+
+      $("gfin-row").addEventListener("click", (e) => {
+        e.stopPropagation();
+        toolsMenu.classList.remove("open");
+        paint(gx, gy);
+        toggleCard(card, null, true);
+      });
+
+      $("gfin-go").addEventListener("click", () => {
+        const parts = [`x: ${gx}`, `y: ${gy}`];
+        let call;
+        if (kind === "bin") {
+          parts.push(`u: ${$("gfin-u").value}`);
+          const div = $("gfin-div").value;
+          if (div) parts.push(`divide: "${div}"`);
+          if (!$("gfin-lip").checked) parts.push("lip: false");
+          call = `gridfinityBin({ ${parts.join(", ")} })`;
+        } else {
+          call = `gridfinityBase({ ${parts.join(", ")} })`;
+        }
+        // Same bargain the parts shelf strikes: never wipe someone's work. An
+        // empty editor gets the whole model with its `return`; anything else
+        // gets the bare call at the caret, to compose into what is already
+        // there. insertSnippet() is not the route — it takes an autocomplete
+        // spec, not a string, and handing it one puts the literal word
+        // "undefined" in the editor.
+        const v = code.value;
+        const blank = !v.trim();
+        const snippet = blank ? `return ${call};\n` : call;
+        const at = blank ? 0 : (code.selectionStart ?? v.length);
+        const end = blank ? v.length : (code.selectionEnd ?? at);
+        pushHistory(v);
+        code.value = v.slice(0, at) + snippet + v.slice(end);
+        const pos = at + snippet.length;
+        code.focus();
+        code.setSelectionRange(pos, pos);
+        pushHistory();
+        toggleCard(card, null, false);
+        try { rebuild(); } catch { /* the editor reports its own errors */ }
       });
     }
 

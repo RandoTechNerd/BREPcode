@@ -24,7 +24,7 @@ const check = (label, ok, detail = "") => {
 async function measure(shape) {
   const stl = toSTL(await build(shape), "s");
   const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => m.slice(1).map(Number));
-  if (!v.length) return { facets: 0, x: 0, y: 0, z: 0, empty: true };
+  if (!v.length) return { facets: 0, x: 0, y: 0, z: 0, vol: 0, empty: true };
   const ax = (i) => ({ min: Math.min(...v.map((p) => p[i])), max: Math.max(...v.map((p) => p[i])) });
   const [x, y, z] = [ax(0), ax(1), ax(2)];
   let vol = 0;
@@ -66,7 +66,7 @@ console.log("\nthe index is a real index\n");
   const exported = Object.keys(shelf).filter((k) => typeof shelf[k] === "function"
     // lookups and helpers that return DATA rather than geometry — they are
     // not parts and have nothing to browse
-    && !["shelfIndex", "shelfGroups", "pcbSpec", "pcbHoles"].includes(k));
+    && !["shelfIndex", "shelfGroups", "pcbSpec", "pcbHoles", "gridfinityFit"].includes(k));
   const unshelved = exported.filter((k) => !SHELF.some((p) => p.id === k));
   check("every part written is on the shelf", unshelved.length === 0, unshelved.join(", "));
   check("the groups are few enough to scan", shelfGroups().length <= 8, shelfGroups().join(", "));
@@ -307,19 +307,76 @@ console.log("\ngridfinity: a bin this code made must seat in a base it made\n");
 {
   const { GRID, gridfinityBin, gridfinityBase } = shelf;
   const md = readFileSync(new URL("../viewer/recipes/gridfinity.md", import.meta.url), "utf8");
-  check("#gridfinity agrees on the 42mm pitch", md.includes(`${GRID.pitch} × ${GRID.pitch}`));
-  check("...on the 41.5 footprint", md.includes(`${GRID.foot} × ${GRID.foot}`));
-  check("...on the r3.75 corner", md.includes(`${GRID.r}`));
-  check("...on the 7mm height unit", md.includes(`**${GRID.unit}mm**`));
-  check("...and on the 0.8 / 1.8 / 2.15 plinth profile",
-    md.includes(`${GRID.chamferLo}mm 45°`) && md.includes(`${GRID.straight}mm straight`)
-      && md.includes(`${GRID.chamferHi}mm 45°`));
+  // Every number the code holds has to appear in the page the model is handed,
+  // or the two drift and the model builds to a figure nobody checked. Written
+  // as "does the recipe contain the constant" rather than "does it contain this
+  // exact sentence", so the page can be reworded without the suite going red
+  // for no reason — but it cannot lose a NUMBER.
+  const states = (label, ...vals) => check(label,
+    vals.every((v) => md.includes(String(v))),
+    vals.filter((v) => !md.includes(String(v))).map((v) => `missing ${v}`).join(", "));
+  states("#gridfinity states the 42mm pitch", GRID.pitch);
+  states("...the 41.5 footprint", GRID.foot);
+  states("...the r3.75 corner", GRID.r);
+  states("...the 7mm height unit", GRID.unit);
+  states("...the 0.8 / 1.8 / 2.15 foot profile",
+    GRID.chamferLo, GRID.straight, GRID.chamferHi, GRID.base);
+  states("...the 0.7 / 1.8 / 1.9 stacking lip", GRID.lipLo, GRID.lipHi, GRID.lip);
+  states("...the baseplate socket, which is NOT the foot", GRID.socketLo, GRID.socketHi, GRID.socket);
+  states("...the r4.0 baseplate corner", GRID.baseR);
+  states("...the 0.25 mating clearance", GRID.clearance);
+  check("...and that a 2u bin measures 18.4 overall, which is the trap",
+    md.includes("18.4"));
+  check("...and that gridfinityFit exists, since that is the usual first question",
+    md.includes("gridfinityFit"));
+  check("...and every divider name the code answers to",
+    ["split", "quad", "thirds", "six"].every((d) => md.includes(d)));
   check("the three steps really add up to the stated base height",
     near(GRID.chamferLo + GRID.straight + GRID.chamferHi, GRID.base, 0.001), `${GRID.base}`);
 
+  // ---- the stacking lip, straight off the reference sheet ----------------
+  //
+  // Without it a "Gridfinity bin" is a box with a decorative foot: nothing
+  // stacks on it. The sheet gives the profile as 0.7 / 1.8 / 1.9 and annotates
+  // "+~4.4mm", and the two agree — which is the first sign the reading is right.
+  check("the lip's three steps add up to the 4.4 the sheet annotates",
+    near(GRID.lipLo + GRID.lipStraight + GRID.lipHi, GRID.lip, 1e-9), `${GRID.lip}`);
+  check("the baseplate socket's three steps add up to its stated height",
+    near(GRID.socketLo + GRID.socketStraight + GRID.socketHi, GRID.socket, 1e-9), `${GRID.socket}`);
+  // Every chamfer is 45°, so a step's rise IS its change in radius. Three
+  // separate numbers on the sheet fall out of that, and if any of them missed,
+  // the reading would be wrong somewhere.
+  const C = GRID.foot / 2 - GRID.r;                       // 17.0
+  const across = (r) => 2 * (C + r);
+  check("...the corner centres are at 17.0 for every profile", near(C, 17, 1e-9), `${C}`);
+  const lipTopR = (GRID.r - GRID.lipHi - GRID.lipLo) + GRID.lipLo + GRID.lipHi;
+  check("the lip's top opening is flush with the wall it is cut into",
+    near(across(lipTopR), GRID.foot, 1e-9), `${across(lipTopR)}`);
+  const lipFitR = (GRID.r - GRID.lipHi - GRID.lipLo) + GRID.lipLo;
+  const footFitR = GRID.r - GRID.chamferHi;
+  check("...and its straight section clears the foot's by exactly the 0.25 offset",
+    near(lipFitR - footFitR, GRID.clearance, 1e-9), `${(lipFitR - footFitR).toFixed(3)}`);
+  const socketTopR = (lipFitR - GRID.socketLo) + GRID.socketLo + GRID.socketHi;
+  check("the baseplate socket opens at the full 42.0 cell",
+    near(across(socketTopR), GRID.pitch, 1e-9), `${across(socketTopR)}`);
+  check("...on an r4.0 corner, which is the sheet's 8.0Ø",
+    near(socketTopR, GRID.baseR, 1e-9), `${socketTopR}`);
+
   const bin = await measure(gridfinityBin({ x: 1, y: 1, u: 3 }));
   check("a 1x1x3 bin is 41.5 across", near(bin.x, GRID.foot, 0.15), `${bin.x.toFixed(2)}`);
-  check("...and 21 tall (3 x 7, base included)", near(bin.z, 21, 0.05), `${bin.z.toFixed(2)}`);
+  // u counts BODY units; the lip stands on top. The sheet prints 18.4 for a 2u
+  // bin, which is 14 + 4.4 — so a 3u is 21 + 4.4.
+  check("...and 25.4 tall — 3 x 7 of body plus the 4.4 lip",
+    near(bin.z, 3 * GRID.unit + GRID.lip, 0.05), `${bin.z.toFixed(2)}`);
+  const twoU = await measure(gridfinityBin({ x: 1, y: 1, u: 2 }));
+  check("a 2u bin measures the 18.4 printed on the sheet",
+    near(twoU.z, 18.4, 0.05), `${twoU.z.toFixed(2)}`);
+  const noLip = await measure(gridfinityBin({ x: 1, y: 1, u: 3, lip: false }));
+  check("lip:false gives the bare 21 back, for a bin that never stacks",
+    near(noLip.z, 21, 0.05), `${noLip.z.toFixed(2)}`);
+  check("...so the lip is really adding material, not just height",
+    bin.vol > noLip.vol, `${bin.vol.toFixed(0)} vs ${noLip.vol.toFixed(0)}`);
+
   const two = await measure(gridfinityBin({ x: 2, y: 1, u: 3 }));
   check("a 2x1 bin is one pitch wider, not two footprints",
     near(two.x, GRID.foot + GRID.pitch, 0.15), `${two.x.toFixed(2)}`);
@@ -330,23 +387,172 @@ console.log("\ngridfinity: a bin this code made must seat in a base it made\n");
     `${base.x.toFixed(1)} x ${base.y.toFixed(1)}`);
 
   // THE check. Everything above is a number agreeing with another number; this
-  // is the bin and the baseplate meeting. A plinth that does not drop into the
-  // socket is the only failure that matters, and no dimension check catches it.
-  const seated = dsl.difference(
-    dsl.translate([0, 0, 5 - GRID.base], gridfinityBin({ x: 1, y: 1, u: 2, solid: true })),
-    gridfinityBase({ x: 1, y: 1, h: 5 }),
-  );
+  // is the bin and the baseplate meeting, and no dimension check catches a
+  // plinth that will not go in.
+  //
+  // Asked as INTERFERENCE, not as leftover height. Two parts that fit share no
+  // volume; two that foul share exactly the volume that has to be shaved off.
+  // The earlier version subtracted one from the other and measured what was
+  // left, which only works when the lower part is solid underneath — true of a
+  // baseplate, and quietly false of a bin, whose lip is a ring with open air
+  // down the middle. That version passed a bin-on-bin stack it never tested.
   const solo = await measure(gridfinityBin({ x: 1, y: 1, u: 2, solid: true }));
-  const left = await measure(seated);
-  // What is left is the part of the bin ABOVE the plate. If the plinth were
-  // fouling the socket, some of the plinth would survive too and the leftover
-  // would be measurably taller than the bin's body.
-  check("a bin drops into a baseplate this code generated",
-    near(left.z, 14 - 5 + GRID.base, 0.3),
-    `${left.z.toFixed(2)} of bin left above the plate — the plinth is fouling`);
-  check("...and the plinth is a real fraction of the bin", solo.vol > left.vol,
-    `${solo.vol.toFixed(0)} vs ${left.vol.toFixed(0)}`);
+  {
+    // Seated on the socket floor: the socket is 4.65 deep and the foot 4.75
+    // tall, so the foot rests on the floor and the bin sits 0.1 proud of the
+    // plate's top face. That 0.1 is the sheet's, not a rounding error.
+    const seat = 5 - GRID.socket;
+    const clash = await measure(dsl.intersection(
+      dsl.translate([0, 0, seat], gridfinityBin({ x: 1, y: 1, u: 2, solid: true })),
+      gridfinityBase({ x: 1, y: 1, h: 5 })));
+    check("a bin drops into a baseplate with nothing fouling",
+      clash.vol < 1, `${clash.vol.toFixed(1)} mm³ of overlap — the plinth is jamming`);
+    check("...and it is a real seat, not the bin floating clear of the plate",
+      near(seat + GRID.base, 5 + 0.1, 0.02), `foot top lands at ${(seat + GRID.base).toFixed(2)}`);
+  }
+
+  // THE OTHER check, and the one the lip exists for: a bin has to stack on a
+  // BIN, not only drop into a baseplate. Same method — sit one on top of the
+  // other at the stacking pitch and see whether the foot is swallowed.
+  //
+  // Stacking pitch is u x 7, NOT the bin's overall height: the upper bin's foot
+  // sinks into the lower one's lip, which is exactly what makes the grid keep
+  // its 7 mm rhythm however many bins are piled up.
+  {
+    const lower = gridfinityBin({ x: 1, y: 1, u: 2 });
+    const upper = gridfinityBin({ x: 1, y: 1, u: 2, solid: true });
+    const pitch = 2 * GRID.unit;                       // 14, not 18.4
+    const clash = await measure(dsl.intersection(
+      dsl.translate([0, 0, pitch], upper), lower));
+    const alone = await measure(upper);
+    check("a bin stacks on another bin — the foot goes into the lip, nothing fouls",
+      clash.vol < 1, `${clash.vol.toFixed(1)} mm³ of overlap between the foot and the lip`);
+    // "No interference" on its own proves nothing — two bricks stacked flat
+    // also do not interfere. What the lip buys is that the lower bin HAS
+    // material at the heights the foot occupies, forming a wall around it, and
+    // still does not touch it. That is the difference between a located stack
+    // and a pile.
+    const slab = dsl.translate([-30, -30, pitch], dsl.cube([60, 60, GRID.lip]));
+    const ring = await measure(dsl.intersection(lower, slab));
+    const nothing = await measure(dsl.intersection(
+      gridfinityBin({ x: 1, y: 1, u: 2, lip: false }), slab));
+    check("...and the lip really is a wall around the foot, not just clearance",
+      ring.vol > 200, `${ring.vol.toFixed(0)} mm³ of lip at the foot's height`);
+    check("...which a lip-less bin does not have — it would just perch on top",
+      nothing.vol < 1, `${nothing.vol.toFixed(1)} mm³`);
+    check("...and the stack pitch stays a clean u x 7",
+      near(pitch, 2 * GRID.unit, 1e-9), `${pitch}`);
+    check("...so two stacked 2u bins occupy 14 + 18.4, not 36.8",
+      near(pitch + alone.z, 32.4, 0.05), `${(pitch + alone.z).toFixed(2)}`);
+  }
+
+  // ---- dividers ----------------------------------------------------------
+  {
+    const plain = await measure(gridfinityBin({ x: 2, y: 2, u: 3 }));
+    const split = await measure(gridfinityBin({ x: 2, y: 2, u: 3, divide: "split" }));
+    const quad = await measure(gridfinityBin({ x: 2, y: 2, u: 3, divide: "quad" }));
+    check("a split bin has more material than a plain one — that is the wall",
+      split.vol > plain.vol, `${split.vol.toFixed(0)} vs ${plain.vol.toFixed(0)}`);
+    check("...and a quad has more again — three walls, not one",
+      quad.vol > split.vol, `${quad.vol.toFixed(0)} vs ${split.vol.toFixed(0)}`);
+    check("dividers do not change the outside of the bin",
+      near(split.x, plain.x, 0.02) && near(quad.z, plain.z, 0.02),
+      `${split.x.toFixed(2)} / ${quad.z.toFixed(2)}`);
+    // The dividers must stop UNDER the lip. One run up into it would hold the
+    // next bin off its seat by however far it stood proud, and the stack would
+    // rock — invisible in a render, obvious on a desk.
+    check("...and stop below the lip, so a bin still stacks on a divided one",
+      near(quad.z, plain.z, 0.02), `${quad.z.toFixed(2)} vs ${plain.z.toFixed(2)}`);
+    const thirds = await measure(gridfinityBin({ x: 3, y: 1, u: 3, divide: "thirds" }));
+    check("thirds is three compartments", thirds.vol > plain.vol * 0.4, `${thirds.vol.toFixed(0)}`);
+    const custom = await measure(gridfinityBin({ x: 2, y: 2, u: 3, divX: 2, divY: 2 }));
+    check("divX/divY match the named shorthand", near(custom.vol, quad.vol, 1),
+      `${custom.vol.toFixed(0)} vs ${quad.vol.toFixed(0)}`);
+  }
+
+  // ---- describing a drawer ------------------------------------------------
+  //
+  // The question people actually arrive with. The trap is that a bin is 41.5
+  // across but a CELL is 42, so the last column still needs a full 42 — round
+  // the wrong way and the grid does not go in the drawer at all.
+  {
+    const { gridfinityFit } = shelf;
+    const f = gridfinityFit(380, 290);
+    check("a 380 x 290 drawer takes 9 x 6 cells", f.x === 9 && f.y === 6, `${f.x} x ${f.y}`);
+    check("...spanning 378 x 252", f.spanX === 378 && f.spanY === 252, `${f.spanX} x ${f.spanY}`);
+    check("...with the leftover reported, not hidden",
+      near(f.leftoverX, 2, 0.01) && near(f.leftoverY, 38, 0.01),
+      `${f.leftoverX} / ${f.leftoverY}`);
+    check("an exact multiple leaves nothing over",
+      gridfinityFit(420, 294).leftoverX === 0 && gridfinityFit(420, 294).leftoverY === 0);
+    check("it always rounds DOWN — 41.9 of space is not a column",
+      gridfinityFit(41.9, 41.9).x === 0 && gridfinityFit(41.9, 41.9).fits === false);
+    check("...and says so rather than returning a 0x0 grid silently",
+      gridfinityFit(41.9, 100).fits === false);
+    check("a margin is taken off before the division",
+      gridfinityFit(420, 420, { margin: 10 }).x === 9, `${gridfinityFit(420, 420, { margin: 10 }).x}`);
+    check("the total cell count is there for the shopping list",
+      gridfinityFit(380, 290).cells === 54, `${gridfinityFit(380, 290).cells}`);
+  }
 }
+
+// ---- the Toolbox picker ---------------------------------------------------
+//
+// A size is picked far better by dragging across a grid than by typing two
+// numbers, and the millimetres have to be on screen while you do it — "4 x 3"
+// means nothing stood at a drawer, "168 x 126mm" decides whether it fits.
+console.log("\ngridfinity: the Toolbox picker\n");
+{
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const { GRID } = shelf;
+  check("there is a Toolbox row for it", HTML.includes('<button id="gfin-row">'));
+  check("...opening a card", HTML.includes('<section id="gfin" class="card"'));
+  check("the grid is built to 12 x 12", HTML.includes("const MAX = 12;"));
+  // The picker must read its numbers from the same standard the DSL does, or
+  // the millimetres it shows while you choose are not the ones you get.
+  check("...from the same pitch, footprint, unit and lip the DSL uses",
+    HTML.includes(`PITCH = ${GRID.pitch}`) && HTML.includes(`FOOT = ${GRID.foot}`)
+    && HTML.includes(`UNIT = ${GRID.unit}`) && HTML.includes(`LIP = ${GRID.lip}`));
+  check("bin or baseplate is a choice",
+    HTML.includes('data-kind="bin"') && HTML.includes('data-kind="base"'));
+  check("...and the bin-only options hide for a baseplate",
+    HTML.includes('$("gfin-binopts").hidden = kind !== "bin"'));
+
+  // Every divider the menu offers has to be one the code answers to, or the
+  // picker writes a call that silently does nothing.
+  const menu = HTML.match(/<select id="gfin-div">([\s\S]*?)<\/select>/);
+  const offered = menu ? [...menu[1].matchAll(/value="([^"]*)"/g)].map((m) => m[1]).filter(Boolean) : [];
+  check("the divider menu offers something", offered.length >= 3, offered.join(", "));
+  const plain = await measure(shelf.gridfinityBin({ x: 3, y: 2, u: 3 }));
+  for (const d of offered) {
+    const cut = await measure(shelf.gridfinityBin({ x: 3, y: 2, u: 3, divide: d }));
+    check(`"${d}" really divides the bin`, cut.vol > plain.vol,
+      `${cut.vol.toFixed(0)} vs ${plain.vol.toFixed(0)}`);
+  }
+
+  // Every height offered must build, and its LABEL has to be the number the bin
+  // actually measures — this is the 18.4-not-14 trap, printed in the menu.
+  const heights = HTML.match(/<select id="gfin-u">([\s\S]*?)<\/select>/);
+  const rows = heights ? [...heights[1].matchAll(/value="(\d+)"[^>]*>(\d+)u — ([\d.]+)mm/g)] : [];
+  check("the height menu labels its own millimetres", rows.length >= 4, `${rows.length} rows`);
+  for (const [, val, u, mm] of rows) {
+    check(`${u}u is labelled ${mm}mm — u x 7 plus the lip`,
+      near(+mm, +val * GRID.unit + GRID.lip, 0.01), `${+val * GRID.unit + GRID.lip}`);
+  }
+  const last = rows[rows.length - 1];
+  const tall = await measure(shelf.gridfinityBin({ x: 1, y: 1, u: +last[1] }));
+  check("...and the tallest one really builds to its label",
+    near(tall.z, +last[3], 0.05), `${tall.z.toFixed(2)} vs ${last[3]}`);
+
+  // Round DOWN, like gridfinityFit — a grid one column too wide does not go in.
+  check("the drawer box floors rather than rounding",
+    HTML.includes("Math.floor(w / PITCH)") && HTML.includes("Math.floor(d / PITCH)"));
+  check("...and says so when the drawer holds no whole cell",
+    HTML.includes("holds no full cell"));
+  check("inserting composes rather than wiping the editor, like the shelf",
+    HTML.includes("const blank = !v.trim();"));
+}
+
 
 console.log("\nports: the size is the CUT, and it goes through the wall\n");
 {

@@ -528,36 +528,133 @@ export const GRID = {
   foot: 41.5,       // bin footprint, 0.5 total clearance
   r: 3.75,          // outer corner radius at the top of the plinth
   unit: 7,          // one height unit
-  base: 4.75,       // plinth height: 0.8 chamfer + 1.8 straight + 2.15 chamfer
+  base: 4.75,       // plinth: 0.8 chamfer + 1.8 straight + 2.15 chamfer
   chamferLo: 0.8,
   straight: 1.8,
   chamferHi: 2.15,
+
+  // The STACKING LIP, which is what makes a bin a Gridfinity bin rather than a
+  // box with a fancy foot. Cut into the top of the walls; the next bin's foot
+  // drops into it. 0.7 + 1.8 + 1.9 = 4.4, which is the "+~4.4mm" on the sheet
+  // and why a 2u bin measures 18.4 overall rather than 14.
+  lipLo: 0.7,
+  lipStraight: 1.8,
+  lipHi: 1.9,
+  lip: 4.4,
+
+  // The BASEPLATE SOCKET is NOT the plinth. Same straight section, but the
+  // bottom chamfer is 0.7 rather than 0.8 and the top runs the full 2.15, so
+  // the socket opens at 42.0 — the cell itself, with an r4.0 corner. That is
+  // the sheet's 8.0Ø, and it is why a baseplate's outside corners are 8.0Ø too.
+  socketLo: 0.7,
+  socketStraight: 1.8,
+  socketHi: 2.15,
+  socket: 4.65,
+  baseR: 4.0,       // 8.0Ø, the baseplate's own outer corner
+
+  // Mating clearance, on the RADIUS. Appears exactly where the two straight
+  // sections meet: foot r1.60 into lip/socket r1.85.
+  clearance: 0.25,
 };
 // r at each step, and the corner centre they all share
 const G_RTOP = GRID.r;                                   // 3.75 at 41.5 wide
 const G_RMID = G_RTOP - GRID.chamferHi;                  // 1.60 at 37.2
 const G_RLOW = G_RMID - GRID.chamferLo;                  // 0.80 at 35.6
 const G_C = GRID.foot / 2 - G_RTOP;                      // 17.0, for all of them
+// Where a lip or socket's straight section sits: the foot's, plus clearance.
+const G_RFIT = G_RMID + GRID.clearance;                  // 1.85 at 37.7
 
-// One cell's plinth, centred on the origin, sitting on z=0.
-function plinth(grow = 0) {
-  const corners = (rBot, rTop, z, h) => hull(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) =>
-    translate([sx * G_C, sy * G_C, z],
-      cylinder({ r1: rBot + grow, r2: rTop + grow, h, $fn: 32 }))));
-  return union(
-    corners(G_RLOW, G_RMID, 0, GRID.chamferLo),
-    corners(G_RMID, G_RMID, GRID.chamferLo, GRID.straight),
-    corners(G_RMID, G_RTOP, GRID.chamferLo + GRID.straight, GRID.chamferHi),
-  );
+const QUAD = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+
+// Every Gridfinity profile is the same object: four corner cylinders whose
+// centres never move, stepped through a chamfer, a straight and a chamfer. All
+// the chamfers are 45°, so each one's rise IS its change in radius — which is
+// why the whole standard can be written as a starting radius and three heights.
+//
+// `cx`/`cy` let the same function draw a MULTI-CELL outline (the stacking lip
+// runs round the whole bin, not once per cell).
+function gridProfile(rStart, steps, cx = G_C, cy = G_C, $fn = 32) {
+  const ring = (rBot, rTop, z, h) => hull(...QUAD.map(([sx, sy]) =>
+    translate([sx * cx, sy * cy, z], cylinder({ r1: rBot, r2: rTop, h, $fn }))));
+  const parts = [];
+  let r = rStart, z = 0;
+  for (const [dz, dr] of steps) {
+    parts.push(ring(r, r + dr, z, dz));
+    r += dr; z += dz;
+  }
+  return union(...parts);
 }
 
-// A Gridfinity bin: x by y cells, u height units tall, hollowed.
+// One cell's plinth, centred on the origin, sitting on z=0. Opens at 41.5.
+function plinth() {
+  return gridProfile(G_RLOW, [
+    [GRID.chamferLo, GRID.chamferLo],
+    [GRID.straight, 0],
+    [GRID.chamferHi, GRID.chamferHi],
+  ]);
+}
+
+// The stacking lip, as a SOLID to subtract from the top of a bin's walls. Its
+// top opening is flush with the wall it is cut into, so `cx`/`cy` are the outer
+// corner centres of that bin, whatever size it is.
+function lipCut(cx, cy) {
+  return gridProfile(G_RTOP - GRID.lipHi - GRID.lipLo, [
+    [GRID.lipLo, GRID.lipLo],
+    [GRID.lipStraight, 0],
+    [GRID.lipHi, GRID.lipHi],
+  ], cx, cy, 32);
+}
+
+// A baseplate socket, as a solid to subtract. Opens at 42.0 — the full cell.
+function socketCut() {
+  return gridProfile(G_RFIT - GRID.socketLo, [
+    [GRID.socketLo, GRID.socketLo],
+    [GRID.socketStraight, 0],
+    [GRID.socketHi, GRID.socketHi],
+  ]);
+}
+
+// How many cells fit in a real drawer, and what is left over.
+//
+// This is the question people actually arrive with — "my drawer is 380 by 290"
+// — and the arithmetic is the sort that is easy to get subtly wrong, because a
+// bin is 41.5 across but the CELL is 42, so the last column needs 42 of space
+// and not 41.5. Floor, always: a grid that is one column too wide does not go
+// in the drawer at all.
+export function gridfinityFit(width, depth, opts = {}) {
+  const w = num(width, "width"), d = num(depth, "depth");
+  const margin = num(opts.margin ?? 0, "margin");   // wiggle room you want kept
+  const x = Math.max(0, Math.floor((w - margin) / GRID.pitch));
+  const y = Math.max(0, Math.floor((d - margin) / GRID.pitch));
+  return {
+    x, y,
+    cells: x * y,
+    spanX: x * GRID.pitch,
+    spanY: y * GRID.pitch,
+    leftoverX: +(w - x * GRID.pitch).toFixed(2),
+    leftoverY: +(d - y * GRID.pitch).toFixed(2),
+    fits: x > 0 && y > 0,
+  };
+}
+
+// A Gridfinity bin: x by y cells, u height units tall, hollowed, with the
+// stacking lip on top and optional dividers inside.
+//
+// HEIGHT. `u` counts SEVEN-MILLIMETRE UNITS of body, and the lip stands on top
+// of that — so a 2u bin measures 2x7 + 4.4 = 18.4 overall, which is the number
+// printed on the reference sheet. Stacked, the next bin's foot sinks into the
+// lip and the pitch goes back to a clean u x 7.
+//
+// DIVIDERS. `divide: "split"` gives two compartments, `"quad"` gives four; or
+// set divX/divY directly for anything else. The walls run full height and stop
+// at the lip, so the lip is never interrupted and bins still stack.
 export function gridfinityBin(opts = {}) {
   const x = Math.max(1, Math.round(opts.x ?? 1));
   const y = Math.max(1, Math.round(opts.y ?? 1));
   const u = Math.max(1, Math.round(opts.u ?? 3));
   const wall = pos(opts.wall ?? 1.2, "wall");
-  const H = u * GRID.unit;
+  const wantLip = opts.lip !== false;
+  const H = u * GRID.unit;                       // the BODY, lip not included
   if (H <= GRID.base) throw new Error(`shelf: a ${u}u bin is shorter than the ${GRID.base}mm plinth — use u 1 or more`);
   const $fn = opts.$fn ?? 32;
 
@@ -570,29 +667,70 @@ export function gridfinityBin(opts = {}) {
   }
   const W = x * GRID.pitch - (GRID.pitch - GRID.foot);
   const D = y * GRID.pitch - (GRID.pitch - GRID.foot);
-  const box = (w, d, rad, z, h) => hull(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) =>
+  const box = (w, d, rad, z, h) => hull(...QUAD.map(([sx, sy]) =>
     translate([sx * (w / 2 - rad), sy * (d / 2 - rad), z], cylinder({ r: rad, h, $fn }))));
 
-  const body = union(...feet, box(W, D, GRID.r, GRID.base, H - GRID.base));
+  const top = wantLip ? H + GRID.lip : H;
+  const body = union(...feet, box(W, D, GRID.r, GRID.base, top - GRID.base));
   if (opts.solid) return body;
+
   const floor = opts.floor ?? GRID.base + 1.2;
-  return difference(body, box(W - wall * 2, D - wall * 2, Math.max(0.1, GRID.r - wall), floor, H - floor + 0.01));
+  const cuts = [box(W - wall * 2, D - wall * 2, Math.max(0.1, GRID.r - wall), floor, top - floor + 0.01)];
+  // The lip is cut into the walls from the top down. Its own top opening is
+  // flush with the outside face, so it is drawn on the bin's outer corner
+  // centres rather than a cell's.
+  if (wantLip) {
+    cuts.push(translate([0, 0, top - GRID.lip], lipCut(W / 2 - GRID.r, D / 2 - GRID.r)));
+  }
+
+  // Dividers. Interior walls, full depth, stopping under the lip so a stacked
+  // bin still seats — a divider run up into the lip would hold the next bin off
+  // its seat by however far it stood proud.
+  const named = { split: [2, 1], quad: [2, 2], thirds: [3, 1], six: [3, 2] };
+  const [dx, dy] = named[String(opts.divide || "").toLowerCase()]
+    ?? [Math.max(1, Math.round(opts.divX ?? 1)), Math.max(1, Math.round(opts.divY ?? 1))];
+  const parts = [];
+  if (dx > 1 || dy > 1) {
+    const dw = pos(opts.dividerWall ?? wall, "dividerWall");
+    const innerTop = wantLip ? H : top;         // clear of the lip
+    const iw = W - wall * 2, id = D - wall * 2;
+    for (let i = 1; i < dx; i++) {
+      parts.push(translate([-iw / 2 + (iw * i) / dx - dw / 2, -id / 2, floor],
+        cube([dw, id, innerTop - floor])));
+    }
+    for (let j = 1; j < dy; j++) {
+      parts.push(translate([-iw / 2, -id / 2 + (id * j) / dy - dw / 2, floor],
+        cube([iw, dw, innerTop - floor])));
+    }
+  }
+  const hollow = difference(body, ...cuts);
+  return parts.length ? union(hollow, ...parts) : hollow;
 }
 
 // A baseplate: x by y sockets that those plinths drop into.
+//
+// The socket is NOT the bin's plinth grown by a clearance — it has its own
+// profile (0.7 / 1.8 / 2.15), which opens at exactly 42.0 with an r4.0 corner.
+// That is the whole cell, so neighbouring sockets meet with no flat between
+// them, and it is why the baseplate's own outside corner is 8.0Ø as well.
 export function gridfinityBase(opts = {}) {
   const x = Math.max(1, Math.round(opts.x ?? 2));
   const y = Math.max(1, Math.round(opts.y ?? 2));
-  const fit = opts.fit ?? 0.25;    // on the radius, so the bin is not a press fit
   const h = pos(opts.h ?? 5, "h");
-  const slab = translate([-x * GRID.pitch / 2, -y * GRID.pitch / 2, 0],
-    cube([x * GRID.pitch, y * GRID.pitch, h]));
+  const $fn = opts.$fn ?? 32;
+  if (h < GRID.socket) {
+    throw new Error(`shelf: a ${h}mm baseplate is thinner than the ${GRID.socket}mm socket — use ${GRID.socket} or more`);
+  }
+  const W = x * GRID.pitch, D = y * GRID.pitch;
+  const slab = hull(...QUAD.map(([sx, sy]) =>
+    translate([sx * (W / 2 - GRID.baseR), sy * (D / 2 - GRID.baseR), 0],
+      cylinder({ r: GRID.baseR, h, $fn }))));
   const sockets = [];
   for (let i = 0; i < x; i++) {
     for (let j = 0; j < y; j++) {
       sockets.push(translate(
-        [(i - (x - 1) / 2) * GRID.pitch, (j - (y - 1) / 2) * GRID.pitch, h - GRID.base],
-        plinth(fit)));
+        [(i - (x - 1) / 2) * GRID.pitch, (j - (y - 1) / 2) * GRID.pitch, h - GRID.socket],
+        socketCut()));
     }
   }
   return difference(slab, ...sockets);
@@ -810,12 +948,12 @@ export const SHELF = [
     sample: `portCutout("usb-c", { t: 3 })` },
 
   { id: "gridfinityBin", label: "Gridfinity bin", group: "Storage", cut: false,
-    blurb: "x by y cells, u units tall, with the real plinth profile",
-    keywords: "storage, drawer, organiser, organizer, tray, bin, tool",
-    sample: `gridfinityBin({ x: 2, y: 1, u: 3 })` },
+    blurb: "x by y cells, u units tall, real plinth and stacking lip; split/quad dividers",
+    keywords: "storage, drawer, organiser, organizer, tray, bin, tool, stack, stacking, divider, compartment, split, quad",
+    sample: `gridfinityBin({ x: 2, y: 1, u: 3, divide: "split" })` },
   { id: "gridfinityBase", label: "Gridfinity baseplate", group: "Storage", cut: false,
-    blurb: "the sockets those plinths drop into",
-    keywords: "storage, drawer, organiser, organizer, baseplate, grid",
+    blurb: "the sockets those bins drop into — 42mm cells, r4 corners",
+    keywords: "storage, drawer, organiser, organizer, baseplate, grid, plate",
     sample: `gridfinityBase({ x: 2, y: 2 })` },
 
   { id: "slot", label: "Rounded slot", group: "Handling", cut: true,
