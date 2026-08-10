@@ -7,16 +7,36 @@ match: mascot, logo, character, figurine, bobble, bobblehead, toy, orca, penguin
 Turning a 2D logo into a 3D character is mostly THREE techniques. Everything
 else is spheres.
 
-## 1. The head is the SAME sphere, shifted — not a smaller one on top
+## 1. ONE sphere, sliced, with a slice slid — never a second sphere
 
-The single biggest mascot mistake, and it cost a real logo nine versions: a
-smaller "head" sphere on the body reads as a snowman, and no amount of eye and
-fin work rescues it. A character whose head OVERHANGS — chin jutting past the
-body — is one ball plus a cap cut from an EQUAL sphere shifted forward and
-down. Same radius means the cap keeps the body's own curvature, so it reads as
-one form; the shift is what makes the chin hang. Cut cap and body apart with
-tilted planes (big rotated cubes) and the gap between them is the logo's
-background notch, for free.
+The single biggest mascot mistake, and it cost a real logo nineteen versions
+before it came out: any second ball added for a "head" reads as a snowman, and
+no amount of eye and fin work rescues it. Two overlapping circles in a flat
+logo, sharing an outline with no seam between them, are ONE sphere that has
+been cut — not two spheres that have been stacked.
+
+So: build one ball. Cut it with two tilted planes (huge rotated cubes) into
+bottom, middle and top. Then TRANSLATE the top slice up and along. That single
+move does all the work at once — the top overhangs on one side, notches on the
+other, and the middle slice shows between them as the logo's colour band. Every
+piece keeps the original ball's curvature, because every piece IS the original
+ball.
+
+```js
+const R = 25, ball = sphere({ r: R, $fn: 64 });
+const half = (p, ang) => translate(p, rotate([0, -ang, 0], translate([-300, -300, -600], cube([600, 600, 600]))));
+const cap  = intersection(ball, half([0, 0, 0], 34));            // top slice
+const band = difference(intersection(ball, half([0, 0, 0], 22)), half([0, 0, 0], 34));
+return group(
+  translate([14, 0, 5], cap),                                    // THE slide
+  band, difference(ball, half([0, 0, 0], 22)),
+);
+```
+
+Two planes through a common point make a wedge that tapers to nothing — that
+is how a sash or swoosh comes to a POINT at one end, and the shared point is
+what decides where. If a slice ends up proud of a neighbour, do not nudge it:
+work out where the plane leaves the ball and put the edge there.
 
 Reserve two different-sized spheres for characters that really have a neck.
 And check the SILHOUETTE, not the iso view — a logo is a silhouette.

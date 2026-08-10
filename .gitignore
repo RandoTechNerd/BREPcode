@@ -42,7 +42,12 @@ viewer/locked-key.js
 /stlout/
 
 # scratch probes — throwaway measurement scripts keep riding into commits via
-# `git add -A`. Real root-level .mjs is build-site.mjs and rb.mjs only.
+# `git add -A`. build-site.mjs is the only root-level .mjs that is real source;
+# rb.mjs is listed above as a note, and re-allowing it here undid that, since
+# the LAST matching rule wins.
 /*.mjs
 !/build-site.mjs
-!/rb.mjs
+
+# Scratch stashes of model code saved while iterating on an example. The
+# example itself lives in examples/; these are the drafts.
+viewer/_*.json

@@ -64,7 +64,16 @@ check("no plaintext API key", !readFileSync(join(OUT, "index.html"), "utf8").inc
   const html = readFileSync(join(OUT, "index.html"), "utf8");
   check("kernel is NOT statically imported",
     !/^\s*import\s[^\n]*from\s*["'][^"']*brep-kernel\.js["']/m.test(html));
-  check("kernel loader is dynamic", /import\(\s*["'][^"']*brep-kernel\.js["']\s*\)/.test(html));
+  // The path no longer appears inside the import() call at all: it is a const,
+  // and the loader retries a failed fetch by appending ?retry=N to it. So the
+  // contract is in two halves — the const names the kernel, and that const is
+  // what gets handed to import(). Grepping for the literal inside the parens
+  // could only ever pass for the one spelling that predated the retry.
+  check("kernel loader is dynamic",
+    /const\s+KERNEL_URL\s*=\s*["'][^"']*brep-kernel\.js["']/.test(html)
+    && /\bimport\(\s*[^)]*KERNEL_URL[^)]*\)/.test(html));
+  check("...and it retries, because one flaky fetch should not kill the app",
+    /importKernel\s*\(\s*tries\s*=/.test(html) && /\?retry=/.test(html));
   check("kernel fetch is warmed at startup", /\n\s*getKernel\(\);/.test(html));
 }
 

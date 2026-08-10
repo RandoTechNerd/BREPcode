@@ -471,6 +471,47 @@ export function hull(...children) {
 // ends that chain. The cost is one primitive per triangle, convex edge and
 // convex corner, so it is for parts with tens of faces, not for imported
 // meshes with thousands — and it says so rather than grinding.
+// The same shape, with a gap all round it: a pocket something drops into, a
+// socket for a glued part, a cavity a component sits in.
+//
+//   clearance(0.3, eye)        the eye plus 0.3mm all over — subtract it
+//
+// The gap is stated ON DIAMETER, like every fit in the app: 0.3 means each face
+// moves out by 0.15, and the part inside ends up with 0.3 of slop across.
+//
+// It works by measuring the shape and scaling it about its OWN centre, which is
+// exact for a box, a cylinder and a sphere — the three things a pocket is
+// nearly always cut for — and close enough for anything convex. On a strongly
+// non-convex part (an L, a star) the clearance comes out uneven, generous at
+// the extremes and tight at the inner corners; for those, cut the pocket from
+// the same primitives the part was built from instead.
+//
+// Not roundedGrow(): a true offset is the right shape but the wrong engine at
+// this size. See the gapgrow branch in emit() for the measurements.
+// Shapes laid out side by side along X, each MEASURED so they butt up with
+// `gap` between them and never overlap — a build plate, a row of samples, a
+// contact sheet of variants.
+//
+//   layout([lid, body, knob], { gap: 8 })
+//
+// onBed (default true) also drops each one onto z=0. A part modelled in mid-air
+// slices as a support tower; on the bed it just prints.
+export function layout(parts, opts = {}) {
+  const kids = collect(Array.isArray(parts) ? parts : [parts]);
+  if (!kids.length) throw new Error("layout() needs at least one shape");
+  const gap = Number(opts.gap ?? opts.spacing ?? 6);
+  if (!Number.isFinite(gap)) throw new TypeError("layout() needs a gap in mm");
+  return node({ kind: "layout", children: kids, gap, onBed: opts.onBed !== false });
+}
+
+export function clearance(gap, ...children) {
+  const g = typeof gap === "number" ? gap : (gap?.gap ?? gap?.r ?? NaN);
+  if (!Number.isFinite(g)) throw new TypeError("clearance() needs a gap in mm");
+  const kids = collect(children);
+  if (!kids.length) throw new Error("clearance() needs a shape to put a gap around");
+  return node({ kind: "gapgrow", gap: g, child: kids.length === 1 ? kids[0] : union(kids) });
+}
+
 export function roundedGrow(opts, ...children) {
   const o = typeof opts === "number" ? {} : (opts || {});
   const amount = typeof opts === "number" ? opts : (o.r ?? o.radius ?? o.amount ?? o.by);
@@ -1645,6 +1686,99 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       return target;
     }
 
+    if (n.kind === "gapgrow") {
+      // Build the child ONLY to measure it, then emit it for real with a
+      // scale-about-its-own-centre folded into the transform. Nothing is
+      // rebuilt from triangles, so the result is a genuine solid by
+      // construction rather than by a boolean coming out lucky.
+      //
+      // This exists because roundedGrow — a true offset — is the wrong engine
+      // for a clearance. A glue gap is a few tenths of a millimetre, and at
+      // that radius the offset's slab/tube/ball union is both unreliable and
+      // pathologically slow (a 10mm box at r=0.15 did not finish in ten
+      // minutes). A clearance does not need the offset's one honest advantage,
+      // its rounded corners, because the gap is smaller than the corner.
+      const scratch = new partHistory.constructor();
+      await compile(n.child, scratch);
+      await scratch.runHistory({ throwOnFeatureError: true });
+      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      const v = new Vector3();
+      for (const s of (scratch.scene?.children || [])) {
+        if (s.type !== "SOLID") continue;
+        s.updateMatrixWorld(true);
+        s.traverse((o) => {
+          const pa = o.type === "FACE" ? o.geometry?.attributes?.position : null;
+          if (!pa) return;
+          for (let i = 0; i < pa.count; i++) {
+            v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+            for (const [j, c] of [v.x, v.y, v.z].entries()) {
+              if (c < lo[j]) lo[j] = c;
+              if (c > hi[j]) hi[j] = c;
+            }
+          }
+        });
+      }
+      if (!Number.isFinite(lo[0])) throw new Error("clearance(): the shape has no surface to measure");
+      // Each axis grows by exactly `gap` overall, so every face moves out by
+      // gap/2 — which is a clearance ON DIAMETER, matching how fits are stated
+      // everywhere else. An axis with no thickness is left alone rather than
+      // scaled by infinity.
+      const k = [0, 1, 2].map((j) => {
+        const size = hi[j] - lo[j];
+        return size > 1e-6 ? (size + n.gap) / size : 1;
+      });
+      const c = [0, 1, 2].map((j) => (hi[j] + lo[j]) / 2);
+      const m = new Matrix4()
+        .multiply(new Matrix4().makeTranslation(c[0], c[1], c[2]))
+        .multiply(new Matrix4().makeScale(k[0], k[1], k[2]))
+        .multiply(new Matrix4().makeTranslation(-c[0], -c[1], -c[2]));
+      return emit(n.child, new Matrix4().multiplyMatrices(matrix, m), st);
+    }
+
+    if (n.kind === "layout") {
+      // Parts side by side on the bed, each one measured so they cannot
+      // overlap and no plate is wasted. Same measure-then-place trick as
+      // gapgrow: build each child alone to find its width, then emit it for
+      // real with a translation folded in.
+      //
+      // The alternative — a fixed pitch — is wrong in both directions at once.
+      // Too small and two parts share the same square of bed; too large and a
+      // plate that would have held six holds three, which on a 3D print is
+      // hours.
+      let cursor = 0;
+      let last = null;
+      const v = new Vector3();
+      for (const child of n.children) {
+        const scratch = new partHistory.constructor();
+        await compile(child, scratch);
+        await scratch.runHistory({ throwOnFeatureError: true });
+        let lo = Infinity, hi = -Infinity, floor = Infinity;
+        for (const s of (scratch.scene?.children || [])) {
+          if (s.type !== "SOLID") continue;
+          s.updateMatrixWorld(true);
+          s.traverse((o) => {
+            const pa = o.type === "FACE" ? o.geometry?.attributes?.position : null;
+            if (!pa) return;
+            for (let i = 0; i < pa.count; i++) {
+              v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+              if (v.x < lo) lo = v.x;
+              if (v.x > hi) hi = v.x;
+              if (v.z < floor) floor = v.z;
+            }
+          });
+        }
+        if (!Number.isFinite(lo)) continue;           // nothing to place
+        // Butt each part's left edge against the running cursor, and stand it
+        // on the bed — a part modelled in mid-air prints as a support tower.
+        const dx = cursor - lo;
+        const dz = n.onBed ? -floor : 0;
+        const m = new Matrix4().makeTranslation(dx, 0, dz);
+        last = await emit(child, new Matrix4().multiplyMatrices(matrix, m), st);
+        cursor += (hi - lo) + n.gap;
+      }
+      return last;
+    }
+
     if (n.kind === "roundify") {
       // Build the child on its own so we can read its real surface, work out
       // where its faces, rims and corners are, and then assemble the shell out
@@ -1875,6 +2009,11 @@ export * from "./parts.js";
 // reasoning as parts.js above: re-exported here so the viewer vocabulary and
 // the CLI both pick them up with no second registration step.
 export * from "./shelf.js";
+
+// Splitting a model into printable parts, and registering them back together:
+// dowel pins and the holes for them, glue-in sockets, plate layout. Same
+// re-export reasoning as parts.js and shelf.js above.
+export * from "./joinery.js";
 
 // Gears, and the arithmetic that makes a set of them mesh. Re-exported for the
 // same reason again — but the important export is gearMath/gearTrain, which

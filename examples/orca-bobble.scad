@@ -1,26 +1,26 @@
-// Orca bobble v10 — v5's construction, pushed toward the logo
+// Orca bobble v19
 //
-// The head is NOT a second smaller ball (that was v8/v9's mistake — it read as
-// a snowman). It is the SAME 25mm sphere shifted forward and down, so the cap
-// keeps the ball's own curvature and the whole thing reads as one form with an
-// overhanging chin — which is exactly how the logo is drawn.
-//
-// v5 -> v10, per the logo:
-//  · SHORTER: head centre dropped 33 -> 29, so the cap crests at 54 not 58.
-//  · MORE OVERHANG: head centre forward 8 -> 12mm; the chin now juts 12mm past
-//    the ball. The fin follows the lowered crown.
-//  · EYES ON THE OVERHANG: moved forward to the hanging cheek, raked along the
-//    chin edge, a touch smaller so the rake reads.
+//  · SASH THINNED TO A SLIVER. The floor swings up about the wedge point, so
+//    the band gets thinner without the point moving and without touching the
+//    ceiling — which is still the cap's own underside, so the seam stays flush.
+//  · THE EYE SITS WHOLLY ON THE CAP. It was straddling the cap's cut edge and
+//    hanging over it. Moved up the flank and made a little smaller, so the whole
+//    patch clears the cut with room to spare.
+//  · THE HORN IS FATTER AND SHORTER. Radii up, height down, and thicker across
+//    too — 0.8 rather than 0.7 — so it reads as a fin and not a spike.
 $fn = 64;
 
-ballR   = 25;            // bottom ball, tangent to z=0, rolls free
+ballR   = 25;              // the animal, tangent to z=0, rolls free
 centerZ = 25;
-headR   = 25;            // SAME radius as the ball — the whole trick
-headC   = [-12, 0, 29];  // forward for the overhang, low for the short crown
 
-hingeP  = [-23.5, 0, 18];// wedge planes meet at the ball surface — pointed tip
-lowAng  = 15;
-highAng = 28;
+highAng = 34;              // where the cap was cut from the ball — unchanged
+slide   = [14, 0, 5];      // up and right, over the wedge's wide end — unchanged
+lowAng  = 22;              // under-edge of the sash: raised, to thin the band
+
+// Where the cap's underside leaves the ball on the lower left. Both sash edges
+// meet here, so the band still comes to a point ON the silhouette.
+wedgeP  = [-21.97, 0, 13.06];
+seamLap = 0.05;
 
 darkCol = [0.13, 0.13, 0.15];
 tealCol = [0.32, 0.55, 0.50];
@@ -28,48 +28,59 @@ tealCol = [0.32, 0.55, 0.50];
 module halfBelow(p, ang) { translate(p) rotate([0, -ang, 0]) translate([0, 0, -400]) cube([800, 800, 800], center = true); }
 module halfAbove(p, ang) { translate(p) rotate([0, -ang, 0]) translate([0, 0,  400]) cube([800, 800, 800], center = true); }
 
-module mainBall() { translate([0, 0, centerZ]) sphere(ballR); }
+module ball() { translate([0, 0, centerZ]) sphere(ballR); }
+
+// the cap's underside in its slid position — the sash's ceiling
+module capUnderBelow() { translate(slide) halfBelow([-24.2, 0, 16], highAng); }
 
 module bottomDome() {
-  intersection() { mainBall(); halfBelow(hingeP, lowAng); }
+  intersection() { ball(); halfBelow([wedgeP[0], 0, wedgeP[2] + seamLap], lowAng); }
 }
 
-module sphereWedge() {
+module tealBand() {
   intersection() {
-    mainBall();
-    halfAbove(hingeP, lowAng);
-    halfBelow(hingeP, highAng);
+    ball();
+    halfAbove([wedgeP[0], 0, wedgeP[2] - seamLap], lowAng);
+    capUnderBelow();
   }
 }
+
+module capSlice() { intersection() { ball(); halfAbove([-24.2, 0, 16], highAng); } }
 
 module blob(p, r) { translate(p) sphere(r, $fn = 40); }
 
-// dorsal flick: base on the (lowered) crown, tip curling up and forward,
-// out over the overhang like the logo
+// The horn: fatter and shorter. Same up-and-left sweep, tip leading.
 module finFlick() {
-  hull() { blob([-6, 0, 48], 8);     blob([-16, 0, 56], 5.5); }
-  hull() { blob([-16, 0, 56], 5.5);  blob([-25, 0, 60.5], 3); }
-  hull() { blob([-25, 0, 60.5], 3);  blob([-33, 0, 62.5], 1.2); }
-}
-
-module headCap() {
-  intersection() {
-    union() { translate(headC) sphere(headR); finFlick(); }
-    halfAbove(hingeP, highAng);
+  scale([1, 0.8, 1]) union() {
+    hull() { blob([-8, 0, 42], 8);      blob([-12, 0, 47.5], 5.8); }
+    hull() { blob([-12, 0, 47.5], 5.8); blob([-16, 0, 52], 3.6); }
+    hull() { blob([-16, 0, 52], 3.6);   blob([-20, 0, 55], 1.9); }
+    hull() { blob([-20, 0, 55], 1.9);   blob([-23, 0, 56.5], 0.8); }
   }
 }
 
-// eye patch wrapped on the head surface (+0.6mm proud), ON the overhanging
-// cheek — near the chin edge, raked along it
+// The eye: 0.6mm of skin, and set high enough that the whole patch is on the
+// cap rather than draped over its cut edge.
+module shell() {
+  difference() {
+    translate([1, 0, centerZ]) sphere(ballR + 0.6);
+    translate([0, 0, centerZ]) sphere(ballR);
+  }
+}
+eyeAt = [ballR * 0.20, ballR * 0.62, centerZ + ballR * 0.76];
+
 module eyeOne() {
   intersection() {
-    translate(headC) sphere(headR + 0.6);
-    translate([-27, 13, 40]) rotate([18, -38, 22])
-      scale([1.8, 1.05, 0.85]) sphere(6, $fn = 48);
+    shell();
+    translate(eyeAt) rotate([0, -22, 0])
+      scale([1.5, 1, 1]) sphere(4.8, $fn = 48);
   }
 }
 
+module topPart() { translate(slide) union() { capSlice(); finFlick(); } }
+module eyePair() { translate(slide) union() { eyeOne(); mirror([0, 1, 0]) eyeOne(); } }
+
 color(darkCol) bottomDome();
-color(tealCol) sphereWedge();
-color(darkCol) headCap();
-color("white") { eyeOne(); mirror([0, 1, 0]) eyeOne(); }
+color(tealCol) tealBand();
+color(darkCol) topPart();
+color("white")  eyePair();

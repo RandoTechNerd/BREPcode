@@ -244,7 +244,8 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
   console.log("\na share link points somewhere a stranger can open\n");
 
-  check("the app knows its public home", /const PUBLIC_SITE = "https:\/\/brepcode\.com\/";/.test(HTML));
+  check("the app knows its public home",
+    /\|\| "https:\/\/brepcode\.com\/brep\/index\.html";/.test(HTML));
   check("...and only trusts the current origin on http(s)",
     /\/\^https\?:\$\/\.test\(location\.protocol\)/.test(HTML));
   check("the share link is built from it", /const url = shareBase\(\) \+ frag;/.test(HTML));
@@ -256,9 +257,16 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   // absolute and public — never this origin, not even in a browser.
   check("the embed page links to the public site, not wherever it was made",
     /embedEdit = PUBLIC_SITE \+ frag;/.test(HTML));
+  check("...and the public site is the page that READS the fragment, not the root",
+    /"https:\/\/brepcode\.com\/brep\/index\.html"/.test(HTML));
+  check("...overridable by the deployment without a rebuild",
+    /window\.__BREPCODE_PUBLIC_URL/.test(HTML));
 
   // The predicate itself, against every scheme this app actually runs under.
-  const SITE = "https://brepcode.com/";
+  // The app lives at /brep/index.html. A link to the domain root opens a page
+  // that never reads the fragment — which is why an exe-made link "did not
+  // work" even after it stopped emitting app:// URLs.
+  const SITE = "https://brepcode.com/brep/index.html";
   const shareBase = (protocol, origin, pathname) =>
     (/^https?:$/.test(protocol) ? origin + pathname : SITE);
   for (const [proto, origin, path, want, why] of [
@@ -266,6 +274,7 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
     ["http:", "http://localhost:5320", "/viewer/index.html",
       "http://localhost:5320/viewer/index.html", "a local dev server"],
     ["app:", "app://bundle", "/index.html", SITE, "the desktop exe"],
+    ["app:", "app://bundle", "/", SITE, "the exe, however it addresses itself"],
     ["file:", "file://", "/C:/x/index.html", SITE, "opened straight off disk"],
   ]) {
     check(`${why} -> ${want}`, shareBase(proto, origin, path) === want,

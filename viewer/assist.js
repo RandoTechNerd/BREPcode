@@ -203,7 +203,12 @@ export const SPECS = [
   {
     name: "roundedShrink", group: "Combine", sig: "roundedShrink(mm, shape)",
     snippet: "roundedShrink(2,\n  cube([20, 20, 20]),\n)", argStart: 16,
-    hint: "Takes an even layer off the whole part — a 20mm cube becomes 16mm. Outside corners stay sharp (there is nothing outside them to round); INSIDE corners get rounded to that radius, which is the useful half. Handy for clearance: shrink a copy of a part to make a pocket it drops into.",
+    hint: "Takes an even layer off the whole part — a 20mm cube becomes 16mm. Outside corners stay sharp (there is nothing outside them to round); INSIDE corners get rounded to that radius, which is the useful half. For a FIT, use clearance() instead — an offset at a few tenths of a millimetre is slow and often comes back non-manifold.",
+  },
+  {
+    name: "clearance", group: "Combine", sig: "clearance(gap, shape)",
+    snippet: "clearance(0.3,\n  cylinder({ r: 5, h: 4 }),\n)", argStart: 10,
+    hint: "The same shape with a gap all round it — a pocket something drops into, a socket for a glued part, a cavity for a component. Subtract it. The gap is ON DIAMETER (0.3 means each face moves out 0.15), it measures the shape and grows it about its own centre so the part stays put, and it is exact on a box, a cylinder or a sphere. This is the one to use for a fit, not roundedGrow.",
   },
 
   {

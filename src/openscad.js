@@ -1034,6 +1034,38 @@ function evalCall(stmt, scope) {
     }
   }
 
+  // Not a built-in — but the DSL is much bigger than OpenSCAD's module list.
+  // Every shelf part, gear, fastener and joinery function is a plain function
+  // on the DSL, and there is no reason an OpenSCAD file cannot call one.
+  //
+  // This closes a silent failure that is worse than an error: without it,
+  // `dowelsOnPlane(...)` inside a difference() warned once, contributed nothing,
+  // and produced a part with NO HOLES IN IT that looked perfectly fine. The
+  // model was wrong in exactly the way you cannot see.
+  //
+  // Named arguments become the options object every DSL function takes; a child
+  // is passed first, for the handful that transform a shape.
+  const dslFn = dsl[name];
+  if (typeof dslFn === "function") {
+    const opts = {};
+    for (const [k, v] of Object.entries(args.named)) opts[k] = evalExpr(v, scope);
+    const positional = args.positional.map((v) => evalExpr(v, scope));
+    const child = stmt.child ? childShape(stmt, scope) : null;
+    try {
+      let out;
+      if (child) out = dslFn(child, opts);
+      else if (positional.length && !Object.keys(opts).length) out = dslFn(...positional);
+      else out = dslFn(opts);
+      if (out && (out.__brepscript || out.__brepscript2d)) return out;
+      warn(`${name}() ran but returned no shape`);
+      return null;
+    } catch (e) {
+      // A real error from a real function — say what it said, rather than
+      // pretending the call was never understood.
+      throw new Error(`${name}(): ${e.message}`);
+    }
+  }
+
   // Forgiving: an unknown module (an unsupported library call, or a typo) should
   // not kill the whole model. Warn, and pass its children through so wrapping
   // modules still render their contents — one bad call just gets skipped.

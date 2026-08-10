@@ -360,9 +360,29 @@
     #dock {
       position: absolute; right: 20px; bottom: 20px; z-index: 10;
       display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
-      max-height: calc(100vh - 40px);
+      max-height: calc(100dvh - 40px);
       font: 14px/1.45 system-ui, sans-serif; color: var(--text);
+      /* Open two windows at once and this column ran out of room, so flexbox
+         did what flexbox does and CRUSHED them — a card squashed to its header
+         plus twenty pixels, with the rest cropped by its own overflow:hidden
+         and no scrollbar anywhere, because the card was not the thing that
+         overflowed. So: each window keeps its size (flex:none below) and the
+         STACK scrolls instead. Fixed-position flyouts are unaffected — they
+         are not laid out in here. */
+      overflow-y: auto; overscroll-behavior: contain;
+      scrollbar-width: thin; scrollbar-color: var(--muted3) transparent;
     }
+    /* The pill row is the app's main nav, so it must survive the dock
+       scrolling and never be the thing that gives way. flex:none because a
+       scroll container still SHRINKS its flex items before it overflows —
+       making the cards rigid just moved the crushing onto this row, which came
+       out 0px tall. sticky keeps it on screen once the stack is taller than
+       the dock; without it, opening two windows scrolled every button off the
+       bottom of the screen. */
+    #buttons { flex: none; position: sticky; bottom: 0; z-index: 2; }
+    #dock::-webkit-scrollbar { width: 7px; }
+    #dock::-webkit-scrollbar-track { background: transparent; }
+    #dock::-webkit-scrollbar-thumb { background: var(--muted3); border-radius: 4px; }
     #buttons { display: flex; gap: 10px; }
 
     .dock-btn {
@@ -439,6 +459,45 @@
     .card > .resize-grip:hover { opacity: 1; }
     .card.resized > header { cursor: grab; }
     .card > header span.sub { color: var(--muted); font-size: 12px; margin-left: 8px; font-weight: 400; }
+
+    /* ---- a window is never taller than the screen; the content scrolls ----
+       The dock is a flex column capped at the viewport, so a card taller than
+       it got SQUASHED — and because .card is overflow:hidden with no inner
+       scroller, the squashed-off part was simply unreachable. Resizing the
+       window was the only way to read the bottom of it, which is not a thing
+       anyone should have to do.
+       Two rules fix the whole class of it, for every card at once:
+       the card cannot outgrow the viewport, and its body absorbs the
+       difference by scrolling. min-height:0 is the load-bearing half — a flex
+       item refuses to shrink below its content without it, which is exactly
+       how the content ended up outside the box. */
+    /* flex:none — a window in the dock keeps the size it asked for. See #dock. */
+    .card { max-height: calc(100dvh - 32px); flex: none; }
+    .card > .card-body {
+      flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+      overscroll-behavior: contain;
+    }
+    /* Fullscreen and the maximised inventory set their own height and want the
+       body to take all of it. */
+    .card.expanded > .card-body, .card.maxed > .card-body { flex: 1 1 auto; max-height: none; }
+    /* The editor panel has no single body — it is a textarea and six bars. The
+       textarea is the part that should give ground when the window is capped;
+       the bars are all buttons and would be useless half-height. */
+    #panel > #code { flex: 0 1 auto; min-height: 60px; }
+
+    /* Thin, and only while you are in the window. A scrollbar that reserves a
+       gutter would reflow every panel in the app by 15px. */
+    .card-body, #exp-body, #exp-list, #tools-menu, #more-menu, #complete, #chat-complete {
+      scrollbar-width: thin; scrollbar-color: var(--muted3) transparent;
+    }
+    .card-body::-webkit-scrollbar, #exp-body::-webkit-scrollbar,
+    #exp-list::-webkit-scrollbar { width: 7px; height: 7px; }
+    .card-body::-webkit-scrollbar-track { background: transparent; }
+    .card-body::-webkit-scrollbar-thumb, #exp-body::-webkit-scrollbar-thumb,
+    #exp-list::-webkit-scrollbar-thumb {
+      background: var(--muted3); border-radius: 4px; opacity: .5;
+    }
+    .card-body::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
     /* The model name reads as plain caption text until you hover it — the point
        is that it should not look like a form field sitting in the header. */
     /* Marks a feature as new and still settling, so nobody is surprised when a
@@ -865,6 +924,40 @@
     #exp-caveat b { color: #f2dcae; }
     #exp-opts label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font: 11.5px system-ui, sans-serif; color: var(--muted2); }
     #exp-opts label[hidden] { display: none; }
+    /* A shared link carries the WHOLE model in its address bar, so a big one is
+       a real wait between the page appearing and anything being on the plate —
+       and until now the app looked simply empty during it. The pill that opens
+       the editor wears a moving rainbow while that happens: it is the one
+       control everybody looks at, and a border that MOVES cannot be mistaken
+       for a style. */
+    @property --brc-spin { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+    @keyframes brc-spin { to { --brc-spin: 360deg; } }
+    @keyframes brc-spin-fallback { to { transform: rotate(360deg); } }
+    #open-btn.loading-share { position: relative; isolation: isolate; }
+    #open-btn.loading-share::before {
+      content: ""; position: absolute; inset: -2.5px; border-radius: inherit;
+      z-index: -1; padding: 2.5px;
+      background: conic-gradient(from var(--brc-spin),
+        #ff4d4d, #ffb020, #ffe94d, #49d17a, #35c6e8, #6f7bff, #c86bff, #ff4d4d);
+      animation: brc-spin 1.4s linear infinite;
+      filter: saturate(1.2);
+    }
+    /* Firefox has no @property, so --brc-spin never animates there. Fall back
+       to spinning a real element, which every engine can do. */
+    @supports not (background: conic-gradient(from var(--brc-spin), red, blue)) {
+      #open-btn.loading-share::before {
+        background: conic-gradient(#ff4d4d, #ffb020, #ffe94d, #49d17a, #35c6e8, #6f7bff, #c86bff, #ff4d4d);
+        animation: brc-spin-fallback 1.4s linear infinite;
+      }
+    }
+    #open-btn.loading-share::after {
+      content: ""; position: absolute; inset: 0; border-radius: inherit;
+      z-index: -1; background: var(--accent, #5b8cff);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #open-btn.loading-share::before { animation-duration: 6s; }
+    }
+
     /* ---- a pasted image, full size ---------------------------------------- */
     #img-zoom {
       position: fixed; inset: 0; z-index: 300;
@@ -2095,7 +2188,7 @@
         <button class="close-btn" data-close="cheatsheet" title="Close">&times;</button>
       </header>
       <div id="cheat-tabs"></div>
-      <div id="cheat-body"></div>
+      <div class="card-body" id="cheat-body"></div>
       <div id="cheat-foot">Sizes are in millimetres. Angles are in degrees.</div>
     </section>
 
@@ -2357,7 +2450,7 @@
           <button class="close-btn" data-close="history" title="Close">&times;</button>
         </div>
       </header>
-      <div id="history-body"><div id="history-empty">Build a model first.</div></div>
+      <div class="card-body" id="history-body"><div id="history-empty">Build a model first.</div></div>
     </section>
 
     <!-- chat -->
@@ -2380,7 +2473,7 @@
           <button class="close-btn" data-close="chat" title="Close">&times;</button>
         </div>
       </header>
-      <div id="chat-msgs"></div>
+      <div class="card-body" id="chat-msgs"></div>
       <div id="chat-settings">
         <div id="cs-tabs">
           <button data-cstab="ai" class="sel">AI</button>
@@ -2614,7 +2707,7 @@
     <!-- about -->
     <section id="about" class="card" aria-label="About">
       <header>
-        <div><strong>RandoTechNerd</strong><span class="sub">BREPcode.com · <span id="app-version" title="BUILDSTAMP">v0.2.0</span> <span id="app-stamp" style="opacity:.65"></span></span>
+        <div><strong>RandoTechNerd</strong><span class="sub">BREPcode.com · <span id="app-version" title="BUILDSTAMP">v0.2.2</span> <span id="app-stamp" style="opacity:.65"></span></span>
       <script>
         addEventListener("DOMContentLoaded", () => {
           const v = document.getElementById("app-version");
@@ -2636,7 +2729,7 @@
         <button id="about-docs-btn" class="hist-btn" title="What can it do?">Docs</button>
         <button class="close-btn" data-close="about" title="Close">&times;</button>
       </header>
-      <div id="about-body">
+      <div class="card-body" id="about-body">
         <div id="about-docs">
           <div class="docs-credit">
             <strong>Documentation</strong> — every modelling capability below is the
@@ -2801,7 +2894,7 @@
           <button class="close-btn" data-close="inventory" title="Close">&times;</button>
         </div>
       </header>
-      <div id="inv-grid"></div>
+      <div class="card-body" id="inv-grid"></div>
       <div id="inv-foot"></div>
     </section>
 
@@ -2820,7 +2913,7 @@
                 title="Put every material and lighting setting back to the baseline">Reset</button>
         <button class="close-btn" data-close="material" title="Close">&times;</button>
       </header>
-      <div id="mat-body">
+      <div class="card-body" id="mat-body">
         <!-- MATERIAL TAB -->
         <div class="mat-pane" data-pane="material">
           <div class="mat-group">Material preset</div>
@@ -3056,7 +3149,7 @@
         <div><strong>Trace image</strong><span class="sub" id="trace-name">outline → extrude</span></div>
         <button class="close-btn" data-close="trace" title="Close">&times;</button>
       </header>
-      <div id="trace-body">
+      <div class="card-body" id="trace-body">
         <canvas id="trace-canvas"></canvas>
         <div class="mat-row"><span>Threshold</span>
           <input type="range" id="trace-thresh" min="20" max="235" value="128" />
@@ -3090,7 +3183,7 @@
         <div><strong>Parts shelf</strong><span class="sub" id="shelf-sub">already written, already building</span></div>
         <button class="close-btn" data-close="shelf" title="Close">&times;</button>
       </header>
-      <div id="shelf-body">
+      <div class="card-body" id="shelf-body">
         <input id="shelf-q" type="search" placeholder="search — hinge, vent, standoff, knob…"
                autocomplete="off" spellcheck="false" />
         <div id="shelf-list" aria-live="polite"></div>
@@ -3111,7 +3204,7 @@
         <div><strong>Gridfinity</strong><span class="sub" id="gfin-sub">drag out a size</span></div>
         <button class="close-btn" data-close="gfin" title="Close">&times;</button>
       </header>
-      <div id="gfin-body">
+      <div class="card-body" id="gfin-body">
         <div class="gfin-seg" id="gfin-kind" role="radiogroup" aria-label="What to make">
           <button data-kind="bin" class="on" role="radio" aria-checked="true">Bin</button>
           <button data-kind="base" role="radio" aria-checked="false">Baseplate</button>
@@ -3176,7 +3269,7 @@
         <div><strong>Cookie cutter</strong><span class="sub" id="cutter-sub">pick a shape</span></div>
         <button class="close-btn" data-close="cutter" title="Close">&times;</button>
       </header>
-      <div id="cutter-body">
+      <div class="card-body" id="cutter-body">
         <div id="cutter-search">
           <input id="cutter-q" type="search" placeholder="heart, star, gingerbread, salmon…"
                  autocomplete="off" spellcheck="false" />
@@ -3207,7 +3300,7 @@
         <div><strong id="landing-name">A shared model</strong><span class="sub">shared with you</span></div>
         <button class="close-btn" data-close="landing" title="Close">&times;</button>
       </header>
-      <div id="landing-body">
+      <div class="card-body" id="landing-body">
         <div id="landing-note">
           It travelled inside the link — nothing was uploaded, and it is not
           stored anywhere. Drag to spin it.
@@ -5976,8 +6069,12 @@
     // ---- resizable cards: drag the corner grip -----------------------------
     // The tallest scrollable child grows to fill, so resizing feels natural on
     // every card. Double-clicking the header resets size + position.
-    const SCROLL_IDS = ["code", "chat-msgs", "mat-body", "history-body", "cheat-body", "inv-grid", "trace-body", "about-body"];
-    const mainScroll = (card) => SCROLL_IDS.map((id) => card.querySelector("#" + id)).find(Boolean);
+    // Which child grows and shrinks with the window. This used to be a list of
+    // ids typed by hand, and it had fallen four windows behind — the shelf, the
+    // Gridfinity picker, the cutter and the landing card all resized without
+    // their contents following. Ask the DOM instead: every card body carries
+    // .card-body, and the editor panel's textarea is the one exception.
+    const mainScroll = (card) => card.querySelector(":scope > .card-body") || card.querySelector("#code");
     for (const card of document.querySelectorAll(".card")) {
       const grip = document.createElement("div");
       grip.className = "resize-grip"; grip.title = "Drag to resize";
@@ -7084,6 +7181,18 @@ ${joined}`)(...vs);
     // The source of the last build that actually finished, and the line that
     // reported it. Reverting is just going back to these.
     let lastBuiltSource = null, lastGoodStatus = null;
+    // One-shot "the next build finished" hooks. Used by the shared-link loader
+    // to hold its glow until the model is really on the plate. Fired on FAILURE
+    // too — a share that cannot build must stop glowing and show its error,
+    // not spin forever.
+    const builtOnce = new Set();
+    const onceBuilt = (fn) => builtOnce.add(fn);
+    function fireBuilt() {
+      if (!builtOnce.size) return;
+      const fns = [...builtOnce];
+      builtOnce.clear();
+      for (const fn of fns) { try { fn(); } catch { /* a hook must not break a build */ } }
+    }
 
     // The build-cube markup (styles: .bcube in the stylesheet). One factory so
     // the status bar and the chat waiting bubble show the same little story.
@@ -7164,6 +7273,7 @@ ${joined}`)(...vs);
         shape = evaluate(src);
       } catch (e) {
         setStatus("err", diagnose(src, e));
+        fireBuilt();      // a share that cannot build must stop glowing
         return;
       }
       // Heavy builds pin the main thread — say roughly how long BEFORE it
@@ -7192,6 +7302,7 @@ ${joined}`)(...vs);
       } catch { /* an estimate must never break a build */ }
       if (!shape || !shape.__brepscript) {
         setStatus("err", diagnose(src, null, shape));
+        fireBuilt();      // a share that cannot build must stop glowing
         return;
       }
 
@@ -7328,6 +7439,7 @@ ${joined}`)(...vs);
           ` · ${["x", "y", "z"].map((a) => (bb.max[a] - bb.min[a]).toFixed(1)).join(" × ")} mm`;
         lastBuiltSource = typed;
         lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms`;
+        fireBuilt();
         setStatus("ok", lastGoodStatus);
         blueprintStale();     // the drawing on hand is now of the previous model
 
@@ -7353,6 +7465,7 @@ ${joined}`)(...vs);
         if (mine !== token) return;
         lastBuildMs = performance.now() - t0;
         setStatus("err", diagnose(src, e));
+        fireBuilt();      // a share that cannot build must stop glowing
         // A saved model naming a mesh this session has not imported is not a
         // mistake in the code — a .bcode carries the RECIPE, and the mesh is a
         // file on your disk. Telling someone to "use the Import button" and
@@ -9653,8 +9766,24 @@ ${joined}`)(...vs);
       return true;
     }
 
+    // On while a shared link is being unpacked and built. Driven from the two
+    // places that know — the unpack below, and the first build that follows —
+    // rather than a timer, so it cannot lie in either direction.
+    let shareLoads = 0;
+    function shareLoading(on) {
+      shareLoads = Math.max(0, shareLoads + (on ? 1 : -1));
+      $("open-btn")?.classList.toggle("loading-share", shareLoads > 0);
+    }
+
     async function openSharedModel() {
       if (!/[#&]m=/.test(location.hash)) return false;
+      shareLoading(true);
+      // Held until the model is actually ON THE PLATE, not merely decoded: the
+      // kernel build is the long half, and dropping the glow at the end of the
+      // decode would clear it while the screen was still empty.
+      const done = () => shareLoading(false);
+      onceBuilt(done);
+      setTimeout(done, 120000);        // a build that never lands must not glow forever
       try {
         const exp = await getExporters();
         const text = await exp.readShareFragment(location.hash);
@@ -9790,7 +9919,16 @@ ${joined}`)(...vs);
     //
     // So: the real origin when there is one, and the public site when there is
     // not. The fragment is the whole model either way.
-    const PUBLIC_SITE = "https://brepcode.com/";
+    // The app is served at /brep/index.html, NOT at the domain root — the root
+    // is a different page that never reads the fragment, so a link built
+    // against it opens something that silently ignores the model. That is the
+    // second half of the same bug: the exe stopped emitting app:// URLs, and
+    // then emitted https:// ones pointing at the wrong page.
+    //
+    // Overridable, because the day the site moves this constant is the only
+    // thing that has to change, and the deployment can set it without a build.
+    const PUBLIC_SITE = (typeof window !== "undefined" && window.__BREPCODE_PUBLIC_URL)
+      || "https://brepcode.com/brep/index.html";
     const shareBase = () => (/^https?:$/.test(location.protocol)
       ? location.origin + location.pathname
       : PUBLIC_SITE);
