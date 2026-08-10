@@ -74,8 +74,13 @@ Common heights: **2u** for small parts and hardware, **3u** general purpose,
 ## Baseplates
 
 ```
-gridfinityBase({ x, y, h })     // h defaults 5, and must be >= 4.65
+gridfinityBase({ x, y, h })              // h defaults 5, must be >= 4.65
+gridfinityBase({ x, y, bottomless: true })   // a FRAME — sockets open through
 ```
+
+`bottomless` drops the floor under every cell (~a third of the plastic): glue
+the frame straight onto the drawer bottom and the drawer becomes the floor.
+The seat survives — bins hold exactly as they do in a solid plate.
 
 The socket is **not** the bin's foot grown by a clearance — it has its own
 profile, which opens at exactly 42.0 with an r4.0 corner. That is why sockets

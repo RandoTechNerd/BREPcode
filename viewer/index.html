@@ -103,9 +103,22 @@
   {
     "imports": {
       "three": "/node_modules/three/build/three.module.js",
-      "three/addons/": "/node_modules/three/examples/jsm/"
+      "three/addons/": "/node_modules/three/examples/jsm/",
+      "node:module": "/viewer/vendor/kernel/node-module-shim.js"
     }
   }
+  </script>
+  <!--
+    Before ANY module runs. The vendored kernel's manifold build sniffs for a
+    `process` global to decide whether it is in Node, and a browser extension or
+    a bundler shim that leaves one lying about sends it down the Node path,
+    where it hard-fails during init with nothing useful said. Deleting it costs
+    nothing here — this is a browser, and the app never reads it — and it has to
+    happen before the first module load rather than inside one, because by then
+    the check has already run.
+  -->
+  <script>
+    try { delete window.process; } catch { window.process = undefined; }
   </script>
   <!-- start fetching the heavy modules before the inline script asks for them -->
   <link rel="modulepreload" href="/node_modules/three/build/three.module.js" />
@@ -1011,8 +1024,16 @@
     #panel > header { position: relative; }
     #more-btn { display: none; font-size: 15px; line-height: 1; }
     /* toolbox dropdown: icon + name + one line of what it does */
+    /* FIXED, not absolute. These hang off a header inside .card, and .card is
+       overflow:hidden — so a menu that opened upward, or simply ran taller than
+       the card, was clipped away to nothing. Positioned in script from the
+       button's own getBoundingClientRect(), which also means the menu no longer
+       moves when the card it belongs to is dragged mid-open.
+       touch-action/overscroll-behavior stop a flick inside the menu from
+       scrolling the page behind it on a phone. */
     #tools-menu {
-      position: absolute; right: 8px; top: 100%; z-index: 41; display: none;
+      position: fixed; z-index: 41; display: none;
+      touch-action: pan-y; overscroll-behavior: contain;
       flex-direction: column; min-width: 250px;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden auto; padding: 5px 0;
@@ -1050,7 +1071,8 @@
     #tools-menu button.active small { color: rgba(255,255,255,.8); }
 
     #more-menu {
-      position: absolute; right: 8px; top: 100%; z-index: 40; display: none;
+      position: fixed; z-index: 40; display: none;
+      touch-action: pan-y; overscroll-behavior: contain;
       flex-direction: column; min-width: 180px;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 8px 30px rgba(0,0,0,.55); overflow: hidden auto; padding: 4px 0;
@@ -1066,9 +1088,18 @@
     @media (max-width: 620px) {
       #editor-tools .ovf { display: none; }
       #more-btn { display: inline-grid; place-items: center; }
+      /* ...but not the ones a phone actually uses. Import, export and rebuild
+         stay out where they can be tapped; only the long tail overflows. */
+      #import-btn, #export-btn, #refresh-btn { display: inline-block; }
     }
+    @media (max-width: 620px) and (min-width: 421px) {
+      #undo-btn, #redo-btn { display: inline-block; }
+    }
+    /* Already placed from clientX/clientY, which are viewport coordinates — so
+       absolute positioning was quietly wrong here even before the clipping. */
     #shape-menu {
-      position: absolute; z-index: 40; display: none; padding: 8px;
+      position: fixed; z-index: 40; display: none; padding: 8px;
+      touch-action: pan-y; overscroll-behavior: contain;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 8px 30px rgba(0,0,0,.55); min-width: 180px;
       overflow: hidden auto; scrollbar-width: thin;
@@ -1549,19 +1580,85 @@
     }
 
     /* ---------- small screens: phones / foldables / short landscape ---------- */
+    /* ---- phones, foldables, and anything short ---------------------------
+       dvh everywhere rather than vh: 100vh on mobile includes the space UNDER
+       the browser chrome, so a 100vh card puts its own controls behind the URL
+       bar. The safe-area insets are for notches and the fold's hinge-side
+       bezels. This block is load-bearing for iOS and Android — keep it. */
     @media (max-width: 700px), (max-height: 520px) {
       #dock {
-        left: 10px; right: 10px;
+        left: calc(10px + env(safe-area-inset-left, 0px));
+        right: calc(10px + env(safe-area-inset-right, 0px));
         bottom: calc(10px + env(safe-area-inset-bottom, 0px));
         max-height: calc(100dvh - 20px);
       }
+      /* The pill row scrolls sideways rather than wrapping into a second row
+         that eats the viewport. The scrollbar is hidden because the affordance
+         is the half-visible pill at the edge, not a bar. */
+      #buttons {
+        overflow-x: auto; flex-wrap: nowrap;
+        scrollbar-width: none; -webkit-overflow-scrolling: touch;
+      }
+      #buttons::-webkit-scrollbar { display: none; }
+      #buttons > * { flex: none; }
       .card { width: 100%; }
+      .card.expanded {
+        height: 100dvh;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
       #code { height: 140px; font-size: 16px; }   /* ≥16px stops iOS focus-zoom */
       #chat-input { font-size: 16px; }
       #chat-msgs { max-height: min(34dvh, 300px); }
       #cheat-body, #history-body { max-height: min(38dvh, 360px); }
       #hint-corner { display: none; }
       .dock-btn { padding: 9px 14px 9px 10px; }
+    }
+    /* Fold OUTER screens (Z Flip closed, etc): ~370px wide. Everything shrinks
+       a step, and the card header learns to truncate — a title plus a subtitle
+       that cannot shrink pushes the close button off the right edge, which on
+       this screen is the only way to close anything. */
+    @media (max-width: 400px) {
+      .dock-btn { padding: 8px 11px 8px 9px; font-size: 13.5px; }
+      #code { height: 120px; }
+      .card-body, #shelf-body, #gfin-body, #cheat-body, #history-body {
+        max-height: min(40dvh, 340px);
+      }
+      .card > header { padding: 9px 10px; }
+      .card > header > div:first-child {
+        display: flex; align-items: baseline; gap: 6px; min-width: 0;
+      }
+      .card > header strong { flex: none; }
+      .card > header .sub {
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+    }
+    /* A phone held sideways: 100vw of width and ~400px of height. Height is
+       the scarce thing, so everything vertical gives some back. */
+    @media (max-height: 460px) and (orientation: landscape) {
+      #code { height: 92px; }
+      .card-body, #shelf-body, #gfin-body, #cheat-body, #history-body {
+        max-height: 46dvh;
+      }
+      .card { width: min(520px, calc(100vw - 24px)); }
+    }
+    /* Unfolded foldables and small tablets: enough room that a full-width card
+       looks like a mistake, not enough that the desktop layout fits. */
+    @media (min-width: 701px) and (max-width: 1000px) {
+      .card { width: min(520px, calc(100vw - 32px)); }
+      #dock {
+        left: calc(14px + env(safe-area-inset-left, 0px));
+        right: calc(14px + env(safe-area-inset-right, 0px));
+      }
+    }
+    /* Fingers, regardless of screen size. 38px is the floor for a tap target
+       that does not need aiming; menu rows get taller for the same reason. */
+    @media (pointer: coarse) {
+      .hist-btn { min-width: 38px; min-height: 38px; }
+      .card > .resize-grip { width: 26px; height: 26px; }
+      #tools-menu button, #more-menu button, #shape-menu .sm-item {
+        padding-top: 10px; padding-bottom: 10px;
+      }
     }
   </style>
 </head>
@@ -2076,7 +2173,7 @@
           <button class="close-btn" data-close="panel" title="Close">&times;</button>
         </div>
         <!-- toolbox: the model-editing tools, with an icon + a word each -->
-        <div id="tools-menu" data-flip="1">
+        <div id="tools-menu">
           <button data-act="drill-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2180,7 +2277,7 @@
             <span><b>Free-form corners <small class="beta">beta</small></b><small>drag one corner on its own to skew</small></span>
           </label>
         </div>
-        <div id="more-menu" data-flip="1">
+        <div id="more-menu">
           <button data-act="tools-btn">Toolbox…</button>
           <button data-act="trace-btn">Trace image…</button>
           <button data-act="import-btn">Import STL / OBJ / 3MF…</button>
@@ -2603,9 +2700,24 @@
           (<a href="https://github.com/mmiscool/BREP" target="_blank" rel="noopener">source</a>).
         </div>
         <div style="color: var(--muted); margin-top: 8px;">
-          The code for this fork will be available on the RandoTechNerd GitHub soon
-          after beta. Inquiries:
-          <a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a>.
+          This fork lives at
+          <a href="https://github.com/RandoTechNerd/BREPcode" target="_blank" rel="noopener">github.com/RandoTechNerd/BREPcode</a>.
+          Inquiries: <a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a>.
+        </div>
+        <!-- Gridfinity is someone else's standard, and a NON-COMMERCIAL one.
+             The tool generates parts to its dimensions, so the terms travel
+             with anything made here and belong where a user can find them
+             rather than in a source comment. -->
+        <div style="color: var(--muted); margin-top: 8px;">
+          <b style="color: var(--text)">Gridfinity</b> is an open standard by
+          <a href="https://www.youtube.com/@ZackFreedman" target="_blank" rel="noopener">Zack Freedman</a>,
+          licensed
+          <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>.
+          The bins and baseplates this tool generates follow that standard, so
+          what you make with them is <b>non-commercial</b>, must credit the
+          standard, and must be shared alike. Dimensions here follow the
+          community
+          <a href="https://gridfinity.xyz" target="_blank" rel="noopener">Gridfinity Design Reference</a>.
         </div>
         <!-- Hidden model stash. Triple-tap the folder button below to reveal:
              a list of .bcode / .html models served by the SITE itself, so
@@ -3033,6 +3145,13 @@
             <span>Stacking lip — other bins can sit on this one</span></label>
         </div>
 
+        <div id="gfin-baseopts" hidden>
+          <label class="gfin-check"><input type="checkbox" id="gfin-bottomless" />
+            <span>Bottomless — a frame to glue onto the drawer itself; the
+            drawer becomes the floor, and it prints in about two-thirds the
+            plastic</span></label>
+        </div>
+
         <div id="gfin-drawer">
           <div class="gfin-row"><span>Drawer</span>
             <input id="gfin-dw" type="number" min="42" step="1" placeholder="width" />
@@ -3165,8 +3284,35 @@
     // now (helped by the modulepreload in <head>), so the first model appears
     // at the same moment it always did, but the UI no longer waits on it. Only
     // the four places that actually build geometry await this.
+    //
+    // RETRIED, and the memo dropped on failure. A dynamic import that fails is
+    // remembered as failed by the module record for the life of the page, so on
+    // a phone that loses one preload mid-load the app is dead until a manual
+    // reload — every later attempt returns the same "Failed to fetch
+    // dynamically imported module" without going near the network. A query
+    // string makes each retry a different record, which is the only way to ask
+    // again, and clearing _kernel means a later build gets a fresh start rather
+    // than the stored rejection.
+    const KERNEL_URL = "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
+    async function importKernel(tries = 3) {
+      let last;
+      for (let i = 0; i < tries; i++) {
+        try {
+          return await import(i ? `${KERNEL_URL}?retry=${i}` : KERNEL_URL);
+        } catch (e) {
+          last = e;
+          // A moment between attempts: these fail on a flaky connection, and
+          // three requests in the same millisecond is one request in practice.
+          if (i < tries - 1) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+        }
+      }
+      throw last;
+    }
     let _kernel;
-    const getKernel = () => (_kernel ??= import("/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js"));
+    const getKernel = () => (_kernel ??= importKernel().catch((e) => {
+      _kernel = undefined;              // so the next caller really does retry
+      throw e;
+    }));
     getKernel();
 
     // ---- the kernel's heavy half, off the main thread ---------------------
@@ -5651,6 +5797,25 @@
       card.style.left = `${l}px`; card.style.top = `${t}px`;
     }
 
+    // A card dragged near the top, or simply taller than a phone, can open with
+    // its header above y=0 — and the header is the only part you can grab, so
+    // the window becomes both unmovable and unclosable. Float it and centre it:
+    // where it sits is the user's to change, and an unreachable window is not.
+    function ensureCardVisible(card) {
+      const r = card.getBoundingClientRect();
+      if (!r.height) return;                       // not laid out yet
+      const unreachable = r.top < 0 || r.top > innerHeight - 44
+        || r.height > innerHeight - 16;
+      if (!unreachable) return;
+      if (!card.classList.contains("floating")) {
+        card.style.width = `${Math.min(r.width, innerWidth - 24)}px`;
+        card.classList.add("floating");
+      }
+      const h = Math.min(r.height, innerHeight - 16);
+      card.style.left = `${Math.round(Math.max(8, (innerWidth - r.width) / 2))}px`;
+      card.style.top = `${Math.round(Math.max(8, (innerHeight - h) / 2))}px`;
+    }
+
     function toggleCard(card, btn, on) {
       const next = on ?? !card.classList.contains("open");
       card.classList.toggle("open", next);
@@ -5658,6 +5823,11 @@
       if (!next) card.classList.remove("maxed");   // never reopen a card stuck fullscreen
       if (next && card.classList.contains("floating") && !card.classList.contains("maxed")) {
         placeCardClear(card);
+      }
+      // After placement, and measured — so it rescues a card however it ended
+      // up out of reach, not only the cases anyone thought of.
+      if (next && !card.classList.contains("maxed")) {
+        requestAnimationFrame(() => ensureCardVisible(card));
       }
       return next;
     }
@@ -5725,6 +5895,11 @@
         // capture retargets the eventual click to the header — the name field
         // never opened, it just silently started a window drag instead.
         if (e.button !== 0 || e.target.closest("button, input, select, a, #model-name, #model-name-input")) return;
+        // The flyouts are position:fixed now, so they are no longer inside the
+        // header in layout terms but they ARE still inside it in the DOM — a
+        // scroll flick in the Toolbox would otherwise pick the whole window up
+        // and carry it across the screen.
+        if (e.target.closest("#tools-menu, #more-menu, #shape-menu")) return;
         if (card.classList.contains("maxed") || card.classList.contains("expanded")) return;
         const rect = card.getBoundingClientRect();
         if (!card.classList.contains("floating")) {
@@ -6408,6 +6583,37 @@
     }
 
     // Insert a snippet at the caret and select its arguments so typing replaces them.
+    // Add a whole model to whatever is already in the editor.
+    //
+    // Three cases, and the middle one is the reason this exists: an editor that
+    // already RETURNS something cannot simply have another statement appended,
+    // because nothing after the return runs. The existing expression is lifted
+    // into a union() with the new one instead, which keeps both and stays a
+    // legal program.
+    function combineWithEditor(text, call) {
+      const src = String(text || "");
+      if (!src.trim()) return `return ${call};\n`;
+      // `return <expr>;` possibly spanning lines, as the last thing in the file
+      const m = src.match(/^([\s\S]*?)\breturn\s+([\s\S]+?);?\s*$/);
+      if (m) {
+        const [, head, expr] = m;
+        return `${head}return union(\n  ${expr.trim()},\n  ${call},\n);\n`;
+      }
+      // No return. The COMMON case here is the whole file being one bare
+      // expression — the default model is exactly that, leaning on the
+      // auto-return forgiveness — and appending our own return would turn it
+      // into dead code above a bin. So test whether it parses as an
+      // expression, and if it does, union it in whole.
+      const body = src.replace(/\s+$/, "");
+      try {
+        new Function(`return (\n${body}\n);`);
+        return `return union(\n  ${body},\n  ${call},\n);\n`;
+      } catch { /* statements, not an expression */ }
+      // Statements with no return: the pieces stay (their names may even feed
+      // the call), and the return goes at the end where one was missing anyway.
+      return `${body}\n\nreturn ${call};\n`;
+    }
+
     function insertSnippet(spec) {
       toggleCard(panel, openBtn, true);
       const s = code.selectionStart, e = code.selectionEnd;
@@ -13126,31 +13332,38 @@ ${joined}`)(...vs);
     //
     // Only data-flip menus: the shape menu is positioned by script with an
     // inline top, and resetting that here would drop it in the wrong place.
+    // Which button each menu hangs off. The shape menu has none — it opens at
+    // the pointer, and already writes its own viewport coordinates.
+    const FLYOUT_ANCHOR = { "tools-menu": "tools-btn", "more-menu": "more-btn" };
+
     function fitFlyout(el) {
       el.style.maxHeight = "";
-      if (el.dataset.flip) { el.style.top = ""; el.style.bottom = ""; }
       if (!el.classList.contains("open")) return;
-      const top = el.getBoundingClientRect().top;      // measured hanging below
-      const below = innerHeight - top - 10;
+      const anchor = $(FLYOUT_ANCHOR[el.id] || "");
+      const rect = anchor?.getBoundingClientRect();
+      if (!rect || !rect.width) {
+        // No anchor (the shape menu), or the button is hidden at this width.
+        // Cap against whatever is below wherever it has ended up.
+        const room = innerHeight - el.getBoundingClientRect().top - 10;
+        if (el.scrollHeight > room) el.style.maxHeight = `${Math.max(120, room)}px`;
+        return;
+      }
+      // Right edges aligned with the button, then pulled back on screen.
+      const w = el.offsetWidth;
+      el.style.left = `${Math.round(Math.max(8, Math.min(rect.right - w, innerWidth - w - 8)))}px`;
+      const below = innerHeight - rect.bottom - 10;
+      const above = rect.top - 10;
       const wanted = el.scrollHeight;
-      if (wanted <= below) return;                     // fits as it is: no cap, no scrollbar
-      // Space above the menu's natural top is space it would have if flipped.
-      const above = top - 10;
-      if (el.dataset.flip && above > below) {
-        el.style.top = "auto";
-        el.style.bottom = "100%";
-        el.style.maxHeight = `${Math.max(120, above)}px`;
-        // Then MEASURE, and take off whatever still hangs over the top edge.
-        // The arithmetic above is of the space available; what a max-height
-        // actually buys depends on padding, borders and the box model, and
-        // guessing at that is how a menu ends up 34px off the screen. One
-        // correction pass costs a layout read and is always right.
-        const over = -el.getBoundingClientRect().top;
-        if (over > 0) {
-          el.style.maxHeight = `${Math.max(120, above - over - 2)}px`;
-        }
-      } else {
+      if (wanted <= below || below >= above) {
+        el.style.top = `${Math.round(rect.bottom + 4)}px`;
         el.style.maxHeight = `${Math.max(120, below)}px`;
+      } else {
+        // Upward. Height first, then a top computed from it — with fixed
+        // positioning there is no "bottom: 100%" to lean on, and working out
+        // the top from the height is exact rather than a guess at the box model.
+        const h = Math.min(wanted, above);
+        el.style.maxHeight = `${Math.max(120, above)}px`;
+        el.style.top = `${Math.round(Math.max(8, rect.top - 4 - h))}px`;
       }
     }
     const flyouts = ["tools-menu", "more-menu", "shape-menu"].map((id) => $(id)).filter(Boolean);
@@ -13374,6 +13587,7 @@ ${joined}`)(...vs);
             o.setAttribute("aria-checked", String(on));
           }
           $("gfin-binopts").hidden = kind !== "bin";
+          $("gfin-baseopts").hidden = kind !== "base";
           paint(gx, gy);
         });
       }
@@ -13425,24 +13639,24 @@ ${joined}`)(...vs);
           if (!$("gfin-lip").checked) parts.push("lip: false");
           call = `gridfinityBin({ ${parts.join(", ")} })`;
         } else {
+          if ($("gfin-bottomless").checked) parts.push("bottomless: true");
           call = `gridfinityBase({ ${parts.join(", ")} })`;
         }
-        // Same bargain the parts shelf strikes: never wipe someone's work. An
-        // empty editor gets the whole model with its `return`; anything else
-        // gets the bare call at the caret, to compose into what is already
-        // there. insertSnippet() is not the route — it takes an autocomplete
-        // spec, not a string, and handing it one puts the literal word
-        // "undefined" in the editor.
+        // A bin is a WHOLE MODEL, not a fragment, so it is combined with what
+        // is already in the editor rather than pasted wherever the caret
+        // happens to be. Dropping `gridfinityBin({...})` into the middle of
+        // someone's expression produces text that does not parse, and dropping
+        // it after a file that already returns produces a statement that never
+        // runs — both look like the button did nothing.
+        //
+        // So: an empty editor gets the model outright, and an editor with work
+        // in it gets union(what was there, this), which is a legal program
+        // either way and shows both parts.
         const v = code.value;
-        const blank = !v.trim();
-        const snippet = blank ? `return ${call};\n` : call;
-        const at = blank ? 0 : (code.selectionStart ?? v.length);
-        const end = blank ? v.length : (code.selectionEnd ?? at);
         pushHistory(v);
-        code.value = v.slice(0, at) + snippet + v.slice(end);
-        const pos = at + snippet.length;
+        code.value = combineWithEditor(v, call);
         code.focus();
-        code.setSelectionRange(pos, pos);
+        code.setSelectionRange(code.value.length, code.value.length);
         pushHistory();
         toggleCard(card, null, false);
         try { rebuild(); } catch { /* the editor reports its own errors */ }

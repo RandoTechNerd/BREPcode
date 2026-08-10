@@ -386,6 +386,30 @@ console.log("\ngridfinity: a bin this code made must seat in a base it made\n");
   check("a 2x2 baseplate is 84 square", near(base.x, 84, 0.05) && near(base.y, 84, 0.05),
     `${base.x.toFixed(1)} x ${base.y.toFixed(1)}`);
 
+  // ---- bottomless: a frame, not a tray ------------------------------------
+  // For gluing onto a drawer bottom, or a big grid that would otherwise be
+  // hours of solid layers. The seat must survive; the floor must not.
+  {
+    const frame = await measure(gridfinityBase({ x: 2, y: 2, bottomless: true }));
+    check("a bottomless plate saves real plastic", frame.vol < base.vol * 0.8,
+      `${frame.vol.toFixed(0)} vs ${base.vol.toFixed(0)}`);
+    check("...and defaults to the socket's own 4.65 height",
+      near(frame.z, GRID.socket, 0.02), `${frame.z.toFixed(2)}`);
+    // The proof it is OPEN: a probe pillar through the middle of a cell meets
+    // no material at all, where the solid plate has its floor.
+    const pillar = dsl.translate([-10, -10, -2], dsl.cube([20, 20, 10]));
+    const open = await measure(dsl.intersection(gridfinityBase({ x: 1, y: 1, bottomless: true }), pillar));
+    const closed = await measure(dsl.intersection(gridfinityBase({ x: 1, y: 1 }), pillar));
+    check("the socket is open right through", open.vol < 1, `${open.vol.toFixed(1)} mm³ in the way`);
+    check("...where the solid plate really does have a floor there", closed.vol > 50,
+      `${closed.vol.toFixed(0)} mm³`);
+    // And a bin still seats — the frame kept the stepped walls that hold it.
+    const clash = await measure(dsl.intersection(
+      gridfinityBin({ x: 1, y: 1, u: 2, solid: true }),
+      gridfinityBase({ x: 1, y: 1, bottomless: true })));
+    check("a bin still seats in the frame", clash.vol < 1, `${clash.vol.toFixed(1)} mm³ overlap`);
+  }
+
   // THE check. Everything above is a number agreeing with another number; this
   // is the bin and the baseplate meeting, and no dimension check catches a
   // plinth that will not go in.
@@ -549,8 +573,17 @@ console.log("\ngridfinity: the Toolbox picker\n");
     HTML.includes("Math.floor(w / PITCH)") && HTML.includes("Math.floor(d / PITCH)"));
   check("...and says so when the drawer holds no whole cell",
     HTML.includes("holds no full cell"));
-  check("inserting composes rather than wiping the editor, like the shelf",
-    HTML.includes("const blank = !v.trim();"));
+  // The picker's output is a WHOLE MODEL, so it is combined via union() with
+  // whatever the editor holds rather than pasted at the caret — pasting a
+  // second model into the middle of an expression does not parse, and pasting
+  // it after a return never runs. combineWithEditor() is the one place that
+  // knows the three cases (empty, returns, bare expression).
+  check("inserting combines with the editor via union(), never a caret paste",
+    HTML.includes("code.value = combineWithEditor(v, call);"));
+  check("...and the bare-expression case keeps the existing model in the union",
+    /new Function\(`return \(/.test(HTML));
+  check("...and bottomless is offered for baseplates",
+    HTML.includes('id="gfin-bottomless"') && HTML.includes('parts.push("bottomless: true")'));
 }
 
 

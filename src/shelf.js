@@ -713,12 +713,20 @@ export function gridfinityBin(opts = {}) {
 // profile (0.7 / 1.8 / 2.15), which opens at exactly 42.0 with an r4.0 corner.
 // That is the whole cell, so neighbouring sockets meet with no flat between
 // them, and it is why the baseplate's own outside corner is 8.0Ø as well.
+// `bottomless: true` opens every socket right through — a FRAME rather than a
+// tray. Same profile, same seat; what goes away is the solid floor under each
+// cell, which is most of the plastic and most of the print time. The usual
+// reasons: gluing the frame straight onto a drawer bottom (the drawer becomes
+// the floor), or a big grid that would otherwise be hours of solid layers.
+// The plate itself is the socket's 4.65 in that case — there is no floor to
+// need thickness for.
 export function gridfinityBase(opts = {}) {
   const x = Math.max(1, Math.round(opts.x ?? 2));
   const y = Math.max(1, Math.round(opts.y ?? 2));
-  const h = pos(opts.h ?? 5, "h");
+  const bottomless = !!opts.bottomless;
+  const h = pos(opts.h ?? (bottomless ? GRID.socket : 5), "h");
   const $fn = opts.$fn ?? 32;
-  if (h < GRID.socket) {
+  if (!bottomless && h < GRID.socket) {
     throw new Error(`shelf: a ${h}mm baseplate is thinner than the ${GRID.socket}mm socket — use ${GRID.socket} or more`);
   }
   const W = x * GRID.pitch, D = y * GRID.pitch;
@@ -728,9 +736,18 @@ export function gridfinityBase(opts = {}) {
   const sockets = [];
   for (let i = 0; i < x; i++) {
     for (let j = 0; j < y; j++) {
-      sockets.push(translate(
-        [(i - (x - 1) / 2) * GRID.pitch, (j - (y - 1) / 2) * GRID.pitch, h - GRID.socket],
-        socketCut()));
+      const cx = (i - (x - 1) / 2) * GRID.pitch, cy = (j - (y - 1) / 2) * GRID.pitch;
+      sockets.push(translate([cx, cy, h - GRID.socket], socketCut()));
+      if (bottomless) {
+        // Continue the socket's SMALLEST opening straight down and out the
+        // bottom. Not the whole cell: the seat the bin rests on has to
+        // survive, and it lives in the socket's stepped walls above this.
+        const rClear = G_RFIT - GRID.socketLo;
+        const cBottom = GRID.pitch / 2 - GRID.baseR;
+        sockets.push(translate([cx, cy, -0.5], hull(...QUAD.map(([sx, sy]) =>
+          translate([sx * (cBottom - (GRID.baseR - rClear)), sy * (cBottom - (GRID.baseR - rClear)), 0],
+            cylinder({ r: rClear, h: h - GRID.socket + GRID.socketLo + 0.5 + 0.01, $fn }))))));
+      }
     }
   }
   return difference(slab, ...sockets);

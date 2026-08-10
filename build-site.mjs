@@ -48,6 +48,10 @@ const rewrites = [
   ['"three/addons/": "/node_modules/three/examples/jsm/"',
    '"three/addons/": "./vendor/three/jsm/"'],
   ["/node_modules/brep-io-kernel/dist-kernel/", "./vendor/kernel/"],
+  // Our own stand-in for Node's "node:module", which the kernel's manifold and
+  // PartHistory chunks import on their Node branch. It sits beside the kernel
+  // it exists for. See viewer/vendor/kernel/node-module-shim.js.
+  ["/viewer/vendor/kernel/node-module-shim.js", "./vendor/kernel/node-module-shim.js"],
   ['"../src/', '"./src/'],
   // modulepreload hints (must come after the exact import-map pairs above,
   // which consume their own copies of these paths first)
@@ -254,6 +258,9 @@ const kernelFiles = readdirSync(K).filter((f) =>
   || /^manifold-.*\.js$/.test(f));
 for (const f of kernelFiles) cpSync(join(K, f), join(OUT, "vendor/kernel", f));
 cpSync("node_modules/brep-io-kernel/LICENSE.md", join(OUT, "vendor/kernel/LICENSE.md"));
+// The import map points "node:module" here. Without the file the map resolves
+// to a 404 and the kernel fails to load at all, so this is not optional.
+cpSync("viewer/vendor/kernel/node-module-shim.js", join(OUT, "vendor/kernel/node-module-shim.js"));
 
 // ---- zip --------------------------------------------------------------
 const zip = new JSZip();
