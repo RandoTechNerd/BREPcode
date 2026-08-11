@@ -445,6 +445,29 @@ export async function stepToStl(buf, name = "step-import", opts = {}) {
 // A 2D vector drawing: the model projected onto a viewing plane, visible
 // edges solid and hidden edges dashed — a proper draughting SVG, not a
 // screenshot. `view` is one of front/back/top/bottom/left/right.
+// Replicad emits ONE <path> per edge segment. A Gridfinity 2x2 bin projects to
+// 23,756 of them: a 1.8MB file in which most of the bytes are element wrapper
+// rather than geometry, and 23k DOM nodes for whatever opens it.
+//
+// They all share their layer's stroke, and an SVG path already carries many
+// subpaths in one `d`, so they merge into one element per distinct style.
+// Grouped BY style rather than merged blindly, because replicad puts a stroke
+// on some paths and flattening those into the rest would silently repaint
+// them. Identical drawing, a fraction of the file.
+export function mergeSvgPaths(svg) {
+  const byStyle = new Map();
+  for (const m of String(svg || "").matchAll(/<path\b([^>]*?)\/>/g)) {
+    const attrs = m[1];
+    const d = /\bd="([^"]*)"/.exec(attrs)?.[1];
+    if (!d) continue;
+    const style = attrs.replace(/\s*\bd="[^"]*"/, "").trim();
+    if (!byStyle.has(style)) byStyle.set(style, []);
+    byStyle.get(style).push(d.trim());
+  }
+  return [...byStyle].map(([style, ds]) =>
+    `<path ${style ? `${style} ` : ""}d="${ds.join(" ")}"/>`).join("\n");
+}
+
 export async function curvedSvgText(root, view = "top") {
   const r = await loadReplicad();
   const shape = await buildCurved(root);
@@ -453,7 +476,7 @@ export async function curvedSvgText(root, view = "top") {
   const hid = hidden.toSVG ? hidden.toSVG() : "";
   // pull the drawn paths out of replicad's two SVGs and merge into one,
   // styling hidden edges as thin dashed lines
-  const pathsOf = (svg) => (svg.match(/<path[\s\S]*?\/>/g) || []).join("\n");
+  const pathsOf = mergeSvgPaths;
   const vb = vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 100 100";
   const [, , w, h] = vb.split(/\s+/).map(Number);
   const stroke = Math.max(w, h) / 400;
@@ -476,7 +499,7 @@ export async function curvedDrawingSVG(root, opts = {}) {
   const r = await loadReplicad();
   const shape = await buildCurved(root);
 
-  const pathsOf = (svg) => (svg.match(/<path[\s\S]*?\/>/g) || []).join("\n");
+  const pathsOf = mergeSvgPaths;
   // A projection can legitimately come back with nothing in it — a sphere seen
   // down its own axis hides no edges at all — and replicad throws
   // "Unpexpected numItems value: 0" rather than handing back an empty drawing.

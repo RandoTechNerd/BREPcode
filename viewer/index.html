@@ -12091,6 +12091,19 @@ ${joined}`)(...vs);
 
     const EXPORT_CAVEATS = [
       {
+        // Hidden-line removal is what a drawing IS, and it is superlinear in
+        // edges: a Gridfinity 2x2 bin measured 27 SECONDS and 26 merged paths
+        // out of 23,756 projected segments. That is a long time to sit in
+        // front of a frozen dialog wondering whether it has hung, and the
+        // honest fix for the wait is to say it is coming.
+        fmts: ["svg"],
+        when: (c) => c.tris > 2000,
+        say: (c) => `<b>A drawing this detailed takes a while.</b> Hidden-line removal grows `
+          + `faster than the part does — at <b>${(c.tris / 1000).toFixed(0)}k triangles</b> expect `
+          + `<b>tens of seconds</b>, and the window will not respond while it works. It does `
+          + `finish; a 2×2 Gridfinity bin measured 27 s.`,
+      },
+      {
         fmts: ["step"],
         when: (c) => c.mesh,
         say: (c) => `<b>A mesh has no CAD geometry to recover.</b> Every triangle becomes its own `
