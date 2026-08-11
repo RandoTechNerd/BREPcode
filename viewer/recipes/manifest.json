@@ -462,6 +462,26 @@
       ]
     },
     {
+      "tag": "measuring",
+      "title": "Getting real sizes out of a photo",
+      "file": "measuring.md",
+      "match": [
+        "ruler",
+        "tape measure",
+        "for scale",
+        "actual size",
+        "real size",
+        "life size",
+        "life-size",
+        "caliper",
+        "calipers",
+        "measured",
+        "scale reference",
+        "next to a coin",
+        "how big is"
+      ]
+    },
+    {
       "tag": "mount",
       "title": "Brackets and wall mounts",
       "file": "mount.md",
@@ -815,6 +835,33 @@
         "bridging",
         "unsupported"
       ]
+    },
+    {
+      "tag": "toolholder",
+      "title": "Holders and trays for real tools",
+      "file": "toolholder.md",
+      "match": [
+        "tool holder",
+        "tool tray",
+        "tool insert",
+        "tool organiser",
+        "tool organizer",
+        "shadow board",
+        "shadow foam",
+        "screwdriver",
+        "pliers",
+        "wrench",
+        "spanner",
+        "allen key",
+        "hex key",
+        "chisel",
+        "drill bit",
+        "bit holder",
+        "socket set",
+        "custom cutout",
+        "pocket for"
+      ],
+      "ask": "Should it lie FLAT in a scooped pocket, or STAND UPRIGHT in a hole? And is a simple slot fine, or does the pocket need to follow the tool's real outline?"
     },
     {
       "tag": "wires",
