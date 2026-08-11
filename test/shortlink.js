@@ -234,6 +234,50 @@ console.log("\nwhere it cannot work\n");
   globalThis.location = realLoc;
 }
 
+console.log("\nclaiming by proxy, for the desktop app\n");
+{
+  // The .exe cannot reach the link server at all, so it hands the job to a
+  // browser: the ordinary long share link with the wanted name on the front.
+  const frag = "#m=H4sIAAAAmodel";
+  const url = cl.claimUrl("https://brepcode.com/brep/index.html", "fish-bowl", frag);
+  check("a claim link is the share link with the name in front",
+    url === "https://brepcode.com/brep/index.html#claim=fish-bowl&m=H4sIAAAAmodel", url);
+  check("the name reads back out", cl.claimSlugIn(url) === "fish-bowl");
+  check("a fragment already lacking # is handled the same",
+    cl.claimUrl("x", "a-b", "m=zzz") === "x#claim=a-b&m=zzz");
+  check("no model still produces a usable link",
+    cl.claimUrl("x", "a-b", "") === "x#claim=a-b");
+
+  // The whole trick depends on the long-link reader still finding the model
+  // with "claim=" sitting in front of it. "claim=" ENDS in "m=", so a reader
+  // matching a bare m= would grab the name and decode garbage.
+  check("the m= reader cannot mistake the tail of claim= for the model",
+    /[#&]m=([A-Za-z0-9\-_]+)/.exec("#claim=fish-bowl&m=PAYLOAD")[1] === "PAYLOAD");
+  check("...even when the name itself ends in m",
+    /[#&]m=([A-Za-z0-9\-_]+)/.exec("#claim=aquarium&m=PAYLOAD")[1] === "PAYLOAD");
+
+  check("a plain share link is NOT a claim", cl.claimSlugIn("#m=abc") === null);
+  check("nothing is nothing", cl.claimSlugIn("") === null);
+}
+
+console.log("\noffering a name that IS free\n");
+{
+  // "Taken — pick another name" is half an answer. Walk a few and come back
+  // with one that works.
+  fakeServer({ orca: { slug: "orca", owner: "x" }, "orca-2": { slug: "orca-2", owner: "x" } });
+  store.clear();
+  check("the first free variant is offered", await cl.suggestFreeName("orca") === "orca-3",
+    await cl.suggestFreeName("orca"));
+
+  fakeServer();
+  check("a free name suggests its own -2", await cl.suggestFreeName("bowl") === "bowl-2");
+
+  // A dead server must not produce a suggestion — offering a name we could not
+  // check is how someone ends up claiming something already taken.
+  globalThis.fetch = async () => { throw new TypeError("down"); };
+  check("an unreachable server offers nothing", await cl.suggestFreeName("bowl") === null);
+}
+
 console.log("\nthe module actually ships\n");
 {
   // A dynamic import the site build does not copy is a 404 the first time a

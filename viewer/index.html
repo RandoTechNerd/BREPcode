@@ -822,6 +822,41 @@
        Publish — shoving the real option rows a screenful below the fold, where
        they could only be found by scrolling a panel that looked empty. The
        [hidden] clause has to be said explicitly to win it back. */
+    /* The claim result, handed over from the desktop app. Top-centre and over
+       everything, because it is the answer to a question the user asked in a
+       different application and then switched windows to find out. */
+    #claim-note {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 60; display: flex; gap: 12px; align-items: flex-start;
+      max-width: min(560px, calc(100vw - 32px)); padding: 13px 14px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 13px;
+      box-shadow: 0 14px 46px rgba(0,0,0,.55);
+      font: 13px system-ui, sans-serif; color: var(--text);
+    }
+    #claim-note[hidden] { display: none; }
+    #claim-icon { font-size: 20px; line-height: 1.1; flex: none; }
+    #claim-body { min-width: 0; }
+    #claim-head { display: block; font-size: 13.5px; margin-bottom: 3px; }
+    #claim-sub { color: var(--muted2); font-size: 12px; line-height: 1.5; }
+    #claim-sub code {
+      font: 12px ui-monospace, Consolas, monospace; color: var(--code);
+      word-break: break-all;
+    }
+    #claim-acts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+    #claim-acts button {
+      cursor: pointer; background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 7px; padding: 5px 11px;
+      font: 12px system-ui, sans-serif;
+    }
+    #claim-acts button:hover { border-color: var(--border-focus); }
+    #claim-acts button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #claim-close {
+      cursor: pointer; background: none; border: 0; color: var(--muted3);
+      font-size: 18px; line-height: 1; padding: 0 2px; flex: none;
+    }
+    #claim-note.ok { border-color: var(--ok, #6fbf73); }
+    #claim-note.warn { border-color: var(--warn, #e5a05a); }
+
     /* Same shape as the publish options — one checkbox with its explanation
        underneath, and the name box only once it can do anything. */
     #short-row { display: block; margin: 2px 0 4px; }
@@ -1895,6 +1930,20 @@
        fine for "yes, something is attached" and useless for "IS that the right
        screenshot?" — the one question a person actually has. Clicking either
        opens it here at full size. -->
+  <!-- The result of a claim handed over from the desktop app. It reports one
+       of three things and each needs a different action, so it is a panel and
+       not a toast: it worked (here is the link), the name is taken (here is
+       one that is not), or there is no internet (nothing is lost, try again). -->
+  <div id="claim-note" hidden>
+    <div id="claim-icon"></div>
+    <div id="claim-body">
+      <strong id="claim-head"></strong>
+      <div id="claim-sub"></div>
+      <div id="claim-acts"></div>
+    </div>
+    <button id="claim-close" title="Close">&times;</button>
+  </div>
+
   <div id="img-zoom" hidden>
     <img id="img-zoom-pic" alt="" />
     <div id="img-zoom-bar">
@@ -10102,6 +10151,14 @@ ${joined}`)(...vs);
         // The checkbox is still there for anyone who wants it back.
         const showBox = $("grid-show");
         if (showBox?.checked) { showBox.checked = false; showBox.dispatchEvent(new Event("change")); }
+        // A claim link is a share link with a name written on the front. The
+        // model is loading either way; the claim runs alongside it, not after,
+        // because the answer is what the user came here for.
+        {
+          const cl = await getCloud();
+          const want = cl.claimSlugIn(location.hash);
+          if (want) runClaim(want).catch((e) => console.error("claim", e));
+        }
         // The sender's name rides along, so the visitor sees what they were
         // sent rather than "brepcode-model", and a download inherits it.
         if (name && name !== "brepcode-model") { modelName = name.slice(0, 60); paintName(); }
@@ -10255,10 +10312,15 @@ ${joined}`)(...vs);
       // Named before a request is attempted: in the desktop app the fetch
       // cannot leave at all (CORS does not cover app://), and a network error
       // there reads as "the site is down" rather than "not here".
+      // In the desktop app the request cannot leave at all, so the name is
+      // checked by HANDING THE JOB TO A BROWSER instead of refusing. The
+      // checkbox stays useful; it just resolves in the other window.
       const orig = cl.originProblem();
       if (orig) {
-        out.textContent = `${orig} — the full link still works`;
-        out.className = "note warn";
+        out.innerHTML = `Names are claimed on brepcode.com — press Export and this `
+          + `will open your browser to claim <b>${slug}</b>, then tell you if it worked.`;
+        out.className = "note";
+        shortState = { slug, ok: true, handoff: true };
         return;
       }
       out.textContent = `checking “${slug}”…`;
@@ -10275,6 +10337,117 @@ ${joined}`)(...vs);
         : res.reason;
       out.className = res.ok ? "note ok" : "note warn";
     }
+
+    // ---- claiming a name handed over from the desktop app ------------------
+    //
+    // The .exe cannot reach the link server (CORS does not cover app://), so it
+    // sends the whole job here as #claim=<name>&m=<model>. By the time this
+    // runs the model is already on screen — the claim link IS a share link —
+    // so all that is left is the name, and saying which of the three things
+    // happened.
+    function claimPanel({ tone, icon, head, sub, acts = [] }) {
+      const el = $("claim-note");
+      el.className = tone || "";
+      $("claim-icon").textContent = icon;
+      $("claim-head").textContent = head;
+      $("claim-sub").innerHTML = sub;
+      const box = $("claim-acts");
+      box.innerHTML = "";
+      for (const a of acts) {
+        const b = document.createElement("button");
+        b.textContent = a.label;
+        if (a.primary) b.className = "primary";
+        b.addEventListener("click", a.run);
+        box.appendChild(b);
+      }
+      el.hidden = false;
+    }
+
+    async function runClaim(slug) {
+      const cl = await getCloud();
+      const url = cl.shortUrl(shareBase(), slug);
+      claimPanel({ icon: "⏳", head: `Claiming “${slug}”…`, sub: "asking brepcode.com whether that name is free." });
+      let res;
+      try {
+        res = await cl.checkName(slug);
+      } catch {
+        res = { ok: false, offline: true, reason: "could not reach the link server" };
+      }
+
+      // No internet. NOTHING is lost — the model is in this very URL, which is
+      // why the advice is "keep this link", not "start again".
+      if (res.offline) {
+        claimPanel({
+          tone: "warn", icon: "📡",
+          head: "No connection to brepcode.com",
+          sub: `Your model is safe — it is inside this page's own address, so nothing was lost. `
+            + `Keep this link, and open it again when you are back online to claim `
+            + `<code>${slug}</code>.`,
+          acts: [
+            { label: "Try again", primary: true, run: () => runClaim(slug) },
+            { label: "Copy this link", run: () => navigator.clipboard?.writeText(location.href) },
+          ],
+        });
+        return;
+      }
+
+      // Taken by someone else. An error is half an answer, so go and find a
+      // name that IS free rather than shrugging.
+      if (!res.ok && res.free === false) {
+        claimPanel({ tone: "warn", icon: "🔒", head: `“${slug}” is already taken`,
+          sub: "looking for one that is free…" });
+        const alt = await cl.suggestFreeName(slug);
+        claimPanel({
+          tone: "warn", icon: "🔒",
+          head: `“${slug}” is already taken`,
+          sub: alt
+            ? `<code>${alt}</code> is free. Claim that instead, or pick your own name.`
+            : "Try a different name — add a word that is yours.",
+          acts: [
+            ...(alt ? [{ label: `Claim “${alt}”`, primary: true, run: () => runClaim(alt) }] : []),
+            { label: "Choose a name…", run: () => {
+              const want = prompt("Short link name", `${slug}-mine`);
+              if (want) runClaim(cl.slugify(want));
+            } },
+          ],
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        claimPanel({ tone: "warn", icon: "⚠️", head: "That name will not work", sub: res.reason });
+        return;
+      }
+
+      // Free (or already ours) — save it.
+      try {
+        const text = await (await getExporters()).readShareFragment(location.hash);
+        if (!text) throw new Error("this link does not carry a model");
+        await cl.saveShort({ slug, text, name: modelName || slug });
+      } catch (e) {
+        claimPanel({ tone: "warn", icon: "⚠️", head: "Could not save the short link",
+          sub: `${e?.message || e}. The link you already have still works.`,
+          acts: [{ label: "Try again", primary: true, run: () => runClaim(slug) }] });
+        return;
+      }
+      const shortU = cl.shortUrl(shareBase(), slug);
+      try { await navigator.clipboard.writeText(shortU); } catch { /* no permission */ }
+      claimPanel({
+        tone: "ok", icon: "✅",
+        head: "Done — your short link is ready",
+        sub: `<code>${shortU}</code><br>Copied to your clipboard. `
+          + `It can be updated from <em>this browser</em>, which is where its key lives.`,
+        acts: [
+          { label: "Copy again", primary: true, run: () => navigator.clipboard?.writeText(shortU) },
+          { label: "Open it", run: () => { location.href = shortU; location.reload(); } },
+        ],
+      });
+    }
+
+    $("claim-close")?.addEventListener("click", () => { $("claim-note").hidden = true; });
+    // Same hook style as __brepModelToGLB: the three outcomes are the whole
+    // feature and each needs driving on demand to be checked at all.
+    window.__brepRunClaim = runClaim;
 
     function wireShortRow() {
       const on = $("short-on"), wrap = $("short-name-wrap"), box = $("short-name");
@@ -10638,13 +10811,27 @@ ${joined}`)(...vs);
           if ($("short-on")?.checked) {
             const cl = await getCloud();
             const slug = cl.slugify($("short-name").value || base);
-            try {
-              await cl.saveShort({ slug, text, name: base });
-              url = cl.shortUrl(shareBase(), slug);
-              shortNote = `Hosted as <b>${slug}</b>. `;
-            } catch (e) {
-              shortNote = `<span style="color:var(--warn,#e5a05a)">Short link not saved — ${
-                (e?.message || e)}. The full link below still works.</span> `;
+            const orig = cl.originProblem();
+            if (orig) {
+              // The desktop app cannot reach the link server, so it hands the
+              // whole job to a browser: the claim link carries the model AND
+              // the wanted name, and the site does the rest and reports back.
+              // window.open on an https URL is routed to the real browser by
+              // desktop/main.cjs, so this needs no new plumbing.
+              const claim = cl.claimUrl(PUBLIC_SITE, slug, frag);
+              try { await navigator.clipboard.writeText(claim); } catch { /* no permission */ }
+              try { window.open(claim, "_blank", "noopener"); } catch { /* blocked */ }
+              shortNote = `Opening your browser to claim <b>${slug}</b> — it will say there `
+                + `whether the name was free. (Link copied, in case the window did not open.) `;
+            } else {
+              try {
+                await cl.saveShort({ slug, text, name: base });
+                url = cl.shortUrl(shareBase(), slug);
+                shortNote = `Hosted as <b>${slug}</b>. `;
+              } catch (e) {
+                shortNote = `<span style="color:var(--warn,#e5a05a)">Short link not saved — ${
+                  (e?.message || e)}. The full link below still works.</span> `;
+              }
             }
           }
           try { await navigator.clipboard.writeText(url); } catch { /* http, or no permission */ }
