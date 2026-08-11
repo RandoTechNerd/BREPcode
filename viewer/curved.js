@@ -525,9 +525,9 @@ export async function curvedDrawingSVG(root, opts = {}) {
   const frontX = LEFT, frontY = topY + tH + LBL + G;
   const rightX = LEFT + Math.max(fW, tW) + G, rightY = frontY;
 
-  const sheetW = Math.max(rightX + rW + DIMPAD, frontX + fW, topX + tW) + M;
+  let sheetW = Math.max(rightX + rW + DIMPAD, frontX + fW, topX + tW) + M;
   const titleH = 90;
-  const sheetH = frontY + fH + LBL + 20 + titleH + M / 2;
+  let sheetH = frontY + fH + LBL + 20 + titleH + M / 2;
 
   // the isometric drops into the spare corner: right of TOP, above the RIGHT view
   const isoBoxX = rightX, isoBoxY = topY;
@@ -537,8 +537,40 @@ export async function curvedDrawingSVG(root, opts = {}) {
   const isoPX = isoBoxX + (isoBoxW - iso.w * isoS) / 2;
   const isoPY = isoBoxY + (isoBoxH - iso.h * isoS) / 2;
 
+  // WHERE THE INK ACTUALLY LANDS.
+  //
+  // The sheet used to be sized from the three orthographic views alone, and
+  // then everything else was drawn wherever it fell. Three things fall outside:
+  // the isometric's dimension lines (drawn in iso space, offset perpendicular,
+  // so they can point anywhere), a vertical dimension beside a view that sits
+  // near an edge, and the fixed-width title block on a sheet narrower than it
+  // is. Measured: a Ø240x4 disc put its iso dimension 35 units past the right
+  // edge, and a Ø10x200 rod hung the entire title block 58 units off the left.
+  //
+  // So nothing guesses any more. Every placement reports the box it occupies,
+  // the sheet is sized from the union of them, and the drawing is shifted so
+  // the whole thing sits inside its border. Text is estimated at 0.62em per
+  // character, which is right for a monospace face and errs generous.
+  const ink = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const note = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < ink.x0) ink.x0 = x;
+    if (y < ink.y0) ink.y0 = y;
+    if (x > ink.x1) ink.x1 = x;
+    if (y > ink.y1) ink.y1 = y;
+  };
+  const noteBox = (x, y, w, h) => { note(x, y); note(x + w, y + h); };
+  // anchor: -1 start, 0 middle, 1 end
+  const noteText = (x, y, str, size, anchor = -1) => {
+    const w = String(str).length * size * 0.62;
+    const left = anchor === 0 ? x - w / 2 : anchor === 1 ? x - w : x;
+    noteBox(left, y - size, w, size * 1.35);
+  };
+
   // place a view's own-coordinate paths at a sheet position, at scale `sc`
   const view = (p, px, py, label, sc = S) => {
+    noteBox(px, py, p.w * sc, p.h * sc);
+    noteText(px, py + p.h * sc + 22, label, 15);
     const sw = 1.1 / sc;                                 // constant on-paper weight
     const t = `translate(${px} ${py}) scale(${sc}) translate(${-p.x} ${-p.y})`;
     return `<g transform="${t}">
@@ -552,7 +584,8 @@ export async function curvedDrawingSVG(root, opts = {}) {
   // so the numbers are the part's actual size regardless of sheet scale.
   const mm = (v) => (Math.round(v * 10) / 10).toFixed(1);
   const DIM_G = `stroke="#8fb8e6" stroke-width="1" fill="#dbe9fb" font-family="monospace" font-size="12"`;
-  const dimH = (px, py, w, value) => `
+  const dimH = (px, py, w, value) => (noteBox(px, py - 7, w, 12),
+    noteText(px + w / 2, py - 7, mm(value), 12, 0), `
   <g ${DIM_G}>
     <line x1="${px}" y1="${py - 7}" x2="${px}" y2="${py + 5}"/>
     <line x1="${px + w}" y1="${py - 7}" x2="${px + w}" y2="${py + 5}"/>
@@ -560,8 +593,12 @@ export async function curvedDrawingSVG(root, opts = {}) {
     <path d="M${px} ${py} l6 -3 v6 z" stroke="none"/>
     <path d="M${px + w} ${py} l-6 -3 v6 z" stroke="none"/>
     <text x="${px + w / 2}" y="${py - 7}" text-anchor="middle" stroke="none">${mm(value)}</text>
-  </g>`;
-  const dimV = (px, py, h, value) => `
+  </g>`);
+  const dimV = (px, py, h, value) => (noteBox(px - 5, py, 12, h),
+    // rotated -90, so the text's LENGTH runs up the page and its height runs
+    // across it — the box is the other way round from a horizontal one.
+    noteBox(px - 9 - 12, py + h / 2 - String(mm(value)).length * 12 * 0.31, 14,
+      String(mm(value)).length * 12 * 0.62), `
   <g ${DIM_G}>
     <line x1="${px - 5}" y1="${py}" x2="${px + 7}" y2="${py}"/>
     <line x1="${px - 5}" y1="${py + h}" x2="${px + 7}" y2="${py + h}"/>
@@ -570,7 +607,7 @@ export async function curvedDrawingSVG(root, opts = {}) {
     <path d="M${px} ${py + h} l-3 -6 h6 z" stroke="none"/>
     <text x="${px - 9}" y="${py + h / 2}" text-anchor="middle" stroke="none"
           transform="rotate(-90 ${px - 9} ${py + h / 2})">${mm(value)}</text>
-  </g>`;
+  </g>`);
 
   // Sizes come from the SOLID, not from the projection's viewBox — replicad pads
   // each projection by a unit of drawing margin, so the viewBox reads 2mm over
@@ -654,6 +691,15 @@ export async function curvedDrawingSVG(root, opts = {}) {
     if (deg > 90 || deg < -90) { deg += 180; flip = -1; }
     const tx = (A[0] + B[0]) / 2 + nx * 9 * flip;
     const ty = (A[1] + B[1]) / 2 + ny * 9 * flip;
+    // These run along the projected axes, so they point in six different
+    // directions depending on the part — which is exactly why they were the
+    // ones falling off the sheet. Both ends, both witness lines and the text.
+    note(a[0] + nx * 6, a[1] + ny * 6); note(b[0] + nx * 6, b[1] + ny * 6);
+    note(A[0], A[1]); note(B[0], B[1]);
+    noteText(tx, ty, mm(value), 12, 0);
+    // the rotated text sweeps a disc of its own half-length about its anchor
+    { const rr = String(mm(value)).length * 12 * 0.34;
+      note(tx - rr, ty - rr); note(tx + rr, ty + rr); }
     return `
   <g ${DIM_G}>
     <line x1="${a[0] + nx * 6}" y1="${a[1] + ny * 6}" x2="${A[0] + nx * 5}" y2="${A[1] + ny * 5}"/>
@@ -675,6 +721,15 @@ export async function curvedDrawingSVG(root, opts = {}) {
     isoDim([x0, y1, z0], [x0, y1, z1], sizeZ),   // the vertical edge on the right
   ].join("\n");
 
+  // Rendered here rather than in the template: calling view() is what reports
+  // each one's box to the tracker, and the sheet cannot be sized until it has.
+  const viewsSVG = [
+    view(front, frontX, frontY, "FRONT"),
+    view(top, topX, topY, "TOP"),
+    view(right, rightX, rightY, "RIGHT"),
+    view(iso, isoPX, isoPY, "ISOMETRIC", isoS),
+  ].join("\n");
+
   const dimensions = [
     hDim(top, topX, topY + tH + 44, sizeX),      vDim(top, topX - 24, topY, sizeY),
     hDim(front, frontX, frontY + fH + 44, sizeX), vDim(front, frontX - 24, frontY, sizeZ),
@@ -682,11 +737,22 @@ export async function curvedDrawingSVG(root, opts = {}) {
     isoDims,
   ].join("\n");
 
-  // Title block: flush with the inner border's bottom-right corner. It used to
-  // be positioned from the sheet edge instead, which left it hanging outside
-  // the border on one side and short of it on the other.
+  // THE SHEET IS SIZED LAST, from everything that was actually drawn.
+  //
+  // `dimensions` above is a string, but building it ran every dim helper, so
+  // `ink` now holds the true extent of the drawing — including the isometric's
+  // dimensions, which is what used to fall off the edge. The page expands to
+  // fit the drawing rather than the drawing being trusted to fit the page.
   const name = (opts.title || "BREPcode model").replace(/[<&>]/g, "");
   const tbW = 360;
+  // A sheet narrower than the title block cannot hold it — that is how a
+  // Ø10x200 rod ended up with its title block starting at x = -58.
+  const inkW = Math.max(ink.x1 - ink.x0, 1), inkH = Math.max(ink.y1 - ink.y0, 1);
+  const wantW = Math.max(inkW + M * 2, tbW + M * 2, sheetW);
+  const wantH = Math.max(inkH + M * 2 + titleH, sheetH);
+  // Shift so the leftmost/topmost ink sits one margin inside the border.
+  const shiftX = M - ink.x0, shiftY = M - ink.y0;
+  sheetW = wantW; sheetH = wantH;
   const tbR = sheetW - M / 2, tbB = sheetH - M / 2;      // inner border edges
   const tbx = tbR - tbW, tb = tbB - titleH;
   const titleBlock = `
@@ -701,15 +767,20 @@ export async function curvedDrawingSVG(root, opts = {}) {
     <text x="${tbR - 128}" y="${tb + 78}" font-size="12">BREPcode</text>
   </g>`;
 
+  // The drawing is shifted as one group so nothing has to be re-placed: the
+  // views, their dimensions and the isometric all keep the relationships they
+  // were laid out with, and the whole assembly lands inside the border. The
+  // title block is drawn OUTSIDE that group because it is anchored to the
+  // sheet's own corner, not to the drawing.
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sheetW.toFixed(0)} ${sheetH.toFixed(0)}" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sheetW.toFixed(0)} ${sheetH.toFixed(0)}" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" data-ink="${
+    [ink.x0 + shiftX, ink.y0 + shiftY, ink.x1 + shiftX, ink.y1 + shiftY].map((n) => n.toFixed(1)).join(" ")}">
   <rect x="0" y="0" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" fill="#0d2c52"/>
   <rect x="${M / 2}" y="${M / 2}" width="${sheetW - M}" height="${sheetH - M}" fill="none" stroke="#8fb8e6" stroke-width="2"/>
-  ${view(front, frontX, frontY, "FRONT")}
-  ${view(top, topX, topY, "TOP")}
-  ${view(right, rightX, rightY, "RIGHT")}
-  ${view(iso, isoPX, isoPY, "ISOMETRIC", isoS)}
+  <g transform="translate(${shiftX.toFixed(2)} ${shiftY.toFixed(2)})">
+  ${viewsSVG}
   ${dimensions}
+  </g>
   ${titleBlock}
 </svg>`;
 }
