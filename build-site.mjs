@@ -82,6 +82,13 @@ const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
   "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "simplify.js", "tour.js", "filaments.js", "cutterkit.js",
   "slicer.js",
+  // short links. Only fetched when someone ticks the box, but leaving it out
+  // ships a site where ticking it 404s — see test/shortlink.js, which checks
+  // this list against every dynamic import in index.html so the next module
+  // added cannot be forgotten here.
+  "cloudlink.js",
+  // baking the spool's look (glitter, gradient, glass) into the GLB
+  "glblook.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.

@@ -248,7 +248,13 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
     /\|\| "https:\/\/brepcode\.com\/brep\/index\.html";/.test(HTML));
   check("...and only trusts the current origin on http(s)",
     /\/\^https\?:\$\/\.test\(location\.protocol\)/.test(HTML));
-  check("the share link is built from it", /const url = shareBase\(\) \+ frag;/.test(HTML));
+  // Not pinned to const/let: the short-link option reassigns this, and the
+  // contract is "built from shareBase()", not which keyword declares it.
+  check("the share link is built from it", /\b(?:const|let) url = shareBase\(\) \+ frag;/.test(HTML));
+  // The SHORT link has to come from the same place. Built from a hardcoded
+  // domain it would work on the site and hand the exe an address only the
+  // site can open — which is exactly the bug the long link already had.
+  check("...and so is the short one", /cl\.shortUrl\(shareBase\(\),/.test(HTML));
   check("...and so is the published page's edit link",
     /if \(frag\) editUrl = shareBase\(\) \+ frag;/.test(HTML));
   check("no share URL is still built from the raw origin",

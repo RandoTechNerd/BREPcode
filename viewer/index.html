@@ -822,6 +822,25 @@
        Publish — shoving the real option rows a screenful below the fold, where
        they could only be found by scrolling a panel that looked empty. The
        [hidden] clause has to be said explicitly to win it back. */
+    /* Same shape as the publish options — one checkbox with its explanation
+       underneath, and the name box only once it can do anything. */
+    #short-row { display: block; margin: 2px 0 4px; }
+    #short-row[hidden] { display: none; }
+    #short-row .pub-opt { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; }
+    #short-row .pub-opt input { margin: 2px 0 0; flex: none; }
+    #short-row .pub-opt small { display: block; color: var(--muted3); font-size: 11px; }
+    #short-name-wrap { margin: 6px 0 0 22px; }
+    #short-name-wrap[hidden] { display: none; }
+    #short-name {
+      width: 100%; box-sizing: border-box; padding: 5px 8px;
+      background: var(--input-bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 7px;
+      font: 12.5px ui-monospace, Consolas, monospace;
+    }
+    #short-status { font-size: 11px; margin-top: 4px; min-height: 14px; color: var(--muted2); }
+    #short-status.ok { color: var(--ok, #6fbf73); }
+    #short-status.warn { color: var(--warn, #e5a05a); }
+
     #publish-row { display: block; margin: 2px 0 4px; }
     #publish-row[hidden] { display: none; }
     #publish-row .pub-head {
@@ -1928,6 +1947,18 @@
           <!-- What a visitor to brepcode.com/<name> is allowed to do. Publishing
                is the one export whose audience is not you, so it is the one that
                needs saying out loud. Everything off is a still picture. -->
+          <!-- The long link is the model itself and needs nothing to work. This
+               offers the SAME model behind a name, for when a kilobyte of URL
+               is the wrong thing to hand someone. Off by default: the local
+               link is the honest default, and this one needs a server. -->
+          <div id="short-row" hidden>
+            <label class="pub-opt"><input type="checkbox" id="short-on" />
+              <span>Also host it as a short link<small id="short-sub">brepcode.com/…#s=your-model-name</small></span></label>
+            <div id="short-name-wrap" hidden>
+              <input id="short-name" type="text" spellcheck="false" placeholder="model name" maxlength="48" />
+              <div class="note" id="short-status"></div>
+            </div>
+          </div>
           <div id="publish-row" hidden>
             <span class="pub-head">Visitors to the page can</span>
             <label class="pub-opt"><input type="checkbox" id="pub-orbit" checked />
@@ -9647,35 +9678,279 @@ ${joined}`)(...vs);
     // editor overlays never leak into the shared asset.
     let _gltf;
     const getGLTFExporter = () => (_gltf ??= import("three/addons/exporters/GLTFExporter.js"));
-    async function modelToGLB() {
+    // A 1px-wide ramp: the spool's gradient as an actual image, sampled by a
+    // UV whose V is the part's own height. Written BOTTOM-UP because canvas
+    // rows run top-down and the stops are written bottom-to-top — getting this
+    // backwards flips every gradient in the set and still looks plausible on a
+    // symmetric part, which is why it is spelled out here.
+    function gradientTexture(GL, stops) {
+      const H = 256;
+      const px = GL.gradientPixels(stops, H);
+      const cv = document.createElement("canvas");
+      cv.width = 1; cv.height = H;
+      const ctx = cv.getContext("2d");
+      const img = ctx.createImageData(1, H);
+      for (let y = 0; y < H; y++) {
+        const src = (H - 1 - y) * 4;              // flip: row 0 is the TOP
+        for (let c = 0; c < 4; c++) img.data[y * 4 + c] = px[src + c];
+      }
+      ctx.putImageData(img, 0, 0);
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = THREE.ClampToEdgeWrapping;
+      t.wrapT = THREE.ClampToEdgeWrapping;
+      return t;
+    }
+
+    // The flake, as a NORMAL MAP — facets that catch a moving light. A colour
+    // map cannot do this: painted specks stay equally bright from every angle,
+    // and it is the flashing as the camera moves that reads as glitter in a
+    // video. Each speck is a tilted plate; the tilt is the whole effect.
+    function sparkleNormalTexture(GL, flake, repeat) {
+      const S = 512, CELLS = 24;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = "#8080ff";                  // flat normal (0,0,1)
+      ctx.fillRect(0, 0, S, S);
+      const specks = GL.sparkleField({ cells: CELLS, coverage: flake.size, seed: 20260810 });
+      for (const s of specks) {
+        const px = s.x * S, py = s.y * S, pr = Math.max(1.2, s.r * S);
+        // Encode the tilt as an RGB normal, softened to a disc so the speck has
+        // an edge rather than a hard square.
+        const g = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        const r255 = Math.round(128 + s.nx * 110), g255 = Math.round(128 + s.ny * 110);
+        g.addColorStop(0, `rgb(${r255},${g255},255)`);
+        g.addColorStop(0.72, `rgb(${r255},${g255},255)`);
+        g.addColorStop(1, "rgb(128,128,255)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI * 2); ctx.fill();
+      }
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.NoColorSpace;          // a normal map is DATA, not colour
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(repeat[0], repeat[1]);
+      t.channel = 1;                              // TEXCOORD_1, the box-mapped set
+      return t;
+    }
+
+    // The other half of glitter, and the half that makes it READ under a bright
+    // environment: each speck is SMOOTHER AND METALLIC compared to the plastic
+    // around it. A normal map alone only tilts the surface — the specks catch
+    // the same dull highlight as the body and wash out. Real flake is a chip of
+    // metal in resin, so it takes a mirror highlight where the resin does not,
+    // and that contrast is what flashes as the camera moves.
+    //
+    // glTF packs these into ONE texture: green = roughness, blue = metalness.
+    function sparkleORMTexture(GL, flake, repeat, bodyRough) {
+      const S = 512, CELLS = 24;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d");
+      const bodyG = Math.round(Math.max(0, Math.min(1, bodyRough)) * 255);
+      ctx.fillStyle = `rgb(255,${bodyG},0)`;      // plastic: its own roughness, no metal
+      ctx.fillRect(0, 0, S, S);
+      // The SAME seed as the normal map, so the smooth spots and the tilted
+      // spots are the same specks. Different seeds would give a surface that is
+      // bumpy in one place and shiny in another, which reads as dirt.
+      for (const s of GL.sparkleField({ cells: CELLS, coverage: flake.size, seed: 20260810 })) {
+        ctx.fillStyle = "rgb(255,38,255)";        // rough 0.15, metal 1.0
+        ctx.beginPath();
+        ctx.arc(s.x * S, s.y * S, Math.max(1.2, s.r * S) * 0.85, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.NoColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(repeat[0], repeat[1]);
+      t.channel = 1;
+      return t;
+    }
+
+    // Two UV sets, because the two maps want different things and neither can
+    // be faked with the other:
+    //   uv  — V is height, for the gradient ramp
+    //   uv1 — BOX MAPPED, for the flake. A single planar projection smears the
+    //         specks into streaks on every face it is edge-on to, which on a
+    //         box is four faces out of six.
+    function addExportUVs(geo, lo, hi) {
+      const g = geo.index ? geo.toNonIndexed() : geo.clone();
+      const p = g.attributes.position;
+      const n = p.count;
+      const span = Math.max(1e-6, hi[2] - lo[2]);
+      const uv = new Float32Array(n * 2), uv1 = new Float32Array(n * 2);
+      const nrm = g.attributes.normal;
+      for (let i = 0; i < n; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+        uv[i * 2] = 0.5;
+        uv[i * 2 + 1] = (z - lo[2]) / span;
+        // Dominant axis of the vertex normal picks the projection plane.
+        let ax = 0, ay = 0, az = 0;
+        if (nrm) { ax = Math.abs(nrm.getX(i)); ay = Math.abs(nrm.getY(i)); az = Math.abs(nrm.getZ(i)); }
+        let u, v;
+        if (az >= ax && az >= ay) { u = x; v = y; }        // facing up/down
+        else if (ax >= ay) { u = y; v = z; }               // facing ±X
+        else { u = x; v = z; }                             // facing ±Y
+        uv1[i * 2] = u; uv1[i * 2 + 1] = v;                // in MILLIMETRES; the
+        // texture's own repeat turns mm into tiles, so one setting controls the
+        // physical speck size everywhere instead of per-face guesswork.
+      }
+      g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      g.setAttribute("uv1", new THREE.BufferAttribute(uv1, 2));
+      return g;
+    }
+
+    // Everything the viewer shows that glTF can actually carry. Returned so the
+    // export dialog can tell the user what did NOT fit.
+    let lastGlbNotes = [];
+
+    async function modelToGLB(opts = {}) {
       const { GLTFExporter } = await getGLTFExporter();
+      const GL = await import("./glblook.js");
       const grp = new THREE.Group();
+
+      // The spool decides almost everything below. No spool (a generic
+      // filament) means the plain path this export always had.
+      const entry = FILAMENTS[mat.filament];
+      const spool = opts.plain ? null : entry?.spool;
+      const F = spool ? await _fil : null;
+      const family = spool ? F.FAMILY[spool.family] : null;
+
+      const bb = new THREE.Box3().setFromObject(modelGroup);
+      const lo = bb.isEmpty() ? [0, 0, 0] : bb.min.toArray();
+      const hi = bb.isEmpty() ? [1, 1, 1] : bb.max.toArray();
+      const sizeMm = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+
+      const phys = spool ? GL.physicalFromSpool(spool, family, sizeMm, { opacity: mat.opacity / 100 }) : null;
+      const gradTex = spool?.grad ? gradientTexture(GL, spool.grad) : null;
+      // One repeat for both axes and every face: UV1 is in millimetres, so
+      // this alone fixes the physical speck size, and it does not change with
+      // the size of the part — flake is a property of the filament.
+      const rep = spool?.flake
+        ? [GL.uvRepeat(spool.flake.density), GL.uvRepeat(spool.flake.density)] : null;
+      const sparkTex = spool?.flake ? sparkleNormalTexture(GL, spool.flake, rep) : null;
+      const ormTex = spool?.flake
+        ? sparkleORMTexture(GL, spool.flake, rep, spool.rough ?? family.rough) : null;
+      // The flake's own dial in the Material tab scales how hard it reads.
+      const sparkleAmt = Math.max(0, Math.min(2, mat.sparkle ?? 1));
+
+      // The kernel hands back one mesh PER FACE, so a plain box is six meshes
+      // that all want the identical material. Built naively that is six
+      // materials and, because each carries the same two maps, a dozen copies
+      // of the textures in the file — 248KB of mostly duplicate PNG on a cube.
+      // Keyed on what actually differs.
+      const matCache = new Map();
+      const shared = (key, make) => {
+        if (!matCache.has(key)) matCache.set(key, make());
+        return matCache.get(key);
+      };
+
       modelGroup.traverse((o) => {
         if (!o.isMesh || !o.geometry) return;
         const src = o.material;
-        // carry the real surface so the GLB looks like the viewer: per-shape
-        // colour, metalness/roughness, and emissive (glow-in-the-dark travels too)
-        const mat = new THREE.MeshStandardMaterial({
-          color: src?.color ? src.color.clone() : new THREE.Color(0x9fb4d6),
-          metalness: src?.metalness ?? 0.1,
-          roughness: src?.roughness ?? 0.6,
-          emissive: src?.emissive ? src.emissive.clone() : new THREE.Color(0x000000),
-          emissiveIntensity: src?.emissiveIntensity ?? 1,
-          transparent: !!src?.transparent,
-          opacity: src?.opacity ?? 1,
-          side: THREE.DoubleSide,
-        });
-        const mesh = new THREE.Mesh(o.geometry, mat);   // adopted geometry is already world-space
         o.updateWorldMatrix(true, false);
-        mesh.applyMatrix4(o.matrixWorld);
-        grp.add(mesh);
+        // Geometry is cloned before anything touches it — these are the
+        // VIEWER'S buffers, and adding UVs to them in place would rewrite the
+        // model on screen as a side effect of exporting it.
+        const geo = addExportUVs(o.geometry, lo, hi);
+        geo.applyMatrix4(o.matrixWorld);
+
+        // Emissive only travels when there IS emissive. Writing it anyway made
+        // every material carry KHR_materials_emissive_strength with a factor of
+        // 0 — a glow extension that says "no glow", which some importers honour
+        // by killing the emissive channel outright.
+        const emis = src?.emissive && src.emissive.getHex() !== 0
+          ? { emissive: src.emissive.clone(), emissiveIntensity: src.emissiveIntensity ?? 1 }
+          : {};
+        const own = src?.color ? `#${src.color.getHexString()}` : null;
+
+        let m;
+        if (phys) {
+          // A shape that was given its own colour keeps it — a two-colour
+          // glitter model must not collapse to one hue just because a spool is
+          // selected. The gradient only lands on surfaces that ARE the spool.
+          const isSpoolSurface = !own || own.toLowerCase() === String(spool.base).toLowerCase();
+          m = shared(`spool|${own}|${isSpoolSurface}|${emis.emissive?.getHex() ?? 0}`, () => {
+            const mm = new THREE.MeshPhysicalMaterial({
+              color: new THREE.Color().setRGB(...(isSpoolSurface && gradTex ? [1, 1, 1] : phys.color)),
+              roughness: phys.roughness,
+              metalness: phys.metalness,
+              ior: phys.ior,
+              transmission: phys.transmission,
+              thickness: phys.thickness,
+              attenuationDistance: phys.attenuationDistance || Infinity,
+              attenuationColor: new THREE.Color().setRGB(...phys.attenuationColor),
+              specularIntensity: phys.specularIntensity,
+              iridescence: phys.iridescence * sparkleAmt,
+              iridescenceIOR: phys.iridescenceIOR,
+              iridescenceThicknessRange: phys.iridescenceThicknessRange,
+              clearcoat: phys.clearcoat,
+              clearcoatRoughness: phys.clearcoatRoughness,
+              side: THREE.DoubleSide,
+              ...emis,
+            });
+            if (!isSpoolSurface && src?.color) mm.color.copy(src.color);
+            if (isSpoolSurface && gradTex) mm.map = gradTex;
+            if (sparkTex && sparkleAmt > 0) {
+              mm.normalMap = sparkTex;
+              const k = spool.flake.strength * 0.25 * sparkleAmt;
+              mm.normalScale = new THREE.Vector2(k, k);
+              // Metalness/roughness must be 1 for the MAP to be what decides
+              // them — glTF multiplies the factor by the texture, so leaving
+              // metalness at 0 multiplies the flake's metal away to nothing and
+              // the specks go back to being bumps in plastic.
+              mm.metalnessMap = ormTex;
+              mm.roughnessMap = ormTex;
+              mm.metalness = 1;
+              mm.roughness = 1;
+            }
+            // Transmission does the see-through, so alpha stays out of it — a
+            // material that is both transmissive AND alpha-blended double-counts
+            // and comes out ghostly.
+            if (!phys.transmission && phys.opacity < 1) { mm.transparent = true; mm.opacity = phys.opacity; }
+            return mm;
+          });
+        } else {
+          m = shared(`plain|${own}|${src?.metalness}|${src?.roughness}|${src?.opacity}|${emis.emissive?.getHex() ?? 0}`, () =>
+            new THREE.MeshStandardMaterial({
+              color: src?.color ? src.color.clone() : new THREE.Color(0x9fb4d6),
+              metalness: src?.metalness ?? 0.1,
+              roughness: src?.roughness ?? 0.6,
+              transparent: !!src?.transparent,
+              opacity: src?.opacity ?? 1,
+              side: THREE.DoubleSide,
+              ...emis,
+            }));
+        }
+        grp.add(new THREE.Mesh(geo, m));
       });
       if (!grp.children.length) throw new Error("no mesh geometry to export");
+
+      // The rig, as real glTF lights. Without these the file opens under
+      // whatever default the receiving app has, which for a transmissive part
+      // is usually a grey blob — the lighting IS half the look here.
+      if (opts.lights !== false) {
+        for (const L of GL.lightsFor(mat)) {
+          const d = new THREE.DirectionalLight(new THREE.Color(L.color), L.intensity);
+          d.position.set(...L.position);
+          d.name = L.name;
+          grp.add(d);
+          grp.add(d.target);           // a directional light exports its aim, not just its spot
+        }
+      }
+      lastGlbNotes = GL.unexportable(mat);
+
       // model-viewer is Y-up; our scene is Z-up — rotate so it sits upright.
       grp.rotateX(-Math.PI / 2);
       const glb = await new GLTFExporter().parseAsync(grp, { binary: true, onlyVisible: false });
       return glb;   // ArrayBuffer
     }
+    // Same hook style as __brepQuicksaveProject: the desktop app and the tests
+    // need the finished GLB without driving the dialog, and reading the file
+    // back is the only way to prove which glTF extensions actually landed.
+    window.__brepModelToGLB = modelToGLB;
+    window.__brepGlbNotes = () => lastGlbNotes;
+
     // Chunked base64 — btoa(String.fromCharCode(...bigArray)) blows the stack.
     function base64OfBuffer(buf) {
       const bytes = new Uint8Array(buf);
@@ -9776,7 +10051,8 @@ ${joined}`)(...vs);
     }
 
     async function openSharedModel() {
-      if (!/[#&]m=/.test(location.hash)) return false;
+      const shortName = /[#&]s=/.test(location.hash);
+      if (!/[#&]m=/.test(location.hash) && !shortName) return false;
       shareLoading(true);
       // Held until the model is actually ON THE PLATE, not merely decoded: the
       // kernel build is the long half, and dropping the glow at the end of the
@@ -9786,7 +10062,25 @@ ${joined}`)(...vs);
       setTimeout(done, 120000);        // a build that never lands must not glow forever
       try {
         const exp = await getExporters();
-        const text = await exp.readShareFragment(location.hash);
+        // A short link is the same model with a lookup in front of it: fetch
+        // the text, then fall into exactly the same path the long link takes.
+        // Everything below this line cannot tell which kind it was.
+        let text;
+        if (shortName) {
+          const cl = await getCloud();
+          const slug = cl.shortSlugIn(location.hash);
+          try {
+            ({ text } = await cl.resolveShort(slug));
+          } catch (e) {
+            // A dead short link is a blank screen unless it says otherwise —
+            // and unlike a long link, there is nothing in the URL to recover
+            // the model from, so the message is all the visitor gets.
+            setStatus("err", `That link did not open — ${e?.message || e}`);
+            return false;
+          }
+        } else {
+          text = await exp.readShareFragment(location.hash);
+        }
         if (!text) return false;
         const { source, scene, meshes, name } = exp.parseBcodeFile(text);
         if (!source) return false;
@@ -9932,6 +10226,68 @@ ${joined}`)(...vs);
     const shareBase = () => (/^https?:$/.test(location.protocol)
       ? location.origin + location.pathname
       : PUBLIC_SITE);
+
+    // ---- short links -------------------------------------------------------
+    //
+    // Loaded on demand like every other optional module: a fork with no backend
+    // configured never fetches it, and neither does anyone who only ever uses
+    // the long link.
+    let _cloud;
+    const getCloud = () => (_cloud ??= import("./cloudlink.js"));
+
+    // Ask the server whether a name is free, but only after the typing stops
+    // and only for the LAST thing typed — a request per keystroke would answer
+    // out of order and show a verdict for a name the box no longer holds.
+    let shortCheckTimer = null, shortCheckAbort = null;
+    let shortState = { slug: "", ok: false };
+    async function paintShortStatus() {
+      const box = $("short-name"), out = $("short-status");
+      if (!box || !out) return;
+      const cl = await getCloud();
+      const slug = cl.slugify(box.value);
+      shortState = { slug, ok: false };
+      if (!slug) { out.textContent = "give it a name"; out.className = "note warn"; return; }
+      // Say what the name BECOMES before saying whether it is free — a person
+      // who typed "FISH bowl!" should see "fish-bowl" here, not be surprised
+      // by it in the link afterwards.
+      const shown = slug !== box.value.toLowerCase() ? ` (as “${slug}”)` : "";
+      const local = cl.nameProblem(slug);
+      if (local) { out.textContent = local; out.className = "note warn"; return; }
+      if (!cl.cloudReady()) {
+        out.textContent = "short links are not set up on this copy — the long link still works";
+        out.className = "note warn";
+        return;
+      }
+      out.textContent = `checking “${slug}”…`;
+      out.className = "note";
+      shortCheckAbort?.abort();
+      shortCheckAbort = new AbortController();
+      let res;
+      try { res = await cl.checkName(slug, { signal: shortCheckAbort.signal }); }
+      catch { return; }                     // superseded by a later keystroke
+      if (cl.slugify($("short-name").value) !== slug) return;   // ditto
+      shortState = { slug, ok: !!res.ok };
+      out.textContent = res.ok
+        ? (res.mine ? `“${slug}” is yours${shown} — saving replaces it` : `“${slug}” is free${shown}`)
+        : res.reason;
+      out.className = res.ok ? "note ok" : "note warn";
+    }
+
+    function wireShortRow() {
+      const on = $("short-on"), wrap = $("short-name-wrap"), box = $("short-name");
+      if (!on || on.dataset.wired) return;
+      on.dataset.wired = "1";
+      on.addEventListener("change", async () => {
+        wrap.hidden = !on.checked;
+        if (!on.checked) return;
+        if (!box.value.trim()) box.value = safeModelName();
+        paintShortStatus();
+      });
+      box.addEventListener("input", () => {
+        clearTimeout(shortCheckTimer);
+        shortCheckTimer = setTimeout(paintShortStatus, 350);
+      });
+    }
 
     const currentScene = () => ({
       material: mat,
@@ -10270,14 +10626,31 @@ ${joined}`)(...vs);
             throw new Error("this model is too big for a link — save a .bcode and send the file "
               + "(models carrying an imported mesh usually are)");
           }
-          const url = shareBase() + frag;
+          let url = shareBase() + frag;
+          let shortNote = "";
+          // The short link REPLACES what gets copied, but only once it is
+          // actually saved. A failure here leaves the long link in the
+          // clipboard and says why — the one thing that must not happen is
+          // handing someone a short URL that resolves to nothing.
+          if ($("short-on")?.checked) {
+            const cl = await getCloud();
+            const slug = cl.slugify($("short-name").value || base);
+            try {
+              await cl.saveShort({ slug, text, name: base });
+              url = cl.shortUrl(shareBase(), slug);
+              shortNote = `Hosted as <b>${slug}</b>. `;
+            } catch (e) {
+              shortNote = `<span style="color:var(--warn,#e5a05a)">Short link not saved — ${
+                (e?.message || e)}. The full link below still works.</span> `;
+            }
+          }
           try { await navigator.clipboard.writeText(url); } catch { /* http, or no permission */ }
           size = url.length;
           const enc = encodeURIComponent(url);
           const title = encodeURIComponent(`${base} — made with BREPcode`);
-          fixnote.innerHTML =
-            `<span style="color:var(--muted3)">Link copied — <b>${(url.length / 1024).toFixed(1)} KB</b>. `
-            + `Anyone who opens it gets the model, editable, with nothing stored anywhere. Share it: </span>`
+          fixnote.innerHTML = shortNote
+            + `<span style="color:var(--muted3)">Link copied — <b>${(url.length / 1024).toFixed(1)} KB</b>. `
+            + `Anyone who opens it gets the model, editable. Share it: </span>`
             + `<a href="https://twitter.com/intent/tweet?text=${title}&url=${enc}" target="_blank" rel="noopener">X</a> · `
             + `<a href="https://www.linkedin.com/sharing/share-offsite/?url=${enc}" target="_blank" rel="noopener">LinkedIn</a> · `
             + `<a href="https://www.facebook.com/sharer/sharer.php?u=${enc}" target="_blank" rel="noopener">Facebook</a>`;
@@ -10525,7 +10898,7 @@ ${joined}`)(...vs);
     const exportModal = $("export-modal");
     const EXPORT_FORMATS = {
       bcode: { kind: "code", desc: "The project itself — your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
-      share: { kind: "code", desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
+      share: { kind: "code", opts: ["short-row"], desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
       slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
       publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
       stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
@@ -11372,11 +11745,12 @@ ${joined}`)(...vs);
       syncGroupControls(fmt);
       $("exp-desc").textContent = spec.desc;
       for (const row of ["mesh-variant-row", "step-variant-row", "glb-wrap-row",
-        "publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
+        "short-row", "publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row",
         "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
       }
+      if (fmt === "share") wireShortRow();
       // the disclosure only earns its space if something is inside it
       $("exp-more").hidden = !ADVANCED_ROWS.some((id) => !$(id).hidden);
       paintCaveat(fmt);
