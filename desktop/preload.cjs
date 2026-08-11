@@ -80,4 +80,11 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   // A file the OS handed us: double-clicked in Explorer, or dropped on the app.
   // The page registers a callback and gets { name, text } for each one.
   onOpenFile: (cb) => ipcRenderer.on("open-file", (_e, payload) => cb(payload)),
+
+  // Claim a short link from here rather than sending the user to a browser.
+  // CORS blocks the page (app:// is not an origin any server can allow); the
+  // main process has no origin at all. NOT a URL fetcher — the page names an
+  // operation and a name, and main builds the address from its own constant,
+  // so this cannot be turned into a relay to somewhere else.
+  shortLink: (req) => ipcRenderer.invoke("shortlink:call", req),
 });

@@ -221,14 +221,15 @@ console.log("\nwhere it cannot work\n");
   // user will read as "the site is down".
   const realLoc = globalThis.location;
   globalThis.location = { protocol: "app:" };
-  check("a non-http origin is named as the reason", /desktop app/.test(cl.originProblem() || ""),
+  check("a non-http origin with no bridge is named as the reason",
+    /cannot reach the link server/.test(cl.originProblem() || ""),
     cl.originProblem());
   const res = await cl.checkName("fish-bowl");
   check("...and a name check reports it rather than claiming free",
-    !res.ok && res.offline && /desktop app/.test(res.reason), JSON.stringify(res));
+    !res.ok && res.offline && /cannot reach/.test(res.reason), JSON.stringify(res));
   let threw = "";
   try { await cl.saveShort({ slug: "fish-bowl", text: "T" }); } catch (e) { threw = e.message; }
-  check("...and saving refuses up front", /desktop app/.test(threw), threw);
+  check("...and saving refuses up front", /cannot reach/.test(threw), threw);
   globalThis.location = { protocol: "https:" };
   check("on the website there is no such problem", cl.originProblem() === null);
   globalThis.location = realLoc;
@@ -260,6 +261,81 @@ console.log("\nclaiming by proxy, for the desktop app\n");
   check("nothing is nothing", cl.claimSlugIn("") === null);
 }
 
+console.log("\nthe desktop app sends it ITSELF\n");
+{
+  // A fetch from the exe's page is blocked before it leaves — app:// is not an
+  // origin any server can allow. But that is a rule about RENDERER processes,
+  // not about the machine: Electron's main process has no origin and no CORS.
+  // So the exe stops handing the job to a browser and just makes the request.
+  const calls = [];
+  const rows = { "someone-elses": { slug: "someone-elses", payload: "THEIRS", owner: "not-mine" } };
+  globalThis.location = { protocol: "app:" };
+  globalThis.fetch = async () => { throw new TypeError("a renderer fetch must NEVER be attempted here"); };
+  globalThis.window = {
+    brepcodeDesktop: {
+      shortLink: async (req) => {
+        calls.push(req);
+        const { method, slug, body, secret } = req;
+        if (method === "GET") {
+          return rows[slug]
+            ? { ok: true, status: 200, json: rows[slug] }
+            : { ok: true, status: 404, json: { error: "not found" } };
+        }
+        if (method === "POST") {
+          if (rows[body.slug]) return { ok: true, status: 409, json: { error: "slug already taken" } };
+          rows[body.slug] = { ...body };
+          return { ok: true, status: 201, json: { slug: body.slug } };
+        }
+        if (method === "PATCH") {
+          if (!rows[slug]) return { ok: true, status: 404, json: {} };
+          if (rows[slug].owner !== secret) return { ok: true, status: 403, json: { error: "forbidden" } };
+          Object.assign(rows[slug], body);
+          return { ok: true, status: 200, json: rows[slug] };
+        }
+        return { ok: false, error: "?" };
+      },
+    },
+  };
+  store.clear();
+
+  check("with the bridge present this is NOT reported as unreachable",
+    cl.originProblem() === null, cl.originProblem());
+  const free = await cl.checkName("bridged");
+  check("a name can be checked from the app", free.ok && free.free, JSON.stringify(free));
+  check("saving works from the app",
+    await cl.saveShort({ slug: "bridged", text: "MODEL" }) === "bridged");
+  check("...and it went through the BRIDGE, not a renderer fetch",
+    calls.some((c) => c.method === "POST"), calls.map((c) => c.method).join(","));
+  const got = await cl.resolveShort("bridged");
+  check("...and reading it back gives the model", got.text === "MODEL", got.text);
+
+  await cl.saveShort({ slug: "bridged", text: "V2" });
+  const patch = calls.find((c) => c.method === "PATCH");
+  check("an update passes the owner secret as its own field",
+    !!patch?.secret && patch.secret === rows.bridged.owner);
+  check("...and the page never names a URL — only an operation and a name",
+    calls.every((c) => !("url" in c) && !("endpoint" in c)),
+    "a bridge that accepted a URL would be an open relay to any host");
+
+  // Every guarantee the browser path makes has to hold here too.
+  let threw = "";
+  try { await cl.saveShort({ slug: "someone-elses", text: "HIJACK" }); } catch (e) { threw = e.message; }
+  check("someone else's name is still refused over the bridge", /taken/.test(threw), threw);
+  check("...and their model is untouched", rows["someone-elses"].payload === "THEIRS");
+
+  globalThis.window.brepcodeDesktop.shortLink = async () => ({ ok: false, error: "no internet" });
+  const down = await cl.checkName("bridged");
+  check("a bridge with no internet is UNREACHABLE, never free",
+    !down.ok && down.offline && !down.free, JSON.stringify(down));
+
+  // An older exe has no bridge — that is when the browser hand-off is right.
+  delete globalThis.window.brepcodeDesktop;
+  check("no bridge on app:// falls back to naming the limitation",
+    /cannot reach/.test(cl.originProblem() || ""), cl.originProblem());
+  globalThis.location = { protocol: "https:" };
+  globalThis.window = {};
+}
+
 console.log("\noffering a name that IS free\n");
 {
   // "Taken — pick another name" is half an answer. Walk a few and come back
@@ -276,6 +352,36 @@ console.log("\noffering a name that IS free\n");
   // check is how someone ends up claiming something already taken.
   globalThis.fetch = async () => { throw new TypeError("down"); };
   check("an unreachable server offers nothing", await cl.suggestFreeName("bowl") === null);
+}
+
+console.log("\nthe desktop bridge is actually wired up\n");
+{
+  // Three separate files have to agree, and nothing at runtime complains if
+  // one of them does not: the page would simply fall back to "cannot reach the
+  // link server" in an app that CAN.
+  const main = readFileSync("desktop/main.cjs", "utf8");
+  const pre = readFileSync("desktop/preload.cjs", "utf8");
+  const mod = readFileSync("desktop/shortlink.cjs", "utf8");
+  const page = readFileSync("viewer/cloudlink.js", "utf8");
+
+  check("main requires the bridge", /require\("\.\/shortlink\.cjs"\)/.test(main));
+  check("...and registers its handler", /shortlink\.register\(\)/.test(main));
+  check("preload exposes it under the name the page looks for",
+    /shortLink:\s*\(req\)\s*=>\s*ipcRenderer\.invoke\("shortlink:call"/.test(pre));
+  check("...matching what cloudlink.js calls",
+    /brepcodeDesktop\?\.shortLink/.test(page));
+  check("the handler answers that exact channel", /ipcMain\.handle\("shortlink:call"/.test(mod));
+
+  // The bridge must not become a way to reach anything else on the network.
+  // The page runs model code and, with the chat on, text written by an AI.
+  check("the endpoint is a CONSTANT in the main process, not a parameter",
+    /const ENDPOINT =/.test(mod) && !/req\.(url|endpoint|host)/.test(mod),
+    "a bridge that took a URL would be an open relay");
+  check("only the three methods the API has are allowed",
+    /METHODS = new Set\(\["GET", "POST", "PATCH"\]\)/.test(mod));
+  check("the slug is re-validated in main, not trusted from the page",
+    /SLUG\.test\(slug\)/.test(mod));
+  check("a write is size-capped before it is sent", /payload\.length > MAX_BYTES/.test(mod));
 }
 
 console.log("\nthe module actually ships\n");

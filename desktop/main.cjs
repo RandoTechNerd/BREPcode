@@ -23,6 +23,7 @@ const fetchmodel = require("./fetchmodel.cjs");
 const slicer = require("./slicer.cjs");
 const claude = require("./claude.cjs");
 const aiproxy = require("./aiproxy.cjs");
+const shortlink = require("./shortlink.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -199,6 +200,7 @@ if (!EMBEDDED) app.whenReady().then(() => {
   slicer.register();        // "open this in my slicer" — impossible from a web page
   claude.register();        // chat via the user's own Claude Code login
   aiproxy.register();       // OpenAI refuses browser chat; a desktop app has no origin
+  shortlink.register();     // same reason: CORS does not cover app://, the main process has no origin
   serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.

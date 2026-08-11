@@ -49,14 +49,45 @@ export function cloudConfig() {
 
 export const cloudReady = () => !!cloudConfig().url;
 
-// The desktop app serves itself over app://, and CORS does not extend to
-// custom schemes — the request never leaves. That is not a failure worth
-// retrying, it is a place the feature does not work, so it says so plainly and
-// the long link (which needs no server) carries on being the answer there.
+// The desktop app talks to the link server through its OWN bridge.
+//
+// A fetch from the app's page is blocked before it leaves: it serves itself
+// over app://, and CORS does not extend to custom schemes. But that is a rule
+// about renderer processes, not about the machine — Electron's main process
+// has no origin and no CORS, so it just makes the request. desktop/shortlink.cjs
+// is that bridge, and it is deliberately not a URL fetcher: the page names an
+// operation and a name, and main builds the address itself.
+const bridge = () =>
+  (typeof window !== "undefined" && typeof window.brepcodeDesktop?.shortLink === "function")
+    ? window.brepcodeDesktop.shortLink : null;
+
+// Where the feature genuinely cannot work: a non-http page with no bridge —
+// an older exe, or the bundle opened straight off disk. Said plainly, so the
+// browser hand-off can be offered instead of a network error nobody can act on.
 export function originProblem() {
+  if (bridge()) return null;
   if (typeof location === "undefined") return null;
   if (/^https?:$/.test(location.protocol)) return null;
-  return "short links need the website — the desktop app cannot reach the link server";
+  return "short links need the website — this build cannot reach the link server";
+}
+
+// One call, two transports. Everything below goes through here so the bridge
+// and the browser cannot drift into behaving differently.
+async function api({ method, slug, body, secret, signal }) {
+  const send = bridge();
+  if (send) {
+    const r = await send({ method, slug, body, secret });
+    if (!r || r.ok === false) throw new TypeError(r?.error || "could not reach the link server");
+    return { status: r.status, json: async () => r.json, ok: r.status >= 200 && r.status < 300 };
+  }
+  const headers = { Accept: "application/json" };
+  if (body) headers["Content-Type"] = "application/json";
+  if (secret) headers[OWNER_HEADER] = secret;
+  const r = await fetch(endpoint(slug && method !== "POST" ? slug : ""), {
+    method, headers, signal,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r;
 }
 
 const OWNER_HEADER = "X-Owner-Secret";
@@ -140,7 +171,7 @@ export async function checkName(slug, { signal } = {}) {
   if (orig) return { ok: false, offline: true, reason: orig };
   if (!cloudReady()) return { ok: false, offline: true, reason: "short links are not set up on this copy" };
   try {
-    const r = await fetch(endpoint(slug), { headers: { Accept: "application/json" }, signal });
+    const r = await api({ method: "GET", slug, signal });
     if (r.status === 404) return { ok: true, free: true };
     if (!r.ok) return { ok: false, offline: true, reason: `lookup failed (${r.status})` };
     return ownerTokenFor(slug)
@@ -182,10 +213,9 @@ export async function saveShort({ slug, text, name }) {
   // SERVER decides whether the name was free — a 409 is the race being settled
   // there rather than here, where two people can pass the same check.
   if (mine) {
-    const r = await fetch(endpoint(slug), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", [OWNER_HEADER]: mine },
-      body: JSON.stringify({ name: name || slug, payload: text }),
+    const r = await api({
+      method: "PATCH", slug, secret: mine,
+      body: { name: name || slug, payload: text },
     });
     if (r.status === 401 || r.status === 403) {
       throw new Error(`"${slug}" belongs to someone else — pick another name`);
@@ -206,10 +236,9 @@ export async function saveShort({ slug, text, name }) {
 
 async function createShort({ slug, text, name }) {
   const token = newToken();
-  const r = await fetch(endpoint(), {
+  const r = await api({
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug, name: name || slug, payload: text, owner: token }),
+    body: { slug, name: name || slug, payload: text, owner: token },
   });
   if (r.status === 409) throw new Error(`"${slug}" is taken — pick another name`);
   if (r.status === 413) throw new Error("the link server refused this model as too large");
@@ -224,7 +253,7 @@ async function createShort({ slug, text, name }) {
 // The other end: a fragment comes in, the model text comes back.
 export async function resolveShort(slug) {
   if (!cloudReady()) throw new Error("short links are not set up on this copy");
-  const r = await fetch(endpoint(slug), { headers: { Accept: "application/json" } });
+  const r = await api({ method: "GET", slug });
   if (r.status === 404) throw new Error(`there is no model called "${slug}"`);
   if (!r.ok) throw new Error(await errorFrom(r, `could not fetch that link (${r.status})`));
   const row = await r.json();
