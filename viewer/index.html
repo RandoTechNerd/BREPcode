@@ -936,6 +936,10 @@
        changed. Filling the box absolutely breaks the loop: layout no longer
        depends on the canvas at all. */
     #exp-slice { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    /* Same treatment for the mesh preview, for the same reason: its width and
+       height ATTRIBUTES must never decide the layout, or the drawing sizes the
+       element that sizes the drawing. */
+    #exp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     #slice-modal {
       position: fixed; inset: 0; z-index: 70; display: grid; place-items: center;
       background: rgba(0,0,0,.6);
@@ -11271,6 +11275,31 @@ ${joined}`)(...vs);
     let expPrev = null;      // lazy: { renderer, scene, camera, holder, mono }
     let expToken = 0;
 
+    // The preview canvas FILLS its frame, and is re-measured every time it is
+    // drawn. It used to be a fixed 300x190 inside a box that is 433 wide, so
+    // nearly a third of the frame was dead space and the model was drawn
+    // smaller than it needed to be — and it stayed 300 wide however the dialog
+    // was sized. Sizing from the box also means the aspect ratio is right, so
+    // a wide part is no longer squeezed into a 300x190 window.
+    function expResize() {
+      if (!expPrev) return;
+      const box = $("exp-preview");
+      const w = Math.max(80, box.clientWidth), h = Math.max(60, box.clientHeight);
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      const cv = expPrev.renderer.domElement;
+      // Only touch the GL surface when it actually changed: setSize reallocates
+      // the drawing buffer, and doing that on every frame of a resize drag is
+      // what makes a preview stutter.
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+        expPrev.renderer.setPixelRatio(dpr);
+        expPrev.renderer.setSize(w, h, false);
+      }
+      if (Math.abs(expPrev.camera.aspect - w / h) > 1e-3) {
+        expPrev.camera.aspect = w / h;
+        expPrev.camera.updateProjectionMatrix();
+      }
+    }
+
     function ensureExpPreview() {
       if (expPrev) return expPrev;
       const canvas = $("exp-canvas");
@@ -11290,17 +11319,69 @@ ${joined}`)(...vs);
       return expPrev;
     }
 
-    function expFit(pad = 3.0) {
+    // Fit the model to the FRAME, not to a sphere around it.
+    //
+    // This used to place the camera at boundingSphereRadius * 3, which ignores
+    // the frame's shape entirely: a sphere is limited by the SMALLER field of
+    // view, so widening the preview bought nothing and simply left more empty
+    // space around the part. A 62x42x22 group is a wide, flat thing and should
+    // use a wide frame.
+    //
+    // So the eight corners are projected and the distance is pulled in until
+    // the widest of them just touches the edge. NDC extent goes as roughly 1/d
+    // for a perspective camera, so d *= extent converges in two or three
+    // passes — cheap, and exact enough that the result is measured rather than
+    // assumed.
+    function expFit(pad = 1.14) {
       const { camera, holder } = expPrev;
       const bb = new THREE.Box3().setFromObject(holder);
       if (bb.isEmpty()) return;
       const c = bb.getCenter(new THREE.Vector3());
       const r = Math.max(bb.getSize(new THREE.Vector3()).length() / 2, 0.001);
-      camera.position.copy(c).addScaledVector(new THREE.Vector3(1, -1, 0.75).normalize(), r * pad);
-      camera.near = r / 100; camera.far = r * 100;
+      const dir = new THREE.Vector3(1, -1, 0.75).normalize();
+      camera.near = Math.max(r / 1000, 0.001); camera.far = r * 100;
+      let d = r * 3;
+      const v = new THREE.Vector3();
+      for (let pass = 0; pass < 3; pass++) {
+        camera.position.copy(c).addScaledVector(dir, d);
+        camera.lookAt(c);
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld(true);
+        let ext = 0;
+        for (let i = 0; i < 8; i++) {
+          v.set(i & 1 ? bb.max.x : bb.min.x, i & 2 ? bb.max.y : bb.min.y, i & 4 ? bb.max.z : bb.min.z);
+          v.project(camera);
+          ext = Math.max(ext, Math.abs(v.x), Math.abs(v.y));
+        }
+        if (!(ext > 0)) break;
+        d *= ext * pad;                      // ext == 1 means it exactly fills
+      }
+      camera.position.copy(c).addScaledVector(dir, d);
       camera.lookAt(c);
       camera.updateProjectionMatrix();
     }
+
+    // Same hook style as __brepModelToGLB: how much of the frame the preview
+    // actually uses is the whole question here, and it cannot be read back off
+    // the GL surface (the drawing buffer is not preserved). Returns the widest
+    // projected corner in NDC — 1.0 exactly fills the frame, so a good fit sits
+    // just under it.
+    window.__brepPreviewFit = () => {
+      if (!expPrev) return null;
+      const bb = new THREE.Box3().setFromObject(expPrev.holder);
+      if (bb.isEmpty()) return null;
+      const v = new THREE.Vector3();
+      let x = 0, y = 0;
+      expPrev.camera.updateMatrixWorld(true);
+      for (let i = 0; i < 8; i++) {
+        v.set(i & 1 ? bb.max.x : bb.min.x, i & 2 ? bb.max.y : bb.min.y, i & 4 ? bb.max.z : bb.min.z);
+        v.project(expPrev.camera);
+        x = Math.max(x, Math.abs(v.x)); y = Math.max(y, Math.abs(v.y));
+      }
+      const cv = expPrev.renderer.domElement;
+      return { ndcX: +x.toFixed(3), ndcY: +y.toFixed(3), aspect: +expPrev.camera.aspect.toFixed(3),
+        canvas: [cv.width, cv.height] };
+    };
 
     function expClearHolder() {
       for (const o of [...expPrev.holder.children]) {
@@ -11834,7 +11915,11 @@ ${joined}`)(...vs);
         }
       }
       if (mine !== expToken) return;
-      expFit(spec.kind === "parts" ? 2.2 : 3.0);
+      // Measure the frame before fitting the camera to it: the fit depends on
+      // the aspect ratio, so resizing after would leave the model framed for
+      // the previous shape of the box.
+      expResize();
+      expFit(spec.kind === "parts" ? 1.30 : 1.14);
       renderer.render(scene, camera);
     }
 
