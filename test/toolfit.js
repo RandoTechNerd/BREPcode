@@ -38,8 +38,16 @@ console.log("\nevery absent OpenSCAD module is named in the prompt\n");
   // "unsupported" reads as "degrades gracefully" and this one does not.
   check("the prompt says an absent module comes out EMPTY, not just unsupported",
     /silently skipped|comes out missing|comes out empty/i.test(DEFAULT_HARNESS));
-  check("...and points at the replacement for the common one (a lathe)",
-    /rotate_extrude[\s\S]{0,220}(revolve|tube)\(/.test(DEFAULT_HARNESS));
+  // rotate_extrude used to be the headline ABSENCE — the funnel that came out
+  // empty. It translates now, so the prompt's job changed from "reach for
+  // something else" to stating the one rule that decides which of the two
+  // shapes it becomes.
+  check("the lathe is advertised as working, not as missing",
+    /rotate_extrude\(\) WORKS/.test(DEFAULT_HARNESS));
+  check("...and the axis rule is stated, since it decides the whole result",
+    /TOUCH the axis \(x = 0\)/.test(DEFAULT_HARNESS) && /CIRCLE/.test(DEFAULT_HARNESS));
+  check("...including what is refused, and what to do instead",
+    /refused[\s\S]{0,200}tube\(\)/.test(DEFAULT_HARNESS));
 }
 
 console.log("\nand every module the prompt advertises really translates\n");
@@ -52,6 +60,9 @@ console.log("\nand every module the prompt advertises really translates\n");
     polygon: "linear_extrude(2) polygon([[0,0],[4,0],[4,4]]);",
     offset: "linear_extrude(2) offset(r = 1) square(4);",
     linear_extrude: "linear_extrude(2) square(4);",
+    // the lathe: a profile touching the axis. The detached case (a torus)
+    // is covered in its own test file.
+    rotate_extrude: "rotate_extrude() polygon([[0,0],[10,0],[0,5]]);",
     translate: "translate([1,0,0]) cube(2);",
     rotate: "rotate([0,0,45]) cube(2);",
     scale: "scale([2,1,1]) cube(2);",

@@ -369,7 +369,6 @@ const BUILTIN_FUNCS = {
 // silently; test/toolfit.js reads this object and fails if the prompt is missing
 // any key, so the two can only agree.
 export const UNSUPPORTED = {
-  rotate_extrude: "not supported yet — only linear_extrude is",
   text: "text isn't wired into the DSL yet",
   projection: "projection() isn't implemented",
   surface: "surface() isn't implemented",
@@ -384,6 +383,7 @@ export const UNSUPPORTED = {
 // loses the whole build — worth naming in the prompt for the same reason.
 export const LIMITED = {
   linear_extrude: "twist and scale are refused — use tube() or cone() for a taper",
+  rotate_extrude: "a profile detached from the axis must be a CIRCLE (that is a torus); any other detached shape is refused",
   polygon: "a second path (a hole) is refused — difference() two polygons instead",
 };
 
@@ -393,7 +393,7 @@ export const LIMITED = {
 // test rather than quietly turning the prompt into a lie.
 export const MODULES = [
   "cube", "sphere", "cylinder", "torus",
-  "square", "circle", "polygon", "linear_extrude",
+  "square", "circle", "polygon", "linear_extrude", "rotate_extrude",
   "translate", "rotate", "scale", "mirror",
   "union", "difference", "intersection", "hull", "minkowski", "offset",
   "color", "render", "group", "children", "echo", "assert",
@@ -415,6 +415,77 @@ export const profileOp = (op, children) => ({ __profile2d: true, op, children })
 export function mapProfile(p, fn) {
   if (p.leaf) return profileLeaf(p.pts.map(fn));
   return profileOp(p.op, p.children.map((c) => mapProfile(c, fn)));
+}
+
+// ---------------------------------------------------------- revolving a 2D
+//
+// Spun about the Z axis with the profile's X read as radius and Y as height,
+// which is what OpenSCAD's rotate_extrude does.
+//
+// Is this ring of points a circle? Decided by measurement, not by remembering
+// that circle() made it: by the time a profile reaches here it is a plain point
+// list, and it may have been translated, scaled or written out by hand. A
+// circle detached from the axis is a torus and nothing else is.
+export function circleOf(pts, tol = 0.02) {
+  if (!Array.isArray(pts) || pts.length < 8) return null;    // too few to tell
+  let cx = 0, cy = 0;
+  for (const [x, y] of pts) { cx += x; cy += y; }
+  cx /= pts.length; cy /= pts.length;
+  const rs = pts.map(([x, y]) => Math.hypot(x - cx, y - cy));
+  const r = rs.reduce((a, b) => a + b, 0) / rs.length;
+  if (!(r > 0)) return null;
+  // Every point the same distance from the centre, within a fraction of the
+  // radius. A polygon circle is inscribed, so the tolerance has to allow the
+  // sagitta of one facet — at $fn 12 that is already 3.4%.
+  const worst = Math.max(...rs.map((v) => Math.abs(v - r)));
+  return worst / r <= tol ? { cx, cy, r } : null;
+}
+
+const touchesAxis = (pts) => {
+  const on = (x) => Math.abs(x) < 1e-6;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    if (on(a[0]) && on(b[0])) return true;      // a whole EDGE on the axis
+  }
+  return false;
+};
+
+export function profileToRevolved(p, angle, fn) {
+  if (!p.leaf) {
+    // A boolean of 2D shapes: revolve each leaf and redo the boolean in 3D.
+    // Sound for a revolve about a shared axis, the same way profileToSolid
+    // treats a straight extrusion.
+    const kids = p.children.map((c) => profileToRevolved(c, angle, fn));
+    if (p.op === "difference") return dsl.difference(...kids);
+    if (p.op === "intersection") return dsl.intersection(...kids);
+    return dsl.union(...kids);
+  }
+  const pts = p.pts;
+  const minX = Math.min(...pts.map(([x]) => x));
+  if (minX < -1e-6) {
+    throw new Error("rotate_extrude() needs every point at x >= 0 — the profile "
+      + "would sweep through its own axis. Move it into the x >= 0 half.");
+  }
+  // Touching the axis: a real lathe, any outline.
+  if (touchesAxis(pts)) {
+    return dsl.revolve({ angle, ...(fn ? { $fn: fn } : {}) }, dsl.polygon(pts));
+  }
+  // Detached: revolve() has no axis edge to spin and refuses. A circle here is
+  // a torus — major radius = how far out the centre sits, tube = its radius.
+  const c = circleOf(pts);
+  if (c) {
+    const t = dsl.torus({
+      r: c.cx, tube: c.r,
+      ...(angle < 360 ? { arc: angle } : {}),
+      ...(fn ? { $fn: fn } : {}),
+    });
+    // The profile's Y is height, so a circle centred off y=0 rides up the axis.
+    return Math.abs(c.cy) > 1e-6 ? dsl.translate([0, 0, c.cy], t) : t;
+  }
+  throw new Error("rotate_extrude(): this profile does not touch the axis and is not a "
+    + "circle, so it would sweep a ring with a non-round section — the kernel has no "
+    + "such primitive. Either extend the profile to x = 0 (a true lathe), or use a "
+    + "circle (a torus), or sweep it yourself with tube().");
 }
 
 // Cutting/intersecting tools are extruded 2mm long and dropped 1mm so the
@@ -1031,6 +1102,35 @@ function evalCall(stmt, scope) {
       if (!isProfile(child)) throw new Error("linear_extrude() takes a 2D shape (square/circle/polygon) — its child is already 3D.");
       const solid = profileToSolid(child, h);
       return center ? dsl.translate([0, 0, -h / 2], solid) : solid;
+    }
+
+    // The lathe. This was the single most-missed module: every funnel, vase,
+    // knob, O-ring and hoop is written with it, and without it the translator
+    // warned once and dropped the revolve — leaving the flat 2D profile, which
+    // then auto-extruded 1mm. A build that succeeds and hands back a disc.
+    //
+    // It needs TWO routes, because revolve() and a torus are different shapes
+    // to the kernel:
+    //
+    //   profile TOUCHING the axis   -> revolve(): a true lathe of any outline
+    //   profile DETACHED from it    -> there is no surface on the axis at all,
+    //                                  and revolve() refuses. A detached circle
+    //                                  is exactly a torus, which the kernel has
+    //                                  as a primitive, arc and all.
+    //
+    // Anything else detached (a detached square, say) is a swept solid the
+    // kernel cannot make directly, and it is refused by name rather than
+    // approximated into something that looks plausible and is not.
+    case "rotate_extrude": {
+      const angle = arg(args, scope, null, "angle") ?? 360;
+      const fn = arg(args, scope, null, "$fn");
+      const child = childShape(stmt, scope);
+      if (!child) throw new Error("rotate_extrude() needs a 2D shape inside it.");
+      if (!isProfile(child)) {
+        throw new Error("rotate_extrude() takes a 2D shape (square/circle/polygon) — its child is already 3D.");
+      }
+      if (!(angle > 0)) throw new Error(`rotate_extrude() angle must be positive, not ${angle}.`);
+      return profileToRevolved(child, angle, fn);
     }
   }
 

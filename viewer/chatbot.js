@@ -1086,13 +1086,13 @@ OTHER LANGUAGES
 The editor also accepts pasted OpenSCAD, JSCAD (a whole @jscad/modeling module with main() and module.exports), and build123d/CadQuery Python (algebra mode) — the app auto-detects and translates them. If the user's code or question is in one of those languages, STAY in that language: reply with a complete model in it and the app will build it. OpenSCAD color("red")/color([r,g,b]) is supported and carries through to a multi-colour 3MF. Asked to convert between languages? Output the target language in the code block.
 
 WHAT THE OPENSCAD TRANSLATOR DOES NOT HAVE. This is a translator, not OpenSCAD itself. These eight modules are ABSENT — writing one is silently skipped, so the part comes out missing a piece and nothing says why:
-· rotate_extrude() — no lathe. A revolved profile is BREPcode revolve(); a funnel, spout, vase or bell is tube() with a radius list, which is better anyway.
+· rotate_extrude() WORKS, with one rule: the profile must either TOUCH the axis (x = 0), which lathes any outline — a vase, a bell, a knob — or be a CIRCLE sitting away from it, which is a torus (a hoop, an O-ring). A detached NON-circular profile is refused, because that sweeps a ring with a square section and the kernel has no such shape; extend it to x = 0, or sweep it with tube().
 · text() — no lettering. Use BREPcode text() or stencil().
 · import() — no STL/DXF loading. Files come in through the app's Import button.
 · polyhedron() — no raw mesh. Build it from primitives, or hull() a point cloud.
 · projection(), surface(), multmatrix(), resize() — absent, no substitute.
 Two more exist but REFUSE arguments, and these throw and lose the whole build: linear_extrude() rejects twist and scale (a tapered extrude is cylinder(r1, r2) or tube()), and polygon() rejects a second path, so cut holes with difference() of two polygons.
-Everything else you would reach for is there: cube, sphere, cylinder, torus, square, circle, polygon, linear_extrude, translate, rotate, scale, mirror, union, difference, intersection, hull, minkowski, offset, color, for, if, let, modules, functions and list comprehensions.`;
+Everything else you would reach for is there: cube, sphere, cylinder, torus, square, circle, polygon, linear_extrude, rotate_extrude, translate, rotate, scale, mirror, union, difference, intersection, hull, minkowski, offset, color, for, if, let, modules, functions and list comprehensions.`;
 
 // Kept for compatibility with older stored settings.
 export const SYSTEM_PROMPT = DEFAULT_HARNESS;
@@ -1160,12 +1160,12 @@ export function filterHarness(text, disabled = []) {
 export const STYLE_LANGUAGES = {
   // "" = say nothing extra; the harness already teaches BREPcode
   brepcode: "",
-  openscad: `OUTPUT LANGUAGE — OpenSCAD. Reply with OpenSCAD, not BREPcode: modules, cube/cylinder/sphere, square/circle/polygon, linear_extrude, translate/rotate/scale/mirror, union/difference/intersection, hull, minkowski, offset, $fn. The app translates it on the way in. color("red") and color([r,g,b]) carry through to a multi-colour 3MF. No return statement — OpenSCAD is statements, not an expression. Re-read WHAT THE OPENSCAD TRANSLATOR DOES NOT HAVE before you write: rotate_extrude, text, import, polyhedron, projection, surface, multmatrix and resize are absent here, and a funnel or vase written with rotate_extrude comes out empty.`,
+  openscad: `OUTPUT LANGUAGE — OpenSCAD. Reply with OpenSCAD, not BREPcode: modules, cube/cylinder/sphere, square/circle/polygon, linear_extrude, translate/rotate/scale/mirror, union/difference/intersection, hull, minkowski, offset, $fn. The app translates it on the way in. color("red") and color([r,g,b]) carry through to a multi-colour 3MF. No return statement — OpenSCAD is statements, not an expression. Re-read WHAT THE OPENSCAD TRANSLATOR DOES NOT HAVE before you write: text, import, polyhedron, projection, surface, multmatrix and resize are absent here. rotate_extrude IS supported — profile touching x = 0 lathes any outline, a detached circle is a torus.`,
   jscad: `OUTPUT LANGUAGE — JSCAD. Reply with a complete @jscad/modeling module: const { … } = require('@jscad/modeling'), a main() that returns the geometry, and module.exports = { main }. The app runs it as a module, so require() is the only import that works.`,
   build123d: `OUTPUT LANGUAGE — build123d (Python, ALGEBRA mode). Reply with Python: from build123d import *, then algebra-mode composition (part = Box(…) + Cylinder(…) - Hole(…)), locations via Pos()/Rot() or the * operator. Not builder mode — no "with BuildPart()" context managers, the app's translator reads algebra mode.`,
   any: `OUTPUT LANGUAGE — your choice, but choose on the GEOMETRY, not on taste, and stay in one language for the whole reply. They are auto-detected on the way in.
 · BREPcode is the default and the only one with tube(), blend(), fillet(), chamfer(), roundedGrow(), texture(), text(), drill(), stretch() and the scannable codes. Anything that sweeps, blends, rounds, letters or textures belongs here.
-· OpenSCAD ONLY when you need offset() — a real polygon inset/outset, which is cookie-cutter blades, anything traced from artwork, and 2D shells. BREPcode has no offset, so this is not a preference, it is the only route. Reach for it too when the user pasted OpenSCAD and expects edits back in it. Do NOT pick it for a revolved shape: this translator has no rotate_extrude.
+· OpenSCAD ONLY when you need offset() — a real polygon inset/outset, which is cookie-cutter blades, anything traced from artwork, and 2D shells. BREPcode has no offset, so this is not a preference, it is the only route. Reach for it too when the user pasted OpenSCAD and expects edits back in it. A revolved shape is fine here now — rotate_extrude translates.
 · JSCAD and build123d when the user asked for them, or is clearly working in one. Neither reaches the BREPcode-only verbs above, so a part needing a sweep or a fillet is worse off in them.
 Mixing is what fails: filament("x") and every other BREPcode verb is invisible to the OpenSCAD translator. If a cutter needs a spool named, use the comment form.`,
 };
