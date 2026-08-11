@@ -1,9 +1,11 @@
 // Short links — the same model behind a name.
 //
-// The thing that must never happen is handing someone a short URL that
-// resolves to nothing, so most of this is about the four states a name can be
-// in (free, mine, taken, server-unreachable) and refusing to confuse them. An
-// unreachable server reported as "free" would promise a name we cannot claim.
+// The backend is a purpose-built REST route, not a database with a key in the
+// browser, and the difference decides the test list: there is no anon key to
+// leak, but there IS an owner secret whose whole job is stopping one person
+// overwriting another's model. So most of this is about the states a name can
+// be in (free, mine, taken, unreachable), refusing to confuse them, and never
+// remembering ownership of a name we did not actually get.
 
 import { readFileSync } from "node:fs";
 
@@ -13,14 +15,13 @@ const check = (label, ok, detail = "") => {
   else { fail++; console.log(`  FAIL  ${label}${detail ? `  -- ${detail}` : ""}`); }
 };
 
-// localStorage, because the owner-token store is the whole ownership model.
+// localStorage, because the owner-token store IS the ownership model.
 const store = new Map();
 globalThis.localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),
 };
-globalThis.window = undefined;
 
 const cl = await import("../viewer/cloudlink.js");
 
@@ -28,10 +29,9 @@ console.log("\nnames a URL can carry\n");
 {
   check("spaces and case become a slug", cl.slugify("FISH bowl v2") === "fish-bowl-v2",
     cl.slugify("FISH bowl v2"));
-  check("punctuation and edges are trimmed", cl.slugify("  --Holder!!  ") === "holder",
-    cl.slugify("  --Holder!!  "));
+  check("punctuation and edges are trimmed", cl.slugify("  --Holder!!  ") === "holder");
   check("accents survive as letters", cl.slugify("Café") === "cafe", cl.slugify("Café"));
-  check("a name is capped, not truncated mid-nonsense", cl.slugify("x".repeat(80)).length === 48);
+  check("a name is capped", cl.slugify("x".repeat(80)).length === 48);
   check("an empty name is a problem, and says so", /give it a name/.test(cl.nameProblem("")));
   check("one character is too short", /longer/.test(cl.nameProblem("a")));
   check("a reserved word is refused by name", /reserved/.test(cl.nameProblem("index")));
@@ -49,46 +49,51 @@ console.log("\nreading a link\n");
       === "https://brepcode.com/brep/index.html#s=fish-bowl");
 }
 
-console.log("\nwith no backend configured\n");
+console.log("\nit works out of the box\n");
 {
-  // A fork of this repo has no cloud. It must degrade to "the long link still
-  // works", never to a broken short one.
-  check("the feature reports itself off", cl.cloudReady() === false);
-  const res = await cl.checkName("anything");
-  check("...and a name check says so rather than claiming free",
-    res.ok === false && res.offline === true, JSON.stringify(res));
-  let threw = "";
-  try { await cl.saveShort({ slug: "x-y", text: "T" }); } catch (e) { threw = e.message; }
-  check("...and saving refuses outright", /not set up/.test(threw), threw);
+  // There is no key to configure, so unlike the first design this ships
+  // switched ON. A default that needs editing before it works is a feature
+  // most people never find.
+  check("an endpoint is built in", cl.cloudReady() === true);
+  check("...and it is the public one", /\/api\/public\/links$/.test(cl.cloudConfig().url),
+    cl.cloudConfig().url);
+  check("the size cap matches the server's", cl.cloudConfig().maxBytes === 4194304);
 }
 
-// ---- with a backend ------------------------------------------------------
-// A stand-in PostgREST, so every branch runs without a network.
+// ---- a stand-in for the real route --------------------------------------
 function fakeServer(seed = {}) {
   const rows = { ...seed };
   const calls = [];
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url), m = init.method || "GET";
-    calls.push({ m, u, hdr: { ...(init.headers || {}) } });
-    const slug = decodeURIComponent(/slug=eq\.([^&]+)/.exec(u)?.[1] || "");
+    const hdr = { ...(init.headers || {}) };
+    calls.push({ m, u, hdr, body: init.body ? JSON.parse(init.body) : null });
+    const slug = decodeURIComponent(/[?&]slug=([^&]+)/.exec(u)?.[1] || "");
     const json = (v, status = 200) => new Response(JSON.stringify(v), { status });
-    if (m === "GET") return json(rows[slug] ? [rows[slug]] : []);
+
+    if (m === "GET") {
+      return rows[slug] ? json(rows[slug]) : json({ error: "not found", slug }, 404);
+    }
     if (m === "POST") {
       const b = JSON.parse(init.body);
-      if (rows[b.slug]) return new Response("duplicate key", { status: 409 });
-      rows[b.slug] = b;
-      return json([b], 201);
+      if (rows[b.slug]) return json({ error: "slug already taken", slug: b.slug }, 409);
+      rows[b.slug] = { slug: b.slug, name: b.name, payload: b.payload, owner: b.owner };
+      return json({ slug: b.slug, name: b.name }, 201);
     }
     if (m === "PATCH") {
+      const secret = hdr["X-Owner-Secret"];
+      if (!secret) return json({ error: "missing header" }, 401);
+      if (!rows[slug]) return json({ error: "not found" }, 404);
+      if (rows[slug].owner !== secret) {
+        return json({ error: "forbidden: owner secret does not match" }, 403);
+      }
       const b = JSON.parse(init.body);
-      const owner = decodeURIComponent(/owner=eq\.([^&]+)/.exec(u)?.[1] || "");
-      if (!rows[slug] || rows[slug].owner !== owner) return json([]);   // matched nothing
-      rows[slug] = b;
-      return json([b]);
+      if (b.payload != null) rows[slug].payload = b.payload;
+      if (b.name != null) rows[slug].name = b.name;
+      return json(rows[slug]);
     }
-    return new Response("?", { status: 400 });
+    return json({ error: "?" }, 400);
   };
-  globalThis.window = { __BREPCODE_CLOUD: { url: "https://fake.supabase.co", key: "anon", table: "shortlinks" } };
   return { rows, calls };
 }
 
@@ -96,17 +101,18 @@ console.log("\nclaiming a name\n");
 {
   const srv = fakeServer({ "taken-name": { slug: "taken-name", payload: "SOMEONE ELSE", owner: "not-me" } });
   store.clear();
-  check("the backend is seen once configured", cl.cloudReady() === true);
   const free = await cl.checkName("fish-bowl");
-  check("a free name is free", free.ok && free.free, JSON.stringify(free));
+  check("a 404 from the server means the name is FREE", free.ok && free.free, JSON.stringify(free));
   const taken = await cl.checkName("taken-name");
-  check("someone else's name is refused, by name",
+  check("a 200 means taken, and says so by name",
     !taken.ok && /taken/.test(taken.reason), JSON.stringify(taken));
 
-  check("saving returns the slug", await cl.saveShort({ slug: "fish-bowl", text: "MODEL", name: "FISH bowl" }) === "fish-bowl");
+  check("saving returns the slug",
+    await cl.saveShort({ slug: "fish-bowl", text: "MODEL", name: "FISH bowl" }) === "fish-bowl");
+  check("...as a POST, not an update", srv.calls.filter((c) => c.m === "POST").length === 1);
   const mine = await cl.checkName("fish-bowl");
-  check("...and the name is then MINE, not merely taken",
-    mine.ok && mine.mine, JSON.stringify(mine));
+  check("the name is then MINE, not merely taken", mine.ok && mine.mine, JSON.stringify(mine));
+
   const got = await cl.resolveShort("fish-bowl");
   check("the model comes back byte for byte", got.text === "MODEL", got.text);
   check("...with the name it was saved under", got.name === "FISH bowl", got.name);
@@ -114,7 +120,7 @@ console.log("\nclaiming a name\n");
   // The failure that matters: someone else's link must survive.
   let threw = "";
   try { await cl.saveShort({ slug: "taken-name", text: "HIJACK" }); } catch (e) { threw = e.message; }
-  check("a name owned by someone else cannot be overwritten", /taken/.test(threw), threw);
+  check("a name owned by someone else cannot be claimed", /taken/.test(threw), threw);
   check("...and their model is untouched", srv.rows["taken-name"].payload === "SOMEONE ELSE");
 }
 
@@ -123,18 +129,69 @@ console.log("\nupdating your own\n");
   const srv = fakeServer();
   store.clear();
   await cl.saveShort({ slug: "my-part", text: "V1" });
-  await cl.saveShort({ slug: "my-part", text: "V2" });
+  await cl.saveShort({ slug: "my-part", text: "V2", name: "My part" });
   const posts = srv.calls.filter((c) => c.m === "POST"), patches = srv.calls.filter((c) => c.m === "PATCH");
-  check("the first save inserts, the second updates", posts.length === 1 && patches.length === 1,
+  check("the first save creates, the second updates", posts.length === 1 && patches.length === 1,
     `${posts.length} POST / ${patches.length} PATCH`);
-  check("the update carries the owner secret as a HEADER",
-    patches.every((c) => !!c.hdr["x-brep-owner"]),
-    "the table's update policy checks the header, not the query filter");
-  check("...and still filters on it, so a wrong token touches no row",
-    patches.every((c) => /owner=eq\./.test(c.u)));
+  check("the update sends the secret in the X-Owner-Secret HEADER",
+    patches.every((c) => !!c.hdr["X-Owner-Secret"]),
+    "the server hashes and compares this; a query filter would be spoofable");
+  check("...the same secret the create stored",
+    patches[0].hdr["X-Owner-Secret"] === srv.rows["my-part"].owner);
+  check("...and never as a query parameter",
+    patches.every((c) => !/owner=/.test(c.u)), patches[0]?.u);
   check("the model really changed", srv.rows["my-part"].payload === "V2");
-  check("the owner token is stable across saves",
-    srv.rows["my-part"].owner === cl.ownerTokenFor("my-part"));
+  check("the token is remembered against the slug", cl.ownerTokenFor("my-part") === srv.rows["my-part"].owner);
+}
+
+console.log("\nwhen the server says no\n");
+{
+  const srv = fakeServer({ "not-mine": { slug: "not-mine", payload: "THEIRS", owner: "real-owner" } });
+  store.clear();
+  // This browser wrongly believes it owns a name — the server must be the one
+  // that decides, and the message must not blame the user's model.
+  localStorage.setItem("brepcode-shortlink-owner", JSON.stringify({ "not-mine": "wrong-secret" }));
+  let threw = "";
+  try { await cl.saveShort({ slug: "not-mine", text: "X" }); } catch (e) { threw = e.message; }
+  check("a 403 is reported as the name belonging to someone else",
+    /belongs to someone else/.test(threw), threw);
+  check("...and their model survives", srv.rows["not-mine"].payload === "THEIRS");
+
+  // A record deleted server-side while this browser still holds the token:
+  // recreate rather than dead-end on "not found".
+  store.clear();
+  localStorage.setItem("brepcode-shortlink-owner", JSON.stringify({ "ghost": "old-secret" }));
+  const back = await cl.saveShort({ slug: "ghost", text: "REBORN" });
+  check("a PATCH against a vanished record falls back to creating it",
+    back === "ghost" && srv.rows.ghost?.payload === "REBORN", JSON.stringify(srv.rows.ghost));
+  check("...with a NEW secret, since the old one owns nothing",
+    cl.ownerTokenFor("ghost") !== "old-secret");
+}
+
+console.log("\na failed create must not look like a win\n");
+{
+  // Remembering ownership before the server confirms it means every later
+  // save is a PATCH against a record this browser does not own — a name that
+  // can never be claimed and never be fixed.
+  fakeServer({ "already": { slug: "already", payload: "X", owner: "someone" } });
+  store.clear();
+  try { await cl.saveShort({ slug: "already", text: "MINE" }); } catch { /* expected */ }
+  check("a rejected create leaves NO owner token behind",
+    cl.ownerTokenFor("already") === null, cl.ownerTokenFor("already"));
+}
+
+console.log("\ntoo big for the store\n");
+{
+  fakeServer();
+  store.clear();
+  let threw = "";
+  const huge = "x".repeat(cl.cloudConfig().maxBytes + 1);
+  try { await cl.saveShort({ slug: "huge-one", text: huge }); } catch (e) { threw = e.message; }
+  check("an oversized model is refused before it is uploaded", /limit is/.test(threw), threw);
+  check("...saying its real size", /4\.0MB/.test(threw), threw);
+  check("...and pointing at the routes that have no such limit",
+    /full link/.test(threw) && /\.bcode/.test(threw), threw);
+  check("byte length counts UTF-8, not characters", cl.byteLength("é") === 2, `${cl.byteLength("é")}`);
 }
 
 console.log("\nwhen it goes wrong\n");
@@ -143,7 +200,7 @@ console.log("\nwhen it goes wrong\n");
   store.clear();
   let threw = "";
   try { await cl.resolveShort("nobody-made-this"); } catch (e) { threw = e.message; }
-  check("a link to nothing says the name, not a status code",
+  check("a link to nothing names the name, not a status code",
     /no model called "nobody-made-this"/.test(threw), threw);
 
   // A server that is down must not read as "this name is free".
@@ -157,25 +214,30 @@ console.log("\nwhen it goes wrong\n");
   check("...nor is a 500", !err.ok && err.offline, JSON.stringify(err));
 }
 
-console.log("\nthe schema matches the client\n");
+console.log("\nwhere it cannot work\n");
 {
-  // These two drifting apart is a feature that works in testing and silently
-  // lets anyone overwrite anyone on the real site.
-  const sql = cl.SCHEMA_SQL;
-  check("row-level security is switched ON", /enable row level security/i.test(sql));
-  check("reads are public — that is what sharing means", /for select using \(true\)/i.test(sql));
-  check("the update policy checks the same header the client sends",
-    /x-brep-owner/.test(sql), "client sends x-brep-owner");
-  check("slug is the primary key, so a race collides instead of overwriting",
-    /slug\s+text primary key/i.test(sql));
-  check("the payload column is the one the client writes",
-    /payload\s+text not null/i.test(sql));
+  // The desktop app serves itself over app://, and CORS does not extend to
+  // custom schemes. Better to say so than to fail with a network error the
+  // user will read as "the site is down".
+  const realLoc = globalThis.location;
+  globalThis.location = { protocol: "app:" };
+  check("a non-http origin is named as the reason", /desktop app/.test(cl.originProblem() || ""),
+    cl.originProblem());
+  const res = await cl.checkName("fish-bowl");
+  check("...and a name check reports it rather than claiming free",
+    !res.ok && res.offline && /desktop app/.test(res.reason), JSON.stringify(res));
+  let threw = "";
+  try { await cl.saveShort({ slug: "fish-bowl", text: "T" }); } catch (e) { threw = e.message; }
+  check("...and saving refuses up front", /desktop app/.test(threw), threw);
+  globalThis.location = { protocol: "https:" };
+  check("on the website there is no such problem", cl.originProblem() === null);
+  globalThis.location = realLoc;
 }
 
 console.log("\nthe module actually ships\n");
 {
-  // A dynamic import that the site build does not copy is a 404 the first time
-  // a user ticks the box — and the build's file list is typed by hand.
+  // A dynamic import the site build does not copy is a 404 the first time a
+  // user ticks the box — and the build's file list is typed by hand.
   const html = readFileSync("viewer/index.html", "utf8");
   const build = readFileSync("build-site.mjs", "utf8");
   const listed = new Set([...build.matchAll(/"([a-z0-9-]+\.js)"/g)].map((m) => m[1]));

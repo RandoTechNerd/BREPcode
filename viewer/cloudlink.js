@@ -6,66 +6,70 @@
 // pasted anywhere with a length limit.
 //
 // So this is the SAME link with a lookup in front of it: the .bcode text goes
-// into a table keyed by a name, and the link becomes #s=<name>. Opening one
+// into a store keyed by a name, and the link becomes #s=<name>. Opening one
 // fetches the text and hands it to exactly the same loader the long link uses.
 // Nothing else about sharing changes — which is the point. If the lookup is
 // unreachable, the long link still works, and the UI says so rather than
 // pretending the short one is fine.
 //
-// WHY A FRAGMENT AND NOT A PATH: brepcode.com is a static host. /s/<name>
-// would need server-side routing that does not exist, and every wrong guess
-// there is a 404 with no way to recover. #s=<name> needs nothing — the page
-// loads normally and reads its own fragment, the same as #m= already does.
+// WHY A FRAGMENT AND NOT A PATH: brepcode.com/<name> is a static host route
+// that would need server-side rewriting, and every wrong guess there is a 404
+// with no way to recover. #s=<name> needs nothing — the page loads normally
+// and reads its own fragment, the same as #m= already does.
 
-// ---------------------------------------------------------------- config
+// ---------------------------------------------------------------- the API
 //
-// Lovable Cloud is Supabase underneath, so this speaks plain PostgREST.
+// A plain REST/JSON route on brepcode.com itself. Worth writing down WHY it is
+// not a database-behind-PostgREST, because the difference is the whole
+// security model: PostgREST would have put a database key in the browser and
+// left the owner check as a query filter — and a filter is written by the
+// caller, so anyone could write a different one and edit anyone's model. Here
+// the secret goes in a header the SERVER compares (hashed, constant-time), so
+// the browser holds no credential except the one secret for its own links.
 //
-// ►► PASTE THE TWO VALUES FROM YOUR LOVABLE CLOUD PROJECT HERE. ◄◄
-// In Lovable: the project's Cloud/Backend panel shows a Project URL that looks
-// like https://abcdefghijklm.supabase.co and an anon/publishable key. The anon
-// key is meant to be public — it is what every browser client uses — and the
-// table's row policies below are what actually decide who may write.
+//   GET    ?slug=x                      -> 200 {slug,name,payload} | 404
+//   POST   {slug,name,payload,owner}    -> 201 | 409 taken
+//   PATCH  ?slug=x  X-Owner-Secret: ..  -> 200 | 401 | 403 | 404
 //
-// Left empty, everything here stays switched off and the app simply offers the
-// long link, which is the correct behaviour for a fork with no backend.
+// There is no DELETE, and no key of any kind. Reads are anonymous.
 const BUILT_IN = {
-  url: "",          // e.g. "https://abcdefghijklm.supabase.co"
-  key: "",          // e.g. "eyJhbGciOi..."  (anon / publishable)
-  table: "shortlinks",
+  url: "https://brepcode.com/api/public/links",
+  // The server's own cap. Checked here as well so an oversized model is
+  // refused with a sentence about what to do instead, rather than a 413 the
+  // user has to interpret.
+  maxBytes: 4194304,
 };
 
-// A deployment can set window.__BREPCODE_CLOUD instead of editing this file,
-// which is how the hosted copy is configured without a rebuild — the same
-// escape hatch __BREPCODE_PUBLIC_URL gives the share base.
+// A deployment can set window.__BREPCODE_CLOUD instead of editing this file —
+// the same escape hatch __BREPCODE_PUBLIC_URL gives the share base.
 export function cloudConfig() {
   const o = (typeof window !== "undefined" && window.__BREPCODE_CLOUD) || {};
   return { ...BUILT_IN, ...o };
 }
 
-export const cloudReady = () => {
-  const c = cloudConfig();
-  return !!(c.url && c.key);
-};
+export const cloudReady = () => !!cloudConfig().url;
 
-const rest = (path) => {
-  const c = cloudConfig();
-  return `${c.url.replace(/\/+$/, "")}/rest/v1/${path}`;
-};
-const headers = (extra = {}) => {
-  const c = cloudConfig();
-  return { apikey: c.key, Authorization: `Bearer ${c.key}`, "Content-Type": "application/json", ...extra };
-};
+// The desktop app serves itself over app://, and CORS does not extend to
+// custom schemes — the request never leaves. That is not a failure worth
+// retrying, it is a place the feature does not work, so it says so plainly and
+// the long link (which needs no server) carries on being the answer there.
+export function originProblem() {
+  if (typeof location === "undefined") return null;
+  if (/^https?:$/.test(location.protocol)) return null;
+  return "short links need the website — the desktop app cannot reach the link server";
+}
+
+const OWNER_HEADER = "X-Owner-Secret";
 
 // ------------------------------------------------------------------ names
 //
-// What a person types is "FISH bowl v2"; what a URL can carry is "fish-bowl-v2".
-// Everything that is not a letter, a digit or a dash becomes a dash, and runs
-// of dashes collapse, so two obviously-different names cannot quietly become
-// the same one without it being visible in the box.
+// What a person types is "FISH bowl v2"; what a URL can carry is
+// "fish-bowl-v2". Everything that is not a letter, a digit or a dash becomes a
+// dash, and runs of dashes collapse — so two obviously-different names cannot
+// quietly become the same one without it being visible in the box.
 export function slugify(name) {
   return String(name || "")
-    .normalize("NFKD").replace(/[̀-ͯ]/g, "")   // café -> cafe
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")   // café -> cafe
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -86,13 +90,14 @@ export function nameProblem(slug) {
 
 // ------------------------------------------------------------- ownership
 //
-// There is no login here, and inventing one for a share link would be worse
-// than the problem. Instead: whoever creates a name gets a random secret, kept
-// in this browser, and only that secret can overwrite the name later. Losing
-// the browser means losing the ability to update that link — say so rather
-// than pretend otherwise. It is not a security boundary against a determined
-// person with the anon key; it is what stops two people quietly clobbering
-// each other, which is the failure that actually happens.
+// There is no login, and inventing one for a share link would be worse than
+// the problem. Whoever creates a name gets a random secret, kept in this
+// browser; the server stores only its hash and compares in constant time, so
+// the plaintext exists nowhere but here.
+//
+// The consequence has to be said out loud rather than discovered: clear this
+// browser's storage and the link keeps working forever but can never be
+// updated again. There is no recovery and no delete.
 const OWN_KEY = "brepcode-shortlink-owner";
 
 const ownerMap = () => {
@@ -106,29 +111,38 @@ const rememberOwner = (slug, token) => {
     localStorage.setItem(OWN_KEY, JSON.stringify(m));
   } catch { /* private mode — the link still works, it just cannot be updated here */ }
 };
+// The server accepts 16-512 characters. 32 hex is 128 bits of randomness,
+// which is not guessable, and crypto.getRandomValues is the only source used —
+// Math.random() would be a secret anyone could reproduce.
 const newToken = () => {
   const b = new Uint8Array(16);
   (globalThis.crypto || {}).getRandomValues?.(b);
   return [...b].map((n) => n.toString(16).padStart(2, "0")).join("");
 };
 
+const endpoint = (slug) => {
+  const base = cloudConfig().url.replace(/\/+$/, "");
+  return slug ? `${base}?slug=${encodeURIComponent(slug)}` : base;
+};
+
+export const byteLength = (s) => new TextEncoder().encode(String(s ?? "")).length;
+
 // ---------------------------------------------------------------- lookups
 //
-// Every call reports which of the three states it is in, because the UI has to
-// say something different for each: free, taken by someone else, or taken by
-// you (in which case updating is fine). An unreachable server is a FOURTH
-// state and must not be reported as "free" — that would promise a name we
-// cannot actually claim.
+// Every call reports which state it is in, because the UI says something
+// different for each: free, yours, taken by someone else — and UNREACHABLE,
+// which must never be reported as free. Promising a name we cannot claim is
+// the one failure that ends with a dead link in someone's hands.
 export async function checkName(slug, { signal } = {}) {
   const bad = nameProblem(slug);
   if (bad) return { ok: false, reason: bad };
+  const orig = originProblem();
+  if (orig) return { ok: false, offline: true, reason: orig };
   if (!cloudReady()) return { ok: false, offline: true, reason: "short links are not set up on this copy" };
   try {
-    const r = await fetch(rest(`${cloudConfig().table}?slug=eq.${encodeURIComponent(slug)}&select=slug`),
-      { headers: headers(), signal });
+    const r = await fetch(endpoint(slug), { headers: { Accept: "application/json" }, signal });
+    if (r.status === 404) return { ok: true, free: true };
     if (!r.ok) return { ok: false, offline: true, reason: `lookup failed (${r.status})` };
-    const rows = await r.json();
-    if (!rows.length) return { ok: true, free: true };
     return ownerTokenFor(slug)
       ? { ok: true, free: false, mine: true, reason: "you already have this name — saving replaces it" }
       : { ok: false, free: false, reason: `"${slug}" is taken — pick another name` };
@@ -138,39 +152,71 @@ export async function checkName(slug, { signal } = {}) {
   }
 }
 
+const errorFrom = async (r, fallback) => {
+  const body = await r.json().catch(() => null);
+  return (body && (body.error || body.message)) || fallback;
+};
+
 // Claim or update a name. Returns the slug actually used.
 export async function saveShort({ slug, text, name }) {
   const bad = nameProblem(slug);
   if (bad) throw new Error(bad);
+  const orig = originProblem();
+  if (orig) throw new Error(orig);
   if (!cloudReady()) throw new Error("short links are not set up on this copy");
   if (!text) throw new Error("nothing to save");
 
+  // Checked here as well as on the server so the message can say what to do
+  // instead. A 413 on its own tells someone their model is "too large" with no
+  // hint that the long link has no such limit.
+  const { maxBytes } = cloudConfig();
+  const size = byteLength(text);
+  if (size > maxBytes) {
+    throw new Error(`this model is ${(size / 1048576).toFixed(1)}MB and the limit is `
+      + `${(maxBytes / 1048576).toFixed(0)}MB — use the full link, or save a .bcode and send the file`);
+  }
+
   const mine = ownerTokenFor(slug);
-  const token = mine || newToken();
-  const body = JSON.stringify({ slug, payload: text, name: name || slug, owner: token });
-  const table = cloudConfig().table;
 
-  // An existing name we own is an update; anything else is a fresh insert and
-  // the table's unique key on slug is what refuses a collision. Deciding it
-  // here instead would be a race — two people can pass the same check.
-  // The x-brep-owner header is what the table's update policy actually checks
-  // (see SCHEMA_SQL) — the ?owner=eq. filter alone is a request the caller
-  // writes, so it selects rows but proves nothing. The filter stays as well so
-  // a mismatched token touches no row instead of erroring late.
-  const r = mine
-    ? await fetch(rest(`${table}?slug=eq.${encodeURIComponent(slug)}&owner=eq.${encodeURIComponent(token)}`),
-      { method: "PATCH", headers: headers({ Prefer: "return=representation", "x-brep-owner": token }), body })
-    : await fetch(rest(table), { method: "POST", headers: headers({ Prefer: "return=representation" }), body });
+  // An existing name we hold is an update. Anything else is a create, and the
+  // SERVER decides whether the name was free — a 409 is the race being settled
+  // there rather than here, where two people can pass the same check.
+  if (mine) {
+    const r = await fetch(endpoint(slug), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", [OWNER_HEADER]: mine },
+      body: JSON.stringify({ name: name || slug, payload: text }),
+    });
+    if (r.status === 401 || r.status === 403) {
+      throw new Error(`"${slug}" belongs to someone else — pick another name`);
+    }
+    if (r.status === 404) {
+      // The record is gone but this browser still thinks it owns the name.
+      // Fall through to a create rather than leaving the user stuck on an
+      // error about a record that no longer exists.
+      return createShort({ slug, text, name });
+    }
+    if (r.status === 413) throw new Error("the link server refused this model as too large");
+    if (!r.ok) throw new Error(await errorFrom(r, `could not update the short link (${r.status})`));
+    rememberOwner(slug, mine);
+    return slug;
+  }
+  return createShort({ slug, text, name });
+}
 
-  if (r.status === 409) throw new Error(`"${slug}" was taken a moment ago — pick another name`);
-  if (!r.ok) {
-    const detail = await r.text().catch(() => "");
-    throw new Error(`could not save the short link (${r.status})${detail ? ` — ${detail.slice(0, 120)}` : ""}`);
-  }
-  const rows = await r.json().catch(() => []);
-  if (mine && Array.isArray(rows) && !rows.length) {
-    throw new Error(`"${slug}" belongs to someone else now — pick another name`);
-  }
+async function createShort({ slug, text, name }) {
+  const token = newToken();
+  const r = await fetch(endpoint(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, name: name || slug, payload: text, owner: token }),
+  });
+  if (r.status === 409) throw new Error(`"${slug}" is taken — pick another name`);
+  if (r.status === 413) throw new Error("the link server refused this model as too large");
+  if (!r.ok) throw new Error(await errorFrom(r, `could not save the short link (${r.status})`));
+  // Only remembered once the server has confirmed it, or a failed create would
+  // leave this browser believing it owns a name it never got — and every
+  // later attempt would be a PATCH against somebody else's record.
   rememberOwner(slug, token);
   return slug;
 }
@@ -178,12 +224,12 @@ export async function saveShort({ slug, text, name }) {
 // The other end: a fragment comes in, the model text comes back.
 export async function resolveShort(slug) {
   if (!cloudReady()) throw new Error("short links are not set up on this copy");
-  const r = await fetch(rest(`${cloudConfig().table}?slug=eq.${encodeURIComponent(slug)}&select=payload,name`),
-    { headers: headers() });
-  if (!r.ok) throw new Error(`could not fetch that link (${r.status})`);
-  const rows = await r.json();
-  if (!rows.length) throw new Error(`there is no model called "${slug}"`);
-  return { text: rows[0].payload, name: rows[0].name };
+  const r = await fetch(endpoint(slug), { headers: { Accept: "application/json" } });
+  if (r.status === 404) throw new Error(`there is no model called "${slug}"`);
+  if (!r.ok) throw new Error(await errorFrom(r, `could not fetch that link (${r.status})`));
+  const row = await r.json();
+  if (!row || !row.payload) throw new Error(`"${slug}" came back empty`);
+  return { text: row.payload, name: row.name };
 }
 
 // Pull the name out of a fragment. Same shape as the #m= reader so the loader
@@ -194,37 +240,3 @@ export function shortSlugIn(hash) {
 }
 
 export const shortUrl = (base, slug) => `${base}#s=${slug}`;
-
-// The table this expects, for pasting into the Lovable Cloud SQL editor.
-// Kept here rather than in a README because the code and the schema have to
-// agree, and a schema in another file is one nobody re-reads when the code
-// changes.
-export const SCHEMA_SQL = `
--- BREPcode short links
-create table if not exists public.shortlinks (
-  slug        text primary key,
-  payload     text not null,          -- the .bcode text, exactly as the long link carries it
-  name        text,
-  owner       text not null,          -- random per-browser secret; see cloudlink.js
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
-
-alter table public.shortlinks enable row level security;
-
--- Anyone may READ a link: that is the entire point of sharing one.
-create policy "read links" on public.shortlinks
-  for select using (true);
-
--- Anyone may CLAIM a name that is free. The primary key is what makes this
--- safe: a second claim on the same slug fails on the unique constraint rather
--- than overwriting.
-create policy "claim a free name" on public.shortlinks
-  for insert with check (true);
-
--- Only the browser holding the owner secret may change a link. Without this
--- every visitor could overwrite every model on the site.
-create policy "update your own" on public.shortlinks
-  for update using (owner = current_setting('request.headers', true)::json->>'x-brep-owner')
-  with check  (owner = current_setting('request.headers', true)::json->>'x-brep-owner');
-`.trim();

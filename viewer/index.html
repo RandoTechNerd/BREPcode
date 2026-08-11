@@ -10247,14 +10247,17 @@ ${joined}`)(...vs);
       const slug = cl.slugify(box.value);
       shortState = { slug, ok: false };
       if (!slug) { out.textContent = "give it a name"; out.className = "note warn"; return; }
-      // Say what the name BECOMES before saying whether it is free — a person
-      // who typed "FISH bowl!" should see "fish-bowl" here, not be surprised
-      // by it in the link afterwards.
-      const shown = slug !== box.value.toLowerCase() ? ` (as “${slug}”)` : "";
+      // Every message quotes the SLUG, never what was typed: someone who typed
+      // "FISH bowl!" needs to see "fish-bowl" here rather than be surprised by
+      // it in the link afterwards.
       const local = cl.nameProblem(slug);
       if (local) { out.textContent = local; out.className = "note warn"; return; }
-      if (!cl.cloudReady()) {
-        out.textContent = "short links are not set up on this copy — the long link still works";
+      // Named before a request is attempted: in the desktop app the fetch
+      // cannot leave at all (CORS does not cover app://), and a network error
+      // there reads as "the site is down" rather than "not here".
+      const orig = cl.originProblem();
+      if (orig) {
+        out.textContent = `${orig} — the full link still works`;
         out.className = "note warn";
         return;
       }
@@ -10268,7 +10271,7 @@ ${joined}`)(...vs);
       if (cl.slugify($("short-name").value) !== slug) return;   // ditto
       shortState = { slug, ok: !!res.ok };
       out.textContent = res.ok
-        ? (res.mine ? `“${slug}” is yours${shown} — saving replaces it` : `“${slug}” is free${shown}`)
+        ? (res.mine ? `“${slug}” is yours — saving replaces it` : `“${slug}” is free`)
         : res.reason;
       out.className = res.ok ? "note ok" : "note warn";
     }
