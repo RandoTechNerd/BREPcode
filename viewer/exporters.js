@@ -934,9 +934,16 @@ export function embedPage({
   // starts that work AT ONCE rather than waiting for the element to scroll into
   // view — the aim is to be quick, not to defer — and `reveal="auto"` performs
   // the swap without being asked.
+  // environment-image is what makes GLASS and GLITTER read. A transmissive
+  // material refracts its surroundings, so with nothing around it there is
+  // nothing to see through it and the part renders as a dark blob — which is
+  // exactly how a Fairy Floss model used to arrive here. glTF cannot carry an
+  // environment, so the page supplies one; "neutral" is model-viewer's own
+  // built-in studio, so this costs no extra download.
   const mv = `<model-viewer src="${uri}" alt="${escHtml(title)}"`
     + (poster ? ` poster="${poster}" loading="eager" reveal="auto"` : "")
     + ` camera-controls auto-rotate touch-action="pan-y"`
+    + ` environment-image="neutral" shadow-softness="0.8"`
     + ` shadow-intensity="${shadow}" exposure="${exposure}" tone-mapping="neutral"`
     + ` style="background:${bg}"></model-viewer>`;
 
@@ -950,21 +957,32 @@ export function embedPage({
 <style>
   html, body { margin: 0; height: 100%; background: ${bg}; }
   model-viewer { width: 100%; height: 100%; --poster-color: ${bg}; }
+  /* The model is the page. Everything else keeps out of its way: the name
+     top-left where a title belongs, the credit and the way back along the
+     bottom, both on gradients so they stay readable over a light part or a
+     dark one without putting a box around anything. */
+  .bc-title { position: fixed; left: 0; right: 0; top: 0; padding: 14px 16px 26px;
+    font: 600 15px/1.25 system-ui, sans-serif; color: #eef4fb; letter-spacing: .01em;
+    background: linear-gradient(to bottom, rgba(6,10,16,.62), rgba(6,10,16,0));
+    pointer-events: none; text-shadow: 0 1px 6px rgba(0,0,0,.45); }
   .bc-bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px;
-    align-items: center; padding: 9px 13px; font: 12.5px system-ui, sans-serif;
+    align-items: center; padding: 11px 15px 13px; font: 12.5px system-ui, sans-serif;
     color: #cfe0f2; background: linear-gradient(to top, rgba(6,10,16,.82), rgba(6,10,16,0)); }
   .bc-bar a { color: #7fd4ff; text-decoration: none; }
   .bc-bar a:hover { text-decoration: underline; }
-  .bc-edit { margin-left: auto; border: 1px solid rgba(127,212,255,.45); border-radius: 7px;
-    padding: 5px 11px; background: rgba(20,32,48,.72); white-space: nowrap; }
+  .bc-edit { margin-left: auto; border: 1px solid rgba(127,212,255,.45); border-radius: 8px;
+    padding: 6px 12px; background: rgba(20,32,48,.72); white-space: nowrap;
+    transition: background .15s, border-color .15s; }
+  .bc-edit:hover { background: rgba(32,52,76,.9); border-color: rgba(127,212,255,.8); text-decoration: none; }
+  @media (max-width: 520px) { .bc-title { font-size: 14px; } .bc-bar { font-size: 12px; } }
 </style>
 </head>
 <body>
   <!-- Made with BREPcode (brepcode.com). Viewer: Google model-viewer (free, Apache-2.0).
        Lighting exported from the editor: exposure ${exposure}, shadow ${shadow}, background ${bg}. -->
   ${mv}
+  <div class="bc-title">${escHtml(title)}</div>
   <div class="bc-bar">
-    <span>${escHtml(title)}</span>
     <span style="opacity:.6">made with <a href="https://brepcode.com" target="_blank" rel="noopener">BREPcode</a></span>
     ${editUrl ? `<a class="bc-edit" href="${escHtml(editUrl)}" target="_blank" rel="noopener">Edit the code &rarr;</a>` : ""}
   </div>

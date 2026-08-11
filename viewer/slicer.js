@@ -721,6 +721,16 @@ export const DEFAULT_END_GCODE = GENERIC_END.join("\n");
 export const DEFAULTS = {
   layer: 0.2,
   nozzle: 0.4,
+  // The bead the toolpath is SPACED by. 0 means "same as the nozzle", which is
+  // the honest default — but they are not the same thing, and every real
+  // slicer separates them. A 0.4 nozzle is routinely run at 0.42-0.48 for
+  // stronger walls, or squeezed to 0.35 for finer detail, WITHOUT changing the
+  // hardware. Set it and both the spacing and the extrusion follow.
+  lineWidth: 0,
+  // Extrusion multiplier, as a percentage. The one dial that fixes a printer
+  // that is consistently over- or under-extruding without touching anything
+  // else. It scales E only — never the geometry.
+  flow: 100,
   walls: 3,
   topLayers: 4,        // solid skin under a top surface
   bottomLayers: 4,     // ...and over a bottom one
@@ -996,8 +1006,13 @@ export async function planArcOverhangs(layers, opt) {
 // ---------------------------------------------------------------- G-code
 
 // E per mm of travel: the bead this move lays down, expressed as filament.
+//
+// Flow scales THIS and nothing else. It must never reach the geometry: a
+// toolpath spaced for one width and extruded for another leaves gaps between
+// perimeters, which is exactly the symptom people reach for a flow dial to fix.
 export const ePerMm = (opt) =>
-  (opt.layer * opt.nozzle) / (Math.PI * (opt.filament / 2) ** 2);
+  ((opt.layer * opt.nozzle) / (Math.PI * (opt.filament / 2) ** 2))
+  * ((opt.flow ?? 100) / 100);
 
 export function gcodeVars(opt, name, extra = {}) {
   return {
@@ -1020,7 +1035,10 @@ export function gcodeHeader(opt, name) {
   return [
     `; ${name} — sliced by BREPcode`,
     `; ${stag}`,
-    `; layer ${opt.layer}mm · nozzle ${opt.nozzle}mm · ${opt.walls} walls`,
+    `; layer ${opt.layer}mm · nozzle ${opt.nozzleDia ?? opt.nozzle}mm`
+      + `${opt.nozzleDia && opt.nozzle !== opt.nozzleDia ? ` · line ${opt.nozzle}mm` : ""}`
+      + `${(opt.flow ?? 100) !== 100 ? ` · flow ${opt.flow}%` : ""}`
+      + ` · ${opt.walls} walls`,
     `; ${Math.round(opt.infill * 100)}% ${opt.infillPattern} infill · ${skin}`,
     ...fillPlaceholders(body, gcodeVars(opt, name)).split("\n"),
   ];
@@ -1097,6 +1115,15 @@ export const PREVIEW_COLOURS = {
 // tris: [[[x,y,z] x3], …] world space. Returns { gcode, stats }.
 export async function sliceToGcode(tris, options = {}, onProgress) {
   const opt = { ...DEFAULTS, ...options };
+  // Line width is what everything downstream is spaced by, and everything
+  // downstream reads opt.nozzle. So it is normalised ONCE, here, rather than
+  // as `lineWidth || nozzle` at twenty call sites — nineteen of which would be
+  // right and the twentieth would be a wall spaced for one width and extruded
+  // for another, which prints as a part with gaps between its perimeters.
+  // The physical nozzle is kept separately for the header, where it is a fact
+  // about the machine rather than about the path.
+  opt.nozzleDia = +opt.nozzle || DEFAULTS.nozzle;
+  if (+opt.lineWidth > 0) opt.nozzle = +opt.lineWidth;
   const { layers, nLayers, zmin, zmax } = await planLayers(tris, opt,
     (d, t) => onProgress?.(d, t, "Slicing"));
   const supports = opt.supportStyle === "arc"

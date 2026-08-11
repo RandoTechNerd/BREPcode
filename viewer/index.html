@@ -925,7 +925,17 @@
       color: var(--muted3); background: color-mix(in srgb, var(--bg) 78%, transparent);
       padding: 1px 7px; border-radius: 999px; pointer-events: none;
     }
-    #exp-slice { width: 100%; height: 100%; display: block; }
+    /* absolute, not 100%/100%. #exp-preview is a 190px grid with
+       place-items:center, and a percentage height did not resolve there — so
+       the canvas fell back to its own intrinsic ratio (its width and height
+       ATTRIBUTES, which the draw code sets from clientWidth/clientHeight).
+       That is a loop: the drawing sized the element, the element sized the
+       drawing. It settled at 432x216 inside a 190px box with overflow:hidden,
+       i.e. entirely below the visible area — painting 48,616 pixels of
+       toolpath into a region nobody can see, and lurching whenever a setting
+       changed. Filling the box absolutely breaks the loop: layout no longer
+       depends on the canvas at all. */
+    #exp-slice { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     #slice-modal {
       position: fixed; inset: 0; z-index: 70; display: grid; place-items: center;
       background: rgba(0,0,0,.6);
@@ -945,6 +955,11 @@
     #slice-foot { border-top: 1px solid var(--border); flex-wrap: wrap; }
     #slice-info { color: var(--muted3); }
     #slice-tools { display: flex; gap: 5px; }
+    #slice-live { display: flex; gap: 9px; align-items: center; color: var(--muted3); font-size: 11.5px; }
+    #slice-live select {
+      background: var(--input-bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 3px 5px; font: 11.5px system-ui, sans-serif; margin-left: 3px;
+    }
     #slice-tools button, #slice-close {
       cursor: pointer; background: var(--panel); color: var(--text);
       border: 1px solid var(--border); border-radius: 6px; padding: 4px 11px;
@@ -954,6 +969,15 @@
     #slice-stage { flex: 1; min-height: 0; position: relative; background: var(--bg); }
     #slice-big { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     #slice-scrub-big { flex: 1; min-width: 180px; accent-color: var(--accent); cursor: pointer; }
+    /* "layer 9 / 410" and "layer 322 / 410" are different widths in a
+       proportional font, so the label was resizing the slider next to it on
+       every single frame of a drag. Tabular figures make every digit the same
+       width; the reserved min-width absorbs the rest. */
+    #slice-layerlab {
+      font-variant-numeric: tabular-nums; min-width: 19ch; text-align: right;
+      flex: none; color: var(--muted2);
+    }
+    #slice-legend-big { flex: 1 0 100%; min-height: 14px; }
     #slice-layerlab { font-variant-numeric: tabular-nums; color: var(--muted3); min-width: 150px; }
     #slice-under { display: flex; align-items: center; gap: 5px; cursor: pointer; }
     #slice-legend-big { display: flex; gap: 9px; flex-wrap: wrap; font: 10.5px system-ui, sans-serif; color: var(--muted3); }
@@ -963,10 +987,17 @@
       border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px;
       font: 11px system-ui, sans-serif;
     }
-    #exp-scrub { display: flex; align-items: center; gap: 10px; }
+    /* The legend gains and loses entries as you scrub (a layer with solid
+       skin lists one more kind than one without), and it used to sit in the
+       same flex row as the slider — so the slider grew and shrank under the
+       cursor while dragging it. It gets its own row now, with a reserved
+       height so the panel does not jump either. */
+    #exp-scrub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+    #exp-scrub-row { display: flex; align-items: center; gap: 10px; width: 100%; }
+    #slice-legend { width: 100%; min-height: 14px; }
     #exp-scrub[hidden] { display: none; }
     #slice-scrub { flex: 1; min-width: 0; accent-color: var(--accent); cursor: pointer; }
-    #slice-legend { display: flex; gap: 7px; flex-wrap: wrap; font: 10px system-ui, sans-serif; color: var(--muted3); }
+    #slice-legend, #slice-legend-big { display: flex; gap: 7px; flex-wrap: wrap; font: 10px system-ui, sans-serif; color: var(--muted3); }
     #slice-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 3px; }
     #exp-desc { margin: 0; font: 12px system-ui, sans-serif; color: var(--muted3); min-height: 44px; }
     #exp-caveat {
@@ -1490,6 +1521,19 @@
       font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .inv-tile.bad { opacity: .45; cursor: default; }
+    /* The stash is a GALLERY, so it looks like the one the app already has.
+       It was a column of 46px rows next to a URL-share page that renders the
+       real model — which is why it felt like the poor relation. Same tiles,
+       same sizes, same hover as the Inventory. */
+    #secret-list {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+      gap: 9px; margin: 9px 0;
+    }
+    #secret-list .inv-tile .shot { aspect-ratio: 1; }
+    #secret-list .inv-tile .kind {
+      font-size: 10px; color: var(--muted3); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
     #inv-empty { grid-column: 1 / -1; padding: 20px 8px; color: var(--muted2); font-size: 13px; text-align: center; }
     #inv-foot { padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted2); font-size: 11.5px; }
 
@@ -1907,6 +1951,27 @@
         <b>Slice preview</b>
         <span id="slice-info"></span>
         <span style="flex:1"></span>
+        <!-- The two dials you actually reach for while LOOKING at the result.
+             Having them only in the small dialog meant closing the big view,
+             changing one number, and reopening it to see what happened. -->
+        <div id="slice-live">
+          <label title="How wide each extruded bead is. Independent of the nozzle fitted.">Line
+            <select id="slice-linewidth-big">
+              <option value="0" selected>nozzle</option>
+              <option value="0.85">85%</option>
+              <option value="1.0">100%</option>
+              <option value="1.05">105%</option>
+              <option value="1.2">120%</option>
+            </select></label>
+          <label title="Extrusion multiplier. Scales how much comes out, not where it goes.">Flow
+            <select id="slice-flow-big">
+              <option value="90">90%</option>
+              <option value="95">95%</option>
+              <option value="100" selected>100%</option>
+              <option value="105">105%</option>
+              <option value="110">110%</option>
+            </select></label>
+        </div>
         <div id="slice-tools">
           <button data-brush="off" class="sel" title="Just look — dragging does nothing">Look</button>
           <button data-brush="block" title="Drag over places support must never go">Block</button>
@@ -1983,8 +2048,10 @@
              only way to check where support landed before committing four
              hours of printing to finding out. -->
         <div id="exp-scrub" hidden>
-          <input type="range" id="slice-scrub" min="0" max="0" value="0" aria-label="Layer">
-          <button id="slice-popout" title="Open a big preview, and paint where support may go">Enlarge</button>
+          <div id="exp-scrub-row">
+            <input type="range" id="slice-scrub" min="0" max="0" value="0" aria-label="Layer">
+            <button id="slice-popout" title="Open a big preview, and paint where support may go">Enlarge</button>
+          </div>
           <div id="slice-legend"></div>
         </div>
         <div id="exp-body">
@@ -2112,6 +2179,33 @@
               <option value="0.4" selected>0.4 mm — standard</option>
               <option value="0.6">0.6 mm — fast / strong</option>
               <option value="0.8">0.8 mm — draft</option>
+            </select>
+          </label>
+          <!-- Line width is NOT the nozzle. A 0.4 nozzle is routinely run at
+               0.42-0.48 for stronger walls or squeezed to 0.35 for finer
+               detail, with no change of hardware — and both the path spacing
+               and the extrusion follow it. "Same as nozzle" is the honest
+               default rather than a number pretending to be one. -->
+          <label id="linewidth-row" hidden title="How wide each extruded bead is. Independent of the nozzle fitted.">
+            <span>Line width</span>
+            <select id="slice-linewidth">
+              <option value="0" selected>same as the nozzle</option>
+              <option value="0.85">85% — finer detail</option>
+              <option value="1.0">100%</option>
+              <option value="1.05">105% — stronger walls</option>
+              <option value="1.2">120% — fewer, fatter walls</option>
+            </select>
+          </label>
+          <!-- Scales the extrusion and NOTHING else. Wrong flow shows up as
+               gappy tops (too little) or bulging walls (too much). -->
+          <label id="flow-row" hidden title="Extrusion multiplier. Scales how much filament comes out, not where it goes.">
+            <span>Extrusion</span>
+            <select id="slice-flow">
+              <option value="90">90% — bulging / over-extruding</option>
+              <option value="95">95%</option>
+              <option value="100" selected>100% — standard</option>
+              <option value="105">105%</option>
+              <option value="110">110% — gappy / under-extruding</option>
             </select>
           </label>
           <label id="layer-row" hidden title="Layer height — keep it under about 75% of the nozzle">
@@ -2920,7 +3014,7 @@
             <button id="secret-refresh" class="hist-btn" title="Reload the list">&#8635;</button>
             <span class="note" id="secret-status" style="flex:1"></span>
           </div>
-          <div id="secret-list" style="display:flex; flex-direction:column; gap:4px; margin:8px 0"></div>
+          <div id="secret-list"></div>
           <div style="display:flex; align-items:center; gap:8px; margin-top:6px">
             <span class="tag" title="Where the list comes from — a manifest.json on this site, or a cloud endpoint">Source</span>
             <input id="secret-url" placeholder="secret-models/manifest.json"
@@ -10015,11 +10109,22 @@ ${joined}`)(...vs);
     // Translate the live lighting/material panel into model-viewer attributes so
     // the exported page looks like the editor: background colour, overall
     // brightness (exposure), and shadow strength all follow the Lighting tab.
+    // The published page's lighting.
+    //
+    // Exposure is 1. It used to be guessed from key + ambient, which was right
+    // when the GLB carried no lights at all — the page had to invent the
+    // lighting from nothing. It now ships the real key/fill/rim rig with the
+    // editor's exposure already folded into their intensities (see
+    // glblook.js), so guessing a second exposure on top would apply it twice
+    // and hand every published model out at roughly double brightness.
+    //
+    // Shadow still comes from the key, because a contact shadow is the page's
+    // own effect and is not in the file.
     function lookFromMaterial() {
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
       return {
         bg: mat.bg || "#0e0f1a",
-        exposure: +clamp(0.2 + (mat.key / 150) * 0.7 + (mat.ambient / 100) * 0.4, 0.15, 2).toFixed(2),
+        exposure: 1,
         shadow: +clamp(mat.key / 150, 0.2, 1.4).toFixed(2),
       };
     }
@@ -11095,7 +11200,7 @@ ${joined}`)(...vs);
       obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "plate-row"] },
       "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["mesh-variant-row", "plate-row"] },
-      gcode: { kind: "slice", desc: "BETA — check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
+      gcode: { kind: "slice", desc: "BETA — check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
       svg: { kind: "lines", ext: "-drawing.svg", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
@@ -11215,6 +11320,12 @@ ${joined}`)(...vs);
       const p = sl.PRINTERS[$("slice-printer").value] || sl.PRINTERS.bambu_x1;
       return {
         nozzle: +$("slice-nozzle").value, layer: +$("slice-layer").value,
+        // Stored as a FRACTION of the nozzle rather than an absolute width, so
+        // changing the nozzle keeps the intent ("105% walls") instead of
+        // silently turning it into 42% of a 1.0 nozzle.
+        lineWidth: +$("slice-linewidth").value
+          ? +($("slice-linewidth").value * +$("slice-nozzle").value).toFixed(3) : 0,
+        flow: +$("slice-flow").value,
         walls: +$("slice-walls").value, infill: +$("slice-infill").value,
         infillPattern: $("slice-pattern").value,
         supportStyle: $("slice-style").value,
@@ -11232,7 +11343,7 @@ ${joined}`)(...vs);
     // Settings that most exports never touch go behind a disclosure, so the
     // half-dozen that matter — and the Export button — fit without scrolling.
     const ADVANCED_ROWS = ["walls-row", "skin-row", "pattern-row", "stagger-row",
-      "style-row", "angle-row", "gcode-row", "gcode-text-row"];
+      "linewidth-row", "flow-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"];
     {
       const more = document.createElement("details");
       more.id = "exp-more";
@@ -11516,6 +11627,25 @@ ${joined}`)(...vs);
 
     $("slice-popout").addEventListener("click", openSlicePopout);
     $("slice-close").addEventListener("click", () => { $("slice-modal").hidden = true; });
+
+    // The two live dials are the SAME settings as the ones in the dialog, not
+    // a second copy — one source of truth, so closing the big view cannot hand
+    // back a preview that disagrees with the numbers the export will use.
+    // Changing either re-slices, which is why they are two selects and not
+    // sliders: a slider would re-slice on every pixel of a drag.
+    for (const [big, small] of [["slice-linewidth-big", "slice-linewidth"], ["slice-flow-big", "slice-flow"]]) {
+      const b = $(big), sm = $(small);
+      if (!b || !sm) continue;
+      b.addEventListener("change", async () => {
+        sm.value = b.value;
+        sm.dispatchEvent(new Event("change"));
+        await renderSlicePreview(++expToken);
+        $("slice-scrub-big").max = String(Math.max(0, (sliceCache?.view.layers.length || 1) - 1));
+        drawBig(+$("slice-scrub-big").value);
+      });
+      // ...and opening the big view shows what the dialog currently holds.
+      sm.addEventListener("change", () => { b.value = sm.value; });
+    }
     $("slice-scrub-big").addEventListener("input", () => {
       $("slice-scrub").value = $("slice-scrub-big").value;
       drawBig(+$("slice-scrub-big").value);
@@ -11936,7 +12066,8 @@ ${joined}`)(...vs);
       $("exp-desc").textContent = spec.desc;
       for (const row of ["mesh-variant-row", "step-variant-row", "glb-wrap-row",
         "short-row", "publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
-        "layer-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row",
+        "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row",
+        "skin-row", "stagger-row",
         "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
       }
@@ -13312,23 +13443,20 @@ ${joined}`)(...vs);
           const name = String(m.name || file.split("/").pop());
           const isBcode = /\.bcode$/i.test(file);
           const isHtml = /\.html?$/i.test(file);
+          // Same tile as the Inventory — one gallery pattern in the app, not two.
           const b = document.createElement("button");
-          b.className = "hist-btn";
-          b.style.cssText = "text-align:left; display:flex; gap:9px; align-items:center";
+          b.className = "inv-tile";
+          b.title = name;
           const shot = document.createElement("span");
-          shot.style.cssText = "width:46px; height:46px; flex:0 0 46px; display:grid; place-items:center;"
-            + "border:1px solid var(--muted3); border-radius:6px; overflow:hidden; background:var(--bg)";
+          shot.className = "shot";
           shot.innerHTML = THUMB_ICON;
-          const label = document.createElement("span");
-          label.style.cssText = "display:flex; flex-direction:column; gap:1px; min-width:0";
-          const kind = document.createElement("span");
-          kind.className = "note";
-          kind.textContent = isBcode ? ".bcode → editor" : isHtml ? ".html → new tab" : "download";
           const title = document.createElement("span");
+          title.className = "nm";
           title.textContent = name;
-          title.style.cssText = "overflow:hidden; text-overflow:ellipsis; white-space:nowrap";
-          label.append(title, kind);
-          b.append(shot, label);
+          const kind = document.createElement("span");
+          kind.className = "kind";
+          kind.textContent = isBcode ? "open in the editor" : isHtml ? "open the page" : "download";
+          b.append(shot, title, kind);
 
           const paint = (url) => {
             if (!url) return;

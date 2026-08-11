@@ -197,6 +197,15 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
     bare.includes('exposure="1.1"') && bare.includes('shadow-intensity="0.8"')
       && bare.includes("#101820"));
   check("it credits BREPcode", /brepcode\.com/.test(bare));
+  // Glass and glitter refract their SURROUNDINGS. glTF cannot carry an
+  // environment, so with none supplied a transmissive part renders as a dark
+  // blob — which is how a Fairy Floss model used to arrive on a published
+  // page. "neutral" is model-viewer's own built-in studio, so it costs no
+  // download.
+  check("an environment is supplied, or transmission has nothing to refract",
+    bare.includes('environment-image="neutral"'));
+  check("the model's own name is shown, not only in the tab",
+    /class="bc-title"/.test(bare) && bare.includes(">bracket<"));
 
   // Without a poster there is nothing to reveal, so the lazy attributes must
   // NOT be claimed — in the markup they would simply be untrue.

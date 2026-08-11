@@ -795,5 +795,81 @@ console.log("\nprinters\n");
     `${(Math.min(...xs) + Math.max(...xs)) / 2}, ${(Math.min(...ys) + Math.max(...ys)) / 2}`);
 }
 
+
+// ---------------------------------------------------------------------------
+// Line width and flow.
+//
+// Two dials that look similar and must NOT behave similarly. Line width moves
+// the toolpath AND the extrusion together; flow moves ONLY the extrusion.
+// Getting that backwards — spacing a wall for one width and extruding it for
+// another — prints a part with gaps between its perimeters, which is the exact
+// symptom people reach for a flow dial to fix.
+{
+  console.log("\nline width is not the nozzle\n");
+  const tris = box(30, 30, 4);
+  const base = { nozzle: 0.4, layer: 0.2, walls: 2, infill: 0, bedX: 0, bedY: 0 };
+  const eAt = (g) => {
+    const m = [...g.matchAll(/G1 [^\n]*E([\d.]+)/g)];
+    return m.length ? +m[m.length - 1][1] : 0;
+  };
+  const xy = (g) => g.split("\n").filter((l) => /^G1 /.test(l))
+    .map((l) => (l.match(/X[-\d.]+ ?Y[-\d.]+/) || [""])[0]).join("|");
+
+  const plain = await sliceToGcode(tris, { ...base });
+  const wide = await sliceToGcode(tris, { ...base, lineWidth: 0.6 });
+  const flowed = await sliceToGcode(tris, { ...base, flow: 120 });
+
+  // Measured as filament PER MILLIMETRE OF PATH, not as a total. A wider bead
+  // extrudes more per mm, but the walls are also spaced further apart, so the
+  // paths get shorter and the total barely moves (1.06x here). The total is
+  // therefore the wrong thing to assert on — the rate is the contract.
+  const ePerPathMm = (g) => {
+    let e = 0, d = 0, px = null, py = null, pe = 0;
+    for (const l of g.split("\n")) {
+      if (!/^G1 /.test(l)) continue;
+      const x = /X(-?[\d.]+)/.exec(l), y = /Y(-?[\d.]+)/.exec(l), E = /E([\d.]+)/.exec(l);
+      const nx = x ? +x[1] : px, ny = y ? +y[1] : py;
+      if (E && px != null && nx != null) {
+        const de = +E[1] - pe;
+        if (de > 0) { e += de; d += Math.hypot(nx - px, ny - py); }
+      }
+      if (E) pe = +E[1];
+      px = nx; py = ny;
+    }
+    return d > 0 ? e / d : 0;
+  };
+  check("a wider line lays down more filament PER MILLIMETRE",
+    near(ePerPathMm(wide.gcode) / ePerPathMm(plain.gcode), 1.5, 0.05),
+    `${(ePerPathMm(wide.gcode) / ePerPathMm(plain.gcode)).toFixed(3)}x for 0.4 -> 0.6`);
+  check("...and moves the toolpath, because the walls are spaced by it",
+    xy(wide.gcode) !== xy(plain.gcode));
+
+  check("flow leaves the toolpath EXACTLY where it was",
+    xy(flowed.gcode) === xy(plain.gcode),
+    "a flow dial that moves the path prints as gappy walls");
+  check("...while extruding proportionally more",
+    near(eAt(flowed.gcode) / eAt(plain.gcode), 1.2, 0.02),
+    `${(eAt(flowed.gcode) / eAt(plain.gcode)).toFixed(3)}x for 120%`);
+
+  check("ePerMm scales with flow",
+    near(ePerMm({ ...DEFAULTS, flow: 50 }), ePerMm({ ...DEFAULTS, flow: 100 }) / 2, 1e-9));
+  check("...and an absent flow changes nothing",
+    near(ePerMm({ ...DEFAULTS, flow: undefined }), ePerMm({ ...DEFAULTS, flow: 100 }), 1e-9));
+
+  const zero = await sliceToGcode(tris, { ...base, lineWidth: 0 });
+  check("line width 0 means THE NOZZLE, not a zero-width bead",
+    near(eAt(zero.gcode), eAt(plain.gcode), 1e-6), `${eAt(zero.gcode)}`);
+
+  // The header is what someone reads when a print comes out wrong.
+  const head = (g) => g.split("\n").slice(0, 8).join("\n");
+  check("the header reports the real NOZZLE, not the line width",
+    /nozzle 0\.4mm/.test(head(wide.gcode)), head(wide.gcode).replace(/\n/g, " | "));
+  check("...and names the line width separately when they differ",
+    /line 0\.6mm/.test(head(wide.gcode)));
+  check("...and says nothing extra when they are the same",
+    !/line 0\./.test(head(plain.gcode)));
+  check("a non-standard flow is recorded too", /flow 120%/.test(head(flowed.gcode)));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
