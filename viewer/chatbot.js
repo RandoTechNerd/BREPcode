@@ -1113,7 +1113,7 @@ export function localBase(key) {
   let u = String(key || "").trim() || LOCAL_DEFAULT_URL;
   if (!/^https?:\/\//.test(u)) u = "http://" + u;
   u = u.replace(/\/+$/, "");
-  if (!/\/v\d+$/.test(u)) u += "/v1";
+  if (!/\/(api\/)?v\d+$/.test(u)) u += "/v1";
   return u;
 }
 
