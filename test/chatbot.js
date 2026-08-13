@@ -594,6 +594,11 @@ console.log("\nmodel ranking\n");
     && body.stream === true && body.messages[0].role === "system" && body.messages[1].content === "a cube");
   const models = extractModels("local", { data: [{ id: "bonsai-27b" }, { id: "qwen2.5" }] });
   check("local model list extracts", models.join() === "bonsai-27b,qwen2.5");
+  // Regression: /api/v1 URLs must not get /v1 appended → /api/v1/v1
+  check("/api/v1 stays /api/v1 (no duplication)", localBase("http://10.66.1.2:13305/api/v1") === "http://10.66.1.2:13305/api/v1");
+  check("/api/v1 with trailing slash normalised", localBase("http://10.66.1.2:13305/api/v1/") === "http://10.66.1.2:13305/api/v1");
+  check("/api/v2 also recognised", localBase("http://localhost:8080/api/v2") === "http://localhost:8080/api/v2");
+  check("/api/v3 with scheme stripped gets added back", localBase("localhost:9000/api/v3") === "http://localhost:9000/api/v3");
   // Bionic/LM Studio list embedding models too — auto-picking one as the
   // chat default answers nothing, so they never reach the dropdown
   const mixed = extractModels("local", { data: [
