@@ -534,7 +534,33 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 10px 14px; background: var(--header); border-bottom: 1px solid var(--border);
       cursor: grab; user-select: none; touch-action: none;
+      flex-wrap: nowrap;
     }
+    /* ONE line, always — at every width, not just on a phone.
+       A model named "SnapMaker U1 MICRO" wrapped the title, which pushed the ×
+       onto a second row: the app looked broken, and the one control everybody
+       aims for moved. These rules already existed but lived inside
+       @media (max-width: 620px) — a VIEWPORT query, and these windows are
+       resizable, so a narrow panel on a wide screen never matched it.
+       The buttons are a fixed run that never shrinks; the name gives way to an
+       ellipsis instead. min-width:0 is the load-bearing part — without it a
+       flex item refuses to shrink below its content and nothing truncates. */
+    .card > header > div:first-child {
+      display: flex; align-items: baseline; gap: 6px; min-width: 0;
+    }
+    .card > header strong { flex: none; }
+    .card > header .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Rebuild rides with the name, so it reads as part of the title row rather
+       than as one more tool. Smaller and quieter than the run on the right. */
+    #panel-title #refresh-btn {
+      flex: none; align-self: center; font-size: 12px; line-height: 1;
+      padding: 1px 5px; opacity: .72;
+    }
+    #panel-title #refresh-btn:hover { opacity: 1; }
+    /* The tool run is rigid. Squeezing buttons is worse than truncating a name:
+       a half-width icon is unreadable, whereas a shortened title still says
+       which model you are looking at. */
+    #editor-tools { flex: none; display: flex; align-items: center; }
     .card > header:active { cursor: grabbing; }
     /* Double-click the header: the window takes the screen. Anything that fills
        the viewport cannot also be dragged, so the grab cursor goes away too. */
@@ -1504,6 +1530,7 @@
     #more-menu button:disabled { color: var(--disabled); cursor: default; }
     @media (max-width: 620px) {
       #editor-tools .ovf { display: none; }
+      /* stays here: the .ovf collapse is genuinely about phone width */
       #more-btn { display: inline-grid; place-items: center; }
       /* ...but not the ones a phone actually uses. Import, export and rebuild
          stay out where they can be tapped; only the long tail overflows. */
@@ -2092,14 +2119,10 @@
       #dock.multi #cheat-body, #dock.multi #history-body {
         max-height: min(40dvh, 340px);
       }
+      /* The truncation rules that used to live here are unconditional now —
+         see ".card > header" above. A resizable window can be narrow on a wide
+         screen, which this query never caught. Only the padding is phone-only. */
       .card > header { padding: 9px 10px; }
-      .card > header > div:first-child {
-        display: flex; align-items: baseline; gap: 6px; min-width: 0;
-      }
-      .card > header strong { flex: none; }
-      .card > header .sub {
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
     }
     /* A phone held sideways: 100vw of width and ~400px of height. Height is
        the scarce thing, so everything vertical gives some back. */
@@ -2692,8 +2715,12 @@
     <!-- editor -->
     <section id="panel" class="card" aria-label="BREPcode editor">
       <header>
-        <div><strong>BREPcode</strong><span class="sub" id="model-name"
-             title="Name this model — used on exports and the blueprint">builds as you type</span></div>
+        <!-- Rebuild sits with the NAME, not in the tool run. It acts on the
+             model the name refers to, and moving it here buys a slot back in a
+             row that had started wrapping onto a second line. -->
+        <div id="panel-title"><strong>BREPcode</strong><span class="sub" id="model-name"
+             title="Name this model — used on exports and the blueprint">builds as you type</span
+          ><button id="refresh-btn" class="hist-btn" title="Rebuild now">&#8635;</button></div>
         <div id="editor-tools">
           <button id="clear-btn" class="hist-btn" title="Clear the editor">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
@@ -2722,14 +2749,11 @@
           <button id="texture-btn" hidden></button>
           <button id="emboss-btn" hidden></button>
           <input type="file" id="emboss-file" accept="image/png,image/jpeg,image/webp" style="display:none" />
-          <button id="trace-btn" class="hist-btn ovf" title="Trace an image (PNG / JPG) into an extrudable outline">
-            <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
-                 stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
-                 style="vertical-align: -1px">
-              <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2" />
-              <circle cx="6" cy="6" r="1.3" /><path d="M3 12l3.4-3.4 2.3 2.3 2.4-2.6 2 2.2" />
-            </svg>
-          </button>
+          <!-- Placing an image is a MODELLING tool, so it belongs with the rest
+               of them in the toolbox rather than eating a header slot. Still a
+               real button, just hidden — the toolbox row clicks it, same as
+               drill and the others above. -->
+          <button id="trace-btn" hidden></button>
           <input type="file" id="trace-file" accept="image/*" style="display: none" />
           <button id="import-btn" class="hist-btn ovf" title="Import STL / 3MF / OBJ">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
@@ -2746,7 +2770,6 @@
               <path d="M8 2.2v8M4.8 7l3.2 3.2L11.2 7M2.8 13.2h10.4" />
             </svg>
           </button>
-          <button id="refresh-btn" class="hist-btn ovf" title="Rebuild now">&#8635;</button>
           <button id="undo-btn" class="hist-btn ovf" title="Back through history" disabled>&#9664;</button>
           <button id="redo-btn" class="hist-btn ovf" title="Forward through history" disabled>&#9654;</button>
           <button id="more-btn" class="hist-btn" title="More tools" aria-label="More tools">&#8942;</button>
@@ -2789,6 +2812,14 @@
               <path d="M2 12l3.4-3.4 2.4 2.4 3.4-3.6L14 10.5" />
             </svg>
             <span><b>Photo emboss / label</b><small>image → relief on a face · wraps round a clicked cylinder</small></span>
+          </button>
+          <button data-act="trace-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2" />
+              <circle cx="6" cy="6" r="1.3" /><path d="M3 12l3.4-3.4 2.3 2.3 2.4-2.6 2 2.2" />
+            </svg>
+            <span><b>Place an image</b><small>PNG / JPG traced into an outline you can extrude</small></span>
           </button>
           <button data-act="code-dm-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none">

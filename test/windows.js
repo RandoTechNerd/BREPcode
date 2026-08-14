@@ -192,5 +192,59 @@ console.log("\na tour link opens the tour, not a loading screen\n");
     !/> header > \.win-(expand|dock)/.test(HTML));
 }
 
+// A header is ONE line. "SnapMaker U1 MICRO" wrapped the title and took the ×
+// down onto a second row with it — the app looked broken, and the one control
+// everybody aims for moved. The truncation rules existed but sat inside
+// @media (max-width: 620px), which is a VIEWPORT query: these windows are
+// resizable, so a narrow panel on a wide screen never matched. Measured live at
+// three panel widths, the header stayed 43px and the name ellipsised instead.
+{
+  console.log("\nthe header never wraps to a second line\n");
+
+  check("the row is explicitly nowrap",
+    /\.card > header \{[^}]*flex-wrap: nowrap/s.test(HTML));
+  check("the title can shrink below its content",
+    /\.card > header > div:first-child \{[^}]*min-width: 0/s.test(HTML),
+    "min-width:0 is what lets a flex item truncate at all");
+  check("the name truncates rather than wrapping",
+    /\.card > header \.sub \{[^}]*text-overflow: ellipsis/s.test(HTML));
+  check("the tool run is rigid, so buttons never squeeze",
+    /#editor-tools \{[^}]*flex: none/s.test(HTML),
+    "a half-width icon is unreadable; a shortened name still identifies the model");
+
+  // The bug was duplication-by-media-query. If the rule is written twice, one
+  // copy can be edited and the other left behind — which is how it ended up
+  // phone-only in the first place.
+  const subRules = HTML.match(/\.card > header \.sub \{/g) || [];
+  check("...and that rule is written exactly once, not once per breakpoint",
+    subRules.length === 1, `${subRules.length} copies`);
+}
+
+// Two header slots given back: Rebuild moved next to the name it acts on, and
+// placing an image moved into the toolbox where the other modelling tools live.
+{
+  console.log("\nheader slots: rebuild by the name, image in the toolbox\n");
+
+  check("rebuild sits in the title, next to the model name",
+    /id="panel-title"[\s\S]{0,400}?<button id="refresh-btn"/.test(HTML));
+  check("...and is smaller and quieter than the tool run",
+    /#panel-title #refresh-btn \{[^}]*font-size: 12px/s.test(HTML));
+  const tools = HTML.slice(HTML.indexOf('<div id="editor-tools">'), HTML.indexOf('<div id="tools-menu">'));
+  check("...and is no longer duplicated in the tool run",
+    !/id="refresh-btn"/.test(tools),
+    "two elements with one id is a bug even when it renders");
+
+  check("placing an image is out of the header",
+    /<button id="trace-btn" hidden><\/button>/.test(HTML));
+  check("...and is offered in the toolbox instead",
+    /<button data-act="trace-btn">/.test(HTML));
+  check("...with a name and a line saying what it does",
+    /<b>Place an image<\/b><small>PNG \/ JPG traced into an outline you can extrude<\/small>/.test(HTML));
+  // It is still a real button because the toolbox rows click the real buttons —
+  // one implementation per tool, however it is launched.
+  check("the file input it drives is still there",
+    /<input type="file" id="trace-file"/.test(HTML));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
