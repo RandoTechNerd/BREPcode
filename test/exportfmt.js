@@ -263,7 +263,14 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   // The SHORT link has to come from the same place. Built from a hardcoded
   // domain it would work on the site and hand the exe an address only the
   // site can open — which is exactly the bug the long link already had.
-  check("...and so is the short one", /cl\.shortUrl\(shareBase\(\),/.test(HTML));
+  // bestShortUrl, not shortUrl: it picks between the tidy /m/name form and the
+  // #s=name fragment depending on what the host answers to. Either way the
+  // ORIGIN still comes from shareBase(), which is the part that matters here.
+  check("...and so is the short one", /cl\.bestShortUrl\(shareBase\(\),/.test(HTML));
+  check("...every time it is built, with none left on the old call",
+    (HTML.match(/cl\.bestShortUrl\(shareBase\(\),/g) || []).length === 3
+      && !/cl\.shortUrl\(shareBase\(\)/.test(HTML),
+    `${(HTML.match(/cl\.bestShortUrl\(shareBase\(\),/g) || []).length} of 3`);
   check("...and so is the published page's edit link",
     /if \(frag\) editUrl = shareBase\(\) \+ frag;/.test(HTML));
   check("no share URL is still built from the raw origin",
@@ -371,46 +378,27 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
       rule[1].trim());
   }
 
-  // ---- the blueprint button ---------------------------------------------
-  console.log("\nBlueprint button\n");
-  check("the drawing is built ahead of the click, not during it",
-    /bpIdle = setTimeout\(\(\) => \{ buildBlueprint\(\)/.test(HTML));
-  check("...but not before the user has ever asked for one (11 MB)",
-    /if \(!bpWarm \|\| bpTooHeavy\(\)\) return;/.test(HTML));
-  check("pressing it once earns the background rebuilds",
-    /localStorage\.setItem\(BP_WARM_KEY, "1"\);/.test(HTML));
-  // A popup blocker eats any window opened after an await, so the ordering
-  // inside the handler is the whole feature, not a detail. Compare positions
-  // rather than matching a span — the code between them is allowed to grow.
-  {
-    const body = HTML.slice(HTML.indexOf('$("blueprint-btn")?.addEventListener("click"'));
-    const opened = body.indexOf('window.open("", "_blank")');
-    const firstAwait = body.indexOf("await ");
-    check("the tab is opened inside the click, before any await",
-      opened > -1 && firstAwait > -1 && opened < firstAwait,
-      `open at ${opened}, first await at ${firstAwait}`);
-  }
+  // ---- the blueprint ------------------------------------------------------
+  //
+  // The header BUTTON is gone. The SVG blueprint in the export dialog is the
+  // same drawing, and the button carried a speculative background projection
+  // that ran replicad on the MAIN thread 1.5s after every edit — minutes, on an
+  // organic model — to light a readiness dot. Paying that for a button nobody
+  // asked to press was the wrong trade.
+  //
+  // What still matters is the drawing itself and the desktop hand-off, both of
+  // which the SVG export continues to use.
+  console.log("\nBlueprint\n");
+  check("the button and its overflow entry are gone",
+    !/id="blueprint-btn"/.test(HTML) && !/data-act="blueprint-btn"/.test(HTML));
+  check("...and so is the projection it fired after every edit",
+    !/bpIdle = setTimeout\(\(\) => \{ buildBlueprint\(\)/.test(HTML),
+    "it ran on the main thread and could take minutes");
+  check("the SVG blueprint is still offered in the export dialog",
+    /data-fmt="svg">SVG blueprint/.test(HTML));
+  check("...and is still built on demand", /async function buildBlueprint\(\)/.test(HTML));
   check("a superseded drawing is revoked, not leaked",
     /URL\.revokeObjectURL\(bp\.url\)/.test(HTML));
-  check("the ready dot goes out the moment the source diverges",
-    /paintBlueprintBtn\(\);\s*\n\s*scheduleBuild\(\);/.test(HTML));
-  check("the exe hands it to the OS, which does have tabs",
-    /desktop\?\.openBlueprint/.test(HTML));
-  check("a blocked popup falls back to a file, and says so",
-    /Your browser blocked the tab/.test(HTML));
-  // The pre-build's brakes, found by an orca. The projection runs replicad on
-  // the MAIN thread, and an organic hull-chain model turns it into minutes —
-  // fired automatically 1.5s after every rebuild, that is an app that freezes
-  // every time you type. The kernel build itself was never the problem: it
-  // runs in the worker with single-digit-ms stalls.
-  check("a heavy model gets no automatic blueprint rebuild",
-    /if \(!bpWarm \|\| bpTooHeavy\(\)\) return;/.test(HTML));
-  check("...heavy meaning the kernel build itself ran long",
-    /lastBuildMs > BP_AUTO_MS/.test(HTML));
-  check("one slow projection turns pre-building off for the session",
-    /performance\.now\(\) - t0 > BP_SLOW_MS\) bpSlowSession = true;/.test(HTML));
-  check("...and the button says the wait now belongs to the click",
-    /projects when you click/.test(HTML));
 
   const BP = readFileSync(new URL("../desktop/blueprint.cjs", import.meta.url), "utf8");
   check("the desktop handler refuses anything that is not an SVG",

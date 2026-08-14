@@ -93,11 +93,13 @@ function buildPrim(r, n) {
     case "P.S":
       return r.makeSphere(P.radius);
     case "P.T": {
-      if (P.arc != null && P.arc < 360) {
-        throw new Error("curved STEP doesn't support partial-arc torus yet — use a full torus or export STL/3MF");
-      }
-      return r.drawCircle(P.tubeRadius).translate(P.majorRadius, 0)
-        .sketchOnPlane("XZ").revolve([0, 0, 1]);
+      // A partial arc is a partial REVOLVE, not a special case: OCCT sweeps the
+      // tube profile through whatever angle it is given and the surfaces stay
+      // exact conical/toroidal ones, so the drawing gets true arcs rather than
+      // the faceted approximation the mesh would have handed it.
+      const arc = P.arc == null ? 360 : P.arc;
+      const sketch = r.drawCircle(P.tubeRadius).translate(P.majorRadius, 0).sketchOnPlane("XZ");
+      return arc >= 360 ? sketch.revolve([0, 0, 1]) : sketch.revolve([0, 0, 1], { angle: arc });
     }
     default:
       throw new Error(`feature("${n.code}") has no analytic equivalent — curved STEP covers cube/cylinder/cone/sphere/torus/polygon-extrudes and booleans of them`);

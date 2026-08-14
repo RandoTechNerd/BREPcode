@@ -93,6 +93,24 @@ second implementation to keep in sync. Nothing is uploaded anywhere; the only
 network traffic it can ever make is to a provider you name yourself — your AI
 key's endpoint if you set one, and your own mail server if you set that up.
 
+### It talks to your own Claude Code
+
+This is the one thing the desktop build has that the website cannot: if
+[Claude Code](https://claude.com/code) is installed and signed in, BREPcode
+uses it as an AI provider directly. Chat then runs on **the Claude subscription
+you already pay for** — no API key to paste, nothing metered per message, and
+the request never leaves your machine except as Claude Code's own traffic.
+
+It is auto-detected. On first run the app probes for the CLI, and if it is
+there it selects **Claude Code** as the provider and says so once; the dot
+beside the chat box lights up when it is connected, and the Provider dropdown
+names the version it found. Nothing is imposed on anyone who has already chosen
+a provider — a stored choice is never overridden — and every other option
+(built-in, Gemini, GPT, a local llama.cpp, a model in the browser) is unchanged.
+
+Without the CLI the entry stays in the list reading *"install to enable"*, so
+the capability is visible before it is available rather than after.
+
 Two things worth knowing before handing it to someone:
 
 - **It is not code-signed.** Windows SmartScreen will show *"Windows protected
@@ -516,12 +534,22 @@ detected (`OpenSCAD · …` / `JSCAD · …`). Requiring an unsupported JSCAD na
 
 `LLM_PROMPT.md` is a complete authoring guide written for a model rather than a person, paste it
 into Gemini/Claude/GPT as a system prompt and describe the part you want. It pins down units and
-orientation, gives the full closed vocabulary, lists what doesn't exist (so the model stops reaching
-for `fillet` and `linear_extrude`), and covers the geometry rules that actually matter, overshoot
-through-cuts, overlap unions, one target per difference.
+orientation, gives the vocabulary grouped by job, says what genuinely doesn't exist, and covers the
+geometry rules that actually matter: overshoot through-cuts, overlap unions, one target per
+difference, `union` welds where `group` keeps apart, and heights measured from the model rather than
+from z = 0.
 
-Every worked example in it is covered by `test/docs.js`, so the guide can't drift into teaching code
-that doesn't build.
+**The in-app chat beats it**, and the guide says so in its first paragraph. The app sends a far
+larger instruction set, pulls in recipes matched to the request, tells the model what is already on
+the plate, and retries automatically when code doesn't build. This file is for driving a *different*
+model, or an editor's assistant, from outside.
+
+Every runnable example in it is built by `test/docs.js` — including a count check, so an example
+added to the guide and not to the test fails the suite rather than going untested. `test/llmprompt.js`
+checks the vocabulary it teaches against the real exports, which is what catches the failure mode
+this file actually had: for a long stretch it told models to refuse `hull`, `minkowski`, `fillet`,
+`chamfer`, `revolve` and `importedMesh`, all of which had shipped. A guide that bans working features
+is worse than a stale one — it makes the model write workarounds for problems that are gone.
 
 ### The recipe library
 

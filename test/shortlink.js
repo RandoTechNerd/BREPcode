@@ -49,6 +49,62 @@ console.log("\nreading a link\n");
       === "https://brepcode.com/brep/index.html#s=fish-bowl");
 }
 
+console.log("\nthe tidy form: brepcode.com/m/fish-bowl\n");
+{
+  // The fragment form has to keep working forever — links already sent to
+  // people are not recallable — so this is an ADDITION to the reader, never a
+  // replacement. Both shapes in, one shape out.
+  check("a /m/ path is a short link", cl.shortSlugIn("/m/fish-bowl") === "fish-bowl");
+  check("...with a trailing slash too", cl.shortSlugIn("/m/fish-bowl/") === "fish-bowl");
+  check("...as a whole URL", cl.shortSlugIn("https://brepcode.com/m/my-part") === "my-part");
+  check("...and location-shaped", cl.shortSlugIn({ pathname: "/m/rolo", hash: "" }) === "rolo");
+  check("the fragment still wins when both are there",
+    cl.shortSlugIn({ pathname: "/m/one", hash: "#s=two" }) === "two");
+  check("the old fragment form is untouched by any of this",
+    cl.shortSlugIn({ pathname: "/brep/index.html", hash: "#s=fish-bowl" }) === "fish-bowl");
+  // /m/ is RESERVED: nothing else in the app is served from under it, which is
+  // what makes it safe to hand to arbitrary user-chosen names. A page that
+  // merely mentions m elsewhere is not a short link.
+  check("an ordinary page is not a short link", cl.shortSlugIn("/brep/index.html") === null);
+  check("a deeper path under m/ is not one", cl.shortSlugIn("/m/a/b") === null);
+  check("a name with a slash in it cannot smuggle a path",
+    cl.shortSlugIn("/m/fish/../admin") === null);
+  check("the tidy URL drops the app path", cl.prettyShortUrl("https://brepcode.com/brep/index.html", "fish-bowl")
+    === "https://brepcode.com/m/fish-bowl");
+  check("...and refuses a scheme it cannot serve from",
+    cl.prettyShortUrl("app://./index.html", "fish-bowl") === null);
+}
+
+console.log("\n...but only once the server actually answers to it\n");
+{
+  // Neither answer can be hard-coded. Assuming the rewrite is live mints dead
+  // links on a host that has not been configured yet; assuming it is not means
+  // configuring it changes nothing. So the app ASKS, once, and caches.
+  const BASE = "https://brepcode.com/brep/index.html";
+  cl._resetPrettyProbe();
+  let asked = 0;
+  const yes = async () => { asked++; return { ok: true, status: 200 }; };
+  check("with the rewrite live, the tidy link is offered",
+    await cl.bestShortUrl(BASE, "fish-bowl", yes) === "https://brepcode.com/m/fish-bowl");
+  await cl.bestShortUrl(BASE, "other", yes);
+  check("...and the server is asked once, not per link", asked === 1, `${asked} requests`);
+
+  cl._resetPrettyProbe();
+  const no = async () => ({ ok: false, status: 404 });
+  check("without it, the fragment link is offered instead",
+    await cl.bestShortUrl(BASE, "fish-bowl", no) === `${BASE}#s=fish-bowl`);
+
+  cl._resetPrettyProbe();
+  const dead = async () => { throw new Error("CORS"); };
+  check("a blocked probe falls back rather than throwing",
+    await cl.bestShortUrl(BASE, "fish-bowl", dead) === `${BASE}#s=fish-bowl`);
+
+  cl._resetPrettyProbe();
+  check("...and so does the .exe, which has no http origin at all",
+    await cl.bestShortUrl("app://./index.html", "fish-bowl", yes) === "app://./index.html#s=fish-bowl");
+  cl._resetPrettyProbe();
+}
+
 console.log("\nit works out of the box\n");
 {
   // There is no key to configure, so unlike the first design this ships

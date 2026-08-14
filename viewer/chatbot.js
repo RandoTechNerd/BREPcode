@@ -966,7 +966,7 @@ REPLY SHAPE: one short sentence, then ONE fenced code block of complete runnable
 // instead of inventing — the easier job. This is where the wider vocabulary
 // unlocks, one step at a time, exactly the way a person sands after shaping.
 export const POLISH_HARNESS = `You improve existing BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. The code you are given ALREADY BUILDS — keep its structure and sizes, refine it.
-YOU MAY NOW ALSO USE: tube(path, {r}) sweeps a round profile along a point list — cables, bowden tubes, handles, hoops; ONE solid however many bends, with real arcs at the corners, so replace any chain of cylinders-and-spheres you find with it · helix({r,turns,pitch}) and circlePath({r}) give it point lists · fillet(r, shape) rounds all edges (r 1-2 typical) · chamfer(c, shape) bevels · roundedGrow(mm, shape) — also spelled minkowski(mm, shape) — rounds EVERY outside edge and corner at once and grows the part by that much on every face (a 20mm cube becomes 26mm at 3) · roundedShrink(mm, shape) takes an even layer off · cone({r1,r2,h}) · torus({R,r}) · colorize("#hex", shape) per part · scale([x,y,z], shape) · mirror([1,0,0], shape).
+YOU MAY NOW ALSO USE: tube(path, {r}) sweeps a round profile along a point list — cables, bowden tubes, handles, hoops; ONE solid however many bends, with real arcs at the corners, so replace any chain of cylinders-and-spheres you find with it · helix({r,turns,pitch}) and circlePath({r}) give it point lists · fillet(r, shape) rounds all edges (r 1-2 typical) · chamfer(c, shape) bevels · roundedGrow(mm, shape) — also spelled minkowski(mm, shape) — rounds EVERY outside edge and corner at once and grows the part by that much on every face (a 20mm cube becomes 26mm at 3) · roundedShrink(mm, shape) takes an even layer off · cone({r1,r2,h}) · torus({R,r}) · colorize("#hex", shape) per part · colorByHeight({every|at, colors}, shape) bands by height as SEPARATE solids · scale([x,y,z], shape) · mirror([1,0,0], shape).
 POLISH MEANS: fillet or chamfer edges a hand touches · colorize each logical part differently · swap a crude block for a cone/torus where the real object is round · keep every screw hole and mating size EXACTLY as it is.
 ROUNDING, WHICH TO REACH FOR: fillet(r) when the part must keep its size — it rounds in place. roundedGrow(mm) when the whole thing should read as soft and pillowy, or when fillet() fails on the shape; it is the one that works on an imported mesh. It GROWS the part, so never use it on a mating face, a shaft or a bore — say in your sentence that the outside got mm bigger. Never use it to round a single edge, and never to make two parts FIT — that is clearance(gap, shape), which grows a shape about its own centre by the gap ON DIAMETER.
 Do not add new features the user never asked for. Do not rename the consts.
@@ -1005,7 +1005,9 @@ PLACING DETAIL ON A FACE: a recessed bay cut into a box, inset from the walls, d
 FILAMENT BY NAME — ALWAYS use the comment form, on its own line at the TOP of the code: // filament: witchcraft
 It works in every language you can write here. The JS call filament("x") only exists in BREPcode, and a cookie cutter is written as OpenSCAD, where it is silently ignored — so the comment is the form that always applies. The same line also survives being saved and reopened.
 filament("witchcraft") sets the viewer's spool — real Cookiecad filaments, so "make a heart cutter in Witchcraft" or "print the star in Funfetti" is ONE request you answer in code, not prose. Names: funfetti, unicorn, ruby, witchcraft, mermaid, darkmagic, fairyfloss, golddust, pinkombre (case and spacing do not matter; "Pink Ombré", "gold dust" and "PETG Witchcraft" all work). Write it as a statement before the return — filament("funfetti"); return cutter; — or wrap a shape: filament("unicorn", cutter). Viewer only: the STL is identical whichever spool is named, so never let it change the geometry. If the user names a filament you do not recognise, say so and list these nine rather than guessing.
-Looks (viewer only, geometry/export unchanged): glow(color, intensity, shape) is a lit LED/lamp/screen — glow("#ff3b30", 2, sphere({r:2.5})) reads as a powered LED. glass(opacity, shape) is optically clear with a real reflection — lenses, LCD windows, acrylic covers; glass(cylinder({r:12, h:2})) for a binocular lens, glass(0.15, thinCube) for a display window. Use them whenever the object being modelled would have lit or transparent parts.
+Looks (viewer only, geometry/export unchanged): glow(color, intensity, shape) is a lit LED/lamp/screen — glow("#ff3b30", 2, sphere({r:2.5})) reads as a powered LED. glass(opacity, shape) is optically clear with a real reflection — lenses, LCD windows, acrylic covers; glass(cylinder({r:12, h:2})) for a binocular lens, glass(0.15, thinCube) for a display window. Use them whenever the object being modelled would have lit or transparent parts. finish(name, shape) says what ONE piece is MADE of when the model is not all one material — finish("Balsa", body) with finish("Titanium", screws), or finish("cc-golddust", trim) to glitter the trim alone. Reach for it whenever the user names two materials in one object; it is not for colouring, that is colorize(). Names: any filament above with a cc- prefix, or Titanium, Aluminum, Steel, Brass, Copper, Gold, Balsa, Oak wood, Stone, Concrete, Ceramic, Glass, Acrylic, PLA, PETG, ABS, PEEK, Nylon, Resin, TPU, Carbon fiber.
+
+NAME THE DIMENSIONS — every size worth changing goes in a top-level const before any geometry (const WALL = 2.4;) and the geometry uses the name. The app turns those lines into SLIDERS (Parameters button), so a model written this way is adjustable by someone who never opens the code and one with numbers buried in its shapes is not. Pin a slider's ends and label with a trailing comment — const WALL = 2.4; // [1:0.2:6] wall thickness — and group them with /* [Size] */ on its own line. A const whose value is an EXPRESSION (const INNER = WIDTH - WALL*2) is a consequence, not a dial, and is deliberately not offered — so write derived sizes that way. "Make this adjustable" / "pull the dimensions into parameters" means exactly this rewrite and nothing else.
 
 RULES
 - Millimetres. Z is up. Parts print bottom-down on z=0.
@@ -1070,6 +1072,9 @@ SEVERAL VIEWS OF THE SAME THING: read them TOGETHER before modelling, and treat 
 SPLITTING A MODEL FOR PRINTING — "cut this into parts", "print the colours separately", "put it on the plate": this is a real capability, not a limitation to apologise for. dowelsOnPlane({p, ang, at, d, depth}) makes the registration holes for a joint and BORES BOTH SIDES, so you subtract the one call from BOTH parts and the bores cannot drift apart; dowelPinsFor({at, d, depth}) makes the matching pins from the same arguments; glueSocket(part, {gap}) makes a pocket shaped like whatever drops into it, and clearance(gap, part) is that same measured grow on its own for any pocket or cavity; onPlate([...]) MEASURES each piece, butts them up along X with a gap and stands each on the bed, so parts of different sizes neither overlap nor waste plate (layout() is the same for any row of shapes). dowelPin/dowelHole are there for a single one. Fits and gaps are ON DIAMETER. Never use roundedGrow/minkowski to make something fit — an offset is the right shape but the wrong engine at a few tenths of a millimetre, where it is slow and often comes back non-manifold.
 THREE PINS PER JOINT, NOT TWO, AND NEVER IN A LINE — three points fix a plane; two let it pivot and so do three in a row. Cut where the model ALREADY has an edge (a colour boundary, a plane you cut with): a seam on an existing edge disappears, one across a smooth curve never does. Turn each part so its big flat split face is DOWN on the plate — that is what makes the cut worth making. Keep a SHOW = "plate" / "assembled" switch at the top of the file so the same model can be checked for fit and then laid out.
 Say which parts, which colour each, how many pins and what glues to what — someone has to print and assemble it. Read #splitprint for the fits and the rest.
+
+#colorheight
+COLOUR BY HEIGHT AND SEALING — colorByHeight({ every: 10, colors: […] }, model), or { at: [8, 22] } to name the cuts; it measures the model. NEVER hand-roll it: union() fuses the bands into ONE solid, so it prints one colour with nothing to show why. Sealing is that fork reversed — union() = one sealed body, group() = separate. Read #colorheight.
 
 #machine
 MACHINES AND GEARS — when the thing being asked for has parts that MOVE against each other (a gearbox, a winch, a trebuchet, a crank, a rack and pinion, anything with a ratio), the geometry is the easy half and the fit is the whole job. Two rules cover most of it:
@@ -1335,9 +1340,29 @@ export function localBase(key) {
   let u = String(key || "").trim() || LOCAL_DEFAULT_URL;
   if (!/^https?:\/\//.test(u)) u = "http://" + u;
   u = u.replace(/\/+$/, "");
+  // NOTE for the next person who looks at this: it already handles Lemonade's
+  // `/api/v1`. A URL ending `/api/v1` also ends `/v1`, so this matches and
+  // nothing is appended — widening the pattern to `/\/(api\/)?v\d+$/` looks
+  // like a fix but is exactly equivalent. BREPcode's first outside PR proposed
+  // that change; the tests below pin the behaviour so it stays understood
+  // rather than being re-"fixed" every time someone reads the line.
   if (!/\/v\d+$/.test(u)) u += "/v1";
   return u;
 }
+
+// The local servers people actually run, offered as a picker on the Server URL
+// box so nobody has to remember a port. Order = how likely a newcomer is to
+// have it. Lemonade is AMD's (Ryzen AI NPU/iGPU); it answers on /v1, /v0,
+// /api/v1 and /api/v0 — /api/v1 is what its own docs print, so that is what we
+// hand out. `origins` names the env var that lets a BROWSER talk to it: same
+// shape of problem as Ollama's, and the reason brepcode.com "can't see" a
+// server that is plainly running.
+export const LOCAL_PRESETS = [
+  { name: "LM Studio", url: "http://localhost:1234/v1" },
+  { name: "Ollama", url: "http://localhost:11434/v1", origins: "OLLAMA_ORIGINS" },
+  { name: "Lemonade (AMD Ryzen AI)", url: "http://localhost:13305/api/v1", origins: "LEMONADE_ALLOWED_ORIGINS" },
+  { name: "llama.cpp", url: "http://localhost:8080/v1" },
+];
 
 // ------------------------------------------------------------------ OpenAI
 //

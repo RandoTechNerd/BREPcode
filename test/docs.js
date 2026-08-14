@@ -3,7 +3,9 @@
 
 import {
   cube, cylinder, sphere, union, difference, intersection, translate, build, toSTL,
+  colorByHeight,
 } from "../index.js";
+import { readFileSync } from "node:fs";
 import { fromOpenSCAD } from "../src/openscad.js";
 import * as jscad from "../src/jscad.js";
 
@@ -85,6 +87,41 @@ await ok("dome via intersection", intersection(
   sphere({ r: 10, $fn: 48 }),
   translate([-10, -10, 0], cube([20, 20, 10])),
 ), (2 / 3) * Math.PI * 1000, 60);
+
+// 6. the colour example, and the assertion that IS the rule it teaches:
+// banding must leave SEPARATE solids. A union would fuse them into one body
+// and the model would print a single colour — which is the trap the guide
+// spends a paragraph on, so it had better be true.
+{
+  const wall = 1.6, h = 60, r = 30;
+  const body = union(
+    difference(cylinder({ r, h, $fn: 96 }),
+      translate([0, 0, 2], cylinder({ r: r - wall, h, $fn: 96 }))),
+    cylinder({ r, h: 2, $fn: 96 }),
+  );
+  const banded = await build(colorByHeight({ at: [12], colors: ["#ffffff", "#2b6cb0"] }, body));
+  const n = banded?.solids?.length;
+  if (n === 2) { pass++; console.log("  PASS  two-colour vase — 2 separate solids"); }
+  else { fail++; console.log(`  FAIL  two-colour vase — ${n} solid(s), expected 2`); }
+}
+
+// The examples above are transcribed by hand, which is how this file drifted
+// from the guide it claims to cover: an example added to LLM_PROMPT.md was
+// simply not tested. Counting them cannot drift.
+{
+  const doc = readFileSync(new URL("../LLM_PROMPT.md", import.meta.url), "utf8");
+  const editorForm = [...doc.matchAll(/```js\n([\s\S]*?)```/g)]
+    .map((m) => m[1])
+    .filter((b) => !b.includes("import ") && !b.includes("require("));
+  const COVERED = 6;   // 1 intro, 1 return-form, 3 worked, 1 colour — all built above
+  if (editorForm.length === COVERED) {
+    pass++; console.log(`  PASS  all ${COVERED} runnable examples in the guide are covered here`);
+  } else {
+    fail++;
+    console.log(`  FAIL  the guide has ${editorForm.length} runnable examples, this file builds ${COVERED}`
+      + " — add the new one here (or run scripts/check-llm-prompt.mjs to build them all)");
+  }
+}
 
 console.log("\nAppendix examples\n");
 await ok("OpenSCAD appendix snippet", fromOpenSCAD(`

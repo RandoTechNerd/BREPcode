@@ -696,6 +696,34 @@ console.log("\nmodel ranking\n");
   check("blank URL means the llama.cpp default", localBase("") === "http://localhost:8080/v1");
   check("bare host:port gets scheme + /v1", localBase("localhost:11434") === "http://localhost:11434/v1");
   check("trailing slash and existing /v1 are respected", localBase("http://localhost:1234/v1/") === "http://localhost:1234/v1");
+  // Lemonade (AMD Ryzen AI) publishes its base URL as /api/v1, which is the
+  // first local server BREPcode has met that puts the version under a prefix.
+  // These four cases came from BREPcode's first outside pull request. They
+  // shipped with a widened regex — `/\/(api\/)?v\d+$/` — which is EQUIVALENT
+  // to the existing one, because a URL ending "/api/v1" also ends "/v1". The
+  // code change was a no-op; the cases were not, so they are kept. Thanks to
+  // @cgarwood82 for finding the gap, which was never the regex: it was that
+  // the app had no idea Lemonade existed.
+  check("/api/v1 stays /api/v1 (no /v1/v1 duplication)",
+    localBase("http://10.66.1.2:13305/api/v1") === "http://10.66.1.2:13305/api/v1");
+  check("/api/v1 with a trailing slash normalises",
+    localBase("http://10.66.1.2:13305/api/v1/") === "http://10.66.1.2:13305/api/v1");
+  check("/api/v2 is recognised too", localBase("http://localhost:8080/api/v2") === "http://localhost:8080/api/v2");
+  check("/api/v3 without a scheme gets one, keeping the prefix",
+    localBase("localhost:9000/api/v3") === "http://localhost:9000/api/v3");
+  // A bare Lemonade host still lands somewhere real: it serves /v1 as well as
+  // /api/v1, so appending the default is correct rather than merely harmless.
+  check("bare Lemonade host gets /v1, which Lemonade also serves",
+    localBase("localhost:13305") === "http://localhost:13305/v1");
+  const lemon = CB.LOCAL_PRESETS.find((p) => /lemonade/i.test(p.name));
+  check("Lemonade is offered as a preset", !!lemon);
+  check("...on its real port, 13305", lemon?.url === "http://localhost:13305/api/v1");
+  check("...and names the env var that lets a browser reach it",
+    lemon?.origins === "LEMONADE_ALLOWED_ORIGINS",
+    "without it, brepcode.com is refused by a server that is plainly running");
+  const lemonReq = buildApiRequest({ provider: "local", model: "m", key: lemon.url }, [{ role: "user", text: "hi" }]);
+  check("a Lemonade base builds the right chat URL",
+    lemonReq.url === "http://localhost:13305/api/v1/chat/completions", lemonReq.url);
   const req = buildApiRequest({ provider: "local", model: "bonsai-27b", key: "" },
     [{ role: "user", text: "a cube" }], { stream: true });
   const body = JSON.parse(req.options.body);
@@ -931,6 +959,41 @@ console.log("\nwires are swept, not chained\n");
 
 // ---- the mission, painted as source ---------------------------------------
 //
+// The Server URL picker. LOCAL_PRESETS lives in chatbot.js but the <datalist>
+// the user actually clicks is static HTML, so the two can drift — and a wrong
+// port here is the worst kind of bug in this app: a newcomer sees a red ✗ with
+// no way to tell whether the server, the URL or the app is at fault. So the
+// list is asserted to match, both ways.
+{
+  console.log("\nlocal server presets\n");
+  const { readFileSync } = await import("node:fs");
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const dl = HTML.slice(HTML.indexOf('<datalist id="local-urls">'), HTML.indexOf("</datalist>"));
+
+  check("the Server URL box has a preset list", dl.length > 40);
+  for (const p of CB.LOCAL_PRESETS) {
+    check(`${p.name} is offered in the dropdown`, dl.includes(`value="${p.url}"`), p.url);
+  }
+  check("...and the dropdown offers nothing the code does not know",
+    (dl.match(/<option /g) || []).length === CB.LOCAL_PRESETS.length,
+    `${(dl.match(/<option /g) || []).length} options vs ${CB.LOCAL_PRESETS.length} presets`);
+
+  // The field is an API key for every other provider, so the type flip and the
+  // list attribute must BOTH be conditional — offering localhost completions
+  // on a password box would be a leak of the wrong shape.
+  check("the URL is shown as text, not masked as a password",
+    /aiKey\.type = lo \? "text" : "password"/.test(HTML),
+    "a typo'd port is invisible behind dots");
+  check("the preset list is attached only for the local provider",
+    /if \(lo\) aiKey\.setAttribute\("list", "local-urls"\);\s*\n\s*else aiKey\.removeAttribute\("list"\)/.test(HTML));
+
+  check("the provider dropdown names Lemonade", /Local model — .*Lemonade/.test(HTML));
+  check("the setup guide gives Lemonade's real port", HTML.includes("http://localhost:13305/api/v1"));
+  check("...and tells browser users the origin var, without recommending *",
+    /setx LEMONADE_ALLOWED_ORIGINS https:\/\/brepcode\.com/.test(HTML),
+    "naming the site beats * , which would open the server to any page the user visits");
+}
+
 // A highlight layer behind a see-through textarea. The invariant that makes it
 // safe is that the overlay reproduces the text EXACTLY and styles it with
 // colour only — anything that changes metrics (weight, size, spacing, or extra

@@ -261,14 +261,93 @@ export async function resolveShort(slug) {
   return { text: row.payload, name: row.name };
 }
 
-// Pull the name out of a fragment. Same shape as the #m= reader so the loader
+// Pull the name out of a link. Same shape as the #m= reader so the loader
 // can ask both the same way.
-export function shortSlugIn(hash) {
-  const m = /[#&]s=([A-Za-z0-9._-]{1,64})(?:&|$)/.exec(String(hash || ""));
-  return m ? m[1] : null;
+//
+// TWO shapes are accepted, and both are permanent:
+//
+//   .../brep/index.html#s=fish-bowl     the fragment form, which needs nothing
+//                                       from the web server and therefore has
+//                                       always worked
+//   brepcode.com/m/fish-bowl            the tidy form, which needs the server
+//                                       to rewrite /m/* onto the app
+//
+// Reading both costs nothing and means links minted before the rewrite existed
+// keep opening forever. `src` is a string (a hash, or a whole URL) or anything
+// location-shaped.
+const SLUG = "[A-Za-z0-9._-]{1,64}";
+
+export function shortSlugIn(src) {
+  let hash = "", path = "";
+  if (src && typeof src === "object") {
+    hash = String(src.hash || "");
+    path = String(src.pathname || "");
+  } else {
+    const s = String(src || "");
+    // A whole URL, a bare "#s=x", or a bare path — split on the first #.
+    const cut = s.indexOf("#");
+    hash = cut < 0 ? (s.startsWith("#") ? s : "") : s.slice(cut);
+    const head = cut < 0 ? s : s.slice(0, cut);
+    path = /^[a-z]+:\/\//i.test(head) ? (head.replace(/^[a-z]+:\/\/[^/]*/i, "") || "/") : head;
+  }
+  const f = new RegExp(`[#&]s=(${SLUG})(?:&|$)`).exec(hash);
+  if (f) return f[1];
+  // /m/<slug>, with or without a trailing slash. The prefix is RESERVED — no
+  // real page of the app lives under it — which is the whole reason it can be
+  // handed to arbitrary user-chosen names without ever colliding with one.
+  const p = new RegExp(`(?:^|/)m/(${SLUG})/?$`).exec(path.split("?")[0]);
+  return p ? p[1] : null;
 }
 
+// The fragment form. Kept as the plain, always-safe answer.
 export const shortUrl = (base, slug) => `${base}#s=${slug}`;
+
+// The tidy form: same origin as the app, /m/ in front of the name.
+export function prettyShortUrl(base, slug) {
+  const origin = String(base || "").replace(/^([a-z]+:\/\/[^/]*).*$/i, "$1");
+  if (!/^https?:\/\//i.test(origin)) return null;   // app:// and file:// cannot
+  return `${origin}/m/${slug}`;
+}
+
+// Is the rewrite actually deployed on this host?
+//
+// This is ASKED rather than configured, because getting it wrong in either
+// direction is bad in a way a setting cannot fix: hard-coding the tidy form
+// mints dead links on a server that has not been told about /m/ yet, and
+// hard-coding the fragment form means the rewrite goes in and nothing starts
+// using it. One HEAD request settles it, the answer is cached for the session,
+// and it upgrades itself the day the rule lands. Anything unexpected — a
+// cross-origin block from the .exe, an offline machine, a slow server — falls
+// back to the fragment form, which always works.
+let prettyProbe = null;
+export function probePretty(base, fetchImpl) {
+  if (prettyProbe) return prettyProbe;
+  const f = fetchImpl || (typeof fetch === "function" ? fetch : null);
+  const url = prettyShortUrl(base, "_brepcode_probe");
+  if (!f || !url) return (prettyProbe = Promise.resolve(false));
+  prettyProbe = (async () => {
+    try {
+      const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+      const t = ctrl ? setTimeout(() => ctrl.abort(), 3500) : null;
+      const r = await f(url, { method: "HEAD", signal: ctrl?.signal });
+      if (t) clearTimeout(t);
+      // A 200 means the server served the APP for a name that does not exist,
+      // which is exactly what the rewrite does. A 404 means it did not.
+      return !!r && r.ok;
+    } catch { return false; }
+  })();
+  return prettyProbe;
+}
+export const _resetPrettyProbe = () => { prettyProbe = null; };
+
+// What to actually show someone. Tidy when the host supports it, fragment when
+// it does not — and never a link that has not been checked.
+export async function bestShortUrl(base, slug, fetchImpl) {
+  try {
+    if (await probePretty(base, fetchImpl)) return prettyShortUrl(base, slug);
+  } catch { /* fall through */ }
+  return shortUrl(base, slug);
+}
 
 // ------------------------------------------------------- claiming by proxy
 //

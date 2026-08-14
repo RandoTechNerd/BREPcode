@@ -89,6 +89,10 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "cloudlink.js",
   // baking the spool's look (glitter, gradient, glass) into the GLB
   "glblook.js",
+  // reading a model's named dimensions out for the Parameters sliders
+  "params.js",
+  // click-a-strand shaving, loaded when the tool is first used
+  "shave.js", "stagefit.js", "logbook.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.

@@ -1145,6 +1145,19 @@ function evalCall(stmt, scope) {
   //
   // Named arguments become the options object every DSL function takes; a child
   // is passed first, for the handful that transform a shape.
+  //
+  // ...EXCEPT when the call also has positional arguments, because then the DSL
+  // convention is the other way round. The two families read identically in
+  // OpenSCAD and are opposite in JS:
+  //
+  //   glueSocket(gap = 0.2) part();   ->  glueSocket(shape, { gap })
+  //   finish("Titanium")    part();   ->  finish("Titanium", shape)
+  //   clearance(0.3)        part();   ->  clearance(0.3, shape)
+  //
+  // Passing the child first regardless made the second family silently take a
+  // SHAPE as its name/gap — finish() got "[object Object]" and clearance() got
+  // a gap of NaN. Positional-args-present is the tell, and it is exact: a
+  // leading value is the whole reason those functions have one.
   const dslFn = dsl[name];
   if (typeof dslFn === "function") {
     const opts = {};
@@ -1153,7 +1166,8 @@ function evalCall(stmt, scope) {
     const child = stmt.child ? childShape(stmt, scope) : null;
     try {
       let out;
-      if (child) out = dslFn(child, opts);
+      if (child && positional.length) out = dslFn(...positional, child);
+      else if (child) out = dslFn(child, opts);
       else if (positional.length && !Object.keys(opts).length) out = dslFn(...positional);
       else out = dslFn(opts);
       if (out && (out.__brepscript || out.__brepscript2d)) return out;

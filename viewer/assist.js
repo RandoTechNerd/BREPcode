@@ -150,6 +150,11 @@ export const SPECS = [
     hint: "Optically clear with a real reflection — binocular lenses, LCD windows, acrylic covers. Lower opacity = clearer (0.15 for a display window). The reflection environment loads only when glass is first used, so plain models pay nothing. Looks only — exports unchanged.",
   },
   {
+    name: "material / filament", group: "Edit a part", sig: "finish(name, shape)",
+    snippet: 'finish("cc-golddust", cube([20, 20, 8]))', argStart: 7,
+    hint: "What this ONE piece is made of, when the model is not all one thing — the body in balsa, the screws in titanium, only the middle in glitter. Takes a Cookiecad spool (\"cc-golddust\", \"cc-fairyfloss\", \"cc-witchcraft\"…) or a material name from the Material panel (\"Titanium\", \"Balsa\", \"Brass\", \"Glass\"). Beats the model-wide Material panel for that piece and leaves every other piece following it. Right-click any piece → \"Material & pattern…\" to set the same thing by hand, including a surface pattern. Looks only — geometry and STL/3MF are unchanged, but it does travel into the GLB.",
+  },
+  {
     name: "surface texture", group: "Edit a part", sig: "texture({ pattern, depth, scale, faces }, model)",
     wrap: 'texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, $MODEL$)',
     snippet: 'texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, cube([30, 30, 12]))', argStart: 9,
@@ -186,6 +191,11 @@ export const SPECS = [
     name: "hull", group: "Combine", sig: "hull(a, b, ...)",
     snippet: "hull(\n  translate([-12, 0, 0], cylinder({ r: 4, h: 8, $fn: 48 })),\n  translate([12, 0, 0], cylinder({ r: 4, h: 8, $fn: 48 })),\n)", argStart: 5,
     hint: "Wraps the shapes in one convex skin (a smooth swept connector). Also works in pasted OpenSCAD as hull().",
+  },
+  {
+    name: "colorByHeight", group: "Combine", sig: "colorByHeight({ every, colors }, shape)",
+    snippet: 'colorByHeight({ every: 10, colors: ["#e33333", "#3399ff"] },\n  cube([20, 20, 40]),\n)', argStart: 16,
+    hint: "Bands of colour up the model, measured from its bottom — { every: 10 } for a band every 10mm, or { at: [8, 22] } to name the cuts (one more colour than cuts). It measures the model itself, so you never have to say how tall it is. Each band stays a SEPARATE solid, which is what makes it really print in different filaments: writing this by hand with union() fuses them back into one body and the model comes out a single colour.",
   },
   {
     name: "roundedGrow", group: "Combine", sig: "roundedGrow(mm, shape)",

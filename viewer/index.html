@@ -302,6 +302,69 @@
     #stage { position: absolute; inset: 0; }
     canvas { display: block; }
 
+    /* ---------- the boot screen ----------
+       The wait this covers is the geometry kernel arriving — several megabytes
+       of WebAssembly — and on a shared link the model on top of that. Until now
+       the page during it was an empty plate, which reads as "nothing here"
+       rather than "nearly there".
+       The cube is the same laser-draw animation the status bar runs, at size,
+       over a slowly turning rainbow. pointer-events: none throughout: it is
+       scenery, and orbiting the empty plate underneath must keep working. */
+    #boot {
+      position: absolute; inset: 0; z-index: 6; pointer-events: none;
+      display: grid; place-items: center; align-content: center; gap: 22px;
+      transition: opacity .5s ease, transform .5s ease;
+    }
+    #boot.gone { opacity: 0; transform: scale(1.06); }
+    #boot[hidden] { display: none; }
+    #boot-cube { position: relative; z-index: 1; }
+    /* Authored at 100px and scaled by --bc (unitless — scale() rejects
+       lengths), same as every other use of this cube. */
+    #boot-cube .bcube-wrap { --bc: 132; }
+    /* On a phone the cube is scaled DOWN (96%), so it stays inside its box and
+       the extra room above the note is not needed. */
+    @media (max-width: 700px) {
+      #boot-cube .bcube-wrap { --bc: 96; }
+      #boot-note { margin-top: 0; }
+    }
+    /* The glow sits BEHIND the cube and is deliberately enormous and soft: a
+       crisp ring would read as a progress spinner and promise a proportion of
+       something, which nothing here can honestly report. */
+    #boot-glow {
+      position: absolute; width: 340px; height: 340px; border-radius: 50%;
+      background: conic-gradient(from var(--brc-spin),
+        #ff4d4d, #ffb020, #ffe94d, #49d17a, #35c6e8, #6f7bff, #c86bff, #ff4d4d);
+      filter: blur(58px); opacity: .40;
+      animation: brc-spin 5.5s linear infinite;
+    }
+    @supports not (background: conic-gradient(from var(--brc-spin), red, blue)) {
+      #boot-glow {
+        background: conic-gradient(#ff4d4d, #ffb020, #ffe94d, #49d17a, #35c6e8, #6f7bff, #c86bff, #ff4d4d);
+        animation: brc-spin-fallback 5.5s linear infinite;
+      }
+    }
+    @media (max-width: 700px) { #boot-glow { width: 250px; height: 250px; filter: blur(44px); } }
+    #boot-note {
+      position: relative; z-index: 1;
+      font: 13px system-ui, sans-serif; color: var(--muted2);
+      letter-spacing: .02em; text-align: center; max-width: 78vw;
+      animation: buildpulse 2.4s ease-in-out infinite;
+      /* The cube SPINS, and a rotating box sweeps outside the bounds it
+         occupies at rest — its corners reach furthest at 45°, which is where
+         one of them was crossing this line. Measuring the static box says
+         there is no overlap, and there isn't: the collision only exists part
+         way through the turn. So the clearance has to cover the sweep rather
+         than the box, which the grid gap alone cannot know about. 22px of gap
+         plus this leaves 38px. */
+      margin-top: 16px;
+    }
+    /* Someone who asked for less motion still gets the cube — it is the thing
+       being waited on — but the glow stops chasing its own tail. */
+    @media (prefers-reduced-motion: reduce) {
+      #boot-glow { animation-duration: 30s; opacity: .3; }
+      #boot-note { animation: none; }
+    }
+
     #hint-corner {
       position: absolute; left: 20px; bottom: 20px; z-index: 5;
       color: var(--muted7); font: 12px system-ui, sans-serif; pointer-events: none;
@@ -369,9 +432,18 @@
          overflowed. So: each window keeps its size (flex:none below) and the
          STACK scrolls instead. Fixed-position flyouts are unaffected — they
          are not laid out in here. */
-      overflow-y: auto; overscroll-behavior: contain;
+      /* NOT clipped by default. A scroll container clips on BOTH axes — CSS
+         forces overflow-x to auto the moment overflow-y is — and with no
+         window open this column is exactly as wide and tall as the pill row,
+         so the pill's drop shadow (0 6px 22px) was being sliced: 3px of it on
+         the left, 6px of the 28px below. That shadow is what lifts the pill
+         off the plate, and a sliced shadow reads as a hard edge.
+         Clipping is only ever needed when the stack of windows is genuinely
+         taller than the room for it, and that is what .scrolls is for. */
+      overflow: visible;
       scrollbar-width: thin; scrollbar-color: var(--muted3) transparent;
     }
+    #dock.scrolls { overflow-y: auto; overscroll-behavior: contain; }
     /* The pill row is the app's main nav, so it must survive the dock
        scrolling and never be the thing that gives way. flex:none because a
        scroll container still SHRINKS its flex items before it overflows —
@@ -379,7 +451,33 @@
        out 0px tall. sticky keeps it on screen once the stack is taller than
        the dock; without it, opening two windows scrolled every button off the
        bottom of the screen. */
-    #buttons { flex: none; position: sticky; bottom: 0; z-index: 2; }
+    /* The padding is not decoration. #buttons scrolls sideways on a phone, so
+       it CLIPS its own children — and the pill's drop shadow and the rainbow
+       loading ring both live outside the pill's box. With no padding the ring
+       was sliced off flat along the bottom. Negative margins keep the row
+       sitting exactly where it did. */
+    #buttons {
+      flex: none; position: sticky; bottom: 0; z-index: 2;
+      /* VERTICAL only. Padding the sides too made the row wider than the dock's
+         content box, which gave the dock a horizontal scrollbar and a vertical
+         one with it — a worse artefact than the one being fixed. The ring only
+         ever overflowed by 2.5px, so this is the room it actually needs. */
+      /* No negative margin to claw the padding back: that made the row's BOX
+         taller than the space it occupied, so the dock reported 48px of content
+         in a 42px window and grew a scrollbar with nothing to scroll. The row
+         simply is a few pixels taller now.
+
+         The 3px at the sides IS needed, and was the missing half of that fix.
+         The dock clips (overflow-y:auto forces overflow-x to auto with it), and
+         with no window open the dock is exactly as wide as this row — so the
+         loading ring, which sits 2.5px outside the pill, had its left edge
+         sliced off. Measured: clipped by exactly 2.5px, in the one state every
+         shared link loads in. Padding widens the row, and the dock is sized BY
+         the row, so this costs 6px of width and no scrollbar. */
+      padding: 4px 3px 6px;
+      scrollbar-width: none;
+    }
+    #buttons::-webkit-scrollbar { display: none; }
     #dock::-webkit-scrollbar { width: 7px; }
     #dock::-webkit-scrollbar-track { background: transparent; }
     #dock::-webkit-scrollbar-thumb { background: var(--muted3); border-radius: 4px; }
@@ -390,6 +488,8 @@
       border: 0; border-radius: 999px; cursor: pointer;
       padding: 11px 20px; font: 600 15px/1 system-ui, sans-serif;
       box-shadow: 0 6px 22px rgba(0,0,0,.5);
+      /* retuned per theme just below — half-black under a blue pill reads as a
+         smudge on white, not as a lift */
       transition: transform .12s ease, background .12s ease;
     }
     .dock-btn:hover { transform: translateY(-1px); }
@@ -426,6 +526,10 @@
     }
     .card.open { display: flex; }
     html.theme-light .card { box-shadow: 0 12px 40px rgba(40,60,100,.22); }
+    /* Tinted toward the pill's own blue and much softer: a black shadow on a
+       white page reads as dirt around the button rather than as depth. */
+    html.theme-light .dock-btn { box-shadow: 0 4px 14px rgba(40,70,140,.28); }
+    html.theme-light #buttons > button:not(.dock-btn) { box-shadow: 0 2px 8px rgba(40,70,140,.18); }
     .card > header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 10px 14px; background: var(--header); border-bottom: 1px solid var(--border);
@@ -519,6 +623,20 @@
       background: none; border: 0; color: var(--muted); font-size: 20px;
       cursor: pointer; padding: 0 6px; border-radius: 6px; line-height: 1;
     }
+    /* The two window controls every header gets — expand/restore, and put-back.
+       Built in JS so all thirteen windows are identical rather than drifting
+       apart the way a hand-written set does. */
+    /* Descendant, not child: the chat header wraps ⚙ and × in their own div,
+       so the window buttons land INSIDE that wrapper (see the insert below) and
+       a child selector would style every header except that one. */
+    .card > header .win-expand,
+    .card > header .win-dock {
+      font-size: 15px; line-height: 1; padding: 1px 6px; opacity: .8;
+    }
+    .card > header .win-expand:hover,
+    .card > header .win-dock:hover { opacity: 1; color: var(--text); }
+    /* hidden must win: the button is only offered while the window is loose. */
+    .card > header .win-dock[hidden] { display: none !important; }
     .close-btn:hover { background: var(--border); color: #fff; }
 
     .hist-btn {
@@ -530,12 +648,6 @@
     .hist-btn.active { background: var(--accent, #5b8cff); color: #fff; }
     /* A drawing is sitting ready behind this button — a dot, not a colour
        change, because the button does the same thing either way. */
-    #blueprint-btn { position: relative; }
-    #blueprint-btn.bp-ready::after {
-      content: ""; position: absolute; top: 3px; right: 3px;
-      width: 4px; height: 4px; border-radius: 50%;
-      background: var(--accent, #5b8cff);
-    }
 
     /* ---------- cheat sheet ---------- */
     /* flex-grow + min-height so the list never collapses to a sliver on short
@@ -579,9 +691,105 @@
       font: 12.5px ui-monospace, Consolas, monospace; color: var(--code); display: block;
     }
     .cheat-item small { color: var(--muted5); font-size: 11.5px; display: block; margin-top: 2px; }
+    /* ---- Simplify's detail picker, in the button's own corner ---- */
+    .has-fidelity { position: relative; padding-right: 58px !important; }
+    .fid-chip {
+      position: absolute; right: 6px; bottom: 4px;
+      font: 600 10.5px system-ui, sans-serif; letter-spacing: .02em;
+      padding: 1px 5px; border-radius: 5px; cursor: pointer;
+      background: rgba(255,255,255,.22); color: inherit;
+    }
+    .fid-chip:hover { background: rgba(255,255,255,.36); }
+    html.theme-light .fid-chip { background: rgba(0,0,0,.16); }
+    html.theme-light .fid-chip:hover { background: rgba(0,0,0,.26); }
+    .fid-menu {
+      position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 30;
+      min-width: 210px; padding: 5px; text-align: left; cursor: default;
+      background: var(--header); border: 1px solid var(--border);
+      border-radius: 9px; box-shadow: 0 10px 34px rgba(0,0,0,.5);
+    }
+    .fid-menu button {
+      display: block; width: 100%; text-align: left; background: none; border: 0;
+      padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--text);
+      font: 12.5px system-ui, sans-serif;
+    }
+    .fid-menu button:hover { background: var(--hover-strong); }
+    .fid-menu button.on { background: var(--border); }
+    .fid-menu b { display: block; font-size: 12.5px; }
+    .fid-menu small { display: block; color: var(--muted3); font-size: 11px; margin-top: 1px; }
+
     #cheat-foot {
       padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted2); font-size: 11.5px;
     }
+
+    /* ---- parameters: one row per dimension, slider + exact number ----
+       The number box is the point as much as the slider is. A slider finds
+       "about there" quickly and can never say 42.5, so both are always
+       present and each writes to the other. */
+    #params-foot {
+      padding: 8px 14px; border-top: 1px solid var(--border); color: var(--muted2); font-size: 11.5px;
+    }
+    #params-body { padding: 4px 14px 10px; }
+    #params-reset { font-size: 11.5px; margin-left: auto; margin-right: 2px; }
+    .prm-group {
+      font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--muted2); padding: 12px 0 4px; border-bottom: 1px solid var(--border-soft);
+      margin-bottom: 4px;
+    }
+    .prm-group:first-child { padding-top: 4px; }
+    .prm {
+      display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+      gap: 2px 10px; padding: 7px 0 8px; border-bottom: 1px solid var(--border-soft);
+    }
+    .prm:last-child { border-bottom: 0; }
+    .prm-name {
+      font-size: 12.5px; color: var(--text2); overflow-wrap: anywhere;
+    }
+    .prm-name code { font-size: 10.5px; color: var(--muted3); margin-left: 6px; }
+    .prm-note {
+      grid-column: 1 / -1; font-size: 11px; color: var(--muted3); margin: -2px 0 3px;
+    }
+    .prm-ctl { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; }
+    .prm-ctl input[type="range"] {
+      flex: 1; min-width: 0; accent-color: var(--accent-soft); cursor: pointer; height: 4px;
+    }
+    /* Fixed width and tabular figures: a row of boxes whose width changes with
+       the digits in them makes a list of dimensions impossible to scan. */
+    .prm-num {
+      flex: none; width: 74px; font: inherit; font-size: 12px; text-align: right;
+      font-variant-numeric: tabular-nums; padding: 3px 6px;
+      background: var(--input-bg, var(--bg)); color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px;
+      /* Without this a number input keeps its INTRINSIC width whatever the
+         flex box around it says, and in the three-up vector row that put the
+         value outside its own box and on top of the unit. */
+      box-sizing: border-box; min-width: 0;
+    }
+    .prm-num:focus { outline: 1px solid var(--accent-soft); outline-offset: 0; }
+    .prm-unit { flex: none; width: 20px; font-size: 11px; color: var(--muted3); }
+    .prm-vec { display: flex; gap: 6px; flex: 1; min-width: 0; }
+    .prm-vec > label { flex: 1 1 0; min-width: 0; display: block; }
+    .prm-vec .prm-num { width: 100%; text-align: center; }
+    .prm-vec-lbl { font-size: 10px; color: var(--muted3); text-align: center; display: block; }
+    .prm-text, .prm-choice {
+      flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 3px 7px;
+      background: var(--input-bg, var(--bg)); color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px;
+    }
+    .prm-check { accent-color: var(--accent-soft); cursor: pointer; margin: 0; width: 15px; height: 15px; }
+    .prm.changed .prm-name { color: var(--accent-soft); }
+    .prm-revert {
+      flex: none; background: none; border: 0; cursor: pointer; padding: 0 2px;
+      color: var(--muted3); font-size: 12px; line-height: 1; visibility: hidden;
+    }
+    .prm.changed .prm-revert { visibility: visible; }
+    .prm-revert:hover { color: var(--text); }
+    #params-empty { padding: 6px 0 2px; font-size: 12.5px; color: var(--muted2); line-height: 1.55; }
+    #params-empty code {
+      background: var(--input-bg, var(--bg)); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 5px; font-size: 11.5px; color: var(--text2);
+    }
+    #params-empty b { color: var(--text2); font-weight: 600; }
     /* keyboard-shortcuts block, toggled by the small Keys header button */
     #cheat-keys-btn { font-size: 11.5px; letter-spacing: .04em; margin-left: auto; margin-right: 2px; }
     #cheat-keys-btn.active { background: var(--border); color: #fff; }
@@ -620,15 +828,33 @@
     }
     #opts label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
     #opts input { accent-color: var(--accent-soft); margin: 0; cursor: pointer; }
-    #opts .why { color: var(--muted3); }
-    #fixnote { margin-left: auto; color: var(--warn); text-align: right; }
-    #anchor-btn, #neg-btn, #mat-btn {
+    /* The auto-close tell. Lit while it is doing something, dim while it is
+       not — a glyph that never changes would be decoration. */
+    #autoclose {
+      flex: none; font: 600 13px ui-monospace, Consolas, monospace;
+      color: #e0705c; letter-spacing: -.5px; cursor: default;
+      opacity: 1; transition: opacity .12s ease, color .12s ease;
+    }
+    #autoclose.off { color: var(--muted3); opacity: .45; }
+    /* It shrinks and ellipsises instead of shoving the buttons off the right
+       edge — it is a note, and the controls beside it are not. */
+    #fixnote {
+      margin-left: auto; color: var(--warn); text-align: right;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #anchor-btn, #neg-btn, #mat-btn, #params-btn {
       flex: none; display: grid; place-items: center;
       width: 24px; height: 24px; padding: 0;
       background: transparent; border: 0; border-radius: 6px;
       color: var(--muted3); cursor: pointer;
     }
-    #anchor-btn:hover, #neg-btn:hover, #mat-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); }
+    #anchor-btn:hover, #neg-btn:hover, #mat-btn:hover, #params-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); }
+    /* Lit only when this model HAS dimensions to turn. On a model without
+       any it stays inert — the panel still opens and explains how to get
+       them, but nothing invites the click. */
+    #params-btn.has { color: var(--accent-soft); }
+    #params-btn.has:hover { color: var(--accent-soft); }
+    #params-btn.active { color: var(--accent-soft2); background: rgba(255,255,255,.07); }
     #neg-btn.active { color: #f08c78; }
     #mat-btn.active { color: var(--accent-soft2); }
     #anchor-btn.centered { color: var(--accent-soft2); }
@@ -940,6 +1166,15 @@
        height ATTRIBUTES must never decide the layout, or the drawing sizes the
        element that sizes the drawing. */
     #exp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    /* ...and both of those `display: block`s beat the `hidden` attribute the
+       preview switcher sets, which is how the 3D model ended up painted BEHIND
+       the g-code toolpaths — the slice canvas has a transparent background, so
+       the model showed straight through it. The same fault in reverse left a
+       stale toolpath layer over the mesh preview when switching back, which
+       reads as "the other preview did not load".
+       An ID rule that sets display MUST re-state [hidden] or the attribute
+       stops working; there is a test over the option rows for exactly this. */
+    #exp-canvas[hidden], #exp-slice[hidden] { display: none !important; }
     #slice-modal {
       position: fixed; inset: 0; z-index: 70; display: grid; place-items: center;
       background: rgba(0,0,0,.6);
@@ -1302,6 +1537,18 @@
     #sm-swap-block { display: none; }
     #sm-swap-block.on { display: block; }
     #shape-menu .sm-sep { height: 1px; background: var(--border); margin: 7px 2px; }
+    #shape-menu .sm-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 8px; font-size: 12px; color: var(--fg);
+    }
+    #shape-menu .sm-row > span { flex: none; width: 58px; color: var(--muted2); }
+    #shape-menu .sm-row select {
+      flex: 1; min-width: 0; font: inherit; font-size: 11px; padding: 3px 4px;
+      background: var(--input-bg, var(--bg)); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 5px;
+    }
+    #shape-menu .sm-hint { font-size: 10.5px; color: var(--muted2); padding: 2px 8px 4px; }
+    #sm-more-caret { display: inline-block; width: 10px; }
     #sm-swaps { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 2px; }
     #sm-swaps button {
       background: var(--hover); border: 1px solid var(--border); color: var(--text);
@@ -1804,8 +2051,33 @@
       }
       #code { height: 140px; font-size: 16px; }   /* ≥16px stops iOS focus-zoom */
       #chat-input { font-size: 16px; }
-      #chat-msgs { max-height: min(34dvh, 300px); }
-      #cheat-body, #history-body { max-height: min(38dvh, 360px); }
+      /* A card on its own gets the WHOLE screen, less the pill row it must not
+         hide behind. The dock is 100dvh - 20px and holds the card, a 10px gap
+         and the 42px pill row; anything taller and the sticky pills — which
+         have no background — end up floating over the card's last inch. */
+      .card { max-height: calc(100dvh - 76px); }
+      /* The fractional caps below are for SHARING. When two or more windows are
+         open the dock scrolls between them, and letting each take the whole
+         screen would mean scrolling a phone-length page to reach the second.
+         When only ONE is open there is nothing to share with, and capping it to
+         38% of the screen just showed a porthole into a long list with empty
+         space under it — which is what "the cheat sheet doesn't show all the
+         way down" was. #dock.multi is set from toggleCard. */
+      /* Every panel that carries a vh cap for the desktop side-column, released
+         when it is the only window on a phone. Two IDs plus a class, so it
+         beats the single-ID base rules without !important. The card's own
+         max-height above is then the only limit, and the body scrolls inside
+         it — which is the behaviour the caps were emulating badly. */
+      #dock:not(.multi) .card-body,
+      #dock:not(.multi) #cheat-body, #dock:not(.multi) #history-body,
+      #dock:not(.multi) #chat-msgs, #dock:not(.multi) #inv-grid,
+      #dock:not(.multi) #mat-body, #dock:not(.multi) #trace-body,
+      #dock:not(.multi) #gfin-body, #dock:not(.multi) #shelf-body,
+      #dock:not(.multi) #cutter-body, #dock:not(.multi) #params-body {
+        max-height: none;
+      }
+      #dock.multi #chat-msgs { max-height: min(34dvh, 300px); }
+      #dock.multi #cheat-body, #dock.multi #history-body { max-height: min(38dvh, 360px); }
       #hint-corner { display: none; }
       .dock-btn { padding: 9px 14px 9px 10px; }
     }
@@ -1816,7 +2088,8 @@
     @media (max-width: 400px) {
       .dock-btn { padding: 8px 11px 8px 9px; font-size: 13.5px; }
       #code { height: 120px; }
-      .card-body, #shelf-body, #gfin-body, #cheat-body, #history-body {
+      #dock.multi .card-body, #dock.multi #shelf-body, #dock.multi #gfin-body,
+      #dock.multi #cheat-body, #dock.multi #history-body {
         max-height: min(40dvh, 340px);
       }
       .card > header { padding: 9px 10px; }
@@ -1832,7 +2105,8 @@
        the scarce thing, so everything vertical gives some back. */
     @media (max-height: 460px) and (orientation: landscape) {
       #code { height: 92px; }
-      .card-body, #shelf-body, #gfin-body, #cheat-body, #history-body {
+      #dock.multi .card-body, #dock.multi #shelf-body, #dock.multi #gfin-body,
+      #dock.multi #cheat-body, #dock.multi #history-body {
         max-height: 46dvh;
       }
       .card { width: min(520px, calc(100vw - 24px)); }
@@ -1859,6 +2133,33 @@
 </head>
 <body>
   <div id="stage"></div>
+  <!-- Something to watch while the kernel warms up.
+       It is in the MARKUP, not built by script, so it is on screen in the first
+       paint — the wait it covers starts before any of our JavaScript runs, and
+       a loading screen that needs the app to load is no loading screen. The
+       cube itself is the same laser-draw animation the status bar uses, just
+       large; its markup is filled in by buildCubeHTML() once the module runs,
+       and until then the glow alone is already turning. -->
+  <div id="boot">
+    <div id="boot-glow"></div>
+    <div id="boot-cube"></div>
+    <div id="boot-note">Warming up the geometry kernel&hellip;</div>
+  </div>
+  <!-- ...but not for a tour link. Someone arriving at /tour asked to be SHOWN
+       the app, and the tour's first card explains the SCREEN rather than the
+       model — it has nothing to wait for. Covering it with a loading screen
+       makes them wait for a kernel they were not asking about yet.
+
+       Inline and right here, rather than in the module: the module runs after
+       the document is parsed, so hiding it there still flashes the cube for a
+       moment first. This runs before #boot has ever been painted. -->
+  <script>
+    if (/[?&]tour=1(&|$)/.test(location.search) || /^#tour$/i.test(location.hash)
+        || (/(^|\/)tour\/?$/i.test(location.pathname)
+          && !/(^|\/)m\/tour\/?$/i.test(location.pathname))) {
+      document.getElementById("boot").hidden = true;
+    }
+  </script>
   <div id="hint-corner">drag to orbit &middot; scroll to zoom</div>
 
   <!-- view navigator: three tiny corner arrows to spin the view -->
@@ -2073,7 +2374,7 @@
                link is the honest default, and this one needs a server. -->
           <div id="short-row" hidden>
             <label class="pub-opt"><input type="checkbox" id="short-on" />
-              <span>Also host it as a short link<small id="short-sub">brepcode.com/…#s=your-model-name</small></span></label>
+              <span>Also host it as a short link<small id="short-sub">brepcode.com/m/your-model-name</small></span></label>
             <div id="short-name-wrap" hidden>
               <input id="short-name" type="text" spellcheck="false" placeholder="model name" maxlength="48" />
               <div class="note" id="short-status"></div>
@@ -2355,6 +2656,24 @@
     <button class="sm-item" id="sm-auto">Auto-colour every shape</button>
     <button class="sm-item" id="sm-clear">Clear this shape's colour</button>
     <button class="sm-item" id="sm-clearall">Reset all colours</button>
+    <div class="sm-sep"></div>
+    <!-- Collapsed by default. Colour is the thing people came for; material and
+         pattern are the deliberate extra, one click away. -->
+    <button class="sm-item" id="sm-more" aria-expanded="false">
+      <span id="sm-more-caret">▸</span> Material &amp; pattern…
+    </button>
+    <div id="sm-matblock" hidden>
+      <label class="sm-row"><span>Material</span>
+        <select id="sm-material"></select>
+      </label>
+      <label class="sm-row"><span>Pattern</span>
+        <select id="sm-pattern">
+          <option value="">Follow the panel</option>
+        </select>
+      </label>
+      <div class="sm-hint" id="sm-mat-hint">Applies to this piece only.</div>
+      <button class="sm-item" id="sm-matclear">Clear this piece's material</button>
+    </div>
   </div>
 
   <div id="dock">
@@ -2394,6 +2713,8 @@
           <!-- hidden real buttons — the toolbox rows click these, so the tools
                keep one implementation no matter how they're launched -->
           <button id="drill-btn" hidden></button>
+          <button id="shave-btn" hidden></button>
+          <button id="scale-btn" hidden></button>
           <button id="code-dm-btn" hidden></button>
           <button id="code-qr-btn" hidden></button>
           <button id="fins-btn" hidden></button>
@@ -2423,18 +2744,6 @@
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
                  style="vertical-align: -1px">
               <path d="M8 2.2v8M4.8 7l3.2 3.2L11.2 7M2.8 13.2h10.4" />
-            </svg>
-          </button>
-          <!-- The blueprint used to be reachable only by exporting a file and
-               opening it yourself. It is the one output you want to LOOK at
-               rather than keep, so it gets a button that just shows it. -->
-          <button id="blueprint-btn" class="hist-btn ovf" title="Open the 3-view blueprint in a tab">
-            <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
-                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-                 style="vertical-align: -1px">
-              <rect x="2.1" y="2.6" width="11.8" height="10.8" rx="1.1" />
-              <path d="M2.1 6.4h11.8M6.6 6.4v7" />
-              <path d="M8.8 8.6h3.1M8.8 11h3.1" opacity=".65" />
             </svg>
           </button>
           <button id="refresh-btn" class="hist-btn ovf" title="Rebuild now">&#8635;</button>
@@ -2524,6 +2833,22 @@
                an outline to cut around, so the row asks the editor before it
                decides. With one, the four kits expand in place; without one,
                the icon-search card opens to go and find a shape first. -->
+          <button data-act="scale-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.5 9.5V13.5h4" /><path d="M13.5 6.5V2.5h-4" />
+              <path d="M2.8 13.2L13.2 2.8" />
+            </svg>
+            <span><b>Scale</b><small>resize by a factor, or to a size in mm</small></span>
+          </button>
+          <button data-act="shave-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.5 11.5c3-.6 6-2.4 8.2-5.2" /><path d="M10.2 2.3l3.3 2.6-2.4 3" />
+              <path d="M3 13.9h10" opacity=".55" />
+            </svg>
+            <span><b>Shave a whisker</b><small>click a strand — it is cut at its root</small></span>
+          </button>
           <button id="cutter-row" aria-expanded="false">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
                  stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -2531,7 +2856,7 @@
             </svg>
             <span><b>Cookie cutter</b><small id="cutter-row-hint">blade, stamp, stencil or roller</small></span>
           </button>
-          <div id="cutter-sub-rows"></div>
+          <div id="cutter-sub-rows">        </div>
           <!-- A MODE, not an action, so it is a checkbox and it lives last:
                ticking it changes what a corner drag does, and the conversion it
                performs is one-way. Nobody should meet it by accident. -->
@@ -2549,11 +2874,11 @@
           </label>
         </div>
         <div id="more-menu">
+          <button data-act="params-btn">Parameters…</button>
           <button data-act="tools-btn">Toolbox…</button>
           <button data-act="trace-btn">Trace image…</button>
           <button data-act="import-btn">Import STL / OBJ / 3MF…</button>
           <button data-act="export-btn">Export…</button>
-          <button data-act="blueprint-btn">Blueprint in a tab</button>
           <button data-act="refresh-btn">Rebuild now</button>
           <button data-act="undo-btn">Undo</button>
           <button data-act="redo-btn">Redo</button>
@@ -2588,8 +2913,24 @@
         <label title="Draw measurement lines next to the model.">
           <input type="checkbox" id="dims" checked /> Dims
         </label>
-        <span class="why">off = auto-close brackets &amp; quotes</span>
+        <!-- Was a sentence: "off = auto-close brackets & quotes". It spent 96px
+             of a crowded row explaining a checkbox that already has a tooltip.
+             The glyph says the same thing to anyone who has met a code editor,
+             and lights up exactly when the behaviour is on. -->
+        <span id="autoclose" title="Auto-close brackets and quotes — on while Exact is off">{}</span>
         <span id="fixnote"></span>
+        <!-- With the state buttons rather than up in the toolbar: like them it
+             is about what the MODEL is, and it lights when this model has
+             dimensions to turn. -->
+        <button id="params-btn" title="Parameters — sliders for this model's dimensions">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none"
+               stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M2.5 4.3h11M2.5 8h11M2.5 11.7h11" />
+            <circle cx="5.6" cy="4.3" r="1.7" fill="var(--input-bg)" />
+            <circle cx="10.4" cy="8" r="1.7" fill="var(--input-bg)" />
+            <circle cx="6.8" cy="11.7" r="1.7" fill="var(--input-bg)" />
+          </svg>
+        </button>
         <button id="neg-btn" title="Outline the negative (subtracted) shapes">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none"
                stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
@@ -2659,14 +3000,27 @@
           <button id="cs-close" title="Close settings">&times;</button>
         </div>
         <div class="cs-pane" data-pane="ai">
+        <!-- Shown once, on the first run of the desktop app, when the CLI is
+             actually there. The moment someone opens the .exe is the one
+             moment they are asking what it gives them that the website does
+             not, and this is the answer. -->
+        <div class="note" id="cc-firstrun" hidden
+             style="margin:0 0 6px; padding:6px 9px; border:1px solid var(--border);
+                    border-radius:8px; background:var(--input-bg); line-height:1.45"></div>
         <div class="row"><label>Provider</label>
           <select id="ai-provider">
             <option value="builtin">Built-in (no key needed)</option>
+            <!-- Above the three that want an API key, because in the desktop
+                 app it IS the better answer: it runs on the Claude subscription
+                 the user already pays for, with no key to paste and nothing
+                 metered per token. Buried fifth, nobody found it. Its label is
+                 rewritten below once the CLI has actually been probed, so it
+                 states what it found rather than what it hopes for. -->
+            <option value="claude-code" id="opt-claude-code" hidden>Claude Code — this computer, no key</option>
             <option value="gemini">Google Gemini</option>
             <option value="claude">Anthropic Claude</option>
             <option value="openai">OpenAI — GPT</option>
-            <option value="claude-code" id="opt-claude-code" hidden>Claude Code — this computer, no key</option>
-            <option value="local">Local model — llama.cpp / Ollama (experimental)</option>
+            <option value="local">Local model — LM Studio / Ollama / Lemonade (experimental)</option>
             <option value="browser">In your browser — free, no key, no install (WebGPU)</option>
           </select>
         </div>
@@ -2696,6 +3050,17 @@
             <option value="5">5 retries</option>
           </select>
         </div>
+        <!-- The local servers, offered as a native dropdown on the Server URL
+             box (the key field is repurposed for it — see reflectProviderUI).
+             These MUST match LOCAL_PRESETS in chatbot.js; test/chatbot.js
+             fails the build if they drift, because a wrong port here is a
+             newcomer staring at a red ✗ with nothing to go on. -->
+        <datalist id="local-urls">
+          <option value="http://localhost:1234/v1">LM Studio</option>
+          <option value="http://localhost:11434/v1">Ollama</option>
+          <option value="http://localhost:13305/api/v1">Lemonade (AMD Ryzen AI)</option>
+          <option value="http://localhost:8080/v1">llama.cpp</option>
+        </datalist>
         <div class="row"><label id="ai-key-label" title="">API key</label><input id="ai-key" type="password" placeholder="paste your key" /><span id="ai-check"></span>
           <button id="gem-edit-btn" title="Edit the standing instructions (gem) sent with every AI request">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
@@ -2916,6 +3281,14 @@
             <b>BREPcode is just a different way to “call” it</b> — a code + direct-manipulation front-end
             over his kernel (<a href="https://github.com/mmiscool/BREP" target="_blank" rel="noopener">source</a>).
           </div>
+          <div class="docs-sec"><b>The desktop app talks to your own Claude Code</b> — install
+            <a href="https://claude.com/code" target="_blank" rel="noopener">Claude Code</a>, sign in once,
+            and pick <b>Claude Code</b> under Provider in the AI window. Chat then runs on the Claude
+            subscription you already have: no API key to paste, nothing metered per message, and the
+            model runs on your machine rather than through this app's servers. The dot beside the chat
+            box lights up when it is connected. Everything else — the built-in provider, Gemini, GPT,
+            a local llama.cpp, or a model in the browser — still works exactly as before.
+          </div>
           <div class="docs-sec"><b>Build a model</b> — type BREPcode (OpenSCAD-flavoured JS) in the editor;
             it rebuilds as you type. Or paste OpenSCAD, JSCAD, build123d or CadQuery — it auto-detects and
             translates. Press <b>K</b> for the cheat sheet; click any entry to insert it.</div>
@@ -3025,6 +3398,24 @@
                    style="flex:1; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font:11.5px ui-monospace, Consolas, monospace" />
             <button id="secret-url-save" class="hist-btn" style="font-size:11.5px">Set</button>
           </div>
+          <!-- Behind the same lock, and for the same reason: a log carries the
+               model source, which is most of what makes it worth reading. -->
+          <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+            <b>📝 Write a log file</b>
+            <label style="display:flex; align-items:center; gap:6px; font:11.5px system-ui, sans-serif">
+              <input type="checkbox" id="log-on" /> on
+            </label>
+            <button id="log-folder" class="hist-btn" style="font-size:11.5px">Choose folder…</button>
+            <button id="log-save" class="hist-btn" style="font-size:11.5px"
+                    title="Save whatever is buffered as a file, for when no folder can be granted">Save now</button>
+            <span class="note" id="log-status" style="flex:1; min-width:160px"></span>
+          </div>
+          <div class="note" style="margin-top:4px; font-size:11px">
+            Builds, imports, repairs, exports and errors, one line each, appended to
+            <code>brepcode-YYYY-MM-DD.log</code> in the folder you pick. It records the model
+            source, so keep the folder somewhere you are happy for it to be.
+          </div>
         </div>
         <div id="theme-row">
           <span class="tag">Theme</span>
@@ -3077,6 +3468,18 @@
     </section>
 
     <!-- material & lighting -->
+    <!-- parameters: the model's own dimensions, as dials -->
+    <section id="params" class="card" aria-label="Model parameters">
+      <header>
+        <div><strong>Parameters</strong><span class="sub" id="params-sub">the model's own dimensions</span></div>
+        <button id="params-reset" class="hist-btn"
+                title="Put every parameter back to the value it had when this model was opened">Reset</button>
+        <button class="close-btn" data-close="params" title="Close">&times;</button>
+      </header>
+      <div class="card-body" id="params-body"></div>
+      <div id="params-foot">Millimetres. Changes are written straight into the code — undo still works.</div>
+    </section>
+
     <section id="material" class="card" aria-label="Material and lighting">
       <header>
         <div class="mat-tabs">
@@ -3763,7 +4166,8 @@
     import * as sdfApi from "../src/sdf.js";
     import { VISITOR_DEFAULTS, visitorSummary } from "../src/visitor.js";
     import { inspectMesh, weldTriangles, healthSummary } from "../src/meshhealth.js";
-    import { repairMesh } from "../src/meshrepair.js";
+    import { chooseFreeRect } from "./stagefit.js";
+    import { repairMesh, repairBinaryStl, repairSummary } from "../src/meshrepair.js";
     // More on-demand modules: exporters (only on download/import), the chatbot
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
@@ -4256,8 +4660,22 @@
     new ResizeObserver(resize).observe(stage);
     resize();
 
+    // Declared up here rather than beside the code that sets it, because this
+    // loop's body runs once SYNCHRONOUSLY and a `let` further down the module
+    // is still in its dead zone at that moment.
+    let camGlide = null;
+    // Did the APP choose where the model is sitting, or did the user? The
+    // answer decides how much licence the clearance has: it may rearrange its
+    // own work freely, and touches a hand-set view only to get it out from
+    // behind a window.
+    let autoPlaced = true;        // the opening frame is the app's doing
+    // Touch the view yourself and the app stops moving it. Whatever it was
+    // arranging matters less than not fighting the hand on the mouse.
+    controls.addEventListener("start", () => { camGlide = null; autoPlaced = false; });
+
     (function loop() {
       requestAnimationFrame(loop);
+      if (camGlide) camGlide(performance.now());
       controls.update();
       fadeAxisLabels();
       renderer.render(scene, camera);
@@ -4301,6 +4719,12 @@
       camera.updateProjectionMatrix();
       controls.update();
       framedRadius = radius;
+      // This centres in the whole canvas, which is the right answer only when
+      // nothing is open over it. Hand straight on to the clearance, which knows
+      // what the windows have left — otherwise every rebuild parks a freshly
+      // built model back underneath the editor.
+      autoPlaced = true;
+      windowsChanged();
     }
 
     // Framing for a shared link, which frameModel() cannot do for two reasons.
@@ -4356,6 +4780,225 @@
       framedRadius = radius;
     }
 
+    // ---- keeping the model out from under the windows ---------------------
+    //
+    // The windows float over the canvas, and the camera frames the model in the
+    // middle of the WHOLE canvas — so opening the editor put the part behind
+    // it. You could always drag the window or pan the model, but having to do
+    // that every time is the app failing to arrange itself.
+    //
+    // Two rules, and the second is what keeps this from being annoying:
+    //
+    //   the model is moved only when a window is ACTUALLY covering it. A view
+    //   that shuffles on every click, including the ones that changed nothing,
+    //   reads as drift rather than as help;
+    //
+    //   and it PANS in preference to zooming. Your zoom is a decision — you
+    //   chose it to look at something — so it is kept whenever the part still
+    //   fits in the space left over, and only widened when it cannot.
+    //
+    // Everything here works in CSS pixels against getBoundingClientRect, so it
+    // sees the windows exactly as they are drawn, including dragged and
+    // resized ones, without needing to be told about any of them.
+
+    const CLEAR_PAD = 18;      // breathing room between the part and a window
+
+    // The largest rectangle of stage that no window is sitting on. The search
+    // itself is in stagefit.js, where it can be tested against known layouts;
+    // this half is only about which rectangles count as windows.
+    let lastFree = null;
+
+    function stageFreeRect() {
+      // A window filling the screen has covered the model on purpose. There is
+      // nothing to rescue and no room to rescue it into.
+      if (document.querySelector(".card.open.expanded, .card.open.maxed")) return null;
+      const blockers = [];
+      for (const c of document.querySelectorAll(".card.open")) blockers.push(c.getBoundingClientRect());
+      const btns = $("buttons")?.getBoundingClientRect();
+      if (btns) blockers.push(btns);
+      lastFree = chooseFreeRect(blockers, innerWidth, innerHeight, lastFree);
+      return lastFree;
+    }
+
+    // Where the model lands on screen right now, in the same pixel space as the
+    // window rectangles — so "is it covered" is a comparison rather than a
+    // guess. Eight corners is enough: the projection of a box is the hull of
+    // its corners' projections.
+    function modelScreenBox() {
+      const g = previewGroup.children.length ? previewGroup : modelGroup;
+      const box = new THREE.Box3().setFromObject(g);
+      if (box.isEmpty()) return null;
+      const rect = stage.getBoundingClientRect();
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return null;
+      camera.updateMatrixWorld();
+      const v = new THREE.Vector3();
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (let i = 0; i < 8; i++) {
+        v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
+        v.project(camera);
+        const x = rect.left + (v.x * 0.5 + 0.5) * w;
+        const y = rect.top + (-v.y * 0.5 + 0.5) * h;
+        if (x < left) left = x; if (x > right) right = x;
+        if (y < top) top = y; if (y > bottom) bottom = y;
+      }
+      return { left, top, right, bottom };
+    }
+
+    // A short glide rather than a jump. The camera moving somewhere by itself
+    // is only readable as "the app made room" if you can see it happen.
+    // (camGlide itself is declared beside the render loop that consumes it.)
+    function glideCamera(pos, target, animate = true) {
+      if (!animate) {
+        camGlide = null;
+        camera.position.copy(pos); controls.target.copy(target); controls.update();
+        return;
+      }
+      const fromP = camera.position.clone(), fromT = controls.target.clone();
+      const t0 = performance.now(), ms = 260;
+      const mine = (now) => {
+        const k = Math.min(1, (now - t0) / ms);
+        const e = k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2;   // ease in-out
+        camera.position.lerpVectors(fromP, pos, e);
+        controls.target.lerpVectors(fromT, target, e);
+        if (k >= 1) camGlide = null;
+      };
+      camGlide = mine;
+      // The glide rides on animation frames, and those stop in a background
+      // tab. Coming back to a camera frozen a third of the way through a move
+      // is worse than not animating, so if the frames never arrived, arrive
+      // anyway. Only if this glide is still the current one — a newer move, or
+      // the user grabbing the view, has already replaced it.
+      setTimeout(() => {
+        if (camGlide !== mine) return;
+        camGlide = null;
+        camera.position.copy(pos); controls.target.copy(target); controls.update();
+      }, ms + 240);
+    }
+
+    // Try a camera out without showing it, and report where the part would
+    // land. Used instead of trusting the arithmetic, because the arithmetic is
+    // subtly wrong in a way that matters: under perspective the projected
+    // outline of a box is NOT centred on the projection of the box's centre —
+    // the corners nearer the lens throw further out — so aiming the 3D centre
+    // at the middle of the free space leaves the part visibly off to one side.
+    // Measuring closes that gap in one step, and costs eight projections.
+    function probeCamera(pos, target) {
+      const p0 = camera.position.clone(), q0 = camera.quaternion.clone();
+      camera.position.copy(pos);
+      camera.lookAt(target);                 // what controls.update() will do
+      camera.updateMatrixWorld(true);
+      const seen = modelScreenBox();
+      camera.position.copy(p0);
+      camera.quaternion.copy(q0);
+      camera.updateMatrixWorld(true);
+      return seen;
+    }
+
+    // Is the part behind a window? Then move it out — and no more than that.
+    function keepModelClear({ animate = true } = {}) {
+      const free = stageFreeRect();
+      if (!free) return false;
+      const g = previewGroup.children.length ? previewGroup : modelGroup;
+      const box = new THREE.Box3().setFromObject(g);
+      if (box.isEmpty()) return false;
+
+      // Already in the clear? Then normally leave it alone — but if the app is
+      // the one that put it there, it may also tidy up after itself. That is
+      // the whole distinction: closing a window you opened should hand the
+      // space back, while a view you panned or zoomed by hand is yours and is
+      // only ever disturbed when something is genuinely sitting on top of it.
+      const seen = modelScreenBox();
+      const clear = seen && seen.left >= free.l && seen.right <= free.r
+        && seen.top >= free.t && seen.bottom <= free.b;
+      if (clear && !autoPlaced) return false;
+      if (clear && seen) {
+        // Centred enough already — moving a few pixels reads as drift.
+        const offX = Math.abs((seen.left + seen.right) / 2 - (free.l + free.r) / 2);
+        const offY = Math.abs((seen.top + seen.bottom) / 2 - (free.t + free.b) / 2);
+        if (offX < 24 && offY < 24) return false;
+      }
+
+      const centre = box.getCenter(new THREE.Vector3());
+      const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1e-3);
+      const fw = Math.max(free.r - free.l - CLEAR_PAD * 2, 40);
+      const fh = Math.max(free.b - free.t - CLEAR_PAD * 2, 40);
+      const wantX = (free.l + free.r) / 2, wantY = (free.t + free.b) / 2;
+
+      // The free area subtends a smaller angle than the whole viewport, and it
+      // is that angle — not the camera's full field of view — that has to hold
+      // the part. This is the opening guess; the measurements below correct it.
+      const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
+      const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+      const bandV = Math.atan(Math.tan(vHalf) * (fh / innerHeight));
+      const bandH = Math.atan(Math.tan(hHalf) * (fw / innerWidth));
+      const need = (radius / Math.sin(Math.min(bandV, bandH))) * 1.05;
+
+      let dir = camera.position.clone().sub(controls.target);
+      let dist = dir.length();
+      if (dist < 1e-6) { dir = new THREE.Vector3(...HOME_DIR); dist = need; }
+      dir.normalize();
+      // Only ever pull BACK. Pushing in to "use the space" would undo a zoom
+      // the user chose, every time they closed a window.
+      let use = Math.max(dist, need);
+
+      camera.updateMatrixWorld();
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+      // Move the camera the opposite way to the direction the part should
+      // appear to travel. The screen-up of the camera's own matrix, not
+      // camera.up: with Z-up those part company as soon as the view is tilted.
+      const panBy = (px, py) => {
+        const visH = 2 * use * Math.tan(vHalf), visW = visH * camera.aspect;
+        return right.clone().multiplyScalar(-(px / innerWidth) * visW)
+          .add(up.clone().multiplyScalar((py / innerHeight) * visH));
+      };
+
+      let shift = panBy(wantX - innerWidth / 2, wantY - innerHeight / 2);
+      let target = centre.clone().add(shift);
+      let pos = centre.clone().addScaledVector(dir, use).add(shift);
+
+      // Two corrections, each from what the camera would ACTUALLY show:
+      // first pull back far enough that the outline fits, then slide it into
+      // the middle of the space. Re-measuring after the pull-back matters —
+      // moving away changes the outline's size and its offset together.
+      for (let pass = 0; pass < 2; pass++) {
+        const look = probeCamera(pos, target);
+        if (!look) break;
+        const over = Math.max((look.right - look.left) / fw, (look.bottom - look.top) / fh);
+        if (over > 1.001) {
+          use *= over;
+          shift = panBy(wantX - innerWidth / 2, wantY - innerHeight / 2);
+          target = centre.clone().add(shift);
+          pos = centre.clone().addScaledVector(dir, use).add(shift);
+          continue;
+        }
+        const errX = wantX - (look.left + look.right) / 2;
+        const errY = wantY - (look.top + look.bottom) / 2;
+        if (Math.abs(errX) < 1 && Math.abs(errY) < 1) break;
+        const fix = panBy(errX, errY);
+        target.add(fix); pos.add(fix);
+      }
+
+      glideCamera(pos, target, animate);
+      autoPlaced = true;          // this position is the app's, not the user's
+      framedRadius = radius;      // keep frameModel()'s size tracking honest
+      return true;
+    }
+
+    // Windows move in bursts — a drag is a hundred events, opening a card
+    // settles over a frame or two — so the answer is computed once things have
+    // stopped rather than per event.
+    let clearT = null;
+    function windowsChanged(delay = 90) {
+      clearTimeout(clearT);
+      // A plain timer, deliberately: getBoundingClientRect forces the layout
+      // this needs, so waiting for a paint buys nothing — and animation frames
+      // stop in a background tab, which would leave the decision itself
+      // hostage to whether anyone was looking.
+      clearT = setTimeout(() => keepModelClear(), delay);
+    }
+
     function clearModel() {
       for (const child of [...modelGroup.children]) {
         child.geometry?.dispose?.();
@@ -4392,9 +5035,49 @@
       // is a shiny surface, a narrow blinding one is a speck of foil.
       sparkle: { value: 1 },
     };
-    function injectTex(shader) {
+    // A SECOND set of these, per material, is what makes a per-part finish
+    // possible: injectTex hands every material the same uniform OBJECTS, so
+    // one spool applied to the whole model. A piece with its own finish gets
+    // its own bundle instead, and shades from that.
+    const newFxBundle = () => ({
+      grad: { value: 0 },
+      gradA: { value: new THREE.Color(1, 1, 1) },
+      gradB: { value: new THREE.Color(1, 1, 1) },
+      gradC: { value: new THREE.Color(1, 1, 1) },
+      lo: { value: 0 }, hi: { value: 1 },
+      flake: { value: 0 }, flakeD: { value: 20 }, flakeS: { value: 0.05 },
+      flakeK: { value: 2 }, flakeC: { value: new THREE.Color(1, 1, 1) },
+      rainbow: { value: 0 }, sparkle: { value: 1 },
+      // null means "follow the Material panel". A piece given its own pattern
+      // gets a {value} of its own here and stops following.
+      kind: null,
+    });
+    // One filler for both paths, so a per-part spool and the model-wide one
+    // can never drift into looking different for the same filament.
+    function fillFxBundle(bundle, fx, sparkle, lo, hi) {
+      bundle.grad.value = fx.grad;
+      bundle.gradA.value.setRGB(...fx.gradA);
+      bundle.gradB.value.setRGB(...fx.gradB);
+      bundle.gradC.value.setRGB(...fx.gradC);
+      bundle.flake.value = fx.flake;
+      bundle.flakeD.value = fx.flakeDensity;
+      bundle.flakeS.value = fx.flakeSize;
+      bundle.flakeK.value = fx.flakeStrength;
+      bundle.flakeC.value.setRGB(...fx.flakeColour);
+      bundle.rainbow.value = fx.flakeRainbow;
+      bundle.sparkle.value = sparkle ?? 1;
+      if (Number.isFinite(lo) && Number.isFinite(hi)) { bundle.lo.value = lo; bundle.hi.value = hi; }
+    }
+
+    // `fx` defaults to the model-wide bundle, so every existing caller is
+    // unchanged; a per-part material passes its own.
+    function injectTexWith(fx) {
+      return function injectTex(shader) { injectTexInto(shader, fx); };
+    }
+    function injectTex(shader) { injectTexInto(shader, sharedFx); }
+    function injectTexInto(shader, sharedFx) {
       Object.assign(shader.uniforms, {
-        uTexKind: sharedTex.kind, uTexDepth: sharedTex.depth, uTexScale: sharedTex.scale,
+        uTexKind: sharedFx.kind || sharedTex.kind, uTexDepth: sharedTex.depth, uTexScale: sharedTex.scale,
         uTexRot: sharedTex.rot, uTexOffset: sharedTex.offset,
         // ---- named-spool effects (see viewer/filaments.js) ----
         // Every one of these defaults to OFF. Until somebody picks a Cookiecad
@@ -4613,12 +5296,15 @@
     // which reads as an x-ray — useful for checking internals, nothing like a
     // spool of natural PETG. With transmission at 0 this behaves as Standard
     // did, so nothing already built changes.
-    function makeSolidMat(color) {
+    function makeSolidMat(color, fx = null) {
       const m = new THREE.MeshPhysicalMaterial({
         color, metalness: 0.1, roughness: 0.55, emissive: 0x000000, emissiveIntensity: 1,
         transmission: 0, ior: 1.5, thickness: 0,
       });
-      m.onBeforeCompile = injectTex;
+      // A material carrying its own fx bundle shades from its own spool. Kept
+      // on the material so a rebuild can refill it without recompiling.
+      m.userData.fx = fx;
+      m.onBeforeCompile = fx ? injectTexWith(fx) : injectTex;
       return m;
     }
 
@@ -4684,7 +5370,10 @@
     }
     const solidMaterial = makeSolidMat(0x9fb4d6);
     const featureColors = {};          // featureId -> "#hex" per-shape override (right-click menu)
+    const featureFinish = {};          // featureId -> material name, right-click override
+    const featurePattern = {};         // featureId -> surface pattern index, right-click override
     let codeColors = {};               // featureId -> "#hex" set by colorize() in the code (per build)
+    let codeFinish = {};               // featureId -> material name set by finish() in the code
     let codeNegatives = new Set();     // featureIds that are CUTTERS — their faces are holes
     let codeEmissive = {};             // featureId -> {hex, int} set by glow() in the code
     let codeClear = {};                // featureId -> opacity set by glass() in the code
@@ -4709,22 +5398,89 @@
       return envLoading;
     }
 
+    // Named material -> Material-panel preset, or null. Case-insensitive because
+    // finish("titanium") and the menu's "Titanium" have to be the same thing.
+    const presetFor = (name) => MATERIAL_PRESETS.find(
+      (x) => x.name.toLowerCase() === String(name ?? "").trim().toLowerCase()) || null;
+
     function matForFeature(fid) {
       const c = featureColors[fid] ?? codeColors[fid];   // a manual override beats the code's colour
       const g = codeEmissive[fid];                       // per-shape glow (emissive) from glow()
       const cl = codeClear[fid];                         // per-shape glass() opacity
-      if (!c && !g && cl == null) return solidMaterial;
-      const key = (c || "-") + "|" + (g ? g.hex + ":" + g.int : "-") + "|" + (cl ?? "-");
+      const fin = featureFinish[fid] ?? codeFinish[fid]; // per-shape finish() material
+      const pat = featurePattern[fid];                   // per-shape surface pattern
+      if (!c && !g && cl == null && !fin && pat == null) return solidMaterial;
+      const key = (c || "-") + "|" + (g ? g.hex + ":" + g.int : "-") + "|" + (cl ?? "-")
+        + "|" + (fin || "-") + "|" + (pat ?? "-");
       let m = overrideMats.get(key);
       if (!m) {
-        m = makeSolidMat(c || (cl != null ? "#cfe6ef" : solidMaterial.color.clone()));
+        // A piece with its own finish gets its own uniform bundle, so the
+        // glitter on one piece cannot leak onto the piece beside it.
+        const bundle = (fin || pat != null) ? newFxBundle() : null;
+        // Resolved HERE, not in applyFinishTo: injectTex captures the uniform
+        // object when the shader compiles, so a kind assigned afterwards would
+        // be read by nothing. An explicit pattern wins over the preset's own.
+        const patK = pat ?? (fin ? presetFor(fin)?.texture ?? null : null);
+        if (bundle && patK != null) bundle.kind = { value: patK };
+        m = makeSolidMat(c || (cl != null ? "#cfe6ef" : solidMaterial.color.clone()), bundle);
         m.userData.codeGlow = g || null;   // survives panel re-syncs (see syncMatProps)
         m.userData.codeClear = cl ?? null;
+        m.userData.finish = fin || null;
+        m.userData.pattern = pat ?? null;
         syncMatProps(m);
         overrideMats.set(key, m);
         if (cl != null) ensureEnv();       // reflections arrive async, harmless if late
+        if (fin) applyFinishTo(m, fin);    // async: the spool table is lazy-loaded
       }
       return m;
+    }
+
+    // Shade one material from a named spool. Falls back to leaving it alone for
+    // a name the spool table does not know — "balsa" or "titanium" is a real
+    // answer to what a piece is MADE of even when there is no filament for it,
+    // and it still travels into the exports and the parts list.
+    function applyFinishTo(m, name) {
+      if (!m?.userData?.fx) return;
+      // A Material-panel preset is the other half of the answer: "the body is
+      // balsa but the screws are titanium" names two presets, not two spools.
+      // Presets are checked first because they are the plain-English words, and
+      // they are synchronous — no spool table to wait for.
+      const pre = presetFor(name);
+      if (pre) {
+        m.color.set(pre.color);
+        m.metalness = (pre.metal ?? 0) / 100;
+        m.roughness = (pre.rough ?? 50) / 100;
+        m.transmission = 0;
+        m.attenuationDistance = Infinity;
+        if (pre.opacity != null && pre.opacity < 100) {
+          m.transparent = true; m.opacity = pre.opacity / 100; m.depthWrite = false;
+        }
+        if (pre.emissive) { m.emissive.set(pre.emissive); m.emissiveIntensity = pre.emissiveInt ?? 1; }
+        if (pre.reflect) {
+          m.envMapIntensity = pre.envInt ?? 1;
+          ensureEnv().then((t) => { m.envMap = t; m.needsUpdate = true; }).catch(() => {});
+        }
+        m.needsUpdate = true;
+        return;
+      }
+      _fil ??= import("./filaments.js");
+      _fil.then((F) => {
+        const spool = F.findSpool ? F.findSpool(name) : null;
+        if (!spool) return;
+        const fx = F.fxFor(spool);
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        fillFxBundle(m.userData.fx, fx, mat.sparkle ?? 1,
+          bb.isEmpty() ? 0 : bb.min.z, bb.isEmpty() ? 1 : bb.max.z);
+        const fam = F.FAMILY[spool.family] || {};
+        m.color.set(spool.base);
+        m.roughness = spool.rough ?? fam.rough ?? m.roughness;
+        m.ior = fam.ior ?? m.ior;
+        m.transmission = spool.t ?? 0;
+        m.thickness = spool.t ? Math.max(1, (bb.isEmpty() ? 10 : bb.getSize(new THREE.Vector3()).z)) : 0;
+        m.attenuationDistance = spool.atten || Infinity;
+        m.attenuationColor = new THREE.Color(spool.base);
+        m.needsUpdate = true;
+      }).catch(() => { /* a finish that will not load must not break the build */ });
     }
     // copy the non-colour material props (set by the Material panel) onto a mat
     function syncMatProps(m) {
@@ -4741,7 +5497,11 @@
       m.wireframe = solidMaterial.wireframe;
       // a per-shape colour tints its OWN transmitted light, so a red part and
       // a blue one beside it stay red and blue when lit through
-      if (m.userData.codeClear == null) applyFilament(m, mat.filament || "opaque", m.color);
+      // A piece with its OWN filament ignores the panel's global one — that is
+      // the whole point of picking balsa for the body and titanium for the screws.
+      if (m.userData.codeClear == null && !m.userData.finish) {
+        applyFilament(m, mat.filament || "opaque", m.color);
+      }
       if (m.userData.codeClear == null) {   // glass mats manage their own envMap
         m.envMap = solidMaterial.envMap;
         m.envMapIntensity = solidMaterial.envMapIntensity ?? 1;
@@ -4770,6 +5530,9 @@
         m.emissive.copy(solidMaterial.emissive);
       }
       m.needsUpdate = solidMaterial.needsUpdate;
+      // ...and re-assert it last, because everything above just copied the
+      // panel's roughness/emissive/transmission over the top of the spool's.
+      if (m.userData.finish) applyFinishTo(m, m.userData.finish);
     }
 
     // The kernel bundles its own copy of three, and meshes from a different three
@@ -5411,10 +6174,20 @@
       const mine = Object.keys(featureColors).length;
       const fromCode = codeColourLiterals();
       const n = new Set([...Object.keys(featureColors), ...Object.keys(codeColors)]).size;
-      if (!n) { box.style.display = "none"; return; }
+      // A piece with its own MATERIAL ignores the filament picked here, which
+      // looks identical to the picker being broken: you choose Gold Dust, and
+      // three pieces of the model simply do not change. Same reason the colour
+      // half of this note exists.
+      const mats = new Set([...Object.keys(featureFinish), ...Object.keys(codeFinish)]);
+      const pats = new Set(Object.keys(featurePattern));
+      const myMats = Object.keys(featureFinish).length + Object.keys(featurePattern).length;
+      if (!n && !mats.size && !pats.size) { box.style.display = "none"; return; }
       box.style.display = "";
-      const bits = [`<b>${n}</b> shape${n === 1 ? " has its" : "s have their"} own colour, `
-        + `so the colour picked here is hidden.`];
+      const bits = [];
+      if (n) {
+        bits.push(`<b>${n}</b> shape${n === 1 ? " has its" : "s have their"} own colour, `
+          + `so the colour picked here is hidden.`);
+      }
       if (mine) {
         bits.push(`<button id="mat-override-reset" class="hist-btn" style="font-size:11px;padding:1px 7px">`
           + `Clear my ${mine} override${mine === 1 ? "" : "s"}</button>`);
@@ -5425,7 +6198,26 @@
           + `<button id="mat-recolour-code" class="hist-btn" style="font-size:11px;padding:1px 7px">`
           + `Recolour the code</button>`);
       }
+      if (mats.size || pats.size) {
+        const what = [];
+        if (mats.size) what.push(`<b>${mats.size}</b> piece${mats.size === 1 ? "" : "s"} `
+          + `${mats.size === 1 ? "has its" : "have their"} own material`);
+        if (pats.size) what.push(`<b>${pats.size}</b> ${pats.size === 1 ? "has" : "have"} `
+          + `${pats.size === 1 ? "its" : "their"} own pattern`);
+        bits.push(`${what.join(" and ")} — set by <code>finish()</code> or by right-clicking `
+          + `the piece, and not changed by the filament above.`);
+        if (myMats) {
+          bits.push(`<button id="mat-override-mats" class="hist-btn" style="font-size:11px;padding:1px 7px">`
+            + `Clear my ${myMats} material override${myMats === 1 ? "" : "s"}</button>`);
+        }
+      }
       box.innerHTML = bits.join(" ");
+      $("mat-override-mats")?.addEventListener("click", () => {
+        for (const k of Object.keys(featureFinish)) delete featureFinish[k];
+        for (const k of Object.keys(featurePattern)) delete featurePattern[k];
+        recolorMeshes();
+        noteColourOverride();
+      });
       $("mat-override-reset")?.addEventListener("click", () => $("mat-clearcolor").click());
       $("mat-recolour-code")?.addEventListener("click", async () => {
         if (!recolourCodeLiterals(mat.color)) return;
@@ -5808,6 +6600,102 @@
       noteColourOverride();          // the warning has to go away with them
     });
     $("sm-clear").addEventListener("click", () => { if (shapeMenuFid) setShapeColor(shapeMenuFid, null); shapeMenu.classList.remove("open"); });
+
+    // ---- this piece's own material and pattern ----------------------------
+    //
+    // "the body is balsa but the screws are titanium" and "only the middle
+    // should be glitter" are the same request: the model-wide Material panel
+    // has one answer and the part needs several. So the two dropdowns here set
+    // a per-FEATURE override, which beats the panel for that piece and leaves
+    // every other piece following it as before.
+    //
+    // Both lists are built from the existing registries rather than a copy —
+    // a spool added to filaments.js appears here with no edit.
+    function setShapeFinish(fid, name) {
+      if (name) featureFinish[fid] = name; else delete featureFinish[fid];
+      recolorMeshes();
+      noteColourOverride();
+    }
+    function setShapePattern(fid, kind) {
+      if (kind != null) featurePattern[fid] = kind; else delete featurePattern[fid];
+      recolorMeshes();
+      noteColourOverride();
+    }
+    const matSel = $("sm-material"), patSel = $("sm-pattern");
+    let smMatFilled = false;
+    function fillShapeMaterials() {
+      if (smMatFilled) return;
+      smMatFilled = true;
+      const opt = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; return o; };
+      matSel.appendChild(opt("", "Follow the panel"));
+      const g1 = document.createElement("optgroup");
+      g1.label = "Material";
+      for (const p of MATERIAL_PRESETS) g1.appendChild(opt(p.name, p.name));
+      matSel.appendChild(g1);
+      // The pattern list mirrors the Material panel's, so the two never drift.
+      for (const o of $("mat-texture").options) {
+        if (o.value === "0") continue;          // "None" is the explicit entry below
+        patSel.appendChild(opt(o.value, o.textContent));
+      }
+      patSel.appendChild(opt("0", "None — plain surface"));
+      // Spools load lazily; until they do the Material list is still useful.
+      (_fil ??= import("./filaments.js")).then((F) => {
+        const byFam = {};
+        for (const sp of F.SPOOLS) (byFam[sp.family] ??= []).push(sp);
+        for (const fam of Object.keys(byFam)) {
+          const g = document.createElement("optgroup");
+          g.label = `Filament — ${fam}`;
+          for (const sp of byFam[fam]) g.appendChild(opt(sp.id, sp.label));
+          matSel.appendChild(g);
+        }
+        if (shapeMenuFid) syncShapeMatUI(shapeMenuFid);   // re-select if the menu is open
+      }).catch(() => { /* no spools is not a broken menu */ });
+    }
+    function syncShapeMatUI(fid) {
+      const fin = featureFinish[fid] ?? codeFinish[fid] ?? "";
+      // A finish set by finish() in the code shows here but is not ours to lose:
+      // the select still reflects it so you can see what the piece is made of.
+      // Matched case-INSENSITIVELY, because finish("titanium") in the code and
+      // the "Titanium" entry in this list are the same material, and a dropdown
+      // that reads "Follow the panel" over a titanium part is simply a lie.
+      const lc = String(fin).toLowerCase();
+      const opt = [...matSel.options].find((o) => o.value.toLowerCase() === lc);
+      matSel.value = opt ? opt.value : "";
+      const pat = featurePattern[fid];
+      patSel.value = pat == null ? "" : String(pat);
+      const fromCode = !(fid in featureFinish) && !!codeFinish[fid];
+      $("sm-mat-hint").textContent = fromCode
+        ? `Set by finish("${codeFinish[fid]}") in the code — changing it here overrides that.`
+        : "Applies to this piece only.";
+    }
+    $("sm-more").addEventListener("click", () => {
+      const block = $("sm-matblock"), open = block.hidden;
+      fillShapeMaterials();
+      block.hidden = !open;
+      $("sm-more").setAttribute("aria-expanded", String(open));
+      $("sm-more-caret").textContent = open ? "▾" : "▸";
+      if (open && shapeMenuFid) syncShapeMatUI(shapeMenuFid);
+      fitShapeMenu();                       // it just got taller
+    });
+    matSel.addEventListener("change", () => {
+      if (shapeMenuFid) setShapeFinish(shapeMenuFid, matSel.value || null);
+    });
+    patSel.addEventListener("change", () => {
+      if (shapeMenuFid) setShapePattern(shapeMenuFid, patSel.value === "" ? null : +patSel.value);
+    });
+    $("sm-matclear").addEventListener("click", () => {
+      if (!shapeMenuFid) return;
+      delete featureFinish[shapeMenuFid];
+      delete featurePattern[shapeMenuFid];
+      recolorMeshes();
+      syncShapeMatUI(shapeMenuFid);
+    });
+    // The menu grew a second half, so it can now be taller than the window.
+    // Cap it to what is actually below the click and let it scroll.
+    function fitShapeMenu() {
+      const top = parseFloat(shapeMenu.style.top) || 0;
+      shapeMenu.style.maxHeight = `${Math.max(160, innerHeight - top - 12)}px`;
+    }
     $("sm-clearall").addEventListener("click", () => {
       for (const k of Object.keys(featureColors)) delete featureColors[k];
       recolorMeshes(); shapeMenu.classList.remove("open");
@@ -5883,9 +6771,13 @@
       if (!hit?.object.userData.featureId) { shapeMenu.classList.remove("open"); return; }
       shapeMenuFid = hit.object.userData.featureId;
       buildSwapChips(shapeMenuFid);
-      shapeMenu.style.left = `${Math.min(e.clientX, innerWidth - 200)}px`;
+      shapeMenu.style.left = `${Math.min(e.clientX, innerWidth - 240)}px`;
       shapeMenu.style.top = `${Math.min(e.clientY, innerHeight - 200)}px`;
       shapeMenu.classList.add("open");
+      // The material block stays open between right-clicks — somebody assigning
+      // a material to six pieces should not re-open it six times.
+      if (!$("sm-matblock").hidden) { fillShapeMaterials(); syncShapeMatUI(shapeMenuFid); }
+      fitShapeMenu();
     });
 
     // -------------------------------------------- view navigator (gizmo)
@@ -6081,6 +6973,7 @@
       if (!card.classList.contains("floating")) {
         card.style.width = `${Math.min(r.width, innerWidth - 24)}px`;
         card.classList.add("floating");
+        markDockShared();   // it left the column, so the others may grow
       }
       const h = Math.min(r.height, innerHeight - 16);
       card.style.left = `${Math.round(Math.max(8, (innerWidth - r.width) / 2))}px`;
@@ -6091,7 +6984,12 @@
       const next = on ?? !card.classList.contains("open");
       card.classList.toggle("open", next);
       btn?.classList.toggle("active", next);
-      if (!next) card.classList.remove("maxed");   // never reopen a card stuck fullscreen
+      if (!next) {
+        // Never reopen a window stuck fullscreen — and drop the geometry it
+        // was holding to go back to, which belonged to a session that is over.
+        card.classList.remove("maxed", "expanded");
+        preExpand.delete(card);
+      }
       if (next && card.classList.contains("floating") && !card.classList.contains("maxed")) {
         placeCardClear(card);
       }
@@ -6100,7 +6998,39 @@
       if (next && !card.classList.contains("maxed")) {
         requestAnimationFrame(() => ensureCardVisible(card));
       }
+      markDockShared();
+      syncWindowChrome(card);
+      // Opening one covers the model; closing one uncovers a space it can move
+      // back into. Both are worth a look.
+      windowsChanged();
       return next;
+    }
+
+    // Is anything SHARING the dock column? On a phone the answer decides how
+    // tall a window may be: one on its own takes the screen, several take a
+    // fraction each so the dock can be scrolled between them. Floating cards
+    // are dragged out of the column and do not compete for its height.
+    function markDockShared() {
+      const inColumn = document.querySelectorAll(".card.open:not(.floating)").length;
+      $("dock").classList.toggle("multi", inColumn > 1);
+      syncDockClip();
+    }
+
+    // Clip only when there is genuinely something to scroll.
+    //
+    // A scroll container clips on BOTH axes, and the pill's drop shadow lives
+    // outside its box — so as long as the dock was permanently a scroller, the
+    // shadow was permanently sliced. It only needs to scroll when the stack of
+    // windows is taller than the room for it, which is rare and is exactly
+    // when a clipped shadow stops mattering.
+    //
+    // Measured with the class OFF, because a scroller reports the height it
+    // scrolls rather than the height it wants.
+    function syncDockClip() {
+      const d = $("dock");
+      if (!d) return;
+      d.classList.remove("scrolls");
+      if (d.scrollHeight > d.clientHeight + 1) d.classList.add("scrolls");
     }
 
     // ---- movable cards: drag by the header, like little windows -----------
@@ -6120,31 +7050,102 @@
     // Both live on the header because that is the one strip of every window
     // that is never content, so neither gesture can collide with what the
     // window is for. Buttons and fields inside it keep their own behaviour.
-    const preExpand = new WeakMap();      // card -> the geometry to put back
+    const preExpand = new WeakMap();      // card -> the exact state to put back
 
+    // Fill the screen, and come back to precisely where you were.
+    //
+    // The old version added .floating on the way out and never took it off on
+    // the way back, so a window that had been sitting in the dock returned as a
+    // loose one; and because .expanded overrides position, top, left and size
+    // outright, none of that repositioning was needed in the first place. What
+    // is worth saving is the STATE — docked or floating, and at what geometry —
+    // and restoring it wholesale.
     function toggleExpand(card) {
-      if (card.classList.remove("expanded"), preExpand.has(card)) {
-        const p = preExpand.get(card);    // restore exactly what it was
+      if (preExpand.has(card)) {
+        const p = preExpand.get(card);
         preExpand.delete(card);
+        card.classList.remove("expanded");
+        card.classList.toggle("floating", p.floating);
         for (const k of ["left", "top", "width", "height"]) card.style[k] = p[k];
+        markDockShared();
+        syncWindowChrome(card);
+        windowsChanged();
         return false;
       }
-      const r = card.getBoundingClientRect();
       preExpand.set(card, {
+        floating: card.classList.contains("floating"),
         left: card.style.left, top: card.style.top,
         width: card.style.width, height: card.style.height,
       });
-      // A docked card has no left/top of its own; give it the ones it is
-      // already drawn at, so collapsing does not fling it into the corner.
-      if (!card.classList.contains("floating")) {
-        card.style.width = `${r.width}px`;
-        card.classList.add("floating");
-        preExpand.get(card).left = `${r.left}px`;
-        preExpand.get(card).top = `${r.top}px`;
-      }
       card.style.zIndex = ++cardZ;
       card.classList.add("expanded");
+      syncWindowChrome(card);
+      windowsChanged();
       return true;
+    }
+
+    // Put a loose window back in the stack at the bottom-right. Dragging is how
+    // a window leaves the column, so there has to be a way back that is equally
+    // plain — this used to be a second double-click handler fighting the expand
+    // one for the same gesture.
+    function redockCard(card) {
+      card.classList.remove("floating", "resized", "expanded");
+      preExpand.delete(card);
+      card.style.left = card.style.top = card.style.width = card.style.height = card.style.zIndex = "";
+      const b = mainScroll(card);
+      if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
+      markDockShared();
+      syncWindowChrome(card);
+      windowsChanged();
+    }
+
+    // Every window gets the same two controls, built here rather than typed
+    // into thirteen headers — which is how the old hand-written set had drifted
+    // out of step between one window and the next.
+    function syncWindowChrome(card) {
+      // Descendant of the header, not a child of it — see the insert below:
+      // some headers keep their controls in a wrapper div.
+      const exp = card.querySelector(":scope > header .win-expand");
+      const dock = card.querySelector(":scope > header .win-dock");
+      const big = card.classList.contains("expanded");
+      if (exp) {
+        exp.textContent = big ? "⤡" : "⤢";
+        exp.title = big
+          ? "Back to its own size (or double-click the header)"
+          : "Fill the screen (or double-click the header)";
+        exp.setAttribute("aria-label", exp.title);
+      }
+      if (dock) dock.hidden = big || !card.classList.contains("floating");
+    }
+
+    for (const card of document.querySelectorAll(".card")) {
+      const header = card.querySelector(":scope > header");
+      if (!header) continue;
+      const mk = (cls, onClick) => {
+        const b = document.createElement("button");
+        b.className = `hist-btn ${cls}`;
+        b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
+        return b;
+      };
+      const dock = mk("win-dock", () => redockCard(card));
+      dock.textContent = "⇲";
+      dock.title = "Put it back in the stack";
+      dock.hidden = true;
+      const exp = mk("win-expand", () => toggleExpand(card));
+      // Before the × — closing is the last thing in every header, and moving it
+      // would retrain the one button everybody already knows the position of.
+      //
+      // The × is NOT always a direct child: the chat header wraps ⚙ and × in
+      // their own div. Scoping this to ":scope > .close-btn" found nothing
+      // there, so insertBefore(_, null) appended to the header instead — and
+      // since the header is space-between, that made a THIRD group and left
+      // ⚙ × stranded in the middle with ⤢ way out at the right edge. Find the
+      // × wherever it lives and join ITS group.
+      const close = header.querySelector(".close-btn");
+      const group = close ? close.parentElement : header;
+      group.insertBefore(dock, close || null);
+      group.insertBefore(exp, close || null);
+      syncWindowChrome(card);
     }
 
     for (const headerEl of document.querySelectorAll(".card > header")) {
@@ -6176,6 +7177,7 @@
         if (!card.classList.contains("floating")) {
           card.style.width = `${rect.width}px`;    // flex sizing goes away with the dock
           card.classList.add("floating");
+        markDockShared();   // it left the column, so the others may grow
         }
         card.style.left = `${rect.left}px`;
         card.style.top = `${rect.top}px`;
@@ -6213,18 +7215,20 @@
           else if (innerWidth - r2.right > 0 && innerWidth - r2.right <= SNAP) card.style.left = `${innerWidth - r2.width - 8}px`;
           if (r2.top > 0 && r2.top <= SNAP) card.style.top = "8px";
           else if (innerHeight - r2.bottom > 0 && innerHeight - r2.bottom <= SNAP) card.style.top = `${innerHeight - r2.height - 8}px`;
+          // It is loose now, so it needs the way back; and wherever it landed
+          // may be on top of the part.
+          syncWindowChrome(card);
+          windowsChanged();
         };
         headerEl.addEventListener("pointermove", move);
         headerEl.addEventListener("pointerup", up);
         headerEl.addEventListener("pointercancel", up);
       });
-      headerEl.addEventListener("dblclick", (e) => {
-        if (e.target.closest("button, input, select, a")) return;
-        card.classList.remove("floating", "resized");
-        card.style.left = card.style.top = card.style.width = card.style.height = card.style.zIndex = "";
-        const b = mainScroll(card);
-        if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
-      });
+      // (There used to be a SECOND dblclick listener here, re-docking the
+      // window. Both fired on the same double-click and undid each other:
+      // drag a window somewhere, expand it, restore it, and it came back in
+      // the dock instead of where you left it. Re-docking is the ⇲ button in
+      // the header now — one gesture, one meaning.)
     }
 
     // Shrinking the browser window used to strand floating cards off-screen —
@@ -6241,6 +7245,7 @@
           card.style.left = `${l}px`;
           card.style.top = `${t}px`;
         }
+        windowsChanged();   // the stage is a different shape; so is what is free
       }, 150);
     });
 
@@ -6274,6 +7279,7 @@
           grip.removeEventListener("pointermove", move);
           grip.removeEventListener("pointerup", up);
           grip.removeEventListener("pointercancel", up);
+          windowsChanged();          // a bigger window covers more of the part
         };
         grip.addEventListener("pointermove", move);
         grip.addEventListener("pointerup", up);
@@ -6285,9 +7291,10 @@
     const histBtn = $("hist2-btn"), histCard = $("history");
     const chatBtn = $("chat-btn"), chatCard = $("chat");
     const matBtn = $("mat-btn"), matCard = $("material");
+    const paramsBtn = $("params-btn"), paramsCard = $("params");
     const cardButtons = {
       panel: openBtn, cheatsheet: cheatBtn, about: aboutBtn,
-      history: histBtn, chat: chatBtn, material: matBtn,
+      history: histBtn, chat: chatBtn, material: matBtn, params: paramsBtn,
     };
     matBtn.addEventListener("click", () => {
       loadSpools();                       // no-op after the first time
@@ -6322,6 +7329,342 @@
         toggleCard($(b.dataset.close), cardButtons[b.dataset.close], false);
       });
     }
+
+    // ------------------------------------------------------- parameters
+    //
+    // The dimensions of the model, as dials, for the person who wants a 60mm
+    // box instead of a 40mm one and should not have to find which of forty
+    // numbers is the width.
+    //
+    // Nothing here is a second source of truth. Every control writes the
+    // number straight back into the code and lets the normal input path
+    // rebuild — so undo, autosave, the share link and the history all keep
+    // working with no idea this panel exists, and the code on screen is always
+    // exactly what the model is.
+    //
+    // The one thing that needs care is that a slider is a CONTINUOUS gesture
+    // over a document that keeps changing length under it. Two rules handle it:
+    // applyParam re-finds its target by name on every write (so a shifted
+    // offset is impossible), and the panel only rebuilds its controls when the
+    // SHAPE of the list changes — never on a value — so the slider under the
+    // finger is never replaced mid-drag.
+    let _params = null;                 // the module, loaded on first use
+    let paramSig = "";                  // shape of the list the DOM was built for
+    let paramBase = new Map();          // value each one had when we first saw it
+    let paramWriting = false;           // our own edit is landing; don't re-render
+    let paramTimer = null;              // typing is debounced; a full scan is not free
+    const paramsBody = $("params-body"), paramsSub = $("params-sub");
+
+    async function ensureParams() {
+      _params ??= import("./params.js");
+      return _params;
+    }
+
+    function paramValueOf(p) {
+      return p.kind === "vector" ? p.value.slice() : p.value;
+    }
+    const sameValue = (a, b) => (Array.isArray(a) && Array.isArray(b))
+      ? a.length === b.length && a.every((x, i) => x === b[i])
+      : a === b;
+
+    // Write one number back into the source and let the editor's own input
+    // path do the rest.
+    async function setParam(name, value, index = null) {
+      const P = await ensureParams();
+      const next = P.applyParam(code.value, name, value, index);
+      if (next === code.value) return;
+      paramWriting = true;
+      code.value = next;
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+      paramWriting = false;
+    }
+
+    function paramRow(P, p) {
+      const row = document.createElement("div");
+      row.className = "prm";
+      row.dataset.name = p.name;
+
+      const name = document.createElement("div");
+      name.className = "prm-name";
+      name.textContent = p.label;
+      // The real identifier, small and grey. Somebody who DOES read the code
+      // needs to know which line a dial moves, and somebody who doesn't will
+      // not notice it.
+      const codeTag = document.createElement("code");
+      codeTag.textContent = p.name;
+      name.appendChild(codeTag);
+      row.appendChild(name);
+
+      const revert = document.createElement("button");
+      revert.className = "prm-revert";
+      revert.title = "Back to the value this model came with";
+      revert.textContent = "↺";
+      revert.addEventListener("click", () => {
+        const b = paramBase.get(p.name);
+        if (b === undefined) return;
+        if (Array.isArray(b)) b.forEach((v, i) => setParam(p.name, v, i));
+        else setParam(p.name, b);
+        setTimeout(refreshParams, 0);
+      });
+      row.appendChild(revert);
+
+      if (p.note) {
+        const note = document.createElement("div");
+        note.className = "prm-note";
+        note.textContent = p.note;
+        row.appendChild(note);
+      }
+
+      const ctl = document.createElement("div");
+      ctl.className = "prm-ctl";
+      row.appendChild(ctl);
+
+      if (p.kind === "number") {
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = p.min; slider.max = p.max; slider.step = p.step;
+        slider.value = p.value;
+        const num = document.createElement("input");
+        num.type = "number";
+        num.className = "prm-num";
+        // step="any" on purpose: the slider is for finding roughly the right
+        // place, the box is for saying 42.5 exactly. Rounding the box to the
+        // slider's step would remove the only reason to have both.
+        num.step = "any";
+        num.value = P.formatNumber(p.value);
+        const unit = document.createElement("span");
+        unit.className = "prm-unit";
+        unit.textContent = p.unit || "";
+
+        slider.addEventListener("input", () => {
+          num.value = P.formatNumber(slider.value);
+          setParam(p.name, +slider.value);
+        });
+        const fromBox = () => {
+          const v = parseFloat(num.value);
+          if (!Number.isFinite(v)) return;
+          // A typed value outside the guessed range GROWS the slider rather
+          // than being clamped to it. The guess was ours; the number is theirs.
+          if (v > +slider.max) slider.max = P.niceCeil(Math.abs(v) * 1.2);
+          if (v < +slider.min) slider.min = v < 0 ? -P.niceCeil(Math.abs(v) * 1.2) : 0;
+          slider.value = v;
+          setParam(p.name, v);
+        };
+        num.addEventListener("change", fromBox);
+        num.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fromBox(); } });
+        ctl.append(slider, num, unit);
+        row._sync = (q) => { slider.value = q.value; if (document.activeElement !== num) num.value = P.formatNumber(q.value); };
+
+      } else if (p.kind === "vector") {
+        const wrap = document.createElement("div");
+        wrap.className = "prm-vec";
+        const AXES = ["X", "Y", "Z", "W"];
+        const boxes = p.value.map((v, i) => {
+          const cell = document.createElement("label");
+          cell.style.flex = "1"; cell.style.minWidth = "0";
+          const lbl = document.createElement("span");
+          lbl.className = "prm-vec-lbl";
+          lbl.textContent = AXES[i] ?? String(i + 1);
+          const box = document.createElement("input");
+          box.type = "number"; box.className = "prm-num"; box.step = "any";
+          box.value = P.formatNumber(v);
+          box.addEventListener("change", () => {
+            const q = parseFloat(box.value);
+            if (Number.isFinite(q)) setParam(p.name, q, i);
+          });
+          cell.append(lbl, box);
+          wrap.appendChild(cell);
+          return box;
+        });
+        const unit = document.createElement("span");
+        unit.className = "prm-unit";
+        unit.textContent = p.unit || "";
+        ctl.append(wrap, unit);
+        row._sync = (q) => q.value.forEach((v, i) => {
+          if (boxes[i] && document.activeElement !== boxes[i]) boxes[i].value = P.formatNumber(v);
+        });
+
+      } else if (p.kind === "bool") {
+        const box = document.createElement("input");
+        box.type = "checkbox"; box.className = "prm-check";
+        box.checked = !!p.value;
+        const say = document.createElement("span");
+        say.style.fontSize = "12px"; say.style.color = "var(--muted3)";
+        say.textContent = p.value ? "on" : "off";
+        box.addEventListener("change", () => {
+          say.textContent = box.checked ? "on" : "off";
+          setParam(p.name, box.checked);
+        });
+        ctl.append(box, say);
+        row._sync = (q) => { box.checked = !!q.value; say.textContent = q.value ? "on" : "off"; };
+
+      } else if (p.kind === "choice") {
+        const sel = document.createElement("select");
+        sel.className = "prm-choice";
+        for (const c of p.choices) {
+          const o = document.createElement("option");
+          o.value = c; o.textContent = c;
+          sel.appendChild(o);
+        }
+        sel.value = String(p.value);
+        sel.addEventListener("change", () => setParam(p.name, sel.value));
+        ctl.appendChild(sel);
+        row._sync = (q) => { sel.value = String(q.value); };
+
+      } else {
+        const box = document.createElement("input");
+        box.type = "text"; box.className = "prm-text";
+        box.value = String(p.value);
+        box.addEventListener("change", () => setParam(p.name, box.value));
+        ctl.appendChild(box);
+        row._sync = (q) => { if (document.activeElement !== box) box.value = String(q.value); };
+      }
+      return row;
+    }
+
+    function paramsEmptyState() {
+      const d = document.createElement("div");
+      d.id = "params-empty";
+      d.innerHTML = "Nothing to turn yet — this model's numbers are written straight "
+        + "into its shapes.<br><br>Give one a <b>name</b> at the top of the code and it "
+        + "appears here as a slider:<br><br>"
+        + "<code>const WIDTH = 40;</code><br><code>cube([WIDTH, 30, 12])</code>";
+      // Telling somebody who does not want to read code that they can ask for
+      // it in a sentence is still homework. One button does the asking.
+      if (code.value.trim()) {
+        const ask = document.createElement("button");
+        ask.className = "hist-btn";
+        ask.id = "params-ask";
+        ask.style.cssText = "margin-top:14px; font-size:12px; padding:4px 11px";
+        ask.textContent = "Add parameters for me";
+        ask.addEventListener("click", () => {
+          toggleCard(chatCard, chatBtn, true);
+          ensureChat();
+          const inp = $("chat-input");
+          inp.value = "Rewrite this model so every size that could reasonably be adjusted is a "
+            + "named constant at the top, with the geometry using the names. Keep the shape "
+            + "exactly as it is — same dimensions, same features, nothing added or removed.";
+          sendChat();
+        });
+        d.appendChild(document.createElement("br"));
+        d.appendChild(ask);
+      }
+      return d;
+    }
+
+    async function refreshParams(force = false) {
+      if (paramWriting && !force) return;
+      // Note the ORDER: the button's light has to be maintained whether or not
+      // the panel is open — it is how you find out there is a panel worth
+      // opening. Only the control-building below is skipped while closed.
+      const P = await ensureParams();
+      const list = P.findParams(code.value);
+      const sig = P.paramsSignature(list);
+
+      // Baselines look after themselves rather than needing a hook on every
+      // route that loads a new model (open, import, recipe, assistant, Clear).
+      // A name that is gone is dropped; a model sharing NO names with the last
+      // one is a different model, so the whole set starts again — otherwise
+      // Reset would put some previous model's numbers into this one.
+      const names = new Set(list.map((p) => p.name));
+      if (paramBase.size && ![...paramBase.keys()].some((k) => names.has(k))) paramBase.clear();
+      for (const k of [...paramBase.keys()]) if (!names.has(k)) paramBase.delete(k);
+      for (const p of list) {
+        if (!paramBase.has(p.name)) paramBase.set(p.name, paramValueOf(p));
+      }
+      const many = `${list.length} ${list.length === 1 ? "dimension" : "dimensions"}`;
+      paramsSub.textContent = list.length ? many : "the model's own dimensions";
+      // The button lights only when there is something behind it, and says how
+      // much — so "does this model have dials?" is answered without opening
+      // anything.
+      paramsBtn.classList.toggle("has", list.length > 0);
+      paramsBtn.title = list.length
+        ? `Parameters — ${many} you can change with a slider`
+        : "Parameters — this model has no named dimensions yet";
+
+      if (!paramsCard.classList.contains("open")) return;   // light kept, DOM not built
+      if (sig === paramSig && paramsBody.firstChild) {
+        // Same controls, new numbers: touch the values and leave the DOM (and
+        // any slider being dragged, and any box being typed in) alone.
+        for (const p of list) {
+          const row = paramsBody.querySelector(`.prm[data-name="${CSS.escape(p.name)}"]`);
+          row?._sync?.(p);
+          row?.classList.toggle("changed", !sameValue(paramValueOf(p), paramBase.get(p.name)));
+        }
+        return;
+      }
+      paramSig = sig;
+      paramsBody.textContent = "";
+      if (!list.length) { paramsBody.appendChild(paramsEmptyState()); return; }
+
+      let group = undefined;
+      for (const p of list) {
+        if (p.group !== group) {
+          group = p.group;
+          if (group) {
+            const h = document.createElement("div");
+            h.className = "prm-group";
+            h.textContent = group;
+            paramsBody.appendChild(h);
+          }
+        }
+        const row = paramRow(P, p);
+        row.classList.toggle("changed", !sameValue(paramValueOf(p), paramBase.get(p.name)));
+        paramsBody.appendChild(row);
+      }
+    }
+
+    paramsBtn.addEventListener("click", () => {
+      if (toggleCard(paramsCard, paramsBtn)) refreshParams(true);
+    });
+    // Exact ON means the text is left alone, which is also when auto-close
+    // stops. The glyph is the only thing left saying so, now the sentence has
+    // gone, so it has to actually track it.
+    const autoCloseTell = () => $("autoclose").classList.toggle("off", $("exact").checked);
+    $("exact").addEventListener("change", autoCloseTell);
+    autoCloseTell();
+    $("params-reset").addEventListener("click", async () => {
+      const P = await ensureParams();
+      for (const p of P.findParams(code.value)) {
+        const b = paramBase.get(p.name);
+        if (b === undefined || sameValue(paramValueOf(p), b)) continue;
+        if (Array.isArray(b)) b.forEach((v, i) => setParam(p.name, v, i));
+        else setParam(p.name, b);
+      }
+      setTimeout(() => refreshParams(true), 0);
+    });
+    // The tests drive the panel without a mouse: they need to know what it is
+    // showing and to move a control the way a person would.
+    window.__brepParams = () => [...paramsBody.querySelectorAll(".prm")].map((r) => {
+      const num = r.querySelector(".prm-num");
+      const range = r.querySelector('input[type="range"]');
+      const check = r.querySelector(".prm-check");
+      const sel = r.querySelector(".prm-choice");
+      const text = r.querySelector(".prm-text");
+      return {
+        name: r.dataset.name,
+        label: r.querySelector(".prm-name").firstChild.textContent,
+        note: r.querySelector(".prm-note")?.textContent ?? null,
+        unit: r.querySelector(".prm-unit")?.textContent || null,
+        value: check ? check.checked : sel ? sel.value : text ? text.value
+          : [...r.querySelectorAll(".prm-num")].map((b) => +b.value),
+        range: range ? [+range.min, +range.max, +range.step] : null,
+        changed: r.classList.contains("changed"),
+        // EVERY control against the row, not just the first. Checking only
+        // `.prm-num` passed a vector row whose second and third boxes were
+        // hanging out over the unit label — the first one was fine, and the
+        // first one was all it looked at.
+        fits: (() => {
+          const box = r.getBoundingClientRect();
+          return [...r.querySelectorAll("input, select")].every((el) => {
+            const q = el.getBoundingClientRect();
+            return q.right <= box.right + 0.5 && q.left >= box.left - 0.5 && q.width > 8;
+          });
+        })(),
+      };
+    });
+    window.__brepSetParam = (name, value, index = null) => setParam(name, value, index);
+    window.__brepRefreshParams = () => refreshParams(true);
 
     // ---------------------------------------------------------- cheat sheet
     // The kernel catalog is scanned asynchronously (it needs a PartHistory), so
@@ -7365,11 +8708,22 @@ ${joined}`)(...vs);
     // not spin forever.
     const builtOnce = new Set();
     const onceBuilt = (fn) => builtOnce.add(fn);
-    function fireBuilt() {
+    // `ok` says whether a model actually reached the plate.
+    //
+    // It matters because the failure paths below call this too — they have to,
+    // or a share that cannot build would glow forever. But "the build failed"
+    // and "the model is here" are opposite events, and the loading cover was
+    // treating them the same: on a shared link the FIRST pass routinely fails
+    // (a packed mesh not registered yet, a lazy module still arriving) and the
+    // retry is already queued, so the cover came off seconds before anything
+    // was on screen. Measured on the live site: cover gone at ~1s, first
+    // successful build at 7.5s — three and a half of those seconds spent
+    // looking at an empty stage.
+    function fireBuilt(ok = true) {
       if (!builtOnce.size) return;
       const fns = [...builtOnce];
       builtOnce.clear();
-      for (const fn of fns) { try { fn(); } catch { /* a hook must not break a build */ } }
+      for (const fn of fns) { try { fn(ok); } catch { /* a hook must not break a build */ } }
     }
 
     // The build-cube markup (styles: .bcube in the stylesheet). One factory so
@@ -7414,6 +8768,10 @@ ${joined}`)(...vs);
       // user edited the code and moved on. A Build button offering to build
       // something that is no longer in the editor is worse than no button.
       clearHeavyHold();
+      // Every route that changes the code ends up here — typing, undo, the
+      // assistant, opening a file, a recipe. One call keeps the dials honest
+      // for all of them instead of a hook on each.
+      refreshParams();
       const typed = code.value.trim();
       applyFilamentDirective(typed);
       if (!typed) {
@@ -7432,7 +8790,7 @@ ${joined}`)(...vs);
         seatGrid();
         updateDims();
         setStatus("", "Type a model to begin.");
-        fixnote.textContent = "";
+        fixnote.textContent = ""; fixnote.title = "";
         return;
       }
 
@@ -7451,7 +8809,7 @@ ${joined}`)(...vs);
         shape = evaluate(src);
       } catch (e) {
         setStatus("err", diagnose(src, e));
-        fireBuilt();      // a share that cannot build must stop glowing
+        fireBuilt(false);      // a share that cannot build must stop glowing
         return;
       }
       // Heavy builds pin the main thread — say roughly how long BEFORE it
@@ -7480,7 +8838,7 @@ ${joined}`)(...vs);
       } catch { /* an estimate must never break a build */ }
       if (!shape || !shape.__brepscript) {
         setStatus("err", diagnose(src, null, shape));
-        fireBuilt();      // a share that cannot build must stop glowing
+        fireBuilt(false);      // a share that cannot build must stop glowing
         return;
       }
 
@@ -7569,13 +8927,14 @@ ${joined}`)(...vs);
         let tris = 0;
         // colours set by colorize() in the code — rebuilt every pass, keyed by
         // feature id, so adoptSolid()'s matForFeature() paints each coloured piece
-        codeColors = {}; codeEmissive = {}; codeClear = {};
+        codeColors = {}; codeEmissive = {}; codeClear = {}; codeFinish = {};
         codeNegatives = new Set();       // cutters — see paintCutFaces()
         for (const t of trace) {
           if (t.negative) codeNegatives.add(t.id);
           if (t.color) codeColors[t.id] = t.color;
           if (t.emissive) codeEmissive[t.id] = { hex: t.emissive, int: t.emissiveInt ?? 1 };
           if (t.clear != null) codeClear[t.id] = t.clear;
+          if (t.finish) codeFinish[t.id] = t.finish;
         }
         const validIds = new Set(trace.map((t) => t.id));
         for (const s of solids) {
@@ -7618,6 +8977,8 @@ ${joined}`)(...vs);
         lastBuiltSource = typed;
         lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms`;
         fireBuilt();
+        logEvent("build", "ok", { ms: Math.round(lastBuildMs), solids: solids.length, tris,
+          lang: lastLang || "brepcode", chars: code.value.length });
         setStatus("ok", lastGoodStatus);
         blueprintStale();     // the drawing on hand is now of the previous model
 
@@ -7639,11 +9000,17 @@ ${joined}`)(...vs);
         if (notes.length) parts.push(`auto-fixed: ${notes.join("; ")}`);
         if (warns.length) parts.push(warns.join(" · "));
         fixnote.textContent = parts.join("  ·  ");
+        // It ellipsises now rather than shoving the buttons off the edge, so
+        // the full sentence has to be reachable — a clipped warning nobody can
+        // finish reading is not a warning.
+        fixnote.title = fixnote.textContent;
       } catch (e) {
         if (mine !== token) return;
         lastBuildMs = performance.now() - t0;
+        logEvent("build", "failed", { ms: Math.round(lastBuildMs), error: String(e?.message || e).slice(0, 300),
+          lang: lastLang || "brepcode", source: code.value.slice(0, 4000) });
         setStatus("err", diagnose(src, e));
-        fireBuilt();      // a share that cannot build must stop glowing
+        fireBuilt(false);      // a share that cannot build must stop glowing
         // A saved model naming a mesh this session has not imported is not a
         // mistake in the code — a .bcode carries the RECIPE, and the mesh is a
         // file on your disk. Telling someone to "use the Import button" and
@@ -8588,6 +9955,321 @@ ${joined}`)(...vs);
       }
     }
 
+    // ---- Shave: click a strand, it is cut at its root ---------------------
+    //
+    // The one edit tool that WORKS ON A PREVIEW, and deliberately so. It is
+    // pure mesh surgery — walk the triangles, cut, cap — with no kernel
+    // anywhere, so the 255k-triangle model that is far too dense to build is
+    // exactly the kind of model it is for. Simplifying such a model first would
+    // merge its whiskers into the body and remove the thing being pointed at.
+    let shaveArmed = false;
+    let shaveTopo = null, shaveTopoFor = null;   // topology is slow; cache per geometry
+    // One stack, two kinds of entry. A shave and a Simplify are both "the
+    // preview I had before" as far as the person looking at it is concerned,
+    // so Ctrl+Z has to walk back through them in the order they happened
+    // rather than each tool keeping a private pile nothing else can see.
+    //   { kind: "shave",    mesh, positions }  — put the strand back
+    //   { kind: "simplify", objects, code, … } — put the whole preview back
+    const shaveUndo = [];
+    function setShaveArmed(on) {
+      shaveArmed = !!on;
+      if (shaveArmed) { setDrillArmed(false); setFinsArmed(false); setCodeArmed(false); }
+      $("shave-btn").classList.toggle("active", shaveArmed);
+      renderer.domElement.style.cursor = shaveArmed ? "crosshair" : "";
+      if (shaveArmed) {
+        hint.innerHTML = "🪒 <b>Shave armed</b> — click a whisker or any thin strand and it is cut "
+          + "flush where it meets the body. It follows what you clicked, so it can only ever remove "
+          + "that; click something solid and it will decline rather than guess. "
+          + "<b>Ctrl+Z</b> puts one back. Click <b>Shave</b> again or press <b>Esc</b> to cancel.";
+      }
+    }
+    $("shave-btn").addEventListener("click", () => setShaveArmed(!shaveArmed));
+
+    // Whichever mesh is on screen — a built model or a view-only preview.
+    function shaveTarget() {
+      const g = previewGroup.children.length ? previewGroup : modelGroup;
+      const mesh = g.children.find((m) => m.isMesh && m.geometry?.attributes?.position);
+      return mesh ? { group: g, mesh } : null;
+    }
+
+    async function shaveAtHit(hit) {
+      const S = await import("./shave.js");
+      const mesh = hit.object;
+      const pos = mesh.geometry.attributes.position;
+      if (!pos || pos.itemSize !== 3) { setStatus("err", "Shave needs a plain triangle mesh."); return; }
+      const P = pos.array;
+      const face = hit.faceIndex;
+      if (face == null) { setStatus("err", "Shave: could not tell which triangle you clicked."); return; }
+      // A raycast against the live mesh cannot hand back an index that is not
+      // in it, but a stale one held across an edit can — and walking off the
+      // end of the topology throws from inside the trace, which leaves the
+      // status stuck on "Tracing the strand…" with no way to tell what failed.
+      if (!(face >= 0 && face < P.length / 9)) {
+        setStatus("err", "Shave: that triangle is no longer in the model — click it again.");
+        return;
+      }
+
+      setStatus("busy", "Tracing the strand…");
+      await new Promise((r) => setTimeout(r, 20));
+      if (shaveTopoFor !== mesh.uuid + ":" + P.length) {
+        shaveTopo = S.buildTopology(P);
+        shaveTopoFor = mesh.uuid + ":" + P.length;
+      }
+      const t0 = performance.now();
+      const res = S.shaveAt(P, face, { topo: shaveTopo, positions: P });
+      if (!res.ok) {
+        const why = {
+          "not-a-strand": "that is part of the body, not a strand — it spreads out instead of running along",
+          budget: "the trace leaked off the strand onto the surface there, so nothing was cut — "
+            + "try again a little further out, where the strand is thinnest and clear of the body",
+          "too-small": "there is almost nothing there to cut",
+        }[res.reason] || res.reason;
+        setStatus("warn", `Shave declined: ${why}`);
+        hint.innerHTML = `🪒 <b>Nothing cut</b> — ${why}. Nothing was changed: when the trace is not `
+          + `confident it stops rather than guessing, which is why it will never take a bite out of an `
+          + `ear or the body. About two clicks in three land first time on a whisker; the rest usually `
+          + `work a few millimetres further along.`;
+        return;
+      }
+      shaveUndo.push({ kind: "shave", mesh, positions: P.slice(0) });
+      if (shaveUndo.length > 20) shaveUndo.shift();
+      applyShaved(mesh, res.positions);
+      shaveTopoFor = null;                       // the mesh changed; topology is stale
+      // Simplify holds the geometry it was OFFERED, captured at import. Without
+      // this it would decimate the original and silently throw every whisker
+      // cut away — the shave would look like it had worked right up until the
+      // moment you built it.
+      syncPendingSimplify();
+      setStatus("ok", `Shaved ${res.removed} triangles, capped ${res.holes} `
+        + `hole${res.holes === 1 ? "" : "s"} · ${Math.round(performance.now() - t0)} ms`);
+      hint.innerHTML = `🪒 Cut <b>${res.removed}</b> triangles at the root and closed it back up. `
+        + `Click another strand, <b>Ctrl+Z</b> to put it back, or <b>Esc</b> when you are done — `
+        + `then Export to save the STL.`;
+    }
+
+    function applyShaved(mesh, positions) {
+      const g = mesh.geometry;
+      g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      g.deleteAttribute("normal");
+      g.computeVertexNormals();
+      g.computeBoundingSphere();
+      g.computeBoundingBox();
+      g.attributes.position.needsUpdate = true;
+    }
+
+    // Re-read the live preview into the pending Simplify offer, so decimating
+    // uses what is on screen rather than what was imported.
+    function syncPendingSimplify() {
+      if (!pendingSimplify) return;
+      const parts = previewGroup.children.filter((m) => m.isMesh && m.geometry?.attributes?.position);
+      if (!parts.length) return;
+      pendingSimplify.objects = parts.map((m) => ({ positions: m.geometry.attributes.position.array }));
+      // The offer was written with the ORIGINAL count on it; keep the sentence
+      // honest as triangles come off.
+      pendingSimplify.totalTris = parts.reduce((n, m) => n + m.geometry.attributes.position.count / 3, 0);
+      // ...and the preview was already centred when it was built, so the offset
+      // must not be applied a second time.
+      pendingSimplify.off = [0, 0, 0];
+      const t = pendingSimplify.totalTris;
+      if (buildBarNote && !buildBar.hidden) {
+        buildBarNote.innerHTML = `<b>${esc(pendingSimplify.fileName)}</b> — ${(t / 1000).toFixed(0)}k `
+          + `triangles is too dense to build as a solid. Simplify it to drill, cut and boolean it.`;
+      }
+    }
+
+    function undoShave() {
+      const last = shaveUndo.pop();
+      if (!last) return false;
+      if (last.kind === "simplify") return restoreSimplify(last);
+      applyShaved(last.mesh, last.positions);
+      shaveTopoFor = null;
+      syncPendingSimplify();
+      const left = shaveUndo.filter((u) => u.kind === "shave").length;
+      setStatus("ok", `Put that strand back — ${left} shave(s) still applied`);
+      return true;
+    }
+
+    // ---- undoing a Simplify -----------------------------------------------
+    //
+    // Simplify is the one edit that is easy to get WRONG rather than to get
+    // no result from: 2k on a bunny is a lumpy potato, 25k on a bracket is a
+    // slow build for detail nobody wanted. The number is a judgement call, and
+    // a judgement call needs a way back — so the preview it consumed is kept
+    // whole and Ctrl+Z restores it, ready for a different number.
+    //
+    // The snapshot is read off the SCREEN rather than out of pendingSimplify,
+    // because the screen is the thing being undone: whiskers shaved and scale
+    // applied are already in these triangles, and reading them here means this
+    // cannot drift out of step with the preview the way a captured-at-import
+    // copy did.
+    function snapshotPreview() {
+      if (!pendingSimplify) return null;
+      const parts = previewGroup.children.filter((m) => m.isMesh && m.geometry?.attributes?.position);
+      if (!parts.length) return null;
+      return {
+        kind: "simplify",
+        fileName: pendingSimplify.fileName,
+        objects: parts.map((m) => ({ positions: m.geometry.attributes.position.array.slice(0) })),
+        partColours: parts.map((m) => `#${m.material?.color?.getHexString?.() || "9fb4d6"}`),
+        off: [0, 0, 0],       // what is on screen is already positioned
+        totalTris: parts.reduce((n, m) => n + m.geometry.attributes.position.count / 3, 0),
+        code: code.value,
+        target: SIMPLIFY_TARGET,
+      };
+    }
+
+    function pushSimplifyUndo(snap) {
+      if (!snap) return;
+      // A 255k-triangle snapshot is ~9MB of Float32, so these do not stack up
+      // the way a shave's do. The previous preview is the only one worth
+      // holding: going back two Simplifies is not a thing you can do anyway,
+      // because the first one already replaced the mesh the second consumed.
+      for (let i = shaveUndo.length - 1; i >= 0; i--) {
+        if (shaveUndo[i].kind === "simplify") shaveUndo.splice(i, 1);
+      }
+      shaveUndo.push(snap);
+    }
+
+    function restoreSimplify(snap) {
+      // Put the code back first: showMeshPreview empties modelGroup, and the
+      // editor is what said those parts existed.
+      code.value = snap.code;
+      pushHistory();                     // the revert is a step in History too
+      updateHint?.();
+      SIMPLIFY_TARGET = snap.target;
+      showMeshPreview(snap.objects, snap.partColours, snap.off);
+      shaveTopoFor = null;               // different mesh object; topology is stale
+      hint.innerHTML = `↩︎ Put <b>${esc(snap.fileName)}</b> back the way it was — `
+        + `${(snap.totalTris / 1000).toFixed(0)}k triangles, every shave still on it. `
+        + `Pick a different detail on the Simplify button and run it again.`;
+      offerSimplify(hint, snap.fileName, snap.objects, snap.partColours, snap.off, snap.totalTris);
+      setStatus("ok", `Undid the simplify — the ${(snap.totalTris / 1000).toFixed(0)}k preview is back`);
+      return true;
+    }
+
+    // ---- Scale: a factor, or a size in millimetres ------------------------
+    //
+    // Two routes, because there are two kinds of model on this screen and they
+    // want opposite things:
+    //
+    //   a BUILT model is code, so scaling it writes scale() into the code and
+    //   stays parametric — the number is still there to edit tomorrow;
+    //
+    //   an imported PREVIEW has no code behind it. Its triangles are all there
+    //   is, so they are multiplied in place. That is also the only route that
+    //   works on a mesh too dense to build, which is most of why this exists.
+    function modelSizeNow() {
+      const g = previewGroup.children.length ? previewGroup : modelGroup;
+      const box = new THREE.Box3().setFromObject(g);
+      if (box.isEmpty()) return null;
+      const v = box.getSize(new THREE.Vector3());
+      return [v.x, v.y, v.z];
+    }
+
+    function scalePreview(factor) {
+      const parts = previewGroup.children.filter((m) => m.isMesh && m.geometry?.attributes?.position);
+      if (!parts.length) return false;
+      for (const m of parts) {
+        const a = m.geometry.attributes.position.array;
+        for (let i = 0; i < a.length; i++) a[i] *= factor;
+        m.geometry.attributes.position.needsUpdate = true;
+        m.geometry.computeBoundingSphere();
+        m.geometry.computeBoundingBox();
+      }
+      seatGrid(); frameModel(); updateDims();
+      syncPendingSimplify();
+      return true;
+    }
+
+    async function applyScale(factor) {
+      if (!(factor > 0) || !isFinite(factor)) { setStatus("err", "Scale needs a positive number."); return; }
+      if (Math.abs(factor - 1) < 1e-9) { setStatus("ok", "Scale 1x — nothing to change."); return; }
+      const before = modelSizeNow();
+      if (previewGroup.children.length) {
+        scaleUndo.push(factor);
+        if (scalePreview(factor)) {
+          const a = modelSizeNow();
+          setStatus("ok", `Scaled x${(+factor.toFixed(4))} — now `
+            + `${a.map((v) => v.toFixed(1)).join(" x ")} mm`);
+          hint.innerHTML = `⤡ Scaled the imported mesh by <b>x${+factor.toFixed(4)}</b> — `
+            + `${before.map((v) => v.toFixed(1)).join(" x ")} → <b>${a.map((v) => v.toFixed(1)).join(" x ")} mm</b>. `
+            + `Simplify, Shave and Export all follow it. <b>Ctrl+Z</b> undoes.`;
+        }
+        return;
+      }
+      // a built model: the code is the model, so scale the code
+      const expr = currentModelExpr();
+      if (!expr) { setStatus("err", "Scale: nothing on the plate to scale."); return; }
+      const f = +factor.toFixed(6);
+      const indented = expr.split("\n").join("\n  ");
+      if (!replaceModelExpr(`scale([${f}, ${f}, ${f}],\n  ${indented},\n)`)) {
+        setStatus("err", "Scale: could not find the model expression to wrap.");
+        return;
+      }
+      pushHistory(); setStatus("busy", "…"); scheduleBuild();
+      hint.innerHTML = `⤡ Wrapped the model in <b>scale([${f}, ${f}, ${f}])</b> — it stays in the `
+        + `code, so you can edit the number or undo it like any other edit.`;
+    }
+    const scaleUndo = [];
+
+    function setScaleArmed() {
+      const size = modelSizeNow();
+      if (!size) { setStatus("err", "Scale: nothing on the plate yet."); return; }
+      const big = Math.max(...size);
+      hint.innerHTML = `⤡ <b>Scale</b> — ${size.map((v) => v.toFixed(1)).join(" x ")} mm now. `
+        + `<input id="scale-f" type="number" step="0.05" min="0.01" value="1" style="width:74px" /> `
+        + `<button id="scale-go" class="hist-btn">x factor</button> &nbsp;or make the longest side `
+        + `<input id="scale-mm" type="number" step="1" min="0.1" value="${big.toFixed(1)}" style="width:84px" /> mm `
+        + `<button id="scale-mm-go" class="hist-btn">Resize</button>`
+        + `<br><small style="color:var(--muted3)">An imported mesh is scaled in place. A built model `
+        + `gets a <code>scale()</code> around it in the code.</small>`;
+      $("scale-go").onclick = () => applyScale(+$("scale-f").value);
+      $("scale-mm-go").onclick = () => applyScale((+$("scale-mm").value || big) / big);
+      $("scale-f").onkeydown = (e) => { if (e.key === "Enter") $("scale-go").click(); };
+      $("scale-mm").onkeydown = (e) => { if (e.key === "Enter") $("scale-mm-go").click(); };
+    }
+    $("scale-btn").addEventListener("click", setScaleArmed);
+    window.__brepScale = (f) => applyScale(f);
+    window.__brepSize = () => modelSizeNow();
+    // Where the part is on screen against where the windows have left it room —
+    // the two numbers the clearance runs on, so "is it covered" can be asserted
+    // rather than eyeballed.
+    window.__brepClear = (o) => keepModelClear(o);
+    window.__brepStageFit = () => {
+      const free = stageFreeRect(), model = modelScreenBox();
+      if (!free || !model) return { free: null, model: null, inFree: null, behindAWindow: null };
+      const r = (n) => Math.round(n);
+      const hidden = [...document.querySelectorAll(".card.open")].some((c) => {
+        const q = c.getBoundingClientRect();
+        return model.right > q.left && model.left < q.right
+          && model.bottom > q.top && model.top < q.bottom;
+      });
+      return {
+        free: [r(free.l), r(free.t), r(free.r), r(free.b)],
+        model: [r(model.left), r(model.top), r(model.right), r(model.bottom)],
+        inFree: model.left >= free.l && model.right <= free.r
+          && model.top >= free.t && model.bottom <= free.b,
+        behindAWindow: hidden,
+      };
+    };
+
+    // The raycast is the only part of a shave a test cannot drive, so the hook
+    // takes the triangle index the raycast would have produced.
+    window.__brepShave = async (faceIndex) => {
+      const tgt = shaveTarget();
+      if (!tgt) return { ok: false, reason: "nothing loaded" };
+      await shaveAtHit({ object: tgt.mesh, faceIndex });
+      return {
+        tris: tgt.mesh.geometry.attributes.position.count / 3,
+        status: $("status-text")?.textContent,
+      };
+    };
+    window.__brepShaveUndo = () => undoShave();
+    window.__brepShaveInfo = () => {
+      const t = shaveTarget();
+      return t ? { tris: t.mesh.geometry.attributes.position.count / 3, group: t.group.name || (t.group === previewGroup ? "preview" : "model") } : null;
+    };
+
     // Same arming pattern as Drill: the next face click is consumed by the tool.
     let codeArmed = false, codeArmedKind = "datamatrix";
     function setCodeArmed(on, kind) {
@@ -9446,6 +11128,18 @@ ${joined}`)(...vs);
       raycaster.setFromCamera(ndc, camera);
       let hit = pickModel(raycaster)[0];
 
+      // Shave sees the PREVIEW too. Every other tool refuses one because it
+      // rewrites the code and rebuilds through the kernel, and a preview has no
+      // code behind it — but a shave is surgery on the triangles themselves,
+      // which is precisely what a too-dense preview still has.
+      if (shaveArmed) {
+        const h = hit || (previewGroup.children.length
+          ? raycaster.intersectObjects(previewGroup.children, true)[0] : null);
+        if (!h) { setStatus("warn", "Shave: click on the model."); return; }
+        shaveAtHit(h);
+        return;
+      }
+
       // The drill and code tools bore into real material at a real surface, so
       // they only ever see modelGroup — a ghost has nothing to act on.
       if (drillArmed || codeArmed || finsArmed || embossArmed) {
@@ -9563,6 +11257,13 @@ ${joined}`)(...vs);
       // be promising a blueprint of a model the user has already changed.
       paintBlueprintBtn();
       scheduleBuild();
+      // The dials follow the text, whoever typed it — including us. Guarded
+      // inside refreshParams so our own slider write cannot re-render the
+      // slider being dragged, and debounced because reading the parameters out
+      // means walking the whole file: 10ms on a 26KB model, which is nothing
+      // once and is typing lag on every keystroke.
+      clearTimeout(paramTimer);
+      paramTimer = setTimeout(refreshParams, 160);
       // group keystrokes into one history entry
       clearTimeout(histTimer);
       histTimer = setTimeout(() => pushHistory(), 600);
@@ -9960,26 +11661,53 @@ ${joined}`)(...vs);
       // filament) means the plain path this export always had.
       const entry = FILAMENTS[mat.filament];
       const spool = opts.plain ? null : entry?.spool;
-      const F = spool ? await _fil : null;
-      const family = spool ? F.FAMILY[spool.family] : null;
+      // A piece can name a filament the model-wide picker never touched, so the
+      // spool table is needed whenever ANY mesh carries a finish — not only
+      // when the panel has a spool selected.
+      const anyFinish = !opts.plain && (() => {
+        let found = false;
+        modelGroup.traverse((o) => { if (o.isMesh && o.material?.userData?.finish) found = true; });
+        return found;
+      })();
+      const F = (spool || anyFinish) ? await (_fil ??= import("./filaments.js")) : null;
+      const family = spool && F ? F.FAMILY[spool.family] : null;
 
       const bb = new THREE.Box3().setFromObject(modelGroup);
       const lo = bb.isEmpty() ? [0, 0, 0] : bb.min.toArray();
       const hi = bb.isEmpty() ? [1, 1, 1] : bb.max.toArray();
       const sizeMm = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
 
-      const phys = spool ? GL.physicalFromSpool(spool, family, sizeMm, { opacity: mat.opacity / 100 }) : null;
-      const gradTex = spool?.grad ? gradientTexture(GL, spool.grad) : null;
-      // One repeat for both axes and every face: UV1 is in millimetres, so
-      // this alone fixes the physical speck size, and it does not change with
-      // the size of the part — flake is a property of the filament.
-      const rep = spool?.flake
-        ? [GL.uvRepeat(spool.flake.density), GL.uvRepeat(spool.flake.density)] : null;
-      const sparkTex = spool?.flake ? sparkleNormalTexture(GL, spool.flake, rep) : null;
-      const ormTex = spool?.flake
-        ? sparkleORMTexture(GL, spool.flake, rep, spool.rough ?? family.rough) : null;
       // The flake's own dial in the Material tab scales how hard it reads.
       const sparkleAmt = Math.max(0, Math.min(2, mat.sparkle ?? 1));
+
+      // Everything a spool needs in the file, built once per spool.
+      //
+      // This used to be one set of consts for the ONE model-wide filament.
+      // A per-piece finish means a single export can carry several — gold-dust
+      // flake on the body, plain balsa on the handle — so each spool gets its
+      // own bundle and each mesh is exported against the one it belongs to.
+      // Memoised, because the kernel emits a mesh per FACE and a six-face cube
+      // would otherwise bake six copies of the same speck texture.
+      const spoolKit = new Map();
+      function kitFor(sp) {
+        if (!sp) return null;
+        if (spoolKit.has(sp.id)) return spoolKit.get(sp.id);
+        const fam = F ? F.FAMILY[sp.family] : null;
+        // One repeat for both axes and every face: UV1 is in millimetres, so
+        // this alone fixes the physical speck size, and it does not change with
+        // the size of the part — flake is a property of the filament.
+        const r = sp.flake ? [GL.uvRepeat(sp.flake.density), GL.uvRepeat(sp.flake.density)] : null;
+        const kit = {
+          spool: sp,
+          phys: GL.physicalFromSpool(sp, fam, sizeMm, { opacity: mat.opacity / 100 }),
+          gradTex: sp.grad ? gradientTexture(GL, sp.grad) : null,
+          sparkTex: sp.flake ? sparkleNormalTexture(GL, sp.flake, r) : null,
+          ormTex: sp.flake ? sparkleORMTexture(GL, sp.flake, r, sp.rough ?? fam?.rough) : null,
+        };
+        spoolKit.set(sp.id, kit);
+        return kit;
+      }
+      const baseKit = kitFor(spool);
 
       // The kernel hands back one mesh PER FACE, so a plain box is six meshes
       // that all want the identical material. Built naively that is six
@@ -10011,13 +11739,22 @@ ${joined}`)(...vs);
           : {};
         const own = src?.color ? `#${src.color.getHexString()}` : null;
 
+        // THIS piece's filament, falling back to the model-wide one. A finish
+        // that names a Material preset instead of a spool has already been
+        // baked into the viewer material's colour/metalness/roughness, so it
+        // takes the plain path below and exports as exactly what it looks like.
+        const fin = src?.userData?.finish;
+        const kit = (fin && F?.findSpool ? kitFor(F.findSpool(fin)) : null) ?? (fin ? null : baseKit);
+        const phys = kit?.phys, gradTex = kit?.gradTex, sparkTex = kit?.sparkTex, ormTex = kit?.ormTex;
+        const sp = kit?.spool;
+
         let m;
         if (phys) {
           // A shape that was given its own colour keeps it — a two-colour
           // glitter model must not collapse to one hue just because a spool is
           // selected. The gradient only lands on surfaces that ARE the spool.
-          const isSpoolSurface = !own || own.toLowerCase() === String(spool.base).toLowerCase();
-          m = shared(`spool|${own}|${isSpoolSurface}|${emis.emissive?.getHex() ?? 0}`, () => {
+          const isSpoolSurface = !own || own.toLowerCase() === String(sp.base).toLowerCase();
+          m = shared(`spool|${sp.id}|${own}|${isSpoolSurface}|${emis.emissive?.getHex() ?? 0}`, () => {
             const mm = new THREE.MeshPhysicalMaterial({
               color: new THREE.Color().setRGB(...(isSpoolSurface && gradTex ? [1, 1, 1] : phys.color)),
               roughness: phys.roughness,
@@ -10040,7 +11777,7 @@ ${joined}`)(...vs);
             if (isSpoolSurface && gradTex) mm.map = gradTex;
             if (sparkTex && sparkleAmt > 0) {
               mm.normalMap = sparkTex;
-              const k = spool.flake.strength * 0.25 * sparkleAmt;
+              const k = sp.flake.strength * 0.25 * sparkleAmt;
               mm.normalScale = new THREE.Vector2(k, k);
               // Metalness/roughness must be 1 for the MAP to be what decides
               // them — glTF multiplies the factor by the texture, so leaving
@@ -10095,6 +11832,36 @@ ${joined}`)(...vs);
     // Same hook style as __brepQuicksaveProject: the desktop app and the tests
     // need the finished GLB without driving the dialog, and reading the file
     // back is the only way to prove which glTF extensions actually landed.
+    // What each piece is actually made of, straight off the meshes on screen.
+    // A per-part material is invisible to every other hook — the colour is in a
+    // uniform, the glitter in a shader — so this is the only way to assert that
+    // ONE piece glitters and the one beside it does not.
+    window.__brepMatReport = () => {
+      const seen = new Map();
+      modelGroup.traverse((o) => {
+        if (!o.isMesh || !o.userData.featureId) return;
+        const m = o.material, fx = m.userData?.fx;
+        const key = o.userData.featureId;
+        if (!seen.has(key)) seen.set(key, {
+          fid: key,
+          colour: m.color ? `#${m.color.getHexString()}` : null,
+          finish: m.userData?.finish ?? null,
+          pattern: m.userData?.pattern ?? null,
+          texKind: fx?.kind?.value ?? null,
+          flake: fx ? fx.flake.value : 0,
+          grad: fx ? fx.grad.value : 0,
+          metalness: +m.metalness.toFixed(3),
+          roughness: +m.roughness.toFixed(3),
+          transmission: +(m.transmission ?? 0).toFixed(3),
+          shared: m === solidMaterial,
+        });
+      });
+      return [...seen.values()];
+    };
+    window.__brepSetPartMaterial = (fid, name, pattern) => {
+      if (name !== undefined) setShapeFinish(fid, name);
+      if (pattern !== undefined) setShapePattern(fid, pattern);
+    };
     window.__brepModelToGLB = modelToGLB;
     window.__brepGlbNotes = () => lastGlbNotes;
 
@@ -10208,8 +11975,162 @@ ${joined}`)(...vs);
       $("open-btn")?.classList.toggle("loading-share", shareLoads > 0);
     }
 
+    // ---- the boot screen ---------------------------------------------------
+    //
+    // The rainbow on the pill used to be for shared links only. But the wait it
+    // was invented for — several megabytes of WebAssembly kernel — happens on
+    // EVERY first visit, share link or not, and during it the app looked
+    // finished and empty rather than busy. So the same glow now covers the
+    // plain first load, with the build cube at size in the middle of the plate
+    // to say what is being waited for.
+    //
+    // Three ways out, because a loading screen that can outlive its own wait is
+    // worse than none: the first build landing (the real one), any deliberate
+    // interaction (you have decided to get on with it), and a timeout (the
+    // kernel never arrived — an empty plate is at least honest, and the status
+    // line carries the error).
+    // brepcode.com/tour, or a #tour link pasted by hand. Asked in two places —
+    // the boot screen, which must not run, and the launcher below.
+    function tourRequested() {
+      // ?tour=1 is what the bounce page sends, #tour is for a link pasted by
+      // hand, and /tour is the tidy address — accepted here as a PATH as well
+      // so it works whether the host bounces it or rewrites it straight onto
+      // the app. The regex is written out rather than hoisted into a const on
+      // purpose: this runs during module init, and a const declared further
+      // down would still be in its dead zone. That exact mistake cost a
+      // working first load once already.
+      // ...and /m/tour is a MODEL address that happens to end in the same word.
+      // "tour" is a reserved name so no model can really be called that, but
+      // the two kinds of URL should not need the reserved list to tell them
+      // apart.
+      return /[?&]tour=1(&|$)/.test(location.search)
+        || /^#tour$/i.test(location.hash)
+        || (/(^|\/)tour\/?$/i.test(location.pathname)
+          && !/(^|\/)m\/tour\/?$/i.test(location.pathname));
+    }
+
+    // A tidy short link — brepcode.com/m/fish-bowl — carries its model in the
+    // PATH, where nothing else in the app thinks to look. It has to be
+    // recognised here too, or the starter cube flashes up on a page that is
+    // about to show somebody else's model.
+    //
+    // Declared UP HERE, above the boot screen, and it matters. The boot screen
+    // runs immediately and asks urlCarriesModel(), which reads this — and a
+    // `const` further down the module is still in its dead zone at that moment.
+    // The `||` chain hid it: a shared link matches on the hash and never
+    // reaches this line, so every link worked while a PLAIN first load — the
+    // commonest entry point there is — threw before anything could build.
+    const PRETTY_PATH = /(^|\/)m\/[A-Za-z0-9._-]{1,64}\/?$/;
+
+    // Set by the boot screen below. A shared link no longer lets a stray tap
+    // take the cover off, so the paths that KNOW the model is not coming — a
+    // dead short link, an unreadable fragment — have to say so explicitly
+    // rather than leaving the visitor watching a cube for two minutes.
+    let bootDismiss = () => {};
+
+    (function bootScreen() {
+      const boot = $("boot");
+      if (!boot) return;
+      // The inline script in the markup already hid it; this stops the rest of
+      // the machinery — the counter, the cube, the dismiss handlers — from
+      // starting up behind a screen that is never coming.
+      if (tourRequested()) { boot.hidden = true; return; }
+      const cube = $("boot-cube");
+      if (cube) cube.innerHTML = buildCubeHTML();
+      // The same test the rest of the boot uses. It was hash-only here, which
+      // would have taken the wrong branch the day /m/name is served as a real
+      // rewrite rather than bounced through a fragment.
+      const shared = urlCarriesModel();
+      // A handoff is the user's OWN model coming across from the desktop app,
+      // not somebody else's link. Same wait, different sentence — being told
+      // your own file is "a shared model" is a small wrongness that makes the
+      // app feel like it is guessing.
+      if (shared) {
+        $("boot-note").textContent = /[#&]open=handoff\b/.test(location.hash)
+          ? "Opening your model…" : "Unpacking a shared model…";
+      }
+      shareLoading(true);
+
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        shareLoading(false);
+        // Let the model actually be PAINTED underneath before the cover starts
+        // to lift. Fading on the same tick the build lands shows the empty
+        // plate for a frame or two — the black flash this exists to prevent.
+        //
+        // Whichever comes first, a frame or a short timer. Animation frames
+        // stop in a background tab, and a cover that waits for one that never
+        // arrives is a loading screen with no way out — worse than the flash.
+        let lifted = false;
+        const lift = () => {
+          if (lifted) return;
+          lifted = true;
+          boot.classList.add("gone");
+          // Removed rather than left transparent: it spans the whole stage, and
+          // an invisible layer over the model is the kind of thing that costs an
+          // afternoon later even with pointer-events off.
+          setTimeout(() => { boot.hidden = true; cube.innerHTML = ""; }, 600);
+        };
+        requestAnimationFrame(() => requestAnimationFrame(lift));
+        setTimeout(lift, 250);
+      };
+      bootDismiss = finish;              // for the paths that know it has failed
+      if (shared) {
+        // Wait for the model to BUILD.
+        //
+        // This used to poll the shareLoading counter and stop as soon as it
+        // read 1 — meaning "only this screen is still holding it". But the
+        // share loader does not register until several awaits later, so the
+        // very first tick, 120ms in, always found the counter at 1 and took
+        // the screen away. Everything after that was a black stage until the
+        // kernel finished: exactly the gap being complained about, and it
+        // happened on every shared link.
+        //
+        // On a share link the first build IS the shared model — the starter
+        // placeholder is suppressed and the default rebuild is skipped when the
+        // URL carries one — so there is a real signal to wait for and no need
+        // to infer anything from a counter.
+        // ...and a build that FAILED is not the model arriving. The first pass
+        // on a shared link routinely fails while a packed mesh is still being
+        // registered or a lazy module is still landing, and a retry is already
+        // queued — so wait for that instead of uncovering an empty plate. A few
+        // goes, then give up, because a model that genuinely cannot build must
+        // not sit under the cover for two minutes.
+        let attempts = 0;
+        const onBuild = (ok) => {
+          if (ok || ++attempts >= 3) return finish();
+          onceBuilt(onBuild);            // fireBuilt cleared the set; get back in line
+        };
+        onceBuilt(onBuild);
+        setTimeout(finish, 120000);      // a build that never lands must not cover forever
+      } else {
+        onceBuilt(finish);
+        setTimeout(finish, 30000);
+      }
+      // On a plain first load, any deliberate interaction means "I have seen
+      // enough of this, let me in". On a SHARED link it does not: the visitor
+      // opened a link to look at a model, and taking the loading screen away
+      // early only shows them the empty plate it was covering. The timeout
+      // above is the escape hatch there, along with bootDismiss() on failure.
+      if (!shared) {
+        for (const ev of ["pointerdown", "keydown", "wheel"]) {
+          addEventListener(ev, finish, { once: true, passive: true });
+        }
+      }
+    })();
+
+    // Does the address bar already name a model? Anything that answers yes here
+    // will replace whatever is on the plate, so nothing else should put
+    // something there first.
+    function urlCarriesModel() {
+      return /[#&](m|s)=/.test(location.hash) || /[#&]open=handoff\b/.test(location.hash)
+        || PRETTY_PATH.test(location.pathname);
+    }
+
     async function openSharedModel() {
-      const shortName = /[#&]s=/.test(location.hash);
+      const shortName = /[#&]s=/.test(location.hash) || PRETTY_PATH.test(location.pathname);
       if (!/[#&]m=/.test(location.hash) && !shortName) return false;
       shareLoading(true);
       // Held until the model is actually ON THE PLATE, not merely decoded: the
@@ -10226,7 +12147,7 @@ ${joined}`)(...vs);
         let text;
         if (shortName) {
           const cl = await getCloud();
-          const slug = cl.shortSlugIn(location.hash);
+          const slug = cl.shortSlugIn(location);
           try {
             ({ text } = await cl.resolveShort(slug));
           } catch (e) {
@@ -10234,14 +12155,30 @@ ${joined}`)(...vs);
             // and unlike a long link, there is nothing in the URL to recover
             // the model from, so the message is all the visitor gets.
             setStatus("err", `That link did not open — ${e?.message || e}`);
+            // ...and say it somewhere that SURVIVES. The app falls through to
+            // the starter model from here, and that build writes its own line
+            // into the status bar a moment later — so the status alone left the
+            // visitor looking at a cube with no idea why, which reads as the
+            // app having quietly ignored the link.
+            hint.innerHTML = `⚠️ <b>That link did not open</b> — ${esc(String(e?.message || e))}. `
+              + `Short links can be renamed or removed by whoever made them. Ask them for a fresh link — `
+              + `or start your own model here, everything works.`;
+            bootDismiss();      // nothing is coming; stop covering an empty plate
             return false;
           }
         } else {
           text = await exp.readShareFragment(location.hash);
         }
-        if (!text) return false;
+        const unreadable = () => {
+          setStatus("err", "That link did not carry a model this app could read.");
+          hint.innerHTML = `⚠️ <b>That link did not carry a readable model.</b> A long link holds the whole `
+            + `model in the address bar, so it breaks if it was cut short on the way — by an email client `
+            + `wrapping it, or a chat app trimming it. Ask for it again as a short link.`;
+          bootDismiss();
+        };
+        if (!text) { unreadable(); return false; }
         const { source, scene, meshes, name } = exp.parseBcodeFile(text);
-        if (!source) return false;
+        if (!source) { unreadable(); return false; }
         // BEFORE anything builds. rebuild() runs as soon as the source lands,
         // and a model whose importedMesh() is not registered yet fails on that
         // first pass — the same ordering the .bcode drop-load depends on.
@@ -10287,7 +12224,7 @@ ${joined}`)(...vs);
         hint.innerHTML = `Opened a <b>shared model</b> — it travelled inside the link, nothing was `
           + `uploaded. It is fully editable: change it, drill it, export it, or save your own copy.`;
         return true;
-      } catch { return false; }
+      } catch { bootDismiss(); return false; }
     }
 
     // ---- cloud stash bridge -----------------------------------------------
@@ -10474,7 +12411,7 @@ ${joined}`)(...vs);
 
     async function runClaim(slug) {
       const cl = await getCloud();
-      const url = cl.shortUrl(shareBase(), slug);
+      const url = await cl.bestShortUrl(shareBase(), slug);
       claimPanel({ icon: "⏳", head: `Claiming “${slug}”…`, sub: "asking brepcode.com whether that name is free." });
       let res;
       try {
@@ -10539,7 +12476,7 @@ ${joined}`)(...vs);
           acts: [{ label: "Try again", primary: true, run: () => runClaim(slug) }] });
         return;
       }
-      const shortU = cl.shortUrl(shareBase(), slug);
+      const shortU = await cl.bestShortUrl(shareBase(), slug);
       try { await navigator.clipboard.writeText(shortU); } catch { /* no permission */ }
       claimPanel({
         tone: "ok", icon: "✅",
@@ -10935,7 +12872,7 @@ ${joined}`)(...vs);
             } else {
               try {
                 await cl.saveShort({ slug, text, name: base });
-                url = cl.shortUrl(shareBase(), slug);
+                url = await cl.bestShortUrl(shareBase(), slug);
                 shortNote = `Hosted as <b>${slug}</b>. `;
               } catch (e) {
                 shortNote = `<span style="color:var(--warn,#e5a05a)">Short link not saved — ${
@@ -11094,10 +13031,11 @@ ${joined}`)(...vs);
     function blueprintStale() {
       bpDrop();
       paintBlueprintBtn();
-      if (!bpWarm || bpTooHeavy()) return;
+      // No speculative projection any more. It existed to light the ready dot
+      // on the header button, and that button is gone — the SVG blueprint in
+      // the export dialog builds on demand, so this was spending seconds of
+      // kernel time after every edit for nobody.
       clearTimeout(bpIdle);
-      // Long enough that typing does not start a projection per keystroke.
-      bpIdle = setTimeout(() => { buildBlueprint().catch(() => {}); }, 1500);
     }
 
     async function buildBlueprint() {
@@ -11142,49 +13080,6 @@ ${joined}`)(...vs);
       + `background:#11151d;color:#8a95ab;font:14px system-ui,sans-serif">`
       + `Projecting the blueprint…</body>`;
 
-    $("blueprint-btn")?.addEventListener("click", async () => {
-      if (!lastShape) { setStatus("err", "Build a model first — a blueprint needs geometry."); return; }
-      const fresh = bp && bp.source === code.value ? bp : null;
-      const desktop = window.brepcodeDesktop;
-      // The exe denies window.open outright (main.cjs), so it takes the other
-      // road: write the drawing out and let the OS open it in a real browser.
-      let win = null;
-      if (!desktop?.openBlueprint) {
-        // The tab MUST be opened inside the click or a popup blocker eats it —
-        // which is why it is opened before the drawing exists, not after.
-        win = window.open("", "_blank");
-        if (win) {
-          try { win.document.write(BP_WAIT_HTML); win.document.close(); }
-          catch { /* a locked-down window still navigates fine */ }
-        }
-      }
-      // Pressing it once is what earns the background rebuilds from here on.
-      bpWarm = true;
-      localStorage.setItem(BP_WARM_KEY, "1");
-      try {
-        if (!fresh) {
-          setStatus("busy", bp ? "Projecting the blueprint…"
-            : "Loading precision CAD kernel (first time ≈ 11 MB)…");
-        }
-        const made = fresh || await buildBlueprint();
-        if (desktop?.openBlueprint) {
-          const res = await desktop.openBlueprint(safeModelName(), made.svg);
-          if (!res?.ok) throw new Error(res?.error || "the system could not open it");
-          setStatus("ok", lastGoodStatus);
-        } else if (win && !win.closed) {
-          win.location.replace(made.url);
-          setStatus("ok", lastGoodStatus);
-        } else {
-          // Popup blocked. Downloading it is not what was asked for, so say so
-          // rather than letting a file appear with no explanation.
-          download(`${safeModelName()}-drawing.svg`, made.svg, "image/svg+xml");
-          setStatus("ok", "Your browser blocked the tab — the blueprint downloaded instead.");
-        }
-      } catch (e) {
-        if (win && !win.closed) win.close();
-        setStatus("err", `Blueprint failed — ${e?.message || e}`);
-      }
-    });
     paintBlueprintBtn();
 
     // ---- the export dialog ------------------------------------------------
@@ -12359,7 +14254,10 @@ ${joined}`)(...vs);
     // The default is the fastest option on purpose. Simplify exists to make a
     // mesh EDITABLE, and a Benchy you are about to drill a hole through does
     // not need 5,000 triangles of hull curvature to do it with.
-    const SIMPLIFY_TARGET = 2000;
+    // 10k by default: enough detail that a shaved model still looks like itself,
+// and still well inside the kernel's patience. 2k was chosen when the only
+// goal was "make it build at all".
+let SIMPLIFY_TARGET = 10000;
     // Labelled by DETAIL, with the time as a worst case rather than a promise.
     // How long the kernel takes depends far more on the shape's topology than
     // on its triangle count: a smooth 89k sphere sewed in 4.3s, while a 5k
@@ -12675,6 +14573,53 @@ ${joined}`)(...vs);
     // cannot work, because building is the very thing that was refused. That
     // dead end is why the drill looked broken on a Benchy: the tool was never
     // reached. Cleared the moment the preview stops being what's on screen.
+    // The Simplify button carries its own detail picker: the current target sits
+    // in the corner as a small number with a caret, and clicking THAT opens the
+    // list instead of running the job. Clicking anywhere else on the button
+    // runs it, so the common case is still one click.
+    function attachFidelity(btn, target, label) {
+      btn.classList.add("has-fidelity");
+      btn.querySelector(".fid-chip")?.remove();
+      const chip = document.createElement("span");
+      chip.className = "fid-chip";
+      const paint = () => {
+        const v = +target.value;
+        chip.textContent = `${v >= 1000 ? (v / 1000) + "k" : v} ▾`;
+        const row = SIMPLIFY_CHOICES.find(([q]) => q === v);
+        chip.title = row ? row[1] : `${v} triangles`;
+      };
+      paint();
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();                       // the caret chooses; it does not run
+        document.querySelector(".fid-menu")?.remove();
+        const menu = document.createElement("div");
+        menu.className = "fid-menu";
+        for (const [v, text] of SIMPLIFY_CHOICES) {
+          const item = document.createElement("button");
+          const [head, ...rest] = text.split(" — ");
+          item.innerHTML = `<b>${head}</b><small>${rest.join(" — ")}</small>`;
+          item.title = "The decimation is instant at every setting — the wait is the kernel "
+            + "sewing each triangle into a face, and that grows faster than the count does.";
+          if (v === +target.value) item.classList.add("on");
+          item.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            target.value = String(v);
+            SIMPLIFY_TARGET = v;                   // remembered for the next import
+            paint();
+            menu.remove();
+          });
+          menu.appendChild(item);
+        }
+        btn.appendChild(menu);
+        const away = (ev) => {
+          if (!menu.contains(ev.target)) { menu.remove(); removeEventListener("pointerdown", away, true); }
+        };
+        setTimeout(() => addEventListener("pointerdown", away, true), 0);
+      });
+      btn.appendChild(chip);
+      btn.dataset.fidelityLabel = label;
+    }
+
     let pendingSimplify = null;
 
     // Whether the mesh is actually BROKEN, which is a different question from
@@ -12727,18 +14672,11 @@ ${joined}`)(...vs);
       // takes, so it is offered rather than assumed. 25k keeps a Benchy
       // recognisable and builds in seconds; 80k is closer to the original and
       // can take minutes for the kernel to sew.
-      const simpTarget = document.createElement("select");
-      simpTarget.style.cssText = "font:inherit;margin-left:6px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 5px;cursor:pointer";
-      for (const [v, t] of SIMPLIFY_CHOICES) {
-        const o = document.createElement("option");
-        o.value = String(v);
-        o.textContent = t;
-        if (v === SIMPLIFY_TARGET) o.selected = true;
-        simpTarget.appendChild(o);
-      }
-      simpTarget.title = "How many triangles to keep. The decimation is instant either way — "
-        + "the wait is the kernel sewing each triangle into a face, and it grows faster than "
-        + "the count does.";
+      // The chooser used to be a <select> appended to the HINT line — and the
+      // hint is a scratch area that every tool writes over. Shave one whisker
+      // and the fidelity control vanished with the message. It now lives on the
+      // BUILD BAR button, which is persistent, so it cannot be scribbled out.
+      const simpTarget = { value: String(SIMPLIFY_TARGET) };
       const label = `${ICON_WAND} Simplify & edit`;
 
       async function runSimplify() {
@@ -12771,6 +14709,9 @@ ${joined}`)(...vs);
           // this thread. Drop them before it starts rather than making the
           // kernel share the heap with a copy nobody will read again.
           objects = null;
+          // Taken here, while the preview is still on screen and still whole:
+          // this is the state Ctrl+Z goes back to.
+          const back = snapshotPreview();
           setStatus("busy", `Building ${slim.length} simplified part${slim.length === 1 ? "" : "s"} (${Math.round(kept / 1000)}k triangles)…`);
           await new Promise((r) => setTimeout(r, 30));
           await importObjectsAsParts(fileName, slim, partColours, off);
@@ -12778,7 +14719,32 @@ ${joined}`)(...vs);
           // screen empty for however long the kernel took, which reads as a
           // crash rather than as work in progress.
           clearMeshPreview();
-          hint.innerHTML = `Simplified <b>${esc(fileName)}</b> from ${(totalTris / 1000).toFixed(0)}k to <b>${Math.round(kept / 1000)}k</b> triangles in ${((performance.now() - t0) / 1000).toFixed(1)}s — it's a real, editable solid now: drill it, cut it, export it. Detail drift is capped at ~1% of the part's size.`;
+          pushSimplifyUndo(back);        // ...only once it actually worked
+          // What it simplified FROM is whatever was on screen — shaves and all
+          // — not the number the file arrived with. `totalTris` is the import
+          // count, frozen in this closure since before the whiskers came off.
+          const from = back?.totalTris ?? totalTris;
+          hint.innerHTML = `Simplified <b>${esc(fileName)}</b> from ${(from / 1000).toFixed(0)}k to <b>${Math.round(kept / 1000)}k</b> triangles in ${((performance.now() - t0) / 1000).toFixed(1)}s — it's a real, editable solid now: drill it, cut it, export it. Detail drift is capped at ~1% of the part's size.`;
+          // Writing the code left the caret in the editor, and Ctrl+Z in a
+          // textarea undoes TEXT — which it must keep doing. So step out of it
+          // here, at the one moment the undo somebody reaches for is the model
+          // rather than the words. Typing again puts them straight back.
+          if (document.activeElement === code) code.blur();
+          if (back) {
+            // Ctrl+Z does this too, but a number you might have picked wrong
+            // deserves a visible way back rather than a shortcut you have to
+            // already know about.
+            const u = document.createElement("button");
+            u.style.cssText = "font:inherit;padding:2px 9px;margin-left:8px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer;font-weight:700";
+            u.textContent = "↩︎ undo · pick a different detail";
+            u.title = `Put the ${(back.totalTris / 1000).toFixed(0)}k preview back, with every shave still on it, and choose another number (Ctrl+Z)`;
+            u.addEventListener("click", () => {
+              const at = shaveUndo.indexOf(back);
+              if (at >= 0) shaveUndo.splice(at, 1);
+              restoreSimplify(back);
+            });
+            hint.appendChild(u);
+          }
         } catch (e) {
           for (const x of buttons) { x.disabled = false; x.textContent = "simplify failed — try again"; }
           setStatus("err", `Simplify failed: ${String(e?.message || e).slice(0, 90)}`);
@@ -12793,7 +14759,10 @@ ${joined}`)(...vs);
       b.addEventListener("click", runSimplify);
       buttons.push(b);
       el.appendChild(b);
-      el.appendChild(simpTarget);
+      const pointer = document.createElement("small");
+      pointer.style.cssText = "margin-left:8px;color:var(--muted3)";
+      pointer.textContent = "— detail is set on the Simplify button below ↓";
+      el.appendChild(pointer);
       reportMeshHealth(el, objects, fileName);
 
       // ...and the same offer under the editor, where the Build button lives.
@@ -12807,6 +14776,7 @@ ${joined}`)(...vs);
       buildNowBtn.title = "Decimate the mesh and open it as an editable solid";
       buildNowBtn.onclick = runSimplify;
       buttons.push(buildNowBtn);
+      attachFidelity(buildNowBtn, simpTarget, label);
     }
 
     // Too dense for the KERNEL is not too dense for the GPU: drawing triangles
@@ -12918,6 +14888,10 @@ ${joined}`)(...vs);
         }
 
         let contents;
+        // Filled in if the mesh had to be repaired on the way in, so the import
+        // hint can say what was wrong with the file rather than leaving it a
+        // mystery that surfaces later as a boolean behaving strangely.
+        let repairNote = "";
         let stepStats = null;      // filled for STEP: { openEdges, triangles }
         if (ext === "svg") {
           // vector art -> extruded solid (stencil source / TPU screen-print positive)
@@ -13084,11 +15058,55 @@ ${joined}`)(...vs);
           // binary STL arrives as a base64 data URL, which the kernel decodes —
           // then gets normalised to ASCII STL below
           const bytes = new Uint8Array(buf);
-          let bin = "";
-          for (let i = 0; i < bytes.length; i += 32768) {
-            bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+
+          // ---- repair FIRST, before the kernel ever reads the file ---------
+          //
+          // The kernel's reader refuses a non-manifold mesh outright, so a file
+          // with holes never reached any later stage where a repair could have
+          // helped — it was turned away at the door with "Not manifold" and the
+          // user handed a button on a hint line that the next tool overwrites.
+          //
+          // One real file cost an afternoon over this: a 34k-triangle charm
+          // with 68 open edges and 508 zero-area faces, where every attempted
+          // boolean came back inverted, cubed or empty, and the conclusion
+          // drawn was that the KERNEL was broken. It was not. The same file
+          // repairs in under half a second and then behaves perfectly.
+          //
+          // A sound mesh is detected and left alone, so this costs one health
+          // check on the way in and rewrites nothing it does not have to.
+          // Repaired output is ASCII — which is what the importer normalises
+          // to anyway, so a fixed file also skips a trip through the kernel.
+          if (bytes.length <= 40 * 1048576) {
+            try {
+              setStatus("busy", `Checking ${file.name} for holes…`);
+              await new Promise((r) => setTimeout(r, 20));
+              const fix = repairBinaryStl(bytes, file.name);
+              if (fix?.changed) {
+                contents = fix.text;
+                const wasOpen = fix.before.openEdges;
+                repairNote = ` <b>Repaired it on the way in</b> — ${esc(repairSummary(fix.report))}. `
+                  + `It arrived ${wasOpen ? `open (${wasOpen} unjoined edge${wasOpen === 1 ? "" : "s"})` : "unsound"}`
+                  + ` and is watertight now, so booleans and slicing behave. The shape is unchanged.`;
+                if (fix.report?.unrepairable) {
+                  repairNote += ` <b>Not all of it could be closed:</b> ${esc(fix.report.unrepairable)}.`;
+                }
+              }
+            } catch (e) {
+              // A repair that throws must never cost you the import — but it
+              // must not vanish either. A bare `catch {}` here swallowed a
+              // ReferenceError for a whole debugging round, and the symptom was
+              // simply that repair never seemed to run.
+              console.warn("[import] mesh repair skipped:", e);
+            }
           }
-          contents = `data:model/${ext};base64,${btoa(bin)}`;
+
+          if (!contents) {
+            let bin = "";
+            for (let i = 0; i < bytes.length; i += 32768) {
+              bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+            }
+            contents = `data:model/${ext};base64,${btoa(bin)}`;
+          }
         }
 
         // Normalise everything to ASCII STL with one scratch import: that's
@@ -13116,6 +15134,9 @@ ${joined}`)(...vs);
           ? recenterStl(contents) : { text: contents, offset: [0, 0, 0] };
         contents = centered.text;
         const wasMoved = centered.offset.some((n) => Math.abs(n) > 0.5);
+
+        logEvent("import", file.name, { mb: +(file.size / 1048576).toFixed(2), ext,
+          repaired: !!repairNote, facets: (contents.match(/facet normal/g) || []).length });
         dsl.registerImport(file.name, contents);
 
         // split: true → a multi-body file (assembly) imports as separate solids
@@ -13148,6 +15169,7 @@ ${joined}`)(...vs);
           + (cleaned.removed
             ? ` Cleaned up <b>${cleaned.removed}</b> duplicate face${cleaned.removed === 1 ? "" : "s"} that would have flickered as black patches — the part itself is unchanged.`
             : "")
+          + repairNote
           + (wasMoved ? ` Recentred it on the origin (it was offset by [${centered.offset.join(", ")}]) so <b>split</b>, <b>drill</b> and <b>stretch</b> land on the part.` : "")
           + (mb > 15 ? " <b>Large mesh</b> — the first build can take a while." : "")
           + " Files live for this session only; re-import after a reload."
@@ -13680,6 +15702,7 @@ ${joined}`)(...vs);
     function openGate(msg) {
       gateOpen = true;
       localStorage.setItem(GATE_OPEN, "1");
+      wakeLogbook().catch(() => {});   // only ever behind the lock
       $("gate-ask").style.display = "none";
       $("gate-pw").value = "";
       paintGate();
@@ -13690,6 +15713,94 @@ ${joined}`)(...vs);
       lib.scrollIntoView({ block: "nearest" });
       if (msg) $("secret-status").textContent = msg;
     }
+
+    // ---- the log file -----------------------------------------------------
+    //
+    // Lazy: the module is only fetched once someone unlocks and asks for it,
+    // so the overwhelming majority of sessions never load a byte of it.
+    let _logbook = null;
+    const getLogbook = () => (_logbook ||= import("./logbook.js"));
+
+    // The one call the rest of the app makes. Deliberately swallows everything
+    // — a logger that can break a build is worse than no logger — and does
+    // nothing at all until the module has actually been loaded, so it costs a
+    // property read per event in every ordinary session.
+    function logEvent(kind, message, detail) {
+      if (!_logbook) return;
+      _logbook.then((lb) => { try { lb.log(kind, message, detail); } catch { /* never */ } })
+        .catch(() => {});
+    }
+    window.__brepLog = logEvent;      // reachable from the console for one-offs
+
+    async function paintLogRow() {
+      const status = $("log-status"), box = $("log-on");
+      if (!status) return;
+      const lb = await getLogbook();
+      if (!lb.supported()) {
+        box.disabled = true;
+        $("log-folder").disabled = true;
+        status.textContent = "this browser cannot write to a folder — Chrome or Edge can. "
+          + "“Save now” still works.";
+        return;
+      }
+      const where = lb.folderName();
+      box.checked = lb.wasEnabled();
+      status.textContent = where
+        ? (lb.enabled() ? `writing to ${where}/` : `folder ready: ${where}/ — switch it on`)
+        : "pick a folder to write to";
+    }
+
+    $("log-on").addEventListener("change", async () => {
+      const lb = await getLogbook();
+      lb.setEnabled($("log-on").checked);
+      if ($("log-on").checked) {
+        if (!lb.folderName()) await lb.reconnect().catch(() => {});
+        lb.log("session", "logging on", {
+          app: $("app-version")?.textContent || "", ua: navigator.userAgent.slice(0, 120),
+          screen: `${innerWidth}x${innerHeight}`,
+        });
+      }
+      paintLogRow();
+    });
+
+    $("log-folder").addEventListener("click", async () => {
+      const lb = await getLogbook();
+      try {
+        const name = await lb.chooseFolder();
+        $("log-status").textContent = `folder ready: ${name}/ — switch it on`;
+        if ($("log-on").checked) { lb.setEnabled(true); lb.log("session", "folder chosen", { name }); }
+      } catch (e) {
+        if (e?.name !== "AbortError") $("log-status").textContent = String(e?.message || e);
+      }
+    });
+
+    // The escape hatch: whatever is buffered, saved as a file. Covers the
+    // browsers with no directory picker, and the case where permission was
+    // refused but the session is still worth keeping.
+    $("log-save").addEventListener("click", async () => {
+      const lb = await getLogbook();
+      await lb.flush().catch(() => {});
+      const text = lb.drain();
+      if (!text.trim()) { $("log-status").textContent = "nothing buffered to save"; return; }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      a.download = `brepcode-${new Date().toISOString().slice(0, 10)}.log`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    });
+
+    // Reconnect a folder granted in an earlier session, and honour the switch
+    // being left on — but only once unlocked, which is what askGate/openGate
+    // below drive. Nothing here runs for a visitor who never unlocks.
+    async function wakeLogbook() {
+      const lb = await getLogbook();
+      if (!lb.supported()) return paintLogRow();
+      await lb.restore().catch(() => {});
+      if (lb.wasEnabled()) lb.setEnabled(true);
+      paintLogRow();
+    }
+
+    addEventListener("beforeunload", () => { if (_logbook) _logbook.then((lb) => lb.flush()).catch(() => {}); });
 
     $("gate-btn").addEventListener("click", () => (gateOpen ? closeGate() : askGate()));
     $("gate-go").addEventListener("click", tryGate);
@@ -13703,6 +15814,7 @@ ${joined}`)(...vs);
       gateOpen = true;
       $("secret-lib").style.display = "";
       loadSecretLibrary();
+      wakeLogbook().catch(() => {});
     }
     paintGate();
 
@@ -13861,6 +15973,7 @@ ${joined}`)(...vs);
     }
 
     $("drill-btn").addEventListener("click", () => {
+      if (shaveArmed) return setShaveArmed(false);
       if (drillArmed) return setDrillArmed(false);
       if (!currentModelExpr()) {
         hint.innerHTML = "To drill on a face, the editor needs a <b>single model expression</b> (e.g. straight after Import, or one <code>cube(…)</code>/<code>union(…)</code>). Statement code with <code>const</code>/<code>return</code> — add the hole in the text instead.";
@@ -14335,7 +16448,8 @@ ${joined}`)(...vs);
       moreMenu.classList.remove("open");
       // show which tool is currently armed (drill stays on until you use it)
       for (const row of toolsMenu.querySelectorAll("[data-act]")) {
-        row.classList.toggle("active", row.dataset.act === "drill-btn" && drillArmed);
+        row.classList.toggle("active", (row.dataset.act === "drill-btn" && drillArmed)
+          || (row.dataset.act === "shave-btn" && shaveArmed));
       }
       toolsMenu.classList.toggle("open");
     });
@@ -15052,7 +17166,31 @@ ${joined}`)(...vs);
       window.brepcodeDesktop.claudeInfo?.().then((i) => {
         ccFound = !!i?.found;
         ccVersion = i?.version || null;
-        if (!ccFound) $("opt-claude-code").textContent = "Claude Code — install to enable (claude.com/code)";
+        // Say which of the two it is. "Claude Code — this computer, no key" is
+        // a description of a feature; what someone needs to know is whether it
+        // is going to work, and the probe already has that answer.
+        $("opt-claude-code").textContent = ccFound
+          ? `Claude Code ✓ found${ccVersion ? ` (${ccVersion})` : ""} — your subscription, no key`
+          : "Claude Code — install to enable (claude.com/code)";
+
+        // First run, CLI present, no provider ever chosen: choose it. This is
+        // the whole point of the desktop build — it is the only place the app
+        // can talk to a model with no key, no account and nothing metered —
+        // and leaving it as an option to be discovered meant it was not.
+        // Only when nothing was chosen before, so it can never override a
+        // deliberate pick.
+        if (ccFound && !aiCfg.provider) {
+          aiProvider.value = "claude-code";
+          aiProvider.dispatchEvent(new Event("change"));
+          const note = $("cc-firstrun");
+          if (note) {
+            note.hidden = false;
+            note.innerHTML = `<b>Claude Code is set up on this computer</b>, so chat is running on your `
+              + `Claude subscription — no API key, nothing metered per message. `
+              + `Change it any time under <b>Provider</b>.`;
+          }
+        }
+        updateSpark();
       }).catch(() => {});
     }
 
@@ -15818,6 +17956,11 @@ ${joined}`)(...vs);
         + step(2, `Press the <b>Windows key</b>, type ${cmd("cmd")}, press Enter — a black window opens. That's all the "PowerShell" you need.`)
         + step(3, `Type ${cmd("ollama pull qwen2.5-coder:7b")} and press Enter. Wait for the download.`)
         + step(4, `Server URL box: ${cmd("http://localhost:11434/v1")}. <span class="note">(Using brepcode.com in a browser? Also type ${cmd("setx OLLAMA_ORIGINS *")} in that window, then quit &amp; reopen Ollama.)</span>`)
+        + h("Got an AMD Ryzen AI laptop? — Lemonade (uses the NPU)")
+        + step(1, `Go to <b>lemonade-server.ai</b> and run the Windows installer. It puts the model on your <b>NPU</b> or <b>Radeon</b> chip instead of the CPU, so it answers quickly without cooking the battery.`)
+        + step(2, `Press the <b>Windows key</b>, type ${cmd("cmd")}, Enter. Type ${cmd("lemonade list")} to see the models — pick one with <b>Coder</b> in the name, it'll write far better CAD.`)
+        + step(3, `Pull it, then run it: ${cmd("lemonade pull THE-NAME")} then ${cmd("lemonade run THE-NAME")}`)
+        + step(4, `Server URL box: ${cmd("http://localhost:13305/api/v1")}. <span class="note">(Using brepcode.com in a browser? Lemonade blocks web pages it doesn't know — type ${cmd("setx LEMONADE_ALLOWED_ORIGINS https://brepcode.com")}, then quit &amp; restart Lemonade. Naming the site is safer than ${cmd("*")}, which would let <i>any</i> page you visit use your server.)</span>`)
         + h("The big one — Bonsai 27B (free 27B-class model, ~6GB)")
         + step(1, `In LM Studio's search, look for <b>Bonsai 27B GGUF</b> and pick the <b>Ternary</b> build — it's the one tuned for writing code (the smaller 1-bit build is noticeably worse at it). May ask you to sign in to Hugging Face (free) and accept the model's terms once.`)
         + step(2, `Download, start the server, same URL as LM Studio above.`);
@@ -15832,6 +17975,9 @@ ${joined}`)(...vs);
         + step(2, `Press <b>⌘ + Space</b>, type ${cmd("Terminal")}, press Enter.`)
         + step(3, `Type ${cmd("ollama pull qwen2.5-coder:7b")} and press Enter.`)
         + step(4, `Server URL box: ${cmd("http://localhost:11434/v1")}.`)
+        + h("Or — Lemonade (runs on the Apple Silicon GPU)")
+        + step(1, `Install it from <b>lemonade-server.ai</b>. Then in Terminal: ${cmd("lemonade list")} to see the models, and ${cmd("lemonade pull THE-NAME")} — pick one with <b>Coder</b> in the name.`)
+        + step(2, `Start it with ${cmd("lemonade run THE-NAME")}, then put ${cmd("http://localhost:13305/api/v1")} in the <b>Server URL</b> box.`)
         + h("The big one — Bonsai 27B (Macs are its home turf)")
         + step(1, `In Terminal: ${cmd("git clone https://github.com/PrismML-Eng/Bonsai-demo && cd Bonsai-demo && ./setup.sh")} (downloads ~4GB).`)
         + step(2, `Then: ${cmd("./scripts/start_llama_server.sh")}`)
@@ -16035,9 +18181,16 @@ ${joined}`)(...vs);
       // Local repurposes the field as the SERVER URL. In-browser needs no key
       // either: the model runs in this tab.
       aiKey.disabled = cc || br;
+      // A server URL is not a secret, and masking it as dots meant a typo'd
+      // port was invisible — you could only see the ✗, never the reason. Local
+      // also gets the preset dropdown; no other provider may offer localhost
+      // URLs as completions for a field that is otherwise an API key.
+      aiKey.type = lo ? "text" : "password";
+      if (lo) aiKey.setAttribute("list", "local-urls");
+      else aiKey.removeAttribute("list");
       aiKey.placeholder = cc ? "not needed — uses your Claude login"
         : br ? "not needed — the model runs in this tab"
-        : lo ? "http://localhost:8080/v1 (llama.cpp default — blank works)"
+        : lo ? "click for the list — blank means llama.cpp on :8080"
         : "paste your key";
       $("ai-key-label").textContent = lo ? "Server URL" : "API key";
       $("cc-effort-row").style.display = cc ? "" : "none";
@@ -17335,16 +19488,31 @@ ${joined}`)(...vs);
     });
 
     // brepcode.com/tour — a link you can hand someone. The site is static, so
-    // /tour is a folder whose index.html bounces here with ?tour=1; #tour works
-    // too, for a link pasted by hand. The delay lets the first build finish, so
-    // the opening spotlight has a laid-out page to point at rather than an
-    // empty one.
-    if (/[?&]tour=1(&|$)/.test(location.search) || /^#tour$/i.test(location.hash)) {
-      setTimeout(() => $("tour-btn").click(), 1400);
+    // /tour is a folder whose index.html bounces here with ?tour=1.
+    //
+    // This used to wait 1400ms for the first BUILD, so the opening spotlight
+    // had a laid-out page to point at. It does not need to any more: the page
+    // is laid out as soon as it is parsed, and the starter shape is drawn
+    // directly by three rather than by the kernel, so there is already
+    // something on the plate. Waiting only meant staring at a loading cube.
+    //
+    // One frame, so the browser has painted before the spotlight measures
+    // anything, and then straight in — the tour module's own fetch is the only
+    // real delay left.
+    if (tourRequested()) {
+      requestAnimationFrame(() => $("tour-btn").click());
     }
     document.addEventListener("keydown", (e) => {
       const a = document.activeElement;
       if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.isContentEditable)) return;
+      // Ctrl+Z is checked BEFORE the modifier bail-out below, because it is
+      // the one shortcut here that WANTS a modifier. It sat underneath that
+      // early return for a long time, which meant the undo the shave hint
+      // promised could never actually fire.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
+          && e.key.toLowerCase() === "z" && shaveUndo.length) {
+        if (undoShave()) { e.preventDefault(); return; }
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "u") { tidySyntax(); }
@@ -17354,7 +19522,9 @@ ${joined}`)(...vs);
       else if (e.key === "ArrowUp") snapView("up");
       else if (e.key === "ArrowDown") snapView("down");
       else if (e.key === "Home") snapView("home");
-      else if (e.key === "Escape") { if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); if (embossArmed) setEmbossArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && shaveUndo.length
+               && document.activeElement !== code) { if (undoShave()) e.preventDefault(); }
+      else if (e.key === "Escape") { if (shaveArmed) setShaveArmed(false); if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); if (embossArmed) setEmbossArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
       else return;
       e.preventDefault();
     });
@@ -17403,7 +19573,15 @@ ${joined}`)(...vs);
       // actually beat the kernel.
       window.brepscript.starterShownMs = Math.round(performance.now());
     }
-    if (code.value === code.defaultValue) {
+    // ...but NOT when the URL is carrying somebody's model.
+    //
+    // The placeholder is a head start for the DEFAULT model: it draws the
+    // starter box instantly so the first thing you see is the shape the code
+    // describes, seconds before the kernel can build it. On a share link that
+    // is a lie. The visitor opened a link to a Snapmaker U1 and watched a
+    // 30mm cube with a hole in it appear, frame itself, and then get replaced —
+    // the "jump" being frameModel() running twice on two different shapes.
+    if (code.value === code.defaultValue && !urlCarriesModel()) {
       try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
     }
 

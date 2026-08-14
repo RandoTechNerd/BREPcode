@@ -3,7 +3,10 @@
 // still encloses the shape it started as. A repair that closes a hole by
 // swallowing the model is worse than no repair.
 
-import { repairMesh, toBinaryStl, repairSummary } from "../src/meshrepair.js";
+import {
+  repairMesh, toBinaryStl, repairSummary,
+  repairStlText, repairBinaryStl, toAsciiStl, meshFromAsciiStl,
+} from "../src/meshrepair.js";
 import { inspectMesh, inspectBinaryStl, weldTriangles } from "../src/meshhealth.js";
 import { boxMesh, cylinderMesh } from "../src/meshbool.js";
 import { meshVolume } from "../src/sdf.js";
@@ -246,6 +249,62 @@ console.log("\nthe summary reads like a sentence\n");
   const s = repairSummary(repairMesh(wrecked).report);
   check("it names what it did", /filled|re-oriented|removed/.test(s), s);
   check("...and does not say nothing changed", s !== "nothing needed changing", s);
+}
+
+
+console.log("\nrepair happens on the way IN, not as a button afterwards\n");
+{
+  // The failure this closes. The kernel's own reader refuses a non-manifold
+  // mesh outright, so a file with holes was turned away at the door — it never
+  // reached any later stage where the repair that already existed could have
+  // run. The user got "Import failed: Not manifold" and a Repair button on a
+  // hint line that the next tool overwrites.
+  //
+  // Measured on a real file (a 34k-triangle charm, 68 open edges, 508 zero-area
+  // faces): before, the import failed outright; after, it repairs in about a
+  // second and builds as 9 solids.
+  const cube = { points: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+    faces: [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
+      [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]] };
+  const ascii = toAsciiStl(cube, "box");
+  check("a mesh survives the ASCII round trip",
+    inspectMesh(meshFromAsciiStl(ascii)).watertight);
+  check("...with its triangles intact",
+    meshFromAsciiStl(ascii).faces.length === 12, String(meshFromAsciiStl(ascii).faces.length));
+
+  // A sound mesh must come back UNTOUCHED. Rewriting a good file costs
+  // precision for nothing, and most imports are sound — the Benchy is
+  // watertight and still 225k facets. Repair answers "broken", not "slow".
+  const sound = repairStlText(ascii, "box");
+  check("a sound mesh is left completely alone", sound.changed === false);
+  check("...and its text is returned byte-identical", sound.text === ascii);
+
+  // ...and a broken one is fixed and reported.
+  const holed = { points: cube.points, faces: cube.faces.slice(0, 10) };   // lid off
+  const broken = toAsciiStl(holed, "box");
+  const fixed = repairStlText(broken, "box");
+  check("an open mesh is repaired", fixed.changed === true);
+  check("...to watertight", fixed.after.watertight, JSON.stringify(fixed.after.openEdges));
+  check("...and says what it did", /filled \d+ hole/.test(repairSummary(fixed.report)),
+    repairSummary(fixed.report));
+  check("repairing twice changes nothing the second time",
+    repairStlText(fixed.text, "box").changed === false,
+    "repair must be idempotent or every re-import drifts");
+
+  // The binary entry point is the one the importer actually calls, because the
+  // kernel never gets a chance to reject the file.
+  const bin = toBinaryStl(holed, { name: "box" });
+  const fromBin = repairBinaryStl(new Uint8Array(bin), "box");
+  check("the binary entry point repairs too", fromBin.changed === true);
+  check("...and hands back ASCII, which the importer wanted anyway",
+    /^solid /.test(fromBin.text || ""), (fromBin.text || "").slice(0, 12));
+  check("...and reports what arrived", fromBin.before.openEdges > 0,
+    String(fromBin.before.openEdges));
+  const soundBin = repairBinaryStl(new Uint8Array(toBinaryStl(cube, { name: "box" })), "box");
+  check("a sound binary mesh is not rewritten either",
+    soundBin.changed === false && soundBin.text === null);
+  check("something that is not a binary STL is declined, not thrown at",
+    repairBinaryStl(new Uint8Array([1, 2, 3]), "x") === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

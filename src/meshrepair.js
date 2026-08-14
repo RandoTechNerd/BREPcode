@@ -1,3 +1,5 @@
+import { weldTriangles, inspectMesh, meshFromBinaryStl } from "./meshhealth.js";
+
 // Making a broken mesh into one the kernel will sew.
 //
 // The faults meshhealth.js names, in the order that actually works:
@@ -347,4 +349,91 @@ export function repairSummary(report) {
   if (report.degenerateRemoved) bits.push(`dropped ${report.degenerateRemoved} zero-area face${report.degenerateRemoved === 1 ? "" : "s"}`);
   if (!bits.length) return "nothing needed changing";
   return bits.join(", ");
+}
+
+// ---- repairing what the app actually passes around ----------------------
+//
+// Everything upstream of the kernel here speaks ASCII STL text: the importer
+// normalises every format to it, because that is what makes transforms
+// bake-able later. So the useful entry point is text in, text out — otherwise
+// repair stays a thing you can only reach through a button, which is exactly
+// how a mesh with 68 open edges and 508 zero-area faces got all the way to a
+// boolean and took an afternoon with it.
+
+export function meshFromAsciiStl(text) {
+  const out = [];
+  const re = /vertex\s+(-?[\d.]+(?:[eE][-+]?\d+)?)\s+(-?[\d.]+(?:[eE][-+]?\d+)?)\s+(-?[\d.]+(?:[eE][-+]?\d+)?)/g;
+  let m;
+  while ((m = re.exec(text))) { out.push(+m[1], +m[2], +m[3]); }
+  const coords = new Float64Array(out.length - (out.length % 9));
+  for (let i = 0; i < coords.length; i++) coords[i] = out[i];
+  return weldTriangles(coords);
+}
+
+export function toAsciiStl({ points, faces }, name = "repaired") {
+  const s = [`solid ${name}`];
+  for (const [a, b, c] of faces) {
+    const p = points[a], q = points[b], r = points[c];
+    const ux = q[0] - p[0], uy = q[1] - p[1], uz = q[2] - p[2];
+    const vx = r[0] - p[0], vy = r[1] - p[1], vz = r[2] - p[2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const L = Math.hypot(nx, ny, nz) || 1;
+    nx /= L; ny /= L; nz /= L;
+    s.push(`facet normal ${nx.toFixed(6)} ${ny.toFixed(6)} ${nz.toFixed(6)}`);
+    s.push("outer loop");
+    for (const v of [p, q, r]) s.push(`vertex ${v[0].toFixed(6)} ${v[1].toFixed(6)} ${v[2].toFixed(6)}`);
+    s.push("endloop");
+    s.push("endfacet");
+  }
+  s.push(`endsolid ${name}`);
+  return s.join("\n");
+}
+
+// Repair only if there is something to repair.
+//
+// A sound mesh must come back BYTE-IDENTICAL — rewriting a good file costs
+// precision for nothing, and the overwhelming majority of imports are sound.
+// The Benchy is the case to keep in mind: watertight, and still 225k facets
+// the kernel has to sew. Repair is not the answer to "slow", only to "broken".
+export function repairStlText(text, name = "repaired") {
+  const mesh = meshFromAsciiStl(text);
+  const before = inspectMesh(mesh);
+  const needed = !before.watertight || before.degenerate > 0
+    || before.duplicateFaces > 0 || before.windingClashes > 0;
+  if (!needed) return { text, changed: false, before, after: before, report: null };
+  const fixed = repairMesh(mesh);
+  return {
+    text: toAsciiStl(fixed, name),
+    changed: true,
+    before,
+    after: inspectMesh(fixed),
+    report: fixed.report,
+  };
+}
+
+// Binary STL in, repaired ASCII STL out — or null when nothing was wrong.
+//
+// This is the one that matters for imports. The kernel's own reader refuses a
+// non-manifold mesh outright ("Not manifold"), so a file with holes never
+// reaches any of the app's later stages to be repaired there: it is rejected
+// at the door and the user is handed a button. Running this FIRST means the
+// kernel is only ever shown a mesh it can accept.
+//
+// Returning ASCII is deliberate — the importer normalises everything to ASCII
+// anyway, so a repaired file skips that round trip through the kernel too.
+export function repairBinaryStl(bytes, name = "repaired") {
+  const mesh = meshFromBinaryStl(bytes);
+  if (!mesh) return null;                       // not a binary STL
+  const before = inspectMesh(mesh);
+  const needed = !before.watertight || before.degenerate > 0
+    || before.duplicateFaces > 0 || before.windingClashes > 0;
+  if (!needed) return { text: null, changed: false, before, after: before, report: null };
+  const fixed = repairMesh(mesh);
+  return {
+    text: toAsciiStl(fixed, name),
+    changed: true,
+    before,
+    after: inspectMesh(fixed),
+    report: fixed.report,
+  };
 }

@@ -23,7 +23,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 
-import { _setReplicad, curvedDrawingSVG } from "../viewer/curved.js";
+import { _setReplicad, curvedDrawingSVG, buildCurved } from "../viewer/curved.js";
+import { fromOpenSCAD } from "../src/openscad.js";
 import { cube, cylinder, sphere, torus, difference, translate, union } from "../src/dsl.js";
 
 let pass = 0, fail = 0;
@@ -111,6 +112,104 @@ console.log("\nthe outline is actually there\n");
     difference(cube([60, 40, 12]), translate([30, 20, -1], cylinder({ r: 5, h: 20, $fn: 32 }))),
     { size: [60, 40, 12] });
   check("a drilled part draws hidden edges dashed", /stroke-dasharray/.test(drilled));
+}
+
+console.log("\n...on models with real detail, not just primitives\n");
+{
+  // The layout cases above are all one or two features. A drawing is hardest
+  // exactly where it is most useful: a bolt circle whose eight bores each add
+  // hidden edges in three views, and a ring of tangent spheres. Hidden-line
+  // removal is superlinear, and the merge that took a disc from 23,756 paths
+  // to 26 has to keep holding at this size or the file stops being openable.
+  const bolts = union(...Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2;
+    return translate([40 * Math.cos(a), 40 * Math.sin(a), -1], cylinder({ r: 3, h: 20, $fn: 24 }));
+  }));
+  const flange = difference(
+    union(cylinder({ r: 55, h: 10, $fn: 64 }),
+      translate([0, 0, 10], cylinder({ r: 22, h: 14, $fn: 48 }))),
+    bolts,
+    translate([0, 0, -1], cylinder({ r: 12, h: 40, $fn: 48 })),
+    translate([-60, -4, 4], cube([120, 8, 4])),
+  );
+  const ring = union(...Array.from({ length: 12 }, (_, i) => {
+    const a = (i / 12) * Math.PI * 2;
+    return translate([30 * Math.cos(a), 30 * Math.sin(a), 0], sphere({ r: 6, $fn: 24 }));
+  }));
+
+  for (const [name, shape, size] of [
+    ["an 8-bolt flanged boss", flange, [110, 110, 24]],
+    ["a ring of twelve spheres", ring, [72, 72, 12]],
+  ]) {
+    const svg = await curvedDrawingSVG(shape, { size, title: name });
+    const s = sheetOf(svg);
+    const paths = (svg.match(/<path/g) || []).length;
+    check(`${name}: still fits its sheet`,
+      s.ink && s.ink[0] >= 0 && s.ink[1] >= 0 && s.ink[2] <= s.w + 0.5 && s.ink[3] <= s.h + 0.5,
+      `ink ${s.ink?.map((n) => n.toFixed(0)).join(",")} vs ${s.w | 0}x${s.h | 0}`);
+    check(`${name}: the outline is there`, paths >= 4, `${paths} paths`);
+    // 26 for the flange when this was written. A few hundred means the merge
+    // stopped working; tens of thousands means it is gone.
+    check(`${name}: the paths are still merged`, paths < 400, `${paths} paths`);
+    check(`${name}: hidden detail is dashed`, /stroke-dasharray/.test(svg));
+    check(`${name}: the file is a sane size`, svg.length < 400 * 1024,
+      `${(svg.length / 1024).toFixed(0)}KB`);
+  }
+}
+
+console.log("\na partial-arc torus draws, with real arcs\n");
+{
+  // "SVG export failed: curved STEP doesn't support partial-arc torus yet."
+  //
+  // It was refused rather than approximated, which was the honest choice at the
+  // time — but it was never hard. replicad's revolve() takes an angle, so the
+  // sweep is a partial revolve and the surfaces stay exact. A model built
+  // ENTIRELY from partial tori (the hoop that found this) could not be drawn at
+  // all, and that is most of what a lathe is for.
+  const seg = fromOpenSCAD(`
+    difference() {
+      union() {
+        rotate_extrude(angle = 90, $fn = 64) translate([50,0,0]) circle(r = 5, $fn = 32);
+        rotate([0,0,90]) rotate_extrude(angle = 15, $fn = 32)
+          translate([50,0,0]) circle(r = 2, $fn = 24);
+      }
+      rotate_extrude(angle = 16, $fn = 32) translate([50,0,0]) circle(r = 2.25, $fn = 24);
+    }`);
+  let svg = null, threw = "";
+  try { svg = await curvedDrawingSVG(seg, { size: [110, 55, 10], title: "hoop segment" }); }
+  catch (e) { threw = e.message; }
+  check("the hoop segment draws at all", !!svg, threw);
+  if (svg) {
+    const s = sheetOf(svg);
+    check("...inside its own sheet",
+      s.ink && s.ink[0] >= 0 && s.ink[1] >= 0 && s.ink[2] <= s.w + 0.5 && s.ink[3] <= s.h + 0.5,
+      `ink ${s.ink?.map((n) => n.toFixed(0)).join(",")} vs ${s.w | 0}x${s.h | 0}`);
+    // The point of going through the curved path rather than the mesh: an arc
+    // command, not two hundred straight segments pretending to be a curve.
+    check("...with true arcs rather than a faceted approximation",
+      /[\s,]A[\s\d-]/.test(svg), "no elliptical-arc commands in the path data");
+    check("...and the socket cut into it shows as hidden detail",
+      /stroke-dasharray/.test(svg));
+  }
+
+  // The sweep has to start and run the same way the KERNEL's does, or the
+  // drawing is of a different part than the one on screen and nothing about it
+  // would look wrong. 90 degrees belongs in the +X +Y quadrant.
+  const quarter = await buildCurved(torus({ r: 50, tube: 5, arc: 90, $fn: 32 }));
+  const qb = quarter.boundingBox.bounds;
+  check("a quarter torus sits in the +x +y quadrant, as the kernel builds it",
+    qb[0][0] > -0.01 && qb[0][1] > -0.01,
+    `starts at x ${qb[0][0].toFixed(1)}, y ${qb[0][1].toFixed(1)}`);
+  const half = await buildCurved(torus({ r: 50, tube: 5, arc: 180, $fn: 32 }));
+  check("...and a half torus is the +y half, so it sweeps anticlockwise",
+    half.boundingBox.bounds[0][1] > -0.01 && half.boundingBox.bounds[0][0] < -1,
+    JSON.stringify(half.boundingBox.bounds));
+
+  // The full torus is still a full torus — the angle argument is only passed
+  // when there IS one, so the common case takes the path it always did.
+  const full = await buildCurved(torus({ r: 50, tube: 5, $fn: 32 }));
+  check("a full torus is unchanged", full.boundingBox.bounds[0][0] < -1
+    && full.boundingBox.bounds[0][1] < -1, JSON.stringify(full.boundingBox.bounds));
 }
 
 console.log("\nthe dimensions say the part's real size\n");

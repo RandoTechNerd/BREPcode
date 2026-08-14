@@ -713,6 +713,88 @@ export function colorize(color, ...children) {
   return node({ ...shape, color: normaliseColor(color) });
 }
 
+// Bands of colour up the model — the layer-change trick, done properly.
+//
+//   colorByHeight({ every: 10, colors: ["#e33333", "#3399ff"] }, model)
+//   colorByHeight({ at: [8, 22], colors: ["#e33", "#39f", "#3c3"] }, model)
+//
+// Writing this by hand goes wrong in one specific way, every time, and the way
+// it goes wrong looks like the colours "not working":
+//
+//   union(colorize(red, lowerBand), colorize(blue, upperBand))
+//
+// A union FUSES its arguments into ONE solid. Both colours are still on the
+// tree, so nothing errors — but there is only one body to paint, one object in
+// the 3MF, and one filament on the printer. The bands have to stay SEPARATE
+// SOLIDS, which is group(), and that distinction is invisible until you look
+// at the export. So it is made here once, correctly, rather than left to be
+// rediscovered.
+//
+// Heights are measured FROM THE BOTTOM OF THE MODEL, because that is how
+// people say it — "red for the first 10mm" means from where it sits on the
+// bed, not from wherever z=0 happens to be. The model is measured at build
+// time, so nothing has to be told how tall it is.
+export function colorByHeight(opts, ...children) {
+  const o = Array.isArray(opts)
+    ? { at: opts.map((p) => p[0]), colors: opts.map((p) => p[1]) }
+    : (opts || {});
+  const kids = collect(children);
+  if (!kids.length) {
+    throw new Error('colorByHeight() needs a shape, e.g. colorByHeight({ every: 10, colors: ["#e33333", "#3399ff"] }, model)');
+  }
+  const raw = o.colors ?? o.colours ?? o.palette;
+  if (!Array.isArray(raw) || raw.length < 2) {
+    throw new TypeError('colorByHeight() needs at least two colours, e.g. { colors: ["#e33333", "#3399ff"] }');
+  }
+  const colors = raw.map(normaliseColor);
+  const every = o.every ?? o.step ?? o.band ?? null;
+  const at = o.at ?? o.cuts ?? o.stops ?? null;
+  if (at != null && !Array.isArray(at)) throw new TypeError("colorByHeight(): `at` is a list of heights, e.g. at: [8, 22]");
+  if (every == null && at == null) {
+    throw new TypeError('colorByHeight() needs either { every: 10 } or { at: [8, 22] }');
+  }
+  if (every != null && !(Number(every) > 0)) throw new TypeError("colorByHeight(): `every` is a band height in mm");
+  return node({
+    kind: "heightbands",
+    every: every == null ? null : Number(every),
+    at: at ? at.map(Number).filter((z) => Number.isFinite(z)).sort((a, b) => a - b) : null,
+    colors,
+    child: kids.length === 1 ? kids[0] : union(kids),
+  });
+}
+
+// What a piece is MADE OF, as opposed to what colour it is.
+//
+//   finish("cc-fairyfloss", body)        that piece prints in glitter
+//   finish("balsa", wing)                ...and this one in balsa
+//   finish("titanium", screws)
+//
+// A model is rarely one material. A holder is PLA with steel dowels; a plane
+// is balsa with a carbon spar; a toy is glitter with plain white eyes. Before
+// this, the filament was a single global setting, so picking Fairy Floss made
+// EVERY piece glitter — including the eyes, which is exactly the thing that
+// should not.
+//
+// Threaded like colorize(): the tag rides on the node, reaches the viewer
+// through the compile trace, and each piece is shaded from its own spool. A
+// piece with no finish falls back to the model-wide one, so nothing changes
+// until somebody asks for it.
+//
+// The name is either a spool id from viewer/filaments.js (cc-fairyfloss,
+// cc-golddust…) or a free word for a material the viewer has no spool for
+// (balsa, titanium, brass) — those still travel into exports and the parts
+// list, where a name is what matters.
+export function finish(name, ...children) {
+  const kids = collect(children);
+  if (!kids.length) {
+    throw new Error('finish() needs a shape, e.g. finish("cc-golddust", cube([10, 10, 10]))');
+  }
+  const id = String(name || "").trim();
+  if (!id) throw new Error('finish() needs a material name, e.g. finish("balsa", wing)');
+  const shape = kids.length === 1 ? kids[0] : group(...kids);
+  return node({ ...shape, finish: id });
+}
+
 // Emissive tag — the same threading, for a part that should glow.
 // This IS the LED look: glow("#ff3b30", 2, sphere({ r: 2.5 })) is a lit LED.
 export function glow(color, intensity, ...children) {
@@ -1503,7 +1585,10 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     const em = n.emissive ?? style?.emissive ?? null;
     const emi = n.emissiveInt ?? style?.emissiveInt ?? 1;
     const clr = n.clearOpacity ?? style?.clearOpacity ?? null;
-    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr };
+    // Inherited the same way colour is: a finish on a group applies to every
+    // piece inside it, and a piece can override it with its own.
+    const fin = n.finish ?? style?.finish ?? null;
+    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr, finish: fin };
     if (n.kind === "xform") {
       return emit(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix), st);
     }
@@ -1526,7 +1611,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ],
         scale: [scl.x, scl.y, scl.z],
       };
-      trace?.push({ id: f.inputParams.id, code: n.code, color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: f.inputParams.id, code: n.code, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -1564,7 +1649,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ];
         xf.inputParams.scale = [scl.x, scl.y, scl.z];
       }
-      trace?.push({ id: ex.inputParams.id, code: "E", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: ex.inputParams.id, code: "E", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return ex.inputParams.id;
     }
 
@@ -1595,7 +1680,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // (an assembly) comes in as individually selectable/movable bodies. Harmless
       // on a single connected part (still one solid).
       if (n.opts.split ?? n.opts.separate) f.inputParams.extractMultipleSolids = true;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -1735,6 +1820,61 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       return emit(n.child, new Matrix4().multiplyMatrices(matrix, m), st);
     }
 
+    if (n.kind === "heightbands") {
+      // Same measure-then-emit trick as gapgrow: build the child once on a
+      // scratch history purely to find how tall it is, so nobody has to tell
+      // it. Then cut it into bands and emit them as a GROUP — separate solids,
+      // one colour each, which is the whole point (see colorByHeight).
+      const scratch = new partHistory.constructor();
+      await compile(n.child, scratch);
+      await scratch.runHistory({ throwOnFeatureError: true });
+      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      const v = new Vector3();
+      for (const s of (scratch.scene?.children || [])) {
+        if (s.type !== "SOLID") continue;
+        s.updateMatrixWorld(true);
+        s.traverse((o) => {
+          const pa = o.type === "FACE" ? o.geometry?.attributes?.position : null;
+          if (!pa) return;
+          for (let i = 0; i < pa.count; i++) {
+            v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+            for (const [j, c] of [v.x, v.y, v.z].entries()) {
+              if (c < lo[j]) lo[j] = c;
+              if (c > hi[j]) hi[j] = c;
+            }
+          }
+        });
+      }
+      if (!Number.isFinite(lo[2])) throw new Error("colorByHeight(): the shape has no surface to measure");
+
+      // Cut heights, in world Z. Both forms are stated FROM THE BOTTOM of the
+      // model, which is how people say it.
+      const base = lo[2], top = hi[2];
+      let cuts;
+      if (n.at) cuts = n.at.map((z) => base + z);
+      else {
+        cuts = [];
+        for (let z = base + n.every; z < top - 1e-6; z += n.every) cuts.push(z);
+      }
+      cuts = cuts.filter((z) => z > base + 1e-6 && z < top - 1e-6);
+      if (!cuts.length) {
+        // One band: nothing to cut, so this is just a colour. Better than
+        // emitting a "group" of one and calling it banded.
+        return emit(colorize(n.colors[0], n.child), matrix, st);
+      }
+      // The cutting slabs are generous in X and Y — the model's own footprint
+      // plus margin — so a band never clips the sides of what it is cutting.
+      const pad = Math.max(hi[0] - lo[0], hi[1] - lo[1]) + 20;
+      const x0 = (lo[0] + hi[0]) / 2 - pad, y0 = (lo[1] + hi[1]) / 2 - pad;
+      const bands = [];
+      const edges = [base - 1, ...cuts, top + 1];
+      for (let i = 0; i < edges.length - 1; i++) {
+        const slab = translate([x0, y0, edges[i]], cube([pad * 2, pad * 2, edges[i + 1] - edges[i]]));
+        bands.push(colorize(n.colors[i % n.colors.length], intersection(n.child, slab)));
+      }
+      return emit(group(...bands), matrix, st);
+    }
+
     if (n.kind === "layout") {
       // Parts side by side on the bed, each one measured so they cannot
       // overlap and no plate is wasted. Same measure-then-place trick as
@@ -1862,7 +2002,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // The STL already carries the shape's real position, so centring it would
       // move the offset away from the thing it was offset from.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -1897,7 +2037,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // The points are already where the caller put them; centring would slide
       // the wire off the thing it was routed around.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -1947,7 +2087,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // so hull(a, b) rendered somewhere other than where a and b were. It also
       // put freeform()'s corner handles nowhere near the solid they belong to.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -1987,7 +2127,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       f.inputParams.meshRepairLevel = "NONE";
       // like hull(): the STL already sits at its real position — never re-centre
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr });
+      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
