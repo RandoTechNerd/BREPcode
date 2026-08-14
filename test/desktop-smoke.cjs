@@ -91,12 +91,26 @@ app.whenReady().then(async () => {
     // An exact list, deliberately: the bridge is the ONLY hole in the sandbox,
     // and anything added to it should have to be typed here too. Growing it is
     // meant to cost a deliberate edit and a moment's thought about what the
-    // page can now reach. aiRelay is the newest — an HTTPS-only, host-
-    // allowlisted, GET/POST relay that exists because a browser will not let
-    // the page POST to an AI endpoint with an Authorization header.
+    // page can now reach. aiRelay — an HTTPS-only, host-allowlisted GET/POST
+    // relay — exists because a browser will not let the page POST to an AI
+    // endpoint with an Authorization header.
+    //
+    // Nine entries below were added by features that shipped without being
+    // typed here, so this check sat red and stopped guarding anything. This
+    // suite is not in the `npm test` chain, which is how that went unnoticed.
+    // Reviewed on catching up, in the two categories that matter:
+    //   - reaches the network: fetchModel (checkUrl allowlist + redirect and
+    //     byte caps before anything is read) and shortLink (its own module,
+    //     same shape). Neither takes a raw URL straight to a socket.
+    //   - touches disk or the shell: openBlueprint writes an SVG the user just
+    //     asked to export; lessons* read and write ONE app-owned store, with
+    //     Reveal/Where handing the path to the OS file manager rather than
+    //     accepting one from the page.
     const EXPECTED_BRIDGE = "aiRelay,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
-      + "isDesktop,loadMail,onClaudeProgress,onOpenFile,openInSlicer,recoveryList,"
-      + "recoveryRead,recoveryReveal,recoverySave,saveMail,sendMail,slicerInfo,testMail";
+      + "fetchModel,isDesktop,lessonsAppend,lessonsForget,lessonsLoad,lessonsReveal,"
+      + "lessonsSave,lessonsWhere,loadMail,onClaudeProgress,onOpenFile,openBlueprint,"
+      + "openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,"
+      + "sendMail,shortLink,slicerInfo,testMail";
     const bridgeKeys = await run("Object.keys(window.brepcodeDesktop).sort().join(',')");
     check("the bridge surface is exactly what was reviewed",
       bridgeKeys === EXPECTED_BRIDGE,
