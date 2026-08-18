@@ -8811,6 +8811,7 @@ ${joined}`)(...vs);
         token++;
         if (previewGroup.children.length) clearMeshPreview();
         clearModel();
+        clearDragPreview();
         clearHandles();
         clearSplit();
         clearOutlines();
@@ -8979,6 +8980,9 @@ ${joined}`)(...vs);
           }
         }
         modelGroup.updateMatrixWorld(true);   // frameModel's Box3 needs current world matrices
+        // The committed geometry is on stage — retire the drag preview in the
+        // same frame, so a stretch hands over without a flicker.
+        clearDragPreview();
         seatGrid();
         frameModel();
         lastShape = shape;
@@ -9845,6 +9849,23 @@ ${joined}`)(...vs);
     }
     // If the selected call is ALREADY a freeform([...]), read its points back so
     // a second drag edits them rather than flattening the shape to a box again.
+    // Declared ABOVE its use on purpose. A `const` referenced by a function
+    // defined earlier in the file is fine only until something calls that
+    // function during module init — which is exactly how a TDZ crash got into
+    // this file once already.
+    const IDENTITY4 = new THREE.Matrix4();
+    // Returns WORLD points, not the numbers as written.
+    //
+    // The text holds the call's own local coordinates, but every consumer works
+    // in world space: the handles are placed in the scene, the drag delta comes
+    // from a raycast, and the commit path replaces the transform wrapper and
+    // writes world numbers back. Handing local coordinates to any of those put
+    // the corner balls exactly one translate away from the part, and a drag then
+    // moved the shape by that same offset again.
+    //
+    // With no wrapper the matrix is identity and the numbers pass through
+    // untouched — which is every freeform that has already been committed once,
+    // since committing strips the wrapper.
     function existingFreeformPoints(text, site) {
       const src = text.slice(site.start, site.end);
       if (!/^\s*freeform\s*\(/.test(src)) return null;
@@ -9852,7 +9873,17 @@ ${joined}`)(...vs);
       for (const m of src.matchAll(/\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/g)) {
         pts.push([+m[1], +m[2], +m[3]]);
       }
-      return pts.length >= 4 ? pts : null;
+      if (pts.length < 4) return null;
+      const enc = enclosingTransforms(text, site);
+      // Expression-valued wrappers can't be evaluated here; raw numbers are the
+      // least-wrong answer, and match what the commit will write back.
+      const M = enc.ok ? enc.full : IDENTITY4;
+      if (M.equals(IDENTITY4)) return pts;
+      const v = new THREE.Vector3();
+      return pts.map((p) => {
+        v.set(p[0], p[1], p[2]).applyMatrix4(M);
+        return [v.x, v.y, v.z];
+      });
     }
     // A freeform() compiles to a hull of 8 tiny spheres, so the source-to-feature
     // mapping can't tie the result back to one call and no handles would spawn,
@@ -9884,6 +9915,115 @@ ${joined}`)(...vs);
         start = verbAt; end = close;
       }
       return { start, end };
+    }
+
+    // transformWrapSpan says WHERE the wrappers directly around a call are;
+    // the functions below say what EVERY enclosing transform does — including
+    // ones sitting above a difference()/union() the call lives inside, which
+    // the tail-regex walk can never reach because the text directly before the
+    // call is "difference(", not a transform.
+    //
+    // Why both matrices matter: a freeform's points are written in the call's
+    // own local space, but the handles, the drag delta and the commit all work
+    // in world space. `full` maps written numbers to the world (ball placement);
+    // `kept` is only the transforms that SURVIVE the commit's span replacement,
+    // and the committed points must be written through its inverse — otherwise
+    // translate(A, difference(freeform(...), ...)) applies A twice and the
+    // shape leaps by A at the moment of release.
+    const XFORM_NAMES = new Set(["translate", "rotate", "scale", "mirror"]);
+
+    // Call spans that strictly enclose the site, innermost first. A real scan
+    // with a paren stack (skipping strings), not a regex: the ancestors of a
+    // shape inside difference(a, b) are simply not reachable by looking at the
+    // characters before the shape.
+    function callAncestors(text, site) {
+      const stack = [], out = [];
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '"' || ch === "'" || ch === "`") {
+          for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === "\\") i++;
+          continue;
+        }
+        if (ch === "(") {
+          let j = i - 1;
+          while (j >= 0 && /\s/.test(text[j])) j--;
+          let k = j;
+          while (k >= 0 && /[A-Za-z0-9_$.]/.test(text[k])) k--;
+          stack.push({ name: k < j ? text.slice(k + 1, j + 1) : "", start: k < j ? k + 1 : i, open: i });
+        } else if (ch === ")") {
+          const c = stack.pop();
+          if (c && c.open < site.start && i + 1 >= site.end && c.start !== site.start) {
+            out.push({ ...c, end: i + 1 });
+          }
+        }
+      }
+      if (stack.length) return [];        // unbalanced text: claim nothing
+      return out.sort((a, b) => (a.end - a.start) - (b.end - b.start));
+    }
+
+    // The first argument of a transform call, as numbers — or null when it is
+    // an expression. A wrapper whose vector cannot be evaluated here must stop
+    // the whole computation: a partial transform would be confidently wrong.
+    function xformArgs(text, anc) {
+      const m = /^\s*(\[[^\]]*\]|-?[\d.]+)\s*,/.exec(text.slice(anc.open + 1, anc.open + 120));
+      if (!m) return null;
+      if (m[1][0] !== "[") {
+        const v = Number(m[1]);
+        if (!Number.isFinite(v)) return null;
+        // the DSL's scalar forms: rotate(v) spins about Z, scale(v) is uniform
+        if (anc.name === "rotate") return [0, 0, v];
+        if (anc.name === "scale") return [v, v, v];
+        return null;
+      }
+      const nums = m[1].slice(1, -1).split(",").map((s) => Number(s.trim()));
+      if (nums.some((n) => !Number.isFinite(n))) return null;
+      return nums;
+    }
+
+    // One transform as a matrix — built with the same THREE calls src/dsl.js
+    // uses, never re-derived: a rotate that disagreed with the kernel by an
+    // Euler convention would be worse than not supporting rotate at all.
+    function xformMatrix(name, nums) {
+      const [a = 0, b = 0, c = 0] = nums;
+      const step = new THREE.Matrix4();
+      if (name === "translate") {
+        step.makeTranslation(a, b, c);
+      } else if (name === "scale") {
+        if (!a || !b || !c) return null;               // a zero axis is not invertible
+        step.makeScale(a, b, c);
+      } else if (name === "rotate") {
+        const D = Math.PI / 180;
+        step.makeRotationFromEuler(new THREE.Euler(a * D, b * D, c * D, "XYZ"));
+      } else if (name === "mirror") {
+        const n = new THREE.Vector3(a, b, c);
+        if (n.lengthSq() < 1e-12) return null;
+        n.normalize();
+        step.set(
+          1 - 2 * n.x * n.x, -2 * n.x * n.y, -2 * n.x * n.z, 0,
+          -2 * n.y * n.x, 1 - 2 * n.y * n.y, -2 * n.y * n.z, 0,
+          -2 * n.z * n.x, -2 * n.z * n.y, 1 - 2 * n.z * n.z, 0,
+          0, 0, 0, 1,
+        );
+      } else return null;
+      return step;
+    }
+
+    // { ok, full, kept }: full = every enclosing transform; kept = only those
+    // OUTSIDE the span transformWrapSpan would replace. Walking outward means
+    // each transform found applies before the ones already collected, hence
+    // premultiply: translate(A, rotate(B, shape)) composes as A·B.
+    function enclosingTransforms(text, site) {
+      const consumed = transformWrapSpan(text, site);
+      const full = new THREE.Matrix4(), kept = new THREE.Matrix4();
+      for (const anc of callAncestors(text, site)) {
+        if (!XFORM_NAMES.has(anc.name)) continue;      // difference() moves nothing
+        const nums = xformArgs(text, anc);
+        const step = nums && xformMatrix(anc.name, nums);
+        if (!step) return { ok: false, full: new THREE.Matrix4(), kept: new THREE.Matrix4() };
+        full.premultiply(step);
+        if (anc.start < consumed.start) kept.premultiply(step);
+      }
+      return { ok: true, full, kept };
     }
 
     const fmtPt = (p) => `[${p.map((n) => +n.toFixed(2)).join(", ")}]`;
@@ -10528,10 +10668,17 @@ ${joined}`)(...vs);
                 delta: new THREE.Vector3(), amount: 0, moved: false,
               };
             }
-          } else if ($("freeform").checked) {
+          } else if ($("freeform").checked
+            && ["cube", "cuboid", "freeform"].includes(hSite.kind)) {
             // Free-form wins over the box corner-stretch below: the whole point
             // is that this corner moves alone instead of dragging two
             // dimensions with it.
+            //
+            // Box-like shapes ONLY. Converting a cylinder or a sphere to the
+            // hull of its 8 bounding-box corners doesn't skew it — it replaces
+            // it with a box, which is the tool silently overwriting a function
+            // the user wrote. Round shapes fall through to the ordinary corner
+            // scale, exactly as if the checkbox were off.
             const fcorners = existingFreeformPoints(code.value, hSite) || cornersOf(fbb);
             const at = hHit.object.position;
             // Prefer the index the handle was spawned with; fall back to
@@ -10866,6 +11013,10 @@ ${joined}`)(...vs);
             m.position.setComponent(drag.axis,
               drag.anchor.getComponent(drag.axis) * (1 - factor));
           }
+          // ...and, when the kernel can keep up, the TRUE geometry: cuts stay
+          // round while the body stretches instead of ovalling until release.
+          nudgeDragPreview();
+          liveResizeBuild();
         }
         hint.innerHTML = `<b>${drag.site.kind}</b> ${drag.target.label}: ${drag.target.value} &rarr; <b>${(drag.target.value + drag.amount).toFixed(1)}</b> — release to apply`;
         return;
@@ -10900,6 +11051,127 @@ ${joined}`)(...vs);
     // Write the drag into the code: a move wraps/updates translate() around the
     // dragged span (whole boolean when the main shape was grabbed); a resize
     // rewrites the grabbed dimension's number. Rounded to 0.1mm.
+    // ------------------------------------------- true geometry while dragging
+    //
+    // Stretching a difference(cube, cylinder) by its face handle used to scale
+    // the RESULT mesh — hole and all. The bore went oval, and only on release
+    // did the kernel rebuild and the cut "snap" back to round. The cheap scale
+    // preview cannot do better: the cut only stays true if the kernel re-runs
+    // the boolean at the new size.
+    //
+    // So it does, live: while a face drag is in flight, the exact text a
+    // release would commit is built in the kernel worker (throttled, one in
+    // flight, under its own key so the real model's cache is untouched) and the
+    // result swapped in as it lands. Between landings the true geometry gets
+    // the residual scale — a few percent, not the whole pull — so the hole
+    // stays visibly round. If the worker is out or the model is heavy, the old
+    // cheap preview simply carries on: this whole path is an upgrade, never a
+    // requirement.
+    let liveDrag = null;      // { drag, inflight, dead, hidden }
+    function clearDragPreview() {
+      for (const c of [...dragGroup.children]) {
+        c.geometry?.dispose?.();
+        dragGroup.remove(c);
+      }
+      dragGroup.scale.set(1, 1, 1);
+      dragGroup.position.set(0, 0, 0);
+      if (liveDrag?.hidden) for (const m of liveDrag.hidden) m.visible = true;
+      liveDrag = null;
+    }
+    // Applies the pull made since the last landed build to the TRUE geometry.
+    // Same anchor arithmetic as the cheap preview, but the factor is relative
+    // to the size already built, so it shrinks toward 1 as builds land.
+    function nudgeDragPreview() {
+      if (!drag || drag.liveBase == null || !dragGroup.children.length) return;
+      const f = (drag.target.value + drag.amount) / (drag.target.value + drag.liveBase);
+      dragGroup.scale.setComponent(drag.axis, f);
+      dragGroup.position.setComponent(drag.axis,
+        drag.anchor.getComponent(drag.axis) * (1 - f));
+    }
+    async function liveResizeBuild() {
+      if (!drag || drag.mode !== "resize" || drag.uniformPreview || workerOut) return;
+      if (!liveDrag || liveDrag.drag !== drag) liveDrag = { drag, inflight: false, dead: false };
+      const L = liveDrag;
+      if (L.inflight || L.dead) return;
+      // Not worth a build until the pull has moved meaningfully past the last
+      // one — the residual scale covers the gap invisibly.
+      if (drag.liveBase != null && Math.abs(drag.amount - drag.liveBase) < 0.2) return;
+      L.inflight = true;
+      const amount = drag.amount;
+      try {
+        let src = stripFences(resizeNextText(code.value, drag, amount).trim());
+        if (!exact.checked) src = autoFix(src).code;
+        const shape = evaluate(src);
+        // A model that takes seconds per pass cannot land builds at drag rate;
+        // scaling a stale build would look WORSE than the cheap preview, so
+        // heavy models keep the old behaviour for this whole drag.
+        if (dsl.estimateBuild(shape).sec > 3) { L.dead = true; return; }
+        const { PartHistory } = await getKernel();
+        const ph = new PartHistory();
+        await dsl.compile(shape, ph, []);
+        const json = await ph.toJSON();
+        if (liveDrag !== L || !drag) return;                 // released meanwhile
+        const r = await workerCall({ op: "build", key: "drag", json });
+        if (liveDrag !== L || !drag) return;                 // discard, never paint stale
+        for (const c of [...dragGroup.children]) {
+          c.geometry?.dispose?.();
+          dragGroup.remove(c);
+        }
+        for (const s of r.solids) {
+          for (const m of adoptFaceData(s.name, s.faces, null, true)) dragGroup.add(m);
+        }
+        // The result meshes stay: hiding beats removing, because a failed build
+        // after release needs them back exactly as they were.
+        if (!L.hidden) {
+          L.hidden = drag.meshes.filter((m) => m.visible);
+          for (const m of L.hidden) m.visible = false;
+        }
+        drag.liveBase = amount;
+        dragGroup.scale.set(1, 1, 1);
+        dragGroup.position.set(0, 0, 0);
+        nudgeDragPreview();
+        dragGroup.updateMatrixWorld(true);
+      } catch {
+        // Any failure — evaluate, serialise, worker — ends the attempt for this
+        // drag. The cheap preview is still on screen; nothing is lost.
+        L.dead = true;
+      } finally {
+        L.inflight = false;
+      }
+    }
+
+    // The code a resize drag will write, given the pull so far. Factored out of
+    // commitDrag so the live drag preview can build EXACTLY the text a release
+    // would commit — if the two ever computed the value differently, the model
+    // would visibly shift at the moment of release.
+    function resizeNextText(text, drag, amount) {
+      const r1 = (n) => Math.round(n * 10) / 10;
+      const t = drag.target;
+      const value = Math.max(r1(t.value + amount), 0.2);
+      let next = text.slice(0, t.numStart) + String(value) + text.slice(t.numEnd);
+      // anchoring shift (radius grows from the axis, so radial skips this):
+      // STUCK + negative-side pull, or CENTERED any pull, moves the shape
+      const comp = drag.radial ? 0
+        : r1(anchorCentered ? -amount / 2 : (drag.sign < 0 ? -amount : 0));
+      if (comp) {
+        const dLen = String(value).length - (t.numEnd - t.numStart);
+        const span = { start: drag.site.start, end: drag.site.end + dLen };
+        const vec = [0, 0, 0];
+        vec[drag.axis] = comp;
+        const head = next.slice(0, span.start);
+        const wrap = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/.exec(head);
+        if (wrap) {
+          const nv = [r1(+wrap[1] + vec[0]), r1(+wrap[2] + vec[1]), r1(+wrap[3] + vec[2])];
+          next = head.slice(0, wrap.index) + `translate([${nv.join(", ")}], ` + next.slice(span.start);
+        } else {
+          next = next.slice(0, span.start)
+            + `translate([${vec.join(", ")}], ${next.slice(span.start, span.end)})`
+            + next.slice(span.end);
+        }
+      }
+      return next;
+    }
+
     function commitDrag() {
       const text = code.value;
       const r1 = (n) => Math.round(n * 10) / 10;
@@ -11004,40 +11276,35 @@ ${joined}`)(...vs);
           }
         }
       } else if (drag.mode === "freeform") {
-        // Replace the whole call. A primitive has no slot for a moved corner,
-        // so the shape is re-expressed as its 8 corners; a freeform() call just
-        // gets the one point rewritten.
-        const pts = drag.corners.map((p) => p.slice());
+        // Replace ONLY this call (plus its private transform wrappers) — never
+        // the difference()/union() it lives inside. The span from
+        // transformWrapSpan stops at any call holding more than this shape, so
+        // difference(cube, cyl) becomes difference(freeform(...), cyl), cut
+        // intact. A primitive has no slot for a moved corner, so it is
+        // re-expressed as its 8 corners; a freeform() just gets the one point
+        // rewritten.
+        let pts = drag.corners.map((p) => p.slice());
         pts[drag.index] = drag.origin.map((v, i) => v + drag.delta[i]);
-        // replace the transform wrapper too, since the points are world-space
         const span = transformWrapSpan(text, drag.site);
+        // The corners are world positions, but transforms OUTSIDE the replaced
+        // span survive the rewrite and will be applied again on rebuild — so
+        // the written numbers go through their inverse. Without this,
+        // translate(A, difference(cube, cyl)) re-applied A and the shape leapt
+        // by A at release.
+        const enc = enclosingTransforms(text, drag.site);
+        if (enc.ok && !enc.kept.equals(IDENTITY4)) {
+          const inv = enc.kept.clone().invert();
+          const v = new THREE.Vector3();
+          pts = pts.map((p) => {
+            v.set(p[0], p[1], p[2]).applyMatrix4(inv);
+            return [v.x, v.y, v.z];
+          });
+        }
         next = text.slice(0, span.start) + freeformCall(pts) + text.slice(span.end);
       } else if (drag.mode === "scale") {
         next = rewriteNumbers(text, drag.targets, (v) => v * drag.factor);
       } else if (drag.mode === "resize") {
-        const t = drag.target;
-        const value = Math.max(r1(t.value + drag.amount), 0.2);
-        next = text.slice(0, t.numStart) + String(value) + text.slice(t.numEnd);
-        // anchoring shift (radius grows from the axis, so radial skips this):
-        // STUCK + negative-side pull, or CENTERED any pull, moves the shape
-        const comp = drag.radial ? 0
-          : r1(anchorCentered ? -drag.amount / 2 : (drag.sign < 0 ? -drag.amount : 0));
-        if (comp) {
-          const dLen = String(value).length - (t.numEnd - t.numStart);
-          const span = { start: drag.site.start, end: drag.site.end + dLen };
-          const vec = [0, 0, 0];
-          vec[drag.axis] = comp;
-          const head = next.slice(0, span.start);
-          const wrap = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/.exec(head);
-          if (wrap) {
-            const nv = [r1(+wrap[1] + vec[0]), r1(+wrap[2] + vec[1]), r1(+wrap[3] + vec[2])];
-            next = head.slice(0, wrap.index) + `translate([${nv.join(", ")}], ` + next.slice(span.start);
-          } else {
-            next = next.slice(0, span.start)
-              + `translate([${vec.join(", ")}], ${next.slice(span.start, span.end)})`
-              + next.slice(span.end);
-          }
-        }
+        next = resizeNextText(text, drag, drag.amount);
       } else {
         const { span, delta } = drag;
         const head = text.slice(0, span.start);
@@ -11070,7 +11337,11 @@ ${joined}`)(...vs);
       }
       code.value = next;
       pushHistory();
-      buildAfterToolEdit();
+      // The drag preview outlives the release ON PURPOSE: clearing it here
+      // would snap the model back to its old size for the whole rebuild. It is
+      // cleared when the committed build lands — and this fallback covers the
+      // build FAILING, where the hidden real meshes must come back.
+      buildAfterToolEdit().then(() => clearDragPreview());
     }
 
     // Wrap the current model in difference(model, drill(point, normal, {…})),
@@ -11144,6 +11415,7 @@ ${joined}`)(...vs);
           return;
         }
         drag = null;   // no real movement: fall through to click-select
+        clearDragPreview();             // a click is not a stretch — no build coming
         if (wasSplit) refreshSplit();   // nudged but not committed: snap back
       }
       if (!downAt) return;
@@ -14486,6 +14758,10 @@ let SIMPLIFY_TARGET = 10000;
     // real is built, so the two can never be on screen at once.
     const previewGroup = new THREE.Group();
     scene.add(previewGroup);
+    // True-geometry drag preview — kernel builds landed mid-drag live here,
+    // above modelGroup (hidden while this has content). See liveResizeBuild.
+    const dragGroup = new THREE.Group();
+    scene.add(dragGroup);
 
     function clearMeshPreview() {
       if (pendingSimplify) clearHeavyHold();   // the bar was offering THIS preview
