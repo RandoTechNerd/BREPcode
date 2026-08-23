@@ -411,5 +411,41 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   check("the main process registers it", /blueprint\.register\(\);/.test(MAIN));
 }
 
+// The export dialog is the app's explainer surface, and it had three problems
+// reported off one screenshot: em dashes against house style, checkbox labels
+// crushed to one word per line, and a publish blurb that never said WHERE the
+// stash lives. Each has a pin here.
+{
+  console.log("\nthe export dialog explains itself properly\n");
+  const { readFileSync } = await import("node:fs");
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+
+  const block = HTML.slice(HTML.indexOf("const EXPORT_FORMATS = {"), HTML.indexOf("};", HTML.indexOf("const EXPORT_FORMATS = {")));
+  const descDashes = (block.match(/—/g) || []).length;
+  check("no em dashes in any format description", descDashes === 0, `${descDashes} found`);
+  const optDashes = [...HTML.matchAll(/<option[^>]*>([^<]*)<\/option>/g)].filter((m) => m[1].includes("—")).length;
+  check("...nor in any dropdown option label", optDashes === 0, `${optDashes} found`);
+
+  check("the publish blurb says where the stash lives",
+    /The stash lives on the site itself, not in this browser/.test(block),
+    "without this, 'your stashed gallery' reads as browser storage that clearing data would eat");
+
+  // 44px is the little label gutter ("Format", "Surfaces"). The .pub-opt
+  // sentence-spans were caught by the same rule, which crushed "Download the
+  // model" into a one-word tower. Measured after the override: 410px wide,
+  // five rows of uniform 46px.
+  check("checkbox sentences escape the 44px label gutter",
+    /#exp-opts \.pub-opt > span \{[\s\S]{0,80}?flex: 1 1 auto/.test(HTML));
+
+  // The published thumbnail frames the WHOLE model. It used to be the live
+  // view verbatim, so publishing while zoomed in put a cropped corner in the
+  // gallery. Verified in-page: camera 6mm from a 30mm part, snapshot border
+  // 100% background, model present in the centre.
+  check("the publish snapshot frames the model, not the current zoom",
+    /__brepQuicksaveSnapshot[\s\S]{0,900}?getBoundingSphere/.test(HTML));
+  check("...keeping the user's viewing angle",
+    /__brepQuicksaveSnapshot[\s\S]{0,1200}?camera\.position\.clone\(\)\.sub\(controls\.target\)/.test(HTML));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

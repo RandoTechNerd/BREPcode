@@ -557,7 +557,11 @@ console.log("\ngridfinity: the Toolbox picker\n");
   // Every height offered must build, and its LABEL has to be the number the bin
   // actually measures — this is the 18.4-not-14 trap, printed in the menu.
   const heights = HTML.match(/<select id="gfin-u">([\s\S]*?)<\/select>/);
-  const rows = heights ? [...heights[1].matchAll(/value="(\d+)"[^>]*>(\d+)u — ([\d.]+)mm/g)] : [];
+  // "3u - 25.4mm": a spaced hyphen, not an em dash — house style banned em
+  // dashes from every label the app shows, and this menu was swept with the
+  // rest. The scrape pins the new form so a well-meaning "fix" back to the
+  // dash fails here instead of silently passing.
+  const rows = heights ? [...heights[1].matchAll(/value="(\d+)"[^>]*>(\d+)u - ([\d.]+)mm/g)] : [];
   check("the height menu labels its own millimetres", rows.length >= 4, `${rows.length} rows`);
   for (const [, val, u, mm] of rows) {
     check(`${u}u is labelled ${mm}mm — u x 7 plus the lip`,

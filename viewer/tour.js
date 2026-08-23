@@ -5,7 +5,7 @@
 //
 // A guided tour is the easiest feature in an app to let rot. It points at
 // elements by id, and the day somebody renames a button the tour silently
-// starts anchoring popups to nothing — which is worse than not having one,
+// starts anchoring popups to nothing - which is worse than not having one,
 // because the first thing a new user meets is broken. So:
 //
 //   - the steps are DATA, exported, and a test asserts every selector they
@@ -31,12 +31,12 @@ export const TOUR_STEPS = [
     sel: null,
     hero: true,
     title: "This is CAD that lives in a browser tab",
-    body: "Real solid modelling — no install, no account, no server. Two minutes and you will know where all of it is.",
+    body: "Real solid modelling - no install, no account, no server. Two minutes and you will know where all of it is.",
     brag: [
       ["Four languages, one kernel", "Write BREPcode, or paste OpenSCAD, JSCAD or build123d. They all compile to the same BREP solids."],
-      ["An AI that hands you code", "Describe a part and it writes readable, editable BREPcode with named sizes — not a mesh you can never change again."],
+      ["An AI that hands you code", "Describe a part and it writes readable, editable BREPcode with named sizes - not a mesh you can never change again."],
       ["Code and mouse, same model", "Drag a face handle and the number in the source changes. Edit the number and the model moves."],
-      ["Straight to the printer", "STL, OBJ, 3MF, GLB and STEP — with a layer preview and supports built in, so you catch a bad part before you slice it."],
+      ["Straight to the printer", "STL, OBJ, 3MF, GLB and STEP - with a layer preview and supports built in, so you catch a bad part before you slice it."],
       ["Nothing leaves this machine", "Every model, every key, every byte stays local. MIT licensed, and the whole thing fits in a URL you can share."],
     ],
   },
@@ -44,23 +44,23 @@ export const TOUR_STEPS = [
     sel: "#panel",
     open: "panel",
     title: "The editor",
-    body: "Type here and the model rebuilds as you go. Sizes are millimetres, angles are degrees, and Z is up. You never press Save — the model IS the text.",
+    body: "Type here and the model rebuilds as you go. Sizes are millimetres, angles are degrees, and Z is up. You never press Save - the model IS the text.",
   },
   {
     sel: "#code",
     open: "panel",
     title: "Sloppy typing is fine",
-    body: "Leave a bracket open and it still builds — it closes them for you. Press Ctrl+U and it writes the fix back into the editor, so what you read is what is being built.",
+    body: "Leave a bracket open and it still builds - it closes them for you. Press Ctrl+U and it writes the fix back into the editor, so what you read is what is being built.",
   },
   {
     sel: "#stage",
     title: "The model, and its handles",
-    body: "Click a shape to select it. Drag a face handle and the NUMBER IN THE CODE changes to match. Code and mouse are two views of one model — use whichever is quicker.",
+    body: "Click a shape to select it. Drag a face handle and the NUMBER IN THE CODE changes to match. Code and mouse are two views of one model - use whichever is quicker.",
   },
   {
     sel: "#chat-btn",
     title: "Describe it instead",
-    body: "Ask for a part in plain words and it writes BREPcode you can read and edit — not a mesh. Change one const afterwards and it is still your part. Needs an AI key, set in the gear.",
+    body: "Ask for a part in plain words and it writes BREPcode you can read and edit - not a mesh. Change one const afterwards and it is still your part. Needs an AI key, set in the gear.",
     open: "chat",
   },
   {
@@ -72,12 +72,12 @@ export const TOUR_STEPS = [
   {
     sel: "#mat-btn",
     title: "Materials and light",
-    body: "Colours, finish and lighting for the picture only — geometry and exports are untouched. One to remember: the Filament setting is GLOBAL, so if everything looks see-through, it is set here, not in your code.",
+    body: "Colours, finish and lighting for the picture only - geometry and exports are untouched. One to remember: the Filament setting is GLOBAL, so if everything looks see-through, it is set here, not in your code.",
   },
   {
     sel: "#import-btn",
     title: "Bring in a model",
-    body: "Drop in an STL, 3MF, OBJ, STEP or SVG — or drag it anywhere on the page. Imported meshes are not dead ends: drill them, stretch them, add support fins.",
+    body: "Drop in an STL, 3MF, OBJ, STEP or SVG - or drag it anywhere on the page. Imported meshes are not dead ends: drill them, stretch them, add support fins.",
   },
   {
     sel: "#export-btn",
@@ -87,7 +87,7 @@ export const TOUR_STEPS = [
   {
     sel: "#slicer-btn",
     title: "Slice it here",
-    body: "Layer preview, infill, supports and toolpaths without leaving the tab — enough to catch a part that will not print before you commit to it.",
+    body: "Layer preview, infill, supports and toolpaths without leaving the tab - enough to catch a part that will not print before you commit to it.",
   },
   {
     sel: "#gear-btn",
@@ -109,7 +109,7 @@ export const LANGUAGE_STEPS = [
   {
     lang: "OpenSCAD",
     title: "Paste OpenSCAD",
-    body: "Modules, for loops, $fn — translated to the same kernel everything else uses. Your existing .scad files run without changes.",
+    body: "Modules, for loops, $fn - translated to the same kernel everything else uses. Your existing .scad files run without changes.",
     code: `$fn = 48;
 module bracket(w = 60, d = 40, t = 8, hole = 5) {
   difference() {
@@ -126,7 +126,7 @@ bracket();`,
   {
     lang: "JSCAD",
     title: "Paste JSCAD",
-    body: "A real JSCAD module — require, main, module.exports. The primitives and booleans map onto the same kernel.",
+    body: "A real JSCAD module - require, main, module.exports. The primitives and booleans map onto the same kernel.",
     code: `const { primitives, booleans, transforms } = require('@jscad/modeling')
 const { cuboid, cylinder } = primitives
 const { subtract } = booleans
@@ -141,7 +141,7 @@ module.exports = { main }`,
   {
     lang: "build123d",
     title: "Paste build123d",
-    body: "Python, in ALGEBRA mode — shapes combined with + and -. CadQuery-style scripts are understood too.",
+    body: "Python, in ALGEBRA mode - shapes combined with + and -. CadQuery-style scripts are understood too.",
     code: `from build123d import *
 
 part = Box(60, 40, 10) - Cylinder(radius=6, height=12)`,
@@ -151,7 +151,7 @@ part = Box(60, 40, 10) - Cylinder(radius=6, height=12)`,
 // ------------------------------------------------------------- popup placing
 //
 // Pure: rectangles in, rectangle out. The whole reason this is separate is that
-// the failure mode — a popup half off the bottom of a phone — is invisible on
+// the failure mode - a popup half off the bottom of a phone - is invisible on
 // a desktop and obvious to the one person it happens to.
 export const MARGIN = 10;
 
@@ -179,7 +179,7 @@ export function placePopup(anchor, pop, view, prefer = "auto") {
   };
 
   // Preferred side if it fits, else the side with the most room that does, else
-  // whichever has the most room at all — a clamped popup still beats none.
+  // whichever has the most room at all - a clamped popup still beats none.
   let place = prefer !== "auto" && fits[prefer] ? prefer : null;
   if (!place) place = ["bottom", "top", "right", "left"].find((s) => fits[s]) || null;
   if (!place) place = Object.keys(room).sort((a, b) => room[b] - room[a])[0];
@@ -302,14 +302,14 @@ const CSS = `
 
 /* ---- they assemble one after another, and then stay ----
    Each row fades in on its own beat, and its cube runs the build once: the
-   laser draws it, the faces pop out, it turns a full revolution — and then it
+   laser draws it, the faces pop out, it turns a full revolution - and then it
    STOPS, assembled.
    Freezing is done by pausing the animation at 75% of the cycle, because that
    is where the original choreography holds the finished isometric box (faces
    out, laser gone) before flattening it again at 85%. Pausing rather than
    ending means the design's own keyframes are reused untouched; and the
-   iteration count stays infinite on purpose, so if the pause is ever missed —
-   a backgrounded tab, a throttled timer — the cubes simply keep spinning,
+   iteration count stays infinite on purpose, so if the pause is ever missed  - 
+   a backgrounded tab, a throttled timer - the cubes simply keep spinning,
    which is what they do everywhere else in the app. */
 .bc-tour-brag li{opacity:0;animation:bc-tour-in .42s ease both;animation-delay:var(--in,0s)}
 @keyframes bc-tour-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
@@ -358,7 +358,7 @@ const CSS = `
   35%{opacity:1}to{transform:translate(calc(var(--x) - 50vw),calc(var(--y) - 50vh)) scale(1);opacity:.85}}
 @keyframes bc-cel-spin{to{transform:rotate(var(--spin))}}
 /* The caption gets its OWN panel. Without it the tumbling primitives pass
-   straight over the words — readable by luck, and only until a shape lands
+   straight over the words - readable by luck, and only until a shape lands
    badly. Text sits inside something, with padding, and nothing crosses it. */
 .bc-cel-mid{position:relative;text-align:center;color:#eaf3ff;
   font:600 15px/1.6 system-ui,sans-serif;padding:26px 34px;pointer-events:none;
@@ -379,7 +379,7 @@ function styles(doc) {
   doc.head.appendChild(s);
 }
 
-// The finale. Click, key or wait — it never traps anyone behind it.
+// The finale. Click, key or wait - it never traps anyone behind it.
 export function celebrate({ doc = document, onClose } = {}) {
   styles(doc);
   const wrap = doc.createElement("div");
@@ -393,7 +393,7 @@ export function celebrate({ doc = document, onClose } = {}) {
     })}</div>
      <div class="bc-cel-mid">
        <b>BUILD COMPLETE</b>
-       You know your way around now — go make something.
+       You know your way around now - go make something.
        <div class="tol">TOL &plusmn;0.00 mm &middot; 1 PART &middot; 0 ERRORS</div>
        <div class="go">click anywhere to close</div>
      </div>`;
@@ -416,7 +416,7 @@ export function celebrate({ doc = document, onClose } = {}) {
 // startTour({ setCode, openCard }) -> stop()
 //
 // setCode is how the language steps demonstrate anything; openCard reveals a
-// panel before a step points inside it. Both are optional — without them the
+// panel before a step points inside it. Both are optional - without them the
 // tour still runs, it just explains rather than shows.
 export function startTour({
   doc = document, setCode, openCard, onFinish,
@@ -429,7 +429,7 @@ export function startTour({
 
   // The bullet sequence. CUBE_CYCLE must match the animation-duration the CSS
   // above sets for .bc-tour-brag cubes, and 0.75 of it is where the design
-  // holds the assembled box — see the note there.
+  // holds the assembled box - see the note there.
   const STAGGER = 0.55, CUBE_CYCLE = 2.6;
   let settleTimers = [];
   const clearSettle = () => { settleTimers.forEach(clearTimeout); settleTimers = []; };
@@ -458,7 +458,7 @@ export function startTour({
     if (!s) return null;
     const el = doc.querySelector(s);
     if (!el) return null;
-    // An element that exists but is not laid out — a closed card — counts as no
+    // An element that exists but is not laid out - a closed card - counts as no
     // anchor, rather than a zero-size spotlight stuck in the top-left corner.
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1 ? r : null;
@@ -513,7 +513,7 @@ export function startTour({
       brand.className = "bc-tour-brand";
       const mark = doc.createElement("img");
       mark.className = "bc-tour-mark";
-      mark.src = brandMark;            // relative — same folder as the page
+      mark.src = brandMark;            // relative - same folder as the page
       mark.alt = "";
       const word = doc.createElement("div");
       word.className = "bc-tour-word";
@@ -526,7 +526,7 @@ export function startTour({
     }
 
     // The brag list is built from data with textContent, not pasted in as
-    // markup — the copy is ours today and there is no reason to leave an
+    // markup - the copy is ours today and there is no reason to leave an
     // innerHTML path open for whatever ends up in here later.
     if (s.brag?.length) {
       const ul = doc.createElement("ul");

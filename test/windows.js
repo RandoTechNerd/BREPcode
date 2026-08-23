@@ -266,5 +266,24 @@ console.log("\na tour link opens the tour, not a loading screen\n");
     /<input type="file" id="trace-file"/.test(HTML));
 }
 
+// The (i) card's sections collapse independently: native <details>, a quiet ›
+// chevron, open by default, and a closed section stays closed next visit.
+{
+  console.log("\nthe (i) sections collapse independently\n");
+
+  const secs = [...HTML.matchAll(/<details class="i-sec" open data-sec="([a-z]+)">/g)].map((m) => m[1]);
+  check("three sections, each its own <details>", secs.join() === "links,keys,credits", secs.join());
+  check("all default open (the open attribute is in the markup)",
+    (HTML.match(/<details class="i-sec" open /g) || []).length === secs.length);
+  check("the chevron is the summary's ::before, not an extra element",
+    /#about-body \.i-sec > summary::before \{\s*\n\s*content: "›"/.test(HTML));
+  check("...and turns when the section opens",
+    /#about-body \.i-sec\[open\] > summary::before \{ transform: rotate\(90deg\); \}/.test(HTML));
+  check("a closed section is remembered",
+    /const KEY = "brepcode-i-closed";/.test(HTML)
+    && /sec\.addEventListener\("toggle"/.test(HTML),
+    "absent key means all open, so a fresh browser shows everything");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

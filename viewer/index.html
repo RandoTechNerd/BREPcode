@@ -1145,7 +1145,7 @@
       color: var(--muted2); margin-bottom: 5px;
     }
     #publish-row .pub-opt {
-      display: flex; align-items: flex-start; gap: 8px; padding: 4px 0;
+      display: flex; align-items: flex-start; gap: 9px; padding: 6px 0;
       cursor: pointer; font-size: 12.5px; color: var(--text);
     }
     #publish-row .pub-opt input { margin: 2px 0 0; flex: none; }
@@ -1399,10 +1399,16 @@
     #harness-hl .always { color: #b9c4da; }
     #exp-opts span { flex: 0 0 44px; }
     /* A checkbox that reads as a sentence needs the whole column, not the 44px
-       label gutter — and it has to be able to wrap onto a second line. */
+       label gutter, and it has to be able to wrap onto a second line. The
+       .pub-opt spans were caught by the 44px rule above, which crushed
+       "Download the model" into a one-word-per-line tower and left the whole
+       list looking lopsided. Every sentence-shaped span gets the full width. */
+    #exp-opts span.opt-check,
+    #exp-opts .pub-opt > span {
+      flex: 1 1 auto; min-width: 0; line-height: 1.45;
+    }
     #exp-opts span.opt-check {
-      flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 7px;
-      line-height: 1.45;
+      display: flex; align-items: flex-start; gap: 7px;
     }
     #exp-opts span.opt-check input { margin-top: 1px; flex: none; }
     #exp-opts span.opt-check b { color: var(--text); font-weight: 600; }
@@ -1766,6 +1772,24 @@
     #about-body a { color: var(--link); text-decoration: none; }
     #about-body a:hover { text-decoration: underline; }
     #about-body .tag { color: var(--muted2); margin-right: 8px; display: inline-block; min-width: 78px; }
+    /* Collapsible (i) sections. The chevron is the affordance, so it stays
+       small and quiet: a muted › that turns down when the section is open.
+       Native <details> — keyboard and screen-reader behaviour for free. */
+    #about-body .i-sec { border-top: 1px solid var(--border); padding: 4px 0 6px; }
+    #about-body .i-sec > summary {
+      list-style: none; cursor: pointer; user-select: none;
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 0 3px; color: var(--muted2);
+      font: 600 11px system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;
+    }
+    #about-body .i-sec > summary::-webkit-details-marker { display: none; }
+    #about-body .i-sec > summary::before {
+      content: "›"; display: inline-block; width: 10px; text-align: center;
+      color: var(--muted3); font-size: 13px; font-weight: 400;
+      transition: transform .15s ease;
+    }
+    #about-body .i-sec[open] > summary::before { transform: rotate(90deg); }
+    #about-body .i-sec > summary:hover { color: var(--text); }
 
     /* ---------- theme picker (tucked into the About card) ---------- */
     #theme-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
@@ -2371,7 +2395,7 @@
              belong in a dropdown, because the dialog exports exactly one
              thing and a checkbox would imply it could do two. -->
         <button data-fmt="3mf" data-group="mesh">Mesh<small>STL, 3MF, OBJ</small></button>
-        <button data-fmt="gcode">G-code — brick walls<small>BETA · staggered perimeters</small></button>
+        <button data-fmt="gcode">G-code - brick walls<small>BETA · staggered perimeters</small></button>
         <div class="exp-group">CAD (solid)</div>
         <button data-fmt="step" data-group="step">STEP<small>faceted or true curves</small></button>
         <div class="exp-group">Drawing / Web</div>
@@ -2433,10 +2457,10 @@
           <label id="mesh-variant-row" hidden>
             <span>Format</span>
             <select id="mesh-variant">
-              <option value="3mf">3MF — modern slicers, keeps colour</option>
-              <option value="3mf-parts">3MF — parts laid out on the plate</option>
-              <option value="stl">STL — universal, geometry only</option>
-              <option value="obj">OBJ — DCC and games</option>
+              <option value="3mf">3MF - modern slicers, keeps colour</option>
+              <option value="3mf-parts">3MF - parts laid out on the plate</option>
+              <option value="stl">STL - universal, geometry only</option>
+              <option value="obj">OBJ - DCC and games</option>
             </select>
           </label>
           <!-- Faceted STEP is triangles wearing a solid's clothes; curved is the
@@ -2444,8 +2468,8 @@
           <label id="step-variant-row" hidden>
             <span>Surfaces</span>
             <select id="step-variant">
-              <option value="step">Faceted — triangulated, instant</option>
-              <option value="step-curved">True curved surfaces — cylinders stay cylinders</option>
+              <option value="step">Faceted - triangulated, instant</option>
+              <option value="step-curved">True curved surfaces - cylinders stay cylinders</option>
             </select>
           </label>
           <!-- The one real checkbox in the dialog: it does not pick between two
@@ -2454,7 +2478,7 @@
           <label id="glb-wrap-row" hidden>
             <span></span>
             <span class="opt-check"><input type="checkbox" id="glb-wrap" />
-              Wrap it in a viewer page — saves a <b>.html</b> you can open or host,
+              Wrap it in a viewer page - saves a <b>.html</b> you can open or host,
               instead of a <b>.glb</b></span>
           </label>
           <!-- 3MF colour handling: the default keeps colours as filaments; the
@@ -2463,7 +2487,7 @@
             <span>Colour</span>
             <select id="mf-colour">
               <option value="colour">Colours → filaments (multi-material)</option>
-              <option value="mono">Model only — single material, no colour</option>
+              <option value="mono">Model only - single material, no colour</option>
             </select>
           </label>
           <!-- A 3MF can name the printer, process and filaments it was prepared
@@ -2474,8 +2498,8 @@
           <label id="mf-printer-row" hidden title="Names the printer, process and filaments inside the file so the slicer opens ready to send">
             <span>Prepare for</span>
             <select id="mf-printer">
-              <option value="">Any slicer — geometry and colours only</option>
-              <option value="snapmaker-u1">Snapmaker U1 — 4 tool heads, ready to slice</option>
+              <option value="">Any slicer - geometry and colours only</option>
+              <option value="snapmaker-u1">Snapmaker U1 - 4 tool heads, ready to slice</option>
             </select>
           </label>
           <!-- A 3MF carries a position, and a slicer's plate origin is its
@@ -2495,8 +2519,8 @@
               <option value="bambu_p1">Bambu Lab P1P / P1S</option>
               <option value="bambu_a1">Bambu Lab A1</option>
               <option value="bambu_a1m">Bambu Lab A1 mini</option>
-              <option value="ender3">Creality Ender 3 / Pro / V2 — Bowden</option>
-              <option value="ender3_s1">Creality Ender 3 S1 / V3 — direct drive</option>
+              <option value="ender3">Creality Ender 3 / Pro / V2 - Bowden</option>
+              <option value="ender3_s1">Creality Ender 3 S1 / V3 - direct drive</option>
               <option value="ender5_pro">Creality Ender 5 / 5 Pro</option>
               <option value="ender5_plus">Creality Ender 5 Plus</option>
               <option value="cr10">Creality CR-10 / CR-10S</option>
@@ -2513,10 +2537,10 @@
           <label id="nozzle-row" hidden title="The nozzle actually fitted to the printer">
             <span>Nozzle</span>
             <select id="slice-nozzle">
-              <option value="0.2">0.2 mm — fine detail</option>
-              <option value="0.4" selected>0.4 mm — standard</option>
-              <option value="0.6">0.6 mm — fast / strong</option>
-              <option value="0.8">0.8 mm — draft</option>
+              <option value="0.2">0.2 mm - fine detail</option>
+              <option value="0.4" selected>0.4 mm - standard</option>
+              <option value="0.6">0.6 mm - fast / strong</option>
+              <option value="0.8">0.8 mm - draft</option>
             </select>
           </label>
           <!-- Line width is NOT the nozzle. A 0.4 nozzle is routinely run at
@@ -2528,10 +2552,10 @@
             <span>Line width</span>
             <select id="slice-linewidth">
               <option value="0" selected>same as the nozzle</option>
-              <option value="0.85">85% — finer detail</option>
+              <option value="0.85">85% - finer detail</option>
               <option value="1.0">100%</option>
-              <option value="1.05">105% — stronger walls</option>
-              <option value="1.2">120% — fewer, fatter walls</option>
+              <option value="1.05">105% - stronger walls</option>
+              <option value="1.2">120% - fewer, fatter walls</option>
             </select>
           </label>
           <!-- Scales the extrusion and NOTHING else. Wrong flow shows up as
@@ -2539,11 +2563,11 @@
           <label id="flow-row" hidden title="Extrusion multiplier. Scales how much filament comes out, not where it goes.">
             <span>Extrusion</span>
             <select id="slice-flow">
-              <option value="90">90% — bulging / over-extruding</option>
+              <option value="90">90% - bulging / over-extruding</option>
               <option value="95">95%</option>
-              <option value="100" selected>100% — standard</option>
+              <option value="100" selected>100% - standard</option>
               <option value="105">105%</option>
-              <option value="110">110% — gappy / under-extruding</option>
+              <option value="110">110% - gappy / under-extruding</option>
             </select>
           </label>
           <label id="layer-row" hidden title="Layer height — keep it under about 75% of the nozzle">
@@ -2569,56 +2593,56 @@
           <label id="infill-row" hidden title="How dense the buried inside is — none of it is visible">
             <span>Infill</span>
             <select id="slice-infill">
-              <option value="0">0% — hollow shell</option>
-              <option value="0.1">10% — light</option>
-              <option value="0.15" selected>15% — standard</option>
-              <option value="0.25">25% — sturdy</option>
-              <option value="0.4">40% — strong</option>
-              <option value="0.6">60% — very strong</option>
-              <option value="0.8">80% — nearly solid</option>
-              <option value="0.9999999">99.99999% — as solid as it gets</option>
-              <option value="1">100% — solid</option>
+              <option value="0">0% - hollow shell</option>
+              <option value="0.1">10% - light</option>
+              <option value="0.15" selected>15% - standard</option>
+              <option value="0.25">25% - sturdy</option>
+              <option value="0.4">40% - strong</option>
+              <option value="0.6">60% - very strong</option>
+              <option value="0.8">80% - nearly solid</option>
+              <option value="0.9999999">99.99999% - as solid as it gets</option>
+              <option value="1">100% - solid</option>
             </select>
           </label>
           <label id="skin-row" hidden title="Solid layers closing the top and bottom faces">
             <span>Skin</span>
             <select id="slice-skin">
-              <option value="0">none — open top and bottom</option>
+              <option value="0">none - open top and bottom</option>
               <option value="2">2 layers</option>
-              <option value="4" selected>4 layers — standard</option>
+              <option value="4" selected>4 layers - standard</option>
               <option value="6">6 layers</option>
             </select>
           </label>
           <label id="pattern-row" hidden title="How the buried inside is filled">
             <span>Pattern</span>
             <select id="slice-pattern">
-              <option value="rectilinear" selected>Rectilinear — 45°, crossing the layer below</option>
-              <option value="aligned">Back and forth — same direction every layer</option>
-              <option value="grid">Grid — both diagonals on every layer</option>
-              <option value="gyroid">Gyroid — curves, no weak direction</option>
-              <option value="concentric">Concentric — follows the outline</option>
+              <option value="rectilinear" selected>Rectilinear - 45°, crossing the layer below</option>
+              <option value="aligned">Back and forth - same direction every layer</option>
+              <option value="grid">Grid - both diagonals on every layer</option>
+              <option value="gyroid">Gyroid - curves, no weak direction</option>
+              <option value="concentric">Concentric - follows the outline</option>
             </select>
           </label>
           <label id="stagger-row" hidden title="The brick interlock. Off stacks every wall straight up, like any other slicer">
             <span>Stagger</span>
             <select id="slice-stagger">
-              <option value="on" selected>on — inner walls interlock</option>
-              <option value="off">off — walls stack straight up</option>
+              <option value="on" selected>on - inner walls interlock</option>
+              <option value="off">off - walls stack straight up</option>
             </select>
           </label>
           <label id="supports-row" hidden title="Pillars under overhangs, with a gap underneath so they snap off">
             <span>Support</span>
             <select id="slice-supports">
-              <option value="off" selected>off — nothing overhangs</option>
-              <option value="on">on — hold up the overhangs</option>
+              <option value="off" selected>off - nothing overhangs</option>
+              <option value="on">on - hold up the overhangs</option>
             </select>
           </label>
           <label id="style-row" hidden title="How the support is built — or whether it is built at all">
             <span>Style</span>
             <select id="slice-style">
-              <option value="fins" selected>Fins — thin walls, snap off easily</option>
-              <option value="grid">Grid — cross-hatched, holds more</option>
-              <option value="arc">Arc overhangs — no support at all</option>
+              <option value="fins" selected>Fins - thin walls, snap off easily</option>
+              <option value="grid">Grid - cross-hatched, holds more</option>
+              <option value="arc">Arc overhangs - no support at all</option>
             </select>
           </label>
           <!-- Measured from VERTICAL: 0 is a straight wall, 90 is a ceiling.
@@ -2634,9 +2658,9 @@
           <label id="gcode-row" hidden title="Runs verbatim, with {temp} {bed} {layer} {z} {layernum} {name} filled in">
             <span>G-code</span>
             <select id="slice-gcode-which">
-              <option value="start">Start — before the first layer</option>
-              <option value="end">End — after the last</option>
-              <option value="layer">Layer — at every layer change</option>
+              <option value="start">Start - before the first layer</option>
+              <option value="end">End - after the last</option>
+              <option value="layer">Layer - at every layer change</option>
             </select>
           </label>
           <label id="gcode-text-row" hidden style="align-items:flex-start">
@@ -2649,14 +2673,14 @@
             <span>Plate</span>
             <!-- ordered small to large; the default is still the Bambu 256 -->
             <select id="plate-size">
-              <option value="180x180">180 × 180 — Bambu A1 mini</option>
-              <option value="220x220">220 × 220 — Ender 3 / Ender 5 Pro</option>
-              <option value="250x210">250 × 210 — Prusa MK3/MK4</option>
-              <option value="256x256">256 × 256 — Bambu X1 / P1 / A1 / X1E</option>
-              <option value="270x270">270 × 270 — Snapmaker U1</option>
-              <option value="350x350">350 × 350 — Ender 5 Plus / Voron 350</option>
-              <option value="400x400">400 × 400 — Formbot Xplorer 400</option>
-              <option value="0x0">Don't move it — keep model coordinates</option>
+              <option value="180x180">180 × 180 - Bambu A1 mini</option>
+              <option value="220x220">220 × 220 - Ender 3 / Ender 5 Pro</option>
+              <option value="250x210">250 × 210 - Prusa MK3/MK4</option>
+              <option value="256x256">256 × 256 - Bambu X1 / P1 / A1 / X1E</option>
+              <option value="270x270">270 × 270 - Snapmaker U1</option>
+              <option value="350x350">350 × 350 - Ender 5 Plus / Voron 350</option>
+              <option value="400x400">400 × 400 - Formbot Xplorer 400</option>
+              <option value="0x0">Don't move it - keep model coordinates</option>
             </select>
           </label>
         </div>
@@ -3057,12 +3081,12 @@
                  metered per token. Buried fifth, nobody found it. Its label is
                  rewritten below once the CLI has actually been probed, so it
                  states what it found rather than what it hopes for. -->
-            <option value="claude-code" id="opt-claude-code" hidden>Claude Code — this computer, no key</option>
+            <option value="claude-code" id="opt-claude-code" hidden>Claude Code - this computer, no key</option>
             <option value="gemini">Google Gemini</option>
             <option value="claude">Anthropic Claude</option>
-            <option value="openai">OpenAI — GPT</option>
-            <option value="local">Local model — LM Studio / Ollama / Lemonade (experimental)</option>
-            <option value="browser">In your browser — free, no key, no install (WebGPU)</option>
+            <option value="openai">OpenAI - GPT</option>
+            <option value="local">Local model - LM Studio / Ollama / Lemonade (experimental)</option>
+            <option value="browser">In your browser - free, no key, no install (WebGPU)</option>
           </select>
         </div>
         <div class="row"><label>Model</label><select id="ai-model"></select></div>
@@ -3076,14 +3100,14 @@
         </div>
         <div class="row" id="cc-effort-row" style="display:none"><label title="How much thinking budget Claude gets before answering">Effort</label>
           <select id="cc-effort">
-            <option value="medium" selected>Medium — Claude Code's default</option>
-            <option value="low">Low — quick answers</option>
-            <option value="high">High — think harder on tricky parts</option>
+            <option value="medium" selected>Medium - Claude Code's default</option>
+            <option value="low">Low - quick answers</option>
+            <option value="high">High - think harder on tricky parts</option>
           </select>
         </div>
         <div class="row"><label title="When generated code fails to build, the error goes straight back to the AI and it retries — this is how many attempts before it stops and shows you">Auto-fix</label>
           <select id="ai-fixtries">
-            <option value="0">off — show me every error</option>
+            <option value="0">off - show me every error</option>
             <option value="1">1 retry</option>
             <option value="2" selected>2 retries</option>
             <option value="3">3 retries</option>
@@ -3130,13 +3154,13 @@
             <option value="openscad">OpenSCAD</option>
             <option value="jscad">JSCAD</option>
             <option value="build123d">build123d (Python)</option>
-            <option value="any">Any — let the AI pick</option>
+            <option value="any">Any - let the AI pick</option>
           </select>
         </div>
         <div class="row"><label title="One finished attempt, or a rough block you refine">Approach</label>
           <select id="ai-approach">
-            <option value="oneshot">One shot — go for the finished part</option>
-            <option value="iterative">Iterative — rough block, then refine</option>
+            <option value="oneshot">One shot - go for the finished part</option>
+            <option value="iterative">Iterative - rough block, then refine</option>
           </select>
         </div>
         <div class="row"><label title="Geometry always comes first; these are the passes after it">Also do</label>
@@ -3357,53 +3381,62 @@
             themes, edit history (◀ ▶), and keyboard shortcuts (the <b>Keys</b> button in the cheat sheet).</div>
           <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
         </div>
-        <div><span class="tag">Website</span><a href="https://RandoTechNerd.com" target="_blank" rel="noopener">RandoTechNerd.com</a></div>
-        <div><span class="tag">YouTube</span><a href="https://www.youtube.com/@RandoTechNerd" target="_blank" rel="noopener">@RandoTechNerd</a></div>
-        <div><span class="tag">Discord</span><a href="https://discord.gg/8fjQHDX8PQ" target="_blank" rel="noopener">Join the server</a></div>
-        <div><span class="tag">Coffee</span><a href="https://buymeacoffee.com/randotechnerd" target="_blank" rel="noopener">buymeacoffee.com/randotechnerd</a></div>
-        <div><span class="tag">Email</span><a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a></div>
-        <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
-        <div style="color: var(--muted); font-size: 12.5px;">
-          <b style="color: var(--text)">Keyboard shortcuts</b><br>
-          <span style="color: var(--muted2)">E</span> editor ·
-          <span style="color: var(--muted2)">M</span> material ·
-          <span style="color: var(--muted2)">H</span> history ·
-          <span style="color: var(--muted2)">C</span> chat ·
-          <span style="color: var(--muted2)">K</span> cheat sheet ·
-          <span style="color: var(--muted2)">I</span> info<br>
-          <span style="color: var(--muted2)">← →</span> spin view ·
-          <span style="color: var(--muted2)">↑</span> tilt ·
-          <span style="color: var(--muted2)">Home</span> reset view ·
-          <span style="color: var(--muted2)">Esc</span> close
-        </div>
-        <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
-        <div style="color: var(--muted);">
-          Built on the open-source CAD kernel from
-          <a href="https://brep.io" target="_blank" rel="noopener">BREP.io</a> —
-          all solid modelling here is its engine. Credit and thanks to its creator,
-          <a href="https://github.com/mmiscool" target="_blank" rel="noopener">@mmiscool</a>
-          (<a href="https://github.com/mmiscool/BREP" target="_blank" rel="noopener">source</a>).
-        </div>
-        <div style="color: var(--muted); margin-top: 8px;">
-          This fork lives at
-          <a href="https://github.com/RandoTechNerd/BREPcode" target="_blank" rel="noopener">github.com/RandoTechNerd/BREPcode</a>.
-          Inquiries: <a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a>.
-        </div>
-        <!-- Gridfinity is someone else's standard, and a NON-COMMERCIAL one.
-             The tool generates parts to its dimensions, so the terms travel
-             with anything made here and belong where a user can find them
-             rather than in a source comment. -->
-        <div style="color: var(--muted); margin-top: 8px;">
-          <b style="color: var(--text)">Gridfinity</b> is an open standard by
-          <a href="https://www.youtube.com/@ZackFreedman" target="_blank" rel="noopener">Zack Freedman</a>,
-          licensed
-          <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>.
-          The bins and baseplates this tool generates follow that standard, so
-          what you make with them is <b>non-commercial</b>, must credit the
-          standard, and must be shared alike. Dimensions here follow the
-          community
-          <a href="https://gridfinity.xyz" target="_blank" rel="noopener">Gridfinity Design Reference</a>.
-        </div>
+        <!-- Each block collapses on its own — a small chevron, open by
+             default, remembered per section. Native <details>, so it costs no
+             script and keyboard/screen-reader behaviour comes free. -->
+        <details class="i-sec" open data-sec="links">
+          <summary>Links</summary>
+          <div><span class="tag">Website</span><a href="https://RandoTechNerd.com" target="_blank" rel="noopener">RandoTechNerd.com</a></div>
+          <div><span class="tag">YouTube</span><a href="https://www.youtube.com/@RandoTechNerd" target="_blank" rel="noopener">@RandoTechNerd</a></div>
+          <div><span class="tag">Discord</span><a href="https://discord.gg/8fjQHDX8PQ" target="_blank" rel="noopener">Join the server</a></div>
+          <div><span class="tag">Coffee</span><a href="https://buymeacoffee.com/randotechnerd" target="_blank" rel="noopener">buymeacoffee.com/randotechnerd</a></div>
+          <div><span class="tag">Email</span><a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a></div>
+        </details>
+        <details class="i-sec" open data-sec="keys">
+          <summary>Keyboard shortcuts</summary>
+          <div style="color: var(--muted); font-size: 12.5px;">
+            <span style="color: var(--muted2)">E</span> editor ·
+            <span style="color: var(--muted2)">M</span> material ·
+            <span style="color: var(--muted2)">H</span> history ·
+            <span style="color: var(--muted2)">C</span> chat ·
+            <span style="color: var(--muted2)">K</span> cheat sheet ·
+            <span style="color: var(--muted2)">I</span> info<br>
+            <span style="color: var(--muted2)">← →</span> spin view ·
+            <span style="color: var(--muted2)">↑</span> tilt ·
+            <span style="color: var(--muted2)">Home</span> reset view ·
+            <span style="color: var(--muted2)">Esc</span> close
+          </div>
+        </details>
+        <details class="i-sec" open data-sec="credits">
+          <summary>Credits &amp; licences</summary>
+          <div style="color: var(--muted);">
+            Built on the open-source CAD kernel from
+            <a href="https://brep.io" target="_blank" rel="noopener">BREP.io</a>:
+            all solid modelling here is its engine. Credit and thanks to its creator,
+            <a href="https://github.com/mmiscool" target="_blank" rel="noopener">@mmiscool</a>
+            (<a href="https://github.com/mmiscool/BREP" target="_blank" rel="noopener">source</a>).
+          </div>
+          <div style="color: var(--muted); margin-top: 8px;">
+            This fork lives at
+            <a href="https://github.com/RandoTechNerd/BREPcode" target="_blank" rel="noopener">github.com/RandoTechNerd/BREPcode</a>.
+            Inquiries: <a href="mailto:RandoTechNerd@gmail.com">RandoTechNerd@gmail.com</a>.
+          </div>
+          <!-- Gridfinity is someone else's standard, and a NON-COMMERCIAL one.
+               The tool generates parts to its dimensions, so the terms travel
+               with anything made here and belong where a user can find them
+               rather than in a source comment. -->
+          <div style="color: var(--muted); margin-top: 8px;">
+            <b style="color: var(--text)">Gridfinity</b> is an open standard by
+            <a href="https://www.youtube.com/@ZackFreedman" target="_blank" rel="noopener">Zack Freedman</a>,
+            licensed
+            <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>.
+            The bins and baseplates this tool generates follow that standard, so
+            what you make with them is <b>non-commercial</b>, must credit the
+            standard, and must be shared alike. Dimensions here follow the
+            community
+            <a href="https://gridfinity.xyz" target="_blank" rel="noopener">Gridfinity Design Reference</a>.
+          </div>
+        </details>
         <!-- Hidden model stash. Triple-tap the folder button below to reveal:
              a list of .bcode / .html models served by the SITE itself, so
              private work can live on brepcode.com without a public menu.
@@ -3575,9 +3608,9 @@
           <label class="mat-row" title="How the plastic carries light — real refractive indices, and thick sections read deeper than thin ones">
             <span>Filament</span>
             <select id="mat-filament">
-              <option value="opaque" selected>None — the material's own finish</option>
+              <option value="opaque" selected>None - the material's own finish</option>
               <option value="pla">Translucent PLA</option>
-              <option value="petg">PETG — glossy, see-through</option>
+              <option value="petg">PETG - glossy, see-through</option>
               <option value="natural">Natural / clear</option>
             </select>
           </label>
@@ -3839,21 +3872,21 @@
         <div id="gfin-binopts">
           <label class="gfin-row"><span>Height</span>
             <select id="gfin-u">
-              <option value="2">2u — 18.4mm · small parts, hardware</option>
-              <option value="3" selected>3u — 25.4mm · general purpose</option>
-              <option value="4">4u — 32.4mm</option>
-              <option value="5">5u — 39.4mm</option>
-              <option value="6">6u — 46.4mm · things standing up</option>
-              <option value="9">9u — 67.4mm · tall</option>
+              <option value="2">2u - 18.4mm · small parts, hardware</option>
+              <option value="3" selected>3u - 25.4mm · general purpose</option>
+              <option value="4">4u - 32.4mm</option>
+              <option value="5">5u - 39.4mm</option>
+              <option value="6">6u - 46.4mm · things standing up</option>
+              <option value="9">9u - 67.4mm · tall</option>
             </select>
           </label>
           <label class="gfin-row"><span>Inside</span>
             <select id="gfin-div">
               <option value="">One compartment</option>
-              <option value="split">Split — two</option>
-              <option value="quad">Quad — four</option>
-              <option value="thirds">Thirds — three</option>
-              <option value="six">Six — 3 × 2</option>
+              <option value="split">Split - two</option>
+              <option value="quad">Quad - four</option>
+              <option value="thirds">Thirds - three</option>
+              <option value="six">Six - 3 × 2</option>
             </select>
           </label>
           <label class="gfin-check"><input type="checkbox" id="gfin-lip" checked />
@@ -12582,6 +12615,29 @@ ${joined}`)(...vs);
       const rt = new THREE.WebGLRenderTarget(w, h);
       const cam = camera.clone();
       cam.aspect = w / h;
+      // Frame the WHOLE model, not whatever the live camera happens to show.
+      // The thumbnail used to be the on-screen view verbatim, so publishing
+      // while zoomed in on a detail put a cropped corner in the gallery — the
+      // model looked cut off in every tile. Keep the user's viewing ANGLE
+      // (that part is a real choice) but pull back to take all of it in, with
+      // whichever of the vertical or horizontal field of view is tighter
+      // deciding the distance.
+      {
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        if (!bb.isEmpty()) {
+          const sph = bb.getBoundingSphere(new THREE.Sphere());
+          const dir = camera.position.clone().sub(controls.target);
+          if (dir.lengthSq() < 1e-6) dir.set(1, -1, 1);
+          dir.normalize();
+          const vFov = cam.fov * Math.PI / 180;
+          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * cam.aspect);
+          const dist = (sph.radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.08;
+          cam.position.copy(sph.center).addScaledVector(dir, dist);
+          cam.lookAt(sph.center);
+          cam.near = Math.max(dist / 100, 0.1);
+          cam.far = dist + sph.radius * 6;
+        }
+      }
       cam.updateProjectionMatrix();
       const gridWas = grid?.visible;
       if (grid) grid.visible = false;                 // a thumbnail is the part, not the floor
@@ -13145,7 +13201,7 @@ ${joined}`)(...vs);
           size = text.length;
           const url = res.url || `${location.origin}/${res.slug || base}`;
           try { await navigator.clipboard.writeText(url); } catch { /* no permission */ }
-          fixnote.innerHTML = `<span style="color:var(--muted3)">Published — `
+          fixnote.innerHTML = `<span style="color:var(--muted3)">Published: `
             + `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a> (link copied). `
             + `${esc($("pub-summary").textContent)} `
             + (visitor.edit && !editUrl
@@ -13428,20 +13484,20 @@ ${joined}`)(...vs);
     // approximation tells the truth about the format.
     const exportModal = $("export-modal");
     const EXPORT_FORMATS = {
-      bcode: { kind: "code", desc: "The project itself — your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
-      share: { kind: "code", opts: ["short-row"], desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part — no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
+      bcode: { kind: "code", desc: "The project itself - your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
+      share: { kind: "code", opts: ["short-row"], desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part - no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
       slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
-      publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> — source, thumbnail and a viewer page — and adds it to your stashed gallery. The mesh travels with it, so the page works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
-      stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange — geometry only, so any colours are dropped." },
+      publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> (source, thumbnail and a viewer page) and adds it to the stashed gallery. The stash lives on the site itself, not in this browser: it survives clearing local data, and anyone who unlocks the stash sees it there. The mesh travels with the page, so it works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
+      stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange - geometry only, so any colours are dropped." },
       obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "plate-row"] },
-      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 — ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["mesh-variant-row", "plate-row"] },
-      gcode: { kind: "slice", desc: "BETA — check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer — what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
-      step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid — opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
+      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["mesh-variant-row", "plate-row"] },
+      gcode: { kind: "slice", desc: "BETA - check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer - what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
+      step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid - opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
-      svg: { kind: "lines", ext: "-drawing.svg", desc: "A 3-view engineering drawing — front, top, side — as line art. Needs the precision kernel (first use downloads ~11 MB)." },
-      glb: { kind: "color", ext: ".glb", opts: ["glb-wrap-row"], desc: "The web's 3D format, colours and materials included — drops into <model-viewer>, three.js, Babylon, Blender." },
-      embed: { kind: "color", ext: ".html", opts: ["glb-wrap-row"], desc: "A single self-contained HTML page with the model and a viewer inside — host it anywhere, no dependencies." },
+      svg: { kind: "lines", ext: "-drawing.svg", desc: "A 3-view engineering drawing - front, top, side - as line art. Needs the precision kernel (first use downloads ~11 MB)." },
+      glb: { kind: "color", ext: ".glb", opts: ["glb-wrap-row"], desc: "The web's 3D format, colours and materials included - drops into <model-viewer>, three.js, Babylon, Blender." },
+      embed: { kind: "color", ext: ".html", opts: ["glb-wrap-row"], desc: "A single self-contained HTML page with the model and a viewer inside - host it anywhere, no dependencies." },
     };
     // ---- one list entry, several files it could write ----------------------
     //
@@ -15834,6 +15890,22 @@ let SIMPLIFY_TARGET = 10000;
         if (taps === 1) openInventoryFlow();     // a double-tap does nothing, forgivingly
       }, 380);
     });
+
+    // The (i) card's collapsible sections: open by default, and a section you
+    // close stays closed next visit. One key holding the closed set — absent
+    // means "all open", so a fresh browser shows everything.
+    {
+      const KEY = "brepcode-i-closed";
+      let closed;
+      try { closed = new Set(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch { closed = new Set(); }
+      for (const sec of document.querySelectorAll("#about-body .i-sec")) {
+        if (closed.has(sec.dataset.sec)) sec.open = false;
+        sec.addEventListener("toggle", () => {
+          sec.open ? closed.delete(sec.dataset.sec) : closed.add(sec.dataset.sec);
+          try { localStorage.setItem(KEY, JSON.stringify([...closed])); } catch { /* private mode */ }
+        });
+      }
+    }
 
     // ---- the hidden stash itself ------------------------------------------
     // Models the SITE carries privately: .bcode opens straight into the

@@ -987,7 +987,8 @@ console.log("\nwires are swept, not chained\n");
   check("the preset list is attached only for the local provider",
     /if \(lo\) aiKey\.setAttribute\("list", "local-urls"\);\s*\n\s*else aiKey\.removeAttribute\("list"\)/.test(HTML));
 
-  check("the provider dropdown names Lemonade", /Local model — .*Lemonade/.test(HTML));
+  check("the provider dropdown names Lemonade", /Local model - .*Lemonade/.test(HTML),
+    "spaced hyphen: house style swept em dashes out of every visible label");
   check("the setup guide gives Lemonade's real port", HTML.includes("http://localhost:13305/api/v1"));
   check("...and tells browser users the origin var, without recommending *",
     /setx LEMONADE_ALLOWED_ORIGINS https:\/\/brepcode\.com/.test(HTML),

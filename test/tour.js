@@ -182,5 +182,15 @@ console.log("\nthe celebration is self-contained\n");
   check("a small count still renders", celebrationSvg({ count: 3 }).includes("<svg"));
 }
 
+// No em dashes in anything the tour shows. House style ruled them out, and
+// then they crept back in via 29 instances — this pins the door shut.
+{
+  console.log("\nno em dashes in the tour's copy\n");
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../viewer/tour.js", import.meta.url), "utf8");
+  const hits = (src.match(/—/g) || []).length;
+  check("tour.js carries zero em dashes", hits === 0, `${hits} found`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
