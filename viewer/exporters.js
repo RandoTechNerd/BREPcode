@@ -117,6 +117,66 @@ export function objToStl(obj, name = "imported") {
   return out.join("\n");
 }
 
+// A coloured OBJ, read the way its author meant it: one part per `o`/`g`
+// group, colour from the per-vertex extension (`v x y z r g b`) averaged over
+// the group. Returns [{ name, positions, color }] in the exact shape the 3MF
+// importer hands the viewer, so a coloured OBJ can ride the same road: parts
+// kept apart, colours written into the code as colorize().
+//
+// This exists because objToStl() above — the only road OBJ imports had —
+// flattens everything to STL, a format with no colour at all. BREPcode's own
+// coloured OBJ exports came back grey and welded, which failed the round-trip
+// test any exporter should pass. MTL sidecars are NOT read: the picker hands
+// over one file, and a `mtllib` reference points at a file we do not have.
+export function parseObjParts(objText) {
+  const verts = [];
+  const parts = [];
+  let cur = null;
+  const ensure = (name) => {
+    cur = { name: name || `part-${parts.length + 1}`, positions: [], cSum: [0, 0, 0], cN: 0 };
+    parts.push(cur);
+  };
+  for (const line of objText.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t.startsWith("o ") || t.startsWith("g ")) {
+      ensure(t.slice(2).trim());
+    } else if (t.startsWith("v ")) {
+      verts.push(t.slice(2).trim().split(/\s+/).map(Number));
+    } else if (t.startsWith("f ")) {
+      if (!cur) ensure("");
+      const idx = t.slice(2).trim().split(/\s+/)
+        .map((tok) => parseInt(tok.split("/")[0], 10))
+        .map((i) => (i < 0 ? verts.length + i : i - 1));
+      for (let k = 1; k + 1 < idx.length; k++) {
+        const tri = [verts[idx[0]], verts[idx[k]], verts[idx[k + 1]]];
+        if (tri.some((v) => !v)) continue;
+        for (const v of tri) {
+          cur.positions.push(v[0], v[1], v[2]);
+          if (v.length >= 6 && [v[3], v[4], v[5]].every(Number.isFinite)) {
+            cur.cSum[0] += v[3]; cur.cSum[1] += v[4]; cur.cSum[2] += v[5];
+            cur.cN++;
+          }
+        }
+      }
+    }
+  }
+  // Hex strings, not arrays: the parts road (preview painter, colorize()
+  // call builder) is the 3MF importer's, and hex is its colour contract.
+  const hex = (sum, n) => "#" + sum.map((s) => {
+    const v = Math.max(0, Math.min(255, Math.round((s / n) * 255)));
+    return v.toString(16).padStart(2, "0");
+  }).join("");
+  return parts
+    .filter((p) => p.positions.length)
+    .map((p) => ({
+      name: p.name,
+      positions: p.positions,
+      // colour only when MOST of the part's corners carry one — a stray
+      // 6-number line in an otherwise plain file is noise, not a palette
+      color: p.cN >= p.positions.length / 6 ? hex(p.cSum, p.cN) : null,
+    }));
+}
+
 // ---------------------------------------------------------------------- 3MF
 
 const CRC_TABLE = (() => {

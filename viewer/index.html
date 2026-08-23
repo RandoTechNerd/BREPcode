@@ -15290,6 +15290,11 @@ let SIMPLIFY_TARGET = 10000;
         // mystery that surfaces later as a boolean behaving strangely.
         let repairNote = "";
         let stepStats = null;      // filled for STEP: { openEdges, triangles }
+        // A file that arrives as PARTS (a 3MF project, or an OBJ carrying
+        // vertex colours) fills these instead of `contents`, and the shared
+        // assembly path below the chain takes over: parts registered apart,
+        // colours written into the code as colorize().
+        let objects = null, partColours = [];
         if (ext === "svg") {
           // vector art -> extruded solid (stencil source / TPU screen-print positive)
           setStatus("busy", `Extruding ${file.name}…`);
@@ -15305,8 +15310,19 @@ let SIMPLIFY_TARGET = 10000;
           stepStats = {};
           contents = await cv.stepToStl(buf, file.name, { stats: stepStats });
         } else if (ext === "obj") {
-          const { objToStl } = await getExporters();
-          contents = objToStl(new TextDecoder().decode(buf), file.name);
+          // Coloured OBJs (vertex colours — BREPcode's own exports carry them,
+          // and so do Blender's) take the parts road so the colour SURVIVES:
+          // the plain road flattens to STL, a format with no colour at all.
+          // A colourless OBJ behaves exactly as it always has.
+          const { objToStl, parseObjParts } = await getExporters();
+          const objText = new TextDecoder().decode(buf);
+          const parts = parseObjParts(objText);
+          if (parts.some((p) => p.color)) {
+            objects = parts;
+            partColours = parts.map((p) => p.color);
+          } else {
+            contents = objToStl(objText, file.name);
+          }
         } else if (isAsciiStl) {
           contents = new TextDecoder().decode(buf);          // ascii STL as text
         } else if (ext === "3mf") {
@@ -15324,20 +15340,24 @@ let SIMPLIFY_TARGET = 10000;
           setStatus("busy", `Reading ${file.name}…`);
           await new Promise((r) => setTimeout(r, 30));
           const inv = await getInventory();
-          const objects = await inv.parse3MFObjects(buf);
+          objects = await inv.parse3MFObjects(buf);
           if (!objects.length) throw new Error("no geometry found in that 3MF");
           // A slicer project records what the model should LOOK like, in two
           // places that have to be read together: which extruder each part
           // prints on, and what filament is loaded in each extruder. Without
           // them a 4-colour Benchy arrives as eight identical grey slices.
-          const partColours = await inv.parse3MFPartColours(buf).catch(() => []);
+          partColours = await inv.parse3MFPartColours(buf).catch(() => []);
+        }
 
+        // ---- the parts road: a 3MF project, or an OBJ with vertex colours --
+        // Parts stay APART and each carries its colour into the code as
+        // colorize(). Every path through this block returns.
+        if (objects) {
           // The size guards above never ran: stlTriangleCount() gives up on
           // anything that is not an STL, so a 3MF walked past both of them and
           // the tab just froze. Judge the WHOLE file, since that is what the
           // kernel has to get through.
           const total = objects.reduce((n, o) => n + o.positions.length / 9, 0);
-
           // ONE shared offset for every part. Recentring each on its own would
           // stack them all at the origin and destroy the assembly.
           let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity;
@@ -15372,7 +15392,7 @@ let SIMPLIFY_TARGET = 10000;
             await new Promise((r) => setTimeout(r, 30));
           }
 
-          const stem = file.name.replace(/\.3mf$/i, "");
+          const stem = file.name.replace(/\.(3mf|obj)$/i, "");
           const names = [];
           for (const [i, o] of objects.entries()) {
             const p = o.positions;
@@ -15385,7 +15405,11 @@ let SIMPLIFY_TARGET = 10000;
               lines.push("endloop", "endfacet");
             }
             lines.push(`endsolid ${stem}-${i + 1}`);
-            const partName = objects.length === 1 ? file.name : `${stem} (${i + 1}).stl`;
+            // OBJ groups arrive named (rim, side_A_face…) — keep that identity
+            // in the registered name so the generated code reads like the file.
+            const nice = o.name ? String(o.name).replace(/[^\w .-]/g, "").slice(0, 40) : "";
+            const partName = objects.length === 1 ? file.name
+              : `${stem}-${nice || (i + 1)}.stl`;
             dsl.registerImport(partName, lines.join("\n"));
             names.push(partName);
           }
@@ -15451,9 +15475,10 @@ let SIMPLIFY_TARGET = 10000;
             + "Files live for this session only; re-import after a reload.";
           await rebuild();
           return;
-        } else {
+        } else if (!contents) {
           // binary STL arrives as a base64 data URL, which the kernel decodes —
-          // then gets normalised to ASCII STL below
+          // then gets normalised to ASCII STL below. The !contents guard keeps
+          // this off the formats above that already produced ASCII text.
           const bytes = new Uint8Array(buf);
 
           // ---- repair FIRST, before the kernel ever reads the file ---------

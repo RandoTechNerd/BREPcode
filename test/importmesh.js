@@ -122,5 +122,60 @@ console.log("\nbinary STL decodes on registerImport\n");
   check("a plain string is untouched", registerImport("str.stl", ascii) === ascii);
 }
 
+// Coloured OBJs keep their colour through import.
+//
+// The old road flattened every OBJ to STL — a format with no colour — so
+// BREPcode's own coloured exports came back grey and welded into one solid.
+// parseObjParts() reads them the way the author meant: one part per o/g
+// group, colour from the vertex-colour extension, handed to the SAME parts
+// machinery the 3MF importer uses. Hex strings, because hex is that road's
+// colour contract — arrays painted the preview white.
+{
+  console.log("\ncoloured OBJ import\n");
+  const { parseObjParts } = await import("../viewer/exporters.js");
+
+  const objSrc = [
+    "o rim",
+    "v 0 0 0 0.25 0.55 0.30", "v 1 0 0 0.25 0.55 0.30", "v 0 1 0 0.25 0.55 0.30",
+    "f 1 2 3",
+    "o face",
+    "v 0 0 1 0.96 0.42 0.62", "v 1 0 1 0.96 0.42 0.62", "v 0 1 1 0.96 0.42 0.62", "v 1 1 1 0.96 0.42 0.62",
+    "f 4 5 6 7",
+  ].join("\n");
+  const parts = parseObjParts(objSrc);
+  check("one part per o group", parts.length === 2, `${parts.length}`);
+  check("group names survive", parts.map((p) => p.name).join() === "rim,face");
+  check("colour comes out as hex — the parts road's contract",
+    parts[0].color === "#408c4d", parts[0].color);
+  check("...for the second part too", parts[1].color === "#f56b9e", parts[1].color);
+  check("a quad face is triangulated", parts[1].positions.length === 2 * 3 * 3,
+    `${parts[1].positions.length} floats`);
+
+  const plain = parseObjParts("o a\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3");
+  check("a colourless OBJ gets color: null (old road untouched)", plain[0].color === null);
+
+  // one stray 6-number line in a plain file is noise, not a palette
+  const stray = parseObjParts("o a\nv 0 0 0 1 0 0\n" + "v 1 0 0\nv 0 1 0\nv 1 1 0\nv 2 0 0\nv 2 1 0\n"
+    + "f 2 3 4\nf 4 5 6\n");
+  check("a minority of coloured corners does not invent a colour", stray[0].color === null);
+
+  const neg = parseObjParts("o a\nv 0 0 0 0.5 0.5 0.5\nv 1 0 0 0.5 0.5 0.5\nv 0 1 0 0.5 0.5 0.5\nf -3 -2 -1");
+  check("negative (relative) face indices resolve", neg[0]?.positions.length === 9);
+
+  // the viewer really routes coloured OBJs onto the parts road
+  const { readFileSync } = await import("node:fs");
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("the import handler gates on a colour being present",
+    /if \(parts\.some\(\(p\) => p\.color\)\) \{\s*\n\s*objects = parts;/.test(HTML),
+    "a colourless OBJ must keep its old single-solid behaviour");
+  check("...and the binary-STL branch is guarded off the text formats",
+    /\} else if \(!contents\) \{/.test(HTML),
+    "as a bare else it re-decoded SVG/STEP/ASCII imports from raw bytes");
+  check("part names carry the OBJ group identity",
+    /`\$\{stem\}-\$\{nice \|\| \(i \+ 1\)\}\.stl`/.test(HTML),
+    "colorize(\"#…\", importedMesh(\"coin-rim.stl\")) reads like the file");
+  check("the stem strips .obj as well as .3mf", /file\.name\.replace\(\/\\\.\(3mf\|obj\)\$\/i, ""\)/.test(HTML));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
