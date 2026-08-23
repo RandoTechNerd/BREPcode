@@ -176,10 +176,30 @@ console.log("\na tour link opens the tour, not a loading screen\n");
     /const close = header\.querySelector\("\.close-btn"\);/.test(HTML),
     "':scope > .close-btn' missed the chat's wrapped ×");
   check("...and the window buttons join THAT element's group",
-    /const group = close \? close\.parentElement : header;\s*\n\s*group\.insertBefore\(dock, close \|\| null\);\s*\n\s*group\.insertBefore\(exp, close \|\| null\)/.test(HTML),
+    /let group = close \? close\.parentElement : header;/.test(HTML)
+    && /group\.insertBefore\(dock, close \|\| null\);\s*\n\s*group\.insertBefore\(exp, close \|\| null\)/.test(HTML),
     "appending to the header makes a third flex group");
   check("nothing inserts into the header directly any more",
     !/header\.insertBefore\((dock|exp),/.test(HTML));
+
+  // The wrapped-× fix covered the chat; the NINE headers whose × sits directly
+  // in the header still spread, because there "the ×'s group" was the header
+  // itself and space-between deals loose buttons across the bar — measured
+  // gaps up to 164px between ⇲ ⤢ ×. Those headers now get a built box: one
+  // flex item pinned right, which space-between cannot scatter. After the fix,
+  // every one of the 13 card headers measured gap ≤ 4px inside the cluster,
+  // with the × last and 14px to the edge.
+  check("a direct-child × gets its controls boxed",
+    /if \(group === header\) \{\s*\n\s*const box = document\.createElement\("div"\);\s*\n\s*box\.className = "win-controls";/.test(HTML));
+  check("...and the × itself is moved INTO the box, last",
+    /box\.appendChild\(el\);\s*\n\s*if \(el === close\) break;/.test(HTML),
+    "an × left outside gets the ⤢ appended after it — × mid-bar, exactly the report");
+  check("loose buttons just before the × ride along in the box",
+    /while \(first\.previousElementSibling\?\.tagName === "BUTTON"\) first = first\.previousElementSibling;/.test(HTML),
+    "once the box eats the free space, a button left out is stranded mid-bar");
+  check("the box is one rigid flex item pinned right",
+    /\.card > header \.win-controls \{\s*\n\s*display: flex; align-items: center; gap: 2px;\s*\n\s*margin-left: auto; flex: none;/.test(HTML),
+    "margin-left:auto pins it even in a header with no title to push against");
 
   // Once they can sit inside a wrapper, a child selector styles every header
   // except the one that needed it — so both the CSS and the lookup must be

@@ -663,6 +663,16 @@
     .card > header .win-dock:hover { opacity: 1; color: var(--text); }
     /* hidden must win: the button is only offered while the window is loose. */
     .card > header .win-dock[hidden] { display: none !important; }
+    /* The right-side control cluster, built in JS for headers whose × sits
+       directly in the header. ONE flex item: under the header's space-between,
+       every loose button is its own group and the free space is dealt out
+       between them — ⇲ ⤢ × ended up 100px+ apart. margin-left:auto pins the
+       cluster to the right edge even in a header with no title to push
+       against; flex:none because the buttons must never squeeze. */
+    .card > header .win-controls {
+      display: flex; align-items: center; gap: 2px;
+      margin-left: auto; flex: none;
+    }
     .close-btn:hover { background: var(--border); color: #fff; }
 
     .hist-btn {
@@ -7167,13 +7177,37 @@
       // would retrain the one button everybody already knows the position of.
       //
       // The × is NOT always a direct child: the chat header wraps ⚙ and × in
-      // their own div. Scoping this to ":scope > .close-btn" found nothing
-      // there, so insertBefore(_, null) appended to the header instead — and
-      // since the header is space-between, that made a THIRD group and left
-      // ⚙ × stranded in the middle with ⤢ way out at the right edge. Find the
-      // × wherever it lives and join ITS group.
+      // their own div, and joining that wrapper is correct there. But on the
+      // NINE headers where the × sits directly in the header, "join the ×'s
+      // group" meant joining the header itself — and under space-between,
+      // every loose button is its own flex group, so ⇲ ⤢ × were dealt out
+      // across the bar with 100px+ of air between them. Measured: gaps up to
+      // 164px on cards whose header held nothing but a title and the controls.
+      //
+      // So the direct case gets a box: one flex item, margin-left auto, which
+      // space-between cannot scatter. Loose buttons sitting just before the ×
+      // (About's "Private stash"/"To Do", Material's reset) ride along in it —
+      // that is where they visually lived, and leaving them out would strand
+      // THEM mid-bar the same way once the box eats the free space.
       const close = header.querySelector(".close-btn");
-      const group = close ? close.parentElement : header;
+      let group = close ? close.parentElement : header;
+      if (group === header) {
+        const box = document.createElement("div");
+        box.className = "win-controls";
+        if (close) {
+          let first = close;
+          while (first.previousElementSibling?.tagName === "BUTTON") first = first.previousElementSibling;
+          header.insertBefore(box, first);
+          for (let el = box.nextElementSibling, nx; el; el = nx) {
+            nx = el.nextElementSibling;
+            box.appendChild(el);
+            if (el === close) break;      // the × is the last thing boxed
+          }
+        } else {
+          header.appendChild(box);
+        }
+        group = box;
+      }
       group.insertBefore(dock, close || null);
       group.insertBefore(exp, close || null);
       syncWindowChrome(card);
