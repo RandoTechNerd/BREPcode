@@ -109,6 +109,36 @@ thing should read as soft, or when `fillet` fails on the shape (it is the one th
 imported mesh). Never use `roundedGrow` on a mating face, a shaft or a bore — it makes them bigger.
 Never use it to make two things fit; that is `clearance()`.
 
+### Organic blending
+
+```
+smoothUnion(k, ...shapes)          // join through a soft-minimum distance blend — flesh, not creases
+blob([[x,y,z,r], ...], { k })      // metaballs: spheres that melt together — the cheapest creature
+```
+
+A creature, mascot, snowman — anything fleshy — is `blob()` or `smoothUnion()`, never plain
+`union()`: union puts a crease exactly where a body needs flesh. `k` is the blend distance in mm
+(2–4 a generous fillet, 6–10 flesh, 15+ melts the parts into one mass). The result is a MESH
+solid — it booleans, exports and prints, but carries no exact surfaces for STEP — so blend LAST,
+then `group()` hard details onto the blended body: they only touch it, so grouping skips a heavy
+mesh boolean and keeps their colours separate; eyes and buttons want their crease anyway.
+Never blend a mating face: the bulge grows past both surfaces and the fit is gone.
+
+```js
+// a snowman that reads as one soft body, not three stacked balls
+const body = blob([
+  [0, 0, 10, 12],
+  [0, 0, 28, 8],
+  [0, 0, 40, 5],
+], { k: 5 });
+
+return group(
+  body,
+  translate([0, -4.2, 42], sphere({ r: 1, $fn: 16 })),   // eye — group: it touches, no boolean
+  translate([3, -3.4, 42], sphere({ r: 1, $fn: 16 })),
+);
+```
+
 ### Sweeps, features and surfaces
 
 ```

@@ -3,7 +3,7 @@
 
 import {
   cube, cylinder, sphere, union, difference, intersection, translate, build, toSTL,
-  colorByHeight,
+  colorByHeight, blob, group,
 } from "../index.js";
 import { readFileSync } from "node:fs";
 import { fromOpenSCAD } from "../src/openscad.js";
@@ -105,6 +105,22 @@ await ok("dome via intersection", intersection(
   else { fail++; console.log(`  FAIL  two-colour vase — ${n} solid(s), expected 2`); }
 }
 
+// 7. the organic example: a blob snowman with hard-detail eyes unioned on.
+// The volume check is the rule the guide teaches — the blend ADDS neck
+// material, so the body must hold at least its three spheres.
+await ok("blob snowman with hard details", (() => {
+  const body = blob([
+    [0, 0, 10, 12],
+    [0, 0, 28, 8],
+    [0, 0, 40, 5],
+  ], { k: 5, res: 36 });
+  return group(
+    body,
+    translate([0, -4.2, 42], sphere({ r: 1, $fn: 16 })),
+    translate([3, -3.4, 42], sphere({ r: 1, $fn: 16 })),
+  );
+})(), null);
+
 // The examples above are transcribed by hand, which is how this file drifted
 // from the guide it claims to cover: an example added to LLM_PROMPT.md was
 // simply not tested. Counting them cannot drift.
@@ -113,7 +129,7 @@ await ok("dome via intersection", intersection(
   const editorForm = [...doc.matchAll(/```js\n([\s\S]*?)```/g)]
     .map((m) => m[1])
     .filter((b) => !b.includes("import ") && !b.includes("require("));
-  const COVERED = 6;   // 1 intro, 1 return-form, 3 worked, 1 colour — all built above
+  const COVERED = 7;   // 1 intro, 1 return-form, 3 worked, 1 colour, 1 organic — all built above
   if (editorForm.length === COVERED) {
     pass++; console.log(`  PASS  all ${COVERED} runnable examples in the guide are covered here`);
   } else {

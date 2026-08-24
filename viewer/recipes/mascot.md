@@ -46,13 +46,13 @@ And check the SILHOUETTE, not the iso view — a logo is a silhouette.
 Tails, quiffs, fins, flames — anything that sweeps and tapers:
 
 ```js
-const blob = (p, r) => translate(p, sphere({ r, $fn: 24 }));
+const ball = (p, r) => translate(p, sphere({ r, $fn: 24 }));
 const curl = union(
-  hull(blob([3, 0, 55], 8),      blob([-1, 0, 62], 6)),
-  hull(blob([-1, 0, 62], 6),     blob([-6, 0, 66], 4.6)),
-  hull(blob([-6, 0, 66], 4.6),   blob([-12, 0, 68], 3.4)),
-  hull(blob([-12, 0, 68], 3.4),  blob([-18, 0, 66], 2.3)),
-  hull(blob([-18, 0, 66], 2.3),  blob([-23, 0, 62], 1.0)),
+  hull(ball([3, 0, 55], 8),      ball([-1, 0, 62], 6)),
+  hull(ball([-1, 0, 62], 6),     ball([-6, 0, 66], 4.6)),
+  hull(ball([-6, 0, 66], 4.6),   ball([-12, 0, 68], 3.4)),
+  hull(ball([-12, 0, 68], 3.4),  ball([-18, 0, 66], 2.3)),
+  hull(ball([-18, 0, 66], 2.3),  ball([-23, 0, 62], 1.0)),
 );
 return union(translate([0, 0, 48], sphere({ r: 18, $fn: 48 })), scale([1, 0.78, 1], curl));
 ```

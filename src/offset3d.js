@@ -220,6 +220,26 @@ function isInside(point, tris, g) {
   return (ahead % 2) === 1;
 }
 
+// ---- lattice-precompute hooks (fieldgrid.js) ------------------------------
+//
+// fieldgrid.js computes a whole distance LATTICE instead of answering one
+// point at a time, and it wants exactly three internals: the acceleration
+// grid, the cached parity ray, and "the exact distance, but only if a
+// triangle is close". Exported here rather than duplicated there, so there is
+// one implementation of each to be wrong.
+export function buildTriangleGrid(tris, lo, hi, cells = 32) {
+  return triangleGrid(tris, lo, hi, cells);
+}
+export function crossingsForLine(y, z, tris, g) {
+  return crossingsAt(y, z, tris, g);
+}
+// null when no triangle is within r — the caller seeds only the near band and
+// lets the chamfer sweep fill everything else.
+export function exactDistanceNear(p, tris, g, r) {
+  const d = nearestDistance(p, tris, g, r);
+  return d > r ? null : d;
+}
+
 // A signed distance function for a closed triangle mesh.
 export function meshSignedDistance(mesh, { gridCells = 32, band = Infinity } = {}) {
   const tris = mesh.faces.map(([a, b, c]) => [mesh.points[a], mesh.points[b], mesh.points[c]]);

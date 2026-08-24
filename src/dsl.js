@@ -6,6 +6,10 @@
 // convention (Z-up, cylinder base at z=0 centred in XY) via AXIS_FIX.
 
 import { Matrix4, Euler, Vector3, Quaternion, MathUtils } from "three";
+import { smin, solidNets } from "./sdf.js";
+import { MAX_FACES } from "./offset3d.js";
+import { meshFieldGrid } from "./fieldgrid.js";
+import { repairMesh } from "./meshrepair.js";
 
 const DEG = Math.PI / 180;
 
@@ -201,6 +205,7 @@ export function estimateBuild(root) {
       return;
     }
     if (n.kind === "texture") tris += n.opts?.maxTris ?? 6000;   // + the scratch build below
+    if (n.kind === "sdfblend") tris += 9000;   // surface nets at the default res
     if (n.kind === "edgeop") tris += 600;                        // fillet bands aren't free
     if (n.kind === "op") booleans += Math.max(0, (n.children?.length || 1) - 1);
     if (n.kind === "group") members += n.children?.length || 0;
@@ -903,6 +908,68 @@ export function heightmap(opts, ...children) {
       // roughly half a minute of build — a one-off bake, not a typing loop
       maxTris: Number(o.maxTris) || 12000,
     },
+  });
+}
+
+// ------------------------------------------------------- organic blending
+//
+// The CAD way to join two shapes is union() — a hard crease exactly where the
+// surfaces cross. Organic forms have no creases: a wrist flows into a hand.
+// smoothUnion() joins its children through a signed-distance blend: each child
+// becomes a distance field, the fields combine with a SOFT minimum, and the
+// join rounds ITSELF — widest where the surfaces meet at a shallow angle,
+// tightening as they meet head-on. Nobody places that fillet; it falls out of
+// the math. That is why blended characters read as modelled rather than
+// assembled.
+//
+//   smoothUnion(6, sphere({ r: 14 }), translate([0, 0, 16], sphere({ r: 10 })))
+//
+// k is the blend distance in mm — roughly "how far before they touch do the
+// surfaces start reaching for each other". 2-4 reads as a generous fillet,
+// 6-10 as flesh, 15+ starts melting the parts into one mass.
+//
+// The price is the same one texture() pays: the result is a MESH solid. It
+// booleans, exports and prints, but there is no exact cylinder left inside it
+// for STEP. Resolution is picked from a triangle BUDGET (maxTris, default
+// 6000 — a build in a few seconds); pass res (24-160) to pin the lattice, or
+// raise maxTris, for the one build before a final export. Cost is cubic.
+export function smoothUnion(opts, ...children) {
+  const o = typeof opts === "number" ? { k: opts } : (opts || {});
+  const kids = collect(children);
+  if (kids.length < 2) {
+    throw new Error("smoothUnion() needs at least two shapes, e.g. smoothUnion(6, sphere({ r: 12 }), cylinder({ r: 4, h: 30 }))");
+  }
+  const k = Number(o.k);
+  if (!Number.isFinite(k) || k <= 0) {
+    throw new Error("smoothUnion() needs a blend distance in mm as its first argument — smoothUnion(6, a, b). 2-4 is a fillet, 6-10 is flesh.");
+  }
+  return node({
+    kind: "sdfblend", children: kids, fix: IDENTITY,
+    opts: { k, res: o.res ? Math.max(24, Math.min(160, Number(o.res))) : null, maxTris: Number(o.maxTris) || 6000, balls: null },
+  });
+}
+
+// Metaballs, the classic organic primitive: a list of spheres that melt
+// together wherever they come near. The cheapest road to a creature — a body,
+// a head, four limb blobs, and the blends do the sculpting.
+//
+//   blob([[0, 0, 10, 12], [0, 0, 26, 8], [0, 12, 24, 3]], { k: 6 })
+//
+// Each entry is [x, y, z, r]. k defaults to half the smallest radius, which
+// always shows a visible blend; raise it to melt the balls further together.
+// Pure arithmetic (no meshes to measure), so it is much faster than
+// smoothUnion() on the same shapes.
+export function blob(balls, opts = {}) {
+  if (!Array.isArray(balls) || balls.length < 2
+    || balls.some((b) => !Array.isArray(b) || b.length < 4 || b.some((n) => !Number.isFinite(n)))) {
+    throw new Error("blob() needs [[x, y, z, r], ...] with at least two balls, e.g. blob([[0,0,10,12],[0,0,26,8]], { k: 6 })");
+  }
+  if (balls.some((b) => b[3] <= 0)) throw new Error("blob(): every radius must be positive");
+  const kDefault = Math.min(...balls.map((b) => b[3])) / 2;
+  const k = Number(opts.k) || kDefault;
+  return node({
+    kind: "sdfblend", children: [], fix: IDENTITY,
+    opts: { k, res: opts.res ? Math.max(24, Math.min(160, Number(opts.res))) : null, maxTris: Number(opts.maxTris) || 6000, balls: balls.map((b) => b.slice(0, 4)) },
   });
 }
 
@@ -2129,6 +2196,125 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       f.inputParams.centerMesh = false;
       trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
+    }
+
+    if (n.kind === "sdfblend") {
+      const { k, balls, maxTris } = n.opts;
+      let res = n.opts.res;
+      const fields = [];
+      let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      const take = (p) => {
+        for (let d = 0; d < 3; d++) {
+          if (p[d] < lo[d]) lo[d] = p[d];
+          if (p[d] > hi[d]) hi[d] = p[d];
+        }
+      };
+
+      const meshes = [];
+      if (balls) {
+        for (const [x, y, z, r] of balls) {
+          fields.push((p) => Math.hypot(p[0] - x, p[1] - y, p[2] - z) - r);
+          take([x - r, y - r, z - r]); take([x + r, y + r, z + r]);
+        }
+      } else {
+        // Each child becomes its OWN distance field — that separateness is the
+        // whole point, since smin() needs to know how far each surface is on
+        // its own. Same scratch-build road as texture(), welded to an indexed
+        // mesh; the fields themselves are built after the bounds are known.
+        for (const child of n.children) {
+          const scratch = new partHistory.constructor();
+          await compile(child, scratch);
+          await scratch.runHistory({ throwOnFeatureError: true });
+          const index = new Map();
+          const points = [], faces = [];
+          const vid = (x, y, z) => {
+            const key = `${Math.round(x * 1000)}_${Math.round(y * 1000)}_${Math.round(z * 1000)}`;
+            let i = index.get(key);
+            if (i === undefined) { i = points.length; index.set(key, i); points.push([x, y, z]); take([x, y, z]); }
+            return i;
+          };
+          for (const s of (scratch.scene?.children || [])) {
+            if (s?.type !== "SOLID" || typeof s.toSTL !== "function") continue;
+            const vs = [...s.toSTL("t", 6).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)];
+            for (let i = 0; i + 2 < vs.length; i += 3) {
+              const [a, b, c] = [vs[i], vs[i + 1], vs[i + 2]].map((m) => vid(+m[1], +m[2], +m[3]));
+              if (a !== b && b !== c && a !== c) faces.push([a, b, c]);
+            }
+          }
+          if (!faces.length) throw new Error("smoothUnion(): a child produced no surface to blend");
+          if (faces.length > MAX_FACES) {
+            throw new Error(`smoothUnion(): a child has ${faces.length} triangles, past the ${MAX_FACES} the distance sampler handles quickly — simplify it first`);
+          }
+          meshes.push({ points, faces });
+        }
+      }
+
+      // res from a TRIANGLE BUDGET unless the user pinned it. The kernel's
+      // mesh import goes superlinear with triangle count — a six-ball
+      // character at a fixed res 48 made ~40k nets triangles and "Building…"
+      // sat for minutes. Surface nets emits ~2 triangles per cell² of
+      // surface, so the cell that lands the budget is sqrt(2·area/budget),
+      // and organic surfaces — smooth by construction — read fine there.
+      // Raise res (or maxTris) for the one build before export.
+      const span = Math.max(...[0, 1, 2].map((d) => hi[d] - lo[d]), 1);
+      if (!res) {
+        let area = 0;
+        if (balls) {
+          for (const b of balls) area += 4 * Math.PI * b[3] * b[3];
+        } else {
+          for (const m of meshes) {
+            for (const [a, b, c] of m.faces) {
+              const A = m.points[a], B = m.points[b], C = m.points[c];
+              const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+              const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+              area += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+            }
+          }
+        }
+        const cell = Math.sqrt((2 * area) / Math.max(1000, maxTris));
+        res = Math.max(24, Math.min(160, Math.round(span / Math.max(cell, 0.2))));
+      }
+      // room for the blend: the bulge never reaches past k, plus a cell so the
+      // surface cannot clip flat against the sampled volume's wall
+      const pad = k + span / res + 0.5;
+      const bounds = [lo.map((v) => v - pad), hi.map((v) => v + pad)];
+
+      // Mesh children get a PRECOMPUTED lattice field over the shared bounds.
+      // Asking meshSignedDistance point by point re-walks its acceleration
+      // grid a few hundred thousand times per child — a two-sphere blend
+      // measured in minutes. The lattice pays three linear passes per child
+      // and answers every later sample with a trilinear read.
+      for (const m of meshes) fields.push(meshFieldGrid(m, bounds, res));
+
+      // one field folded from all of them: soft minimum with the blend width
+      const f = fields.length === 1 ? fields[0]
+        : (p) => fields.reduce((acc, g) => (acc === null ? g(p) : smin(acc, g(p), k)), null);
+      const out = solidNets(f, bounds, res, { repair: repairMesh });
+      if (!out.mesh.faces.length) throw new Error("smoothUnion(): the blend produced nothing — are the shapes hundreds of mm apart?");
+
+      let stl = "solid blend\n";
+      for (const [a, b, c] of out.mesh.faces) {
+        stl += "facet normal 0 0 0\nouter loop\n";
+        for (const i of [a, b, c]) {
+          const p = out.mesh.points[i];
+          stl += `vertex ${p[0]} ${p[1]} ${p[2]}\n`;
+        }
+        stl += "endloop\nendfacet\n";
+      }
+      stl += "endsolid blend\n";
+
+      await ensureImportClonePatch(partHistory);
+      const name = `__sdf${texSeq++}`;
+      let data = stl;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+      if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
+      IMPORTS.set(name, data);
+      const f2 = await partHistory.newFeature("IMPORT3D");
+      f2.inputParams.fileToImport = data;
+      f2.inputParams.meshRepairLevel = "NONE";
+      f2.inputParams.centerMesh = false;
+      trace?.push({ id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      return f2.inputParams.id;
     }
 
     throw new Error(`Unknown node kind: ${n.kind}`);
