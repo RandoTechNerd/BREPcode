@@ -220,7 +220,8 @@ console.log("");
     (HTML.match(/await lessonsFor\(text\)/g) || []).length === 1,
     `${(HTML.match(/await lessonsFor\(text\)/g) || []).length} call sites`);
   check("...and reach the browser API request",
-    /stream: wantStream, reference, \.\.\.harnessOpts\(\),[\s\S]{0,120}lessons,/.test(HTML));
+    /stream: wantStream, reference, context: msgContext, \.\.\.harnessOpts\(\),[\s\S]{0,120}lessons,/.test(HTML),
+    "the call site also carries the per-message context for the gated harness sections");
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

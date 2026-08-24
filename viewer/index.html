@@ -17904,8 +17904,14 @@ let SIMPLIFY_TARGET = 10000;
         b.className = "hist-btn";
         b.textContent = `${on ? "\u2713" : "\u2715"} #${t}`;
         if (!on) b.style.cssText = "opacity:.45; text-decoration:line-through";
+        // Auto-gated sections ride along only when the request calls for them
+        // (an attached image, a gear word…) — the tooltip should not claim
+        // "every request" for those.
+        const auto = CHAT?.AUTO_SECTIONS && t in CHAT.AUTO_SECTIONS;
         b.title = on
-          ? `The #${t} block is sent with every AI request — click to leave it out`
+          ? (auto
+            ? `The #${t} block is sent automatically when a request calls for it — click to switch it off entirely`
+            : `The #${t} block is sent with every AI request — click to leave it out`)
           : `The #${t} block is NOT being sent — click to include it`;
         b.addEventListener("click", () => {
           if (on) harnessOff.add(t); else harnessOff.delete(t);
@@ -19397,6 +19403,18 @@ let SIMPLIFY_TARGET = 10000;
           }
         }
         void sawModel;
+        // Which SITUATIONAL harness sections this message needs — the rest
+        // stay out of the prompt entirely (see AUTO_SECTIONS in chatbot.js).
+        // Gates read the whole context string (code + request), which errs
+        // toward sending: a gearbox on screen keeps #machine alive even when
+        // the follow-up message doesn't say "gear".
+        const msgContext = {
+          hasImage: imgs.length > 0,
+          text: context,
+          pastedCode: looksLikeOpenSCAD(context)
+            || /module\.exports|@jscad\/modeling|build123d|cadquery/.test(context),
+          builtModel: reference.includes("THE BUILT MODEL"),
+        };
         if (imgs.length && (cfg.provider === "local" || cfg.provider === "browser")) {
           // these small models are text-only, and a vision payload errors the
           // whole request — say so instead of failing
@@ -19418,7 +19436,7 @@ let SIMPLIFY_TARGET = 10000;
             else addMsg("bot", `Couldn't attach ${im.name || "an image"} (${saved?.error || "unknown"}) — sending without it.`);
           }
           const system = CHAT.composeSystem({
-            reference, lessons, ...harnessOpts(),
+            reference, lessons, context: msgContext, ...harnessOpts(),
             // /simple or /scad for this message only. Rides in the volatile
             // half so a one-word shortcut cannot invalidate the cached prefix.
             override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }),
@@ -19480,7 +19498,7 @@ let SIMPLIFY_TARGET = 10000;
           // its own — an untouched default swaps for the compact primer, and
           // the reference material is capped so a fat recipe can't crowd out
           // the user's own code. A mission the user edited is sent as-is.
-          const ho = harnessOpts();
+          const ho = { ...harnessOpts(), context: msgContext };
           const untouchedMission = !aiCfg.harness?.trim()
             && aiHarness.value.trim() === (CHAT.DEFAULT_HARNESS || "").trim();
           // Two-pass sculptor: the FIRST pass gets a deliberately blocky base
@@ -19531,7 +19549,7 @@ let SIMPLIFY_TARGET = 10000;
             const wantStream = !isDesktop
               && (cfg.provider === "claude" || cfg.provider === "local" || cfg.provider === "openai");
             const { url, options } = buildApiRequest(cfg, msgs,
-              { includeThoughts: wantThoughts, stream: wantStream, reference, ...harnessOpts(),
+              { includeThoughts: wantThoughts, stream: wantStream, reference, context: msgContext, ...harnessOpts(),
                 lessons,
                 override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
             const resp = await aiFetch(url, options);

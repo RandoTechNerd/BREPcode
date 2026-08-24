@@ -1281,9 +1281,55 @@ The Material panel's filament is set to "${look}", which draws EVERY shape see-t
 // message goes last. Claude then gets an explicit cache_control breakpoint at
 // the seam (see buildApiRequest); OpenAI and Gemini cache stable prefixes
 // automatically and need nothing but the ordering.
+// ------------------------------------------------- context-gated sections
+//
+// Six harness sections teach SITUATIONS: what to do with an attached image,
+// how to read a drawing sheet, gear fits, splitting for the plate, pasted
+// foreign code, and the built-model reference block. They are a third of the
+// whole prompt, and most messages are none of those situations.
+//
+// So they ride in the VOLATILE half, sent only when their trigger fires. The
+// cache stays honest because the stable prefix is "harness minus all six,
+// ALWAYS" — a constant — while a triggered section costs its tokens only on
+// the message that needs it. On providers with no prompt cache at all (the
+// in-browser model, a local llama.cpp or Lemonade) this is a straight ~35%
+// cut on every request.
+//
+// Gates err toward SENDING: a section that arrives un-needed costs a little;
+// one that stays home when needed costs the capability. The user's chips
+// still rule — a chip-disabled section never reaches this map.
+export const AUTO_SECTIONS = {
+  fromimage: (c) => !!c.hasImage,
+  drawings: (c) => !!c.hasImage
+    || /\b(drawing|blueprint|dxf|dimensioned|title block|orthographic)\b/i.test(c.text || ""),
+  seeing: (c) => !!c.builtModel,
+  splitting: (c) => /\b(split|halves|in half|two parts|separate (parts|pieces|colou?rs)|on the plate|build plate|print bed|dowel|glue|keyed|section it|too (big|tall|wide|large)|fit (my|the|a) printer|multi.?part)\b/i.test(c.text || ""),
+  machine: (c) => /\b(gear|gears|gearbox|rack|pinion|ratio|winch|crank|trebuchet|mechanism|linkage|hinge|axle|pulley|cam|motor|drivetrain|bearing|shaft)\b/i.test(c.text || ""),
+  languages: (c) => !!c.pastedCode
+    || /\b(openscad|jscad|cadquery|build123d|python|\.scad)\b/i.test(c.text || ""),
+};
+
 export function composeSystemParts(opts = {}) {
+  // With a per-message context, situational sections leave the stable prefix
+  // (constant — the cache invariant) and only the triggered ones ride along
+  // in the volatile half. Without one — older callers, tests — everything
+  // stays stable, exactly as before.
+  const ctx = opts.context;
+  let harnessText = opts.harness?.trim() || DEFAULT_HARNESS;
+  let autoExtra = "";
+  if (ctx) {
+    const keep = [], extra = [];
+    for (const s of harnessSections(harnessText)) {
+      const gate = s.tag && AUTO_SECTIONS[s.tag];
+      if (!gate) keep.push(s.lines.join("\n"));
+      else if (gate(ctx)) extra.push(s.lines.join("\n"));
+    }
+    harnessText = keep.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    if (extra.length) autoExtra = "\n\n" + extra.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
   // STABLE — identical for every message until the user changes a setting.
-  const stable = (opts.harness?.trim() || DEFAULT_HARNESS)
+  const stable = harnessText
     // What the VIEWER is currently doing to the picture. Without this the
     // assistant cannot tell a model that is transparent from a model being
     // DISPLAYED transparently, and the two need opposite answers: one is a code
@@ -1303,6 +1349,9 @@ export function composeSystemParts(opts = {}) {
 
   // VOLATILE — looked up per message, so it can never be part of the prefix.
   const volatile = ""
+    // The situational harness sections THIS message triggered — instructions,
+    // so they come before the reference data they may govern.
+    + autoExtra
     // A /simple or /scad on THIS message only. It lives here rather than with
     // the ordinary style settings above for one reason: those settings are the
     // cached prefix, so folding an override into them would make a one-word

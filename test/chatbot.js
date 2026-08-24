@@ -959,6 +959,61 @@ console.log("\nwires are swept, not chained\n");
 
 // ---- the mission, painted as source ---------------------------------------
 //
+// Context-gated harness sections. Six situational sections (a third of the
+// prompt) leave the stable prefix and ride the volatile half only when their
+// trigger fires. Two invariants matter more than the savings:
+//   1. the STABLE half is identical whatever the message says — that is the
+//      prompt-cache contract, and breaking it silently costs more than the
+//      tokens saved;
+//   2. no context given (older callers, the desktop app before its update)
+//      means everything stays stable, exactly as before.
+{
+  console.log("\ncontext-gated harness sections\n");
+  const P = (ctx) => CB.composeSystemParts(ctx === undefined ? {} : { context: ctx });
+
+  const legacy = P(undefined);
+  check("no context: the situational sections stay in the stable prefix",
+    legacy.stable.includes("FROM A PICTURE TO A MODEL")
+    && legacy.stable.includes("MACHINES AND GEARS"));
+
+  const plain = P({ text: "make me a 30mm cube with a hole" });
+  check("a plain request carries none of them",
+    !plain.stable.includes("FROM A PICTURE TO A MODEL")
+    && !plain.stable.includes("MACHINES AND GEARS")
+    && !plain.volatile.includes("FROM A PICTURE"));
+  check("...and the whole prompt is meaningfully lighter for it",
+    plain.stable.length < legacy.stable.length - 8000,
+    `${legacy.stable.length} -> ${plain.stable.length}`);
+
+  const img = P({ text: "make this in 3d", hasImage: true });
+  check("an attached image brings #fromimage, in the volatile half",
+    img.volatile.includes("FROM A PICTURE TO A MODEL"));
+  check("...and #drawings with it — a sheet is an image too",
+    img.volatile.includes("ENGINEERING DRAWINGS"));
+
+  const gear = P({ text: "a 3:1 gearbox with a crank handle" });
+  check("gear words bring #machine", gear.volatile.includes("MACHINES AND GEARS"));
+
+  const split = P({ text: "it is too big for my printer, split it in half" });
+  check("splitting words bring #splitting", split.volatile.includes("SPLITTING A MODEL"));
+
+  const scad = P({ text: "$fn=64; difference(){cube([30,30,12]); cylinder(h=14,r=8);}", pastedCode: true });
+  check("pasted foreign code brings #languages", scad.volatile.includes("OTHER LANGUAGES"));
+
+  const seen = P({ text: "why is the top face tilted?", builtModel: true });
+  check("the built-model reference brings #seeing", seen.volatile.includes("SEEING THE BUILT MODEL"));
+
+  // THE cache invariant: different messages, byte-identical stable prefix.
+  check("the stable prefix is byte-identical across different messages",
+    plain.stable === gear.stable && gear.stable === img.stable && img.stable === seen.stable,
+    "anything message-dependent in the stable half breaks the prompt cache");
+
+  // The gates err toward sending, and the always-on core keeps the words that
+  // ROUTE to these behaviours (the sections carry the depth, not the routing).
+  check("the always-on core still names the organic routing",
+    plain.stable.includes("blob()/smoothUnion()"));
+}
+
 // The Server URL picker. LOCAL_PRESETS lives in chatbot.js but the <datalist>
 // the user actually clicks is static HTML, so the two can drift — and a wrong
 // port here is the worst kind of bug in this app: a newcomer sees a red ✗ with
