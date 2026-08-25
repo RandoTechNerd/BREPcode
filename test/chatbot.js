@@ -1111,6 +1111,43 @@ console.log("\nwires are swept, not chained\n");
     /if \(e\.target\.closest\("#img-zoom-bar"\)\) return;/.test(HTML));
 }
 
+// The shipped key: password-locked, or an open house key applied on first run.
+// Both go through applyShippedKey, and what it sets is what was missing before:
+// the pieces a hosted OpenAI-compatible endpoint silently needs.
+{
+  console.log("\nshipped keys (locked + house)\n");
+  const { readFileSync } = await import("node:fs");
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+
+  check("one apply path serves both", /function applyShippedKey\(key, src\)/.test(HTML));
+  check("...and it sets the base URL", /if \(src\.baseUrl\) aiBase\.value = src\.baseUrl;/.test(HTML),
+    "an OpenRouter key sent to api.openai.com is a 401 with a misleading message");
+  check("...and reveals the Base URL row it just filled",
+    /if \(src\.baseUrl\) aiBase\.value = src\.baseUrl;\s*\n\s*reflectProviderUI\(\);/.test(HTML));
+  check("...and ADDS the model before selecting it",
+    /if \(!\[\.\.\.aiModel\.options\]\.some\(\(o\) => o\.value === src\.model\)\)/.test(HTML),
+    "ai-model is a <select>: assigning an id it does not carry selects nothing, and the request goes out modelless");
+
+  check("the house key applies only on a first run",
+    /if \(LOCKED\.open && !aiCfg\.provider\) \{/.test(HTML),
+    "someone with their own key must keep it, and an overwrite must not come back on reload");
+  check("both console helpers emit baseUrl",
+    /window\.brepscript\.lockKey = async \(key, password, provider = "gemini", model = "", baseUrl = ""\)/.test(HTML)
+    && /window\.brepscript\.houseKey = \(key, provider = "openai", model = "stealth\/ox-alpha"/.test(HTML));
+
+  // The Base URL picker, and the drift guard against the code's own list.
+  const start = HTML.indexOf('<datalist id="openai-urls">');
+  const dl = HTML.slice(start, HTML.indexOf("</datalist>", start));
+  for (const p of CB.OPENAI_PRESETS) {
+    check(`${p.name} is offered on the Base URL box`, dl.includes(`value="${p.url}"`), p.url);
+  }
+  check("...and the box is wired to that list", /<input id="ai-base" list="openai-urls"/.test(HTML));
+  check("OpenRouter is the one marked browser-capable",
+    CB.OPENAI_PRESETS.find((p) => p.name === "OpenRouter")?.browser === true
+    && CB.OPENAI_PRESETS.find((p) => p.name === "OpenAI")?.browser === false,
+    "OpenAI's CORS policy refuses browser chat; that is why the app recommends OpenRouter");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
 

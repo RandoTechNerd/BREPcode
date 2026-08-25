@@ -1407,6 +1407,17 @@ export function localBase(key) {
 // hand out. `origins` names the env var that lets a BROWSER talk to it: same
 // shape of problem as Ollama's, and the reason brepcode.com "can't see" a
 // server that is plainly running.
+// Hosted OpenAI-compatible endpoints, offered on the Base URL box. OpenRouter
+// leads for two honest reasons: it is the only one of the two that a BROWSER
+// can chat with (OpenAI's CORS policy refuses), and it carries models that are
+// not reachable any other way. Verified from the app's own origin: the models
+// list returns 200 and chat/completions answers 401 to a bad key — i.e. the
+// request crosses CORS and is refused on merit, not blocked.
+export const OPENAI_PRESETS = [
+  { name: "OpenRouter", url: "https://openrouter.ai/api/v1", browser: true },
+  { name: "OpenAI", url: "https://api.openai.com/v1", browser: false },
+];
+
 export const LOCAL_PRESETS = [
   { name: "LM Studio", url: "http://localhost:1234/v1" },
   { name: "Ollama", url: "http://localhost:11434/v1", origins: "OLLAMA_ORIGINS" },

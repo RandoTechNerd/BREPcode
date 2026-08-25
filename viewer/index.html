@@ -3137,9 +3137,19 @@
         <!-- OpenAI-compatible endpoints: OpenRouter, Azure, a proxy, LM Studio.
              It is also the web build's only route to GPT, since OpenAI itself
              refuses browser chat. Hidden for every other provider. -->
+        <!-- The OpenAI-compatible hosts worth one click. OpenRouter leads
+             because it is the one that works from a BROWSER (OpenAI's own CORS
+             policy refuses chat) and the one that carries models you cannot
+             reach otherwise. Same drift guard as the local presets: these must
+             match OPENAI_PRESETS in chatbot.js, and test/chatbot.js fails if
+             they part company. -->
+        <datalist id="openai-urls">
+          <option value="https://openrouter.ai/api/v1">OpenRouter - 400+ models, works in a browser</option>
+          <option value="https://api.openai.com/v1">OpenAI - GPT (desktop app only)</option>
+        </datalist>
         <div class="row" id="ai-base-row" style="display:none">
           <label title="Where the OpenAI-compatible API lives">Base URL</label>
-          <input id="ai-base" placeholder="https://api.openai.com/v1" />
+          <input id="ai-base" list="openai-urls" placeholder="click for OpenRouter, or paste your own" />
         </div>
         <div class="row" id="openai-web-note" style="display:none">
           <span class="note" style="flex:1"></span>
@@ -18694,6 +18704,32 @@ let SIMPLIFY_TARGET = 10000;
         $("unlock-pw").focus();
       }
     });
+    // Apply a shipped key: provider, base URL, model, key. Shared by the
+    // password path and the open house-key path below.
+    //
+    // baseUrl is what makes an OpenAI-COMPATIBLE host work at all — an
+    // OpenRouter key sent to the default api.openai.com is a 401 with a
+    // misleading message. And the model must be ADDED to the dropdown before
+    // it is selected: it is a <select>, so assigning an id it does not carry
+    // selects nothing and the request goes out with an empty model.
+    function applyShippedKey(key, src) {
+      aiProvider.value = src.provider || "gemini";
+      fillModelOptions(aiProvider.value);
+      if (src.model) {
+        if (![...aiModel.options].some((o) => o.value === src.model)) {
+          const o = document.createElement("option");
+          o.value = src.model;
+          o.textContent = src.model;
+          aiModel.prepend(o);
+        }
+        aiModel.value = src.model;
+      }
+      aiKey.value = key;
+      if (src.baseUrl) aiBase.value = src.baseUrl;
+      reflectProviderUI();            // reveals the Base URL row for openai
+      saveAiCfg();
+    }
+
     async function tryUnlock() {
       const pw = $("unlock-pw").value;
       if (!pw) return;
@@ -18701,18 +18737,28 @@ let SIMPLIFY_TARGET = 10000;
       try {
         const { unlockSecret } = await getLockbox();
         const key = await unlockSecret(LOCKED.blob, pw);
-        aiProvider.value = LOCKED.provider || "gemini";
-        fillModelOptions(aiProvider.value);
-        if (LOCKED.model) aiModel.value = LOCKED.model;
-        aiKey.value = key;
+        applyShippedKey(key, LOCKED);
         $("unlock-pw").value = "";
         unlockRow.style.display = "none";
         unlockNote.textContent = "";
-        saveAiCfg();
         verifyConnection(true);
       } catch {
         unlockNote.textContent = "Wrong password — try again.";
       }
+    }
+
+    // THE HOUSE KEY. LOCKED.open is a key in PLAIN TEXT inside the bundle:
+    // anyone who opens devtools, or unzips the site, has it. That is the
+    // bargain being struck deliberately — a visitor gets working AI with
+    // nothing to paste — and it is only ever right for a key whose spend is
+    // capped and which can be rotated without ceremony. The password path
+    // above is what to use when it is not right.
+    //
+    // First run ONLY. `!aiCfg.provider` means this visitor has never chosen
+    // anything: someone who set up their own key keeps it, and anyone who
+    // overwrites the house key in the settings does not get it back on reload.
+    if (LOCKED.open && !aiCfg.provider) {
+      applyShippedKey(LOCKED.open, LOCKED);
     }
     $("unlock-btn").addEventListener("click", tryUnlock);
     $("unlock-pw").addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
@@ -18725,12 +18771,22 @@ let SIMPLIFY_TARGET = 10000;
     window.brepscript.modelDigest = (...a) => modelDigest(...a);
     window.brepscript.modelViewImages = (...a) => modelViewImages(...a);
     window.brepscript.modelVolume = () => modelVolume();
-    window.brepscript.lockKey = async (key, password, provider = "gemini", model = "") => {
+    window.brepscript.lockKey = async (key, password, provider = "gemini", model = "", baseUrl = "") => {
       const { lockSecret } = await getLockbox();
       const blob = await lockSecret(key, password);
-      const cfg = `export const LOCKED = {\n  blob: ${JSON.stringify(blob)},\n  provider: ${JSON.stringify(provider)},\n  model: ${JSON.stringify(model)},\n};`;
+      const cfg = `export const LOCKED = {\n  blob: ${JSON.stringify(blob)},\n  provider: ${JSON.stringify(provider)},\n  model: ${JSON.stringify(model)},\n  baseUrl: ${JSON.stringify(baseUrl)},\n};`;
       console.log("Paste this into viewer/locked-key.js, then rebuild:\n\n" + cfg);
       return blob;
+    };
+    // The OPEN house key: no password, applied on a visitor's first run. The
+    // key sits in PLAIN TEXT in the bundle — see the note at the apply site —
+    // so cap its spend and be ready to rotate it. Defaults are OpenRouter and
+    // Ox Alpha, which is the case this was written for.
+    window.brepscript.houseKey = (key, provider = "openai", model = "stealth/ox-alpha",
+      baseUrl = "https://openrouter.ai/api/v1") => {
+      const cfg = `export const LOCKED = {\n  open: ${JSON.stringify(key)},\n  provider: ${JSON.stringify(provider)},\n  model: ${JSON.stringify(model)},\n  baseUrl: ${JSON.stringify(baseUrl)},\n};`;
+      console.log("Paste this into viewer/locked-key.js, then rebuild with --with-locked-key:\n\n" + cfg);
+      return cfg;
     };
 
     function addMsg(role, text, thinking = false) {

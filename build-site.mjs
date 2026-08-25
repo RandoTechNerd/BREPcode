@@ -70,14 +70,26 @@ const rewrites = [
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
-// locked-key.js is a password-locked API key meant to be handed to ONE person.
-// It is gitignored for that reason, and a public static host is a different
-// proposition entirely: the blob becomes downloadable by anyone, and PBKDF2 only
-// buys time against an offline guessing attack on the password. So a public
-// build leaves it out unless you say otherwise.
+// locked-key.js carries a shipped API key, in one of two forms. It is
+// gitignored either way — partly so a credential never enters the history,
+// and practically because GitHub and the key issuers both run secret scanners
+// on public repos: a committed key is usually revoked before anyone uses it.
 //
-//   node build-site.mjs                    -> no key (deploy this to the web)
-//   node build-site.mjs --with-locked-key  -> key included (private hand-off)
+//   LOCKED.blob  password-locked (lockbox.js). Handed to ONE person, unlocked
+//                by triple-tapping the API key label. On a public host the
+//                blob is downloadable by anyone and PBKDF2 only buys time
+//                against offline guessing — so it suits a private hand-off.
+//
+//   LOCKED.open  a HOUSE KEY, plain text, applied on a visitor's first run so
+//                the chat works with nothing to paste. Anyone who unzips the
+//                bundle has this key. That is the deliberate trade for a
+//                public demo; cap the key's spend and expect to rotate it.
+//
+// Either way a public build leaves the file out unless you ask for it:
+//
+//   node build-site.mjs                    -> no key (the safe default)
+//   node build-site.mjs --with-locked-key  -> key included (private hand-off
+//                                             or a deliberate house key)
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
   "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "simplify.js", "tour.js", "filaments.js", "cutterkit.js",
