@@ -1012,6 +1012,30 @@ console.log("\nwires are swept, not chained\n");
   // ROUTE to these behaviours (the sections carry the depth, not the routing).
   check("the always-on core still names the organic routing",
     plain.stable.includes("blob()/smoothUnion()"));
+
+  // #speed and #deep are the same advice pointed opposite ways, so exactly one
+  // ships. #speed's "iterating in follow-ups beats one giant slow reply" is
+  // right at two seconds a turn and precisely wrong at four minutes — sending
+  // both would hand the model a contradiction to resolve on its own.
+  const fast = P({ text: "a cube", deepModel: false });
+  const deep = P({ text: "a cube", deepModel: true });
+  check("a fast model gets #speed and not #deep",
+    fast.volatile.includes("Replies are fast") && !fast.volatile.includes("DEEP MODEL"));
+  check("a reasoning model gets #deep and not #speed",
+    deep.volatile.includes("DEEP MODEL") && !deep.volatile.includes("Replies are fast"));
+  check("...and switching between them does not disturb the cached prefix",
+    fast.stable === deep.stable);
+  check("#deep tells it to finish the job in ONE reply",
+    /do NOT hold work back for follow-ups/.test(deep.volatile),
+    "the opposite of #speed, on purpose");
+  check("...and to spend some of that budget on the look",
+    /set the scene with look\(\{\.\.\.\}\)/.test(deep.volatile));
+
+  for (const [m, want] of [["stealth/ox-alpha", true], ["o1-preview", true],
+    ["deepseek/deepseek-r1", true], ["qwen/qwq-32b", true],
+    ["gpt-4o-mini", false], ["anthropic/claude-3.5-sonnet", false]]) {
+    check(`isDeepModel(${m}) === ${want}`, CB.isDeepModel(m) === want);
+  }
 }
 
 // The Server URL picker. LOCAL_PRESETS lives in chatbot.js but the <datalist>
@@ -1128,9 +1152,19 @@ console.log("\nwires are swept, not chained\n");
     /if \(!\[\.\.\.aiModel\.options\]\.some\(\(o\) => o\.value === src\.model\)\)/.test(HTML),
     "ai-model is a <select>: assigning an id it does not carry selects nothing, and the request goes out modelless");
 
-  check("the house key applies only on a first run",
-    /if \(LOCKED\.open && !aiCfg\.provider\) \{/.test(HTML),
-    "someone with their own key must keep it, and an overwrite must not come back on reload");
+  // WHEN it applies, which the first cut got wrong in the way that matters.
+  // Gating on "has never chosen a provider" skipped every RETURNING visitor —
+  // and anyone who has ever opened BREPcode has a stored provider. The symptom
+  // was a chat sitting on a months-old half-configured provider answering
+  // "API key is invalid" while a perfectly good house key went unused.
+  // Storing a provider is not the same as having a key that works.
+  check("the house key applies whenever there is no working key",
+    /const hasOwnAI = !!\(aiCfg\.key \|\| ""\)\.trim\(\) \|\| KEYLESS\.includes\(aiCfg\.provider\);/.test(HTML)
+    && /if \(LOCKED\.open && !hasOwnAI\) \{/.test(HTML),
+    "gating on !aiCfg.provider skipped every returning visitor");
+  check("...and a deliberately keyless provider counts as having one",
+    /const KEYLESS = \["claude-code", "browser", "local"\];/.test(HTML),
+    "Claude Code, the in-browser model and a local server all work without a key — do not stomp them");
   check("both console helpers emit baseUrl",
     /window\.brepscript\.lockKey = async \(key, password, provider = "gemini", model = "", baseUrl = ""\)/.test(HTML)
     && /window\.brepscript\.houseKey = \(key, provider = "openai", model = "stealth\/ox-alpha"/.test(HTML));

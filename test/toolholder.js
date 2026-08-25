@@ -71,11 +71,32 @@ console.log("\nand the whole point: it costs NOTHING otherwise\n");
 console.log("\nthe always-on prompt did not grow to pay for it\n");
 {
   // A ceiling, not a measurement: the whole design here is that new knowledge
-  // goes in recipes. If this ever fails, something was put in the prompt that
-  // belonged in a file — check before raising it.
-  const { DEFAULT_HARNESS } = await import("../viewer/chatbot.js");
-  check("the harness is still under its ceiling",
-    DEFAULT_HARNESS.length < 33000, `${DEFAULT_HARNESS.length} chars`);
+  // goes in recipes. If either of these fails, something was put in the prompt
+  // that belonged in a file — check before raising it.
+  //
+  // TWO numbers now, because context-gating changed what the old single number
+  // meant. Six situational sections only ship when the request calls for them
+  // (see AUTO_SECTIONS), so DEFAULT_HARNESS.length is the sum of everything
+  // the app COULD say, while the thing that costs every message is the
+  // always-on core. Measuring only the total would let the core rot unnoticed
+  // behind a shrinking gated pile — and would also punish adding a gated
+  // section that most requests never see.
+  const { DEFAULT_HARNESS, composeSystemParts } = await import("../viewer/chatbot.js");
+
+  // What an ordinary "make me a bracket" actually pays for.
+  const core = composeSystemParts({ context: { text: "a 30mm bracket" } }).stable.length;
+  check("the always-on core is still under its ceiling",
+    core < 21500, `${core} chars`);
+
+  // And the whole library, so the gated sections cannot grow without bound.
+  check("...and the whole harness under its own",
+    DEFAULT_HARNESS.length < 36000, `${DEFAULT_HARNESS.length} chars`);
+
+  // The saving is the point of the split: if these ever converge, gating has
+  // silently stopped working and every message is paying full price again.
+  check("gating still saves a third of the prompt",
+    core < DEFAULT_HARNESS.length * 0.7,
+    `core ${core} vs total ${DEFAULT_HARNESS.length}`);
   // The one thing that HAD to go in the prompt: #fromimage says "never trace
   // the outline", which is right for a logo and wrong for a pocket. That
   // correction has to travel with the rule it corrects.

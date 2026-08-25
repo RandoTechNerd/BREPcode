@@ -8978,8 +8978,26 @@ ${joined}`)(...vs);
         // compile() only builds the feature list — cheap, and it's what produces
         // the trace the click-map and the colours are keyed to. The expensive
         // half is runHistory(), and that is what goes to the worker.
+        dsl.resetSceneLook();
         await dsl.compile(shape, ph, trace);
         if (mine !== token) return;
+
+        // look() in the code sets the SCENE's material and lighting — the half
+        // of the presentation that colorize/finish/glass/glow cannot reach.
+        // Applied here, after a successful compile, so a model that fails to
+        // build never repaints the room. The user still owns these controls:
+        // this moves the sliders, it does not lock them.
+        {
+          const want = dsl.takeSceneLook();
+          if (want && Object.keys(want).length) {
+            Object.assign(mat, want);
+            if (want.bg) matUserBg = true;      // stop the theme overwriting it
+            try {
+              applyMaterial();                  // also reflects the widgets
+              saveMat();                        // survives a reload, like a panel edit
+            } catch (e) { console.warn("[look] could not apply:", e); }
+          }
+        }
 
         // A build in the worker: hand it the history as JSON, get face buffers
         // back. `solids` ends up holding either kernel solids (local build) or
@@ -17852,7 +17870,13 @@ let SIMPLIFY_TARGET = 10000;
       CHAT ??= await getChatbot();
       if (!chatInited) {
         chatInited = true;
-        fillModelOptions(aiProvider.value, aiCfg.model);
+        // `keep` is the model to re-select. aiCfg.model is the model stored on
+        // DISK, which is stale the moment anything has changed the live
+        // selection since boot — and the house key does exactly that, at boot,
+        // before this lazy init ever runs. Passing the stored value here put
+        // an ox-alpha visitor back on gpt-4o-mini and sent the request to a
+        // host a browser cannot chat with. Prefer what is selected NOW.
+        fillModelOptions(aiProvider.value, aiModel.value || aiCfg.model);
         // show the real default mission in the editor once it's available
         if (!aiHarness.value.trim()) aiHarness.value = CHAT.DEFAULT_HARNESS;
         refreshHarnessTags();          // chips need CHAT loaded to parse tags
@@ -18754,10 +18778,23 @@ let SIMPLIFY_TARGET = 10000;
     // capped and which can be rotated without ceremony. The password path
     // above is what to use when it is not right.
     //
-    // First run ONLY. `!aiCfg.provider` means this visitor has never chosen
-    // anything: someone who set up their own key keeps it, and anyone who
-    // overwrites the house key in the settings does not get it back on reload.
-    if (LOCKED.open && !aiCfg.provider) {
+    // WHEN it applies: whenever this browser has no working key of its own.
+    //
+    // The first cut gated on `!aiCfg.provider` — "has never chosen anything" —
+    // and that was wrong in the way that matters. Anyone who has EVER opened
+    // BREPcode has a stored provider, so a returning visitor was silently
+    // skipped and left staring at "API key is invalid" from whatever they had
+    // half-configured months ago. Storing a provider is not the same as having
+    // a key that works.
+    //
+    // So the test is the honest one: is there a key to use? A stored key, a
+    // keyless provider the user chose deliberately (Claude Code on the
+    // desktop, the in-browser model), or a local server URL all mean "leave
+    // them alone". Everything else means the chat is dead, and a dead chat is
+    // exactly what the house key is for.
+    const KEYLESS = ["claude-code", "browser", "local"];
+    const hasOwnAI = !!(aiCfg.key || "").trim() || KEYLESS.includes(aiCfg.provider);
+    if (LOCKED.open && !hasOwnAI) {
       applyShippedKey(LOCKED.open, LOCKED);
     }
     $("unlock-btn").addEventListener("click", tryUnlock);
@@ -19467,6 +19504,8 @@ let SIMPLIFY_TARGET = 10000;
         const msgContext = {
           hasImage: imgs.length > 0,
           text: context,
+          // A reasoning model gets #deep instead of #speed — see AUTO_SECTIONS.
+          deepModel: CHAT?.isDeepModel?.(cfg.model) ?? false,
           pastedCode: looksLikeOpenSCAD(context)
             || /module\.exports|@jscad\/modeling|build123d|cadquery/.test(context),
           builtModel: reference.includes("THE BUILT MODEL"),
@@ -19887,7 +19926,44 @@ let SIMPLIFY_TARGET = 10000;
     // Honest about what the default is: a hardcoded helper, not an AI. The
     // free in-browser model is the no-friction upgrade path, so it gets named.
     // (addMsg is textContent by design — set HTML on the returned node.)
-    addMsg("bot", "").innerHTML = "Hi! I'm in <b>light mode</b> — a small built-in helper that only knows simple shapes (try “make a box with a cone on top”). For a real AI, open ⚙: <b>In your browser</b> is free with no key and no install (a one-time ~1 GB download), or paste a Gemini / Claude API key.";
+    {
+      const hello = addMsg("bot", "");
+      hello.innerHTML = "Hi! I'm in <b>light mode</b> — a small built-in helper that only knows simple shapes (try “make a box with a cone on top”). For a real AI, open ⚙: <b>In your browser</b> is free with no key and no install (a one-time ~1 GB download), or paste a Gemini / Claude API key.";
+
+      // The house key, offered as a BUTTON rather than applied behind the
+      // user's back.
+      //
+      // The silent version kept losing to boot order: the key applied early,
+      // then the chat's lazy init re-selected the stored model over it, and
+      // the visitor got "Failed to fetch" from a host they never chose. A
+      // button cannot lose that race — it runs when clicked, long after
+      // everything has settled — and it is honest: someone whose own key is
+      // set still sees the offer, and nobody's settings move unless they ask.
+      if (LOCKED.open) {
+        const name = LOCKED.model || "the shared model";
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:6px 0 2px";
+        const btn = document.createElement("button");
+        btn.className = "hist-btn";
+        btn.style.cssText = "font-size:12px; padding:4px 12px";
+        btn.textContent = `Try ${name.split("/").pop()} — free, no key`;
+        const note = document.createElement("span");
+        note.className = "note";
+        note.style.fontSize = "11.5px";
+        row.append(btn, note);
+        hello.appendChild(row);
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          note.textContent = "connecting…";
+          applyShippedKey(LOCKED.open, LOCKED);
+          await ensureChat();                 // so the model list is real before we check
+          applyShippedKey(LOCKED.open, LOCKED);   // ...and survives that lazy init
+          note.textContent = "";
+          btn.textContent = `✓ using ${name.split("/").pop()}`;
+          verifyConnection(true);
+        });
+      }
+    }
 
     // Handle for the console: brepscript.scene, .camera, .rebuild(), etc.
     Object.assign(window.brepscript, {

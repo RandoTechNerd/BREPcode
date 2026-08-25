@@ -826,6 +826,71 @@ export function glass(opacity, ...children) {
   return node({ ...shape, clearOpacity: Math.min(0.95, Math.max(0.05, o)) });
 }
 
+// ----------------------------------------------------------- scene look
+//
+// Everything colorize/finish/glass/glow CANNOT reach: the settings that belong
+// to the SCENE rather than to a shape — what the whole model is made of, and
+// how it is lit. Those lived only in the Material panel, so a model could
+// describe its own geometry but never its own presentation, and an assistant
+// asked for "a brushed aluminium torch under warm light" could only shrug and
+// name a panel the user had to go and find.
+//
+//   look({ filament: "cc-witchcraft", metal: 80, rough: 25 })
+//   look({ key: 180, fill: 40, rim: 120, exposure: 115, filmic: true })
+//   look({ bg: "#0b0f16" }, myModel)      // wrapping is optional
+//
+// VIEWER ONLY: geometry, exports and prints are untouched — the same contract
+// glass() and glow() already have. It is collected during compile and read by
+// the viewer afterwards, so calling it twice means the last call wins, and
+// calling it inside a helper still reaches the scene.
+//
+// Ranges match the panel's own controls: percentages 0-100 except the lights,
+// which run to 300 because a key light often wants more than "full".
+export const SCENE_KEYS = {
+  // material
+  color: "hex", metal: [0, 100], rough: [0, 100], opacity: [0, 100],
+  emissive: "hex", emissiveInt: [0, 100], filament: "str", sparkle: [0, 2.5],
+  flat: "bool", wire: "bool", outline: "bool",
+  // lighting
+  ambient: [0, 300], key: [0, 300], fill: [0, 300], rim: [0, 300],
+  exposure: [0, 300], filmic: "bool",
+  lightcol: "hex", fillcol: "hex", rimcol: "hex", bg: "hex",
+};
+let SCENE_LOOK = null;
+export const takeSceneLook = () => { const s = SCENE_LOOK; SCENE_LOOK = null; return s; };
+export const resetSceneLook = () => { SCENE_LOOK = null; };
+
+export function look(opts, ...children) {
+  const o = opts || {};
+  const out = {};
+  for (const [k, v] of Object.entries(o)) {
+    const spec = SCENE_KEYS[k];
+    if (!spec) {
+      throw new Error(`look(): unknown setting "${k}" — pick from ${Object.keys(SCENE_KEYS).join(", ")}`);
+    }
+    if (spec === "bool") out[k] = !!v;
+    else if (spec === "str") out[k] = String(v);
+    else if (spec === "hex") {
+      const s = String(v);
+      if (!/^#[0-9a-f]{6}$/i.test(s)) throw new Error(`look(): ${k} needs a #rrggbb colour, got ${JSON.stringify(v)}`);
+      out[k] = s;
+    } else {
+      const n = Number(v);
+      if (!Number.isFinite(n)) throw new Error(`look(): ${k} needs a number`);
+      out[k] = Math.max(spec[0], Math.min(spec[1], n));
+    }
+  }
+  SCENE_LOOK = { ...(SCENE_LOOK || {}), ...out };
+  // Wrapping a shape is optional — look() is a scene SETTING, not a transform,
+  // so it passes its children straight through. With no children it must
+  // return something the caller can drop on a line by itself: an empty group()
+  // throws ("needs at least one shape"), so this returns a node with no
+  // children, which the build walker emits as nothing.
+  const kids = collect(children);
+  if (!kids.length) return node({ kind: "group", children: [], fix: IDENTITY });
+  return kids.length === 1 ? kids[0] : group(...kids);
+}
+
 // ------------------------------------------------------------- textures
 //
 // REAL surface texture — displaced geometry, not a shader. The child is built,

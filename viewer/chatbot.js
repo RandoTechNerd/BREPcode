@@ -1006,7 +1006,7 @@ PLACING DETAIL ON A FACE: a recessed bay cut into a box, inset from the walls, d
 FILAMENT BY NAME — ALWAYS use the comment form, on its own line at the TOP of the code: // filament: witchcraft
 It works in every language you can write here. The JS call filament("x") only exists in BREPcode, and a cookie cutter is written as OpenSCAD, where it is silently ignored — so the comment is the form that always applies. The same line also survives being saved and reopened.
 filament("witchcraft") sets the viewer's spool — real Cookiecad filaments, so "make a heart cutter in Witchcraft" or "print the star in Funfetti" is ONE request you answer in code, not prose. Names: funfetti, unicorn, ruby, witchcraft, mermaid, darkmagic, fairyfloss, golddust, pinkombre (case and spacing do not matter; "Pink Ombré", "gold dust" and "PETG Witchcraft" all work). Write it as a statement before the return — filament("funfetti"); return cutter; — or wrap a shape: filament("unicorn", cutter). Viewer only: the STL is identical whichever spool is named, so never let it change the geometry. If the user names a filament you do not recognise, say so and list these nine rather than guessing.
-Looks (viewer only, geometry/export unchanged): glow(color, intensity, shape) is a lit LED/lamp/screen — glow("#ff3b30", 2, sphere({r:2.5})) reads as a powered LED. glass(opacity, shape) is optically clear with a real reflection — lenses, LCD windows, acrylic covers; glass(cylinder({r:12, h:2})) for a binocular lens, glass(0.15, thinCube) for a display window. Use them whenever the object being modelled would have lit or transparent parts. finish(name, shape) says what ONE piece is MADE of when the model is not all one material — finish("Balsa", body) with finish("Titanium", screws), or finish("cc-golddust", trim) to glitter the trim alone. Reach for it whenever the user names two materials in one object; it is not for colouring, that is colorize(). Names: any filament above with a cc- prefix, or Titanium, Aluminum, Steel, Brass, Copper, Gold, Balsa, Oak wood, Stone, Concrete, Ceramic, Glass, Acrylic, PLA, PETG, ABS, PEEK, Nylon, Resin, TPU, Carbon fiber.
+Looks (viewer only, geometry/export unchanged): look({...}) sets the SCENE - filament, metal, rough, ambient/key/fill/rim, exposure, filmic, bg - so you can light and finish the whole model, not just parts; glow(color, intensity, shape) is a lit LED/lamp/screen — glow("#ff3b30", 2, sphere({r:2.5})) reads as a powered LED. glass(opacity, shape) is optically clear with a real reflection — lenses, LCD windows, acrylic covers; glass(cylinder({r:12, h:2})) for a binocular lens, glass(0.15, thinCube) for a display window. Use them whenever the object being modelled would have lit or transparent parts. finish(name, shape) says what ONE piece is MADE of when the model is not all one material — finish("Balsa", body) with finish("Titanium", screws), or finish("cc-golddust", trim) to glitter the trim alone. Reach for it whenever the user names two materials in one object; it is not for colouring, that is colorize(). Names: any filament above with a cc- prefix, or Titanium, Aluminum, Steel, Brass, Copper, Gold, Balsa, Oak wood, Stone, Concrete, Ceramic, Glass, Acrylic, PLA, PETG, ABS, PEEK, Nylon, Resin, TPU, Carbon fiber.
 
 NAME THE DIMENSIONS — every size worth changing goes in a top-level const before any geometry (const WALL = 2.4;) and the geometry uses the name. The app turns those lines into SLIDERS (Parameters button), so a model written this way is adjustable by someone who never opens the code and one with numbers buried in its shapes is not. Pin a slider's ends and label with a trailing comment — const WALL = 2.4; // [1:0.2:6] wall thickness — and group them with /* [Size] */ on its own line. A const whose value is an EXPRESSION (const INNER = WIDTH - WALL*2) is a consequence, not a dial, and is deliberately not offered — so write derived sizes that way. "Make this adjustable" / "pull the dimensions into parameters" means exactly this rewrite and nothing else.
 
@@ -1086,6 +1086,10 @@ DECIDE WHICH WAY THE DRIVE GOES BEFORE PICKING TEETH. A winch, a hoist or a lift
 A GEAR IS EXPENSIVE TO BUILD — a 50-tooth gear is a several-hundred-point outline, and a machine with two of them takes the better part of a minute in the browser. That is normal, not a hang, but say so up front rather than leaving the user watching a spinner. Keep tooth counts to what the ratio needs, and do not add a third gear for looks.
 A MACHINE IS MORE THAN ITS GEARS. Anything that spins fast or carries load also needs: a bearing or at least a generous journal (see #bearing — a 608 or 625 in a printed hub), something holding the two shafts at the computed centre distance, and clearance checked between parts that MOVE past each other, not just parts that sit still. State the running clearances you left. If it spins fast enough to throw something, say that it wants a lid.
 Read #machine for the rest — trains, ratchets, planetary sets, rack travel, printing clearances, and a worked trebuchet winch.
+
+#deep
+DEEP MODEL — you are a reasoning model here, and a reply costs the user minutes, not seconds. So invert the usual advice: do NOT hold work back for follow-ups. Deliver the COMPLETE part in one reply — every feature asked for, the details you would normally offer as next steps, named constants throughout. Take the thinking time you need. Still answer in one sentence plus the code: long thinking is not licence to narrate it. Where a request is ambiguous, choose the sensible reading and state the assumption in that sentence rather than spending a whole turn asking.
+Also spend some of that budget on the LOOK: set the scene with look({...}) — a material and lighting that suit the object — and use finish()/glass()/glow() on the parts that deserve them. On a fast model that is a nice-to-have; here it costs nothing extra.
 
 #languages
 OTHER LANGUAGES
@@ -1298,7 +1302,25 @@ The Material panel's filament is set to "${look}", which draws EVERY shape see-t
 // Gates err toward SENDING: a section that arrives un-needed costs a little;
 // one that stays home when needed costs the capability. The user's chips
 // still rule — a chip-disabled section never reaches this map.
+// A reasoning model, where a single reply costs minutes. Detected by name
+// because that is all we are given: the OpenAI families isReasoningModel
+// already knows, plus the reasoning models that reach us through
+// OpenAI-COMPATIBLE hosts, whose ids are namespaced and match none of
+// OpenAI's patterns (stealth/ox-alpha, deepseek/deepseek-r1, qwen/qwq-32b).
+export const isDeepModel = (m) => {
+  const s = String(m || "");
+  return /^(o\d|gpt-5|gpt-4\.5)/i.test(s)
+    || /(ox-alpha|deepseek-r|\br1\b|qwq|thinking|reasoner|magistral)/i.test(s);
+};
+
 export const AUTO_SECTIONS = {
+  // #speed and #deep are the same advice pointed in opposite directions, so
+  // exactly one of them ships. #speed's "iterating in follow-ups beats one
+  // giant slow reply" is right at two seconds a turn and precisely wrong at
+  // four minutes, where the user wants everything in the one reply they waited
+  // for. Sending both would hand the model a contradiction to resolve.
+  speed: (c) => !c.deepModel,
+  deep: (c) => !!c.deepModel,
   fromimage: (c) => !!c.hasImage,
   drawings: (c) => !!c.hasImage
     || /\b(drawing|blueprint|dxf|dimensioned|title block|orthographic)\b/i.test(c.text || ""),
@@ -1465,9 +1487,23 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
   const { stable, volatile } = composeSystemParts(opts);
   const system = stable + volatile;
   if (provider === "openai") {
+    // The output ceiling. Worth being clear that max_tokens is a CAP, not a
+    // reservation: you are billed for what is generated, so a generous ceiling
+    // costs nothing until it is used. Setting it too LOW is the expensive
+    // mistake — a reasoning model spends this same budget on thinking, so a
+    // long part can stop mid-code with finish_reason "length", and the user
+    // pays for every one of those tokens and gets a broken file.
+    //
+    // A namespaced id (stealth/ox-alpha, anthropic/…, meta-llama/…) means an
+    // OpenAI-COMPATIBLE host, not OpenAI: those carry reasoning models with
+    // six-figure output limits (Ox Alpha reports 131,072) and none of them
+    // match OpenAI's naming, so isReasoningModel cannot see them. They get
+    // headroom rather than OpenAI's 8k default. 32k is chosen to be far above
+    // any real CAD reply while still bounding a runaway.
+    const compatibleHost = String(model || "").includes("/");
     const budget = isReasoningModel(model)
       ? { max_completion_tokens: 16000 }
-      : { max_tokens: 8000 };
+      : { max_tokens: compatibleHost ? 32000 : 8000 };
     return {
       url: `${openaiBase(baseUrl)}/chat/completions`,
       options: {
@@ -1640,8 +1676,19 @@ export function extractModels(provider, json) {
   if (provider === "openai") {
     // The list is the whole account catalogue — embeddings, whisper, TTS,
     // image and moderation models included. Only chat models can write CAD.
-    return (json?.data ?? []).map((m) => m.id).filter(Boolean)
-      .filter((id) => /^(gpt|o\d|chatgpt)/i.test(id))
+    //
+    // The name filter is OPENAI-ONLY, and must stay that way. Every id on an
+    // OpenAI-compatible host is `vendor/model` (stealth/ox-alpha,
+    // anthropic/claude-…, meta-llama/…), so requiring a gpt/o-number prefix
+    // threw away all 419 of OpenRouter's models, reported "no usable models"
+    // against an HTTP 200, and fell back to the curated GPT list — which
+    // silently pulled the user off the model they had chosen. A slash is the
+    // tell: those hosts are not OpenAI and do not use its naming.
+    const ids = (json?.data ?? []).map((m) => m.id).filter(Boolean);
+    const namespaced = ids.some((id) => id.includes("/"));
+    return ids
+      .filter((id) => namespaced || /^(gpt|o\d|chatgpt)/i.test(id))
+      // the kind filter is about CAPABILITY, not vendor, so it applies to both
       .filter((id) => !/embed|whisper|tts|audio|image|dall|moderation|realtime|transcribe|search|codex/i.test(id))
       .sort().reverse();
   }
