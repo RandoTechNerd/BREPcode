@@ -1088,7 +1088,8 @@ A MACHINE IS MORE THAN ITS GEARS. Anything that spins fast or carries load also 
 Read #machine for the rest — trains, ratchets, planetary sets, rack travel, printing clearances, and a worked trebuchet winch.
 
 #deep
-DEEP MODEL — you are a reasoning model here, and a reply costs the user minutes, not seconds. So invert the usual advice: do NOT hold work back for follow-ups. Deliver the COMPLETE part in one reply — every feature asked for, the details you would normally offer as next steps, named constants throughout. Take the thinking time you need. Still answer in one sentence plus the code: long thinking is not licence to narrate it. Where a request is ambiguous, choose the sensible reading and state the assumption in that sentence rather than spending a whole turn asking.
+DEEP MODEL — you are a reasoning model here, and a reply costs the user minutes, not seconds. So invert the usual advice: do NOT hold work back for follow-ups. Deliver the COMPLETE part in one reply — every feature asked for, the details you would normally offer as next steps, named constants throughout. Still answer in one sentence plus the code: long thinking is not licence to narrate it. Where a request is ambiguous, choose the sensible reading and state the assumption in that sentence rather than spending a whole turn asking.
+MATCH THE EFFORT TO THE ASK. Deliberation is for what is genuinely hard — a gear train that has to mesh, a tolerance that has to fit, parts that must not collide through a full revolution. It is NOT for deciding a bracket's fillet radius. A one-word request ("handcrank", "a hook") deserves a good part quickly, not a treatise: pick sensible dimensions, build it, and offer the depth as one-line follow-ups. If you find yourself weighing options that would not change the printed object, stop and write the code.
 Also spend some of that budget on the LOOK: set the scene with look({...}) — a material and lighting that suit the object — and use finish()/glass()/glow() on the parts that deserve them. On a fast model that is a nice-to-have; here it costs nothing extra.
 
 #languages
@@ -1671,8 +1672,27 @@ export function buildModelsRequest({ provider, key, baseUrl }) {
   throw new Error(`Unknown provider ${provider}`);
 }
 
+// What an API error ACTUALLY said.
+//
+// Taking error.message alone loses the useful half on any gateway that wraps
+// an upstream failure: OpenRouter answers a rate-limited pool with the generic
+// "Provider returned error" and puts the reason where nobody was looking —
+// code: 429, and metadata.raw "…is temporarily rate-limited upstream". The
+// user got "That didn't work: Provider returned error", which reads like a
+// broken app rather than a busy model, and gives them nothing to act on.
+export function apiErrorText(err) {
+  if (!err) return "";
+  if (typeof err === "string") return err;
+  const parts = [err.message || ""];
+  const raw = err.metadata?.raw;
+  if (raw && typeof raw === "string" && raw !== err.message) parts.push(raw);
+  // the code is what the retry logic keys on, so keep it in the text
+  if (err.code && !parts.join(" ").includes(String(err.code))) parts.push(`(${err.code})`);
+  return parts.filter(Boolean).join(" — ") || "API error";
+}
+
 export function extractModels(provider, json) {
-  if (json?.error) throw new Error(json.error.message || "API error");
+  if (json?.error) throw new Error(apiErrorText(json.error));
   if (provider === "openai") {
     // The list is the whole account catalogue — embeddings, whisper, TTS,
     // image and moderation models included. Only chat models can write CAD.
@@ -1718,17 +1738,17 @@ export function extractApiText(provider, json) {
   if (provider === "gemini") {
     const t = json?.candidates?.[0]?.content?.parts
       ?.filter((p) => !p.thought).map((p) => p.text).join("") ?? "";
-    if (!t && json?.error) throw new Error(json.error.message || "Gemini error");
+    if (!t && json?.error) throw new Error(apiErrorText(json.error) || "Gemini error");
     return t;
   }
   if (provider === "claude") {
     const t = (json?.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
-    if (!t && json?.error) throw new Error(json.error.message || "Claude error");
+    if (!t && json?.error) throw new Error(apiErrorText(json.error) || "Claude error");
     return t;
   }
   if (provider === "openai") {
     const t = json?.choices?.[0]?.message?.content ?? "";
-    if (!t && json?.error) throw new Error(json.error.message || "OpenAI error");
+    if (!t && json?.error) throw new Error(apiErrorText(json.error) || "OpenAI error");
     return t;
   }
   if (provider === "local") {
@@ -1736,7 +1756,7 @@ export function extractApiText(provider, json) {
     // Qwen-lineage models (Bonsai included) may inline their reasoning as a
     // <think> block — that belongs in the thinking bubble, not the reply.
     t = t.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*?<\/think>/, "").trim();
-    if (!t && json?.error) throw new Error(json.error.message || json.error || "local server error");
+    if (!t && json?.error) throw new Error(apiErrorText(json.error) || "local server error");
     return t;
   }
   return "";
@@ -1832,7 +1852,7 @@ export function usageNote(provider, json) {
 // When a reply carries no text at all, say WHY instead of "Empty response" —
 // the difference between a user retrying sensibly and giving up.
 export function emptyReplyReason(provider, json) {
-  if (json?.error?.message) return json.error.message;
+  if (json?.error) return apiErrorText(json.error);
   if (provider === "claude") {
     const thought = (json?.content ?? []).some((b) => b.type === "thinking");
     if (json?.stop_reason === "max_tokens") {
@@ -1885,15 +1905,26 @@ export async function readOpenAIStream(resp, onProgress) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let content = "", reasoning = "", finish = null, error = null, buf = "";
-  const note = (phase, chars) => { try { onProgress?.({ phase, chars }); } catch { /* UI gone */ } };
+  // `text` is the live tail of whatever is streaming, so the UI can show what
+  // the model is actually doing rather than a number climbing. On a reasoning
+  // model that is the difference between three silent minutes and watching it
+  // work through the problem.
+  const note = (phase, chars, text) => { try { onProgress?.({ phase, chars, text }); } catch { /* UI gone */ } };
+  const tail = (s) => s.replace(/\s+/g, " ").trim().slice(-90);
   const handle = (data) => {
     if (data === "[DONE]") return;
     let ev = null;
     try { ev = JSON.parse(data); } catch { return; }
     if (ev.error) { error = ev.error; return; }
     const d = ev.choices?.[0]?.delta || {};
-    if (d.reasoning_content) { reasoning += d.reasoning_content; note("thinking", reasoning.length); }
-    if (d.content) { content += d.content; note("writing", content.length); }
+    // TWO spellings, and only one of them was read. OpenAI streams
+    // `reasoning_content`; OpenRouter streams `reasoning` — so every reasoning
+    // model reached through a compatible host had its entire thought stream
+    // arrive and be discarded, leaving the user watching a bare timer through
+    // the exact minutes there was most to show them.
+    const think = d.reasoning_content ?? d.reasoning;
+    if (think) { reasoning += think; note("thinking", reasoning.length, tail(reasoning)); }
+    if (d.content) { content += d.content; note("writing", content.length, tail(content)); }
     finish = ev.choices?.[0]?.finish_reason ?? finish;
   };
   for (;;) {

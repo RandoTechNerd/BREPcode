@@ -959,6 +959,14 @@
     .lsh-tab.active { background: var(--border); color: #fff; }
     /* the chat waiting label, once real progress is streaming in */
     #busy-label.live { display: inline-block; animation: buildpulse 1.3s ease-in-out infinite; }
+    /* The live tail of what the model is thinking. Quiet and one line: it is
+       reassurance, not reading material — the eye should land on it and move
+       on. No pulse, or two things animate at once and the whole row jitters. */
+    .live-tail {
+      margin-top: 3px; font-size: 11.5px; line-height: 1.35; color: var(--muted3);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 100%; opacity: .85; font-style: italic;
+    }
     @keyframes buildpulse { 50% { opacity: .55; } }
 
     /* ---------- the build cube (laser-draw edition, user-designed) ----------
@@ -18771,6 +18779,37 @@ let SIMPLIFY_TARGET = 10000;
       }
     }
 
+    // Where a busy model sends us. Set `fallback` in locked-key.js to choose
+    // it; otherwise a shipped OpenRouter key gets a sensible code-tuned
+    // default, because the whole point of the house key is that a visitor
+    // never sees a failure. Empty for anyone using their own key: substituting
+    // a model on someone else's account, quietly, would be worse than the
+    // error it avoids.
+    // FREE MODE: a ladder of free models, best first.
+    //
+    // The single-substitute version was worse than nothing — it quietly traded
+    // the model the user chose for a chattier one, and they judged the output
+    // believing it came from the model named at the top of the window. A
+    // LADDER is a different bargain: everything on it is free, they are tried
+    // in quality order, and the reply says which one answered. Nobody is
+    // downgraded off a model they are paying for, because this only runs on
+    // the shared house key.
+    //
+    // Ordered by capability, and every entry measured working: while ox-alpha
+    // was refusing every request, six of these answered in about a second.
+    // A model that has gone paid-tier answers 403 and is simply skipped, so a
+    // stale entry costs one fast round-trip rather than breaking the chain.
+    const FREE_LADDER = LOCKED.ladder ?? [
+      "minimax/minimax-m3:free",                 // 1M ctx, vision, quick
+      "nvidia/nemotron-3-ultra-550b-a55b:free",  // 550B, the heavyweight
+      "google/gemma-4-31b-it:free",              // vision, reliable
+      "dots-studio/dots-3-note-preview:free",    // 512k ctx, vision
+      "poolside/laguna-s-2.1:free",              // code-oriented
+    ];
+    // Only ever for the shared key: someone using their own key keeps exactly
+    // the model they chose and pays for nothing they did not ask for.
+    const freeModeOn = () => !!LOCKED.open && aiKey.value.trim() === LOCKED.open;
+
     // THE HOUSE KEY. LOCKED.open is a key in PLAIN TEXT inside the bundle:
     // anyone who opens devtools, or unzips the site, has it. That is the
     // bargain being struck deliberately — a visitor gets working AI with
@@ -19366,15 +19405,49 @@ let SIMPLIFY_TARGET = 10000;
       // switches from a bare timer to what is actually happening — watching
       // the character count climb is the difference between "it's working"
       // and "it's dead".
-      let liveState = null;   // { phase: "thinking"|"writing", chars|null }
+      // How long before a reply is "slow enough to offer a way out". Long
+      // enough that an ordinary reasoning reply is never interrupted, short
+      // enough that nobody watches a blind timer for ten minutes.
+      const SLOW_AFTER = 90;   // seconds
+      const aiAbort = new AbortController();
+      let liveState = null;   // { phase: "thinking"|"writing", chars|null, text }
       const paintBusy = () => {
         const s = Math.round((performance.now() - t0) / 1000);
         if (!liveState) { busyLabel.textContent = `thinking… ${s}s`; return; }
         busyLabel.classList.add("live");
         const chars = liveState.chars != null ? ` · ${liveState.chars.toLocaleString()} characters` : "";
-        busyLabel.textContent = liveState.phase === "writing"
+        const head = liveState.phase === "writing"
           ? `🔭 building the model… ${s}s${chars}`
           : `🧠 thinking… ${s}s${chars}`;
+        // A SOFT limit. Nothing here can end a request on its own — a
+        // reasoning model can legitimately spend minutes, and killing good
+        // work to satisfy a timer is worse than waiting. But a request with no
+        // way to stop it is a hostage situation: measured, "handcrank" sat at
+        // 609s with nothing to show. So past the threshold the user gets a
+        // button, and the choice stays theirs.
+        if (s >= SLOW_AFTER && !busy.querySelector(".stop-btn")) {
+          const stop = document.createElement("button");
+          stop.className = "hist-btn stop-btn";
+          stop.style.cssText = "font-size:11.5px; padding:2px 10px; margin-left:8px";
+          stop.textContent = "Stop";
+          stop.title = "Give up on this reply — nothing is saved";
+          stop.addEventListener("click", () => { stop.disabled = true; aiAbort?.abort(); });
+          busyLabel.after(stop);
+        }
+        // SHOW THE THINKING. A reasoning model can be three minutes between
+        // the question and the first line of code, and a number climbing does
+        // not tell anyone whether it understood the request. The live tail
+        // does — "the user wants a wall bracket with dovetails" is instantly
+        // worth more than "4,210 characters", and if it has misread the ask
+        // you find out now rather than at the end.
+        busyLabel.textContent = head;
+        if (liveState.text) {
+          const line = document.createElement("div");
+          line.className = "live-tail";
+          line.textContent = liveState.text;
+          const old = busyLabel.parentElement?.querySelector(".live-tail");
+          if (old) old.replaceWith(line); else busyLabel.parentElement?.appendChild(line);
+        }
       };
       const tick = setInterval(paintBusy, 1000);
 
@@ -19419,7 +19492,9 @@ let SIMPLIFY_TARGET = 10000;
           ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\n${verbatim}`
           : (parts ? `${parts.trim()}\n\n${verbatim}` : verbatim);
         const msgs = [...chatLog.slice(-8, -1), { role: "user", text: context }];
-        const cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
+        // `let`, not const: a model whose pool is full sends us to the
+        // fallback below, which means swapping the model on a copy of this.
+        let cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
           baseUrl: aiBase.value.trim() };
 
         logLine(`request → ${cfg.provider} · ${cfg.model}`);
@@ -19638,6 +19713,10 @@ let SIMPLIFY_TARGET = 10000;
           // reasoning and the code being written character by character.
           let wantThoughts = cfg.provider === "gemini";
           let json;
+          // Who was asked first, how long we waited for them, and which free
+          // models have already been tried this message.
+          let ladderStep = null, busyRetries = 0;
+          const ladderTried = new Set();
           for (;;) {
             // The desktop relay returns a finished body, so streaming is only
             // asked for when the request really is a browser fetch.
@@ -19647,7 +19726,10 @@ let SIMPLIFY_TARGET = 10000;
               { includeThoughts: wantThoughts, stream: wantStream, reference, context: msgContext, ...harnessOpts(),
                 lessons,
                 override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
-            const resp = await aiFetch(url, options);
+            // The signal is what makes Stop real rather than cosmetic. The
+            // desktop relay ignores it (the request lives in another process),
+            // which is why the button only claims to give up on the reply.
+            const resp = await aiFetch(url, { ...options, signal: aiAbort.signal });
             if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
               let lastPaint = 0;
               const onDelta = ({ phase, chars }) => {
@@ -19663,11 +19745,63 @@ let SIMPLIFY_TARGET = 10000;
               json = await resp.json();
               logLine(`response ← HTTP ${resp.status}`);
             }
-            const errMsg = json?.error?.message || "";
+            const errMsg = json?.error ? CHAT.apiErrorText(json.error) : "";
             if (wantThoughts && errMsg && /think|thought/i.test(errMsg)) {
               wantThoughts = false;
               logLine("model doesn't expose thinking — retrying without");
               continue;
+            }
+            // BUSY MODEL -> ASK ANOTHER ONE.
+            //
+            // Free and preview models sit in a pool everybody shares, and a
+            // full pool answers 429 with nothing useful behind it. Measured on
+            // ox-alpha: refused three sends in a row, then answered in 1.6s —
+            // it is intermittent, not down, so the user's actual experience is
+            // a coin toss. One key reaches every model on an OpenAI-compatible
+            // host, so the honest fix is to ask a different one rather than to
+            // hand back an apology.
+            //
+            // Once only, and never over the user's own explicit choice of a
+            // paid model: this exists to keep a SHARED demo key working, and
+            // silently spending someone's money on a substitute would be worse
+            // than the error.
+            // Busy (429), gone paid-tier (403 "only available on…"), or
+            // retired (404 "no endpoints") — from the user's chair these are
+            // one situation: this model cannot answer, try another.
+            if (cfg.provider === "openai"
+              && /\b429\b|\b403\b|rate.?limit|temporarily rate-limited|too many requests|only available on|no endpoints/i.test(errMsg)) {
+              // WAIT FIRST, and only then substitute.
+              //
+              // A full pool refuses in about a millisecond — measured, eight
+              // samples, every one 0.0s — so retrying the model the user
+              // actually chose is nearly free, and the refusals come in short
+              // waves (three in a row, then a 1.6s success). Two retries a
+              // couple of seconds apart catch a good share of those windows
+              // and cost nothing when they fail. Only after that is a
+              // substitute the better answer than another wait.
+              // Wait for the chosen model first — a full pool refuses in about
+              // a millisecond, so retrying is nearly free, and the refusals
+              // come in waves (measured: several in a row, then a 1.6s
+              // success). Only when waiting has stopped paying do we move.
+              if (busyRetries < 2 && !ladderStep) {
+                busyRetries++;
+                logLine(`${cfg.model} is busy — waiting ${busyRetries * 2}s and asking it again`);
+                await new Promise((r) => setTimeout(r, busyRetries * 2000));
+                continue;
+              }
+              // Then walk the free ladder, best first. 403 means the model has
+              // gone paid-tier since this list was written: skip it and keep
+              // going rather than stopping the chain on a stale entry.
+              if (freeModeOn()) {
+                const next = FREE_LADDER.find((m) => m !== cfg.model && !ladderTried.has(m));
+                if (next) {
+                  ladderTried.add(next);
+                  ladderStep = ladderStep || cfg.model;   // remember who was asked first
+                  logLine(`${cfg.model} unavailable — trying ${next}`);
+                  cfg = { ...cfg, model: next };
+                  continue;
+                }
+              }
             }
             break;
           }
@@ -19680,6 +19814,13 @@ let SIMPLIFY_TARGET = 10000;
           // the system prompt and every reply is quietly paying full price.
           const used = CHAT.usageNote(cfg.provider, json);
           if (used) logLine(used);
+          // Say WHO answered. A silent substitution would leave the user
+          // judging one model's output believing it came from another — and
+          // wondering why "the same model" reads differently between replies.
+          if (ladderStep) {
+            addMsg("bot", `${ladderStep} was busy, so ${cfg.model} answered this one — all free models.`)
+              .style.cssText = "opacity:.7; font-size:12px";
+          }
         }
 
         let fence = answer.match(/```[\w]*\n([\s\S]*?)```/);
@@ -19710,7 +19851,25 @@ let SIMPLIFY_TARGET = 10000;
           : (prose || (fence ? "Here you go — building it now." : answer)));
         chatLog.push({ role: "assistant", text: answer });
         if (fence && !unsafe) {
-          const r = await applyGeneratedCode(fence[1].trim());
+          let r = await applyGeneratedCode(fence[1].trim());
+          // A MODULE STILL LOADING IS NOT A CODE ERROR.
+          //
+          // text(), qrcode(), datamatrix() and stencil() live in a lazily
+          // imported module. The first build that uses one throws "Loading the
+          // text/code engine…" and re-runs itself the moment the import lands
+          // — harmless when a person is typing, and quietly expensive here: the
+          // auto-fixer read it as a build failure and asked the model to repair
+          // code that was already correct. Measured on a reasoning model, that
+          // mistake cost a ten-minute round trip and produced a WORSE answer,
+          // because the model dutifully "fixed" something that was never wrong.
+          // So wait for the module and judge the code on its second chance.
+          if (!r.ok && /loading the text\/code engine/i.test(r.detail || "")) {
+            logLine("text/code engine was still loading — waiting, not asking for a fix");
+            for (let i = 0; i < 20 && !r.ok; i++) {
+              await new Promise((res) => setTimeout(res, 250));
+              r = await applyGeneratedCode(fence[1].trim());
+            }
+          }
           if (!r.ok) {
             // Hand the failure back and RETRY IT OURSELVES. A build error is
             // something the model can almost always repair from the message
@@ -19775,7 +19934,67 @@ let SIMPLIFY_TARGET = 10000;
         clearInterval(tick);
         busy.remove();
         const msg = String(e?.message || e);
-        const el = addMsg("bot", `That didn't work: ${msg.slice(0, 140)}`);
+        // Stopping on purpose is not a failure. Reporting the user's own
+        // decision back to them as an error is the kind of small rudeness that
+        // makes software feel like it is arguing with you.
+        if (e?.name === "AbortError" || aiAbort.signal.aborted) {
+          addMsg("bot", "Stopped. Nothing changed — send again, or try asking for less in one go.")
+            .style.cssText = "opacity:.75; font-size:12.5px";
+          return;
+        }
+        // A BUSY free model is not a broken app, and "That didn't work: 429"
+        // reads like one. Free and preview models sit in a pool everybody
+        // shares, so this is common, temporary, and fixed by waiting — say
+        // that, and say which model, so the user knows what to retry.
+        const busyModel = /\b429\b|rate.?limit|temporarily rate-limited|too many requests/i.test(msg);
+        const el = addMsg("bot", busyModel ? "" : `That didn't work: ${msg.slice(0, 140)}`);
+        // A busy FREE model is the one failure where the user has a real
+        // choice to make, so spell it out rather than apologising. The shared
+        // key is a courtesy and its pool is finite; their own key is the way
+        // off that queue entirely, and it is neither expensive nor difficult.
+        // Buttons, because "open ⚙ and paste a key" is three steps and a
+        // guess about which field.
+        if (busyModel) {
+          el.innerHTML =
+            `<b>${esc(aiModel.value || "That model")} is busy right now.</b> Free models sit in a pool `
+            + `everyone shares, and it is currently full — nothing is wrong with your key or the app.`
+            + `<div style="margin-top:8px">Two ways on:</div>`
+            + `<div style="margin:4px 0 2px"><b>1.</b> Wait a few seconds and send again — it usually clears.</div>`
+            + `<div style="margin:2px 0 6px"><b>2.</b> Use your OWN key and you skip the queue entirely. `
+            + `Any OpenAI, Anthropic, Gemini or OpenRouter key works, and one OpenRouter key reaches `
+            + `every model on this list — a few pounds lasts a long time at this size of request.</div>`;
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex; gap:6px; flex-wrap:wrap; margin-top:6px";
+          const mk = (label, title, fn) => {
+            const b = document.createElement("button");
+            b.className = "hist-btn";
+            b.style.cssText = "font-size:12px; padding:4px 12px";
+            b.textContent = label;
+            b.title = title;
+            b.addEventListener("click", fn);
+            return b;
+          };
+          row.append(
+            // The message is still on screen in the user's own bubble — read it
+            // back from there rather than keeping a second copy that can drift.
+            mk("Try again", "Send the same request once more", () => {
+              const mine = [...chatMsgs.querySelectorAll(".msg.user")];
+              const text = mine[mine.length - 1]?.textContent?.trim();
+              if (text) chatInput.value = text;
+              if (chatInput.value.trim()) sendChat();
+            }),
+            mk("Use my own key", "Open the AI settings with the key field ready", () => {
+              toggleCard(chatCard, chatBtn, true);
+              $("gear-btn").click();
+              aiKey.focus();
+              aiKey.select();
+            }),
+            mk("Get a key", "Opens openrouter.ai/keys in a new tab", () => {
+              window.open("https://openrouter.ai/keys", "_blank", "noopener");
+            }),
+          );
+          el.appendChild(row);
+        }
         // The CLI is there but has no standalone login yet — the one situation
         // a button genuinely fixes. It opens the CLI in its own console; type
         // /login there, sign in in the browser, come back and just send again.

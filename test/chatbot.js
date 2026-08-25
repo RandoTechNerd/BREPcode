@@ -1135,6 +1135,143 @@ console.log("\nwires are swept, not chained\n");
     /if \(e\.target\.closest\("#img-zoom-bar"\)\) return;/.test(HTML));
 }
 
+// Watching a reasoning model work. OpenAI streams its thinking as
+// `reasoning_content`; OpenRouter streams it as `reasoning` — and only the
+// first was read, so every reasoning model reached through a compatible host
+// had its whole thought stream arrive and be discarded. Measured cost: a
+// "handcrank" request sat at 609 SECONDS showing a bare timer and no character
+// count, while the text explaining itself was streaming past unread.
+{
+  console.log("\nthe thinking stream is read, and shown\n");
+  const sse = (chunks) => ({
+    body: new ReadableStream({
+      start(c) {
+        const enc = new TextEncoder();
+        for (const ch of chunks) c.enqueue(enc.encode(`data: ${JSON.stringify(ch)}\n\n`));
+        c.enqueue(enc.encode("data: [DONE]\n\n"));
+        c.close();
+      },
+    }),
+  });
+  const run = async (chunks) => {
+    const seen = [];
+    await CB.readOpenAIStream(sse(chunks), (p) => seen.push(p));
+    return seen;
+  };
+
+  const openrouter = await run([
+    { choices: [{ delta: { reasoning: "The user wants a hand crank. " } }] },
+    { choices: [{ delta: { content: "const R = 12;" } }] },
+  ]);
+  check("OpenRouter's `reasoning` is read", openrouter.some((p) => p.phase === "thinking"),
+    "this is the spelling that was being thrown away");
+
+  const openai = await run([
+    { choices: [{ delta: { reasoning_content: "Considering the grip." } }] },
+    { choices: [{ delta: { content: "const R = 12;" } }] },
+  ]);
+  check("...and OpenAI's `reasoning_content` still is", openai.some((p) => p.phase === "thinking"));
+
+  check("progress carries the live TEXT, not just a count",
+    openrouter.find((p) => p.phase === "thinking")?.text?.includes("hand crank"),
+    "a number climbing does not tell you whether it understood the request");
+  check("...and the writing phase carries its tail too",
+    openrouter.find((p) => p.phase === "writing")?.text?.includes("const R"));
+
+  const { readFileSync: rf3 } = await import("node:fs");
+  const HTML3 = rf3(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("the busy row renders that tail", /class = "live-tail"|className = "live-tail"/.test(HTML3));
+  check("...on one quiet line, not as reading material",
+    /\.live-tail \{[\s\S]{0,200}?text-overflow: ellipsis/.test(HTML3));
+}
+
+// A request with no way to stop it is a hostage situation: measured, a
+// "handcrank" ran 609s with no exit. Nothing here ends a request on its own —
+// a reasoning model can legitimately spend minutes, and killing good work to
+// satisfy a timer is worse than waiting — but past a threshold the choice
+// becomes the user's.
+{
+  console.log("\na long reply can be stopped\n");
+  const { readFileSync: rf4 } = await import("node:fs");
+  const HTML4 = rf4(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("there is a real abort behind the button",
+    /const aiAbort = new AbortController\(\);/.test(HTML4)
+    && /aiFetch\(url, \{ \.\.\.options, signal: aiAbort\.signal \}\)/.test(HTML4),
+    "a Stop button with no signal is a lie");
+  check("...offered only after a genuinely long wait",
+    /const SLOW_AFTER = 90;/.test(HTML4));
+  check("...and stopping is not reported as an error",
+    /e\?\.name === "AbortError"[\s\S]{0,140}Stopped\. Nothing changed/.test(HTML4),
+    "telling the user their own decision failed is a small rudeness");
+}
+
+// A module still loading is not a code error. text()/qrcode()/stencil() live in
+// a lazily imported module, and the first build that uses one throws "Loading
+// the text/code engine…" then re-runs itself. The auto-fixer read that as a
+// build failure and asked the model to repair correct code — on a reasoning
+// model, a ten-minute round trip to fix nothing.
+{
+  console.log("\na loading module is not a build failure\n");
+  const { readFileSync: rf5 } = await import("node:fs");
+  const HTML5 = rf5(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("the loading state is recognised before the auto-fixer runs",
+    /if \(!r\.ok && \/loading the text\\\/code engine\/i\.test\(r\.detail \|\| ""\)\)/.test(HTML5));
+  check("...and it WAITS and rebuilds rather than asking for a fix",
+    /r = await applyGeneratedCode\(fence\[1\]\.trim\(\)\);\s*\n\s*\}\s*\n\s*\}/.test(HTML5)
+    || /for \(let i = 0; i < 20 && !r\.ok; i\+\+\)/.test(HTML5));
+}
+
+// What an API error actually said. Taking error.message alone loses the useful
+// half on any gateway that wraps an upstream failure: OpenRouter answers a
+// rate-limited pool with the generic "Provider returned error" and hides the
+// reason in code + metadata.raw. The user saw "That didn't work: Provider
+// returned error" — which reads as a broken app, not a busy model, and gives
+// them nothing to act on. This is the exact payload from that failure.
+{
+  console.log("\nAPI errors keep the half that helps\n");
+  const or429 = {
+    message: "Provider returned error",
+    code: 429,
+    metadata: {
+      raw: "stealth/ox-alpha is temporarily rate-limited upstream. Please retry shortly.",
+      provider_name: "Stealth",
+    },
+  };
+  const txt = CB.apiErrorText(or429);
+  check("the upstream reason survives", /temporarily rate-limited upstream/.test(txt), txt);
+  check("...and so does the code", /429/.test(txt), txt);
+  check("...so the chat's friendly-busy path recognises it",
+    /\b429\b|rate.?limit|temporarily rate-limited|too many requests/i.test(txt),
+    "this regex is what turns a raw error into 'the model is busy, try again'");
+  check("a plain error is unchanged", CB.apiErrorText({ message: "Invalid API key" }) === "Invalid API key");
+  check("a bare string passes through", CB.apiErrorText("boom") === "boom");
+  check("nothing at all is empty, not 'undefined'", CB.apiErrorText(null) === "");
+
+  // Every provider path must go through it, or the next gateway hides its
+  // reason the same way.
+  const { readFileSync } = await import("node:fs");
+  const SRC = readFileSync(new URL("../viewer/chatbot.js", import.meta.url), "utf8");
+  check("no error path still reads error.message directly",
+    !/throw new Error\(json\.error\.message/.test(SRC),
+    "one missed path is one provider whose failures stay mute");
+  const HTML2 = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  // Matched in pieces on purpose: the message is built by concatenating
+  // template literals, so any regex spanning the joins breaks the next time
+  // someone rewraps a line — which is a test failing for a reason that has
+  // nothing to do with the behaviour it is guarding.
+  check("the chat says 'busy', not 'that didn't work', for a rate limit",
+    /is busy right now/.test(HTML2) && /pool[\s\S]{0,40}everyone shares/.test(HTML2)
+    && /nothing is wrong with your key or the app/i.test(HTML2));
+  // The useful half: a busy shared model is the one failure where the user has
+  // a real choice, so the message has to hand them the way out rather than
+  // apologise. Buttons, because "open the settings and paste a key" is three
+  // steps and a guess about which field.
+  check("...and offers the way out, as buttons",
+    /Try again/.test(HTML2) && /Use my own key/.test(HTML2) && /Get a key/.test(HTML2));
+  check("...naming their own key as the way off the queue",
+    /Use your OWN key and you skip the queue/.test(HTML2));
+}
+
 // The shipped key: password-locked, or an open house key applied on first run.
 // Both go through applyShippedKey, and what it sets is what was missing before:
 // the pieces a hosted OpenAI-compatible endpoint silently needs.
