@@ -632,6 +632,65 @@
        is that it should not look like a form field sitting in the header. */
     /* Marks a feature as new and still settling, so nobody is surprised when a
        corner drag rewrites their cube() into a list of points. */
+    /* ---------- measure (beta) ----------
+       Bottom-LEFT of the viewport. The dock owns the right, the parts bar and
+       build bar own the bottom strip, and the readout has to be readable
+       without covering the thing being measured. */
+    #measure-panel {
+      position: fixed; left: 12px; bottom: 12px; z-index: 30; width: 226px;
+      background: var(--header); border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, .45); font-size: 12px; color: var(--text);
+      overflow: hidden;
+    }
+    #measure-panel[hidden] { display: none; }
+    #measure-head {
+      display: flex; align-items: center; gap: 4px;
+      padding: 7px 8px 6px 10px; border-bottom: 1px solid var(--border);
+    }
+    #measure-head b { font-size: 12px; }
+    #measure-close {
+      margin-left: auto; background: none; border: 0; color: var(--muted2);
+      font-size: 17px; line-height: 1; cursor: pointer; padding: 0 3px; border-radius: 4px;
+    }
+    #measure-close:hover { color: var(--text); background: rgba(255, 255, 255, .08); }
+    #measure-modes { display: flex; gap: 4px; padding: 7px 8px; }
+    #measure-modes button {
+      flex: 1; font: inherit; font-size: 11px; padding: 3px 0; cursor: pointer;
+      background: var(--input-bg, var(--bg)); color: var(--muted2);
+      border: 1px solid var(--border); border-radius: 6px;
+    }
+    #measure-modes button:hover { color: var(--text); }
+    #measure-modes button.on { color: var(--accent); border-color: var(--accent); }
+    /* Fixed height: the live line changes on every mouse move, and a panel that
+       grew and shrank under the cursor would be unreadable. */
+    #measure-live {
+      padding: 6px 10px 7px; min-height: 32px; font-size: 11.5px; color: var(--muted3);
+      border-top: 1px solid var(--border); line-height: 1.35;
+    }
+    #measure-live b { color: var(--text); font-variant-numeric: tabular-nums; }
+    #measure-list { max-height: 172px; overflow-y: auto; scrollbar-width: thin; }
+    #measure-list:not(:empty) { border-top: 1px solid var(--border); }
+    .mrow {
+      display: flex; align-items: baseline; gap: 6px; padding: 4px 8px 4px 10px;
+      border-bottom: 1px solid var(--border2, rgba(255,255,255,.05));
+    }
+    .mrow:last-child { border-bottom: 0; }
+    .mrow .mval { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+    .mrow .mwhat { color: var(--muted2); font-size: 10.5px; min-width: 0; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mrow button {
+      background: none; border: 0; color: var(--muted2); cursor: pointer;
+      font-size: 13px; line-height: 1; padding: 0 2px; border-radius: 3px;
+    }
+    .mrow button:hover { color: var(--bad, #e06c6c); background: rgba(255, 255, 255, .07); }
+    #measure-foot {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px 7px 10px;
+      border-top: 1px solid var(--border);
+    }
+    #measure-foot .hist-btn { font-size: 11px; padding: 1px 8px; }
+    #measure-note { font-size: 10px; color: var(--muted2); }
+    @media (max-width: 620px) { #measure-panel { width: min(226px, calc(100vw - 24px)); } }
+
     .beta {
       font-size: 7.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
       color: rgba(255, 176, 46, .55); border: 1px solid rgba(255, 176, 46, .2); border-radius: 3px;
@@ -2205,6 +2264,27 @@
 </head>
 <body>
   <div id="stage"></div>
+
+  <!-- Measure (beta). An overlay rather than a dock card: it is only ever on
+       screen while the tool is armed, it has to sit next to the model you are
+       clicking, and it must not reflow the dock every time you arm it. -->
+  <div id="measure-panel" hidden>
+    <div id="measure-head">
+      <b>Measure</b><small class="beta">beta</small>
+      <button id="measure-close" title="Close measure mode (Esc)">&times;</button>
+    </div>
+    <div id="measure-modes" role="group" aria-label="What to measure">
+      <button data-mmode="point" class="on" title="Distance between two points, snapping to corners and edges">Point</button>
+      <button data-mmode="face" title="Two faces: the gap between them, or the angle if they are not parallel">Face</button>
+      <button data-mmode="single" title="One face: its size and area">Info</button>
+    </div>
+    <div id="measure-live">Hover the model.</div>
+    <div id="measure-list"></div>
+    <div id="measure-foot">
+      <button id="measure-clear" class="hist-btn">Clear</button>
+      <span id="measure-note">Numbers are millimetres.</span>
+    </div>
+  </div>
   <!-- Something to watch while the kernel warms up.
        It is in the MARKUP, not built by script, so it is on screen in the first
        paint — the wait it covers starts before any of our JavaScript runs, and
@@ -2794,6 +2874,7 @@
           <!-- hidden real buttons — the toolbox rows click these, so the tools
                keep one implementation no matter how they're launched -->
           <button id="drill-btn" hidden></button>
+          <button id="measure-btn" hidden></button>
           <button id="shave-btn" hidden></button>
           <button id="scale-btn" hidden></button>
           <button id="code-dm-btn" hidden></button>
@@ -2837,6 +2918,14 @@
               <circle cx="8" cy="9.5" r="3.4" /><path d="M8 6.1V2.2M6 3.4h4" />
             </svg>
             <span><b>Drill</b><small>click a face to bore a hole</small></span>
+          </button>
+          <button data-act="measure-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1.6 10.2 10.2 1.6l4.2 4.2-8.6 8.6z" />
+              <path d="M4.4 7.4 5.8 8.8M6.6 5.2 8.7 7.3M8.8 3 10.2 4.4" />
+            </svg>
+            <span><b>Measure <small class="beta">beta</small></b><small>click corners, edges or faces for real numbers</small></span>
           </button>
           <button data-act="fins-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
@@ -4046,6 +4135,7 @@
     import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
     import { LineMaterial } from "three/addons/lines/LineMaterial.js";
     import * as dsl from "../src/dsl.js";
+    import * as mgeom from "../src/measuregeom.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
     // On-demand modules: the default shape never needs the curved-STEP kernel,
@@ -4419,6 +4509,13 @@
       // undo the pan on every single drag.
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      // NOT WHILE A TOOL IS ARMED. Re-centring nudges the camera, so the model
+      // slides between pointerdown and pointerup — and every one of these tools
+      // acts on the point you released over. Measured while testing measure:
+      // the press moved the view and the release landed on empty space, so the
+      // click did nothing at all and looked like the tool was broken. Aiming at
+      // a specific corner is exactly when the view must hold still.
+      if (measureArmed || drillArmed || shaveArmed || codeArmed || finsArmed || embossArmed) return;
       recentrePivot();
     }, true);
 
@@ -4694,6 +4791,13 @@
     // ------------------------------------------------- dimension lines overlay
     const dimsGroup = new THREE.Group();
     scene.add(dimsGroup);
+    // Declared HERE, not down in the measure section, for the same reason
+    // outlineMat is: the render loop below starts immediately and calls
+    // measureRescale() every frame. The function itself is hoisted, but a
+    // `const` read inside its own temporal dead zone throws — which would have
+    // been an exception on every frame until the module finished evaluating.
+    const measureGroup = new THREE.Group();
+    scene.add(measureGroup);
     // Dimensions draw in two passes so you can tell depth apart at a glance:
     // the "front" pass depth-tests normally and only survives where nothing is
     // in front of it; the "behind" pass ignores depth but is much fainter, so
@@ -4823,6 +4927,7 @@
       if (camGlide) camGlide(performance.now());
       controls.update();
       fadeAxisLabels();
+      measureRescale();       // markers and labels hold their size on screen
       renderer.render(scene, camera);
     })();
 
@@ -9221,6 +9326,17 @@ ${joined}`)(...vs);
         const dims = bb.isEmpty() ? "" :
           ` · ${["x", "y", "z"].map((a) => (bb.max[a] - bb.min[a]).toFixed(1)).join(" × ")} mm`;
         lastBuiltSource = typed;
+        // A measurement is a claim about geometry that no longer exists. Its
+        // endpoints are world-space points, so they would happily keep drawing
+        // a confident "12.50 mm" across a model that has changed underneath
+        // them — the one thing a measuring tool may never do.
+        if (measurements.length || measurePending) {
+          measurements.length = 0;
+          measurePending = null;
+          measureRenderList();
+          measureRedraw();
+          if (measureArmed) $("measure-live").innerHTML = "The model changed — measurements cleared.";
+        }
         lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms${rebuiltNote}`;
         fireBuilt();
         logEvent("build", "ok", { ms: Math.round(lastBuildMs), solids: solids.length, tris,
@@ -10325,6 +10441,420 @@ ${joined}`)(...vs);
       });
     }
 
+    // ---- Measure (beta) ---------------------------------------------------
+    //
+    // Every other tool here CHANGES the model. This one only reads it, which
+    // makes it the one tool that is safe to point at anything — a preview, an
+    // import, statement code the rewriting tools refuse — and the one whose
+    // whole value is being trustworthy about numbers.
+    //
+    // It can be honest about corners and edges because of how the viewer is
+    // built: adoptFaceData() gives every kernel FACE its own mesh, so an edge of
+    // the model is a boundary edge of one of those meshes — an edge belonging to
+    // exactly one triangle. That is computable, and it means "snap to the
+    // corner" really is the corner rather than the nearest tessellation vertex.
+    //
+    // Three modes, because inferring intent from where you clicked would be
+    // guessing and this tool may not guess:
+    //   point  — two points, snapping to corners then edges then the surface
+    //   face   — two faces: the gap if they are parallel, the angle if not
+    //   info   — one face: its size and area
+    let measureArmed = false;
+    let measureMode = "point";
+    let measurePending = null;          // the first pick, waiting for its pair
+    let measureHover = null;            // marker following the cursor
+    const measurements = [];
+
+    const MEASURE_SNAP_PX = 13;         // how close the cursor must be to snap
+    const mmText = mgeom.measureText;
+
+    function measureScreen(p) {
+      const v = p.clone().project(camera);
+      const rect = renderer.domElement.getBoundingClientRect();
+      return new THREE.Vector2((v.x * 0.5 + 0.5) * rect.width, (-v.y * 0.5 + 0.5) * rect.height);
+    }
+
+    // The model's real edges on one face mesh: the ones with a single triangle
+    // behind them. Positions are quantised into the key because a face can carry
+    // duplicated vertices (split normals), and matching by index would then find
+    // no shared edges at all and call every edge a boundary.
+    function measureEdgesOf(mesh) {
+      if (mesh.userData.__medges) return mesh.userData.__medges;
+      const g = mesh.geometry, pos = g?.attributes?.position;
+      if (!pos) return (mesh.userData.__medges = []);
+      mesh.updateWorldMatrix(true, false);
+      const raw = mgeom.boundaryEdges(pos.array, g.index?.array, mesh.matrixWorld.elements);
+      const out = raw.map(([a, b]) =>
+        [new THREE.Vector3(a[0], a[1], a[2]), new THREE.Vector3(b[0], b[1], b[2])]);
+      // Cached on the mesh, which is thrown away and rebuilt on every build —
+      // so the cache cannot outlive the geometry it describes.
+      mesh.userData.__medges = out;
+      return out;
+    }
+
+    const closestOnSegment = (p, a, b) => {
+      const r = mgeom.closestPointOnSegment([p.x, p.y, p.z], [a.x, a.y, a.z], [b.x, b.y, b.z]);
+      return new THREE.Vector3(r[0], r[1], r[2]);
+    };
+
+    // What is under the cursor, in the order a CAD user expects: corner, then
+    // edge, then the surface itself. Screen-space thresholds, so the snap feels
+    // the same whether you are zoomed to a whole plate or one boss.
+    function measureSnap(hit, cursor) {
+      const base = { kind: "face", point: hit.point.clone(), mesh: hit.object, hit };
+      const edges = measureEdgesOf(hit.object);
+      let best = null, bestD = MEASURE_SNAP_PX;
+      for (const [a, b] of edges) {
+        for (const corner of [a, b]) {
+          const d = measureScreen(corner).distanceTo(cursor);
+          if (d < bestD) { bestD = d; best = corner; }
+        }
+      }
+      if (best) return { ...base, kind: "corner", point: best.clone() };
+      let bestPt = null, bestED = MEASURE_SNAP_PX, bestEdge = null;
+      for (const [a, b] of edges) {
+        const p = closestOnSegment(hit.point, a, b);
+        const d = measureScreen(p).distanceTo(cursor);
+        if (d < bestED) { bestED = d; bestPt = p; bestEdge = [a, b]; }
+      }
+      if (bestPt) return { ...base, kind: "edge", point: bestPt.clone(), edge: bestEdge };
+      return base;
+    }
+
+    // Area is summed from the triangles rather than taken from the bounding box:
+    // a face with a hole through it, or any face that is not a rectangle, would
+    // otherwise report the area of the box around it.
+    function measureFaceInfo(mesh) {
+      const g = mesh.geometry, pos = g?.attributes?.position;
+      const bb = new THREE.Box3().setFromObject(mesh);
+      const size = bb.getSize(new THREE.Vector3());
+      const centre = bb.getCenter(new THREE.Vector3());
+      if (!pos) return { area: 0, size, centre };
+      mesh.updateWorldMatrix(true, false);
+      const area = mgeom.surfaceArea(pos.array, g.index?.array, mesh.matrixWorld.elements);
+      return { area, size, centre };
+    }
+
+    // ---- drawing ----
+    const measureDot = (p, colour = 0x7fd3ff) => {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 12, 8),
+        new THREE.MeshBasicMaterial({ color: colour, depthTest: false, transparent: true, opacity: 0.95 }),
+      );
+      m.position.copy(p);
+      m.renderOrder = 1002;
+      // Constant on-screen size: a marker scaled in world units is a boulder on
+      // a 5mm part and invisible on a 300mm one.
+      m.userData.screenScale = 7;
+      measureGroup.add(m);
+      return m;
+    };
+
+    function measureLine(a, b, text) {
+      const made = [];
+      const g = new THREE.BufferGeometry().setFromPoints([a, b]);
+      for (const [mat, order] of [[dimMaterialBehind, 1001], [dimMaterial, 1002]]) {
+        const line = new THREE.Line(g, mat);
+        line.renderOrder = order;
+        measureGroup.add(line);
+        made.push(line);
+      }
+      if (text) {
+        const { sprites, aspect } = dimLabel(text);
+        const mid = a.clone().add(b).multiplyScalar(0.5);
+        for (const s of sprites) {
+          s.position.copy(mid);
+          s.userData.screenScale = 15;
+          s.userData.aspect = aspect;
+          measureGroup.add(s);
+          made.push(s);
+        }
+      }
+      return made;
+    }
+
+    // Markers and labels are sized every frame from their distance to the
+    // camera, so they stay legible at any zoom. Called from the render loop.
+    function measureRescale() {
+      if (!measureGroup.children.length) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const h = Math.max(1, rect.height);
+      const fov = (camera.fov ?? 50) * Math.PI / 180;
+      for (const o of measureGroup.children) {
+        const px = o.userData.screenScale;
+        if (!px) continue;
+        const dist = camera.isOrthographicCamera
+          ? (camera.top - camera.bottom) / (camera.zoom || 1) / 2
+          : camera.position.distanceTo(o.position);
+        const worldPerPx = camera.isOrthographicCamera
+          ? (dist * 2) / h
+          : (2 * Math.tan(fov / 2) * dist) / h;
+        const s = Math.max(1e-4, worldPerPx * px);
+        if (o.isSprite) o.scale.set(s * (o.userData.aspect || 1), s, 1);
+        else o.scale.setScalar(s);
+      }
+    }
+
+    const clearMeasureGroup = () => {
+      for (const c of [...measureGroup.children]) {
+        c.geometry?.dispose?.();
+        if (c.isSprite || c.isMesh) c.material?.map?.dispose?.();
+        if (c.isMesh) c.material?.dispose?.();
+        measureGroup.remove(c);
+      }
+      measureHover = null;
+    };
+
+    // Everything on screen is redrawn from `measurements` plus whatever is
+    // half-picked, so there is one place that decides what a measurement looks
+    // like and no way for the list and the viewport to disagree.
+    function measureRedraw() {
+      clearMeasureGroup();
+      if (!measureArmed) return;
+      for (const m of measurements) {
+        if (m.a) measureDot(m.a, 0x8ef0c0);
+        if (m.b) measureDot(m.b, 0x8ef0c0);
+        if (m.a && m.b) measureLine(m.a, m.b, m.value);
+        else if (m.a) measureLine(m.a, m.a, m.value);
+      }
+      if (measurePending?.point) measureDot(measurePending.point, 0xffd479);
+      measureRescale();
+    }
+
+    const MEASURE_KIND_WORD = { corner: "corner", edge: "edge", face: "face" };
+
+    // Set when a measurement lands, so the confirmation survives the mouse
+    // moving one pixel afterwards. Without it the number appeared and vanished
+    // in the same frame and the click looked like it had missed.
+    let measureHeldUntil = 0;
+
+    function measureLiveText(snap) {
+      const live = $("measure-live");
+      if (performance.now() < measureHeldUntil) return;
+      if (!snap) {
+        live.innerHTML = measurePending
+          ? (measureMode === "face"
+              ? "First face set. Click a different one."
+              : "First point set. Click the second.")
+          : measureMode === "single"
+            ? "Click a face for its size and area."
+            : measureMode === "face"
+              ? "Click one face, then another."
+              : "Hover the model. It snaps to corners and edges.";
+        return;
+      }
+      if (measureMode === "single") {
+        const f = measureFaceInfo(snap.mesh);
+        live.innerHTML = `<b>${mmText(f.size.x)} × ${mmText(f.size.y)} × ${mmText(f.size.z)}</b> mm`
+          + `<br>area <b>${mmText(f.area)}</b> mm²`;
+        return;
+      }
+      if (measureMode === "face") {
+        live.innerHTML = measurePending
+          ? `Now click the <b>second</b> face.`
+          : `Click this <b>face</b> to start.`;
+        return;
+      }
+      const word = MEASURE_KIND_WORD[snap.kind] || "point";
+      if (!measurePending) {
+        live.innerHTML = `Snap: <b>${word}</b><br>`
+          + `${mmText(snap.point.x)}, ${mmText(snap.point.y)}, ${mmText(snap.point.z)}`;
+        return;
+      }
+      const q = measurePending.point, t = snap.point;
+      const parts = mgeom.distanceParts([q.x, q.y, q.z], [t.x, t.y, t.z]);
+      live.innerHTML = `<b>${mmText(parts.d)}</b> mm to this ${word}`
+        + `<br>Δ ${mmText(parts.dx)} · ${mmText(parts.dy)} · ${mmText(parts.dz)}`;
+    }
+
+    function measureRenderList() {
+      const list = $("measure-list");
+      list.innerHTML = "";
+      for (const m of measurements) {
+        const row = document.createElement("div");
+        row.className = "mrow";
+        const val = document.createElement("span");
+        val.className = "mval";
+        val.textContent = m.value;
+        const what = document.createElement("span");
+        what.className = "mwhat";
+        what.textContent = m.what;
+        what.title = m.detail || m.what;
+        const del = document.createElement("button");
+        del.textContent = "×";
+        del.title = "Remove this measurement";
+        del.addEventListener("click", () => {
+          const i = measurements.indexOf(m);
+          if (i >= 0) measurements.splice(i, 1);
+          measureRenderList();
+          measureRedraw();
+        });
+        row.append(val, what, del);
+        list.appendChild(row);
+      }
+      $("measure-clear").disabled = !measurements.length;
+    }
+
+    // One click in measure mode. Returns nothing; everything it changes is the
+    // pending pick, the list, and what is drawn.
+    function measureClick(hit, cursor) {
+      if (!hit) {                       // clicking away cancels a half-made pick
+        measurePending = null;
+        measureLiveText(null);
+        measureRedraw();
+        return;
+      }
+      const snap = measureSnap(hit, cursor);
+
+      if (measureMode === "single") {
+        const f = measureFaceInfo(snap.mesh);
+        measurements.push({
+          value: `${mmText(f.area)} mm²`,
+          what: `face ${mmText(f.size.x)}×${mmText(f.size.y)}×${mmText(f.size.z)}`,
+          detail: `Face of ${snap.mesh.userData.featureId || "the model"} — `
+            + `bounding size ${mmText(f.size.x)} × ${mmText(f.size.y)} × ${mmText(f.size.z)} mm, `
+            + `area ${mmText(f.area)} mm²`,
+          a: f.centre.clone(),
+        });
+        measureRenderList();
+        measureRedraw();
+        measureDone();
+        return;
+      }
+
+      if (measureMode === "face") {
+        const info = measureFaceInfo(snap.mesh);
+        const normal = faceNormalAt(snap.hit);
+        if (!measurePending) {
+          measurePending = { point: info.centre.clone(), normal, mesh: snap.mesh, info };
+          measureLiveText(null);
+          measureRedraw();
+          return;
+        }
+        // The same face twice. Easy to do by accident — on a plain box no two
+        // PARALLEL faces are ever visible at once, so aiming at the far side
+        // just hits the near one again — and it used to record a confident
+        // "0 mm gap", which is the tool lying rather than the tool failing.
+        if (snap.mesh === measurePending.mesh) {
+          measureHeldUntil = 0;
+          $("measure-live").innerHTML = "That is the same face. Pick a <b>different</b> one — "
+            + "orbit round if the other face is hidden.";
+          measureHeldUntil = performance.now() + 1600;
+          return;
+        }
+        const n1 = measurePending.normal, n2 = normal;
+        const a1 = [n1.x, n1.y, n1.z], a2 = [n2.x, n2.y, n2.z];
+        const parallel = mgeom.facesParallel(a1, a2);
+        if (parallel) {
+          const gap = mgeom.faceGap(
+            [measurePending.point.x, measurePending.point.y, measurePending.point.z],
+            [info.centre.x, info.centre.y, info.centre.z], a1);
+          measurements.push({
+            value: `${mmText(gap)} mm`,
+            what: "gap between faces",
+            detail: `Perpendicular distance between two parallel faces: ${mmText(gap)} mm`,
+            a: measurePending.point.clone(), b: info.centre.clone(),
+          });
+        } else {
+          const deg = mgeom.faceAngleDeg(a1, a2);
+          measurements.push({
+            value: `${deg.toFixed(1)}°`,
+            what: "angle between faces",
+            detail: `Angle between two faces: ${deg.toFixed(2)}°`,
+            a: measurePending.point.clone(), b: info.centre.clone(),
+          });
+        }
+        measurePending = null;
+        measureRenderList();
+        measureRedraw();
+        measureDone();
+        return;
+      }
+
+      // point to point
+      if (!measurePending) {
+        measurePending = { point: snap.point.clone(), kind: snap.kind };
+        measureLiveText(null);
+        measureRedraw();
+        return;
+      }
+      const a = measurePending.point, b = snap.point;
+      const parts = mgeom.distanceParts([a.x, a.y, a.z], [b.x, b.y, b.z]);
+      const d = parts.d;
+      measurements.push({
+        value: `${mmText(d)} mm`,
+        what: `${MEASURE_KIND_WORD[measurePending.kind] || "point"} → ${MEASURE_KIND_WORD[snap.kind] || "point"}`,
+        detail: `${mmText(parts.d)} mm   Δx ${mmText(parts.dx)}  `
+          + `Δy ${mmText(parts.dy)}  Δz ${mmText(parts.dz)}`,
+        a: a.clone(), b: b.clone(),
+      });
+      measurePending = null;
+      measureRenderList();
+      measureRedraw();
+      measureDone();
+    }
+
+    // The line that was mid-instruction ("now click the second face") is wrong
+    // the instant the pair lands, and leaving it up reads as though the click
+    // did not register.
+    function measureDone() {
+      const last = measurements[measurements.length - 1];
+      if (!last) return;
+      measureHeldUntil = 0;
+      $("measure-live").innerHTML = `Measured <b>${last.value}</b>`
+        + `<br><span style="opacity:.8">${last.what} — it is in the list below.</span>`;
+      measureHeldUntil = performance.now() + 1600;
+    }
+
+    function setMeasureArmed(on) {
+      measureArmed = !!on;
+      if (measureArmed) {
+        // One tool at a time, same as the others — but measure changes nothing,
+        // so it is the only one that never refuses a preview or statement code.
+        if (drillArmed) setDrillArmed(false);
+        if (shaveArmed) setShaveArmed(false);
+        if (codeArmed) setCodeArmed(false);
+        if (finsArmed) setFinsArmed(false);
+        if (embossArmed) setEmbossArmed(false);
+      }
+      measurePending = null;
+      $("measure-panel").hidden = !measureArmed;
+      $("measure-btn").classList.toggle("active", measureArmed);
+      renderer.domElement.style.cursor = measureArmed ? "crosshair" : "";
+      if (measureArmed) {
+        measureHeldUntil = 0;
+        hint.innerHTML = "📏 <b>Measure armed</b> — it snaps to <b>corners</b> and <b>edges</b>. "
+          + "Switch to <b>Face</b> for the gap or angle between two faces, or <b>Info</b> for one face's size. "
+          + "<b>Esc</b> closes it.";
+        measureLiveText(null);
+        measureRenderList();
+      }
+      measureRedraw();
+    }
+
+    $("measure-btn").addEventListener("click", () => setMeasureArmed(!measureArmed));
+    $("measure-close").addEventListener("click", () => setMeasureArmed(false));
+    $("measure-clear").addEventListener("click", () => {
+      measurements.length = 0;
+      measurePending = null;
+      measureHeldUntil = 0;
+      measureRenderList();
+      measureRedraw();
+      measureLiveText(null);
+    });
+    for (const b of document.querySelectorAll("#measure-modes [data-mmode]")) {
+      b.addEventListener("click", () => {
+        measureMode = b.dataset.mmode;
+        for (const other of document.querySelectorAll("#measure-modes [data-mmode]")) {
+          other.classList.toggle("on", other === b);
+        }
+        measurePending = null;          // a half-made pick means nothing in a new mode
+        measureHeldUntil = 0;
+        measureLiveText(null);
+        measureRedraw();
+      });
+    }
+
     function setDrillArmed(on) {
       if (on && inPreview()) { refusePreviewTool("Drill"); return; }
       drillArmed = on && !!currentModelExpr();
@@ -11047,6 +11577,31 @@ ${joined}`)(...vs);
       }
     });
 
+    // Measure's hover preview. Before the `if (!drag) return` below, because
+    // measuring never drags — and the whole point of the preview is to show
+    // WHICH corner you are about to pick before you commit to it.
+    renderer.domElement.addEventListener("pointermove", (e) => {
+      if (!measureArmed || drag) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const cursor = new THREE.Vector2(e.clientX - rect.left, e.clientY - rect.top);
+      raycaster.setFromCamera(new THREE.Vector2(
+        (cursor.x / rect.width) * 2 - 1, -(cursor.y / rect.height) * 2 + 1,
+      ), camera);
+      const hit = pickModel(raycaster)[0] || (previewGroup.children.length
+        ? raycaster.intersectObjects(previewGroup.children, true)[0] : null);
+      const snap = hit ? measureSnap(hit, cursor) : null;
+      measureLiveText(snap);
+      measureRedraw();
+      if (snap) {
+        // Amber for what you are about to pick, so it reads differently from
+        // the green of what you have already measured.
+        measureHover = measureDot(snap.point, snap.kind === "corner" ? 0xffd479
+          : snap.kind === "edge" ? 0x9ad0ff : 0x7fd3ff);
+        if (measurePending) measureLine(measurePending.point, snap.point, "");
+        measureRescale();
+      }
+    });
+
     renderer.domElement.addEventListener("pointermove", (e) => {
       if (!drag) return;
 
@@ -11642,6 +12197,18 @@ ${joined}`)(...vs);
       raycaster.setFromCamera(ndc, camera);
       let hit = pickModel(raycaster)[0];
 
+      // Measure reads the model and changes nothing, so it comes FIRST and
+      // swallows the click: it must not also select a shape, open a menu or
+      // drop the selection underneath itself. It is also the one tool allowed
+      // to work on a preview, for the same reason shave is — there is no code
+      // being rewritten, so there is nothing that needs code to rewrite.
+      if (measureArmed) {
+        const h = hit || (previewGroup.children.length
+          ? raycaster.intersectObjects(previewGroup.children, true)[0] : null);
+        measureClick(h, new THREE.Vector2(e.clientX - rect.left, e.clientY - rect.top));
+        return;
+      }
+
       // Shave sees the PREVIEW too. Every other tool refuses one because it
       // rewrites the code and rebuilds through the kernel, and a preview has no
       // code behind it — but a shave is surgery on the triangles themselves,
@@ -11833,7 +12400,13 @@ ${joined}`)(...vs);
     });
     code.addEventListener("blur", () => setTimeout(closeComplete, 120));
     exact.addEventListener("change", rebuild);
-    $("dims").addEventListener("change", updateDims);
+    // NOT `addEventListener("change", updateDims)`. That hands the Event to
+    // `updateDims(target = modelGroup)` as the thing to measure, and
+    // Box3.setFromObject(anEvent) throws. Turning dims OFF still worked — that
+    // path returns at the checkbox test before it ever touches `target` — so
+    // the failure was one-way and looked like the toggle was stuck: they went
+    // away and never came back.
+    $("dims").addEventListener("change", () => updateDims());
 
     // Handle anchoring: STUCK (default) moves only the pulled side/corner;
     // CENTERED splits growth evenly so the shape stays put.
@@ -17065,6 +17638,7 @@ let SIMPLIFY_TARGET = 10000;
       // show which tool is currently armed (drill stays on until you use it)
       for (const row of toolsMenu.querySelectorAll("[data-act]")) {
         row.classList.toggle("active", (row.dataset.act === "drill-btn" && drillArmed)
+          || (row.dataset.act === "measure-btn" && measureArmed)
           || (row.dataset.act === "shave-btn" && shaveArmed));
       }
       toolsMenu.classList.toggle("open");
@@ -20525,7 +21099,7 @@ let SIMPLIFY_TARGET = 10000;
       else if (e.key === "Home") snapView("home");
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && shaveUndo.length
                && document.activeElement !== code) { if (undoShave()) e.preventDefault(); }
-      else if (e.key === "Escape") { if (shaveArmed) setShaveArmed(false); if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); if (embossArmed) setEmbossArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
+      else if (e.key === "Escape") { if (measureArmed) setMeasureArmed(false); if (shaveArmed) setShaveArmed(false); if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); if (embossArmed) setEmbossArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }
       else return;
       e.preventDefault();
     });
