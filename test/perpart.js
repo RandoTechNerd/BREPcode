@@ -230,5 +230,70 @@ console.log("\nthe viewer is wired to all of it\n");
   has("window.__brepMatReport", "and there is a hook to prove which piece got what");
 }
 
+// ONE PIECE AT A TIME, SEE-THROUGH.
+//
+// glass() could already make a single piece clear from code. What there was no
+// way to do was reach for a piece on screen and turn it down — so the answer to
+// "let me see inside THAT one" was the global slider, which fades the whole
+// model and hides the very thing you were trying to look past.
+//
+// The disappearing-parts bug lived here too, and the two are the same story:
+// transparency is not one setting but three. Turn `transparent` on without
+// `side = DoubleSide` and the piece loses its back faces — you look through its
+// near wall and straight out of the model, and what should have been the inside
+// of the part is simply not drawn. Every other path already paired them. The
+// glass path set opacity and depthWrite and left `side` inherited from the
+// panel, which is FrontSide whenever the global opacity is 100 — which is
+// exactly when someone reaches for a clear piece.
+console.log("\none piece can be see-through on its own\n");
+{
+  const { readFileSync: rf } = await import("node:fs");
+  const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has("const featureClear = {}", "the per-piece opacity map is declared");
+  has("featureClear[fid] ?? codeClear[fid]",
+    "a hand-set opacity beats glass() in the code",
+    "same precedence colour and finish already use");
+  has('id="sm-clear"', "the shape menu has an opacity slider");
+  has('$("sm-clear").addEventListener("input"',
+    "...that updates while dragging, not on release",
+    "transparency is judged by eye against the piece behind it");
+  has("delete featureClear[shapeMenuFid]",
+    "...and 100% removes the override rather than pinning the piece opaque");
+  has("for (const k of Object.keys(featureClear)) delete featureClear[k]",
+    "the global 'clear my overrides' clears these too");
+
+  // The regression itself.
+  const glassBlock = V.slice(V.indexOf("if (m.userData.codeClear != null) {"));
+  const untilNext = glassBlock.slice(0, glassBlock.indexOf("if (m.userData.codeGlow)"));
+  check("a see-through piece is drawn DOUBLE-SIDED",
+    /m\.side = THREE\.DoubleSide/.test(untilNext),
+    "without this its back faces are culled and parts of the model vanish");
+  check("...and the report exposes enough to prove it",
+    V.includes("doubleSided: m.side === THREE.DoubleSide") && V.includes("opacity: +(m.opacity ?? 1)"),
+    "measured: doubleSided was false before the fix and true after, same model");
+}
+
+// ORBIT AROUND THE PART.
+console.log("\nthe view turns around the model\n");
+{
+  const { readFileSync: rf } = await import("node:fs");
+  const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has("const recentrePivot", "there is a pivot correction");
+  has("if (controls.target.distanceTo(centre) <= radius) return",
+    "a pivot still ON the part is left alone",
+    "that is someone orbiting a detail they panned to, not drift");
+  has("camera.position.add(shift)",
+    "...and the camera moves with it, so nothing rotates or zooms");
+  has('if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return',
+    "a deliberate pan is never re-centred");
+  check("it runs on the rotate button only",
+    /e\.pointerType === "mouse" && e\.button !== 0\) return/.test(V),
+    "right-drag is pan; re-centring it would undo the pan every time");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

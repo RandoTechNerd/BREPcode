@@ -1598,6 +1598,13 @@
       background: var(--input-bg, var(--bg)); color: var(--fg);
       border: 1px solid var(--border); border-radius: 5px;
     }
+    #shape-menu .sm-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+    /* Fixed width, so the row does not reflow as the number changes width —
+       "Solid" and "45%" are different lengths and the slider would twitch. */
+    #shape-menu .sm-out {
+      flex: none; width: 38px; text-align: right; font-size: 11px;
+      color: var(--muted2); font-variant-numeric: tabular-nums;
+    }
     #shape-menu .sm-hint { font-size: 10.5px; color: var(--muted2); padding: 2px 8px 4px; }
     #sm-more-caret { display: inline-block; width: 10px; }
     #sm-swaps { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 2px; }
@@ -2735,6 +2742,11 @@
         <select id="sm-pattern">
           <option value="">Follow the panel</option>
         </select>
+      </label>
+      <label class="sm-row"><span>Opacity</span>
+        <input type="range" id="sm-clear" min="20" max="100" step="5" value="100"
+               title="How see-through this one piece is. 100% is solid." />
+        <output id="sm-clear-out" class="sm-out">Solid</output>
       </label>
       <div class="sm-hint" id="sm-mat-hint">Applies to this piece only.</div>
       <button class="sm-item" id="sm-matclear">Clear this piece's material</button>
@@ -3988,7 +4000,7 @@
     </section>
 
     <div id="buttons">
-      <button id="open-btn" class="dock-btn"><span class="plus">+</span> Type a model</button>
+      <button id="open-btn" class="dock-btn"><span class="plus">+</span> Editor</button>
       <button id="cheat-btn" title="What can I type?" aria-label="Cheat sheet">
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none"
              stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
@@ -4368,6 +4380,47 @@
     // this group, and a const read inside its temporal dead zone throws.
     const modelGroup = new THREE.Group();
     scene.add(modelGroup);
+
+    // ORBIT AROUND THE PART, NOT AROUND WHEREVER THE PIVOT DRIFTED TO.
+    //
+    // A drag orbits `controls.target`, and nothing pins that to the model.
+    // frameModel() sets it, but deliberately does not run on every rebuild —
+    // refitting each time would yank the zoom out from under anyone inspecting
+    // a detail. So the moment the model moves, is replaced, or grows in one
+    // direction, the pivot is left behind at the OLD centre. The part then
+    // swings around a point in empty space: a small drag throws it across the
+    // viewport, and the further the pivot has drifted the wilder it gets. The
+    // view buttons already re-centre before turning, which is exactly why the
+    // arrows felt sane while the mouse did not.
+    //
+    // A pivot INSIDE the part is not drift — it is someone orbiting a detail
+    // they panned to, and stealing that would be its own bug. So the test is
+    // the bounding sphere: on the part, leave it alone; off the part, put it
+    // back on the centre.
+    //
+    // Moving the camera by the same delta keeps the view direction and the
+    // distance exactly as they were, so nothing rotates or zooms — the part
+    // just slides to the middle of the screen, which is where it was going to
+    // end up the moment you started turning it anyway.
+    const recentrePivot = () => {
+      const box = new THREE.Box3().setFromObject(modelGroup);
+      if (box.isEmpty()) return;
+      const centre = box.getCenter(new THREE.Vector3());
+      const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1e-3);
+      if (controls.target.distanceTo(centre) <= radius) return;   // still on the part
+      const shift = centre.clone().sub(controls.target);
+      controls.target.copy(centre);
+      camera.position.add(shift);
+      controls.update();
+    };
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      // The rotate button only. Right-drag and the modifier combinations are
+      // PAN — someone saying "look over there" — and re-centring those would
+      // undo the pan on every single drag.
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      recentrePivot();
+    }, true);
 
     // ---- axis labels + grid ruler -----------------------------------------
     // Which way is X? Without an answer, "take 2mm off the right" is a guess,
@@ -5464,6 +5517,11 @@
     const featureColors = {};          // featureId -> "#hex" per-shape override (right-click menu)
     const featureFinish = {};          // featureId -> material name, right-click override
     const featurePattern = {};         // featureId -> surface pattern index, right-click override
+    // featureId -> 0..1 opacity, right-click override. The same slot glass()
+    // writes from code, so one piece cannot be told two different things: the
+    // menu simply beats the code for that piece, exactly as colour and finish
+    // already do.
+    const featureClear = {};
     let codeColors = {};               // featureId -> "#hex" set by colorize() in the code (per build)
     let codeFinish = {};               // featureId -> material name set by finish() in the code
     let codeNegatives = new Set();     // featureIds that are CUTTERS — their faces are holes
@@ -5498,7 +5556,7 @@
     function matForFeature(fid) {
       const c = featureColors[fid] ?? codeColors[fid];   // a manual override beats the code's colour
       const g = codeEmissive[fid];                       // per-shape glow (emissive) from glow()
-      const cl = codeClear[fid];                         // per-shape glass() opacity
+      const cl = featureClear[fid] ?? codeClear[fid];    // menu override beats glass() in the code
       const fin = featureFinish[fid] ?? codeFinish[fid]; // per-shape finish() material
       const pat = featurePattern[fid];                   // per-shape surface pattern
       if (!c && !g && cl == null && !fin && pat == null) return solidMaterial;
@@ -5602,6 +5660,19 @@
         m.transparent = true;
         m.opacity = m.userData.codeClear;
         m.depthWrite = false;
+        // WHY PARTS VANISHED. `side` was copied from the panel material a few
+        // lines up, and the panel is FrontSide whenever the global opacity is
+        // 100 — the usual case, since a glass() part is exactly what you reach
+        // for when the REST of the model is solid. Back faces were culled, so
+        // you looked through the near wall of a see-through piece and out the
+        // far side of the model: the inside of the part, and anything the eye
+        // expected to find behind it, simply were not drawn.
+        //
+        // Every other path that turns transparency on already pairs it with
+        // DoubleSide (the imported-colour path above, the panel itself). This
+        // one block did not, which is why the loss looked random: it only
+        // showed up on models mixing a clear piece with an opaque body.
+        m.side = THREE.DoubleSide;
         m.roughness = 0.06;
         m.metalness = 0;
         m.envMap = envTex;                               // null until ensureEnv lands
@@ -6272,8 +6343,9 @@
       // half of this note exists.
       const mats = new Set([...Object.keys(featureFinish), ...Object.keys(codeFinish)]);
       const pats = new Set(Object.keys(featurePattern));
-      const myMats = Object.keys(featureFinish).length + Object.keys(featurePattern).length;
-      if (!n && !mats.size && !pats.size) { box.style.display = "none"; return; }
+      const myMats = Object.keys(featureFinish).length + Object.keys(featurePattern).length
+        + Object.keys(featureClear).length;
+      if (!n && !mats.size && !pats.size && !myMats) { box.style.display = "none"; return; }
       box.style.display = "";
       const bits = [];
       if (n) {
@@ -6307,6 +6379,7 @@
       $("mat-override-mats")?.addEventListener("click", () => {
         for (const k of Object.keys(featureFinish)) delete featureFinish[k];
         for (const k of Object.keys(featurePattern)) delete featurePattern[k];
+        for (const k of Object.keys(featureClear)) delete featureClear[k];
         recolorMeshes();
         noteColourOverride();
       });
@@ -6755,6 +6828,12 @@
       matSel.value = opt ? opt.value : "";
       const pat = featurePattern[fid];
       patSel.value = pat == null ? "" : String(pat);
+      // A glass() opacity from the code shows here too, for the same reason the
+      // finish does: a slider reading "Solid" over a see-through piece is a lie.
+      const cl = featureClear[fid] ?? codeClear[fid];
+      const clPct = cl == null ? 100 : Math.round(cl * 100);
+      $("sm-clear").value = String(Math.min(100, Math.max(20, clPct)));
+      $("sm-clear-out").textContent = clPct >= 100 ? "Solid" : `${clPct}%`;
       const fromCode = !(fid in featureFinish) && !!codeFinish[fid];
       $("sm-mat-hint").textContent = fromCode
         ? `Set by finish("${codeFinish[fid]}") in the code — changing it here overrides that.`
@@ -6775,10 +6854,25 @@
     patSel.addEventListener("change", () => {
       if (shapeMenuFid) setShapePattern(shapeMenuFid, patSel.value === "" ? null : +patSel.value);
     });
+    // Live while dragging: "input" not "change". Transparency is judged by eye
+    // against the piece behind it, and a slider that only lands when released
+    // makes that a guessing game.
+    $("sm-clear").addEventListener("input", () => {
+      if (!shapeMenuFid) return;
+      const pct = +$("sm-clear").value;
+      $("sm-clear-out").textContent = pct >= 100 ? "Solid" : `${pct}%`;
+      // 100 means "no override" rather than "opaque override", so a piece put
+      // back to solid follows the panel again instead of being pinned at 1.0
+      // and ignoring the global opacity slider forever after.
+      if (pct >= 100) delete featureClear[shapeMenuFid];
+      else featureClear[shapeMenuFid] = pct / 100;
+      recolorMeshes();
+    });
     $("sm-matclear").addEventListener("click", () => {
       if (!shapeMenuFid) return;
       delete featureFinish[shapeMenuFid];
       delete featurePattern[shapeMenuFid];
+      delete featureClear[shapeMenuFid];
       recolorMeshes();
       syncShapeMatUI(shapeMenuFid);
     });
@@ -12259,6 +12353,13 @@ ${joined}`)(...vs);
           metalness: +m.metalness.toFixed(3),
           roughness: +m.roughness.toFixed(3),
           transmission: +(m.transmission ?? 0).toFixed(3),
+          // Transparency, and the two settings that decide whether a
+          // see-through piece is DRAWN rather than merely faint. `side` is
+          // here because a transparent piece left on FrontSide loses its back
+          // faces, which is what made parts of a model disappear.
+          opacity: +(m.opacity ?? 1).toFixed(3),
+          transparent: !!m.transparent,
+          doubleSided: m.side === THREE.DoubleSide,
           shared: m === solidMaterial,
         });
       });
@@ -16024,12 +16125,39 @@ let SIMPLIFY_TARGET = 10000;
       list.innerHTML = "";
       status.textContent = "loading…";
       try {
-        const src = new URL(secretSource(), location.href);
-        const resp = await fetch(src, { cache: "no-store" });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const manifest = await resp.json();
-        const models = Array.isArray(manifest?.models) ? manifest.models : [];
-        status.textContent = models.length ? `${models.length} stashed` : "the stash is empty";
+        // ASK THE SITE FIRST, FALL BACK TO THE FILE.
+        //
+        // Publishing POSTs to the site's endpoint; the gallery read a STATIC
+        // manifest. Nothing joined the two, so on brepcode.com you could
+        // publish all day and the stash stayed empty — measured: the live
+        // manifest is still the shipped stub with `"models": []`, which is why
+        // published models could not be opened. When the site can list what it
+        // holds, that list is the truth; the file is the offline answer and
+        // what the exe uses.
+        let models = null, src = new URL(secretSource(), location.href);
+        const lister = window.__brepStashList;
+        if (typeof lister === "function") {
+          try {
+            const live = await lister();
+            if (Array.isArray(live)) models = live;
+            else if (Array.isArray(live?.models)) models = live.models;
+          } catch { /* the file below is the fallback, not a second failure */ }
+        }
+        if (!models) {
+          const resp = await fetch(src, { cache: "no-store" });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const manifest = await resp.json();
+          models = Array.isArray(manifest?.models) ? manifest.models : [];
+        }
+        // "The stash is empty" is true and useless when the reason is that the
+        // gallery is reading a file nothing updates. Say which of the two it is.
+        const canPublish = typeof (window.__brepPublish || window.brepcodePublish) === "function";
+        status.textContent = models.length
+          ? `${models.length} stashed`
+          : (canPublish && typeof lister !== "function")
+            ? "empty — this site can publish but has no list endpoint, so published models "
+              + "do not appear here. Point Source at a list, or add one to the manifest by hand."
+            : "the stash is empty";
         for (const m of models) {
           const file = String(m.file || "");
           if (!file) continue;
@@ -19567,7 +19695,19 @@ let SIMPLIFY_TARGET = 10000;
         // three renders on every message is a real cost to pay for a
         // conversation that may never mention the geometry.
         let sawModel = null;
-        if (seeModel && !imgs.length && modelGroup.children.some((m) => m.isMesh)) {
+        // THE STARTER CUBE IS NOT A MODEL. Until someone edits the editor, what
+        // is on screen is the placeholder the app booted with, and rendering
+        // three views of it plus a silhouette map costs real tokens to tell the
+        // model something it already knows from six lines of code it was sent
+        // anyway. Worse, a picture of a cube is a suggestion: it invites
+        // "starting from your cube…" when the honest answer is to replace it.
+        //
+        // Matched against the editor's own default text, not against the shape.
+        // Someone who TYPED a cube meant that cube, and their model gets shown
+        // like any other.
+        const starterOnly = code.value.trim() === code.defaultValue.trim();
+        if (starterOnly) logLine("skipped the views — still the starter cube, the code says it all");
+        if (seeModel && !starterOnly && !imgs.length && modelGroup.children.some((m) => m.isMesh)) {
           try {
             const digest = modelDigest();
             if (digest) {

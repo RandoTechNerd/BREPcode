@@ -1244,6 +1244,36 @@ console.log("\nwires are swept, not chained\n");
     /\.live-tail \{[\s\S]{0,200}?text-overflow: ellipsis/.test(HTML3));
 }
 
+// THE STARTER CUBE IS NOT WORTH LOOKING AT.
+//
+// "Show the model" renders three views and a silhouette map on every message.
+// That is the right trade once there is a model — and pure waste while the
+// editor still holds the six lines the app booted with, which are sent as text
+// anyway. It is worse than waste: a picture of the placeholder invites the
+// model to treat it as the starting point and build "onto your cube", when the
+// honest move is to replace it.
+//
+// Matched on the editor's DEFAULT TEXT, not on the shape. Someone who typed
+// their own cube meant that cube.
+{
+  console.log("\nthe starter cube is not shown to the model\n");
+  const { readFileSync: rf5 } = await import("node:fs");
+  const HTML5 = rf5(new URL("../viewer/index.html", import.meta.url), "utf8");
+
+  check("the starter editor is recognised",
+    HTML5.includes("const starterOnly = code.value.trim() === code.defaultValue.trim()"),
+    "compared against the textarea's own default, so a typed cube still counts as a model");
+  check("...and it suppresses the views",
+    /if \(seeModel && !starterOnly && !imgs\.length/.test(HTML5),
+    "three renders of the placeholder cost real tokens and say nothing");
+  check("...and says so in the trace, rather than going quiet",
+    HTML5.includes("skipped the views — still the starter cube"),
+    "a silent skip looks identical to a broken toggle");
+  check("a real model is still shown",
+    HTML5.includes("modelGroup.children.some((m) => m.isMesh)"),
+    "the existing 'is anything built' test must survive");
+}
+
 // A request with no way to stop it is a hostage situation: measured, a
 // "handcrank" ran 609s with no exit. Nothing here ends a request on its own —
 // a reasoning model can legitimately spend minutes, and killing good work to
