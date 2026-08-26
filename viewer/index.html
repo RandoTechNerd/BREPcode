@@ -18806,6 +18806,15 @@ let SIMPLIFY_TARGET = 10000;
       "dots-studio/dots-3-note-preview:free",    // 512k ctx, vision
       "poolside/laguna-s-2.1:free",              // code-oriented
     ];
+    // Last resort: the genuinely GOOD models, which cost the site owner real
+    // money. Reached only when every free rung has refused, so the visitor
+    // gets a first-rate answer on the worst day rather than an apology — and
+    // is told plainly that someone paid for it. Both measured answering on the
+    // shared key: Sonnet 4.6 in 1.2s, GPT-4o in 0.6s.
+    const PREMIUM_LADDER = LOCKED.premium ?? [
+      "anthropic/claude-sonnet-4.6",
+      "openai/gpt-4o",
+    ];
     // Only ever for the shared key: someone using their own key keeps exactly
     // the model they chose and pays for nothing they did not ask for.
     const freeModeOn = () => !!LOCKED.open && aiKey.value.trim() === LOCKED.open;
@@ -19715,7 +19724,7 @@ let SIMPLIFY_TARGET = 10000;
           let json;
           // Who was asked first, how long we waited for them, and which free
           // models have already been tried this message.
-          let ladderStep = null, busyRetries = 0;
+          let ladderStep = null, busyRetries = 0, paidRung = false;
           const ladderTried = new Set();
           for (;;) {
             // The desktop relay returns a finished body, so streaming is only
@@ -19793,11 +19802,16 @@ let SIMPLIFY_TARGET = 10000;
               // gone paid-tier since this list was written: skip it and keep
               // going rather than stopping the chain on a stale entry.
               if (freeModeOn()) {
-                const next = FREE_LADDER.find((m) => m !== cfg.model && !ladderTried.has(m));
+                // Free rungs first, then the paid ones. Splitting them matters
+                // for the message at the end: a free substitute is housekeeping,
+                // a paid one is somebody's money and should say so.
+                const next = [...FREE_LADDER, ...PREMIUM_LADDER]
+                  .find((m) => m !== cfg.model && !ladderTried.has(m));
                 if (next) {
                   ladderTried.add(next);
                   ladderStep = ladderStep || cfg.model;   // remember who was asked first
-                  logLine(`${cfg.model} unavailable — trying ${next}`);
+                  paidRung = PREMIUM_LADDER.includes(next);
+                  logLine(`${cfg.model} unavailable — trying ${next}${paidRung ? " (paid)" : ""}`);
                   cfg = { ...cfg, model: next };
                   continue;
                 }
@@ -19817,9 +19831,23 @@ let SIMPLIFY_TARGET = 10000;
           // Say WHO answered. A silent substitution would leave the user
           // judging one model's output believing it came from another — and
           // wondering why "the same model" reads differently between replies.
-          if (ladderStep) {
+          if (ladderStep && !paidRung) {
             addMsg("bot", `${ladderStep} was busy, so ${cfg.model} answered this one — all free models.`)
               .style.cssText = "opacity:.7; font-size:12px";
+          } else if (ladderStep && paidRung) {
+            // A PAID rung means the owner of this site just bought the answer.
+            // Say it once, warmly, and make the thank-you a link rather than a
+            // request — the visitor got something for nothing and should know
+            // who from, not be billed for a guilt trip.
+            const gift = addMsg("bot", "");
+            gift.style.cssText = "font-size:12.5px";
+            gift.innerHTML =
+              `🎁 <b>Every free model was busy, so this one is on RandoTechNerd.</b> `
+              + `${esc(cfg.model)} is a paid model — you just got the good answer at his expense, `
+              + `no key and no account needed.`
+              + `<div style="margin-top:6px; opacity:.85">If BREPcode saved you an afternoon, `
+              + `<a href="https://buymeacoffee.com/randotechnerd" target="_blank" rel="noopener">`
+              + `buy him a coffee</a> — or bring your own key in ⚙ and the good models are always yours.</div>`;
           }
         }
 
