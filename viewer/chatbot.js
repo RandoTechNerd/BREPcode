@@ -1767,12 +1767,64 @@ export function extractApiText(provider, json) {
 // unchanged and the user watches the character count climb instead of staring
 // at a spinner. onProgress({ phase: "thinking"|"writing", chars }) is called
 // as deltas arrive (throttle in the caller if needed).
+// ONE LINE OF WHAT IT IS ACTUALLY THINKING, for the waiting label.
+//
+// The first version showed the last 90 characters of the reasoning, which cut
+// mid-word and mid-thought: "ket that mounts flush so the dovetail can" is not
+// a summary, it is a ransom note. A reasoning model writes in whole sentences,
+// and the sentence is the unit that carries the meaning — so show the last one
+// it FINISHED. The fragment still being typed after it is half an idea and
+// reads as noise.
+//
+// Truncate from the FRONT, not the back. A sentence puts its subject first:
+// "The user wants a wall bracket with dovetails…" tells you it understood the
+// request; the last 90 characters of that same sentence tell you nothing.
+//
+// This is extraction, not summarisation — no second model call, no cost, no
+// lag. The model already writes its reasoning as prose; the job is only to
+// pick the right sentence out of it.
+const SUMMARY_MAX = 140;
+export function summarise(s) {
+  const flat = String(s || "").replace(/\s+/g, " ").trim();
+  // Find where sentences END rather than what they are made of. The obvious
+  // "a sentence contains no full stop" is wrong the moment a model writes
+  // "3.5 mm" — it splits mid-number and the label shows "0 mm of wall." So a
+  // terminator only counts as a boundary when a space and a capital or digit
+  // follow it, or it ends the text. That keeps decimals ("3.5") and
+  // abbreviations ("i.e. a chamfer") inside their sentence, where they belong.
+  const ends = [];
+  const re = /[.!?]+(?=\s+["'(]?[A-Z0-9]|\s*$)/g;
+  for (let m; (m = re.exec(flat)); ) ends.push(m.index + m[0].length);
+  const lastEnd = ends.length ? ends[ends.length - 1] : 0;
+  // The sentence being written RIGHT NOW, and the last one it finished.
+  const live = flat.slice(lastEnd).trim();
+  const done = ends.length
+    ? flat.slice(ends.length > 1 ? ends[ends.length - 2] : 0, lastEnd).trim()
+    : "";
+  // Prefer the sentence in flight. Showing only finished sentences sounds
+  // safer but reads worse: measured, the label sat on "Okay." for two seconds
+  // while the model was actually typing "The user wants a wall-mounted
+  // sunglass holder with dovetails" — the one line worth seeing scrolled past
+  // between refreshes. The fragment starts at a sentence boundary, so it still
+  // opens with its subject; it is simply the newest thought.
+  //
+  // Below MIN_LIVE there is not enough of it to mean anything ("Now" tells you
+  // nothing), so the completed sentence covers the gap.
+  const MIN_LIVE = 20;
+  let pick = live.length >= MIN_LIVE ? live : (done || live);
+  // Mark an unfinished thought as unfinished. Drop a trailing comma or colon
+  // first, or the line ends on the stutter "dovetail angle,…".
+  if (pick === live && live && !/[.!?]$/.test(live)) pick = pick.replace(/[,;:\-–]+$/, "").trim() + "…";
+  if (pick.length > SUMMARY_MAX) pick = pick.slice(0, SUMMARY_MAX - 1).replace(/\s+\S*$/, "") + "…";
+  return pick;
+}
+
 export async function readClaudeStream(resp, onProgress) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   const blocks = [];
   let stopReason = null, error = null, buf = "";
-  const note = (phase, chars) => { try { onProgress?.({ phase, chars }); } catch { /* UI gone */ } };
+  const note = (phase, chars, text) => { try { onProgress?.({ phase, chars, text }); } catch { /* UI gone */ } };
   const handle = (data) => {
     let ev = null;
     try { ev = JSON.parse(data); } catch { return; }
@@ -1785,10 +1837,10 @@ export async function readClaudeStream(resp, onProgress) {
       if (!b) return;
       if (ev.delta?.type === "thinking_delta") {
         b.thinking = (b.thinking || "") + (ev.delta.thinking || "");
-        note("thinking", blocks.reduce((n, x) => n + (x?.thinking?.length || 0), 0));
+        note("thinking", blocks.reduce((n, x) => n + (x?.thinking?.length || 0), 0), summarise(b.thinking));
       } else if (ev.delta?.type === "text_delta") {
         b.text = (b.text || "") + (ev.delta.text || "");
-        note("writing", blocks.reduce((n, x) => n + (x?.text?.length || 0), 0));
+        note("writing", blocks.reduce((n, x) => n + (x?.text?.length || 0), 0), summarise(b.text));
       }
     } else if (ev.type === "message_delta") {
       stopReason = ev.delta?.stop_reason ?? stopReason;
@@ -1910,7 +1962,6 @@ export async function readOpenAIStream(resp, onProgress) {
   // model that is the difference between three silent minutes and watching it
   // work through the problem.
   const note = (phase, chars, text) => { try { onProgress?.({ phase, chars, text }); } catch { /* UI gone */ } };
-  const tail = (s) => s.replace(/\s+/g, " ").trim().slice(-90);
   const handle = (data) => {
     if (data === "[DONE]") return;
     let ev = null;
@@ -1923,8 +1974,8 @@ export async function readOpenAIStream(resp, onProgress) {
     // arrive and be discarded, leaving the user watching a bare timer through
     // the exact minutes there was most to show them.
     const think = d.reasoning_content ?? d.reasoning;
-    if (think) { reasoning += think; note("thinking", reasoning.length, tail(reasoning)); }
-    if (d.content) { content += d.content; note("writing", content.length, tail(content)); }
+    if (think) { reasoning += think; note("thinking", reasoning.length, summarise(reasoning)); }
+    if (d.content) { content += d.content; note("writing", content.length, summarise(content)); }
     finish = ev.choices?.[0]?.finish_reason ?? finish;
   };
   for (;;) {

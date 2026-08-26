@@ -19451,11 +19451,19 @@ let SIMPLIFY_TARGET = 10000;
         // you find out now rather than at the end.
         busyLabel.textContent = head;
         if (liveState.text) {
-          const line = document.createElement("div");
-          line.className = "live-tail";
-          line.textContent = liveState.text;
-          const old = busyLabel.parentElement?.querySelector(".live-tail");
-          if (old) old.replaceWith(line); else busyLabel.parentElement?.appendChild(line);
+          // Reuse the node. Replacing it each second restarted the browser's
+          // text layout and made the line flicker; setting textContent on the
+          // same element updates in place.
+          let line = busyLabel.parentElement?.querySelector(".live-tail");
+          if (!line) {
+            line = document.createElement("div");
+            line.className = "live-tail";
+            // Under the label, not at the end of the row's parent — appending
+            // put it BELOW the request log, orphaned from the "thinking…" it
+            // belongs to. Sits after the Stop button when there is one.
+            (busy.querySelector(".stop-btn") || busyLabel).after(line);
+          }
+          if (line.textContent !== liveState.text) line.textContent = liveState.text;
         }
       };
       const tick = setInterval(paintBusy, 1000);
@@ -19706,8 +19714,8 @@ let SIMPLIFY_TARGET = 10000;
           let lastPaint = 0;
           answer = await w.browserChat({
             model: cfg.model, system, messages: msgsForModel,
-            onDelta: ({ phase, chars }) => {
-              liveState = { phase, chars };
+            onDelta: ({ phase, chars, text }) => {
+              liveState = { phase, chars, text };
               const now = performance.now();
               if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
             },
@@ -19741,8 +19749,12 @@ let SIMPLIFY_TARGET = 10000;
             const resp = await aiFetch(url, { ...options, signal: aiAbort.signal });
             if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
               let lastPaint = 0;
-              const onDelta = ({ phase, chars }) => {
-                liveState = { phase, chars };
+              // `text` is the model's current thought, and forgetting it here
+              // is what kept the live tail invisible: the stream reader sent
+              // it, this rebuilt the object without it, and the renderer's
+              // `if (liveState.text)` was never once true.
+              const onDelta = ({ phase, chars, text }) => {
+                liveState = { phase, chars, text };
                 const now = performance.now();
                 if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
               };

@@ -1177,10 +1177,69 @@ console.log("\nwires are swept, not chained\n");
     "a number climbing does not tell you whether it understood the request");
   check("...and the writing phase carries its tail too",
     openrouter.find((p) => p.phase === "writing")?.text?.includes("const R"));
+}
+
+{
+  console.log("\nthe one line shown is a whole thought\n");
+  const S = CB.summarise;
+
+  check("the line starts at a sentence boundary, never mid-word",
+    S("Okay. The user wants a wall bracket with dovetails so the tiles stack")
+      === "The user wants a wall bracket with dovetails so the tiles stack…",
+    "half a word is a ransom note, not a summary");
+
+  check("...and an unfinished thought is marked unfinished",
+    S("Done. Now checking the dovetail angle").endsWith("…"));
+
+  check("a filler sentence does not hide the real one",
+    S("Okay. The user wants a wall bracket").startsWith("The user wants"),
+    "'Okay.' is finished, but it is not what the model is thinking about");
+
+  check("a too-short fragment falls back to the finished sentence",
+    S("The rebate needs 0.2 mm clearance. Now") === "The rebate needs 0.2 mm clearance.",
+    "'Now' on its own tells you nothing");
+
+  check("a decimal does not split the sentence",
+    S("The wall is 3.5 mm thick so the boss needs 2.0 mm of wall.").includes("3.5 mm thick"),
+    "a full stop only ends a sentence when a capital or a digit follows the space");
+
+  check("...and neither does an abbreviation",
+    S("Use a chamfer, i.e. a 45 degree cut, on the lower lip.").startsWith("Use a chamfer"));
+
+  check("before the first full stop the fragment still shows",
+    S("Okay so the user wants a hand crank") === "Okay so the user wants a hand crank…",
+    "an early fragment beats a blank line");
+
+  const long = S("The user is asking for a parametric enclosure with a lid rebate and "
+    + "ventilation slots along both long sides, plus PCB standoffs positioned for a Pi Zero.");
+  check("a long sentence is cut from the FRONT", long.startsWith("The user is asking for a parametric"),
+    "a sentence puts its subject first; the last 90 characters tell you nothing");
+  check("...on a word boundary, with an ellipsis", /\S…$/.test(long) && !/\s…$/.test(long));
+  check("...and stays one short line", long.length <= 140);
+
+  check("a question is a sentence too",
+    S("Should the lid be captive? The rebate needs 0.2 mm clearance.")
+      .startsWith("The rebate needs"));
+
+  check("empty input does not throw", S("") === "" && S(null) === "" && S(undefined) === "");
+
+  check("newlines collapse to one line",
+    !/\n/.test(S("First thought.\n\nSecond thought about the bracket.")),
+    "the label is one line; a newline would break the row");
 
   const { readFileSync: rf3 } = await import("node:fs");
   const HTML3 = rf3(new URL("../viewer/index.html", import.meta.url), "utf8");
   check("the busy row renders that tail", /class = "live-tail"|className = "live-tail"/.test(HTML3));
+  // THE BUG THIS PAIR EXISTS FOR. The stream reader sent { phase, chars, text }
+  // and both receivers rebuilt it as { phase, chars }, so the renderer's
+  // `if (liveState.text)` was never once true and the tail shipped invisible.
+  // Every check above still passed, because they only read the source for the
+  // element and its CSS — neither notices a field dropped in transit.
+  check("...and the progress receiver KEEPS the text it was sent",
+    (HTML3.match(/liveState = \{ phase, chars, text \}/g) || []).length === 2,
+    "both onDelta handlers must carry the thought through, not just the count");
+  check("...with no handler still destructuring only the count",
+    !/onDelta[^\n]*\(\{ phase, chars \}\)|\(\{ phase, chars \}\) => \{\s*\n\s*liveState/.test(HTML3));
   check("...on one quiet line, not as reading material",
     /\.live-tail \{[\s\S]{0,200}?text-overflow: ellipsis/.test(HTML3));
 }
