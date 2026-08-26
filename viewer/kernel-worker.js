@@ -15,6 +15,7 @@
 // NB build-site.mjs rewrites the /node_modules path below for the static
 // site, exactly as it does for every other viewer file.
 import { PartHistory } from "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
+import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.js";
 
 // Imported solids can't be cloned (MeshToBrep's ctor throws without a
 // geometry), which silently no-ops booleans that use an import as the TOOL.
@@ -146,17 +147,47 @@ self.onmessage = async ({ data }) => {
   try {
     if (op === "build") {
       trace("build start");
-      const ph = new PartHistory();
-      await ph.fromJSON(data.json);
-      trace("fromJSON done");
+      const key = data.key || "model";
+      // REBUILD ONLY WHAT CHANGED. The history from the last build is already
+      // here — it has to be, so exports can be written without rebuilding — and
+      // the kernel tracks per-feature dirtiness. Handing the new history to
+      // adoptHistory() reuses that instance when the structure is identical and
+      // starts fresh when it is not. See src/rehistory.js for what "identical"
+      // has to mean; test/incremental.js compares the STL of both paths.
+      const prev = builds.get(key);
+      const stampsBefore = featureTimestamps(prev?.ph);
+      const r = await adoptHistory({
+        prev: prev?.ph, prevPlan: prev?.plan, json: data.json, PartHistory,
+      });
+      const ph = r.ph;
+      trace(r.incremental
+        ? `adopted: ${r.changed}/${r.total} features changed`
+        : `full rebuild (${r.plan.reason})`);
       if ((ph.features || []).some((f) => f?.type === "IMPORT3D")) await ensureImportClonePatch();
       trace("patch done");
-      await ph.runHistory({ throwOnFeatureError: true });
+      try {
+        await ph.runHistory({ throwOnFeatureError: true });
+      } catch (e) {
+        // A history that threw mid-run is in an unknown state, and reusing it
+        // would carry that state into the next build. Drop it so the next
+        // attempt starts clean — the error still goes back to the page as the
+        // model's own build error, exactly as before.
+        builds.delete(key);
+        throw e;
+      }
       trace("runHistory done");
       const { solids, payload, transfer } = extractSolids(ph);
       trace(`extract done: ${payload.length} solids`);
-      builds.set(data.key || "model", { ph, solids });
-      self.postMessage({ id, ok: true, solids: payload }, transfer);
+      builds.set(key, { ph, solids, plan: r.plan });
+      // What the KERNEL re-ran, not what the script edited. See countRebuilt().
+      const rebuilt = r.incremental
+        ? countRebuilt(stampsBefore, featureTimestamps(ph))
+        : (ph.features || []).length;
+      self.postMessage({
+        id, ok: true, solids: payload,
+        incremental: r.incremental, rebuilt, total: (ph.features || []).length,
+        reason: r.plan?.reason || "",
+      }, transfer);
       return;
     }
     if (op === "stl") {

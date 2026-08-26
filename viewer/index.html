@@ -9106,6 +9106,7 @@ ${joined}`)(...vs);
         // the worker's plain {name, faces} records — adoptFaceData takes both.
         let solids = null;
         let fromWorker = false;
+        let rebuiltNote = "";
         let json = null;
         if (!workerOut) { try { json = await ph.toJSON(); } catch { json = null; } }
         if (WORKER_DEBUG) console.log(`[page] history serialized: ${json ? json.length + " chars" : "FAILED"}`);
@@ -9119,6 +9120,19 @@ ${joined}`)(...vs);
             if (mine !== token) return;
             solids = r.solids;
             fromWorker = true;
+            // How much of the model actually had to be rebuilt. Worth showing:
+            // it is the difference between "this edit was cheap" and "this edit
+            // threw the cache away", and without it an incremental build that
+            // silently stopped being incremental would just look slow.
+            rebuiltNote = r.incremental && r.total
+              ? ` · rebuilt ${r.rebuilt}/${r.total}`
+              : "";
+            // Alongside workerInfo(): when a build is slower than it should be,
+            // the first question is whether the cache was used and the second
+            // is why not, and neither is answerable from the status line alone.
+            window.brepscript.lastWorkerBuild = {
+              incremental: !!r.incremental, rebuilt: r.rebuilt, total: r.total, reason: r.reason,
+            };
           } catch (e) {
             if (mine !== token) return;             // cancelled by a newer build
             // A worker that died is infrastructure and we quietly build here
@@ -9207,7 +9221,7 @@ ${joined}`)(...vs);
         const dims = bb.isEmpty() ? "" :
           ` · ${["x", "y", "z"].map((a) => (bb.max[a] - bb.min[a]).toFixed(1)).join(" × ")} mm`;
         lastBuiltSource = typed;
-        lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms`;
+        lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms${rebuiltNote}`;
         fireBuilt();
         logEvent("build", "ok", { ms: Math.round(lastBuildMs), solids: solids.length, tris,
           lang: lastLang || "brepcode", chars: code.value.length });
