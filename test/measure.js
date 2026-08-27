@@ -172,6 +172,22 @@ console.log("\nthe viewer is wired to all of it\n");
   has("if (snap.mesh === measurePending.mesh)",
     "picking the same face twice is refused",
     "on a box no two parallel faces are visible at once, so this is easy to do by accident");
+
+  // FACE HIGHLIGHTING. In Face and Info modes the unit being picked is the
+  // face, so the whole face lights up — and the implementation borrows the
+  // model mesh's geometry rather than copying it, which makes the dispose
+  // guard below the single most important line of the feature: without it,
+  // clearing the overlay (every mouse move) would dispose the model's own
+  // geometry and pointing at a face would tear it out of the solid.
+  has("function measureFaceHilite", "faces light up when face-picking");
+  has("if (!c.userData.sharedGeom) {",
+    "...and clearing the overlay never disposes borrowed geometry",
+    "the highlight shares the model mesh's geometry; disposing it would hole the model");
+  has('if (measureMode === "face" && measurePending?.mesh)',
+    "the first face of a pair stays lit from measureRedraw",
+    "drawn there, not in the hover handler, so it survives the mouse leaving the model");
+  has('snap.mesh === measurePending?.mesh)) {',
+    "...and hovering the already-picked face does not repaint it amber");
   has("The model changed — measurements cleared.",
     "a rebuild clears the measurements",
     "world-space endpoints would keep drawing a confident number across a changed model");

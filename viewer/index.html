@@ -10597,13 +10597,46 @@ ${joined}`)(...vs);
 
     const clearMeasureGroup = () => {
       for (const c of [...measureGroup.children]) {
-        c.geometry?.dispose?.();
-        if (c.isSprite || c.isMesh) c.material?.map?.dispose?.();
-        if (c.isMesh) c.material?.dispose?.();
+        // A face highlight BORROWS the model mesh's geometry rather than
+        // copying it — disposing it here would tear the face out of the model
+        // itself, and the next frame would render a solid with a hole where
+        // you had merely pointed at it. Its material is shared too (one per
+        // colour, cached), so the highlight cleans up nothing at all.
+        if (!c.userData.sharedGeom) {
+          c.geometry?.dispose?.();
+          if (c.isSprite || c.isMesh) c.material?.map?.dispose?.();
+          if (c.isMesh) c.material?.dispose?.();
+        }
         measureGroup.remove(c);
       }
       measureHover = null;
     };
+
+    // The face you are pointing at, painted. A dot on a face says "somewhere
+    // here"; in Face and Info modes the unit being picked IS the face, so the
+    // whole face lights up — amber for the one under the cursor, green for the
+    // one already picked, matching the dot colours everywhere else. Each kernel
+    // face is its own mesh, so highlighting is just drawing that mesh again
+    // with a see-through material nudged toward the camera.
+    const measureHiliteMats = new Map();     // colour -> cached material
+    function measureFaceHilite(mesh, colour) {
+      if (!mesh?.geometry) return;
+      let mat = measureHiliteMats.get(colour);
+      if (!mat) {
+        mat = new THREE.MeshBasicMaterial({
+          color: colour, transparent: true, opacity: 0.28, side: THREE.DoubleSide,
+          depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+        });
+        measureHiliteMats.set(colour, mat);
+      }
+      const h = new THREE.Mesh(mesh.geometry, mat);
+      mesh.updateWorldMatrix(true, false);
+      h.matrixAutoUpdate = false;
+      h.matrix.copy(mesh.matrixWorld);
+      h.renderOrder = 1001;
+      h.userData.sharedGeom = true;          // see clearMeasureGroup
+      measureGroup.add(h);
+    }
 
     // Everything on screen is redrawn from `measurements` plus whatever is
     // half-picked, so there is one place that decides what a measurement looks
@@ -10618,6 +10651,14 @@ ${joined}`)(...vs);
         else if (m.a) measureLine(m.a, m.a, m.value);
       }
       if (measurePending?.point) measureDot(measurePending.point, 0xffd479);
+      // The first face of a pair stays lit until its partner is picked — drawn
+      // HERE rather than in the hover handler, so it survives the mouse leaving
+      // the model entirely. Without this the selection went invisible the
+      // moment you moved off to orbit round to the second face, which is
+      // exactly when you need to still see what you picked.
+      if (measureMode === "face" && measurePending?.mesh) {
+        measureFaceHilite(measurePending.mesh, 0x8ef0c0);
+      }
       measureRescale();
     }
 
@@ -11595,9 +11636,22 @@ ${joined}`)(...vs);
       if (snap) {
         // Amber for what you are about to pick, so it reads differently from
         // the green of what you have already measured.
-        measureHover = measureDot(snap.point, snap.kind === "corner" ? 0xffd479
-          : snap.kind === "edge" ? 0x9ad0ff : 0x7fd3ff);
-        if (measurePending) measureLine(measurePending.point, snap.point, "");
+        if (measureMode === "face" || measureMode === "single") {
+          // In these modes the unit being picked is the FACE, so the whole
+          // face lights up rather than a dot claiming one point of it. The
+          // face already picked is green (drawn in measureRedraw); repainting
+          // the same face amber on top would just muddy its colour, so the
+          // hover skips it.
+          if (!(measureMode === "face" && snap.mesh === measurePending?.mesh)) {
+            measureFaceHilite(snap.mesh, 0xffd479);
+          }
+        } else {
+          measureHover = measureDot(snap.point, snap.kind === "corner" ? 0xffd479
+            : snap.kind === "edge" ? 0x9ad0ff : 0x7fd3ff);
+        }
+        if (measurePending?.point && measureMode === "point") {
+          measureLine(measurePending.point, snap.point, "");
+        }
         measureRescale();
       }
     });
