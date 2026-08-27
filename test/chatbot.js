@@ -245,6 +245,61 @@ console.log("\nmodel discovery\n");
 
   try { extractModels("gemini", { error: { message: "API key not valid" } }); check("error payload throws", false); }
   catch (e) { check("error payload throws with message", /API key/.test(e.message)); }
+
+  // THE DAY OX-ALPHA RETIRED. OpenRouter carries 60 `:batch` variants that
+  // only answer through the Batch API — a live chat request gets 404. They
+  // rank identically to their live twins and sort FIRST on the tiebreak, so
+  // the moment a saved model vanished from the catalogue, the re-rank landed
+  // the chat on a model that cannot answer at all: "That didn't work: This
+  // model is only available through the Batch API — (404)" on every message.
+  const om = extractModels("openai", { data: [
+    { id: "anthropic/claude-opus-5" },
+    { id: "anthropic/claude-opus-5:batch" },
+    { id: "openai/gpt-4o:batch" },
+    { id: "minimax/minimax-m3:free" },
+  ]});
+  check("batch-only variants never enter the list", !om.some((id) => id.endsWith(":batch")),
+    JSON.stringify(om));
+  check("...their live twins survive", om.includes("anthropic/claude-opus-5"));
+  check("...and :free variants are untouched", om.includes("minimax/minimax-m3:free"),
+    "the suffix filter must be exactly :batch, not every colon");
+}
+
+// A stealth model's 404 names what it became — ox-alpha's says "This model was
+// ZAI's GLM-5.3 Flash. Use it now". Same weights, real name: not a
+// substitution anyone needs to opt into, and every door a model id enters by
+// must route through the map, or a stale shipped default strands every
+// visitor on a dead name.
+{
+  console.log("\nretired models are followed to their successors\n");
+  const { readFileSync } = await import("node:fs");
+  const V = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has('"stealth/ox-alpha": "z-ai/glm-5.3-flash"', "the map knows where ox-alpha went");
+  has("const model = src.model && succeedModel(src.model);",
+    "the shipped default routes through it",
+    "a deployed locked-key.js naming the dead id keeps working unedited");
+  has("const keep = succeedModel(wanted);",
+    "a saved model that vanished from the live list follows it too");
+  has('const wanted = aiModel.value || aiCfg.model || "";',
+    "...read from the SAVED config, not just the dropdown",
+    "a stale cached list may already have re-seated the dropdown by then");
+  has(".filter((id) => !/:batch$/i.test(id))",
+    "the cached list is filtered on READ as well",
+    "a cache written before the filter existed still holds 60 batch-only ids");
+  has("has been retired — it was",
+    "...and the switch is announced, never silent",
+    "a header quietly naming a different model is how 'what broke?' gets asked");
+  has("const deadModel = cfg.provider ===",
+    "mid-request, a dead model is told apart from a busy one");
+  has("thank you for participating|not a valid model",
+    "...by the words retirement actually uses (measured)");
+  has("if (deadModel) busyRetries = 2;",
+    "...and gets no busy-waiting — retirement is not a wave",
+    "waiting two rounds for a model that no longer exists is theatre");
+  check("the example key file no longer ships the dead default",
+    !/model: "stealth\/ox-alpha"/.test(readFileSync(new URL("../viewer/locked-key.example.js", import.meta.url), "utf8")));
 }
 
 
@@ -1375,7 +1430,7 @@ console.log("\nwires are swept, not chained\n");
   check("...and reveals the Base URL row it just filled",
     /if \(src\.baseUrl\) aiBase\.value = src\.baseUrl;\s*\n\s*reflectProviderUI\(\);/.test(HTML));
   check("...and ADDS the model before selecting it",
-    /if \(!\[\.\.\.aiModel\.options\]\.some\(\(o\) => o\.value === src\.model\)\)/.test(HTML),
+    /if \(!\[\.\.\.aiModel\.options\]\.some\(\(o\) => o\.value === model\)\)/.test(HTML),
     "ai-model is a <select>: assigning an id it does not carry selects nothing, and the request goes out modelless");
 
   // WHEN it applies, which the first cut got wrong in the way that matters.

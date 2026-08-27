@@ -26,7 +26,11 @@
 export const LOCKED = {
   open: "sk-or-v1-PUT-YOUR-OPENROUTER-KEY-HERE",
   provider: "openai",                          // OpenRouter speaks the OpenAI wire format
-  model: "stealth/ox-alpha",
+  // GLM-5.3 Flash is what "stealth/ox-alpha" turned out to be all along — the
+  // stealth id 404s now, and the app maps it here automatically (see
+  // MODEL_SUCCESSORS in the viewer) so even a stale copy of this file works.
+  // ~$0.001 per generation on OpenRouter, no shared-pool rate limits.
+  model: "z-ai/glm-5.3-flash",
   baseUrl: "https://openrouter.ai/api/v1",
 };
 
@@ -39,14 +43,14 @@ export const LOCKED = {
 // lives. In BREPcode's console:
 //
 //     brepscript.lockKey("sk-or-v1-…", "the-password", "openai",
-//                        "stealth/ox-alpha", "https://openrouter.ai/api/v1")
+//                        "z-ai/glm-5.3-flash", "https://openrouter.ai/api/v1")
 //
 // It prints a block in exactly this shape — replace the export above with it:
 //
 // export const LOCKED = {
 //   blob: "…encrypted…",
 //   provider: "openai",
-//   model: "stealth/ox-alpha",
+//   model: "z-ai/glm-5.3-flash",
 //   baseUrl: "https://openrouter.ai/api/v1",
 // };
 //

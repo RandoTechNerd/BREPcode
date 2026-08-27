@@ -18673,8 +18673,15 @@ let SIMPLIFY_TARGET = 10000;
     // guess above (that is how "fable disappeared").
     const modelCacheKey = (p) => `brepcode-models-${p}`;
     const cachedModels = (p) => {
-      try { return JSON.parse(localStorage.getItem(modelCacheKey(p)) || "[]"); }
-      catch { return []; }
+      // Filtered ON READ, not only when stored: a cache written before the
+      // :batch filter existed still holds 60 batch-only ids, and the cache is
+      // consulted before the live list arrives — so a stale cache could seat
+      // the dropdown on a model that cannot chat, exactly the bug the filter
+      // was written for.
+      try {
+        return JSON.parse(localStorage.getItem(modelCacheKey(p)) || "[]")
+          .filter((id) => !/:batch$/i.test(id));
+      } catch { return []; }
     };
     // Best-for-modelling models float to the top with a ROYGBIV tint:
     // violet = strongest pick, sliding down to red for the weakest.
@@ -18856,7 +18863,26 @@ let SIMPLIFY_TARGET = 10000;
       aiModel.disabled = !sorted.length;
       if (sorted.length) aiModel.value = keep && sorted.includes(keep) ? keep : sorted[0];
     }
+    // STEALTH MODELS GET REVEALED, then retired. When ox-alpha went, its 404
+    // announced what it had been all along — "This model was ZAI's GLM-5.3
+    // Flash. Use it now: openrouter.ai/z-ai/glm-5.3-flash" — while every saved
+    // config, the shipped default, and the header kept pointing at the dead
+    // name. The chat then re-ranked onto claude-opus-5:batch (see
+    // extractModels) and every message 404'd. Map retired names to what they
+    // BECAME: same weights under the real name, so nobody's chosen model
+    // actually changed. Applies wherever a model id enters the system —
+    // shipped default, saved config, cached list, live list, and mid-request.
+    // LOCKED.successors lets a deployed locked-key.js extend the map without a
+    // rebuild the next time a stealth model retires.
+    const MODEL_SUCCESSORS = { "stealth/ox-alpha": "z-ai/glm-5.3-flash" };
+    function succeedModel(id) {
+      return { ...MODEL_SUCCESSORS, ...(LOCKED.successors || {}) }[id] || id;
+    }
+
     function fillModelOptions(provider, keep) {
+      // Every path into the dropdown funnels through here, so this is the one
+      // place a retired id is traded for its successor.
+      if (keep) keep = succeedModel(keep);
       // The dropdown ranks by CAPABILITY, which made fable the natural pick —
       // and fable takes minutes per reply. For interactive chat the right
       // default is the fast-and-good one; the deep ones are a deliberate
@@ -19343,10 +19369,31 @@ let SIMPLIFY_TARGET = 10000;
         if (mine !== checkToken) return;
         const models = CHAT.extractModels(provider, json);
         if (!models.length) throw new Error(`no usable models (HTTP ${resp.status})`);
-        const keep = aiModel.value;
-        populateModels(models,
-          models.includes(keep) ? keep
-            : models.find((m) => AI_MODELS[provider]?.includes(m)));
+        // A saved model that has VANISHED from the live catalogue. Silently
+        // re-ranking used to land here on the top scorer — which, the day
+        // ox-alpha retired, was claude-opus-5:batch, a model that cannot chat
+        // at all. The successor map answers first (same weights, real name);
+        // otherwise the curated list; and whatever is chosen instead of the
+        // user's model is SAID, because a header quietly naming a different
+        // model than yesterday is how "what broke?" gets asked.
+        //
+        // `wanted` reads the SAVED config too, not just the dropdown: by the
+        // time this runs, a stale cached list may already have re-seated the
+        // dropdown, and the saved name is the only record of what the user
+        // actually chose.
+        const wanted = aiModel.value || aiCfg.model || "";
+        const keep = succeedModel(wanted);
+        let landed = keep;
+        if (keep && !models.includes(keep)) {
+          landed = models.find((m) => AI_MODELS[provider]?.includes(m)) ?? null;
+          if (announce) {
+            addMsg("bot", `Heads-up: ${wanted} is no longer offered by this provider — picking the best available instead.`);
+          }
+        } else if (keep && wanted !== keep && announce) {
+          addMsg("bot", `${wanted} has been retired — it was ${keep} in disguise, `
+            + `so I switched to it under its real name. Same model, now stable.`);
+        }
+        populateModels(models, landed ?? undefined);
         aiCheck.textContent = "✓"; aiCheck.className = "ok";
         // remember what this key can really call — offline/blipped page loads
         // reuse it instead of downgrading to the curated guess
@@ -19556,14 +19603,18 @@ let SIMPLIFY_TARGET = 10000;
     function applyShippedKey(key, src) {
       aiProvider.value = src.provider || "gemini";
       fillModelOptions(aiProvider.value);
-      if (src.model) {
-        if (![...aiModel.options].some((o) => o.value === src.model)) {
+      // The shipped default routes through the successor map, so a
+      // locked-key.js still naming a retired stealth model keeps working
+      // without anyone editing the deployed file.
+      const model = src.model && succeedModel(src.model);
+      if (model) {
+        if (![...aiModel.options].some((o) => o.value === model)) {
           const o = document.createElement("option");
-          o.value = src.model;
-          o.textContent = src.model;
+          o.value = model;
+          o.textContent = model;
           aiModel.prepend(o);
         }
-        aiModel.value = src.model;
+        aiModel.value = model;
       }
       aiKey.value = key;
       if (src.baseUrl) aiBase.value = src.baseUrl;
@@ -19627,6 +19678,10 @@ let SIMPLIFY_TARGET = 10000;
     // Only ever for the shared key: someone using their own key keeps exactly
     // the model they chose and pays for nothing they did not ask for.
     const freeModeOn = () => !!LOCKED.open && aiKey.value.trim() === LOCKED.open;
+
+    // (succeedModel — the retired-model map — is declared up beside
+    // fillModelOptions, which is the chokepoint every model id passes through
+    // and which runs during module evaluation, long before this section.)
 
     // THE HOUSE KEY. LOCKED.open is a key in PLAIN TEXT inside the bundle:
     // anyone who opens devtools, or unzips the site, has it. That is the
@@ -20610,8 +20665,28 @@ let SIMPLIFY_TARGET = 10000;
             // Busy (429), gone paid-tier (403 "only available on…"), or
             // retired (404 "no endpoints") — from the user's chair these are
             // one situation: this model cannot answer, try another.
+            // A model that is DEAD, not busy. Both real cases measured on the
+            // day ox-alpha retired: the stealth 404 ("Thank you for
+            // participating… This model was ZAI's GLM-5.3 Flash") and the
+            // batch-only 404 ("only available through the Batch API"). Waiting
+            // two rounds for a model that no longer exists is theatre, and the
+            // successor map may know exactly where it went — same weights,
+            // real name — which is not a substitution anyone needs to opt into.
+            const deadModel = cfg.provider === "openai"
+              && /only available through|thank you for participating|not a valid model|model.+(retired|removed|discontinued)/i.test(errMsg);
+            if (deadModel && succeedModel(cfg.model) !== cfg.model && !ladderTried.has(succeedModel(cfg.model))) {
+              const heir = succeedModel(cfg.model);
+              ladderTried.add(heir);
+              logLine(`${cfg.model} has been retired — continuing as ${heir} (the same model's real name)`);
+              cfg = { ...cfg, model: heir };
+              continue;
+            }
             if (cfg.provider === "openai"
-              && /\b429\b|\b403\b|rate.?limit|temporarily rate-limited|too many requests|only available on|no endpoints/i.test(errMsg)) {
+              && (deadModel
+                || /\b429\b|\b403\b|rate.?limit|temporarily rate-limited|too many requests|only available on|no endpoints/i.test(errMsg))) {
+              // A dead model gets no waiting — retries only pay when the
+              // refusal is a wave, and retirement is not a wave.
+              if (deadModel) busyRetries = 2;
               // WAIT FIRST, and only then substitute.
               //
               // A full pool refuses in about a millisecond — measured, eight

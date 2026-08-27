@@ -1710,6 +1710,15 @@ export function extractModels(provider, json) {
       .filter((id) => namespaced || /^(gpt|o\d|chatgpt)/i.test(id))
       // the kind filter is about CAPABILITY, not vendor, so it applies to both
       .filter((id) => !/embed|whisper|tts|audio|image|dall|moderation|realtime|transcribe|search|codex/i.test(id))
+      // `:batch` variants answer only through the Batch API — a live chat
+      // request gets HTTP 404 "use the /api/beta/batches endpoint". Measured:
+      // OpenRouter carries 60 of them, they rank IDENTICALLY to their live
+      // twins (same name, same score), and the alphabetical tiebreak puts
+      // ":batch" first — so the moment a saved model vanished from the
+      // catalogue, the re-rank landed the dropdown on a model that cannot
+      // answer at all. A model the chat cannot use does not belong in the
+      // chat's list.
+      .filter((id) => !/:batch$/i.test(id))
       .sort().reverse();
   }
   if (provider === "gemini") {
