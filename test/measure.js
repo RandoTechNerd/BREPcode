@@ -192,6 +192,18 @@ console.log("\nthe viewer is wired to all of it\n");
     "a rebuild clears the measurements",
     "world-space endpoints would keep drawing a confident number across a changed model");
   has("if (measureArmed) setMeasureArmed(false);", "Esc closes it");
+
+  // Clicking around while measuring kept starting accidental text selections in
+  // the panel — the mode buttons, the live line changing under the cursor. The
+  // panel chrome is now unselectable; the recorded numbers opt back in, and
+  // each row carries a copy button so the value travels without selecting.
+  check("the panel chrome is not selectable",
+    /#measure-panel \{[\s\S]{0,700}user-select: none/.test(V));
+  has("#measure-panel .mval, #measure-panel .mwhat { user-select: text; }",
+    "...but the recorded numbers are");
+  has('copy.className = "mcopy"', "each row has a copy button");
+  has("navigator.clipboard.writeText(m.detail", "...which copies the FULL detail line",
+    "the deltas are the part the row itself truncates");
   has("measureRescale();", "markers hold their size on screen");
   check("measure runs before the tools that edit",
     V.indexOf("if (measureArmed) {") < V.indexOf("if (drillArmed || codeArmed"),

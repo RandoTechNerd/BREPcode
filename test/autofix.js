@@ -94,6 +94,40 @@ check("output starts with the exact input", autoFix(messy).code.startsWith(messy
   check("a lone comment is left alone", R("// nothing here") === null);
   check("an unterminated block comment is left alone", R("/* oops\ncube([1,1,1])") === null);
 
+  // STATEMENTS SEPARATED BY NOTHING BUT A NEWLINE. Semicolon-free code has no
+  // `;` and no top-level `}`, so the boundary scan used to see one giant
+  // statement and put `return` at the very top — ASI then ended it at the
+  // first line break, the FIRST shape came back and everything after it was
+  // dead code. Measured: a chamfered cube and a difference() typed one after
+  // the other showed only the cube, and the user concluded chamfer could not
+  // take a difference. The tool's lie became the feature's reputation.
+  check("two bare shapes come back as a group, not the first one",
+    /return group\(/.test(R("chamfer(2.5, cube([30, 30, 16]))\ntranslate([-15, -15, 0],\n  difference(\n  cube([30, 30, 12]),\n  translate([15, 15, -1], cylinder({ r: 8, h: 23 })),\n))") || ""),
+    JSON.stringify(R("cube([1,1,1])\nsphere({ r: 2 })")));
+  check("...and the group carries BOTH of them",
+    (() => {
+      const out = R("cube([1,1,1])\nsphere({ r: 2 })") || "";
+      return out.includes("cube([1,1,1])") && out.includes("sphere({ r: 2 })");
+    })());
+  check("a decl then one bare shape, no semicolons, returns the shape",
+    /return cube\(\[a, a, a\]\)/.test(R("const a = 5\ncube([a, a, a])") || ""),
+    "this used to produce `return const…`, which is a parse error, which was null");
+  check("a chained call across lines is NOT split",
+    /return cube\(\[1,1,1\]\)\n  \.foo\(\)/.test(R("cube([1,1,1])\n  .foo()") || ""),
+    ".bar() on the next line continues the statement, exactly as the parser reads it");
+  check("an operator on the next line is not split either",
+    !/group\(/.test(R("cube([1,1,1])\n+ 0") || ""),
+    "ASI only breaks where the next token cannot extend the statement");
+  check("three shapes group all three",
+    (() => {
+      const out = R("cube([1,1,1])\nsphere({ r: 2 })\ncylinder({ r: 1, h: 4 })") || "";
+      return /return group\(/.test(out)
+        && out.includes("cube") && out.includes("sphere") && out.includes("cylinder");
+    })());
+  check("semicolon-separated shapes group the same way",
+    /return group\(/.test(R("cube([1,1,1]);\nsphere({ r: 2 });") || ""),
+    "the boundary kind must not change the answer");
+
   // the whole point: the repaired source has to actually run
   const fixed = R('const w = 20;\n// the part\ncube([w, w, 10]);');
   check("the repaired source is valid JavaScript",

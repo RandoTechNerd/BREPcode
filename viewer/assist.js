@@ -1337,8 +1337,72 @@ export function addImplicitReturn(src) {
     else if (")]}".includes(c)) depth--;
     else if ((c === ";" || c === "}") && depth === 0) bounds.push(i + 1);
   }
+  // Statements separated by NOTHING BUT A NEWLINE. Code with no semicolons at
+  // all — which is how people type when an editor builds as they type — has no
+  // `;` and no top-level `}`, so the scan above saw one giant statement and the
+  // repair put `return` at the very top. ASI then ended the return at the first
+  // line break: the FIRST shape came back, everything after it became dead
+  // code, and the status bar claimed the "final shape" had been returned.
+  // Measured: two shapes in the editor, one silently gone, and the user
+  // concluded chamfer() could not take a difference() — the tool's lie became
+  // the feature's reputation.
+  //
+  // Emulate ASI conservatively: a depth-0 newline is a boundary only when the
+  // text before it ends like an expression (a closer or a word character) and
+  // the next non-blank line starts with an identifier. `.bar()` continuations,
+  // operators, and open brackets all keep the statement together, exactly as
+  // the parser would.
+  {
+    const nl = /\n/g;
+    let m;
+    while ((m = nl.exec(masked))) {
+      const at = m.index;
+      const before = masked.slice(0, at).replace(/\s+$/, "");
+      const after = masked.slice(at + 1).replace(/^\s+/, "");
+      if (!before || !after) continue;
+      if (!/[)\]\w$"'`]$/.test(before)) continue;
+      if (!/^[A-Za-z_$]/.test(after)) continue;
+      // depth at this newline: count openers/closers up to it (cheap, and the
+      // masked text has no brackets hiding in strings or comments)
+      let d = 0;
+      for (let i = 0; i < at; i++) {
+        if ("([{".includes(masked[i])) d++;
+        else if (")]}".includes(masked[i])) d--;
+      }
+      if (d === 0) bounds.push(at + 1);
+    }
+    bounds.sort((a, b) => a - b);
+  }
   // A real `return` in code (not in a comment or string) means it already returns.
   if (/\breturn\b/.test(masked)) return null;
+
+  // SEVERAL bare shapes at the end, not one. Returning any single one of them
+  // silently deletes the rest from the screen — the failure above in a
+  // different coat. OpenSCAD taught everyone that two shapes typed one after
+  // the other both appear, so honour that: hand back a group() of the trailing
+  // run. The hint in the viewer tells the user their shapes were grouped, and
+  // combining them properly (nesting one inside the other) is then their call.
+  {
+    const KEYWORD = /^(?:const\b|let\b|var\b|function\b|class\b|if\b|for\b|while\b|switch\b|try\b|do\b|export\b|import\b)/;
+    const segs = [];
+    for (let b = 0; b < bounds.length; b++) {
+      const from = bounds[b], to = b + 1 < bounds.length ? bounds[b + 1] : src.length;
+      if (masked.slice(from, to).trim()) segs.push({ from, to });
+    }
+    let run = 0;
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const lead = masked.slice(segs[i].from, segs[i].to).replace(/^[\s;]+/, "");
+      if (KEYWORD.test(lead)) break;
+      run++;
+    }
+    if (run >= 2) {
+      const tailSegs = segs.slice(-run);
+      const head = src.slice(0, tailSegs[0].from);
+      const parts = tailSegs.map((s) =>
+        `(${src.slice(s.from, s.to).trim().replace(/;+\s*$/, "")})`);
+      return `${head}return group(\n  ${parts.join(",\n  ")},\n);`;
+    }
+  }
 
   // Walk boundaries from the end for the last one with real content after it.
   // With a trailing `;` the final boundary is at end-of-string, so this steps

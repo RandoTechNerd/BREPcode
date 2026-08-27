@@ -641,7 +641,14 @@
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 8px 30px rgba(0, 0, 0, .45); font-size: 12px; color: var(--text);
       overflow: hidden;
+      /* Chrome, not content. Clicking around while measuring kept starting
+         accidental text selections in the panel (headings, mode buttons, the
+         live line that changes under the cursor). Only the recorded NUMBERS
+         are content anyone wants — they opt back in below, and each row also
+         carries a copy button so the value travels without selecting at all. */
+      user-select: none;
     }
+    #measure-panel .mval, #measure-panel .mwhat { user-select: text; }
     #measure-panel[hidden] { display: none; }
     #measure-head {
       display: flex; align-items: center; gap: 4px;
@@ -683,6 +690,9 @@
       font-size: 13px; line-height: 1; padding: 0 2px; border-radius: 3px;
     }
     .mrow button:hover { color: var(--bad, #e06c6c); background: rgba(255, 255, 255, .07); }
+    .mrow .mcopy { font-size: 11px; }
+    .mrow .mcopy:hover { color: var(--accent); }
+    .mrow .mcopy.did { color: var(--ok, #7fd88f); }
     #measure-foot {
       display: flex; align-items: center; gap: 8px; padding: 6px 8px 7px 10px;
       border-top: 1px solid var(--border);
@@ -8928,9 +8938,11 @@
 
     let lastLang = "brepscript";
     let autoReturned = false;   // set when evaluate() had to insert a missing `return`
+    let autoGrouped = false;    // ...and it found SEVERAL bare shapes and grouped them
 
     function evaluate(src) {
       autoReturned = false;
+      autoGrouped = false;
       // Python first: build123d / CadQuery pastes would otherwise be fed to
       // the JS evaluator and die on "from build123d import *".
       if (looksLikePython(src)) {
@@ -8997,7 +9009,16 @@ ${joined}`)(...vs);
         if (withReturn) {
           try {
             const retry = new Function(...ns, `"use strict";\n${withReturn}`)(...vs);
-            if (retry !== undefined) { autoReturned = true; return retry; }
+            // The repair's own group() wrapper, recognised by the exact shape
+            // it emits — the hint must say "your shapes were grouped", not
+            // claim a single "final shape" was returned while the screen shows
+            // two. That claim is how "chamfer doesn't work with difference"
+            // got reported: the tool's lie became the feature's reputation.
+            if (retry !== undefined) {
+              autoReturned = true;
+              autoGrouped = /return group\(\n  \(/.test(withReturn);
+              return retry;
+            }
           } catch { /* the guess didn't parse or threw — keep the honest error */ }
         }
       }
@@ -9349,13 +9370,16 @@ ${joined}`)(...vs);
         const parts = [];
         const transLang = { openscad: "OpenSCAD", jscad: "JSCAD", build123d: "build123d", cadquery: "CadQuery" }[lastLang];
         if (transLang) parts.push(`⇄ translated from ${transLang} — a best-effort match, not the original engine`);
-        if (autoReturned) parts.push("added the missing “return” before your final shape");
+        if (autoGrouped) {
+          parts.push("your separate shapes are shown TOGETHER, as a group — nest one inside "
+            + "the other (e.g. chamfer(2.5, difference(…))) if you meant to combine them");
+        } else if (autoReturned) parts.push("added the missing “return” before your final shape");
         // A repair that quietly drops work is worse than an error. Several
         // shapes written one after another look like a model to the person who
         // typed them, and only the returned one is built — so when we have just
         // rescued one of a pile, say what happened to the rest.
         const loose = looseShapeCount(code.value);
-        if (loose > 1) {
+        if (loose > 1 && !autoGrouped) {
           parts.push(`only the returned shape was built — the other ${loose - 1} `
             + `${loose === 2 ? "is" : "are"} ignored. Combine them with union(…) or group(…)`);
         }
@@ -10721,6 +10745,21 @@ ${joined}`)(...vs);
         what.className = "mwhat";
         what.textContent = m.what;
         what.title = m.detail || m.what;
+        // Copy the full detail, not the trimmed label: "45.8 mm   Δx 40.0
+        // Δy 20.0  Δz 10.0" is the line worth pasting into notes or a chat
+        // message, and the deltas are the part the row itself truncates.
+        const copy = document.createElement("button");
+        copy.className = "mcopy";
+        copy.textContent = "⧉";
+        copy.title = "Copy this measurement";
+        copy.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(m.detail || `${m.value} ${m.what}`);
+            copy.textContent = "✓";
+            copy.classList.add("did");
+            setTimeout(() => { copy.textContent = "⧉"; copy.classList.remove("did"); }, 1200);
+          } catch { /* clipboard refused (permissions) — selection still works */ }
+        });
         const del = document.createElement("button");
         del.textContent = "×";
         del.title = "Remove this measurement";
@@ -10730,7 +10769,7 @@ ${joined}`)(...vs);
           measureRenderList();
           measureRedraw();
         });
-        row.append(val, what, del);
+        row.append(val, what, copy, del);
         list.appendChild(row);
       }
       $("measure-clear").disabled = !measurements.length;
