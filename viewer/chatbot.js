@@ -1514,6 +1514,15 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
           model: model || "gpt-4o-mini",
           ...(opts.stream ? { stream: true } : {}),
           ...budget,
+          // THE THINKING CAP, sent only on a retry after the watchdog fired.
+          // A reasoning model can think past three minutes and then die at its
+          // token ceiling having written no code at all — the user waits the
+          // whole time and gets nothing. "effort: low" is OpenRouter's unified
+          // reasoning control (their routers translate it per vendor);
+          // reasoning_effort is the same knob on OpenAI proper.
+          ...(opts.capReasoning
+            ? (compatibleHost ? { reasoning: { effort: "low" } } : { reasoning_effort: "low" })
+            : {}),
           messages: [
             // reasoning models take "developer" where the rest take "system"
             { role: isReasoningModel(model) ? "developer" : "system", content: system },

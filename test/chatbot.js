@@ -302,6 +302,56 @@ console.log("\nmodel discovery\n");
     !/model: "stealth\/ox-alpha"/.test(readFileSync(new URL("../viewer/locked-key.example.js", import.meta.url), "utf8")));
 }
 
+// THE THINKING WATCHDOG. A reasoning model can think past three minutes and
+// then die at its token ceiling having written no code at all — the user waits
+// the whole time and gets nothing, which is strictly worse than a worse answer.
+// Thinking past the budget aborts the attempt and asks the SAME model again
+// with its reasoning capped low; a second overrun stops honestly. Writing is
+// never interrupted.
+{
+  console.log("\nthinking has a budget; building does not\n");
+  const body = (opts = {}) => JSON.parse(buildApiRequest(
+    { provider: "openai", key: "K", model: "z-ai/glm-5.3-flash", baseUrl: "https://openrouter.ai/api/v1" },
+    [{ role: "user", text: "a cube" }], opts,
+  ).options.body);
+
+  check("no cap by default", body().reasoning === undefined,
+    "the budget must not quietly degrade every ordinary request");
+  check("the capped retry sends OpenRouter's unified reasoning control",
+    body({ capReasoning: true }).reasoning?.effort === "low");
+  const bare = JSON.parse(buildApiRequest(
+    { provider: "openai", key: "K", model: "o3-mini" },
+    [{ role: "user", text: "a cube" }], { capReasoning: true },
+  ).options.body);
+  check("...and OpenAI proper gets its own spelling of the same knob",
+    bare.reasoning_effort === "low" && bare.reasoning === undefined);
+
+  const { readFileSync: rf } = await import("node:fs");
+  const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has('+localStorage.getItem("brepcode-think-budget") || 180',
+    "the budget is 180s, overridable without a rebuild");
+  has('liveState.phase === "thinking" && sa >= THINK_BUDGET',
+    "the watchdog only ever fires on THINKING",
+    "a model writing code is doing its job, however slowly — never interrupt it");
+  has("const sa = (performance.now() - attemptStart) / 1000;",
+    "...measured per attempt, not per message",
+    "after a capped retry the message clock is already past the budget");
+  has('capReasoning: capThinking === "applied"',
+    "the retry carries the cap to the same model");
+  has('if (aborted && !userStopped && capThinking === "fired") {',
+    "a watchdog abort retries instead of reporting 'Stopped'");
+  has('capThinking === "exhausted"',
+    "...and a second overrun ends with an honest error, not a third wait");
+  has('if (userStopped) throw new DOMException("stopped", "AbortError");',
+    "Stop pressed between attempts still stops",
+    "per-attempt controllers made the click abort one that was already spent");
+  check("the user's Stop is told apart from the watchdog's abort",
+    V.includes("if (userStopped && (e?.name === \"AbortError\""),
+    "only aborts carrying the user's flag are the user's decision");
+}
+
 
 // The dropdown is ordered by modelScore, so this decides which model a new user
 // actually gets. It has to keep working for names that did not exist when it was
@@ -1339,8 +1389,8 @@ console.log("\nwires are swept, not chained\n");
   const { readFileSync: rf4 } = await import("node:fs");
   const HTML4 = rf4(new URL("../viewer/index.html", import.meta.url), "utf8");
   check("there is a real abort behind the button",
-    /const aiAbort = new AbortController\(\);/.test(HTML4)
-    && /aiFetch\(url, \{ \.\.\.options, signal: aiAbort\.signal \}\)/.test(HTML4),
+    /attemptCtl = new AbortController\(\);/.test(HTML4)
+    && /aiFetch\(url, \{ \.\.\.options, signal: attemptCtl\.signal \}\)/.test(HTML4),
     "a Stop button with no signal is a lie");
   check("...offered only after a genuinely long wait",
     /const SLOW_AFTER = 90;/.test(HTML4));

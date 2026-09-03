@@ -20282,7 +20282,20 @@ let SIMPLIFY_TARGET = 10000;
       // enough that an ordinary reasoning reply is never interrupted, short
       // enough that nobody watches a blind timer for ten minutes.
       const SLOW_AFTER = 90;   // seconds
-      const aiAbort = new AbortController();
+      // THE THINKING WATCHDOG. A reasoning model can think for minutes and
+      // then die at its token ceiling having written no code — the user waits
+      // the whole time and gets nothing, which is strictly worse than a worse
+      // answer. So: thinking (not writing!) past the budget aborts the attempt
+      // and asks the SAME model again with its reasoning capped low — forcing
+      // it to build. A second overrun stops honestly. Writing is never
+      // interrupted: a model producing code is doing its job, however slowly.
+      // brepcode-think-budget in localStorage overrides the seconds.
+      const THINK_BUDGET = Math.max(30, +localStorage.getItem("brepcode-think-budget") || 180);
+      let attemptCtl = null;      // aborts ONE attempt; the ladder loop survives
+      let attemptStart = performance.now();
+      let userStopped = false;    // Stop button: the whole message ends
+      let capThinking = false;    // false -> "fired" -> "applied" -> "exhausted"
+      let capEligible = false;    // only providers whose requests can carry the cap
       let liveState = null;   // { phase: "thinking"|"writing", chars|null, text }
       const paintBusy = () => {
         const s = Math.round((performance.now() - t0) / 1000);
@@ -20304,7 +20317,7 @@ let SIMPLIFY_TARGET = 10000;
           stop.style.cssText = "font-size:11.5px; padding:2px 10px; margin-left:8px";
           stop.textContent = "Stop";
           stop.title = "Give up on this reply — nothing is saved";
-          stop.addEventListener("click", () => { stop.disabled = true; aiAbort?.abort(); });
+          stop.addEventListener("click", () => { stop.disabled = true; userStopped = true; attemptCtl?.abort(); });
           busyLabel.after(stop);
         }
         // SHOW THE THINKING. A reasoning model can be three minutes between
@@ -20313,6 +20326,16 @@ let SIMPLIFY_TARGET = 10000;
         // does — "the user wants a wall bracket with dovetails" is instantly
         // worth more than "4,210 characters", and if it has misread the ask
         // you find out now rather than at the end.
+        // The watchdog. Attempt-relative seconds, not message-relative: after
+        // a capped retry the message clock is already past the budget, and
+        // judging the fresh attempt by the old attempt's clock would kill it
+        // at birth.
+        const sa = (performance.now() - attemptStart) / 1000;
+        if (capEligible && liveState.phase === "thinking" && sa >= THINK_BUDGET
+            && !userStopped && (capThinking === false || capThinking === "applied")) {
+          capThinking = capThinking === false ? "fired" : "exhausted";
+          attemptCtl?.abort();
+        }
         busyLabel.textContent = head;
         if (liveState.text) {
           // Reuse the node. Replacing it each second restarted the browser's
@@ -20618,29 +20641,59 @@ let SIMPLIFY_TARGET = 10000;
             const { url, options } = buildApiRequest(cfg, msgs,
               { includeThoughts: wantThoughts, stream: wantStream, reference, context: msgContext, ...harnessOpts(),
                 lessons,
+                // Set once the watchdog has fired: same model, reasoning low.
+                capReasoning: capThinking === "applied",
                 override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
-            // The signal is what makes Stop real rather than cosmetic. The
-            // desktop relay ignores it (the request lives in another process),
-            // which is why the button only claims to give up on the reply.
-            const resp = await aiFetch(url, { ...options, signal: aiAbort.signal });
-            if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
-              let lastPaint = 0;
-              // `text` is the model's current thought, and forgetting it here
-              // is what kept the live tail invisible: the stream reader sent
-              // it, this rebuilt the object without it, and the renderer's
-              // `if (liveState.text)` was never once true.
-              const onDelta = ({ phase, chars, text }) => {
-                liveState = { phase, chars, text };
-                const now = performance.now();
-                if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
-              };
-              json = cfg.provider === "claude"
-                ? await CHAT.readClaudeStream(resp, onDelta)
-                : await CHAT.readOpenAIStream(resp, onDelta);
-              logLine(`response ← stream ended${json.stop_reason ? ` (${json.stop_reason})` : ""}`);
-            } else {
-              json = await resp.json();
-              logLine(`response ← HTTP ${resp.status}`);
+            // One controller per ATTEMPT, so the watchdog can kill a stuck
+            // attempt while the loop lives on to retry — a shared controller
+            // meant the first abort ended the whole message, and its .aborted
+            // flag would have insta-killed every retry after it.
+            attemptCtl = new AbortController();
+            attemptStart = performance.now();
+            capEligible = cfg.provider === "openai" && wantStream;
+            // Stop pressed while the loop was between attempts (a ladder wait,
+            // say): the click aborted a controller that was already spent, and
+            // a fresh attempt would sail on past the user's decision.
+            if (userStopped) throw new DOMException("stopped", "AbortError");
+            // The try wraps the fetch AND the stream read: the thinking the
+            // watchdog cuts short happens DURING the stream, so an abort
+            // surfaces from the reader, not from the fetch.
+            try {
+              const resp = await aiFetch(url, { ...options, signal: attemptCtl.signal });
+              if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
+                let lastPaint = 0;
+                // `text` is the model's current thought, and forgetting it here
+                // is what kept the live tail invisible: the stream reader sent
+                // it, this rebuilt the object without it, and the renderer's
+                // `if (liveState.text)` was never once true.
+                const onDelta = ({ phase, chars, text }) => {
+                  liveState = { phase, chars, text };
+                  const now = performance.now();
+                  if (now - lastPaint > 500) { lastPaint = now; paintBusy(); }
+                };
+                json = cfg.provider === "claude"
+                  ? await CHAT.readClaudeStream(resp, onDelta)
+                  : await CHAT.readOpenAIStream(resp, onDelta);
+                logLine(`response ← stream ended${json.stop_reason ? ` (${json.stop_reason})` : ""}`);
+              } else {
+                json = await resp.json();
+                logLine(`response ← HTTP ${resp.status}`);
+              }
+            } catch (e) {
+              const aborted = e?.name === "AbortError" || attemptCtl.signal.aborted;
+              if (aborted && !userStopped && capThinking === "fired") {
+                capThinking = "applied";
+                liveState = null;
+                logLine(`thought for ${THINK_BUDGET}s without writing any code — `
+                  + `asking ${cfg.model} again with its thinking capped`);
+                continue;
+              }
+              if (aborted && !userStopped && capThinking === "exhausted") {
+                throw new Error(`${cfg.model} thought for ${THINK_BUDGET}s twice without building `
+                  + `anything, even with its thinking capped. Try asking for less in one go, or a `
+                  + `non-reasoning model.`);
+              }
+              throw e;
             }
             const errMsg = json?.error ? CHAT.apiErrorText(json.error) : "";
             if (wantThoughts && errMsg && /think|thought/i.test(errMsg)) {
@@ -20873,7 +20926,10 @@ let SIMPLIFY_TARGET = 10000;
         // Stopping on purpose is not a failure. Reporting the user's own
         // decision back to them as an error is the kind of small rudeness that
         // makes software feel like it is arguing with you.
-        if (e?.name === "AbortError" || aiAbort.signal.aborted) {
+        // `userStopped`, not "any abort": the watchdog also aborts, and its
+        // aborts are retried inside the loop — only the ones that surface here
+        // WITH the user's flag are the user's own decision.
+        if (userStopped && (e?.name === "AbortError" || attemptCtl?.signal.aborted)) {
           addMsg("bot", "Stopped. Nothing changed — send again, or try asking for less in one go.")
             .style.cssText = "opacity:.75; font-size:12.5px";
           return;
