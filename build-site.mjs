@@ -67,6 +67,9 @@ const rewrites = [
   // mesh decimation (lazy-loaded by viewer/simplify.js on the Simplify button)
   ["/node_modules/meshoptimizer/meshopt_simplifier.js", "./vendor/meshopt/meshopt_simplifier.js"],
   ["/node_modules/clipper-lib/clipper.js", "./vendor/clipper/clipper.js"],
+  // guaranteed-manifold mesher for smoothUnion()/blob() (lazy, src/organicmesh.js)
+  ['"manifold-3d": "/node_modules/manifold-3d/manifold.js"',
+   '"manifold-3d": "./vendor/manifold/manifold.js"'],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -202,6 +205,14 @@ cpSync("node_modules/meshoptimizer/LICENSE.md", join(OUT, "vendor/meshopt/LICENS
 // ---- vendor: clipper-lib (polygon offsetting for the slicer, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "clipper"), { recursive: true });
 cpSync("node_modules/clipper-lib/clipper.js", join(OUT, "vendor/clipper/clipper.js"));
+
+// manifold-3d: the guaranteed-manifold mesher behind smoothUnion()/blob()
+// (lazy-loaded by src/organicmesh.js the first time an organic model builds).
+// The .wasm must sit BESIDE the .js — Emscripten fetches it relative to the
+// script's own URL, so separating them breaks the load with no clear error.
+cpSync("node_modules/manifold-3d/manifold.js", join(OUT, "vendor/manifold/manifold.js"));
+cpSync("node_modules/manifold-3d/manifold.wasm", join(OUT, "vendor/manifold/manifold.wasm"));
+cpSync("node_modules/manifold-3d/LICENSE", join(OUT, "vendor/manifold/LICENSE"));
 
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });

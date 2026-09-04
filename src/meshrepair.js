@@ -235,6 +235,141 @@ function resolveOverusedEdges(points, faces) {
   return { faces: out, removed };
 }
 
+// CUT A PINCH, DON'T PATCH IT.
+//
+// Surface nets puts one vertex per grid cell, so wherever two sheets of the
+// surface pass through the same cells — a blended giraffe's legs 2.8mm apart
+// with a 2.5mm blend pulling their surfaces together — the sheets are forced
+// to SHARE vertices, and the shared edges end up owned by three or four faces.
+// The kernel refuses that ("Not manifold") and its viewer renders it as
+// ragged see-through holes.
+//
+// repairMesh() is the wrong tool there: it deletes the junction faces and
+// patches the holes, which welds the two sheets into exactly the false joint
+// the pinch only hinted at. The honest reading of a pinch is that the sheets
+// are SEPARATE surfaces that came too close for the grid — so this keeps
+// every triangle, duplicates the shared vertices, and parts the copies by a
+// hair along each sheet's own normal.
+//
+// The nudge is load-bearing, not cosmetic: the kernel welds vertices by
+// POSITION on import (measured — two closed cubes sharing only an edge, as
+// separate shells with coincident vertices, still import "Not manifold"), so
+// duplicates that stay put are re-fused before the manifold check ever sees
+// them. 0.05mm is far below a nozzle and invisible on screen, and perimeters
+// overlap it, so a print still fuses what the eye sees as touching.
+export function cutPinches({ points, faces }, { eps = 0.05 } = {}) {
+  const pts = points.map((p) => p.slice());
+  const fs = faces.map((f) => f.slice());
+
+  // --- 1. decide, per edge, which face-pairs genuinely share it -------------
+  // A manifold edge's two faces stay linked. An overused edge's faces are
+  // RADIALLY SORTED around the edge axis and paired with their angular
+  // neighbour of opposite winding — for the classic pinch (sheet A, sheet B,
+  // sheet A, sheet B around the circle) that pairs each sheet with itself,
+  // which is the geometry's own answer to "who was actually joined to whom".
+  const owners = new Map();               // "u_v" -> [{fi, forward}]
+  const ekey = (u, v) => (u < v ? `${u}_${v}` : `${v}_${u}`);
+  fs.forEach((f, fi) => {
+    for (let e = 0; e < 3; e++) {
+      const u = f[e], v = f[(e + 1) % 3];
+      const k = ekey(u, v);
+      if (!owners.has(k)) owners.set(k, []);
+      owners.get(k).push({ fi, forward: u < v });
+    }
+  });
+
+  const linked = new Map();               // "fiA|fiB|edgekey" presence = linked
+  const linkKey = (a, b, k) => (a < b ? `${a}|${b}|${k}` : `${b}|${a}|${k}`);
+  let cutEdges = 0;
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const norm = (a) => { const L = Math.hypot(...a) || 1; return [a[0] / L, a[1] / L, a[2] / L]; };
+
+  for (const [k, o] of owners) {
+    if (o.length === 2) { linked.set(linkKey(o[0].fi, o[1].fi, k), true); continue; }
+    if (o.length < 2) continue;
+    cutEdges++;
+    const [ui, vi] = k.split("_").map(Number);
+    const axis = norm(sub(pts[vi], pts[ui]));
+    // a reference frame perpendicular to the edge
+    const seed = Math.abs(axis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const X = norm(cross(axis, seed));
+    const Y = cross(axis, X);
+    const angleOf = ({ fi }) => {
+      const f = fs[fi];
+      const w = f.find((x) => x !== ui && x !== vi);
+      const d = sub(pts[w], pts[ui]);
+      return Math.atan2(dot(d, Y), dot(d, X));
+    };
+    const ring = o.slice().sort((a, b) => angleOf(a) - angleOf(b));
+    // pair angular neighbours of opposite winding, each face used once
+    const used = new Set();
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length];
+      if (used.has(a.fi) || used.has(b.fi) || a.forward === b.forward) continue;
+      used.add(a.fi); used.add(b.fi);
+      linked.set(linkKey(a.fi, b.fi, k), true);
+    }
+  }
+
+  // --- 2. split every vertex into its fans ---------------------------------
+  // A fan is a run of faces around the vertex connected through LINKED edges.
+  // One vertex per fan: the first fan keeps the original, every other fan gets
+  // a copy nudged along its own mean normal — which is what physically parts
+  // the sheets, and what stops the kernel's position-weld from quietly fusing
+  // them back together (measured: coincident duplicates re-weld, and the
+  // manifold check fails exactly as before).
+  const faceNormal = (f) => {
+    const n = cross(sub(pts[f[1]], pts[f[0]]), sub(pts[f[2]], pts[f[0]]));
+    return norm(n);
+  };
+  const byVert = new Map();
+  fs.forEach((f, fi) => { for (const v of new Set(f)) { if (!byVert.has(v)) byVert.set(v, []); byVert.get(v).push(fi); } });
+  let cutVertices = 0;
+  for (const [v, fis] of byVert) {
+    if (fis.length < 2) continue;
+    const adj = new Map(fis.map((fi) => [fi, []]));
+    for (let a = 0; a < fis.length; a++) {
+      for (let b = a + 1; b < fis.length; b++) {
+        const fa = fs[fis[a]], fb = fs[fis[b]];
+        // the edge through THIS vertex that the two faces might share
+        const shared = fa.filter((x) => fb.includes(x));
+        if (shared.length < 2 || !shared.includes(v)) continue;
+        const other = shared.find((x) => x !== v);
+        if (other === undefined) continue;
+        if (linked.has(linkKey(fis[a], fis[b], ekey(v, other)))) {
+          adj.get(fis[a]).push(fis[b]);
+          adj.get(fis[b]).push(fis[a]);
+        }
+      }
+    }
+    const unvisited = new Set(fis);
+    let first = true;
+    while (unvisited.size) {
+      const start = unvisited.values().next().value;
+      const fan = [start];
+      unvisited.delete(start);
+      for (let qi = 0; qi < fan.length; qi++) {
+        for (const nb of adj.get(fan[qi])) {
+          if (unvisited.has(nb)) { unvisited.delete(nb); fan.push(nb); }
+        }
+      }
+      if (first) { first = false; continue; }        // keeps the original vertex
+      cutVertices++;
+      const n = [0, 0, 0];
+      for (const fi of fan) { const fn = faceNormal(fs[fi]); n[0] += fn[0]; n[1] += fn[1]; n[2] += fn[2]; }
+      const N = norm(n);
+      const p = pts[v];
+      pts.push([p[0] + N[0] * eps, p[1] + N[1] * eps, p[2] + N[2] * eps]);
+      const ni = pts.length - 1;
+      for (const fi of fan) fs[fi] = fs[fi].map((x) => (x === v ? ni : x));
+    }
+  }
+
+  return { points: pts, faces: fs, cutEdges, cutVertices };
+}
+
 export function repairMesh({ points, faces }) {
   const report = {
     degenerateRemoved: 0, duplicatesRemoved: 0,

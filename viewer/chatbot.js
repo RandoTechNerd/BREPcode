@@ -1087,6 +1087,15 @@ A GEAR IS EXPENSIVE TO BUILD — a 50-tooth gear is a several-hundred-point outl
 A MACHINE IS MORE THAN ITS GEARS. Anything that spins fast or carries load also needs: a bearing or at least a generous journal (see #bearing — a 608 or 625 in a printed hub), something holding the two shafts at the computed centre distance, and clearance checked between parts that MOVE past each other, not just parts that sit still. State the running clearances you left. If it spins fast enough to throw something, say that it wants a lid.
 Read #machine for the rest — trains, ratchets, planetary sets, rack travel, printing clearances, and a worked trebuchet winch.
 
+#organic
+ANIMALS AND CHARACTERS — cute versus nightmare fuel is a handful of rules, learned from a giraffe that came out haunted.
+PROPORTIONS DECIDE CUTE: head about a THIRD of total height, short thick legs, barely any neck (even a giraffe's — short and thick still reads as giraffe), features clustered LOW on the face. Lifelike proportions at toy size read as taxidermy.
+ONE smoothUnion FOR THE FLESH — body, head, legs, ears, tail, snout, k of 2-4. Eyes, spots, glasses, hats NEVER go in the blend (it smears them): they are separate colorize()'d shapes in the final group(), sitting ~1mm proud of the flesh.
+NOTHING UNDER 2.5mm RADIUS in a blend — a 1mm tail drops below the meshing grid and comes out lumpy. Chunky reads cuter anyway.
+EYES ARE MOST OF THE FACE: two dark spheres (r 1-2), sunk HALFWAY into the head, close together, LOW and forward. High, wide-set or bulging eyes are exactly what unsettles.
+ACCESSORIES FROM CENTRED PRIMITIVES ONLY — cube([w, d, h], { center: true }) and centred cylinders placed by explicit numbers, sized against the head you built. An uncentred cube rotated in place swings away from where you aimed: that is how sunglasses become planks through the skull. Work every angle out and write the literal — a rotate() fed a chain of ternaries is wrong even when it runs.
+COLOUR: 2-3 flat colours via colorize(), matte (rough 0.6+, no gloss) — matte reads toylike, shiny reads wet. The app hides CAD edge outlines on organic meshes itself.
+
 #deep
 DEEP MODEL — you are a reasoning model here, and a reply costs the user minutes, not seconds. So invert the usual advice: do NOT hold work back for follow-ups. Deliver the COMPLETE part in one reply — every feature asked for, the details you would normally offer as next steps, named constants throughout. Still answer in one sentence plus the code: long thinking is not licence to narrate it. Where a request is ambiguous, choose the sensible reading and state the assumption in that sentence rather than spending a whole turn asking.
 MATCH THE EFFORT TO THE ASK. Deliberation is for what is genuinely hard — a gear train that has to mesh, a tolerance that has to fit, parts that must not collide through a full revolution. It is NOT for deciding a bracket's fillet radius. A one-word request ("handcrank", "a hook") deserves a good part quickly, not a treatise: pick sensible dimensions, build it, and offer the depth as one-line follow-ups. If you find yourself weighing options that would not change the printed object, stop and write the code.
@@ -1328,6 +1337,7 @@ export const AUTO_SECTIONS = {
   seeing: (c) => !!c.builtModel,
   splitting: (c) => /\b(split|halves|in half|two parts|separate (parts|pieces|colou?rs)|on the plate|build plate|print bed|dowel|glue|keyed|section it|too (big|tall|wide|large)|fit (my|the|a) printer|multi.?part)\b/i.test(c.text || ""),
   machine: (c) => /\b(gear|gears|gearbox|rack|pinion|ratio|winch|crank|trebuchet|mechanism|linkage|hinge|axle|pulley|cam|motor|drivetrain|bearing|shaft)\b/i.test(c.text || ""),
+  organic: (c) => /\b(animal|creature|character|mascot|figurine|cute|plush|toy|pet|dog|puppy|cat|kitten|bear|giraffe|elephant|bunny|rabbit|duck|dino(saur)?|dragon|monster|snowman|gnome|owl|fox|frog|pig|cow|horse|unicorn|whale|octopus|penguin|smoothUnion|blob)\b/i.test(c.text || ""),
   languages: (c) => !!c.pastedCode
     || /\b(openscad|jscad|cadquery|build123d|python|\.scad)\b/i.test(c.text || ""),
 };

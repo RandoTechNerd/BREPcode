@@ -9,7 +9,7 @@ import { Matrix4, Euler, Vector3, Quaternion, MathUtils } from "three";
 import { smin, solidNets } from "./sdf.js";
 import { MAX_FACES } from "./offset3d.js";
 import { meshFieldGrid } from "./fieldgrid.js";
-import { repairMesh } from "./meshrepair.js";
+import { repairMesh, cutPinches } from "./meshrepair.js";
 
 const DEG = Math.PI / 180;
 
@@ -2354,7 +2354,25 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // one field folded from all of them: soft minimum with the blend width
       const f = fields.length === 1 ? fields[0]
         : (p) => fields.reduce((acc, g) => (acc === null ? g(p) : smin(acc, g(p), k)), null);
-      const out = solidNets(f, bounds, res, { repair: repairMesh });
+      // Manifold's levelSet first: manifold by construction, so a blend can
+      // never pinch into the "Not manifold" mesh that surface nets makes when
+      // two sheets share grid cells — see src/organicmesh.js for the measured
+      // story. Surface nets + cutPinches stays as the fallback for a host
+      // where the WASM cannot load: worse, but never nothing.
+      let blendMesh = null;
+      try {
+        const { blendLevelSet } = await import("./organicmesh.js");
+        blendMesh = await blendLevelSet(f, bounds, span / res);
+      } catch { /* wasm unavailable here — the nets road below still works */ }
+      if (!blendMesh) {
+        const nets = solidNets(f, bounds, res, { repair: repairMesh });
+        blendMesh = nets.mesh;
+        if (nets.overusedEdges > 0 || nets.openEdges > 0) {
+          const cut = cutPinches(blendMesh);
+          blendMesh = { points: cut.points, faces: cut.faces };
+        }
+      }
+      const out = { mesh: blendMesh };
       if (!out.mesh.faces.length) throw new Error("smoothUnion(): the blend produced nothing — are the shapes hundreds of mm apart?");
 
       let stl = "solid blend\n";
@@ -2378,7 +2396,10 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       f2.inputParams.fileToImport = data;
       f2.inputParams.meshRepairLevel = "NONE";
       f2.inputParams.centerMesh = false;
-      trace?.push({ id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      // `organic: true` tells the viewer this mesh is a blend — thousands of
+      // near-coplanar triangles, not a CAD solid — so the outline pass skips
+      // it (edge display on a blend is chicken wire, not edges).
+      trace?.push({ id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin, organic: true });
       return f2.inputParams.id;
     }
 

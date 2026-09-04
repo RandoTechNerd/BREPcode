@@ -224,7 +224,7 @@ export function solidNets(f, bounds, res = 48, opts = {}) {
   let mesh = surfaceNets(f, [lo, hi], res);
   let grew = 0;
 
-  const openCount = (m) => {
+  const edgeFaults = (m) => {
     const seen = new Map();
     for (const [a, b, c] of m.faces) {
       for (const [u, v] of [[a, b], [b, c], [c, a]]) {
@@ -232,10 +232,11 @@ export function solidNets(f, bounds, res = 48, opts = {}) {
         seen.set(k, (seen.get(k) || 0) + 1);
       }
     }
-    let n = 0;
-    for (const c of seen.values()) if (c === 1) n++;
-    return n;
+    let open = 0, overused = 0;
+    for (const c of seen.values()) { if (c === 1) open++; else if (c > 2) overused++; }
+    return { open, overused };
   };
+  const openCount = (m) => edgeFaults(m).open;
 
   while (openCount(mesh) > 0 && grew < tries) {
     // Widen by a share of the current span, in every direction — the surface
@@ -248,12 +249,18 @@ export function solidNets(f, bounds, res = 48, opts = {}) {
     grew++;
   }
 
-  const open = openCount(mesh);
+  // Repair remains for OPEN edges only. It removes faces and patches holes,
+  // which is right for a truncated surface and exactly wrong for a pinch —
+  // measured on a blended giraffe (17 overused edges, 0 open), letting it
+  // loose on the junctions left 219 winding clashes and 7 bowtie vertices
+  // where there had been none. Pinches are the caller's problem, and they are
+  // cut, not patched: see cutPinches() in meshrepair.js.
+  const faults = edgeFaults(mesh);
   let repaired = false;
-  if (open > 0 && typeof repair === "function") {
+  if (faults.open > 0 && typeof repair === "function") {
     const fixed = repair(mesh);
     mesh = { points: fixed.points, faces: fixed.faces };
     repaired = true;
   }
-  return { mesh, bounds: [lo, hi], grew, repaired, openEdges: open };
+  return { mesh, bounds: [lo, hi], grew, repaired, openEdges: faults.open, overusedEdges: faults.overused };
 }

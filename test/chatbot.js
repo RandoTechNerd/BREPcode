@@ -302,6 +302,33 @@ console.log("\nmodel discovery\n");
     !/model: "stealth\/ox-alpha"/.test(readFileSync(new URL("../viewer/locked-key.example.js", import.meta.url), "utf8")));
 }
 
+// CUTE, NOT NIGHTMARE FUEL. The giraffe that prompted this had lifelike
+// proportions (taxidermy at toy size), spots computed through a chain of
+// degenerate ternaries, sunglasses built from uncentred cubes that swung away
+// from the head, and a sub-millimetre tail the meshing grid could not hold.
+// Every one of those is preventable by telling the model the rules BEFORE it
+// writes, and only when the request is actually organic.
+{
+  console.log("\nanimals get the organic rules\n");
+  const fires = (text) => CB.AUTO_SECTIONS.organic({ text });
+  check("an animal request loads the section", fires("make me a cute giraffe"));
+  check("...so does a character", fires("a little dragon mascot for my desk"));
+  check("...and explicit smoothUnion work", fires("use smoothUnion to make a blob")); 
+  check("a bracket does not", !fires("a wall bracket with two holes")); 
+  check("...nor a gearbox", !fires("a 3:1 gearbox with a crank")); 
+
+  const H = CB.composeSystemParts({ context: { text: "a cute giraffe" } });
+  const all = [H.stable, H.volatile, JSON.stringify(H)].join("\n");
+  check("the section reaches the prompt for an animal ask", /ANIMALS AND CHARACTERS/.test(all));
+  check("...with the proportion rule that decides cute", /head about a THIRD/i.test(all));
+  check("...the no-decorations-in-the-blend rule", /NEVER go in the blend/.test(all));
+  check("...the minimum feature size the mesher can hold", /2\.5mm RADIUS/.test(all));
+  check("...the eye placement that is most of the face", /sunk HALFWAY/.test(all));
+  check("...and the centred-primitives rule for accessories", /center: true/.test(all)
+    && /planks through the skull/.test(all),
+    "uncentred cubes rotated in place are how sunglasses became planks");
+}
+
 // THE THINKING WATCHDOG. A reasoning model can think past three minutes and
 // then die at its token ceiling having written no code at all — the user waits
 // the whole time and gets nothing, which is strictly worse than a worse answer.

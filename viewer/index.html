@@ -104,7 +104,8 @@
     "imports": {
       "three": "/node_modules/three/build/three.module.js",
       "three/addons/": "/node_modules/three/examples/jsm/",
-      "node:module": "/viewer/vendor/kernel/node-module-shim.js"
+      "node:module": "/viewer/vendor/kernel/node-module-shim.js",
+      "manifold-3d": "/node_modules/manifold-3d/manifold.js"
     }
   }
   </script>
@@ -5642,6 +5643,7 @@
     let codeNegatives = new Set();     // featureIds that are CUTTERS — their faces are holes
     let codeEmissive = {};             // featureId -> {hex, int} set by glow() in the code
     let codeClear = {};                // featureId -> opacity set by glass() in the code
+    let codeOrganic = new Set();       // featureIds that are smoothUnion()/blob() meshes
     const overrideMats = new Map();    // key -> material (cached, texture/shading synced)
 
     // The reflection environment, loaded the FIRST time anything clear exists
@@ -9298,8 +9300,10 @@ ${joined}`)(...vs);
         // feature id, so adoptSolid()'s matForFeature() paints each coloured piece
         codeColors = {}; codeEmissive = {}; codeClear = {}; codeFinish = {};
         codeNegatives = new Set();       // cutters — see paintCutFaces()
+        codeOrganic = new Set();
         for (const t of trace) {
           if (t.negative) codeNegatives.add(t.id);
+          if (t.organic) codeOrganic.add(t.id);
           if (t.color) codeColors[t.id] = t.color;
           if (t.emissive) codeEmissive[t.id] = { hex: t.emissive, int: t.emissiveInt ?? 1 };
           if (t.clear != null) codeClear[t.id] = t.clear;
@@ -9968,6 +9972,12 @@ ${joined}`)(...vs);
       const angle = Math.max(1, Math.min(60, mat.outlineAngle ?? 20));
       for (const m of modelGroup.children) {
         if (!m.geometry || !m.visible) continue;
+        // A blend has no edges to draw. EdgesGeometry on an organic mesh finds
+        // every tessellation crease past the angle, and at the cell sizes a
+        // blend meshes at that is chicken wire over the whole animal — the
+        // CAD look is for CAD shapes, so organic meshes keep their smooth
+        // silhouette and the rest of the model keeps its outlines.
+        if (codeOrganic.has(m.userData.featureId)) continue;
         const edges = new THREE.EdgesGeometry(m.geometry, angle);
         const geo = new LineSegmentsGeometry().fromEdgesGeometry(edges);
         edges.dispose();

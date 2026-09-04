@@ -307,5 +307,64 @@ console.log("\nrepair happens on the way IN, not as a button afterwards\n");
     repairBinaryStl(new Uint8Array([1, 2, 3]), "x") === null);
 }
 
+// CUTTING A PINCH. Two spheres blended at exact tangency pinch surface nets
+// into edges owned by four faces — the giraffe failure in its smallest form.
+// cutPinches parts the sheets instead of patching the junction; the measure of
+// success is simply that no edge is owned by more than two faces afterwards,
+// and that a healthy mesh comes through untouched.
+{
+  console.log("\ncutting pinches apart\n");
+  const { cutPinches } = await import("../src/meshrepair.js");
+  const { surfaceNets, smin } = await import("../src/sdf.js");
+
+  // The pinch in its smallest deterministic form: two closed tetrahedra
+  // sharing one edge, so that edge is owned by FOUR faces. (Two merely-close
+  // spheres will not do it — nets either separates or merges them cleanly;
+  // the giraffe's pinch came through the lattice field's interpolation, which
+  // no hand-picked sphere spacing reproduces reliably.)
+  const pts = [
+    [0, 0, 0], [0, 2, 0],            // the shared edge u-v
+    [1, 1, 1], [1, 1, -1],           // tet A's far corners
+    [-1, 1, 1], [-1, 1, -1],         // tet B's far corners
+  ];
+  const tet = (u, v, w, x) => [[u, v, w], [u, x, v], [u, w, x], [v, x, w]];
+  const pinched = { points: pts, faces: [...tet(0, 1, 2, 3), ...tet(1, 0, 4, 5)] };
+  const count = (m) => {
+    const seen = new Map();
+    for (const [a, b, c] of m.faces) {
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const k = u < v ? `${u}_${v}` : `${v}_${u}`;
+        seen.set(k, (seen.get(k) || 0) + 1);
+      }
+    }
+    let open = 0, over = 0;
+    for (const c of seen.values()) { if (c === 1) open++; else if (c > 2) over++; }
+    return { open, over };
+  };
+  const before = count(pinched);
+  const cut = cutPinches(pinched);
+  const after = count(cut);
+  check("a shared edge owned by four faces is the giraffe failure in miniature", before.over > 0,
+    `surface nets gave ${before.over} overused edges`);
+  check("after cutting, no edge is owned by more than two faces", after.over === 0,
+    `${after.over} remained`);
+  check("every triangle survives — a cut is not a deletion",
+    cut.faces.length === pinched.faces.length);
+  check("the parted copies moved a hair, not a distance",
+    cut.points.length > pinched.points.length
+    && cut.points.slice(pinched.points.length).every((p, i) => {
+      let best = Infinity;
+      for (const q of pinched.points) best = Math.min(best, Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]));
+      return best < 0.2;
+    }), "0.05mm nudges, invisible on screen and under any nozzle");
+
+  const clean = surfaceNets((p) => Math.hypot(...p) - 5, [[-7, -7, -7], [7, 7, 7]], 24);
+  const untouched = cutPinches(clean);
+  check("a healthy mesh passes through unchanged",
+    untouched.faces.length === clean.faces.length
+    && untouched.points.length === clean.points.length
+    && untouched.cutEdges === 0 && untouched.cutVertices === 0);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
