@@ -321,6 +321,9 @@ console.log("\nmodel discovery\n");
   const all = [H.stable, H.volatile, JSON.stringify(H)].join("\n");
   check("the section reaches the prompt for an animal ask", /ANIMALS AND CHARACTERS/.test(all));
   check("...with the proportion rule that decides cute", /head about a THIRD/i.test(all));
+  check("...and it starts from a body plan, not from scratch",
+    /creature\("quadruped-sitting"/.test(all) && /creatureAnchors/.test(all),
+    "a generator is good at adjusting a correct silhouette and bad at inventing one");
   check("...the no-decorations-in-the-blend rule", /NEVER go in the blend/.test(all));
   check("...the minimum feature size the mesher can hold", /2\.5mm RADIUS/.test(all));
   check("...the eye placement that is most of the face", /sunk HALFWAY/.test(all));
@@ -1162,6 +1165,15 @@ console.log("\nwires are swept, not chained\n");
     "the opposite of #speed, on purpose");
   check("...and to spend some of that budget on the look",
     /set the scene with look\(\{\.\.\.\}\)/.test(deep.volatile));
+  // Reported as "thinks too long and then never builds the model". The
+  // watchdog (see the thinking-budget block) is the mechanical backstop; this
+  // is the plan-side discipline: one planning pass, and when it catches
+  // itself circling, review what exists and ship it.
+  check("...and to plan on a thinking budget",
+    /THINK ON A BUDGET/.test(deep.volatile) && /Plan in ONE brief pass/.test(deep.volatile));
+  check("...never restarting the design mid-reply",
+    /NEVER restart the design mid-reply/.test(deep.volatile),
+    "a good part now beats a perfect one that never arrives");
 
   for (const [m, want] of [["stealth/ox-alpha", true], ["o1-preview", true],
     ["deepseek/deepseek-r1", true], ["qwen/qwq-32b", true],

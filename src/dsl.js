@@ -2417,6 +2417,18 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 // import between the two is safe.
 export * from "./parts.js";
 
+// Baseline silhouettes for organic models — hand-tuned ball skeletons whose
+// outline already reads as the animal, so a generator ADJUSTS a correct shape
+// instead of inventing anatomy from numbers. creature() is the blob() of one
+// of those skeletons; creatureAnchors() gives real coordinates on the finished
+// form for the parts that must not be blended (eyes, nose, ear decorations).
+// See src/creatures.js for the plans and the proportions they bake in.
+export { creatureBalls, creatureAnchors, CREATURE_NAMES } from "./creatures.js";
+import { creatureBalls as creatureBallsFn } from "./creatures.js";
+export function creature(name, opts = {}) {
+  return blob(creatureBallsFn(name, opts), { k: opts.k ?? 4 * ((opts.h ?? 100) / 100) });
+}
+
 // Common printed parts — standoffs, snap fits, hinges, shells, vents. Same
 // reasoning as parts.js above: re-exported here so the viewer vocabulary and
 // the CLI both pick them up with no second registration step.

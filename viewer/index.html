@@ -4503,15 +4503,38 @@
     // distance exactly as they were, so nothing rotates or zooms — the part
     // just slides to the middle of the screen, which is where it was going to
     // end up the moment you started turning it anyway.
+    // ZERO-JUMP pivot correction. The first version translated the camera so
+    // the model slid to screen centre — which fixed "orbit swings the part
+    // around empty air" and broke three other things, all reported at once:
+    // keepModelClear() deliberately parks the model BESIDE an open panel by
+    // offsetting the target, so every click "corrected" that offset and the
+    // model jumped at the instant of grab; the jump moved the model out from
+    // under the cursor, so a grab aimed at an imported STL's base landed on
+    // empty space and started an ORBIT instead of a move — which is exactly
+    // what "the mouse directions seem inverted" feels like; and the two
+    // systems undid each other every time a window opened or closed.
+    //
+    // The fix keeps the CAMERA STILL, always. Only the target moves, and only
+    // ALONG the line the camera is already looking down — to the point on
+    // that line nearest the model's centre. Nothing on screen shifts by a
+    // pixel (the view ray is unchanged), panels keep the layout they asked
+    // for, a grab lands exactly where it was aimed — but rotation now pivots
+    // at the model's DEPTH, which was the whole point: the drifted pivot that
+    // threw the part across the viewport sat far in front of or behind it.
     const recentrePivot = () => {
       const box = new THREE.Box3().setFromObject(modelGroup);
       if (box.isEmpty()) return;
       const centre = box.getCenter(new THREE.Vector3());
-      const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1e-3);
-      if (controls.target.distanceTo(centre) <= radius) return;   // still on the part
-      const shift = centre.clone().sub(controls.target);
-      controls.target.copy(centre);
-      camera.position.add(shift);
+      const view = controls.target.clone().sub(camera.position);
+      const len = view.length();
+      if (len < 1e-6) return;
+      view.divideScalar(len);
+      // distance along the view ray to the point nearest the model centre —
+      // clamped away from the camera, or a model behind it would fold the
+      // target through the near plane
+      const depth = Math.max(centre.clone().sub(camera.position).dot(view), 1);
+      if (Math.abs(depth - len) < Math.max(1, len * 0.02)) return;   // already right
+      controls.target.copy(camera.position).addScaledVector(view, depth);
       controls.update();
     };
     renderer.domElement.addEventListener("pointerdown", (e) => {
@@ -4520,12 +4543,8 @@
       // undo the pan on every single drag.
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-      // NOT WHILE A TOOL IS ARMED. Re-centring nudges the camera, so the model
-      // slides between pointerdown and pointerup — and every one of these tools
-      // acts on the point you released over. Measured while testing measure:
-      // the press moved the view and the release landed on empty space, so the
-      // click did nothing at all and looked like the tool was broken. Aiming at
-      // a specific corner is exactly when the view must hold still.
+      // Armed tools keep their guard even though the correction is now
+      // jump-free: mid-aim is no moment to change anything at all.
       if (measureArmed || drillArmed || shaveArmed || codeArmed || finsArmed || embossArmed) return;
       recentrePivot();
     }, true);
@@ -4969,6 +4988,23 @@
         distance = 0;
       }
       dir.normalize();
+
+      // A camera the USER is holding — they orbited, panned, or dragged the
+      // model itself — chases nothing. Copying the new centre on every rebuild
+      // translated the camera by exactly the drag delta: drag the part 80px
+      // and it stayed put on screen while the world slid underneath, which is
+      // most of what "moving an imported STL is wonky" was. Near/far still
+      // track the size, and the clearance below keeps its safety net: a model
+      // typed right out of view is still rescued, because keepModelClear only
+      // stands down for a user-held camera when the model is genuinely clear.
+      if (!autoPlaced) {
+        camera.near = Math.max(radius / 1000, 0.001);
+        camera.far = Math.max(radius * 1000, 100);
+        camera.updateProjectionMatrix();
+        framedRadius = radius;
+        windowsChanged();
+        return;
+      }
 
       const refit = !framedRadius || radius > framedRadius * 1.8 || radius < framedRadius / 1.8;
       if (refit) distance = fitDistance(radius);
@@ -5596,9 +5632,18 @@
     // model's own scale or a 200mm part looks like a 2mm one.
     function applyFilament(m, key, color) {
       const f = FILAMENTS[key] || FILAMENTS.opaque;
-      m.transmission = f.t;
+      // TRANSLUCENCY IS OPT-IN. Most glitter spools are modelled as clear
+      // resin with flake — Gold Dust is literally "clear with gold flake",
+      // t 0.58 — and a look({ filament }) written by the assistant was
+      // enough to turn a whole animal see-through: legs visible inside the
+      // body, reported as broken transparency, because nobody CHOSE it. The
+      // colour and the sparkle are what a named spool means; the glassiness
+      // only applies when the filament was picked by hand in the panel,
+      // where the result is on screen as you pick.
+      const t = mat.filamentChosen ? f.t : 0;
+      m.transmission = t;
       m.ior = f.ior;
-      if (f.t > 0) {
+      if (t > 0) {
         const bb = new THREE.Box3().setFromObject(modelGroup);
         const span = bb.isEmpty() ? 20 : bb.getSize(new THREE.Vector3()).length() * 0.35;
         m.thickness = span;
@@ -6647,7 +6692,14 @@
         lightBackup = Object.fromEntries(FIL.LOOK_KEYS.map((k) => [k, mat[k]]));
         bgBackup = matUserBg;
       }
-      for (const k of FIL.LOOK_KEYS) if (look[k] !== undefined) mat[k] = look[k];
+      for (const k of FIL.LOOK_KEYS) {
+        if (look[k] === undefined) continue;
+        // A spool's lighting preset may also fade the whole model (funfetti
+        // ships opacity 88) — that rides with the same choice its translucency
+        // does. Lights and background are just staging; keep those.
+        if (k === "opacity" && !mat.filamentChosen && look[k] < 100) continue;
+        mat[k] = look[k];
+      }
       // the background only takes effect once the user "owns" it; a spool that
       // sets one is making that choice on their behalf, and it is undone below
       if (look.bg !== undefined) matUserBg = true;
@@ -6722,6 +6774,9 @@
 
     $("mat-filament").addEventListener("change", (e) => {
       mat.filament = e.target.value;
+      // Picked BY HAND, with the result on screen — the one path where a
+      // spool's translucency is a choice rather than a surprise.
+      mat.filamentChosen = true;
       // A named spool IS a colour, so it takes over the default material.
       // Shapes given their own colorize() keep theirs — a four-filament model
       // does not collapse to one hue just because a spool was picked.
@@ -8766,6 +8821,7 @@
         }
         if (mat.filament === sp.id) return;
         mat.filament = sp.id;
+        mat.filamentChosen = false;      // named in code, not picked by hand
         mat.color = sp.base;
         applySpoolLook(sp);
         applySpoolFx();
@@ -8798,6 +8854,7 @@
         }
         if (mat.filament === sp.id) return;          // already there, no churn
         mat.filament = sp.id;
+        mat.filamentChosen = false;      // named in code, not picked by hand
         mat.color = sp.base;
         applySpoolLook(sp);
         applySpoolFx();
@@ -9221,6 +9278,9 @@ ${joined}`)(...vs);
           const want = dsl.takeSceneLook();
           if (want && Object.keys(want).length) {
             Object.assign(mat, want);
+            // A look() from generated code names a spool for its COLOUR and
+            // sparkle. It is not the user choosing to see through their model.
+            if (want.filament) mat.filamentChosen = false;
             if (want.bg) matUserBg = true;      // stop the theme overwriting it
             try {
               applyMaterial();                  // also reflects the widgets
@@ -11415,6 +11475,13 @@ ${joined}`)(...vs);
             meshes: modelGroup.children.slice(),
             delta: new THREE.Vector3(), moved: false,
           };
+          // Dragging the model is the user ARRANGING THE SCENE, so the camera
+          // is theirs from this moment. Without this, the commit's rebuild
+          // ran keepModelClear() on a camera still marked app-placed, and the
+          // view glided after every single nudge — drag the part 7mm right
+          // and the app promptly re-centred it, which reads as the model
+          // snapping back, or "it keeps jumping down".
+          autoPlaced = false;
           controls.enabled = false;
           try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
         }
