@@ -72,9 +72,52 @@ console.log("\nscaling and the cute head\n");
   check("an unknown plan names the real ones",
     (() => { try { creature("dragon"); return false; }
       catch (e) { return /quadruped-sitting/.test(e.message); } })());
-  check("creature() is a blob at heart",
-    creature("bird", { h: 60 }).kind === "sdfblend",
-    "the whole point: the model adjusts balls, the mesher guarantees the rest");
+}
+
+// THE FACE COMES INCLUDED. The first bird built from the bare plan had no
+// beak and no eyes — a Halloween decoration, not a toy. creature() now ships
+// decorated; { plain: true } is the bare flesh for reshaping.
+console.log("\ncreatures arrive with their faces on\n");
+{
+  const { creatureDecor } = await import("../src/dsl.js");
+  check("creature() is a group: flesh plus its face",
+    creature("bird", { h: 60 }).kind === "group"
+    && creature("bird", { h: 60 }).children.length === 4,
+    "body + two eyes + beak");
+  check("plain: true is the bare blob for reshaping",
+    creature("bird", { h: 60, plain: true }).kind === "sdfblend");
+  for (const name of CREATURE_NAMES) {
+    const d = creatureDecor(name);
+    check(`${name}: two eyes`, d.filter((x) => x.kind === "eye").length === 2);
+  }
+  const beak = creatureDecor("bird").find((d) => d.kind === "beak");
+  check("the bird has a beak", !!beak && beak.len > 0, "the whole complaint");
+  check("...in beak orange, not eye black", beak.color[0] > 200);
+  const d60 = creatureDecor("bird", { h: 60 });
+  const d100 = creatureDecor("bird");
+  check("the face scales with the body",
+    Math.abs(d60[0].r - d100[0].r * 0.6) < 1e-9
+    && d60[0].at.every((v, i) => Math.abs(v - d100[0].at[i] * 0.6) < 1e-9));
+  check("the flesh inside the group is uncoloured",
+    creature("fish").children[0].color == null,
+    "so colorize(tint, creature(...)) tints the body while the face keeps its own colours");
+
+  // THE EYES MUST BREAK THE SURFACE. The first bird had its eye anchors
+  // 4.7mm inside the head ball — the eyes rendered, entirely inside the
+  // flesh, and the chick came out faceless. "Sunk halfway" is a geometric
+  // claim, so hold every plan to it: the anchor's signed distance to the
+  // nearest ball surface (negative = inside) must leave part of the eye out.
+  const surfOffset = (name, p) => Math.min(...creatureBalls(name).map(([x, y, z, r]) =>
+    Math.hypot(p[0] - x, p[1] - y, p[2] - z) - r));
+  for (const name of CREATURE_NAMES) {
+    for (const d of creatureDecor(name)) {
+      if (d.kind === "beak") continue;               // rides on a cone, not a dome
+      const off = surfOffset(name, d.at);
+      check(`${name}: the ${d.kind} breaks the surface (${off.toFixed(1)} vs r ${d.r})`,
+        off >= -0.8 * d.r && off <= 0.9 * d.r,
+        "deeper than -0.8r is invisible; further than +0.9r floats");
+    }
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

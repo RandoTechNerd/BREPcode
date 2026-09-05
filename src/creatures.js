@@ -33,7 +33,7 @@ const C = {
     ],
     anchors: {
       headCentre: [15, 0, 78], noseTip: [37, 0, 72],
-      eyeL: [30, 8, 80], eyeR: [30, -8, 80],
+      eyeL: [33, 9, 82], eyeR: [33, -9, 82],
       earL: [8, 12, 100], earR: [8, -12, 100],
       tailTip: [-36, 0, 9], back: [-2, 0, 48],
     },
@@ -53,7 +53,7 @@ const C = {
     ],
     anchors: {
       headCentre: [32, 0, 74], noseTip: [51, 0, 70],
-      eyeL: [42, 7, 77], eyeR: [42, -7, 77],
+      eyeL: [44, 8, 78], eyeR: [44, -8, 78],
       earL: [26, 8, 92], earR: [26, -8, 92],
       tailTip: [-36, 0, 60], back: [0, 0, 60],
     },
@@ -69,7 +69,7 @@ const C = {
     ],
     anchors: {
       headCentre: [4, 0, 72], noseTip: [24, 0, 68],    // beak base
-      eyeL: [17, 9, 76], eyeR: [17, -9, 76],
+      eyeL: [21, 11, 77], eyeR: [21, -11, 77],
       earL: [0, 10, 92], earR: [0, -10, 92],
       tailTip: [-30, 0, 44], back: [0, 0, 52],
     },
@@ -86,7 +86,7 @@ const C = {
     ],
     anchors: {
       headCentre: [24, 0, 44], noseTip: [62, 0, 40],
-      eyeL: [44, 20, 52], eyeR: [44, -20, 52],
+      eyeL: [52, 25, 50], eyeR: [52, -25, 50],
       earL: [0, 24, 88], earR: [0, -24, 88],           // fin points, really
       tailTip: [-84, 0, 44], back: [0, 0, 92],
     },
@@ -101,7 +101,7 @@ const C = {
     ],
     anchors: {
       headCentre: [2, 0, 82], noseTip: [18, 0, 80],
-      eyeL: [14, 7, 86], eyeR: [14, -7, 86],
+      eyeL: [16, 8, 86], eyeR: [16, -8, 86],
       earL: [2, 16, 84], earR: [2, -16, 84],
       tailTip: [-20, 0, 24], back: [0, 0, 66],
     },
@@ -124,6 +124,48 @@ const spec = (name) => {
 export function creatureBalls(name, { h = 100, chubby = 1 } = {}) {
   const s = h / 100;
   return spec(name).balls.map(([x, y, z, r]) => [x * s, y * s * chubby, z * s, r * s]);
+}
+
+// The FACE, by plan. creature() ships decorated — the first bird anyone built
+// from the bare plan came out with no beak and no eyes, which is a Halloween
+// decoration, not a toy. Data only (dsl.js turns it into shapes): every plan
+// gets eyes at its eye anchors; beaks, noses and their colours are the plan's
+// own call. Sizes are per-100 height, scaled with everything else.
+const DECOR = {
+  "quadruped-sitting": [
+    { kind: "eye", at: "eyeL", r: 2.6 }, { kind: "eye", at: "eyeR", r: 2.6 },
+    { kind: "nose", at: "noseTip", r: 2.2, color: [230, 120, 140] },
+  ],
+  "quadruped-standing": [
+    { kind: "eye", at: "eyeL", r: 2.2 }, { kind: "eye", at: "eyeR", r: 2.2 },
+    { kind: "nose", at: "noseTip", r: 2, color: [60, 45, 45] },
+  ],
+  bird: [
+    { kind: "eye", at: "eyeL", r: 2.6 }, { kind: "eye", at: "eyeR", r: 2.6 },
+    // a stubby cone, pointing forward off the head
+    { kind: "beak", at: "noseTip", r: 4.5, len: 10, color: [240, 160, 60] },
+  ],
+  fish: [
+    { kind: "eye", at: "eyeL", r: 3.4 }, { kind: "eye", at: "eyeR", r: 3.4 },
+  ],
+  humanoid: [
+    { kind: "eye", at: "eyeL", r: 2.2 }, { kind: "eye", at: "eyeR", r: 2.2 },
+    { kind: "nose", at: "noseTip", r: 2.4, color: [225, 150, 130] },
+  ],
+};
+const EYE_COLOR = [35, 35, 40];
+
+export function creatureDecor(name, { h = 100, chubby = 1 } = {}) {
+  spec(name);                        // validate before the quiet [] fallback
+  const a = creatureAnchors(name, { h, chubby });
+  const s = h / 100;
+  return (DECOR[name] || []).map((d) => ({
+    kind: d.kind,
+    at: a[d.at],
+    r: d.r * s,
+    len: (d.len ?? 0) * s,
+    color: d.color ?? EYE_COLOR,
+  }));
 }
 
 // Real coordinates on the finished form, for the parts that must NOT go into

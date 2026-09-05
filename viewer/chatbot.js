@@ -1089,7 +1089,7 @@ Read #machine for the rest — trains, ratchets, planetary sets, rack travel, pr
 
 #organic
 ANIMALS AND CHARACTERS — cute versus nightmare fuel is a handful of rules, learned from a giraffe that came out haunted.
-START FROM A BODY PLAN, then adjust: creature("quadruped-sitting"|"quadruped-standing"|"bird"|"fish"|"humanoid", { h }) is a correct cute silhouette; creatureAnchors(name, { h }) gives real eye/ear/nose/tail points for the decorations. Move or rescale its balls (creatureBalls) rather than inventing anatomy.
+START FROM A BODY PLAN: creature("quadruped-sitting"|"quadruped-standing"|"bird"|"fish"|"humanoid", { h }) arrives CUTE, eyes/nose/beak already on — never add a second pair. { plain: true } is the bare flesh to reshape via creatureBalls; creatureAnchors(name, { h }) gives points for extras. Adjust, never invent anatomy.
 PROPORTIONS DECIDE CUTE: head about a THIRD of total height, short thick legs, barely any neck (yes, even a giraffe's), features LOW on the face. Lifelike proportions at toy size read as taxidermy.
 ONE smoothUnion FOR THE FLESH — body, head, legs, ears, tail, snout, k of 2-4. Eyes, spots, glasses, hats NEVER go in the blend (it smears them): they are separate colorize()'d shapes in the final group(), sitting ~1mm proud of the flesh.
 NOTHING UNDER 2.5mm RADIUS in a blend — a 1mm tail drops below the meshing grid and comes out lumpy. Chunky reads cuter anyway.

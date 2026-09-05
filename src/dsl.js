@@ -2423,10 +2423,28 @@ export * from "./parts.js";
 // of those skeletons; creatureAnchors() gives real coordinates on the finished
 // form for the parts that must not be blended (eyes, nose, ear decorations).
 // See src/creatures.js for the plans and the proportions they bake in.
-export { creatureBalls, creatureAnchors, CREATURE_NAMES } from "./creatures.js";
-import { creatureBalls as creatureBallsFn } from "./creatures.js";
+export { creatureBalls, creatureAnchors, creatureDecor, CREATURE_NAMES } from "./creatures.js";
+import { creatureBalls as creatureBallsFn, creatureDecor as creatureDecorFn } from "./creatures.js";
 export function creature(name, opts = {}) {
-  return blob(creatureBallsFn(name, opts), { k: opts.k ?? 4 * ((opts.h ?? 100) / 100) });
+  const flesh = blob(creatureBallsFn(name, opts), { k: opts.k ?? 4 * ((opts.h ?? 100) / 100) });
+  // Decorated BY DEFAULT — the first bird built from the bare plan had no
+  // beak and no eyes. `plain: true` is for reshaping the flesh alone. The
+  // flesh itself is left uncoloured so colorize(tint, creature(...)) tints
+  // the body while the face keeps its own colours (a child's colorize wins
+  // over an inherited one).
+  if (opts.plain) return flesh;
+  const parts = [flesh];
+  for (const d of creatureDecorFn(name, opts)) {
+    let shape;
+    if (d.kind === "beak") {
+      // a stubby cone pointing forward (+X): cone stands on Z, so lay it over
+      shape = translate(d.at, rotate([0, 90, 0], cone({ r1: d.r, r2: Math.max(0.6, d.r * 0.15), h: d.len, $fn: 24 })));
+    } else {
+      shape = translate(d.at, sphere({ r: d.r, $fn: 24 }));
+    }
+    parts.push(colorize(d.color, shape));
+  }
+  return group(...parts);
 }
 
 // Common printed parts — standoffs, snap fits, hinges, shells, vents. Same
