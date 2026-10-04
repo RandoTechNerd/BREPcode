@@ -51,3 +51,6 @@ viewer/locked-key.js
 # Scratch stashes of model code saved while iterating on an example. The
 # example itself lives in examples/; these are the drafts.
 viewer/_*.json
+
+# FizzCore test parts, renders and patch scripts from the build session
+scratch_fz/

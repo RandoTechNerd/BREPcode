@@ -2892,6 +2892,7 @@
           <button id="code-qr-btn" hidden></button>
           <button id="fins-btn" hidden></button>
           <button id="fins-noskirt-btn" hidden></button>
+          <button id="fizz-btn" hidden></button>
           <button id="texture-btn" hidden></button>
           <button id="emboss-btn" hidden></button>
           <input type="file" id="emboss-file" accept="image/png,image/jpeg,image/webp" style="display:none" />
@@ -2951,6 +2952,13 @@
               <path d="M4 13.5V4l7 9.5z" /><path d="M6 6.6h1.4M7.2 9h1.4" />
             </svg>
             <span><b>Fin supports — no skirt</b><small>same, without the foot</small></span>
+          </button>
+          <button data-act="fizz-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="9.5" r="3.6" /><circle cx="11.6" cy="5.2" r="2.2" /><circle cx="11.8" cy="11.6" r="1.4" /><circle cx="5.2" cy="3.2" r="1.1" />
+            </svg>
+            <span><b>FizzCore bubble infill <small class="beta">new</small></b><small>graded, printable bubbles inside: less plastic</small></span>
           </button>
           <button data-act="texture-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
@@ -15668,9 +15676,66 @@ let SIMPLIFY_TARGET = 10000;
           return;
         }
         if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
+        // A mesh asks what you came to do: open it, FizzCore it, or open it
+        // and go straight to a tool. "Always just open" restores the old
+        // straight-in import.
+        if (/\.(stl|3mf|obj)$/i.test(file.name)) {
+          let F;
+          try { F = await getFizz(); } catch { F = null; }
+          if (F && !F.dropSkipped()) {
+            const pick = await F.chooseDropAction(file, { tools: DROP_TOOLS });
+            if (!pick) return;
+            if (pick.action === "fizz") return openFizz({ file });
+            if (pick.action === "fins") return openFizz({ file }, "fins");
+            await importMeshFile(file);
+            if (pick.action === "tool" && pick.tool) {
+              // the tools act on the built model, so wait for the import's build
+              await new Promise((r) => setTimeout(r, 50));
+              $(pick.tool)?.click();
+            }
+            return;
+          }
+        }
         await importMeshFile(file);
       });
     }
+
+    // ---------------------------------------------------- FizzCore infill
+    // Graded bubble infill (src/fizzcore.js, UI in viewer/fizz.js). Reached
+    // from the drop menu or the toolbox; the toolbox runs it on whatever is
+    // in the editor right now.
+    let _fizz;
+    const getFizz = () => (_fizz ??= import("./fizz.js"));
+    const DROP_TOOLS = [
+      { id: "drill-btn", label: "Drill" },
+      { id: "scale-btn", label: "Scale" },
+      { id: "texture-btn", label: "Surface texture" },
+      { id: "emboss-btn", label: "Photo emboss" },
+      { id: "measure-btn", label: "Measure" },
+      { id: "shave-btn", label: "Shave a whisker" },
+    ];
+    async function openFizz(source, mode = "fizz") {
+      try {
+        const F = await getFizz();
+        await F.openFizzCore(THREE, source, {
+          save: (bytes, name, type) => download(name, bytes, type),
+          openInEditor: (f) => importMeshFile(f),
+        }, mode);
+      } catch (err) {
+        setStatus("err", `FizzCore couldn't start: ${String(err?.message || err).slice(0, 120)}`);
+      }
+    }
+    $("fizz-btn").addEventListener("click", async () => {
+      let stl = null;
+      try { stl = await exportSTL(); } catch { stl = null; }
+      if (!stl) {
+        hint.innerHTML = "🫧 <b>FizzCore</b> fills a solid with bubbles. Build or import a model first, or just <b>drop an STL / 3MF</b> anywhere on the page and pick FizzCore.";
+        return;
+      }
+      const { parseSTL } = await getInventory();
+      const soup = parseSTL(new TextEncoder().encode(stl));
+      openFizz({ soup, name: "brepcode-model" });
+    });
 
     // The desktop app hands us a file the OS opened: double-clicked in
     // Explorer, "Open with", or dropped on the exe itself. It arrives as text
@@ -21460,6 +21525,147 @@ let SIMPLIFY_TARGET = 10000;
     if (code.value === code.defaultValue && !urlCarriesModel()) {
       try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
     }
+
+    // ---- agent bridge surface ---------------------------------------------
+    //
+    // What an AI assistant running OUTSIDE the app reaches in to drive. The
+    // desktop shell's bridge (desktop/bridge.cjs) calls this through
+    // executeJavaScript, so nothing here is exposed on the web build's network
+    // surface — there is no listener in the page at all, only a function that
+    // the main process may choose to call.
+    //
+    // The rule for every action: go through the SAME function the user's own
+    // click goes through. set_code does not poke geometry, it writes the
+    // editor and calls rebuild(), exactly as typing does. That is what makes
+    // "Claude changed it" and "I changed it" the same event — one undo stack,
+    // one recovery snapshot, one set of dials, and no second code path to keep
+    // in step with the first.
+    // Resolves when the app next reports a finished build. onceBuilt fires on
+    // FAILURE too, so a model that cannot build settles here rather than
+    // sitting until the timeout. Register it BEFORE causing the change: a fast
+    // build can land before an await yields back.
+    const buildSettled = (ms = 5 * 60 * 1000) => new Promise((resolve) => {
+      const t = setTimeout(() => resolve(false), ms);
+      onceBuilt(() => { clearTimeout(t); resolve(true); });
+    });
+
+    const agentActions = {
+      // The build stamp, not just the version number. "Is the running exe the
+      // one I just built?" is the first question every bridge session needs
+      // answered, and a v-number cannot answer it — two builds share it.
+      ping: () => ({
+        ok: true,
+        app: "BREPcode",
+        version: ($("app-version")?.textContent || "").trim(),
+        build: ($("app-version")?.title || "").trim(),
+        agent: 1,
+      }),
+
+      // Everything a fresh assistant needs to know before it touches anything.
+      //
+      // The dials are read from the SOURCE, not from the panel. __brepParams()
+      // — what the UI tests use — walks the rendered rows, and refreshParams
+      // deliberately skips building those while the Parameters card is closed.
+      // So an assistant asking a freshly-started app what it can turn was told
+      // "nothing", while set_param on the very same name worked: the dials were
+      // always there, only the rows were missing. findParams() answers about the
+      // model rather than about which cards the user happens to have open.
+      async get_state() {
+        let params = [];
+        try {
+          const P = await ensureParams();
+          params = P.findParams(code.value).map((p) => ({
+            name: p.name, kind: p.kind, value: paramValueOf(p), unit: p.unit || null,
+          }));
+        } catch { /* the module is lazy; no dials is a fair answer if it is late */ }
+        return {
+          ok: true,
+          code: code.value,
+          name: modelName || "",
+          status: { kind: status.className || "", text: statusText.textContent || "" },
+          built: !!lastSolids.length,
+          size: modelSizeNow(),                       // [x,y,z] mm, or null
+          params,
+          autoFix: !exact.checked,
+          note: fixnote.textContent || "",
+        };
+      },
+
+      // The whole point of the bridge. Replaces the editor text and builds it,
+      // then reports what the user is now looking at.
+      async set_code({ code: src, name }) {
+        if (typeof src !== "string") throw new Error("set_code needs a code string");
+        code.value = src;
+        pushHistory();                              // so the user can undo us
+        if (typeof name === "string" && name.trim()) {
+          modelName = name.trim().slice(0, 60); paintName();
+        }
+        // Opening the editor card matters: a model changing under a collapsed
+        // panel looks like the app did it by itself.
+        toggleCard(panel, openBtn, true);
+        await rebuild();
+        return agentActions.get_state();
+      },
+
+      // Build whatever is in the editor now — for after the user has typed.
+      async build() { await rebuild(); return agentActions.get_state(); },
+
+      // Turn one of the model's own dials, the same call the slider makes.
+      //
+      // setParam does NOT build. It rewrites the one number and dispatches an
+      // input event, leaving the editor's own debounced path to rebuild — so
+      // awaiting a rebuild() of our own here raced that one, and the state we
+      // reported was the build BEFORE the change. On screen the model was
+      // right; the answer said 10 mm while the part was 16. Reporting the
+      // wrong dimensions confidently is worse than failing, so this waits for
+      // the app to say a build finished instead of starting a second one.
+      async set_param({ name, value, index = null }) {
+        if (!name) throw new Error("set_param needs a name");
+        const P = await ensureParams();
+        // Asked for the value it already has: nothing changes, no input event
+        // is dispatched, and no build will ever land — so do not wait for one.
+        if (P.applyParam(code.value, name, value, index) === code.value) {
+          return agentActions.get_state();
+        }
+        const settled = buildSettled();
+        await setParam(name, value, index);
+        await settled;
+        return agentActions.get_state();
+      },
+
+      // Point the camera somewhere nameable before a screenshot, so a picture
+      // can be asked for from a known angle instead of wherever it was left.
+      set_view({ view = "home" } = {}) {
+        snapView(view);
+        return { ok: true, view };
+      },
+
+      fit() { frameModel(); return { ok: true }; },
+
+      // The built mesh as STL text. The bridge writes it to disk — the page
+      // never picks the path, so this cannot become "save anywhere".
+      async get_stl() {
+        if (!lastSolids.length) throw new Error("nothing built — set_code or build first");
+        const text = await exportSTL();
+        if (!text) throw new Error("the kernel returned no mesh");
+        return { ok: true, stl: text, name: safeModelName() };
+      },
+    };
+
+    // One entry point, one error shape. An action that throws comes back as
+    // { error } rather than rejecting: the bridge awaits this across a process
+    // boundary, and an unhandled rejection there reads as "the app is dead"
+    // when it was only a bad parameter.
+    window.__brepAgent = {
+      actions: Object.keys(agentActions),
+      async run(cmd) {
+        try {
+          const fn = agentActions[cmd?.action];
+          if (!fn) return { error: `unknown action "${cmd?.action}" — have: ${Object.keys(agentActions).join(", ")}` };
+          return await fn(cmd || {});
+        } catch (e) { return { error: String(e?.message || e) }; }
+      },
+    };
 
     // A share link and a handoff both carry their own model, so both must be
     // checked BEFORE the default build — otherwise the visitor watches a

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "brepcode": {
+      "command": "node",
+      "args": ["agent/mcp-server.mjs"]
+    }
+  }
+}
