@@ -110,6 +110,10 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "shave.js", "stagefit.js", "logbook.js",
   // FizzCore bubble infill + the drop menu, loaded on first drop / toolbox use
   "fizz.js",
+  // the first-visit welcome and the ?tool= link cards
+  "welcome.js",
+  // the line icons those cards and the drop menu share
+  "icons.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -371,4 +375,11 @@ console.log(`BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
     throw new Error(`${bad.length} unresolved import(s) — this build would come up blank`);
   }
   console.log(`imports: every relative import in the bundle resolves`);
+  // modulepreload hints name hashed kernel chunks; a kernel update renames
+  // them, and a stale hint is a silent wasted download. Fail loudly instead.
+  const pageHtml = readFileSync(join(OUT, "index.html"), "utf8");
+  const missingPreload = [...pageHtml.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)]
+    .map((m) => m[1]).filter((h) => !existsSync(join(OUT, h)));
+  if (missingPreload.length) throw new Error(`modulepreload names files the bundle does not have: ${missingPreload.join(", ")}`);
+  console.log(`preloads: every modulepreload hint names a real file`);
 }

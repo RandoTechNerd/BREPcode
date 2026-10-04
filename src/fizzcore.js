@@ -280,7 +280,14 @@ function pack(D, grid, sample, opt, onProgress) {
   const skin = opt.skin + h * 0.5, web = opt.web;
   // Depth at which a bubble may reach full size. grade 0: right under the
   // skin; grade 1: only deep in the core.
-  const gradeDepth = rMax * (0.2 + 3.8 * opt.grade);
+  //
+  // Scaled to the part's own depth as well: on a thin-walled part (a Benchy's
+  // thickest wall is ~6 mm) a fixed 7 mm ramp meant no bubble ever reached
+  // full size. So the ramp is never longer than the depth actually there.
+  let deepest = 0;
+  for (let i = 0; i < D.length; i++) if (D[i] > deepest) deepest = D[i];
+  const depthRoom = Math.max(0.5, deepest - skin - rMin);
+  const gradeDepth = Math.min(rMax * (0.2 + 3.8 * opt.grade), depthRoom * (0.2 + 0.8 * opt.grade));
   const rCap = (d) => {
     const t = Math.max(0, Math.min(1, (d - skin - rMin) / gradeDepth));
     return rMin + (rMax - rMin) * t;
@@ -999,8 +1006,11 @@ export async function fizzcore(soup, opts = {}, { onProgress, wasm } = {}) {
   if (opt.tilt) soup = tiltSoup(soup, opt.tilt, opt.tiltToward ?? "-x");
   const solid = soupToManifold(wasm, soup);
   const bounds = boundsOf(soup);
-  if (!(opt.maxBubble > 0)) {
+  const autoMax = !(opt.maxBubble > 0);
+  if (autoMax) {
     // Wide (hybrid) webs need bigger bubbles, or the webs are all there is.
+    // A first guess from the bounding box; refined below from how thick the
+    // part's walls really are.
     const roomy = Math.min(Math.min(...bounds.size) / 3, opt.web * 2.5);
     opt.maxBubble = Math.max(autoMaxBubble(bounds.size), Math.round(roomy * 10) / 10);
   }
@@ -1010,8 +1020,10 @@ export async function fizzcore(soup, opts = {}, { onProgress, wasm } = {}) {
   // so a big part stays a few million cells.
   const pad = 2;
   const vol = bounds.size.reduce((a, b) => a * Math.max(b, 0.1), 1);
+  // Fine enough that the skin margin (half a voxel) doesn't eat a thin wall:
+  // on a Benchy, 0.72 mm voxels left half the bubbles unplaced.
   let h = opt.resolution > 0 ? opt.resolution
-    : Math.min(opt.minBubble * 0.6, Math.max(...bounds.size) / 60);
+    : Math.min(opt.minBubble * 0.4, Math.max(...bounds.size) / 80);
   h = Math.max(h, Math.cbrt(vol / 5e6), 0.05);
   const grid = {
     h,
@@ -1026,6 +1038,18 @@ export async function fizzcore(soup, opts = {}, { onProgress, wasm } = {}) {
   await tick(0.2, "Measuring wall thickness");
   const D = distanceField(inside, grid);
   const sample = sampler(D, grid);
+
+  // AUTO LARGEST BUBBLE, FROM THE WALLS. The bounding box says nothing about
+  // how thick a part is: a 60 mm Benchy got 15.6 mm bubbles planned for walls
+  // a few mm deep, and the grading then held nearly every bubble at minimum
+  // size. The thickest point of the part is right here in the distance field,
+  // so size the biggest bubble to fit the thickest wall.
+  if (autoMax) {
+    let deepest = 0;
+    for (let i = 0; i < D.length; i++) if (D[i] > deepest) deepest = D[i];
+    const fit = Math.max(opt.minBubble, (deepest - opt.skin) * 0.9);
+    opt.maxBubble = Math.round(Math.max(opt.minBubble, Math.min(opt.maxBubble, fit)) * 10) / 10;
+  }
 
   await tick(0.3, "Packing bubbles");
   const { bubbles, capped, coreVolume } = opt.bubbles === false

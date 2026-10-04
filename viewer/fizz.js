@@ -15,6 +15,7 @@
 // meshes far too heavy to open in the editor.
 
 import { parseModelFile } from "./inventory.js";
+import { icon } from "./icons.js";
 
 const SKIP_KEY = "brepcode-drop-skip";
 const SETTINGS_KEY = "brepcode-fizz";
@@ -37,27 +38,35 @@ function injectStyle() {
   .fz-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
     background: var(--header, #182135); border-bottom: 1px solid var(--border, #26314a); }
   .fz-head h2 { font-size: 15px; margin: 0; flex: 1; min-width: 0; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; }
+    text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 9px; }
+  .fz-hi { display: inline-flex; color: var(--muted6, #93a7c8); flex: none; }
   .fz-x { background: none; border: 0; color: var(--muted, #8ea0c0); font-size: 22px;
     line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
   .fz-x:hover { background: var(--hover, #1a2334); color: var(--text, #fff); }
-  .fz-pick { width: min(460px, 100%); }
+  .fz-pick { width: min(620px, 100%); }
   .fz-list { padding: 10px; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
   .fz-opt { display: flex; gap: 12px; align-items: center; text-align: left; width: 100%;
     padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-soft, #1c2437);
     background: var(--input-bg, #0d1320); color: inherit; cursor: pointer; font: inherit; }
   .fz-opt:hover, .fz-opt:focus-visible { background: var(--hover-strong, #1d2a44);
     border-color: var(--border-focus, #3a5788); outline: none; }
-  .fz-opt .ic { font-size: 22px; width: 30px; text-align: center; flex: none; }
+  .fz-opt .ic { width: 30px; flex: none; display: flex; justify-content: center; color: var(--muted6, #93a7c8); }
+  .fz-opt:hover .ic, .fz-tile:hover .ic { color: var(--text, #dfe6f3); }
   .fz-opt b { display: block; font-size: 14px; }
   .fz-opt small { color: var(--muted, #8ea0c0); font-size: 12px; }
-  .fz-opt.hero { border-color: #b0479a; background: linear-gradient(135deg, rgba(176,71,154,.20), rgba(28,102,229,.16)); }
-  .fz-new { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: #fff;
-    background: #b0479a; border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
-  .fz-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 4px 54px; }
-  .fz-chip { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
-    border: 1px solid var(--border, #26314a); background: var(--input-bg, #0d1320); color: var(--text2, #d8e2f5); }
-  .fz-chip:hover { background: var(--hover-strong, #1d2a44); }
+  .fz-opt.hero { border-color: var(--border-focus, #3a5788); }
+  .fz-new { font-size: 10px; font-weight: 600; letter-spacing: .06em; color: var(--accent-soft, #4b8cf5);
+    border: 1px solid var(--accent-soft, #4b8cf5); border-radius: 4px; padding: 0 5px; margin-left: 8px; vertical-align: 1px; }
+  .fz-and { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted2, #6f83a6); margin: 10px 2px 2px; }
+  .fz-grp { font-size: 11.5px; color: var(--muted, #8ea0c0); margin: 8px 2px 4px; }
+  .fz-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .fz-tile { display: flex; gap: 8px; align-items: flex-start; text-align: left; padding: 7px 9px; border-radius: 9px; cursor: pointer;
+    font: inherit; border: 1px solid var(--border-soft, #1c2437); background: var(--input-bg, #0d1320); color: var(--text, #dfe6f3); }
+  .fz-tile:hover, .fz-tile:focus-visible { background: var(--hover-strong, #1d2a44); border-color: var(--border-focus, #3a5788); outline: none; }
+  .fz-tile .ic { width: 18px; flex: none; display: flex; justify-content: center; padding-top: 1px; color: var(--muted6, #93a7c8); }
+  .fz-tile b { display: block; font-size: 12.5px; font-weight: 600; }
+  .fz-tile small { display: block; font-size: 11px; color: var(--muted2, #6f83a6); line-height: 1.3; }
   .fz-foot { padding: 8px 16px 12px; color: var(--muted2, #6f83a6); font-size: 12px; display: flex;
     gap: 8px; align-items: center; }
   .fz-main { width: min(1060px, 100%); height: min(720px, calc(100dvh - 32px)); }
@@ -80,7 +89,8 @@ function injectStyle() {
   .fz-check input { margin-top: 3px; }
   .fz-check small { display: block; color: var(--muted2, #6f83a6); font-size: 11.5px; }
   .fz-go { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 10px; cursor: pointer;
-    font: 600 14px system-ui; color: #fff; background: linear-gradient(135deg, #b0479a, #1c66e5); }
+    font: 600 14px system-ui; color: #fff; background: var(--accent, #1c66e5); }
+  .fz-go:hover:not(:disabled) { background: var(--accent-hover, #2e76f2); }
   .fz-go:disabled { opacity: .55; cursor: progress; }
   .fz-btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
   .fz-btn { flex: 1; padding: 8px 10px; border-radius: 8px; cursor: pointer; font: 600 13px system-ui;
@@ -88,7 +98,7 @@ function injectStyle() {
   .fz-btn:hover { background: var(--hover-strong, #1d2a44); }
   .fz-btn:disabled { opacity: .45; cursor: default; }
   .fz-bar { height: 4px; border-radius: 4px; background: var(--spin-track, #2c3d5c); overflow: hidden; margin-top: 10px; display: none; }
-  .fz-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #b0479a, #4b8cf5); transition: width .15s; }
+  .fz-bar i { display: block; height: 100%; width: 0; background: var(--accent-soft, #4b8cf5); transition: width .15s; }
   .fz-msg { font-size: 12px; color: var(--muted, #8ea0c0); margin-top: 6px; min-height: 16px; }
   .fz-msg.err { color: var(--err, #f4a3a3); }
   .fz-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
@@ -110,6 +120,12 @@ function injectStyle() {
   .fz-warn.ok { background: rgba(111,211,148,.10); border: 1px solid rgba(111,211,148,.35); color: var(--ok, #6fd394); }
   .fz-warn.bad { background: rgba(244,120,120,.10); border: 1px solid rgba(244,120,120,.4); color: #f6b0b0; }
   .fz-best { width: 100%; margin-bottom: 4px; }
+  .fz-of { margin: 0 0 6px; }
+  .fz-of > .fz-of-sum { cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted2, #6f83a6); padding: 4px 0 8px; list-style-position: inside; }
+  .fz-of > .fz-of-sum:hover { color: var(--accent-soft, #4b8cf5); }
+  .fz-of[open] > .fz-of-sum { color: var(--text2, #d8e2f5); }
+  .fz-hidden { display: none !important; }
   .fz-adv { margin: 8px 0 4px; border: 1px solid var(--border-soft, #1c2437); border-radius: 8px; padding: 0 10px; }
   .fz-adv[open] { padding-bottom: 6px; }
   .fz-adv summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text2, #d8e2f5); padding: 8px 0; list-style-position: inside; }
@@ -131,12 +147,12 @@ function injectStyle() {
   document.head.appendChild(css);
 }
 
-function modal(cls, title) {
+function modal(cls, title, ic = "") {
   injectStyle();
   const veil = document.createElement("div");
   veil.className = "fz-veil";
   veil.innerHTML = `<div class="fz-box ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-    <div class="fz-head"><h2>${esc(title)}</h2><button class="fz-x" title="Close" aria-label="Close">&times;</button></div>
+    <div class="fz-head"><h2>${ic ? `<span class="fz-hi">${icon(ic, 18)}</span>` : ""}${esc(title)}</h2><button class="fz-x" title="Close" aria-label="Close">&times;</button></div>
   </div>`;
   document.body.appendChild(veil);
   const box = veil.firstElementChild;
@@ -154,10 +170,10 @@ export function dropSkipped() { return lsGet(SKIP_KEY) === "1"; }
 
 /**
  * Ask what to do with a dropped mesh.
- * tools: [{ id, label }] - toolbox buttons to offer after opening
+ * groups: [{ title, tools: [{ id, label, icon, desc }] }] - every tool that works on the opened mesh
  * returns a Promise of { action: "open" | "fizz" | "fins" | "tool", tool? } or null if cancelled
  */
-export function chooseDropAction(file, { tools = [] } = {}) {
+export function chooseDropAction(file, { groups = [] } = {}) {
   return new Promise((resolve) => {
     const { box, close } = modal("fz-pick", `${file.name}: what would you like to do?`);
     let done = false;
@@ -166,13 +182,15 @@ export function chooseDropAction(file, { tools = [] } = {}) {
     const mb = file.size / 1048576;
     box.insertAdjacentHTML("beforeend", `
       <div class="fz-list">
-        <button class="fz-opt" data-a="open"><span class="ic">📂</span>
+        <button class="fz-opt" data-a="open"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open in the editor</b><small>import it as a mesh you can cut, scale, combine and export</small></span></button>
-        <button class="fz-opt hero" data-a="fizz"><span class="ic">🫧</span>
+        <button class="fz-opt hero" data-a="fizz"><span class="ic">${icon("fizz", 20)}</span>
           <span><b>FizzCore bubble infill<span class="fz-new">NEW</span></b><small>fill it with graded, self-supporting bubbles: less plastic, and still strong. Support fins optional.</small></span></button>
-        <button class="fz-opt" data-a="fins"><span class="ic">🛟</span>
+        <button class="fz-opt" data-a="fins"><span class="ic">${icon("fins", 20)}</span>
           <span><b>Add support fins</b><small>tilt it 45° (or any angle) with a live preview, and get snap-off fins that lean with it</small></span></button>
-        <div class="fz-chips"><button class="fz-chip" data-a="tool" data-t="fins-btn">Fins in the editor (click a face)</button>${tools.map((t) => `<button class="fz-chip" data-a="tool" data-t="${esc(t.id)}">${esc(t.label)}</button>`).join("")}</div>
+        <div class="fz-and">Open it and…</div>
+        ${groups.map((g) => `<div class="fz-grp">${esc(g.title)}</div><div class="fz-tiles">${g.tools.map((t) =>
+          `<button class="fz-tile" data-a="tool" data-t="${esc(t.id)}"><span class="ic">${icon(t.icon, 16)}</span><span><b>${esc(t.label)}</b>${t.desc ? `<small>${esc(t.desc)}</small>` : ""}</span></button>`).join("")}</div>`).join("")}
       </div>
       <div class="fz-foot"><label style="display:flex;gap:6px;align-items:center;cursor:pointer">
         <input type="checkbox" class="fz-skip" /> Always just open (skip this menu)</label>
@@ -216,14 +234,19 @@ function loadSettings() {
 export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
   const name = (source.name || source.file?.name || "model").replace(/\.[^.]+$/, "");
   const finsMode = mode === "fins";
-  const { box, close } = modal("fz-main", finsMode ? `🛟 Support fins: ${name}` : `🫧 FizzCore bubble infill: ${name}`);
+  const { box, close } = modal("fz-main", finsMode ? `Support fins: ${name}` : `FizzCore bubble infill: ${name}`, finsMode ? "fins" : "fizz");
   const s = loadSettings();
   // the way in decides the starting point; everything else is remembered
-  if (finsMode) { s.fins = true; s.bubbles = false; } else { s.bubbles = true; }
+  // FizzCore mode starts with fins OFF even if the last run had them: they
+  // are folded away as optional here, and a remembered tilt would surprise
+  // someone who came for bubbles
+  if (finsMode) { s.fins = true; s.bubbles = false; } else { s.bubbles = true; s.fins = false; }
   const SIDES = { "-x": "Left (−X)", "+x": "Right (+X)", "-y": "Front (−Y)", "+y": "Back (+Y)" };
   box.insertAdjacentHTML("beforeend", `
     <div class="fz-body">
       <div class="fz-side">
+        <details class="fz-of" ${finsMode ? "open" : ""}>
+        <summary class="fz-of-sum">${finsMode ? "Orientation &amp; support fins" : "Tilt it / add support fins (optional)"}</summary>
         <div class="fz-sec">Print orientation</div>
         <div class="fz-row"><label for="fz-spin">Spin on the bed <b class="fz-spin-val"></b></label><input id="fz-spin" type="range" min="0" max="355" step="5" value="0" />
           <small>Turns the model on the bed. The fins stay on their side and re-fit to whatever faces them. Shift+drag in the preview spins it too.</small></div>
@@ -245,9 +268,9 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
           <option value="auto" ${s.finSide === "auto" ? "selected" : ""}>Auto: where it would tip</option>
           ${Object.entries(SIDES).map(([v, l]) => `<option value="${v}" ${s.finSide === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small class="fz-fside-note">A tall part tips toward the lean; a wide one stands on an edge and tips the other way. Auto works it out from the centre of mass.</small></div>
-        <div class="fz-warn"></div>
+        <div class="fz-warn fz-finonly-hide"></div>
         <div class="fz-pvstats"></div>
-        <button class="fz-btn fz-best" type="button">Find the tilt with the least overhang</button>
+        <button class="fz-btn fz-best fz-finonly-hide" type="button">Find the tilt with the least overhang</button>
         <div class="fz-row fz-finonly"><label for="fz-fcount">How many fins</label><input id="fz-fcount" type="number" min="1" max="24" step="1" value="${s.finCount}" />
           <small>Spread evenly along the side. For a fixed gap between fins instead, see Advanced.</small></div>
         <div class="fz-row fz-finonly"><label for="fz-fheight">Fin height</label><select id="fz-fheight">
@@ -277,6 +300,8 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
             <small>How far short of the part each poke stops. 0.2 is a slicer's usual support gap. 0 = the tip just kisses it (holds firmer, may leave a tiny mark).</small></div>
           <div class="fz-row fz-finonly"><label for="fz-skirt">Foot size (mm)</label><input id="fz-skirt" type="number" min="0" max="20" step="1" value="${s.finSkirt}" />
             <small>The flat foot each fin stands on, for bed grip. 0 = no foot.</small></div>
+        </details>
+
         </details>
 
         <div class="fz-sec">Printer</div>
@@ -324,7 +349,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
       </div>
       <div class="fz-view">
         <canvas></canvas>
-        <div class="fz-legend"><i style="background:#e7609e"></i>cut plastic &nbsp; <i style="background:#9fb7d9"></i>surface / bubble walls &nbsp; <i style="background:#8a93a3"></i>fins &nbsp; <i style="background:#ff4d4d"></i>overhang &gt; 45°<div class="fz-pv"></div></div>
+        <div class="fz-legend"><i style="background:#e7609e"></i>cut plastic &nbsp; <i style="background:#9fb7d9"></i>surface / bubble walls &nbsp; <i style="background:#8a93a3"></i>fins <span class="fz-oh-chip">&nbsp; <i style="background:#ff4d4d"></i>overhang &gt; 45°</span><div class="fz-pv"></div></div>
         <div class="fz-cut"><label><input type="checkbox" class="fz-clip" checked /> Section view</label>
           <input type="range" class="fz-slice" min="0" max="100" value="50" />
           <select class="fz-axis"><option value="0">cut along X</option><option value="1" selected>cut along Y</option><option value="2">cut along Z</option></select></div>
@@ -333,6 +358,10 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
 
   const $ = (sel) => box.querySelector(sel);
   let result = null;
+  if (!finsMode) {
+    const of = $(".fz-of"), go = $(".fz-go");
+    go.parentNode.insertBefore(of, go);
+  }
   // Nozzle and wall mode drive the sizes. Picking either one REWRITES the
   // skin / web / smallest bubble, because those numbers only mean anything in
   // whole extrusion lines; typing in a box afterwards still wins.
@@ -347,6 +376,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
     const bub = $("#fz-bub").checked, fins = $("#fz-fins").checked;
     for (const el of box.querySelectorAll(".fz-bubonly")) el.classList.toggle("fz-off", !bub);
     for (const el of box.querySelectorAll(".fz-finonly")) el.classList.toggle("fz-off", !fins);
+    for (const el of box.querySelectorAll(".fz-finonly-hide, .fz-oh-chip")) el.classList.toggle("fz-hidden", !fins);
     for (const el of box.querySelectorAll(".fz-slimonly")) el.classList.toggle("fz-off", !fins || $("#fz-fshape").value !== "slim");
     for (const el of box.querySelectorAll(".fz-customh")) el.style.display = $("#fz-fheight").value === "custom" ? "" : "none";
     $(".fz-tilt-val").textContent = `${$("#fz-tilt").value}°`;
@@ -528,7 +558,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
   // the sliders move. Cheap enough to follow a drag; the real run uses every
   // triangle and is a button press away.
   const tris = soup.length / 9;
-  let low = null, lowSolid = false, previewTimer = 0, previewSeq = 0;
+  let low = null, lowSolid = false, previewTimer = 0, previewSeq = 0, running = false;
   // ORIENTATION. A base rotation (flips, faces laid flat) times a spin about
   // the bed's vertical, applied before the tilt. Row-major 3x3s.
   const I3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -573,10 +603,10 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
     const cm2 = area / 100;
     if (cm2 < 0.5) {
       w.className = "fz-warn ok";
-      w.textContent = `✓ Nothing hangs past 45° at ${tilt}°: every surface can print without support.`;
+      w.textContent = `Nothing hangs past 45° at ${tilt}°: every surface can print without support.`;
     } else {
       w.className = "fz-warn bad";
-      w.textContent = `⚠ ${cm2.toFixed(1)} cm² of the part hangs past 45° at ${tilt}° (red) and would print on air. Fins stop it tipping; they don't hold up undersides. Try another tilt, or add slicer supports for the red.`;
+      w.textContent = `${cm2.toFixed(1)} cm² of the part hangs past 45° at ${tilt}° (red) and would print on air. Fins stop it tipping; they don't hold up undersides. Try another tilt, or add slicer supports for the red.`;
     }
   };
   async function preview() {
@@ -635,14 +665,17 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
       } catch { /* the preview is a sketch; the real run reports real errors */ }
     }
     if (seq !== previewSeq || !alive) return;    // a newer drag already won
+    // ...or the real run finished while this sketch was still being carved:
+    // never paint a low-poly preview over a finished result
+    if (result || running) return;
     const oh = F.overhangs(shown);
-    showOverhang(oh.area, tilt);
+    if (u.fins) showOverhang(oh.area, tilt);
     {
       const b = F.boundsOfSoup(shown);
       $(".fz-pvstats").textContent = `On the bed: ${b.size[0].toFixed(0)} × ${b.size[1].toFixed(0)} mm, ${b.size[2].toFixed(0)} mm tall`
         + (u.fins ? ` · fins ≈ ${finGrams.toFixed(1)} g` : "");
     }
-    setMeshes(shown, finSoup, { soup: shown, tris: oh.tris });
+    setMeshes(shown, finSoup, u.fins ? { soup: shown, tris: oh.tris } : null);
     $(".fz-pv").textContent = low !== soup ? `Preview: low-poly (${Math.round(low.length / 9).toLocaleString()} of ${tris.toLocaleString()} triangles${lowSolid ? ", fins carved to fit" : ""}). The button makes the real one.`
       : (u.fins || u.bubbles ? "Preview. The button makes the real one." : "");
     frame(); updateClip();
@@ -760,6 +793,10 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
   });
   const bar = $(".fz-bar"), barI = bar.firstElementChild;
   $(".fz-go").onclick = async () => {
+    // cancel any preview still being carved, so it cannot land on top of this
+    previewSeq++;
+    clearTimeout(previewTimer);
+    running = true;
     const u = read();
     lsSet(SETTINGS_KEY, JSON.stringify(u));
     const go = $(".fz-go");
@@ -786,8 +823,8 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
       }, {
         onProgress: (p, t) => { barI.style.width = `${Math.round(p * 100)}%`; msg(t); },
       });
-      setMeshes(result.part, result.fins, { soup: result.tilted, tris: result.stats.overhangTris });
-      showOverhang(result.stats.overhangArea, u.fins ? u.tilt : 0);
+      setMeshes(result.part, result.fins, u.fins ? { soup: result.tilted, tris: result.stats.overhangTris } : null);
+      if (u.fins) showOverhang(result.stats.overhangArea, u.tilt);
       $(".fz-pv").textContent = "";
       frame(); updateClip();
       const st = result.stats;
@@ -815,6 +852,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
     } catch (e) {
       msg(String(e?.message || e), true);
     } finally {
+      running = false;
       go.disabled = false;
       setTimeout(() => { bar.style.display = "none"; barI.style.width = "0"; }, 400);
     }

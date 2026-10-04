@@ -10,6 +10,7 @@ import { smin, solidNets } from "./sdf.js";
 import { MAX_FACES } from "./offset3d.js";
 import { meshFieldGrid } from "./fieldgrid.js";
 import { repairMesh, cutPinches } from "./meshrepair.js";
+import { remeshForTexture } from "./texmesh.js";
 
 const DEG = Math.PI / 180;
 
@@ -204,7 +205,9 @@ export function estimateBuild(root) {
       tris += text ? Math.max(50, Math.round(text.length / 220)) : 5000;   // ~220 chars per ascii facet
       return;
     }
-    if (n.kind === "texture") tris += n.opts?.maxTris ?? 6000;   // + the scratch build below
+    // + the scratch build below. A texture import groups its faces coarsely,
+    // so its triangles cost about a fifth of a kernel solid's (16k: 0.8 s).
+    if (n.kind === "texture") tris += (n.opts?.maxTris ?? 16000) / 5;
     if (n.kind === "sdfblend") tris += 9000;   // surface nets at the default res
     if (n.kind === "edgeop") tris += 600;                        // fillet bands aren't free
     if (n.kind === "op") booleans += Math.max(0, (n.children?.length || 1) - 1);
@@ -894,11 +897,12 @@ export function look(opts, ...children) {
 // ------------------------------------------------------------- textures
 //
 // REAL surface texture — displaced geometry, not a shader. The child is built,
-// tessellated by the kernel, subdivided until the triangles are finer than the
-// pattern, and every vertex is pushed OUTWARD along its (welded, averaged)
-// normal by depth × pattern(point). Because the offset is a pure function of
-// the welded world position, shared vertices move identically and the mesh
-// stays watertight. The result is a mesh solid — it exports, booleans, prints.
+// tessellated by the kernel, the textured faces are remeshed into
+// near-equilateral triangles at the pattern's spacing (src/texmesh.js), and
+// every vertex is pushed OUTWARD along its (welded, averaged) normal by
+// depth × pattern(point). Because the offset is a pure function of the welded
+// world position, shared vertices move identically and the mesh stays
+// watertight. The result is a mesh solid — it exports, booleans, prints.
 //
 //   texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, shape)
 //
@@ -921,11 +925,13 @@ export function texture(opts, ...children) {
       depth: Number(o.depth) || 0.6,
       scale: Math.max(0.2, Number(o.scale) || 3),
       faces: ["all", "top", "bottom", "sides"].includes(o.faces) ? o.faces : "sides",
-      // The kernel's mesh import goes SUPERLINEAR with triangle count —
-      // measured: 768 tris ≈ 0.15s, 3k ≈ 2s, 12k ≈ half a minute of frozen
-      // UI. 6k keeps the build interactive; raise maxTris for a finer
-      // pattern when you're about to export and can wait.
-      maxTris: Number(o.maxTris) || 6000,
+      // Triangle budget. The mesh is laid out at the pattern's own spacing
+      // (scale / 2); only a part too big for the budget gets a coarser one.
+      // The import used to cost per triangle (a 12k knurl took minutes) until
+      // texture imports grouped faces at 89 degrees (see compile): measured
+      // since then, a 35 mm knurled knob is ~4k tris in under 0.5 s and 16k
+      // tris build in under a second, in node and in the viewer alike.
+      maxTris: Number(o.maxTris) || 16000,
     },
   });
 }
@@ -969,9 +975,9 @@ export function heightmap(opts, ...children) {
       // wrap-only: how far round the label reaches, and where it starts
       arc: Math.max(5, Math.min(360, Number(o.arc) || 360)),
       start: Number(o.start) || 0,
-      // relief wants more resolution than a repeating pattern; ~12k tris is
-      // roughly half a minute of build — a one-off bake, not a typing loop
-      maxTris: Number(o.maxTris) || 12000,
+      // relief wants more resolution than a repeating pattern: one pixel per
+      // lattice edge, up to this many triangles
+      maxTris: Number(o.maxTris) || 24000,
     },
   });
 }
@@ -1072,7 +1078,7 @@ function vnoise(x, y, z) {
 // pattern value in [0,1] at a world point. Everything is a function of the
 // welded position (+ smoothed normal for knurl's tangent frame), which is what
 // keeps shared vertices in lockstep and the shell closed.
-function texAmp(o, px, py, pz, nx, ny, nz) {
+function texAmp(o, px, py, pz, nx, ny, nz, onCyl = false) {
   const s = o.scale;
   switch (o.pattern) {
     case "fuzzy": return vnoise(px / s, py / s, pz / s);
@@ -1088,9 +1094,23 @@ function texAmp(o, px, py, pz, nx, ny, nz) {
       return Math.max(rx, ry);
     }
     case "knurl": {
-      // tangent frame from the smoothed normal: t1 runs horizontally around
-      // the surface (arc length on a cylinder, straight on a wall), t2 is its
-      // uphill partner. Diamonds are two triangle waves at ±45° in that frame.
+      // SIDE faces: "around" is the ANGLE about the part's own vertical axis,
+      // with a whole number of diamonds per turn so the pattern closes with no
+      // seam. (This used to be position . tangent, which is ZERO everywhere on
+      // a cylinder centred on its axis: the knurl collapsed into horizontal
+      // rings.) Up is plain height.
+      // (Flat walls facing straight along X or Y keep the plain tangent frame
+      // below: there the angle about the centre would stretch the diamonds.)
+      // A vertex the remesher found on a vertical cylinder wall always uses the
+      // angle, so the pattern can't change frames partway round the knob.
+      if (o.knurlN && (onCyl || (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97))) {
+        const th = Math.atan2(py - o.knurlCy, px - o.knurlCx);
+        const u = (th / (2 * Math.PI)) * o.knurlN;
+        const w = pz / s;
+        return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
+      }
+      // flat faces: tangent frame from the smoothed normal, diamonds as two
+      // triangle waves at +-45 degrees in that frame
       let tx = -ny, ty = nx;
       const tl = Math.hypot(tx, ty);
       if (tl < 1e-6) { tx = 1; ty = 0; } else { tx /= tl; ty /= tl; }
@@ -1129,44 +1149,133 @@ function subdivideSoup(soup) {
   return out;
 }
 
+// Does a facet with this normal get the texture? (The remesher only spends
+// triangles where this says yes.)
+function texWants(o, n) {
+  if (o.map) {
+    if (o.side === "wrap") return Math.abs(n[2]) < 0.99;
+    return n[SIDE_AXIS[o.side[1]]] * (o.side[0] === "+" ? 1 : -1) > 0.02;
+  }
+  if (o.faces === "all") return true;
+  if (o.faces === "top") return n[2] > 0.02;
+  if (o.faces === "bottom") return n[2] < -0.02;
+  return Math.abs(n[2]) < 0.99;                       // "sides"
+}
+
+// A lattice that follows the pattern's own creases, where the pattern is
+// piecewise linear in the region's parameter space. Knurl diamonds are linear
+// between the lines u, w in 1/4 + Z/2 and the diagonals u +- w in Z/2, so a
+// lattice on those lines reproduces them EXACTLY. Layers are linear between
+// rows z in (s/2)Z. null = plain equilateral lattice.
+function texLattice(o, reg, L) {
+  if (o.map) return null;
+  const s = o.scale;
+  if (o.pattern === "knurl") {
+    if (reg.kind === "cyl") {
+      if (Math.abs(reg.axis[2]) < 0.999) return null;
+      // the knurl measures its angle about the part's centre: only a wall
+      // centred there has u linear in arc length
+      if (Math.hypot(reg.c[0] - o.knurlCx, reg.c[1] - o.knurlCy) > 1e-3 * reg.R + 1e-4) return null;
+      const sg = Math.sign(reg.axis[2]);
+      const alpha = Math.atan2(reg.e1[1], reg.e1[0]);
+      const k = o.knurlN / (2 * Math.PI);
+      // theta_z = alpha + sg * (cut + x / R); z = sg * y
+      return { kind: "crossed", A: [[(sg * k) / reg.R, 0], [0, sg / s]], off: [(alpha + sg * reg.cut) * k, 0] };
+    }
+    const [nx, ny, nz] = reg.n;
+    // walls that texAmp knurls by angle about the centre aren't linear in the plane
+    if (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97) return null;
+    // otherwise texAmp's tangent frame IS the plane's (e1, e2): u = x/s, w = y/s
+    return { kind: "crossed", A: [[1 / s, 0], [0, 1 / s]], off: [0, 0] };
+  }
+  if (o.pattern === "layers") {
+    const k = Math.max(1, Math.round((s / 2) / ((L * Math.sqrt(3)) / 2)));
+    const pz = s / 2 / k;                               // row pitch in z
+    if (reg.kind === "cyl") {
+      if (Math.abs(reg.axis[2]) < 0.999) return null;
+      return { kind: "equi", L, dir: [1, 0], pitch: pz, phase: 0 };   // y = +-z
+    }
+    // e1 is level, so on this plane z = d*nz + y*tl: rows of constant y are level
+    const tl = reg.e2[2];
+    if (tl < 0.3) return null;
+    return { kind: "equi", L, dir: [1, 0], pitch: pz / tl, phase: (-reg.d * reg.n[2]) / tl };
+  }
+  return null;
+}
+
 // The whole displacement pipeline on a flat triangle soup. Exported for tests.
+//
+// First the faces being textured are REMESHED (src/texmesh.js) into
+// near-equilateral triangles at the pattern's own spacing, crease-aligned
+// where the pattern allows. The kernel's tessellation is shaped for geometry
+// (a knob wall is 1 x 18 mm slivers), and subdividing slivers only makes
+// smaller slivers. If the remesher declines (odd input), the old uniform
+// subdivision runs instead.
 export function displacedPositions(soupIn, o) {
   let soup = Float64Array.from(soupIn);
   const triCount = soup.length / 9;
   if (!triCount) return soup;
 
-  // subdivision level: fine enough for the pattern, capped by a triangle
-  // budget the kernel can actually rebuild in reasonable time
-  let maxEdge = 0;
-  for (let i = 0; i < soup.length; i += 9) {
-    for (let e = 0; e < 3; e++) {
-      const a = i + e * 3, b = i + ((e + 1) % 3) * 3;
-      const d = Math.hypot(soup[a] - soup[b], soup[a + 1] - soup[b + 1], soup[a + 2] - soup[b + 2]);
-      if (d > maxEdge) maxEdge = d;
-    }
-  }
   const spacing = o.map
     ? Math.max(0.4, mapSpacing(soup, o))
     : Math.max(0.4, o.scale / 2);
-  let levels = Math.ceil(Math.log2(Math.max(1, maxEdge / spacing)));
-  const budgetLevels = Math.floor(Math.log(Math.max(1, (o.maxTris || 24000) / triCount)) / Math.log(4));
-  levels = Math.max(0, Math.min(levels, budgetLevels, 6));
-  for (let l = 0; l < levels; l++) soup = subdivideSoup(soup);
 
-  // weld by rounded position -> indexed mesh
-  const key2idx = new Map();
-  const verts = [];
-  const faces = new Uint32Array(soup.length / 3);
+  // bounding box (heightmap uv space, knurl axis)
+  const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   for (let i = 0; i < soup.length; i += 3) {
-    const x = soup[i], y = soup[i + 1], z = soup[i + 2];
-    const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
-    let idx = key2idx.get(k);
-    if (idx === undefined) {
-      idx = verts.length / 3;
-      key2idx.set(k, idx);
-      verts.push(x, y, z);
+    for (let a = 0; a < 3; a++) {
+      if (soup[i + a] < bb.min[a]) bb.min[a] = soup[i + a];
+      if (soup[i + a] > bb.max[a]) bb.max[a] = soup[i + a];
     }
-    faces[i / 3] = idx;
+  }
+  // knurl around the sides: how many diamonds fit round the part, and its axis
+  if (o.pattern === "knurl") {
+    const R = ((bb.max[0] - bb.min[0]) + (bb.max[1] - bb.min[1])) / 4;
+    o = { ...o, knurlCx: (bb.min[0] + bb.max[0]) / 2, knurlCy: (bb.min[1] + bb.max[1]) / 2,
+      knurlN: Math.max(4, Math.round((2 * Math.PI * R) / o.scale)) };
+  }
+
+  let verts, faces, onCyl = null;
+  const re = o.remesh === false ? null : remeshForTexture(soup, {
+    L: spacing,
+    wants: (n) => texWants(o, n),
+    lattice: (reg, L) => texLattice(o, reg, L),
+    maxTris: o.maxTris || 24000,
+  });
+  if (re) {
+    verts = re.verts; faces = re.faces; onCyl = re.onAxisCyl;
+  } else {
+    // fallback: uniform subdivision, fine enough for the pattern, capped by a
+    // triangle budget the kernel can actually rebuild in reasonable time
+    let maxEdge = 0;
+    for (let i = 0; i < soup.length; i += 9) {
+      for (let e = 0; e < 3; e++) {
+        const a = i + e * 3, b = i + ((e + 1) % 3) * 3;
+        const d = Math.hypot(soup[a] - soup[b], soup[a + 1] - soup[b + 1], soup[a + 2] - soup[b + 2]);
+        if (d > maxEdge) maxEdge = d;
+      }
+    }
+    let levels = Math.ceil(Math.log2(Math.max(1, maxEdge / spacing)));
+    const budgetLevels = Math.floor(Math.log(Math.max(1, (o.maxTris || 24000) / triCount)) / Math.log(4));
+    levels = Math.max(0, Math.min(levels, budgetLevels, 6));
+    for (let l = 0; l < levels; l++) soup = subdivideSoup(soup);
+
+    // weld by rounded position -> indexed mesh
+    const key2idx = new Map();
+    const vl = [];
+    faces = new Uint32Array(soup.length / 3);
+    for (let i = 0; i < soup.length; i += 3) {
+      const x = soup[i], y = soup[i + 1], z = soup[i + 2];
+      const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+      let idx = key2idx.get(k);
+      if (idx === undefined) {
+        idx = vl.length / 3;
+        key2idx.set(k, idx);
+        vl.push(x, y, z);
+      }
+      faces[i / 3] = idx;
+    }
+    verts = vl;
   }
 
   // area-weighted vertex normals (the raw cross product IS area-weighted)
@@ -1181,15 +1290,6 @@ export function displacedPositions(soupIn, o) {
   for (let i = 0; i < nrm.length; i += 3) {
     const l = Math.hypot(nrm[i], nrm[i + 1], nrm[i + 2]) || 1;
     nrm[i] /= l; nrm[i + 1] /= l; nrm[i + 2] /= l;
-  }
-
-  // bounding box (heightmap uv space + nothing else)
-  const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-  for (let i = 0; i < verts.length; i += 3) {
-    for (let a = 0; a < 3; a++) {
-      if (verts[i + a] < bb.min[a]) bb.min[a] = verts[i + a];
-      if (verts[i + a] > bb.max[a]) bb.max[a] = verts[i + a];
-    }
   }
 
   // displace every welded vertex outward. Patterns push along the vertex
@@ -1223,7 +1323,7 @@ export function displacedPositions(soupIn, o) {
         : o.faces === "top" ? Math.max(0, nz)
         : o.faces === "bottom" ? Math.max(0, -nz)
         : Math.min(1, Math.max(0, (1 - Math.abs(nz)) * 2));    // "sides"
-      amp = w ? texAmp(o, px, py, pz, nx, ny, nz) * w : 0;
+      amp = w ? texAmp(o, px, py, pz, nx, ny, nz, onCyl && onCyl[i / 3]) * w : 0;
     }
     const d = o.depth * amp;
     out[i] = px + dx * d; out[i + 1] = py + dy * d; out[i + 2] = pz + dz * d;
@@ -2257,6 +2357,14 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const f = await partHistory.newFeature("IMPORT3D");
       f.inputParams.fileToImport = data;
       f.inputParams.meshRepairLevel = "NONE";
+      // The import groups triangles into B-rep faces wherever neighbouring
+      // normals turn by less than deflectionAngle (default 8 degrees), and its
+      // cost goes with the number of FACES, not triangles. A crisp knurl turns
+      // ~76 degrees between facets, so at 8 every facet became a face: a 4k
+      // triangle knob took 8 s, a 16k one never finished. At 89 the textured
+      // wall is a handful of faces (16k triangles: 0.8 s) and real 90-degree
+      // part edges still split. Nobody selects individual knurl facets.
+      f.inputParams.deflectionAngle = globalThis.__TEXDEFL || 89;
       // like hull(): the STL already sits at its real position — never re-centre
       f.inputParams.centerMesh = false;
       trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });

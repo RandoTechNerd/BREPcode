@@ -80,6 +80,17 @@ export const TOUR_STEPS = [
     body: "Drop in an STL, 3MF, OBJ, STEP or SVG - or drag it anywhere on the page. Imported meshes are not dead ends: drill them, stretch them, add support fins.",
   },
   {
+    sel: null,
+    title: "Drop any STL on the page",
+    body: "A menu asks what you came to do: FizzCore bubble infill, support fins for a tilted print, surface texture, a photo emboss or QR code, drill, stretch, thicken, scale. Every tool, one drop.",
+  },
+  {
+    sel: "#tools-btn",
+    open: "panel",
+    title: "The toolbox",
+    body: "The same tools for whatever is in the editor: FizzCore bubbles, support fins, real knurl and fuzzy-skin textures, embossing, QR codes, Gridfinity, cookie cutters and a shelf of ready parts.",
+  },
+  {
     sel: "#export-btn",
     title: "Take it away",
     body: "STL, OBJ, 3MF, GLB or STEP. A 3MF carries your colours as separate filaments AND hides the source code inside, so the file reopens here as editable code months later.",

@@ -151,14 +151,24 @@ console.log("\nevery way a window can change asks again\n");
 
 console.log("\na tour link opens the tour, not a loading screen\n");
 {
-  check("the boot cube is hidden before it can paint",
-    /<script>\s*if \(\/\[\?&\]tour=1\(&\|\$\)\/\.test\(location\.search\)/.test(HTML),
+  // the inline (pre-paint) script, which may check the framing page first
+  const prePaint = /<script>\s*(?:var framedTour[\s\S]{0,500}?)?if \((?:framedTour \|\| )?\/\[\?&\]tour=1\(&\|\$\)\/\.test\(location\.search\)[\s\S]{0,300}?getElementById\("boot"\)\.hidden = true/;
+  check("the boot cube is hidden before it can paint", prePaint.test(HTML),
     "hiding it from the module still flashes it first");
+  // brepcode.com frames the app without passing its URL on, so a tour link on
+  // the FRAMING page has to count too, in the pre-paint script and the module
+  check("...including a tour link on the page that frames the app",
+    (HTML.match(/P\.location\.host === location\.host/g) || []).length >= 2);
   check("...and the rest of the boot machinery never starts",
     /if \(tourRequested\(\)\) \{ boot\.hidden = true; return; \}/.test(HTML));
   check("one definition of what a tour link is", /function tourRequested\(\)/.test(HTML));
   check("the tour opens on the next frame, not after a wait for the kernel",
-    /if \(tourRequested\(\)\) \{\s*\n\s*requestAnimationFrame\(\(\) => \$\("tour-btn"\)\.click\(\)\);/.test(HTML));
+    /if \(tourRequested\(\)\) \{[\s\S]{0,700}?requestAnimationFrame\(goTour\);/.test(HTML));
+  // a background tab gets no frames until it is shown: a short timer covers it,
+  // and the guard stops the two from opening the tour twice
+  const fallback = /setTimeout\(goTour, (\d+)\)/.exec(HTML);
+  check("...with a short timer for a tab that gets no frames", !!fallback && +fallback[1] <= 1000, fallback?.[1]);
+  check("...that can only open it once", /if \(tourGo\) return; tourGo = true;/.test(HTML));
   check("...and the old 1400ms wait is gone", !/setTimeout\(\(\) => \$\("tour-btn"\)\.click\(\), 1400\)/.test(HTML));
 }
 

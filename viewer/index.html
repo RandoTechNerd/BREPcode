@@ -125,6 +125,13 @@
   <link rel="modulepreload" href="/node_modules/three/build/three.module.js" />
   <link rel="modulepreload" href="/node_modules/three/build/three.core.js" />
   <link rel="modulepreload" href="/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js" />
+  <!-- ...and the kernel's own static imports. Without these the 9 MB PartHistory
+       chunk only starts downloading once brep-kernel.js has arrived and been
+       parsed; asked for here it downloads in parallel with everything else.
+       The names carry content hashes: build-site checks every one exists. -->
+  <link rel="modulepreload" href="/node_modules/brep-io-kernel/dist-kernel/PartHistory-CIahaME9.js" />
+  <link rel="modulepreload" href="/node_modules/brep-io-kernel/dist-kernel/deepClone-DtPu-m_d.js" />
+  <link rel="modulepreload" href="/node_modules/brep-io-kernel/dist-kernel/index.esm-C2RuGKV3.js" />
   <!--
     Live BrepScript typing -> solid model, rendered with the BREP.io kernel.
     Serve the BrepScript/ folder statically, then open /viewer/:
@@ -1577,6 +1584,14 @@
       scrollbar-width: thin;
     }
     #tools-menu.open { display: flex; }
+    /* on-demand loading bar (withLoadBar): a thin strip across the top */
+    #lazy-bar { position: fixed; left: 0; right: 0; top: 0; z-index: 10001; pointer-events: none; }
+    #lazy-bar i { display: block; height: 3px; background: var(--accent-soft, #4b8cf5);
+      transform-origin: left; animation: lazy-grow 1.6s ease-out infinite; }
+    #lazy-bar span { position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      font: 12px system-ui, sans-serif; color: var(--text2, #d8e2f5); background: var(--card, #121826);
+      border: 1px solid var(--border, #26314a); border-radius: 999px; padding: 3px 10px; }
+    @keyframes lazy-grow { from { transform: scaleX(0.05); } 70% { transform: scaleX(0.85); } to { transform: scaleX(0.95); opacity: .4; } }
     /* 6px, not 8. Ten rows at 46px tall need 460px, and a Toolbox opened from a
        panel sitting low on the screen has closer to 400 — so two entries fell
        below the fold of a menu that looked complete, which is indistinguishable
@@ -2317,10 +2332,22 @@
        the document is parsed, so hiding it there still flashes the cube for a
        moment first. This runs before #boot has ever been painted. -->
   <script>
-    if (/[?&]tour=1(&|$)/.test(location.search) || /^#tour$/i.test(location.hash)
+    var framedTour = false;
+    try {
+      var P = window.parent;
+      framedTour = P !== window && P.location.host === location.host
+        && (/[?&]tour=1(&|$)/.test(P.location.search) || /^#tour$/i.test(P.location.hash));
+    } catch (e) { /* cross-origin frame */ }
+    if (framedTour || /[?&]tour=1(&|$)/.test(location.search) || /^#tour$/i.test(location.hash)
         || (/(^|\/)tour\/?$/i.test(location.pathname)
           && !/(^|\/)m\/tour\/?$/i.test(location.pathname))) {
       document.getElementById("boot").hidden = true;
+      // and ask for the tour now: on a slow line it would otherwise queue
+      // behind the 9 MB kernel, and the tour is what this visitor came for
+      var tourHint = document.createElement("link");
+      tourHint.rel = "modulepreload";
+      tourHint.href = "tour.js";
+      document.head.appendChild(tourHint);
     }
   </script>
   <div id="hint-corner">drag to orbit &middot; scroll to zoom</div>
@@ -13275,7 +13302,17 @@ ${joined}`)(...vs);
       // "tour" is a reserved name so no model can really be called that, but
       // the two kinds of URL should not need the reserved list to tell them
       // apart.
-      return /[?&]tour=1(&|$)/.test(location.search)
+      // ...and the FRAMING page's address too: on brepcode.com the app sits in
+      // a frame that does not pass its URL on, so brepcode.com/?tour=1 would
+      // otherwise never reach it.
+      let framed = false;
+      try {
+        const P = window.parent;
+        framed = P !== window && P.location.host === location.host
+          && (/[?&]tour=1(&|$)/.test(P.location.search) || /^#tour$/i.test(P.location.hash));
+      } catch { /* cross-origin frame */ }
+      return framed
+        || /[?&]tour=1(&|$)/.test(location.search)
         || /^#tour$/i.test(location.hash)
         || (/(^|\/)tour\/?$/i.test(location.pathname)
           && !/(^|\/)m\/tour\/?$/i.test(location.pathname));
@@ -15671,33 +15708,47 @@ let SIMPLIFY_TARGET = 10000;
         depth = 0; show(false);
         const file = e.dataTransfer?.files?.[0];
         if (!file) return;
-        if (!OPENABLE.test(file.name)) {
-          setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .stl, .3mf, .obj, .svg, or .step.`);
+        await handleIncomingFile(file);
+      });
+    }
+
+    // Every file that arrives (dropped, or picked from a tool card) lands
+    // here. A mesh asks what you came to do: open it, FizzCore it, or open it
+    // and go straight to a tool; "Always just open" restores the old
+    // straight-in import. A ?tool= link has already said what it came for, so
+    // its file skips the question.
+    const INCOMING = /\.(bcode|stl|3mf|obj|svg|step|stp)$/i;
+    async function handleIncomingFile(file) {
+      if (!INCOMING.test(file.name)) {
+        setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .stl, .3mf, .obj, .svg, or .step.`);
+        return;
+      }
+      if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
+      if (/\.(stl|3mf|obj)$/i.test(file.name)) {
+        if (pendingDropTool) {
+          const spec = pendingDropTool;
+          pendingDropTool = null;
+          toolCard?.close();
+          toolCard = null;
+          return runToolSpec(spec, file);
+        }
+        let F;
+        try { F = await withLoadBar("Opening the menu…", getFizz()); } catch { F = null; }
+        if (F && !F.dropSkipped()) {
+          const pick = await F.chooseDropAction(file, { groups: DROP_TOOLS });
+          if (!pick) return;
+          if (pick.action === "fizz") return openFizz({ file });
+          if (pick.action === "fins") return openFizz({ file }, "fins");
+          await importMeshFile(file);
+          if (pick.action === "tool" && pick.tool) {
+            // the tools act on the built model, so wait for the import's build
+            await new Promise((r) => setTimeout(r, 50));
+            runDropTool(pick.tool);
+          }
           return;
         }
-        if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
-        // A mesh asks what you came to do: open it, FizzCore it, or open it
-        // and go straight to a tool. "Always just open" restores the old
-        // straight-in import.
-        if (/\.(stl|3mf|obj)$/i.test(file.name)) {
-          let F;
-          try { F = await getFizz(); } catch { F = null; }
-          if (F && !F.dropSkipped()) {
-            const pick = await F.chooseDropAction(file, { tools: DROP_TOOLS });
-            if (!pick) return;
-            if (pick.action === "fizz") return openFizz({ file });
-            if (pick.action === "fins") return openFizz({ file }, "fins");
-            await importMeshFile(file);
-            if (pick.action === "tool" && pick.tool) {
-              // the tools act on the built model, so wait for the import's build
-              await new Promise((r) => setTimeout(r, 50));
-              $(pick.tool)?.click();
-            }
-            return;
-          }
-        }
-        await importMeshFile(file);
-      });
+      }
+      await importMeshFile(file);
     }
 
     // ---------------------------------------------------- FizzCore infill
@@ -15706,17 +15757,100 @@ let SIMPLIFY_TARGET = 10000;
     // in the editor right now.
     let _fizz;
     const getFizz = () => (_fizz ??= import("./fizz.js"));
+
+    // A thin bar across the top while an on-demand feature is still arriving.
+    // Nothing shows for a module that is already here (or lands within 200 ms),
+    // so it only appears for someone who clicked before the background warm-up
+    // below got to it.
+    let lazyBar = null, lazyCount = 0;
+    async function withLoadBar(label, promise) {
+      let shown = false;
+      const timer = setTimeout(() => {
+        shown = true;
+        lazyCount++;
+        if (!lazyBar) {
+          lazyBar = document.createElement("div");
+          lazyBar.id = "lazy-bar";
+          lazyBar.innerHTML = '<i></i><span></span>';
+          document.body.appendChild(lazyBar);
+        }
+        lazyBar.querySelector("span").textContent = label;
+        lazyBar.hidden = false;
+      }, 200);
+      try { return await promise; }
+      finally {
+        clearTimeout(timer);
+        if (shown && --lazyCount <= 0 && lazyBar) lazyBar.hidden = true;
+      }
+    }
+
+    // Once the first model is on the plate and the page is idle, fetch the
+    // features people reach for first (the drop menu and FizzCore with its mesh
+    // engine, the tour, the assistant, the inventory), one at a time, so they
+    // open instantly. Skipped on a metered or very slow connection.
+    function warmLikelyFeatures() {
+      const c = navigator.connection;
+      if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))) return;
+      const idle = window.requestIdleCallback
+        ? (f) => window.requestIdleCallback(f, { timeout: 4000 })
+        : (f) => setTimeout(f, 800);
+      const jobs = [
+        () => getFizz(),
+        () => import("../src/fizzcore.js").then((m) => m.loadManifold()),
+        () => getTour(),
+        () => getChatbot(),
+        () => getInventory(),
+      ];
+      let i = 0;
+      const next = () => {
+        if (i >= jobs.length) return;
+        const job = jobs[i++];
+        Promise.resolve().then(job).catch(() => { /* it loads on demand instead */ }).finally(() => idle(next));
+      };
+      idle(next);
+    }
+    // EVERY tool that works on an opened mesh, so dropping a file shows the
+    // lot. `id` is a toolbox button to click, or "wrap:<name>" for an
+    // "Edit a part" cheat-sheet entry, which wraps the imported model in code.
     const DROP_TOOLS = [
-      { id: "drill-btn", label: "Drill" },
-      { id: "scale-btn", label: "Scale" },
-      { id: "texture-btn", label: "Surface texture" },
-      { id: "emboss-btn", label: "Photo emboss" },
-      { id: "measure-btn", label: "Measure" },
-      { id: "shave-btn", label: "Shave a whisker" },
+      { title: "Surface", tools: [
+        { id: "texture-btn", icon: "texture", label: "Surface texture", desc: "knurl, fuzzy, bumps: real geometry" },
+        { id: "emboss-btn", icon: "emboss", label: "Photo emboss / label", desc: "an image as relief on a face" },
+        { id: "code-qr-btn", icon: "qr", label: "QR code on a face", desc: "click a face to stamp it" },
+        { id: "code-dm-btn", icon: "datamatrix", label: "DataMatrix on a face", desc: "click a face to stamp it" },
+      ] },
+      { title: "Cut & reshape", tools: [
+        { id: "drill-btn", icon: "drill", label: "Drill a face", desc: "click a face to bore a hole" },
+        { id: "wrap:add a hole", icon: "hole", label: "Add a hole", desc: "a hole you place by number" },
+        { id: "wrap:split & fill the middle", icon: "stretch", label: "Split & fill the middle", desc: "make it longer through the middle" },
+        { id: "wrap:cut the middle out (narrow it)", icon: "narrow", label: "Cut the middle out", desc: "make it narrower, ends intact" },
+        { id: "wrap:shave off the bottom", icon: "shaveBottom", label: "Shave off the bottom", desc: "cut feet or a lip off flat" },
+        { id: "wrap:thicken walls / rails", icon: "thicken", label: "Thicken walls", desc: "fatter rails, same outside size" },
+        { id: "shave-btn", icon: "whisker", label: "Shave a whisker", desc: "click a strand, cut at its root" },
+      ] },
+      { title: "Size & position", tools: [
+        { id: "scale-btn", icon: "scale", label: "Scale", desc: "by a factor, or to a size in mm" },
+        { id: "wrap:rotate / orient", icon: "rotate", label: "Rotate / stand it up", desc: "turn it in X, Y, Z" },
+        { id: "wrap:lay flat / flip", icon: "flip", label: "Flip over", desc: "upside down, printable face down" },
+      ] },
+      { title: "Print & check", tools: [
+        { id: "fins-btn", icon: "fins", label: "Fins in the editor", desc: "click a face, editable fins() code" },
+        { id: "measure-btn", icon: "measure", label: "Measure", desc: "click corners, edges or faces" },
+        { id: "shelf-row", icon: "shelf", label: "Add parts from the shelf", desc: "hinges, snaps, vents, standoffs" },
+      ] },
     ];
+    // run one of those after the import has landed
+    function runDropTool(id) {
+      if (id.startsWith("wrap:")) {
+        const spec = specOf(id.slice(5));
+        if (spec) clickCheat(spec);
+        return;
+      }
+      $(id)?.click();
+    }
     async function openFizz(source, mode = "fizz") {
       try {
-        const F = await getFizz();
+        const F = await withLoadBar(mode === "fins" ? "Loading support fins…" : "Loading FizzCore…", getFizz());
         await F.openFizzCore(THREE, source, {
           save: (bytes, name, type) => download(name, bytes, type),
           openInEditor: (f) => importMeshFile(f),
@@ -15725,17 +15859,82 @@ let SIMPLIFY_TARGET = 10000;
         setStatus("err", `FizzCore couldn't start: ${String(err?.message || err).slice(0, 120)}`);
       }
     }
-    $("fizz-btn").addEventListener("click", async () => {
+    async function openFizzOnCurrent(mode = "fizz") {
       let stl = null;
       try { stl = await exportSTL(); } catch { stl = null; }
       if (!stl) {
-        hint.innerHTML = "🫧 <b>FizzCore</b> fills a solid with bubbles. Build or import a model first, or just <b>drop an STL / 3MF</b> anywhere on the page and pick FizzCore.";
+        hint.innerHTML = "<b>FizzCore</b> fills a solid with bubbles. Build or import a model first, or just <b>drop an STL / 3MF</b> anywhere on the page and pick FizzCore.";
         return;
       }
       const { parseSTL } = await getInventory();
       const soup = parseSTL(new TextEncoder().encode(stl));
-      openFizz({ soup, name: "brepcode-model" });
-    });
+      openFizz({ soup, name: "brepcode-model" }, mode);
+    }
+    $("fizz-btn").addEventListener("click", () => openFizzOnCurrent("fizz"));
+
+    // ---------------------------------------------------- the front door
+    // ?tool=<name> links (articles, videos) and the first-visit welcome; the
+    // cards themselves live in viewer/welcome.js.
+    let pendingDropTool = null;     // a ?tool= card is waiting for a file
+    let toolCard = null;
+    // the model on the plate has been built (a tool acting on it needs that)
+    async function whenBuilt(ms = 30000) {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        if (lastSolids.length && !/build/i.test($("status")?.textContent || "")) return true;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return false;
+    }
+    async function runToolSpec(spec, file) {
+      if (spec.run === "fizz" || spec.run === "fins") {
+        return file ? openFizz({ file }, spec.run) : openFizzOnCurrent(spec.run);
+      }
+      if (file) await importMeshFile(file);
+      await whenBuilt();
+      runDropTool(spec.run);
+    }
+    function pickAFile() {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = ".stl,.3mf,.obj,.bcode,.step,.stp,.svg";
+      inp.onchange = () => { const f = inp.files?.[0]; if (f) handleIncomingFile(f); };
+      inp.click();
+    }
+    // A link's own address, or the address of the page framing this one (on
+    // brepcode.com the app sits in a frame that does not pass its URL on).
+    function hostLocations() {
+      const locs = [location];
+      try { if (window.parent !== window && window.parent.location.host === location.host) locs.push(window.parent.location); } catch { /* cross-origin frame */ }
+      return locs;
+    }
+    function launchTool() {
+      for (const L of hostLocations()) {
+        const t = new URLSearchParams(L.search).get("tool") || new URLSearchParams(L.hash.replace(/^#/, "")).get("tool");
+        if (t) return t;
+      }
+      return null;
+    }
+    function frontDoorHooks(W) {
+      const hooks = {
+        openChat: () => $("chat-btn").click(),
+        pickFile: pickAFile,
+        startTour: () => $("tour-btn").click(),
+        loadExample: (src) => {
+          pushHistory(code.value);
+          code.value = src;
+          pushHistory();
+          updateHint();
+          rebuild();
+        },
+        openTool: (name) => { toolCard = W.showToolCard(name, hooks) || null; },
+        armDrop: (spec) => { pendingDropTool = spec; },
+        disarmDrop: () => { pendingDropTool = null; toolCard = null; },
+        runOnCurrent: async (spec) => { pendingDropTool = null; toolCard = null; await whenBuilt(); runToolSpec(spec, null); },
+        runPanel: async (spec) => { await whenBuilt(8000); runDropTool(spec.run); },
+      };
+      return hooks;
+    }
 
     // The desktop app hands us a file the OS opened: double-clicked in
     // Explorer, "Open with", or dropped on the exe itself. It arrives as text
@@ -17713,7 +17912,7 @@ let SIMPLIFY_TARGET = 10000;
       hint.innerHTML = `Wrapped the model in <code>texture()</code> — REAL geometry, so it survives into the STL/3MF. `
         + `Patterns: <code>knurl</code> (diamond grip), <code>fuzzy</code> (fuzzy skin), <code>layers</code>, <code>bumps</code>, <code>waffle</code>. `
         + `Tune <code>depth</code> (mm), <code>scale</code> (pattern size), <code>faces</code> ("sides", "top", "bottom", "all"). `
-        + `Want it finer for the final export? Add <code>maxTris: 12000</code> — sharper, but the build takes noticeably longer.`;
+        + `Want a finer pattern? Lower <code>scale</code>. On a big part, raise <code>maxTris</code> (default 16000) if the pattern looks coarser than its scale.`;
     });
 
     // ---- photo emboss: greyscale image -> relief on the face you click ----
@@ -21405,7 +21604,7 @@ let SIMPLIFY_TARGET = 10000;
     let stopTour = null;
     $("tour-btn").addEventListener("click", async () => {
       if (stopTour) { stopTour(); stopTour = null; return; }   // second press cancels
-      const { startTour } = await getTour();
+      const { startTour } = await withLoadBar("Loading the tour…", getTour());
       // Out of the way: the tour points AT the About card's button, so leaving
       // the card itself open would cover the thing being explained.
       toggleCard(aboutCard, aboutBtn, false);
@@ -21440,8 +21639,24 @@ let SIMPLIFY_TARGET = 10000;
     // One frame, so the browser has painted before the spotlight measures
     // anything, and then straight in — the tour module's own fetch is the only
     // real delay left.
+    whenBuilt(60000).then((ok) => { if (ok) warmLikelyFeatures(); });
     if (tourRequested()) {
-      requestAnimationFrame(() => $("tour-btn").click());
+      // A frame normally; a timer as well, because a tab opened in the
+      // background (a link middle-clicked from an article) gets no animation
+      // frames until it is shown, and the tour would never start. Once only.
+      let tourGo = false;
+      const goTour = () => { if (tourGo) return; tourGo = true; $("tour-btn").click(); };
+      requestAnimationFrame(goTour);
+      setTimeout(goTour, 600);
+    } else if (!urlCarriesModel()) {
+      setTimeout(async () => {
+        let W;
+        try { W = await import("./welcome.js"); } catch { return; }
+        const hooks = frontDoorHooks(W);
+        const t = launchTool();
+        if (t) { toolCard = W.showToolCard(t, hooks) || null; if (toolCard !== null) return; }
+        if (!W.welcomed()) W.showWelcome(hooks);
+      }, 700);
     }
     document.addEventListener("keydown", (e) => {
       const a = document.activeElement;
