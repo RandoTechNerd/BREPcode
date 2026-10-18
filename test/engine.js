@@ -83,6 +83,32 @@ await check("revolve (transform nesting)", revolve(360, polygon([[0, 0], [8, 0],
 await check("hex nut ($fn=6) keeps its flats", cylinder({ r: 5, h: 3, $fn: 6 }), { volTol: 0.001 });
 await check("tilted triangle ($fn=3)", translate([3, 4, 5], rotate([30, 20, 70], cylinder({ r: 6, h: 4, $fn: 3 }))), { volTol: 0.001 });
 await check("hex pocket in a block", difference(cube([20, 20, 6]), translate([10, 10, 2], cylinder({ r: 3.2, h: 5, $fn: 6 }))), { volTol: 0.001 });
+await check("octagon ($fn=8) keeps its flats", cylinder({ r: 5, h: 3, $fn: 8 }), { volTol: 0.001 });
+// $fn=16 is above POLYGON_MAX: a true circle, so it is ~2.5% bigger than the
+// JS kernel's inscribed 16-gon, and the engine counts it as rounded.
+await check("$fn=16 hole goes round", difference(cube([20, 20, 6]), translate([10, 10, -1], cylinder({ r: 4, h: 8, $fn: 16 }))), { volTol: 0.01 });
+{
+  const roundedOf = async (shape) => {
+    const ph = new PartHistory();
+    await d.compile(shape, ph);
+    return (await runEngine(await ph.toJSON(), { rust, manifold: loadManifoldNode })).stats.roundedCurves;
+  };
+  const nut = await roundedOf(difference(cube([20, 20, 6]), translate([10, 10, 2], cylinder({ r: 3.2, h: 5, $fn: 6 }))));
+  const hole = await roundedOf(difference(cube([20, 20, 6]), translate([10, 10, -1], cylinder({ r: 4, h: 8, $fn: 16 }))));
+  const plain = await roundedOf(cylinder({ r: 4, h: 8 }));
+  const pass = nut === 0 && hole === 1 && plain === 0;
+  if (!pass) fails++;
+  console.log(`${pass ? "ok   " : "FAIL "} roundedCurves: hex nut ${nut}, $fn=16 hole ${hole}, plain cylinder ${plain}`);
+}
+{
+  // The OpenSCAD path end to end: a nut trap stays hexagonal, a $fn=16 bolt hole goes round.
+  const ph = new PartHistory();
+  await d.compile(fromOpenSCAD("difference(){ cube([20,20,8]); translate([10,10,-1]) cylinder(r=1.6,h=10,$fn=16); translate([10,10,5]) cylinder(r=3.2,h=4,$fn=6); }"), ph);
+  const out = await runEngine(await ph.toJSON(), { rust, manifold: loadManifoldNode });
+  const pass = out.lane === "exact" && out.stats.roundedCurves === 1;
+  if (!pass) fails++;
+  console.log(`${pass ? "ok   " : "FAIL "} OpenSCAD nut trap + $fn=16 bolt hole: lane=${out.lane} rounded=${out.stats.roundedCurves}`);
+}
 await check("fillet", fillet({ r: 2 }, cube([20, 20, 10])));
 await check("chamfer", chamfer({ d: 1.5 }, cube([20, 20, 10])));
 await check("texture alone", texture({ pattern: "knurl" }, cylinder({ r: 10, h: 20 })), { expectLane: "mesh" });

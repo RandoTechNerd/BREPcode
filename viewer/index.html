@@ -4412,8 +4412,12 @@
     // " · JS kernel (...)" when the split engine refused and the JS kernel built it.
     function engineNote(e) {
       if (!e) return "";
-      if (e.engine === "exact") return " · Exact";
-      if (e.engine === "mesh") return " · Mesh";
+      // A $fn above engine.js POLYGON_MAX is built as a true curve: say how many,
+      // since a hole tuned against a faceted preview comes out a touch wider.
+      const n = e.stats?.roundedCurves || 0;
+      const rounded = n ? ` (${n} faceted $fn curve${n === 1 ? "" : "s"} made true)` : "";
+      if (e.engine === "exact") return " · Exact" + rounded;
+      if (e.engine === "mesh") return " · Mesh" + rounded;
       if (!e.fallback) return "";
       return e.fallbackKind === "loading" ? " · JS kernel (Rust still loading)"
         : e.fallbackKind === "unavailable" ? " · JS kernel (Rust unavailable)"

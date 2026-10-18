@@ -93,8 +93,8 @@ export function toRustDialect(doc) {
       rename.set(jsTarget, to);
     }
   }
-  polygonCylinders(doc);
-  return { doc, rename };
+  const rounded = polygonCylinders(doc);
+  return { doc, rename, rounded };
 }
 
 // 5. Low-$fn cylinders. The JS kernel facets every cylinder with `resolution`
@@ -104,7 +104,14 @@ export function toRustDialect(doc) {
 //    POLYGON_MAX sides the cylinder is rebuilt as an extruded polygon, corners
 //    exactly where the JS kernel puts them; above it the exact circle stays,
 //    which is the point of the exact lane.
-const POLYGON_MAX = 16;
+//    8, not 16: hex/square/triangle/octagon are the shapes people mean on
+//    purpose. $fn=12 or 16 in real files is OpenSCAD preview speed, not a
+//    12-sided prism, so those become true circles. The count of curves that
+//    had a $fn above the cutoff comes back as stats.roundedCurves, so the app
+//    can say so (a faceted hole is inscribed: the true circle is up to 3.4%
+//    wider at $fn=12, which a tuned press-fit will notice).
+export const POLYGON_MAX = 8;
+const CURVED = new Set(["P.CY", "P.CO", "P.S", "P.T"]);
 const DEG = Math.PI / 180;
 function eulerXYZ([x, y, z]) {
   const [a, b, c] = [x * DEG, y * DEG, z * DEG];
@@ -126,9 +133,11 @@ const mul3 = (A, B) => A.map((row) => [0, 1, 2].map((j) => row[0] * B[0][j] + ro
 
 function polygonCylinders(doc) {
   const out = [];
+  let rounded = 0;
   for (const f of doc.features) {
     const p = f.inputParams || {};
     const n = Number(p.resolution);
+    if (CURVED.has(f.type) && n > POLYGON_MAX) rounded++;
     if (f.type === "P.CO" && n >= 3 && n <= POLYGON_MAX) {
       throw new EngineRefusal(`a ${n}-sided cone ($fn=${n}) would come out round on the Rust kernel`, "exact");
     }
@@ -162,6 +171,7 @@ function polygonCylinders(doc) {
     );
   }
   doc.features = out;
+  return rounded;
 }
 
 // ------------------------------------------------------------ lane routing
@@ -360,7 +370,7 @@ export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05, tr
   // EXACT lane: everything that never reads a mesh.
   const t0 = performance.now();
   const exactDoc = { ...src, features: features.filter((f) => !meshFeatures.has(f.inputParams?.id)) };
-  const { doc, rename } = toRustDialect(structuredClone(exactDoc));
+  const { doc, rename, rounded } = toRustDialect(structuredClone(exactDoc));
   let res;
   try { res = JSON.parse(rk.execute_history_json(JSON.stringify(doc))); }
   catch (e) { throw new EngineRefusal(`Rust kernel: ${e?.message || e}`, "exact"); }
@@ -460,6 +470,7 @@ export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05, tr
       stats: {
         exactFeatures: exactDoc.features.length, meshFeatures: meshFeatures.size,
         exactMs: Math.round(exactMs), meshMs: Math.round(meshMs),
+        roundedCurves: rounded,
       },
     };
   } finally {
