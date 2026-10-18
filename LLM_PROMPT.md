@@ -81,6 +81,8 @@ torus({ r, tube })             torus({ r, tube, arc }) // arc in degrees for a p
 polygon([[x, y], ...])                   // a flat 2D outline — not a solid on its own
 linearExtrude({ h, center }, profile)    // extrude a polygon up +Z from z=0
 revolve(angle, profile)                  // lathe a polygon about x = 0 (OpenSCAD's rotate_extrude)
+revolve({ stretch: L }, profile)         // ...pulled apart into a stadium shape, L mm of straight sides
+path2d([x,y], ..., bezierTo(c1, c2, p), ...)  // an outline with smooth curves; extruding or revolving keeps them exact
 ```
 
 ### Combining and moving

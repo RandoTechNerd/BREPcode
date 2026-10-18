@@ -120,6 +120,18 @@ await check("fillet on a texture is refused", fillet({ r: 1 }, texture({ pattern
   await check("exact import moved and drilled", difference(translate([5, 0, 0], d.importedSolid("block.step")), translate([10, 10, -1], cylinder({ r: 2, h: 12 }))), { expectLane: "exact", volTol: 0.01 });
 }
 
+// path2d + bezierTo stay exact curves, and revolve({ stretch }) makes a
+// racetrack (stadium) solid: two half-revolves and an extruded middle.
+{
+  const { path2d, bezierTo } = d;
+  await check("racetrack of a rectangle = a stadium plate", revolve({ stretch: 4 }, polygon([[0, 0], [3, 0], [3, 4], [0, 4]])), { expectLane: "exact", volTol: 0.01 });
+  const side = path2d([0, 0], [20, 0], bezierTo([22.5, 0], [23.4, 1.8], [23, 3.2]),
+    bezierTo([22.4, 5.2], [14.3, 9], [14.3, 15]), bezierTo([14.3, 24], [14.8, 32], [13.2, 32]), [0, 32]);
+  await check("Bezier profile revolves", revolve(360, side), { expectLane: "exact", volTol: 0.01 });
+  await check("Bezier profile racetrack", revolve({ stretch: 10 }, side), { expectLane: "exact", volTol: 0.01 });
+  await check("Bezier profile extrudes", linearExtrude({ h: 5 }, path2d([0, 0], [20, 0], bezierTo([25, 5], [15, 15], [10, 20]), [0, 20])), { expectLane: "exact", volTol: 0.01 });
+}
+
 // union(union(a, b), c) keeps a's name, as the JS kernel does (a nested
 // union used to come back named after a consumed tool).
 {

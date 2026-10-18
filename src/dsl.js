@@ -366,6 +366,99 @@ export function polygon(points) {
   return { __brepscript2d: true, pts };
 }
 
+// path2d(p0, p1, bezierTo(c1, c2, p2), p3, ...): a closed 2D profile made of
+// straight lines and cubic Bezier curves. The curves stay curves: extrude and
+// revolve hand them to the kernel as exact B-splines, so a smooth profile makes
+// a smooth solid, faceted only when it is exported. `pts` is a sampled copy
+// for everything that just needs an outline (bounds, previews).
+export function bezierTo(c1, c2, p) {
+  const pt = (q, what) => {
+    const x = Number(q?.[0]), y = Number(q?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`bezierTo(): ${what} isn't an [x, y] pair`);
+    return [x, y];
+  };
+  return { __bezierTo: [pt(c1, "the first control point"), pt(c2, "the second control point"), pt(p, "the end point")] };
+}
+export function path2d(...items) {
+  const list = items.length === 1 && Array.isArray(items[0]) && items[0].length
+    && (Array.isArray(items[0][0]) || items[0][0]?.__bezierTo) ? items[0] : items;
+  const asPt = (q, i) => {
+    const x = Number(q?.[0]), y = Number(q?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`path2d() item ${i} isn't an [x, y] point or a bezierTo(...)`);
+    return [x, y];
+  };
+  if (!list.length || list[0]?.__bezierTo) throw new TypeError("path2d() starts with an [x, y] point");
+  const start = asPt(list[0], 0);
+  const same = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+  const segs = [];
+  let cur = start;
+  list.slice(1).forEach((it, i) => {
+    if (it?.__bezierTo) {
+      const [c1, c2, p] = it.__bezierTo;
+      segs.push({ t: "bezier", p: [cur, c1, c2, p] });
+      cur = p;
+    } else {
+      const p = asPt(it, i + 1);
+      if (!same(cur, p)) segs.push({ t: "line", p: [cur, p] });
+      cur = p;
+    }
+  });
+  if (!same(cur, start)) segs.push({ t: "line", p: [cur, start] });
+  if (segs.length < 2) throw new TypeError("path2d() needs at least a closed outline of 2 segments");
+  return { __brepscript2d: true, pts: sampleSegs(segs), segs };
+}
+function sampleSegs(segs, n = 16) {
+  const out = [];
+  for (const sg of segs) {
+    out.push(sg.p[0]);
+    if (sg.t === "bezier") {
+      const [a, b, c, d] = sg.p;
+      for (let k = 1; k < n; k++) {
+        const t = k / n, u = 1 - t;
+        out.push([0, 1].map((j) => u * u * u * a[j] + 3 * u * u * t * b[j] + 3 * u * t * t * c[j] + t * t * t * d[j]));
+      }
+    }
+  }
+  return out;
+}
+const reverseSegs = (segs) => segs.slice().reverse().map((sg) => ({ t: sg.t, p: sg.p.slice().reverse() }));
+// The profile mirrored across x = 0 and joined to itself: the full outline a
+// half-profile (x >= 0, touching the axis) sweeps out in any plane through the
+// axis. revolve({ stretch }) extrudes it for the straight middle.
+function mirrorAcrossAxis(profile) {
+  const onAxis = (sg) => sg.t === "line" && Math.abs(sg.p[0][0]) < 1e-9 && Math.abs(sg.p[1][0]) < 1e-9;
+  const segs = profile.segs ?? profile.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] }));
+  // rotate the list so it starts right after the axis edge
+  const k = segs.findIndex(onAxis);
+  if (k < 0) throw new Error("revolve({ stretch }): the profile needs an edge on x = 0 (its spin axis)");
+  const chain = [...segs.slice(k + 1), ...segs.slice(0, k)].filter((sg) => !onAxis(sg));
+  const mirrored = reverseSegs(chain).map((sg) => ({ t: sg.t, p: sg.p.map(([x, y]) => [-x, y]) }));
+  const all = [...chain, ...mirrored];
+  return { __brepscript2d: true, pts: sampleSegs(all), segs: all };
+}
+// Sketch points + geometries for a profile: lines, and Beziers as the kernel's
+// own "bezier" geometry (one exact cubic B-spline span each).
+function sketchOf(profile) {
+  const points = [], geometries = [], ids = new Map();
+  const endpoint = ([x, y]) => {
+    const key = `${x.toFixed(9)},${y.toFixed(9)}`;
+    if (!ids.has(key)) { ids.set(key, points.length); points.push({ id: points.length, x, y, fixed: points.length === 0 }); }
+    return ids.get(key);
+  };
+  const control = ([x, y]) => { points.push({ id: points.length, x, y, fixed: false }); return points.length - 1; };
+  const segs = profile.segs ?? profile.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] }));
+  const geomIds = [];
+  segs.forEach((sg, i) => {
+    const gid = 100 + i;
+    const pts = sg.t === "bezier"
+      ? [endpoint(sg.p[0]), control(sg.p[1]), control(sg.p[2]), endpoint(sg.p[3])]
+      : [endpoint(sg.p[0]), endpoint(sg.p[1])];
+    geometries.push({ id: gid, type: sg.t === "bezier" ? "bezier" : "line", points: pts, construction: false });
+    geomIds.push({ gid, sg });
+  });
+  return { sketch: { points, geometries, constraints: [{ id: 0, type: "⏚", points: [0] }] }, geomIds };
+}
+
 // linearExtrude({ h, center }, polygon([...])) — extrudes along +Z from z=0,
 // matching OpenSCAD's linear_extrude.
 export function linearExtrude(opts, profile) {
@@ -382,7 +475,8 @@ export function linearExtrude(opts, profile) {
     area += x1 * y2 - x2 * y1;
   }
   const ordered = area < 0 ? [...pts].reverse() : pts;
-  const n = node({ kind: "prism", pts: ordered, h, fix: IDENTITY });
+  const segs = profile.segs ? (area < 0 ? reverseSegs(profile.segs) : profile.segs) : null;
+  const n = node({ kind: "prism", pts: ordered, segs, h, fix: IDENTITY });
   return (typeof opts === "object" && opts?.center) ? translate([0, 0, -h / 2], n) : n;
 }
 
@@ -1896,7 +1990,18 @@ export function revolve(opts, profile) {
     throw new TypeError("revolve() takes a 2D profile — make one with polygon([[x, y], ...]) in the x >= 0 half-plane, touching x = 0");
   }
   const res = o.$fn ?? o.resolution;
-  return node({ kind: "revolve", pts: profile.pts, angle, resolution: res, fix: AXIS_FIX });
+  // stretch: L pulls the round shape apart into a racetrack (a stadium, like a
+  // shaver or a phone's edge): two half-revolves for the round ends, and the
+  // profile's full outline extruded L long for the straight sides between them.
+  // Every surface stays exact and they meet tangentially, so no seam shows.
+  const L = Number(o.stretch ?? 0);
+  if (L > 0) {
+    if (angle !== 360) throw new TypeError("revolve({ stretch }) makes a full racetrack: leave angle at 360");
+    const half = (sign) => translate([sign * L / 2, 0, 0], rotate([0, 0, sign * 90], revolve({ angle: 180, $fn: res }, profile)));
+    const middle = translate([-L / 2, 0, 0], rotate([0, 0, 90], rotate([90, 0, 0], linearExtrude({ h: L }, mirrorAcrossAxis(profile)))));
+    return union(half(1), half(-1), middle);
+  }
+  return node({ kind: "revolve", pts: profile.pts, segs: profile.segs ?? null, angle, resolution: res, fix: AXIS_FIX });
 }
 
 // ------------------------------------------------------------------ compile
@@ -2017,7 +2122,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
       const sk = await partHistory.newFeature("S");
       sk.inputParams.sketchPlane = plane.inputParams.id;
-      sk.persistentData.sketch = {
+      sk.persistentData.sketch = n.segs ? sketchOf(n).sketch : {
         points: n.pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
         geometries: n.pts.map((_, i) => ({
           id: 100 + i, type: "line", points: [i, (i + 1) % n.pts.length], construction: false,
@@ -2128,18 +2233,26 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const sk = await partHistory.newFeature("S");
       sk.inputParams.sketchPlane = plane.inputParams.id;
       const pts = n.pts;
-      sk.persistentData.sketch = {
-        points: pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
-        geometries: pts.map((_, i) => ({
-          id: 100 + i, type: "line", points: [i, (i + 1) % pts.length], construction: false,
-        })),
-        constraints: [{ id: 0, type: "⏚", points: [0] }],
-      };
       // the spin axis is the profile edge lying on x = 0
       let axisIdx = -1;
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i], b = pts[(i + 1) % pts.length];
-        if (Math.abs(a[0]) < 1e-6 && Math.abs(b[0]) < 1e-6) { axisIdx = i; break; }
+      if (n.segs) {
+        // curved profile (path2d): lines + exact Beziers; the axis is a line seg
+        const { sketch, geomIds } = sketchOf(n);
+        sk.persistentData.sketch = sketch;
+        const ax = geomIds.find(({ sg }) => sg.t === "line" && Math.abs(sg.p[0][0]) < 1e-6 && Math.abs(sg.p[1][0]) < 1e-6);
+        if (ax) axisIdx = ax.gid - 100;
+      } else {
+        sk.persistentData.sketch = {
+          points: pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
+          geometries: pts.map((_, i) => ({
+            id: 100 + i, type: "line", points: [i, (i + 1) % pts.length], construction: false,
+          })),
+          constraints: [{ id: 0, type: "⏚", points: [0] }],
+        };
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          if (Math.abs(a[0]) < 1e-6 && Math.abs(b[0]) < 1e-6) { axisIdx = i; break; }
+        }
       }
       if (axisIdx < 0) {
         throw new Error("revolve(): the profile needs an edge on the x = 0 axis (two consecutive points with x = 0) — that edge is the spin axis. Keep every point at x >= 0.");
@@ -2165,7 +2278,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ];
         xf.inputParams.scale = [scl.x, scl.y, scl.z];
       }
-      trace?.push({ id: rev.inputParams.id, code: "R" });
+      trace?.push({ id: rev.inputParams.id, code: "R", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return rev.inputParams.id;
     }
 

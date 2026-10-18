@@ -51,6 +51,16 @@ export const SPECS = [
     hint: "Spins a 2D profile around the x=0 axis — vases, knobs, turned parts. Keep all points at x ≥ 0, touching x = 0.",
   },
   {
+    name: "path2d", group: "Smooth & lathe", sig: "path2d([x, y], ..., bezierTo(c1, c2, p), ...)",
+    snippet: "revolve(360, path2d([0, 0], [10, 0], bezierTo([14, 0], [6, 12], [8, 20]), [0, 20]))", argStart: 13,
+    hint: "A 2D outline of lines and smooth Bezier curves (bezierTo(control1, control2, end)). The curves stay EXACT through linearExtrude and revolve, so the solid is smooth, not faceted.",
+  },
+  {
+    name: "revolve stretch", group: "Smooth & lathe", sig: "revolve({ stretch: L }, profile)",
+    snippet: "revolve({ stretch: 10 }, path2d([0, 0], [12, 0], bezierTo([14, 6], [10, 14], [9, 20]), [0, 20]))", argStart: 18,
+    hint: "A revolve pulled apart into a racetrack (stadium) L long: two half-revolves for the round ends, the same profile extruded for the straight sides. Shaver docks, pill shapes, phone stands, all exact.",
+  },
+  {
     name: "blend", group: "Smooth & lathe", sig: "blend({ k }, shapeA, shapeB)",
     snippet: "blend({ k: 6 },\n  sphere3d({ r: 20 }),\n  move3d([26, 0, 0], sphere3d({ r: 14 })))", argStart: 6,
     hint: "Melts shapes together with a soft join instead of a seam. k = the blend"
