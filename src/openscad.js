@@ -412,6 +412,20 @@ export const isProfile = (v) => !!(v && v.__profile2d);
 export const profileLeaf = (pts) => ({ __profile2d: true, leaf: true, pts });
 export const profileOp = (op, children) => ({ __profile2d: true, op, children });
 
+// OpenSCAD's rotate([x, y, z]), and JSCAD's, turn about X, then Y, then Z, all
+// fixed axes: the matrix Rz*Ry*Rx. dsl.rotate takes three.js's "XYZ" order,
+// Rx*Ry*Rz, so a vector with two or more angles has to be re-expressed for it
+// or the part comes out turned the wrong way (rotate([90, 0, 90]) is in half
+// the files on Thingiverse). One angle means the same in either order, so it
+// passes through untouched rather than picking up float noise.
+export function fixedAxisRotation([x = 0, y = 0, z = 0]) {
+  if ([x, y, z].filter((a) => a).length < 2) return [x, y, z];
+  const q = new Quaternion().setFromEuler(
+    new Euler(MathUtils.degToRad(x), MathUtils.degToRad(y), MathUtils.degToRad(z), "ZYX"));
+  const e = new Euler().setFromQuaternion(q, "XYZ");
+  return [e.x, e.y, e.z].map((r) => Math.round(MathUtils.radToDeg(r) * 1e9) / 1e9);
+}
+
 export function mapProfile(p, fn) {
   if (p.leaf) return profileLeaf(p.pts.map(fn));
   return profileOp(p.op, p.children.map((c) => mapProfile(c, fn)));
@@ -455,9 +469,12 @@ export function profileToRevolved(p, angle, fn) {
     // A boolean of 2D shapes: revolve each leaf and redo the boolean in 3D.
     // Sound for a revolve about a shared axis, the same way profileToSolid
     // treats a straight extrusion.
+    // profileOp() tags these UNION / SUBTRACT / INTERSECT, as profileToSolid
+    // reads them. Comparing against "difference" here once sent every one to
+    // the union below, so hollow lathes (cups, tubes, bushings) came out solid.
     const kids = p.children.map((c) => profileToRevolved(c, angle, fn));
-    if (p.op === "difference") return dsl.difference(...kids);
-    if (p.op === "intersection") return dsl.intersection(...kids);
+    if (p.op === "SUBTRACT") return dsl.difference(...kids);
+    if (p.op === "INTERSECT") return dsl.intersection(...kids);
     return dsl.union(...kids);
   }
   const pts = p.pts;
@@ -1056,7 +1073,7 @@ function evalCall(stmt, scope) {
         return dsl.rotate(
           [MathUtils.radToDeg(e.x), MathUtils.radToDeg(e.y), MathUtils.radToDeg(e.z)], child);
       }
-      return dsl.rotate(Array.isArray(a) ? asVec3(a) : [0, 0, a ?? 0], child);
+      return dsl.rotate(Array.isArray(a) ? fixedAxisRotation(asVec3(a)) : [0, 0, a ?? 0], child);
     }
 
     // ----- 2D primitives -------------------------------------------------

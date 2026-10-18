@@ -51,10 +51,12 @@ console.log("\nfillet / chamfer\n");
   check("fillet number vs {r:} match", near(a, b, 1), `${a.toFixed(0)} vs ${b.toFixed(0)}`);
 }
 {
-  // fillet only the top face's edges → fewer facets than all-edge fillet
-  const top = facetsOf(await build(fillet({ r: 3, faces: "top" }, cube([20, 20, 20]))));
-  const all = facetsOf(await build(fillet({ r: 3 }, cube([20, 20, 20]))));
-  check("fillet faces:'top' rounds a subset", top > 12 && top < all, `top ${top} < all ${all}`);
+  // fillet only the top face's edges → removes less material than rounding
+  // every edge. Measured by volume, not facet count: the Rust kernel's
+  // tessellator puts more triangles on 4 blended edges than the JS one puts on 12.
+  const top = volumeOf(await build(fillet({ r: 3, faces: "top" }, cube([20, 20, 20]))));
+  const all = volumeOf(await build(fillet({ r: 3 }, cube([20, 20, 20]))));
+  check("fillet faces:'top' rounds a subset", top < 8000 - 1 && top > all + 1, `cube 8000 > top ${top.toFixed(1)} > all ${all.toFixed(1)}`);
 }
 {
   // fillet composes with booleans (target identity preserved): the hole should

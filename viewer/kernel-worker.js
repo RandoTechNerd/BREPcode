@@ -16,6 +16,50 @@
 // site, exactly as it does for every other viewer file.
 import { PartHistory } from "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
 import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.js";
+import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
+
+// The split engine (src/engine.js): the Rust kernel for exact parts, manifold
+// for meshes, this file's JS kernel when either refuses. Both wasm modules are
+// loaded on first use, by path, because a module worker has no import map.
+// NB build-site.mjs rewrites both paths for the static site; the page can
+// point the Rust wasm elsewhere (rustWasmUrl) on a host that can't serve 13 MB
+// from the app folder, as brepcode.com already does for replicad.
+let rustKernel = null;
+async function loadRust(wasmUrl) {
+  rustKernel ??= (async () => {
+    const mod = await import("/vendor/brep-kernel-rust/brep_kernel.js");
+    await mod.default({ module_or_path: wasmUrl || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href) });
+    return mod;
+  })();
+  try { return await rustKernel; }
+  catch (e) { rustKernel = null; throw e; }
+}
+let manifoldWasm = null;
+function loadManifold() {
+  manifoldWasm ??= (async () => {
+    const Module = (await import("/node_modules/manifold-3d/manifold.js")).default;
+    const wasm = await Module();
+    wasm.setup();
+    return wasm;
+  })();
+  return manifoldWasm;
+}
+
+// Split-engine solids -> the same {name, faces} records extractSolids() sends.
+// Copies, because a transferred buffer is gone from this side and the engine
+// result stays here for STL export.
+function splitPayload(out) {
+  const transfer = [];
+  const own = (a) => { if (!a) return null; const c = a.slice(); transfer.push(c.buffer); return c; };
+  const payload = out.solids.map((s) => ({
+    name: s.name, exact: s.exact,
+    faces: s.faces.map((f) => ({
+      name: f.name, positions: own(f.positions), itemSize: 3,
+      normals: own(f.normals), normalSize: 3, index: own(f.index), matrix: null,
+    })),
+  }));
+  return { payload, transfer };
+}
 
 // Imported solids can't be cloned (MeshToBrep's ctor throws without a
 // geometry), which silently no-ops booleans that use an import as the TOOL.
@@ -148,6 +192,31 @@ self.onmessage = async ({ data }) => {
     if (op === "build") {
       trace("build start");
       const key = data.key || "model";
+      const engine = data.engine || "auto";
+      let fallback = null;
+      if (engine !== "js") {
+        try {
+          const rust = await loadRust(data.rustWasmUrl);
+          const out = await runEngine(data.json, { rust, manifold: loadManifold });
+          trace(`split engine: ${out.lane} (${out.stats.exactMs} ms exact, ${out.stats.meshMs} ms mesh)`);
+          builds.set(key, { split: out, json: data.json, solids: out.solids });
+          const { payload, transfer } = splitPayload(out);
+          self.postMessage({
+            id, ok: true, solids: payload, engine: out.lane, stats: out.stats,
+            incremental: false, rebuilt: out.stats.exactFeatures + out.stats.meshFeatures,
+            total: out.stats.exactFeatures + out.stats.meshFeatures, reason: "",
+          }, transfer);
+          return;
+        } catch (e) {
+          // A refusal is the engine saying "not this model"; the JS kernel
+          // below gets it. Anything else (a wasm that failed to load) is
+          // also worth a JS attempt in auto mode, but is reported.
+          if (engine === "split") throw e;
+          fallback = String(e?.message || e).slice(0, 300);
+          if (!(e instanceof EngineRefusal)) console.warn("[kw] split engine unavailable, using the JS kernel:", e);
+          trace(`split engine refused: ${fallback}`);
+        }
+      }
       // REBUILD ONLY WHAT CHANGED. The history from the last build is already
       // here — it has to be, so exports can be written without rebuilding — and
       // the kernel tracks per-feature dirtiness. Handing the new history to
@@ -186,7 +255,7 @@ self.onmessage = async ({ data }) => {
       self.postMessage({
         id, ok: true, solids: payload,
         incremental: r.incremental, rebuilt, total: (ph.features || []).length,
-        reason: r.plan?.reason || "",
+        reason: r.plan?.reason || "", engine: "js", fallback,
       }, transfer);
       return;
     }
@@ -194,6 +263,10 @@ self.onmessage = async ({ data }) => {
       const b = builds.get(data.key || "model");
       if (!b || !b.solids.length) throw new Error("no build to export — build the model first");
       const tol = data.tolerance ?? 6;
+      if (b.split) {
+        self.postMessage({ id, ok: true, text: solidsToSTL(b.split.solids, tol) });
+        return;
+      }
       // Same solid naming the page used when it held the solids itself, so the
       // downstream OBJ/3MF converters see exactly the text they always saw.
       const text = b.solids.map((s, i) => s.toSTL(s.name || `solid_${i}`, tol)).join("\n");
@@ -203,12 +276,49 @@ self.onmessage = async ({ data }) => {
     if (op === "step") {
       const b = builds.get(data.key || "model");
       if (!b || !b.solids.length) throw new Error("no build to export — build the model first");
+      if (b.split) {
+        // The Rust kernel can write exact STEP, but only from full solid JSON,
+        // and a history build hands back handles (see BREPcodeRustKernel's
+        // recommendations). Until it can, STEP comes from the JS kernel, built
+        // once on demand from the same history.
+        if (!b.ph) {
+          const ph = new PartHistory();
+          await ph.fromJSON(b.json);
+          if ((ph.features || []).some((f) => f?.type === "IMPORT3D")) await ensureImportClonePatch();
+          await ph.runHistory({ throwOnFeatureError: true });
+          b.ph = ph;
+          b.jsSolids = (ph.scene?.children || []).filter((o) => o && o.type === "SOLID" && typeof o.toSTL === "function");
+        }
+      }
+      const stepSolids = b.split ? b.jsSolids : b.solids;
       const generateSTEP = await loadGenerateSTEP();
-      const res = generateSTEP(b.solids, {
+      const res = generateSTEP(stepSolids, {
         name: data.name || "model", precision: 6, applyWorldTransform: true,
       });
       if (!res?.data) throw new Error("STEP exporter returned no data.");
       self.postMessage({ id, ok: true, text: res.data });
+      return;
+    }
+    if (op === "stl2step") {
+      // STL -> exact solid (the drop menu's "Open as an exact solid"): the
+      // upstream stl2step reconstruction, built into the same wasm as the
+      // kernel. Returns the STEP text plus what it recognised, so the page can
+      // say "33 faces: 25 planes, 8 cylinders" before you keep it.
+      const rust = await loadRust(data.rustWasmUrl);
+      if (typeof rust.stl_to_step_json !== "function") throw new Error("this kernel build has no STL reconstruction (rebuild vendor/brep-kernel-rust from BREPcodeRustKernel/brepcode-kernel)");
+      const t0 = performance.now();
+      const bytes = typeof data.stl === "string" ? new TextEncoder().encode(data.stl) : new Uint8Array(data.stl);
+      const out = JSON.parse(rust.stl_to_step_json(bytes, data.options ? JSON.stringify(data.options) : "", data.name || "part"));
+      const ms = Math.round(performance.now() - t0);
+      const count = (re) => (out.step.match(re) || []).length;
+      const faces = count(/ADVANCED_FACE\(/g);
+      const planes = count(/=\s*PLANE\(/g), cylinders = count(/CYLINDRICAL_SURFACE\(/g),
+        cones = count(/CONICAL_SURFACE\(/g), spheres = count(/SPHERICAL_SURFACE\(/g), tori = count(/TOROIDAL_SURFACE\(/g);
+      self.postMessage({
+        id, ok: true, step: out.step, ms, sourceTriangles: out.sourceTriangles,
+        backend: out.report?.backend || "", solids: count(/MANIFOLD_SOLID_BREP\(/g),
+        faces, planes, cylinders, cones, spheres, tori,
+      });
       return;
     }
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }

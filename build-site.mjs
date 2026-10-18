@@ -70,6 +70,10 @@ const rewrites = [
   // guaranteed-manifold mesher for smoothUnion()/blob() (lazy, src/organicmesh.js)
   ['"manifold-3d": "/node_modules/manifold-3d/manifold.js"',
    '"manifold-3d": "./vendor/manifold/manifold.js"'],
+  // the split engine's two wasm modules, loaded BY PATH in kernel-worker.js
+  // (a module worker has no import map). After the import-map pair above.
+  ["/node_modules/manifold-3d/manifold.js", "./vendor/manifold/manifold.js"],
+  ["/vendor/brep-kernel-rust/", "./vendor/brep-kernel-rust/"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -146,25 +150,37 @@ writeFileSync(join(OUT, "version.json"), JSON.stringify({ build: BUILD }) + "\n"
 // Belt and braces: the meta refresh covers a browser with JS disabled, the
 // script covers a host that strips meta refresh, and the link covers both
 // failing — nobody should ever land on a blank page.
-mkdirSync(join(OUT, "tour"), { recursive: true });
-writeFileSync(join(OUT, "tour", "index.html"),
+function bounce(dir, query, title, desc, line) {
+  mkdirSync(join(OUT, dir), { recursive: true });
+  writeFileSync(join(OUT, dir, "index.html"),
 `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BREPcode — guided tour</title>
-<meta name="description" content="A two-minute guided tour of BREPcode: browser CAD where the model is code. OpenSCAD, JSCAD and build123d all run in the same tab." />
+<title>${title}</title>
+<meta name="description" content="${desc}" />
 <link rel="canonical" href="https://brepcode.com/" />
-<meta http-equiv="refresh" content="0; url=../index.html?tour=1" />
-<script>location.replace("../index.html?tour=1");</script>
+<meta http-equiv="refresh" content="0; url=../index.html?${query}" />
+<script>location.replace("../index.html?${query}");</script>
 <style>body{background:#0b0f16;color:#dbe6f2;font:15px/1.6 system-ui,sans-serif;
   display:grid;place-items:center;height:100vh;margin:0;text-align:center}
 a{color:#7fd4ff}</style>
 </head>
-<body><p>Starting the tour&hellip;<br /><a href="../index.html?tour=1">Open BREPcode</a></p></body>
+<body><p>${line}&hellip;<br /><a href="../index.html?${query}">Open BREPcode</a></p></body>
 </html>
 `);
+}
+bounce("tour", "tour=1", "BREPcode — guided tour",
+  "A two-minute guided tour of BREPcode: browser CAD where the model is code. OpenSCAD, JSCAD and build123d all run in the same tab.",
+  "Starting the tour");
+// ---- /welcome : the entry card, every time ------------------------------
+// The welcome card normally shows once per browser. ?welcome=1 forgets that,
+// so this is the link to hand out when the first thing someone should see is
+// the start screen (examples, describe a part, bring an STL).
+bounce("welcome", "welcome=1", "BREPcode — free CAD in your browser",
+  "BREPcode: type it, describe it, or drop in an STL and upgrade it. Real solid modelling in a browser tab, no install, no account.",
+  "Opening BREPcode");
 for (const f of VIEWER_JS) {
   if (!existsSync(`viewer/${f}`)) continue;      // locked-key.js is optional by design
   writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));
@@ -220,6 +236,16 @@ cpSync("node_modules/manifold-3d/manifold.js", join(OUT, "vendor/manifold/manifo
 cpSync("node_modules/manifold-3d/manifold.wasm", join(OUT, "vendor/manifold/manifold.wasm"));
 cpSync("node_modules/manifold-3d/LICENSE", join(OUT, "vendor/manifold/LICENSE"));
 
+// ---- vendor: the Rust BREP kernel (the split engine's exact lane) ----
+// Built from github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL with
+// wasm-pack; see BREPcodeRustKernel/README.md one folder up. The wasm is
+// 13 MB: on a host that won't serve that from the app folder (Lovable, as
+// with replicad), set window.__BREP_RUST_WASM_URL in index.html.
+mkdirSync(join(OUT, "vendor", "brep-kernel-rust"), { recursive: true });
+for (const f of ["brep_kernel.js", "brep_kernel_bg.wasm", "LICENSE.md"]) {
+  cpSync(`vendor/brep-kernel-rust/${f}`, join(OUT, "vendor/brep-kernel-rust", f));
+}
+
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });
 cpSync("node_modules/bwip-js/dist/bwip-js.mjs", join(OUT, "vendor/bwip/bwip-js.mjs"));
@@ -250,6 +276,14 @@ cpSync("node_modules/replicad-opencascadejs/src/replicad_single.js",
 cpSync("node_modules/replicad-opencascadejs/src/replicad_single.wasm",
   join(OUT, "vendor/replicad/replicad_single.wasm"));
 cpSync("node_modules/replicad/LICENSE", join(OUT, "vendor/replicad/LICENSE"));
+// curved.js falls back to a pinned public copy of this wasm when the host
+// cannot serve it. A loader handed a wasm from another version fails in ways
+// that look nothing like a version problem, so the pin must match exactly.
+{
+  const v = JSON.parse(readFileSync("node_modules/replicad-opencascadejs/package.json", "utf8")).version;
+  const pin = /replicad-opencascadejs@([\d.]+)\//.exec(readFileSync("viewer/curved.js", "utf8"))?.[1];
+  if (pin !== v) throw new Error(`viewer/curved.js pins replicad-opencascadejs@${pin} but node_modules has ${v}: update WASM_CDN`);
+}
 
 // ---- vendor: three ----------------------------------------------------
 // three >= r0.180 splits its build: three.module.js imports ./three.core.js.

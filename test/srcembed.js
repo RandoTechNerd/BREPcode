@@ -3,11 +3,11 @@
 // exporting means rebuilding the part from scratch.
 //
 // The thing worth guarding hardest is that embedding the source cannot change
-// the GEOMETRY. An STL carrying its own source must still read as exactly the
-// same triangles to every other tool, or we have traded a real file for a
-// convenience.
+// the GEOMETRY, or we have traded a real file for a convenience. That is why
+// the STL no longer carries it at all (test/stlcompat.js has the story).
+import * as exporters from "../viewer/exporters.js";
 import {
-  stlWithSource, extractSourceFromStl, stripSourceHeader, stlTo3MF, colored3MF, SOURCE_MARKER, SOURCE_PART,
+  extractSourceFromStl, stripSourceHeader, stlTo3MF, colored3MF, SOURCE_MARKER, SOURCE_PART,
   parseBcodeFile, HISTORY_KEEP,
 } from "../viewer/exporters.js";
 import { unzipEntry } from "../viewer/inventory.js";
@@ -30,34 +30,27 @@ const stl = toSTL(await build(dsl.cube([20, 20, 20])), "part");
 
 console.log("\nSTL\n");
 {
-  const withSrc = stlWithSource(stl, CODE);
-  check("the source comes back byte-identical", extractSourceFromStl(withSrc) === CODE.trim(),
+  // The STL download no longer carries the source: slicers built on admesh
+  // (Bambu, Prusa, Orca) reject an STL with anything after the mesh, see
+  // test/stlcompat.js. What is left to guard is reading it back out of files
+  // exported before that, so this is the old writer, kept for the test.
+  const legacy = (s, code) => {
+    const b64 = btoa(unescape(encodeURIComponent(code.trim())));
+    return `${s.trimEnd()}\n${SOURCE_MARKER}\n`
+      + "The BREPcode that generated this part, as base64 of UTF-8. Decode it and\n"
+      + "paste it into BREPcode.com to get the editable, parametric model back.\n"
+      + `${(b64.match(/.{1,76}/g) || []).join("\n")}\nEND-${SOURCE_MARKER}\n`;
+  };
+  const withSrc = legacy(stl, CODE);
+  check("an old STL's source comes back byte-identical", extractSourceFromStl(withSrc) === CODE.trim(),
     JSON.stringify(extractSourceFromStl(withSrc).slice(0, 60)));
   check("non-ASCII survives", extractSourceFromStl(withSrc).includes("réglage"));
-
-  // The geometry must be untouched: same facet count, same vertices, and the
-  // original text still a literal prefix.
-  const facets = (s) => (s.match(/facet normal/g) || []).length;
-  check("not one triangle added or lost", facets(withSrc) === facets(stl),
-    `${facets(stl)} -> ${facets(withSrc)}`);
-  check("the original STL is still a prefix of the file", withSrc.startsWith(stl.trimEnd()));
-  check("the payload sits after endsolid",
-    withSrc.indexOf(SOURCE_MARKER) > withSrc.lastIndexOf("endsolid"));
-
-  // This is the trap the base64 exists for: three.js's ASCII loader scans the
-  // WHOLE file for facet blocks instead of stopping at endsolid, so source
-  // containing those words would inject phantom triangles on reimport.
   const nasty = 'return text({ text: "facet normal 0 0 0 outer loop vertex 1 2 3" });';
-  const withNasty = stlWithSource(stl, nasty);
-  check("source containing STL keywords cannot forge triangles",
-    facets(withNasty) === facets(stl), `${facets(stl)} -> ${facets(withNasty)}`);
-  check("...and still round-trips", extractSourceFromStl(withNasty) === nasty);
-
-  // and the ordinary cases
-  check("no source asked for, no change made", stlWithSource(stl, "") === stl);
+  check("source containing STL keywords still round-trips", extractSourceFromStl(legacy(stl, nasty)) === nasty);
   check("a plain STL reports no source", extractSourceFromStl(stl) === "");
   check("a truncated payload fails closed rather than throwing",
     extractSourceFromStl(withSrc.slice(0, withSrc.length - 40)) === "");
+  check("nothing writes it any more", !("stlWithSource" in exporters));
 }
 
 console.log("\n3MF\n");

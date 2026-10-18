@@ -14,6 +14,8 @@
 // dark-on-light contrast — codes that scan reliably off an FDM part.
 
 import * as dsl from "../src/dsl.js";
+import { ShapeUtils, Vector2 } from "three";
+import { toMask, marchingSquares, rdp, signedArea, pointInPoly, ringsToPrismStl } from "./trace.js";
 
 let bwip = null;
 export async function loadCodes() {
@@ -62,9 +64,15 @@ const BCID = { qrcode: "qrcode", datamatrix: "datamatrix", barcode: "code128" };
 // Real filled letters (any installed font) via the same canvas-readback trick:
 // render the string, read the pixels, build run-merged cuboids. No font file to
 // bundle, no glyph-outline math — and it reads far better than a stick font.
-export function textGrid(str, o = {}) {
-  const px = Math.max(16, Math.round(o.px ?? 48));      // render height in pixels
-  const family = o.font || "Arial, sans-serif";
+// The string drawn on a canvas: black ink on transparent, `px` tall.
+// A font name with spaces must be quoted or the canvas ignores the whole font
+// string and quietly draws in its default.
+function textCanvas(str, o, px) {
+  const raw = o.font || "Arial, sans-serif";
+  const family = raw.split(",").map((f) => {
+    const t = f.trim();
+    return /\s/.test(t) && !/^["']/.test(t) ? `"${t}"` : t;
+  }).join(", ") + (/sans-serif|serif|monospace|cursive|fantasy/.test(raw) ? "" : ", sans-serif");
   const weight = o.bold === false ? "normal" : "bold";  // bold prints/scans better
   const cv = document.createElement("canvas");
   const ctx = cv.getContext("2d");
@@ -78,7 +86,14 @@ export function textGrid(str, o = {}) {
   c2.textBaseline = "middle";
   c2.fillStyle = "#000";
   c2.fillText(s, 2, h / 2);
-  const data = c2.getImageData(0, 0, cv.width, cv.height).data;
+  return c2.getImageData(0, 0, cv.width, cv.height);
+}
+
+export function textGrid(str, o = {}) {
+  const px = Math.max(16, Math.round(o.px ?? 48));      // render height in pixels
+  const img = textCanvas(str, o, px);
+  const cv = img;                                       // width / height
+  const data = img.data;
   // crop to ink bounds so there's no dead border baked into the geometry
   let minX = cv.width, minY = cv.height, maxX = 0, maxY = 0;
   const dark = (x, y) => data[(y * cv.width + x) * 4 + 3] > 40;
@@ -279,11 +294,85 @@ function stencilCut(g, o) {
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const autoPx = (size, target = 0.42, lo = 20, hi = 40) => clamp(Math.round(size / target), lo, hi);
 
+// Smooth letters. The pixel grid made every letter a staircase of 0.4 mm
+// blocks (the "RANDO" on the name tag example read as if it were broken).
+// Now the string is drawn much finer, its outline traced (marching squares,
+// then Douglas-Peucker inside a quarter pixel), and the outlines extruded
+// into ONE watertight mesh: curves stay curves, and it is still a single
+// import, so a name on a tag is one boolean, not one per letter.
+const smoothCache = new Map();
+function smoothText(s, o) {
+  const size = o.size ?? 8;                              // ink height in mm, as before
+  const depth = o.height ?? o.depth ?? 1;
+  const deboss = o.mode === "deboss";
+  const H = depth + (deboss ? 0.4 : 0);
+  const px = clamp(Math.round(size / 0.06), 64, 220);    // ~0.06 mm a pixel
+  const key = JSON.stringify([s, size, H, px, o.font || "", o.bold !== false, o.center !== false]);
+  let name = smoothCache.get(key);
+  if (!name) {
+    const img = textCanvas(s, o, px);
+    const { mask, W, H: MH } = toMask(img, { threshold: 128 });
+    // Marching squares follows the pixel staircase. Simplifying alone keeps
+    // its steps, and each step flips a wall facet's normal: the curved walls
+    // shaded in fine vertical stripes. A few passes of a 1-2-1 average round
+    // the ring (it is closed) take the steps out; corners soften by ~0.1 mm.
+    const smooth = (lp) => {
+      let p = lp;
+      for (let pass = 0; pass < 3; pass++) {
+        const n = p.length;
+        p = p.map((q, i) => {
+          const a = p[(i - 1 + n) % n], b = p[(i + 1) % n];
+          return [(a[0] + 2 * q[0] + b[0]) / 4, (a[1] + 2 * q[1] + b[1]) / 4];
+        });
+      }
+      return p;
+    };
+    const loops = marchingSquares(mask, W, MH)
+      .map((lp) => rdp(smooth(lp), 0.3))
+      .filter((lp) => lp.length >= 3 && Math.abs(signedArea(lp)) >= 1.5);
+    if (!loops.length) throw new Error("text(): nothing to render");
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const lp of loops) for (const [x, y] of lp) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    const k = size / ((maxY - minY) || 1);
+    const xoff = o.center === false ? 0 : -((maxX - minX) * k) / 2;
+    const yoff = o.center === false ? 0 : -((maxY - minY) * k) / 2;
+    // image y grows down; flip so the text reads upright from above
+    const mm = loops.map((lp) => lp.map(([x, y]) => [(x - minX) * k + xoff, (maxY - y) * k + yoff]));
+    const outers = [], holes = [];
+    for (const lp of mm) {
+      let d = 0;
+      for (const other of mm) if (other !== lp && pointInPoly(lp[0], other)) d++;
+      (d % 2 ? holes : outers).push(lp);
+    }
+    const tri = (outer, hs) => ShapeUtils.triangulateShape(
+      outer.map(([x, y]) => new Vector2(x, y)), hs.map((h) => h.map(([x, y]) => new Vector2(x, y))));
+    const stl = ringsToPrismStl(outers, holes, H, tri);
+    let hash = 0; for (let i = 0; i < stl.length; i += 97) hash = (hash * 131 + stl.charCodeAt(i)) | 0;
+    name = `__text_${(hash >>> 0).toString(36)}_${stl.length}.stl`;
+    if (!dsl.listImports().includes(name)) dsl.registerImport(name, stl);
+    smoothCache.set(key, name);
+    if (smoothCache.size > 64) smoothCache.delete(smoothCache.keys().next().value);
+  }
+  // A curved letter wall is dozens of facets a few degrees apart, and the
+  // import makes a B-rep face of every group that turns more than its
+  // deflection angle (default 8): at 8 the name tag took 5 s. At 89 a letter
+  // is its top, its bottom and its walls, and still splits at the 90 degree
+  // edge between them.
+  const mesh = dsl.importedMesh(name, { deflectionAngle: 89 });
+  return deboss ? dsl.translate([0, 0, -0.2], mesh) : mesh;
+}
+
 export function makeTextOp() {
   return (optsOrText, maybeOpts) => {
     const o = typeof optsOrText === "string" ? { text: optsOrText, ...(maybeOpts || {}) } : (optsOrText || {});
     const s = o.text ?? o.string ?? o.value;
     if (s == null || s === "") throw new Error('text() needs a string, e.g. text({ text: "PART-01", size: 8 })');
+    // stencils keep the grid (their tabs are found on it); pixel: true asks
+    // for the old blocky look on purpose
+    if (o.mode !== "stencil" && !o.pixel) return smoothText(String(s), o);
     const px = o.px ?? autoPx(o.size ?? 8, o.mode === "stencil" ? 0.45 : 0.42, o.mode === "stencil" ? 24 : 20, 44);
     const grid = textGrid(s, { ...o, px });
     return o.mode === "stencil" ? stencilCut(grid, o) : textToShape(grid, o);

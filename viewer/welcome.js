@@ -60,6 +60,7 @@ export const TOOL_LINKS = {
 export const EXAMPLES = {
   box: {
     title: "Box with a lid",
+    line: "A box and its lid side by side. Change the sizes and both follow.",
     code: `// A box and its lid, side by side. Change the sizes and both follow.
 const w = 50, d = 36, h = 24;
 const wall = 2, fit = 0.3;
@@ -76,29 +77,212 @@ union(
   },
   knob: {
     title: "Knurled knob",
+    line: "Real knurled grip you can print, with a hex nut pocket underneath.",
     code: `// Knurled grip knob: real knurl you can print, a hex nut pocket underneath.
 // Change any number and it rebuilds.
 const knob_d = 34;
 const height = 18;
 const nut = 8.2;
-texture({ pattern: "knurl", depth: 0.7, scale: 3, faces: "sides" },
-  difference(
-    cylinder({ r: knob_d / 2, h: height, $fn: 96 }),
-    translate([0, 0, -1], cylinder({ r: nut / 2 / Math.cos(Math.PI / 6), h: 7, $fn: 6 })),
-    translate([0, 0, -1], cylinder({ r: 2.6, h: height + 2, $fn: 32 })),
-  ))`,
+// Knurl the outside first, THEN cut the pocket and bore: knurling the finished
+// part textures their walls too, and the nut and bolt no longer fit.
+difference(
+  texture({ pattern: "knurl", depth: 0.7, scale: 3, faces: "sides" },
+    cylinder({ r: knob_d / 2, h: height, $fn: 96 })),
+  translate([0, 0, -1], cylinder({ r: nut / 2 / Math.cos(Math.PI / 6), h: 7, $fn: 6 })),
+  translate([0, 0, -1], cylinder({ r: 2.6, h: height + 2, $fn: 32 })),
+)`,
   },
+  // Every setting is a named line at the top, so each one is a control in
+  // Parameters: text, choices and colours as well as sizes. The tag and the
+  // letters stay two solids (group, not union) so they keep their own colours
+  // and a 3MF prints them in two filaments. `coach` walks a first-timer to
+  // those controls once it has built.
   tag: {
     title: "Name tag",
-    code: `// Name tag: change the name and it rebuilds.
+    line: "Your name, font and colours on a keyring tag, every setting a slider.",
+    coach: "nametag",
+    code: `// Name tag. Every setting below is a control in Parameters (the sliders
+// button under this editor): change the name, font, colours and sizes there,
+// or right here. They are the same numbers.
+/* [Text] */
 const name = "RANDO";
-const w = 62, h = 20, t = 3;
-difference(
-  union(
-    cube([w, h, t]),
-    translate([w / 2 + 4, h / 2, t], text({ text: name, size: 9, height: 1.4 })),
-  ),
-  translate([6, h / 2, -1], cylinder({ r: 2.5, h: t + 2, $fn: 32 })),
+const font = "Arial Black"; // [Arial Black, Arial, Impact, Georgia, Verdana, Trebuchet MS, Courier New, Comic Sans MS]
+const text_size = 9;        // [4:0.5:16] letter height
+const text_height = 1.4;    // [0.4:0.2:4] how far the letters stand up
+const text_color = "#ffffff";
+/* [Tag] */
+const width = 62;           // [30:1:120]
+const tag_height = 20;      // [12:1:50]
+const thickness = 3;        // [1.2:0.2:8]
+const corner_r = 4;         // [0:0.5:10] rounded corners, 0 for square
+const edge_fillet = 0.6;    // [0:0.2:1.5] round over the top edge
+const hole_d = 5;           // [0:0.5:10] keyring hole, 0 for none
+const tag_color = "#7b4fe0";
+
+// The tag: a post at each corner, hulled. With a fillet, each post is a bit
+// shorter and wears a ring (torus) of the fillet's radius on top, so the hull
+// comes out rounded over the top edge too.
+const r = Math.min(corner_r, tag_height / 2 - 0.01);
+const e = Math.min(edge_fillet, thickness / 2 - 0.01, r > 0 ? r - 0.05 : edge_fillet);   // over half the thickness it would dip below the bed
+const corners = [[r, r], [width - r, r], [width - r, tag_height - r], [r, tag_height - r]];
+const tag = r > 0
+  ? hull(
+      ...corners.map(([x, y]) => translate([x, y, 0], cylinder({ r, h: thickness - Math.max(e, 0), $fn: 48 }))),
+      ...(e > 0 ? corners.map(([x, y]) => translate([x, y, thickness - e], torus({ r: r - e, tube: e, $fn: 48 }))) : []),
+    )
+  : e > 0 ? fillet({ r: e, faces: "top" }, cube([width, tag_height, thickness]))
+  : cube([width, tag_height, thickness]);
+const holeX = Math.max(hole_d / 2 + 2, r);
+const textX = hole_d > 0 ? (width + holeX + hole_d / 2) / 2 : width / 2;
+group(
+  colorize(tag_color, hole_d > 0
+    ? difference(tag, translate([holeX, tag_height / 2, -1], cylinder({ r: hole_d / 2, h: thickness + 2, $fn: 40 })))
+    : tag),
+  colorize(text_color, translate([textX, tag_height / 2, thickness],
+    text({ text: name, size: text_size, height: text_height, font }))),
+)`,
+  },
+  // Ported from a customizer .scad (rounded-corners-with-all-the-options-best-box)
+  // into BREPcode, so it builds in seconds: the original bead was ~1,150
+  // unioned spheres. Same settings, plus a lid that prints top-down.
+  tpubox: {
+    title: "TPU box",
+    line: "A soap box whose lid snaps over a bead, with a drainage riser. Print in TPU.",
+    coach: "tpubox",
+    // where it came from, shown as a small dismissable card once it loads
+    note: {
+      heading: "This box began life in OpenSCAD",
+      blurb: "Printed in TPU: the lid snaps over a bead and seals.",
+      video: "https://youtu.be/UCiVWNFtfVw",
+      printables: "",  // the Printables model URL, added once known
+    },
+    code: `// TPU snap box: a base with a bead round the outside, a lid with a matching
+// groove that snaps over it (TPU flexes, then holds), and an optional riser
+// with drainage holes, so a bar of soap sits dry. Every setting is a control
+// in Parameters; the lid's groove follows the bead on its own.
+/* [Box] */
+const inner_length = 100;   // [30:1:200] inside, mm
+const inner_width = 60;     // [30:1:150]
+const inner_height = 30;    // [10:1:100]
+const wall = 3;             // [1.2:0.2:6] wall thickness
+const corner_r = 2;         // [0.5:0.5:6] rounding on every edge
+const show = "all";         // [all, base, lid, riser]
+/* [Lid and seal] */
+const lid_height = 13;      // [6:1:40] outside height of the lid
+const lid_gap = 0.4;      // [0:0.1:1.2] lid gap, total (half each side)
+const bead_from_top = 5;    // [1:0.5:10] where the bead sits, down from the rim
+const bead_r = 0.5;         // [0.2:0.1:2] the bead's radius
+const groove_r = 1.1;       // [0.3:0.1:2.5] the lid's groove, a bit bigger
+/* [Soap riser] */
+const riser = true;
+const riser_height = 5;     // [2:0.5:10]
+const riser_gap = 0.5;      // [0.2:0.1:1.5] gap to the walls
+const pattern = "hearts";   // [holes, slits, hearts, solid]
+const pattern_size = 4;     // [2:0.5:10]
+const pattern_spacing = 8;  // [4:0.5:15]
+const lift_cross = true;    // finger liftSlot to lift it out
+
+// Outside of the base, and the lid that slides over it.
+const L = inner_length + 2 * wall, W = inner_width + 2 * wall, H = inner_height + wall;
+const LL = L + lid_gap + 2 * wall, LW = W + lid_gap + 2 * wall;
+const r = Math.min(corner_r, wall - 0.01, H / 2, lid_height / 2);
+
+// a box rounded on every edge: a ball at each of its eight corners, hulled
+const roundBox = (l, w, h, rr) => hull(...[[rr, rr], [l - rr, rr], [rr, w - rr], [l - rr, w - rr]]
+  .flatMap(([x, y]) => [rr, h - rr].map((z) => translate([x, y, z], sphere({ r: rr, $fn: 24 })))));
+// a round-section ring that follows a rounded rectangle: four tori, hulled
+// (the hull is a disc; whatever pokes past the wall is the bead or groove)
+const ring = (x0, y0, l, w, rr, tube, z) => hull(...[[x0 + rr, y0 + rr], [x0 + l - rr, y0 + rr], [x0 + rr, y0 + w - rr], [x0 + l - rr, y0 + w - rr]]
+  .map(([x, y]) => translate([x, y, z], torus({ r: rr, tube, $fn: 24 }))));
+
+// BASE: rounded box, bead round the outside, hollowed
+const base = difference(
+  union(roundBox(L, W, H, r), ring(0, 0, L, W, r, bead_r, H - bead_from_top)),
+  translate([wall, wall, wall], cube([inner_length, inner_width, H])),
+);
+
+// LID: modelled the way it prints, top face down on the bed. Its inside is
+// the base's outside plus the lid_gap; the groove lands on the bead when
+// the lid is pushed home (its ceiling on the base's rim).
+const inside = lid_height - wall;                      // how far the lid reaches down
+const lidCavity = (() => {
+  const ir = r + lid_gap / 2, cx = wall, cy = wall, cl = L + lid_gap, cw = W + lid_gap;
+  return hull(...[[cx + ir, cy + ir], [cx + cl - ir, cy + ir], [cx + ir, cy + cw - ir], [cx + cl - ir, cy + cw - ir]]
+    .map(([x, y]) => translate([x, y, wall], cylinder({ r: ir, h: inside + 1, $fn: 24 }))));
+})();
+const lid = difference(
+  roundBox(LL, LW, lid_height, r),
+  lidCavity,
+  // upside down, the groove is bead_from_top in from the open rim
+  ring(wall, wall, L + lid_gap, W + lid_gap, r + lid_gap / 2, groove_r, lid_height - (inside - bead_from_top)),
+);
+
+// RISER: a rounded plate with drain holes, little feet, and a lift liftSlot
+const RL = inner_length - 2 * riser_gap, RW = inner_width - 2 * riser_gap;
+const grid = (step) => {
+  const nx = Math.max(1, Math.floor((RL - 2 * pattern_spacing) / step) + 1);
+  const ny = Math.max(1, Math.floor((RW - 2 * pattern_spacing) / step) + 1);
+  const out = [];
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+    out.push([(RL - (nx - 1) * step) / 2 + i * step, (RW - (ny - 1) * step) / 2 + j * step]);
+  }
+  return out;
+};
+const size = Math.min(pattern_size, pattern_spacing * 0.9);   // drains must not touch
+const thru = riser_height + 2;                                 // cutters poke out both faces
+// a heart: two round lobes meeting a V, its sides tangent to the lobes, as
+// ONE outline (three shapes unioned per heart doubled the build time)
+const heart = (s) => {
+  const lobe = s / 4, pts = [[0, -s / 4 - (s * Math.SQRT2) / 4]];     // the tip
+  const arc = (ox, a0, a1) => {
+    for (let i = 0; i <= 7; i++) {
+      const a = ((a0 + ((a1 - a0) * i) / 7) * Math.PI) / 180;
+      pts.push([ox + lobe * Math.cos(a), lobe * Math.sin(a)]);
+    }
+  };
+  arc(lobe, -45, 180);                  // right lobe, up and over to the dip
+  arc(-lobe, 15, 225);                  // left lobe (from just past the dip), round and down
+  return linearExtrude({ h: thru }, polygon(pts));
+};
+const drains =
+  pattern === "holes" ? grid(pattern_spacing).map(([x, y]) => translate([x, y, -1], cylinder({ r: size / 2, h: thru, $fn: 20 })))
+  : pattern === "slits" ? grid(pattern_spacing).filter(([x], i, a) => x === a[0][0])
+      .map(([, y]) => translate([pattern_spacing, y - size / 2, -1], cube([RL - 2 * pattern_spacing, size, thru])))
+  : pattern === "hearts" ? grid(pattern_spacing * 1.5).map(([x, y]) => translate([x, y, -1], heart(size * 1.2)))
+  : [];
+// the lift slot: a cross you can get a fingertip into, no longer than the
+// drained middle of the plate (a fixed 30mm arm cut a narrow riser in pieces)
+const armX = Math.min(30, RL - 2 * pattern_spacing), armY = Math.min(30, RW - 2 * pattern_spacing);
+const liftSlot = pattern !== "solid" && lift_cross
+  ? [...(armX > 4 ? [translate([RL / 2 - armX / 2, RW / 2 - 2, -1], cube([armX, 4, thru]))] : []),
+     ...(armY > 4 ? [translate([RL / 2 - 2, RW / 2 - armY / 2, -1], cube([4, armY, thru]))] : [])]
+  : [];
+// The plate is built from plain boxes and cylinders on purpose: cutting
+// dozens of drains out of exact solids takes the kernel a second or two,
+// out of a hulled (mesh) plate it took 20 to 30.
+const pr = Math.min(r, RL / 2, RW / 2);
+const plate = union(
+  translate([pr, 0, 0], cube([RL - 2 * pr, RW, riser_height])),
+  translate([0, pr, 0], cube([RL, RW - 2 * pr, riser_height])),
+  ...[[pr, pr], [RL - pr, pr], [pr, RW - pr], [RL - pr, RW - pr]].map(([x, y]) =>
+    translate([x, y, 0], cylinder({ r: pr, h: riser_height, $fn: 24 }))),
+);
+// Little feet lift a drained riser off the floor of the box. They stand in
+// the solid margin round the drains and go on BEFORE the cutting: adding them
+// to an already-holed plate cost the kernel four seconds on its own.
+const lift = pattern === "solid" ? 0 : 2;
+const fi = Math.min(pr + 2.5, pattern_spacing / 2);
+const feet = lift ? [[fi, fi], [RL - fi, fi], [fi, RW - fi], [RL - fi, RW - fi], [RL / 2, fi], [RL / 2, RW - fi]]
+  .map(([x, y]) => translate([x, y, 0], cylinder({ r: 2, h: lift + 0.01, $fn: 20 }))) : [];
+const body = feet.length ? union(translate([0, 0, lift], plate), ...feet) : plate;
+const soapRiser = drains.length || liftSlot.length
+  ? difference(body, ...[...drains, ...liftSlot].map((c) => translate([0, 0, lift], c)))
+  : body;
+
+return group(
+  ...(show === "all" || show === "base" ? [colorize("#4fb3bf", base)] : []),
+  ...(show === "all" || show === "lid" ? [colorize("#8fd3dc", translate([show === "all" ? L + 14 : 0, 0, 0], lid))] : []),
+  ...((riser || show === "riser") && (show === "all" || show === "riser") ? [colorize("#f2a3c7", translate([wall, show === "all" ? W + 14 : 0, 0], soapRiser))] : []),
 )`,
   },
 };
@@ -131,8 +315,10 @@ function style() {
   .wl-ti { display: inline-flex; color: var(--muted6, #93a7c8); }
   .wl-act b { display: block; font-size: 14px; }
   .wl-act small { display: block; color: var(--muted, #8ea0c0); font-size: 12px; }
-  .wl-ex { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 0 40px; }
-  .wl-chip { font: inherit; font-size: 12px; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  .wl-act > span:not(.ic) { min-width: 0; }
+  /* one row that scrolls sideways: wrapped chips pushed the card past a phone screen */
+  .wl-ex { display: flex; gap: 4px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; margin: 4px 0 0; scrollbar-width: thin; }
+  .wl-chip { flex: none; white-space: nowrap; font: inherit; font-size: 11px; padding: 5px 7px; border-radius: 999px; cursor: pointer;
     border: 1px solid var(--border, #26314a); background: var(--input-bg, #0d1320); color: var(--text2, #d8e2f5); }
   .wl-chip:hover { background: var(--hover-strong, #1d2a44); }
   .wl-foot { padding: 0 20px 16px; color: var(--muted2, #6f83a6); font-size: 12px; }
@@ -200,6 +386,7 @@ export function showWelcome(hooks) {
         <span class="wl-ex">
           <button class="wl-chip" data-ex="tag">Name tag</button>
           <button class="wl-chip" data-ex="box">Box with a lid</button>
+          <button class="wl-chip" data-ex="tpubox">TPU box</button>
           <button class="wl-chip" data-tool="gridfinity">Gridfinity bin</button>
           <button class="wl-chip" data-tool="cookie-cutter">Cookie cutter</button>
         </span></span></div>
@@ -215,7 +402,10 @@ export function showWelcome(hooks) {
     if (b.dataset.w === "chat") hooks.openChat?.();
     if (b.dataset.w === "stl") hooks.pickFile?.();
     if (b.dataset.w === "tour") hooks.startTour?.();
-    if (b.dataset.ex) hooks.loadExample?.(EXAMPLES[b.dataset.ex].code, EXAMPLES[b.dataset.ex].title);
+    if (b.dataset.ex) {
+      const ex = EXAMPLES[b.dataset.ex];
+      hooks.loadExample?.(ex.code, ex.title, ex.coach, ex.note);
+    }
     if (b.dataset.tool) hooks.openTool?.(b.dataset.tool);
     // Anything but the tour leaves you in the app with the card gone. A slim
     // bar keeps the way forward (and back) in reach until you close it.
@@ -282,3 +472,6 @@ export function showToolCard(name, hooks) {
   });
   return { close };
 }
+
+// The order the examples are offered in (toolbox, cheat sheet), most fun first.
+export const EXAMPLE_ORDER = ["tag", "tpubox", "box", "knob"].filter((k) => EXAMPLES[k]);

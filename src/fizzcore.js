@@ -38,6 +38,37 @@ const SQRT2 = Math.SQRT2;
 // cover it to within 0.3% of r, and the web margin is far bigger than that.
 const TOP_OFF = 0.8, TOP_R = 0.62;
 
+// DIAMOND CELLS. A rhombic dodecahedron stood on one of its four-fold points
+// is the Voronoi cell of a face-centred cubic lattice, so a lattice of them
+// fills space completely: shrink each one a little and the plastic left
+// between is a set of FLAT walls of one even thickness, where round bubbles
+// leave thin necks and fat nodes. Stood on a point it has no flat ceiling at
+// all, just four faces running up to a peak, and stretched DIA_E tall those
+// faces rise at atan(DIA_E) = 50 degrees: more margin than the teardrop's 45.
+// Twelve faces is 24 triangles, so it is cheap to cut by the thousand.
+// Points are for a cell whose vertical faces sit 1 from its centre.
+const DIA_E = 1.2;
+const DIA_PTS = (() => {
+  const k = 1 / SQRT2, P = [];
+  for (const sg of [-1, 1]) P.push([2 * k * sg, 0, 0], [0, 2 * k * sg, 0], [0, 0, 2 * k * sg * DIA_E]);
+  for (const a of [-1, 1]) for (const b of [-1, 1]) for (const c of [-1, 1]) P.push([k * a, k * b, k * c * DIA_E]);
+  return P;
+})();
+// the middle of each face: checked against the skin along with the corners
+const DIA_FACES = (() => {
+  const k = 1 / SQRT2, P = [];
+  for (const a of [-1, 1]) for (const b of [-1, 1]) P.push([k * a, k * b, 0], [k * a, 0, k * b * DIA_E], [0, k * a, k * b * DIA_E]);
+  return P;
+})();
+// the radius of the sphere round one, for keeping gap-filling cells apart
+const DIA_REACH = SQRT2 * Math.max(1, DIA_E);
+
+/** "teardrop", "diamond" or "round", from the options old and new. */
+export function bubbleShape(opt) {
+  if (opt.shape === "diamond" || opt.shape === "round" || opt.shape === "teardrop") return opt.shape;
+  return opt.teardrop === false ? "round" : "teardrop";
+}
+
 export const FIZZ_DEFAULTS = {
   minBubble: 1.2,     // smallest bubble RADIUS, mm
   maxBubble: 0,       // largest bubble radius, mm; 0 = pick from the part's size
@@ -46,6 +77,7 @@ export const FIZZ_DEFAULTS = {
   web: 0.8,           // thinnest wall between two bubbles, mm (2 perimeters)
   grade: 0.35,        // 0 = same size everywhere, 1 = strongly graded to the core
   teardrop: true,     // 45 degree tops, printable with no support (FDM)
+  shape: "",          // "teardrop" | "diamond" | "round"; "" = from `teardrop`
   maxBubbles: 6000,   // safety cap: every bubble is a few hundred triangles
   resolution: 0,      // voxel size, mm; 0 = automatic
   density: 1.24,      // g/cm3, for the weight estimate (PLA)
@@ -275,6 +307,7 @@ export function autoMaxBubble(size) {
 }
 
 function pack(D, grid, sample, opt, onProgress) {
+  if (bubbleShape(opt) === "diamond") return packDiamonds(D, grid, sample, opt, onProgress);
   const { nx, ny, nz, h, o } = grid;
   const rMin = opt.minBubble, rMax = Math.max(rMin, opt.maxBubble);
   const skin = opt.skin + h * 0.5, web = opt.web;
@@ -417,9 +450,153 @@ function pack(D, grid, sample, opt, onProgress) {
   return { bubbles, capped, coreVolume: coreCells * h * h * h };
 }
 
+// Diamonds go down on a cubic FCC lattice (square layers, the cells' points
+// straight up), so neighbours share whole faces and every wall is `web`
+// thick. Grading only shrinks a cell about its own centre, which keeps it
+// inside its slot, so lattice cells never need checking against each other.
+// Near the skin, where cells were dropped, a gap-filling pass fits smaller
+// diamonds, kept apart by the spheres round them.
+function packDiamonds(D, grid, sample, opt, onProgress) {
+  const { nx, ny, nz, h, o } = grid;
+  const rMin = opt.minBubble, rMax = Math.max(rMin, opt.maxBubble);
+  const skin = opt.skin + h * 0.5, web = opt.web;
+  let deepest = 0;
+  for (let i = 0; i < D.length; i++) if (D[i] > deepest) deepest = D[i];
+  const depthRoom = Math.max(0.5, deepest - skin - rMin);
+  const gradeDepth = Math.min(rMax * (0.2 + 3.8 * opt.grade), depthRoom * (0.2 + 0.8 * opt.grade));
+  const rCap = (d) => rMin + (rMax - rMin) * Math.max(0, Math.min(1, (d - skin - rMin) / gradeDepth));
+  // a cell is 24 triangles, not hundreds, so it can afford more of them
+  const cap = opt.maxBubbles * 4;
+
+  // every corner and face middle clear of the skin
+  const fits = (x, y, z, r) => {
+    for (const P of [DIA_PTS, DIA_FACES]) for (const p of P) {
+      if (sample(x + p[0] * r, y + p[1] * r, z + p[2] * r) - skin < h * 0.5) return false;
+    }
+    return true;
+  };
+  const sized = (x, y, z, d, limit) => {
+    let r = Math.min(limit, rCap(d), d - skin);
+    for (let tries = 0; tries < 8 && r >= rMin; tries++) {
+      if (fits(x, y, z, r)) return r;
+      r *= 0.86;
+    }
+    return 0;
+  };
+
+  // gap-filling candidates: the same for every lattice tried below
+  const need = skin + rMin;
+  const cand = [];
+  if (opt.fillGaps) {
+    const rand = rng(opt.seed ?? 7);
+    let count = 0;
+    for (let i = 0; i < D.length; i++) if (D[i] >= need) count++;
+    const stride = Math.max(1, Math.round(Math.cbrt(count / 200000)));
+    for (let k = 0; k < nz; k += stride) for (let j = 0; j < ny; j += stride) for (let i = 0; i < nx; i += stride) {
+      if (D[(k * ny + j) * nx + i] < need) continue;
+      const x = o[0] + (i + 0.5 + (rand() - 0.5) * stride * 0.8) * h;
+      const y = o[1] + (j + 0.5 + (rand() - 0.5) * stride * 0.8) * h;
+      const z = o[2] + (k + 0.5 + (rand() - 0.5) * stride * 0.8) * h;
+      const d = sample(x, y, z);
+      if (d >= need) cand.push({ x, y, z, d });
+    }
+    cand.sort((p, q) => q.d - p.d);
+  }
+
+  // One lattice, its cells sized rL. Every slot of a lattice is the same
+  // size, so one spaced for the biggest cell wastes plastic wherever the part
+  // is too thin for that cell to fit; which size suits a part depends on its
+  // walls, so several are tried and the one that hollows out most is kept.
+  const attempt = (rL, fx, fy, fz, fill) => {
+    const bubbles = [];
+    let capped = false;
+    // nearest neighbours sit 2 rL + web apart; the cube's half-edge is that / sqrt 2
+    const n = 2 * rL + web, step = n / SQRT2, stepZ = step * DIA_E;
+    const ph = ((nx * h) % (2 * step)) / 2 + fx * step, pq = ((ny * h) % (2 * step)) / 2 + fy * step;
+    const pz = ((nz * h) % (2 * stepZ)) / 2 + fz * stepZ;
+    const lat = [];
+    for (let k = 0, z = o[2] + pz; z < o[2] + nz * h; k++, z += stepZ) {
+      for (let j = 0, y = o[1] + pq; y < o[1] + ny * h; j++, y += step) {
+        for (let i = (j + k) & 1, x = o[0] + ph + i * step; x < o[0] + nx * h; i += 2, x += 2 * step) {
+          const d = sample(x, y, z);
+          if (d >= need) lat.push({ x, y, z, d });
+        }
+      }
+    }
+    lat.sort((p, q) => q.d - p.d);
+    // gap fillers keep clear of every cell by the spheres round them
+    const cell = 2 * rL * DIA_REACH + web + 1e-6;
+    const hash = new Map();
+    const keyOf = (x, y, z) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+    const add = (x, y, z, r) => {
+      const kk = keyOf(x, y, z);
+      let bin = hash.get(kk);
+      if (!bin) hash.set(kk, (bin = []));
+      bin.push(x, y, z, r * DIA_REACH);
+      bubbles.push([x, y, z, r]);
+    };
+    for (const q of lat) {
+      if (bubbles.length >= cap) { capped = true; break; }
+      const r = sized(q.x, q.y, q.z, q.d, rL);
+      if (r) add(q.x, q.y, q.z, r);
+    }
+    // the biggest cell that keeps its sphere `web` from every other
+    const room = (x, y, z, limit) => {
+      let best = limit;
+      const cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+        const bin = hash.get(`${cx + a},${cy + b},${cz + c}`);
+        if (!bin) continue;
+        for (let m = 0; m < bin.length; m += 4) {
+          const dd = (Math.hypot(bin[m] - x, bin[m + 1] - y, bin[m + 2] - z) - bin[m + 3] - web) / DIA_REACH;
+          if (dd < best) { best = dd; if (best < rMin) return 0; }
+        }
+      }
+      return best;
+    };
+    for (const q of fill ? cand : []) {
+      if (capped) break;
+      if (bubbles.length >= cap) { capped = true; break; }
+      const lim = room(q.x, q.y, q.z, rL);
+      if (lim < rMin) continue;
+      const r = sized(q.x, q.y, q.z, q.d, lim);
+      if (r) add(q.x, q.y, q.z, r);
+    }
+    let vol = 0;
+    for (const bb of bubbles) vol += bb[3] ** 3;
+    return { bubbles, capped, vol };
+  };
+
+  const sizes = [];
+  for (let i = 0; i < 6; i++) sizes.push(rMin + (rMax - rMin) * (i / 5) ** 1.5);
+  // where the lattice sits matters as much as its size: a row of cells that
+  // just misses fitting a wall is a whole row lost. So each size is tried at
+  // a few offsets, on the lattice alone (cheap), and only the winner gets the
+  // gap-filling pass.
+  const shifts = [[0, 0, 0], [0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]];
+  let best = null;
+  for (let i = 0; i < sizes.length; i++) {
+    if (i && sizes[i] - sizes[i - 1] < 0.05) continue;
+    for (const [fx, fy, fz] of shifts) {
+      const t = attempt(sizes[i], fx, fy, fz, false);
+      if (!best || t.vol > best.vol) best = { ...t, args: [sizes[i], fx, fy, fz] };
+    }
+    onProgress?.(0.35 + 0.3 * ((i + 1) / sizes.length), `Packing diamonds: ${best.bubbles.length}`);
+  }
+  const { bubbles, capped } = opt.fillGaps ? attempt(...best.args, true) : best;
+  let coreCells = 0;
+  for (let i = 0; i < D.length; i++) if (D[i] >= opt.skin) coreCells++;
+  return { bubbles, capped, coreVolume: coreCells * h * h * h };
+}
+
 // ---------------------------------------------------------------- geometry
 
-function bubbleTemplates(wasm, teardrop) {
+function bubbleTemplates(wasm, shape) {
+  if (shape === "diamond") {
+    const t = wasm.Manifold.hull(DIA_PTS);
+    return () => t;
+  }
+  const teardrop = shape === "teardrop";
   const cache = new Map();
   return (r) => {
     const seg = r < 1.5 ? 10 : r < 3 ? 14 : r < 6 ? 20 : 28;
@@ -997,6 +1174,11 @@ export function boundsOfSoup(soup) { return boundsOf(soup); }
  */
 export async function fizzcore(soup, opts = {}, { onProgress, wasm } = {}) {
   const opt = { ...FIZZ_DEFAULTS, ...opts };
+  // One answer to "what shape", decided once: the packer reads opt.teardrop
+  // and the cutter reads bubbleShape(), and when the dialog said shape:"round"
+  // (leaving teardrop at its default true) the voids came out round but were
+  // packed with teardrop spacing, for less plastic saved than Round gave before.
+  opt.teardrop = bubbleShape(opt) === "teardrop";
   wasm ??= await loadManifold();
   const tick = async (p, msg) => { onProgress?.(p, msg); await new Promise((r) => setTimeout(r, 0)); };
   const t0 = Date.now();
@@ -1057,7 +1239,7 @@ export async function fizzcore(soup, opts = {}, { onProgress, wasm } = {}) {
     : pack(D, grid, sample, opt, onProgress);
 
   await tick(0.78, `Cutting ${bubbles.length} bubbles`);
-  const tpl = bubbleTemplates(wasm, opt.teardrop);
+  const tpl = bubbleTemplates(wasm, bubbleShape(opt));
   const voids = bubbles.map(([x, y, z, r]) => tpl(r).scale(r).translate([x, y, z]));
   const result = voids.length ? solid.subtract(wasm.Manifold.compose(voids)) : solid;
 
@@ -1087,6 +1269,7 @@ export async function fizzcore(soup, opts = {}, { onProgress, wasm } = {}) {
     smallest: radii.length ? Math.min(...radii) : 0,
     largest: radii.length ? Math.max(...radii) : 0,
     maxBubble: opt.maxBubble,
+    shape: bubbleShape(opt),
     voxel: h,
     triangles: 0,
     fins: finPlan,

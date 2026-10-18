@@ -794,7 +794,14 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
     if (pre) { state.flow.a.L = pre[0]; state.flow.a.H = pre[1]; }
     return { reply: "An L-bracket — nice. How long should the two legs be (e.g. “40 x 60”), and how wide? Or “go ahead” for 40 × 40 × 20." };
   }
-  if (/\b(picture |photo )?frame\b/.test(lower) && /picture|photo|frame/.test(lower)) {
+  // A picture frame when something says so: a word for what goes in it, a
+  // size, or "frame" being most of a short ask ("make a frame"). Frames of
+  // other kinds ("a quadcopter drone frame with motor mounts", "bike frame")
+  // are something else, and used to be asked what size photo they held.
+  const forAPicture = /\b(picture|photo|poster|print|art|artwork|painting|canvas|diploma|certificate)s?\b/;
+  const notAPicture = /\b(drone|quad\w*|bike|bicycle|bed|door|window|chassis|car|kart|glasses|tent)\b/;
+  if (/\bframe\b/.test(lower) && !notAPicture.test(lower)
+      && (forAPicture.test(lower) || parsePairMm(lower) || lower.trim().split(/\s+/).length <= 5)) {
     state.flow = { kind: "frame", step: 0, a: {} };
     const pre = parsePairMm(lower);
     if (pre) { state.flow.a.pw = pre[0]; state.flow.a.ph = pre[1]; state.flow.step = 1;

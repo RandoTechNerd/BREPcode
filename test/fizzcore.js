@@ -53,6 +53,12 @@ const webOf = (bubbles) => {
 {
   const r = await fizzcore(box, { teardrop: false }, { wasm });
   check("round bubbles keep the skin", skinOf(r.bubbles, false) >= 1.2 - 1e-6);
+  // the dialog says shape:"round" and leaves teardrop at its default; that
+  // once cut round voids at teardrop spacing, saving less
+  const d = await fizzcore(box, { shape: "round" }, { wasm });
+  check("shape:'round' packs exactly like teardrop:false",
+    d.stats.bubbles === r.stats.bubbles && Math.abs(d.stats.saved - r.stats.saved) < 1e-9,
+    `${d.stats.bubbles}/${r.stats.bubbles} bubbles, ${(d.stats.saved * 100).toFixed(1)}% vs ${(r.stats.saved * 100).toFixed(1)}%`);
 }
 {
   const r = await fizzcore(box, { web: 4 }, { wasm });
@@ -216,6 +222,55 @@ const webOf = (bubbles) => {
   check("bubbles: false leaves the part solid", r.stats.bubbles === 0 && Math.abs(r.stats.saved) < 1e-6);
   const both = await fizzcore(tall, { tilt: 45, tiltToward: "-x", fins: { side: "auto" } }, { wasm });
   check("bubbles and tilt together: closed solid with bubbles", both.stats.bubbles > 0 && soupToManifold(wasm, both.part).volume() > 0);
+}
+
+// ---- diamond cells: rhombic dodecahedra stood on their points
+{
+  const t0 = Date.now();
+  const dia = await fizzcore(box, { shape: "diamond" }, { wasm });
+  const tear = await fizzcore(box, {}, { wasm });
+  check("diamond: cells are cut", dia.stats.bubbles > 50 && dia.stats.shape === "diamond", `${dia.stats.bubbles}`);
+  check("diamond: hollows out at least as much as teardrops", dia.stats.saved >= tear.stats.saved * 0.95,
+    `${(dia.stats.saved * 100).toFixed(1)}% vs ${(tear.stats.saved * 100).toFixed(1)}%`);
+  check("diamond: far fewer triangles to slice", dia.stats.triangles < tear.stats.triangles / 2,
+    `${dia.stats.triangles} vs ${tear.stats.triangles}`);
+  // the cell's real corners, as the engine builds them
+  const k = 1 / Math.SQRT2, E = 1.2, P = [];
+  for (const sg of [-1, 1]) P.push([2 * k * sg, 0, 0], [0, 2 * k * sg, 0], [0, 0, 2 * k * sg * E]);
+  for (const a of [-1, 1]) for (const b of [-1, 1]) for (const c of [-1, 1]) P.push([k * a, k * b, k * c * E]);
+  let skin = Infinity;
+  for (const [x, y, z, r] of dia.bubbles) for (const p of P) {
+    const X = x + p[0] * r, Y = y + p[1] * r, Z = z + p[2] * r;
+    skin = Math.min(skin, X, W - X, Y, D - Y, Z, H - Z);
+  }
+  check("diamond: every corner keeps the skin", skin >= 1.2 - 1e-6, skin.toFixed(3));
+  // no two cells closer than about the web: grown by just under half a web
+  // each, their union must lose no volume
+  const tpl = wasm.Manifold.hull(P);
+  const grown = dia.bubbles.map(([x, y, z, r]) => tpl.scale(r + 0.39).translate([x, y, z]));
+  const sum = grown.reduce((a, g) => a + g.volume(), 0);
+  check("diamond: cells never touch (web kept)", wasm.Manifold.union(grown).volume() > sum * (1 - 1e-6));
+  // no ceiling flatter than 50 degrees: every upward-facing face of the cell
+  // (the roof of the void) is steep
+  const tri = manifoldToSoup(tpl);
+  let flattest = 90;
+  for (let i = 0; i < tri.length; i += 9) {
+    const a = [tri[i], tri[i + 1], tri[i + 2]], b = [tri[i + 3], tri[i + 4], tri[i + 5]], c = [tri[i + 6], tri[i + 7], tri[i + 8]];
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const len = Math.hypot(...n);
+    if (n[2] / len > 1e-6) flattest = Math.min(flattest, Math.acos(n[2] / len) * 180 / Math.PI);   // tilt from horizontal
+  }
+  check("diamond: roof faces rise at 50 degrees, no flat ceiling", flattest >= 49.5, `${flattest.toFixed(1)} deg`);
+  check("diamond: the part stays one solid", soupToManifold(wasm, dia.part).volume() > 0);
+  const ball = manifoldToSoup(wasm.Manifold.sphere(25, 48));
+  const db = await fizzcore(ball, { shape: "diamond" }, { wasm });
+  const tb = await fizzcore(ball, {}, { wasm });
+  check("diamond: a round part hollows out as well", db.stats.saved >= tb.stats.saved * 0.95,
+    `${(db.stats.saved * 100).toFixed(1)}% vs ${(tb.stats.saved * 100).toFixed(1)}%`);
+  check("diamond: old `teardrop: false` still means round",
+    (await fizzcore(box, { teardrop: false, maxBubble: 3 }, { wasm })).stats.shape === "round");
+  console.log(`  (diamond checks ${Date.now() - t0} ms)`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

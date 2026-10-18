@@ -132,6 +132,52 @@ function pointInPoly(pt, poly) {
   return inside;
 }
 
+export { rdp, signedArea, pointInPoly };
+
+// ---- rings -> one extruded solid ---------------------------------------
+//
+// Outer rings plus hole rings (millimetres, any winding) extruded straight up
+// from z=0 to z=height, as ONE watertight ASCII STL. Each hole is cut from the
+// smallest outer that holds it, and each face is triangulated with three's
+// earcut. A single mesh means a single import: the letters of a name tag are
+// one solid, not a union of one extrusion per letter minus one per counter.
+//
+// Walls take their winding from the ring (outer CCW, hole CW), so every
+// normal points out of the material and the top, bottom and walls share their
+// vertices exactly: the shell is closed with no welding needed.
+export function ringsToPrismStl(outers, holes, height, triangulate) {
+  const ccw = (r) => (signedArea(r) >= 0 ? r : [...r].reverse());
+  const cw = (r) => (signedArea(r) <= 0 ? r : [...r].reverse());
+  const shapes = outers.map((o) => ({ outer: ccw(o), holes: [], area: Math.abs(signedArea(o)) }));
+  for (const h of holes) {
+    let best = null;
+    for (const s of shapes) if (pointInPoly(h[0], s.outer) && (!best || s.area < best.area)) best = s;
+    if (best) best.holes.push(cw(h));
+  }
+  const F = [];
+  const v = (p, z) => `vertex ${p[0]} ${p[1]} ${z}`;
+  const tri = (a, b, c) => F.push(`facet normal 0 0 0\nouter loop\n${a}\n${b}\n${c}\nendloop\nendfacet`);
+  for (const s of shapes) {
+    const pts = [s.outer, ...s.holes].flat();
+    for (let [a, b, c] of triangulate(s.outer, s.holes)) {
+      const A = pts[a], B = pts[b], C = pts[c];
+      // earcut's winding is not promised: make every top triangle CCW
+      if ((B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]) < 0) [b, c] = [c, b];
+      tri(v(pts[a], height), v(pts[b], height), v(pts[c], height));
+      tri(v(pts[a], 0), v(pts[c], 0), v(pts[b], 0));
+    }
+    for (const ring of [s.outer, ...s.holes]) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        tri(v(a, 0), v(b, 0), v(b, height));
+        tri(v(a, 0), v(b, height), v(a, height));
+      }
+    }
+  }
+  if (!F.length) throw new Error("nothing to extrude");
+  return `solid rings\n${F.join("\n")}\nendsolid rings\n`;
+}
+
 // ---- top level ---------------------------------------------------------
 //
 // Returns { outers: [[ [x,y], ... ] ], holes: [...] } in millimetres, Y-up,

@@ -135,6 +135,16 @@ function injectStyle() {
   .fz-orbtns { margin: 2px 0 8px; }
   .fz-orbtns .fz-btn { flex: 1 1 30%; padding: 6px 6px; font-size: 12px; }
   .fz-btn.armed { background: var(--accent, #1c66e5); color: #fff; border-color: var(--accent, #1c66e5); }
+  /* bubble shape: picture buttons over the (hidden) select that holds the value */
+  .fz-shapes { display: flex; gap: 6px; margin-top: 2px; }
+  .fz-shape-btn { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 7px 4px 6px; border-radius: 9px; cursor: pointer; font: inherit; font-size: 12px; line-height: 1.2;
+    border: 1px solid var(--border, #26314a); background: var(--input-bg, #0d1320); color: var(--text2, #d8e2f5); }
+  .fz-shape-btn svg { width: 30px; height: 30px; color: var(--muted6, #93a7c8); }
+  .fz-shape-btn small { color: var(--muted, #8ea0c0); font-size: 10.5px; text-align: center; }
+  .fz-shape-btn:hover { background: var(--hover-strong, #1d2a44); }
+  .fz-shape-btn.on { border-color: var(--accent, #1c66e5); background: rgba(28,102,229,.14); color: var(--text, #fff); }
+  .fz-shape-btn.on svg { color: var(--accent-soft, #4b8cf5); }
   .fz-pv:empty { display: none; }
   .fz-off { opacity: .4; pointer-events: none; }
   .fz-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px -1px 0; }
@@ -171,7 +181,7 @@ export function dropSkipped() { return lsGet(SKIP_KEY) === "1"; }
 /**
  * Ask what to do with a dropped mesh.
  * groups: [{ title, tools: [{ id, label, icon, desc }] }] - every tool that works on the opened mesh
- * returns a Promise of { action: "open" | "fizz" | "fins" | "tool", tool? } or null if cancelled
+ * returns a Promise of { action: "open" | "exact" | "fizz" | "fins" | "tool", tool? } or null if cancelled
  */
 export function chooseDropAction(file, { groups = [] } = {}) {
   return new Promise((resolve) => {
@@ -184,6 +194,8 @@ export function chooseDropAction(file, { groups = [] } = {}) {
       <div class="fz-list">
         <button class="fz-opt" data-a="open"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open in the editor</b><small>import it as a mesh you can cut, scale, combine and export</small></span></button>
+        <button class="fz-opt" data-a="exact"><span class="ic">${icon("open", 20)}</span>
+          <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so you can fillet, cut exactly and export true STEP. Best for parts made in CAD; you can switch back to the mesh.</small></span></button>
         <button class="fz-opt hero" data-a="fizz"><span class="ic">${icon("fizz", 20)}</span>
           <span><b>FizzCore bubble infill<span class="fz-new">NEW</span></b><small>fill it with graded, self-supporting bubbles: less plastic, and still strong. Support fins optional.</small></span></button>
         <button class="fz-opt" data-a="fins"><span class="ic">${icon("fins", 20)}</span>
@@ -209,7 +221,7 @@ export function chooseDropAction(file, { groups = [] } = {}) {
 
 const UI_DEFAULTS = {
   nozzle: 0.4, mode: "solid",
-  minD: 2.4, maxD: 0, fillGaps: true, skin: 1.2, web: 0.8, grade: 35, teardrop: true,
+  minD: 2.4, maxD: 0, fillGaps: true, skin: 1.2, web: 0.8, grade: 35, shape: "teardrop",
   fins: false, finSide: "auto", tiltToward: "best", finCount: 3,
   finShape: "slim", finDepth: 8, pokeEvery: 10, finHeight: "auto", finHeightMm: 30, pokeGap: 0.2,
   finLines: 3, finSpacing: 0, finGap: 0.8, finSkirt: 5,
@@ -220,8 +232,11 @@ const UI_DEFAULTS = {
 };
 
 function loadSettings() {
-  try { return { ...UI_DEFAULTS, ...JSON.parse(lsGet(SETTINGS_KEY) || "{}") }; }
-  catch { return { ...UI_DEFAULTS }; }
+  let saved = {};
+  try { saved = JSON.parse(lsGet(SETTINGS_KEY) || "{}"); } catch { /* defaults */ }
+  // settings saved before there was a shape choice had a teardrop box
+  if (!saved.shape && saved.teardrop === false) saved.shape = "round";
+  return { ...UI_DEFAULTS, ...saved };
 }
 
 /**
@@ -321,14 +336,30 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
           <small>Nothing smaller is made. Under ~2 mm the slicer prints it solid anyway.</small></div>
         <div class="fz-row"><label for="fz-max">Largest bubble Ø (mm)</label><input id="fz-max" type="number" min="0" max="80" step="0.5" value="${s.maxD || ""}" placeholder="auto" />
           <small>Blank = auto (sized to the part). Bigger = lighter, fewer bubbles.</small></div>
+        <div class="fz-row"><label>Bubble shape</label>
+          <div class="fz-shapes" role="radiogroup" aria-label="Bubble shape">
+            <button type="button" class="fz-shape-btn" role="radio" data-shape="teardrop" title="Teardrops: round, with a 45° peak">
+              <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 4.7 L20.7 10.3 A8 8 0 1 1 9.3 10.3 Z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              <b>Drops</b><small>45° peak · FDM</small></button>
+            <button type="button" class="fz-shape-btn" role="radio" data-shape="diamond" title="Diamonds: cells that tile, flat even walls, 50° peak">
+              <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 3 L23 9.5 L23 20.5 L15 27 L7 20.5 L7 9.5 Z M7 9.5 L15 14 L23 9.5 M15 14 L15 27" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              <b>Diamonds</b><small>flat walls · lightest</small></button>
+            <button type="button" class="fz-shape-btn" role="radio" data-shape="round" title="Round: no peak, for powder printers">
+              <svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="9" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6"/></svg>
+              <b>Round</b><small>SLS / MJF only</small></button>
+          </div>
+          <select id="fz-shape" hidden>
+            <option value="teardrop" ${s.shape === "teardrop" ? "selected" : ""}>Drops</option>
+            <option value="diamond" ${s.shape === "diamond" ? "selected" : ""}>Diamonds</option>
+            <option value="round" ${s.shape === "round" ? "selected" : ""}>Round</option>
+          </select>
+          <small class="fz-shape-note"></small></div>
         <label class="fz-check"><input id="fz-gaps" type="checkbox" ${s.fillGaps ? "checked" : ""} />
           <span>Fill gaps with small bubbles<small>Packs little bubbles into the spaces between big ones.</small></span></label>
         <details class="fz-adv">
           <summary>Advanced bubble settings</summary>
           <div class="fz-row"><label for="fz-grade">Grading</label><input id="fz-grade" type="range" min="0" max="100" value="${s.grade}" />
             <small>Left: same size everywhere. Right: small, dense bubbles under the skin, big ones in the core (stiffer in bending).</small></div>
-          <label class="fz-check"><input id="fz-tear" type="checkbox" ${s.teardrop ? "checked" : ""} />
-            <span>Printable teardrop tops (FDM)<small>A 45° peak on every bubble, so no ceiling needs support. Turn off for SLS/MJF.</small></span></label>
           <div class="fz-row"><label for="fz-skin">Outer skin (mm)</label><input id="fz-skin" type="number" min="0.4" max="10" step="0.2" value="${s.skin}" />
             <small class="fz-skin-note">Solid shell, 3 lines thick.</small></div>
           <div class="fz-row"><label for="fz-web">Wall between bubbles (mm)</label><input id="fz-web" type="number" min="0.2" max="20" step="0.2" value="${s.web}" />
@@ -386,6 +417,16 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
     const noz = +$("#fz-noz").value, hybrid = $("#fz-mode").value === "hybrid";
     const lines = (mm) => `${(mm / noz).toFixed(1).replace(/\.0$/, "")} lines at ${noz} mm`;
     $(".fz-skin-note").textContent = `Solid shell: ${lines(+$("#fz-skin").value)}.`;
+    for (const b of box.querySelectorAll(".fz-shape-btn")) {
+      const on = b.dataset.shape === $("#fz-shape").value;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    }
+    $(".fz-shape-note").textContent = {
+      teardrop: "A 45° peak on every bubble, so no ceiling needs support.",
+      diamond: "Flat walls of one even thickness, each cell peaked at 50°. Usually lighter, fewer triangles, quicker to slice.",
+      round: "No peaks: for powder printers. On FDM the roofs sag and string.",
+    }[$("#fz-shape").value] || "";
     $(".fz-web-note").textContent = `Thinnest web: ${lines(+$("#fz-web").value)}. ${hybrid ? "Wide on purpose: the slicer fills it with infill." : "Prints as pure perimeters. Thicker = stronger and heavier."}`;
     $(".fz-mode-note").textContent = hybrid
       ? "Thick webs that the slicer fills with its own infill (gyroid). A lighter part that still has a bubble skeleton."
@@ -685,8 +726,17 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
   for (const id of ["#fz-tilt", "#fz-toward", "#fz-fside", "#fz-fcount", "#fz-fins", "#fz-noz", "#fz-fshape", "#fz-fdepth", "#fz-poke", "#fz-fheight", "#fz-fhmm", "#fz-pgap", "#fz-flines", "#fz-fspace", "#fz-fgap", "#fz-skirt"]) {
     $(id).addEventListener("input", () => { notes(); stale(); schedulePreview(); });
   }
-  for (const id of ["#fz-bub", "#fz-mode", "#fz-min", "#fz-max", "#fz-gaps", "#fz-grade", "#fz-tear", "#fz-skin", "#fz-web"]) {
+  for (const id of ["#fz-bub", "#fz-mode", "#fz-min", "#fz-max", "#fz-gaps", "#fz-grade", "#fz-shape", "#fz-skin", "#fz-web"]) {
     $(id).addEventListener("input", () => { notes(); if (result) { stale(); schedulePreview(); } });
+  }
+  // the shape buttons just set the hidden select and let its listener run
+  for (const b of box.querySelectorAll(".fz-shape-btn")) {
+    b.addEventListener("click", () => {
+      const sel = $("#fz-shape");
+      if (sel.value === b.dataset.shape) return;
+      sel.value = b.dataset.shape;
+      sel.dispatchEvent(new Event("input", { bubbles: true }));
+    });
   }
 
   const orientChanged = () => { notes(); stale(); schedulePreview(); };
@@ -756,7 +806,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
   updateClip();
   resize();
   notes();
-  msg(finsMode ? "Drag the tilt to see it lean. Fins stand under the lean." : "Z is up as printed, and the teardrops point up.");
+  msg(finsMode ? "Drag the tilt to see it lean. Fins stand under the lean." : "Z is up as printed, and every bubble peaks upward.");
   setTimeout(preview, 0);      // after the rest of the dialog (read() included) is wired
   // test hook (the tests and the agent bridge read the preview through it)
   box.__fz = { renderer, camera, scene, group, plane, draw, get dist() { return dist; } };
@@ -773,7 +823,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
     maxD: +$("#fz-max").value || 0,
     fillGaps: $("#fz-gaps").checked,
     grade: +$("#fz-grade").value,
-    teardrop: $("#fz-tear").checked,
+    shape: $("#fz-shape").value,
     skin: +$("#fz-skin").value || UI_DEFAULTS.skin,
     web: +$("#fz-web").value || UI_DEFAULTS.web,
     fins: $("#fz-fins").checked,
@@ -814,7 +864,7 @@ export async function openFizzCore(THREE, source, hooks = {}, mode = "fizz") {
         maxBubble: u.maxD / 2,
         fillGaps: u.fillGaps,
         grade: u.grade / 100,
-        teardrop: u.teardrop,
+        shape: u.shape,
         skin: u.skin,
         web: u.web,
         fins: u.fins ? { side: u.finSide, count: u.finCount, nozzle: u.nozzle, shape: u.finShape, depth: u.finDepth, teethEvery: u.pokeEvery,

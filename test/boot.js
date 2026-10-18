@@ -272,5 +272,80 @@ console.log("\nit is scenery, so the plate underneath stays live\n");
     /prefers-reduced-motion[\s\S]{0,220}#boot-glow \{ animation-duration/.test(css));
 }
 
+// The whole app is ONE inline module script, and a single stray character in
+// it (a backtick inside a shader comment, which ends the template string the
+// shader lives in) stops the page dead: no editor, no model, nothing. None of
+// the other tests load that script, so it is parsed here, by node itself.
+{
+  const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs");
+  const { spawnSync } = await import("node:child_process");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const page = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const scripts = [...page.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  check("the page has its inline module script", scripts.length >= 1, `${scripts.length}`);
+  const dir = mkdtempSync(join(tmpdir(), "brepcode-syntax-"));
+  try {
+    scripts.forEach((src, i) => {
+      const file = join(dir, `inline${i}.mjs`);
+      writeFileSync(file, src);
+      const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
+      check(`inline module script ${i + 1} parses`, r.status === 0,
+        (r.stderr || "").split("\n").filter(Boolean).slice(0, 4).join(" | "));
+    });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+// A `const` used above its own line parses fine and then throws when it runs.
+// sendChat() did exactly that with logLine on every #tag and /command, which
+// lost the message and silently killed the whole feature.
+{
+  const start = html.indexOf("async function sendChat()");
+  const body = html.slice(start, html.indexOf("\n    }\n", start) > 0 ? html.indexOf("\n    }\n", start) : start + 200000);
+  const decl = body.indexOf("const logLine");
+  const firstUse = body.search(/(?<!const )logLine\(/);
+  check("sendChat() never calls logLine before declaring it", start > 0 && decl > 0 && firstUse > decl,
+    `declared at +${decl}, first used at +${firstUse}`);
+}
+
+// A translucent part's near wall must draw over what is inside it. The depth
+// pass that guarantees it failed SILENTLY once: a basic material flagged as
+// transmissive picks up USE_TRANSMISSION and does not compile, so nothing drew
+// and the inside of a cup painted over its own wall.
+{
+  check("translucent parts get a near-skin depth pass in the transmissive list",
+    /skinDepthMat\.transmission = 1;/.test(html) && /d\.renderOrder = -1;/.test(html) && /function syncSkin\(\)/.test(html));
+  check("...whose shader drops USE_TRANSMISSION so it compiles",
+    /skinDepthMat\.onBeforeCompile[\s\S]{0,200}#undef USE_TRANSMISSION/.test(html));
+  check("...rebuilt when the material changes and when a model lands",
+    /syncHiddenEdges\(\); syncSkin\(\);/.test(html) && /function refreshOutlines\(\) \{\s*try \{ syncSkin\(\); \}/.test(html));
+}
+
+// Things brepcode.com needs that were once patched into the LIVE files by
+// hand, and so wiped by every new upload. They live in the source now; this
+// keeps them there.
+{
+  const welcome = readFileSync(new URL("../viewer/welcome.js", import.meta.url), "utf8");
+  const curved = readFileSync(new URL("../viewer/curved.js", import.meta.url), "utf8");
+  check("?example=<name> links load that example (brepcode.com/tpu-box)",
+    /function launchExample\(\)/.test(html) && /const exName = launchExample\(\);[\s\S]{0,300}hooks\.loadExample\(ex\.code, ex\.title, ex\.coach, ex\.note\)/.test(html));
+  check("...ahead of ?tool=, so a shared example skips the front door",
+    html.indexOf("const exName = launchExample();") < html.indexOf("const t = launchTool();"));
+  check("an example's note (where it came from) is shown once it loads",
+    /loadExample: async \(src, title, coach, note\)/.test(html) && /if \(note\) showExampleNote\(note, restoreLook\)/.test(html));
+  check("an example opens in its own colours, with the old look one click away",
+    /if \(lookOverridesDesign\(\)\) \{[\s\S]{0,200}resetLook\(\);/.test(html) && /Use my look/.test(html));
+  check("every place that loads an example passes its note",
+    !/loadExample\??\.?\(ex\.code, ex\.title, ex\.coach\)/.test(html + welcome));
+  const { EXAMPLES } = await import("../viewer/welcome.js");
+  check("the TPU box says where it came from", !!EXAMPLES.tpubox.note?.video);
+  check("the host's Publish / cloud stash script is loaded", /<script type="module" src="\.\/quicksave\.js"><\/script>/.test(html));
+  check("brepcode.com's wasm address is set only on brepcode.com",
+    /brepcode\\\.com\$\/\.test\(location\.hostname\)\)\s*window\.__BREP_REPLICAD_WASM_URL = /.test(html));
+  const v = JSON.parse(readFileSync(new URL("../node_modules/replicad-opencascadejs/package.json", import.meta.url), "utf8")).version;
+  check("curved.js falls back to a pinned copy of the very same wasm version",
+    curved.includes(`replicad-opencascadejs@${v}/src/replicad_single.wasm`) && /for \(const url of wasmUrls\(\)\)/.test(curved), v);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

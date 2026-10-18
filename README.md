@@ -223,7 +223,11 @@ lines. *Solid webs* make the bubbles the infill (strong, dense); *Hybrid* leaves
 wide webs for the slicer's gyroid (lighter). The dialog reports the plastic
 saved and an "equivalent slicer infill %" so you can compare honestly: equal
 spheres can never fill more than 74% of a space, so this is a strong infill,
-not a featherweight one.
+not a featherweight one. Or pick *Diamond* cells: rhombic dodecahedra stood on
+a point, which stack with no gaps, so the walls between them are flat and one
+even thickness, and every roof rises to a 50° peak. On the test parts they
+hollow out a little more than teardrops with a third to an eighth of the
+triangles.
 
 **Support fins** tilt a part (45° by default) and stand snap-off fins beside
 it, in a live low-poly preview you can adjust before the full run:

@@ -202,7 +202,8 @@ class Tri2 {
     const ic = this.inCircle(a, b, c, d);
     if (ic > tol.circle) return true;
     if (ic < -tol.circle || !prefer) return false;
-    return !prefer(this.tag[a], this.tag[b]) && prefer(this.tag[c], this.tag[d]);
+    // prefer() scores an edge by its end tags: take the better-scored diagonal
+    return prefer(this.tag[c], this.tag[d]) > prefer(this.tag[a], this.tag[b]);
   }
   legalize(stack, tol, prefer) {
     let guard = 0;
@@ -250,10 +251,50 @@ class Tri2 {
 // { pts: [[x,y,tag]...], h: nearest-neighbour spacing, area: param area per triangle }.
 function latticePoints(spec, x0, y0, x1, y1) {
   const out = [];
-  if (spec.kind === "crossed") {
-    // knurl lattice in pattern (u,w): corners at 1/4 + Z/2, centres at Z/2.
-    // Edges corner-corner (axis lines) and corner-centre (diagonals) are the
-    // pattern's creases; centre-centre edges are not.
+  if (spec.kind === "rosette") {
+    // bumps: round dots. Per integer point of (u, w): the dot's centre, a ring
+    // of 8 at r = 0.2, a ring of 8 exactly on the dot's edge (r = spec.r,
+    // turned half a step), and one ground point between dots. An octagonal
+    // dome with a crisp edge, where a square grid made a four-point star.
+    const { A, off } = spec;
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    const inv = [[A[1][1] / det, -A[0][1] / det], [-A[1][0] / det, A[0][0] / det]];
+    const toP = (u, w) => {
+      const du = u - off[0], dw = w - off[1];
+      return [inv[0][0] * du + inv[0][1] * dw, inv[1][0] * du + inv[1][1] * dw];
+    };
+    let umin = Infinity, umax = -Infinity, wmin = Infinity, wmax = -Infinity;
+    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
+      const u = A[0][0] * x + A[0][1] * y + off[0], w = A[1][0] * x + A[1][1] * y + off[1];
+      umin = Math.min(umin, u); umax = Math.max(umax, u); wmin = Math.min(wmin, w); wmax = Math.max(wmax, w);
+    }
+    const R = spec.r || 0.35;
+    const local = [[0, 0, 3], [0.5, 0.5, 0]];
+    for (let k = 0; k < 8; k++) {
+      const a1 = (k * Math.PI) / 4, a2 = a1 + Math.PI / 8;
+      local.push([0.2 * Math.cos(a1), 0.2 * Math.sin(a1), 2], [R * Math.cos(a2), R * Math.sin(a2), 1]);
+    }
+    for (let j = Math.floor(wmin) - 1; j <= Math.ceil(wmax) + 1; j++) {
+      for (let i = Math.floor(umin) - 1; i <= Math.ceil(umax) + 1; i++) {
+        for (const [du, dw, tag] of local) {
+          const [x, y] = toP(i + du, j + dw);
+          if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+          out.push([x, y, tag]);
+        }
+      }
+    }
+    return { pts: out, h: 0.25, triArea: (1 / 36) / Math.abs(det) };
+  }
+  if (spec.kind === "crossed" || spec.kind === "grid") {
+    // Lattices on the quarter grid of the pattern's own (u, w):
+    //  crossed: knurl-type. Square cells of side 1/2 plus their centres.
+    //    Corner-corner edges (axis lines) and corner-centre edges (diagonals)
+    //    are the pattern's creases; centre-centre edges are not (tags 1 / 2).
+    //    Corners sit on Z/2 (knurl) or on 1/4 + Z/2 (studs: spec.quarter).
+    //  grid: waffle / bumps. Every quarter point; tag 3 on integer points,
+    //    where the diagonals of the cells around them must run, 2 on the
+    //    lines through them, so each cell's diagonal points at the nearest
+    //    integer point and a dot comes out star-symmetric, not striped.
     const { A, off } = spec;               // (u,w) = A (x,y) + off
     const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
     const inv = [[A[1][1] / det, -A[0][1] / det], [-A[1][0] / det, A[0][0] / det]];
@@ -268,19 +309,25 @@ function latticePoints(spec, x0, y0, x1, y1) {
     }
     for (let j = Math.floor(wmin * 4) - 1; j <= Math.ceil(wmax * 4) + 1; j++) {
       for (let i = Math.floor(umin * 4) - 1; i <= Math.ceil(umax * 4) + 1; i++) {
-        // quarter grid: corners where both indices are odd, centres where both even
-        const corner = (i & 1) && (j & 1), centre = !(i & 1) && !(j & 1);
-        if (!corner && !centre) continue;
+        let tag;
+        if (spec.kind === "grid") {
+          // 3 on integer points, 2 on the grid lines through them
+          tag = (i & 3) === 0 && (j & 3) === 0 ? 3 : (i & 3) === 0 || (j & 3) === 0 ? 2 : 0;
+        } else {
+          const odd = (i & 1) && (j & 1), even = !(i & 1) && !(j & 1);
+          if (!odd && !even) continue;
+          tag = (spec.quarter ? odd : even) ? 1 : 2;
+        }
         const [x, y] = toP(i / 4, j / 4);
         if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-        out.push([x, y, corner ? 1 : 2]);
+        out.push([x, y, tag]);
       }
     }
-    // spacing: corner to centre is (1/4, 1/4) in (u,w)
-    const a = toP(0.25, 0.25), o = toP(0, 0);
-    const b = toP(0.25, -0.25);
-    const h = Math.min(Math.hypot(a[0] - o[0], a[1] - o[1]), Math.hypot(b[0] - o[0], b[1] - o[1]));
-    return { pts: out, h, triArea: (1 / 16) / Math.abs(det) };
+    // spacing: crossed corner to centre is (1/4, 1/4) in (u,w); grid is 1/4
+    const step = spec.kind === "grid" ? [[0.25, 0], [0, 0.25]] : [[0.25, 0.25], [0.25, -0.25]];
+    const o = toP(0, 0);
+    const h = Math.min(...step.map(([u, w]) => { const a = toP(u, w); return Math.hypot(a[0] - o[0], a[1] - o[1]); }));
+    return { pts: out, h, triArea: (spec.kind === "grid" ? 1 / 32 : 1 / 16) / Math.abs(det) };
   }
   // equilateral lattice, rows along `dir` (unit, param space), row pitch P,
   // rows phased so one passes through `phase` along the normal.
@@ -308,6 +355,100 @@ function latticePoints(spec, x0, y0, x1, y1) {
   return { pts: out, h: Math.min(Lr, (2 * P) / Math.sqrt(3)), triArea: (Lr * P) / 2 };
 }
 
+// ------------------------------------------------------- sphere relaxation
+//
+// A sphere can't be unrolled flat, so its facets are remeshed one by one: the
+// result follows the kernel's UV facets (slivers near the poles, a visible
+// facet grid). This evens it out: Delaunay edge flips plus tangential
+// smoothing, every moved vertex projected back onto the TRUE sphere. Only
+// vertices inside the patch move and the patch outline is never touched, so
+// the shell stays closed. Any triangle that would turn over cancels the lot.
+function relaxSpherePatch(P, T, faces, { c, R }, iters = 10) {
+  const ekey = (a, b) => (a < b ? `${a},${b}` : `${b},${a}`);
+  const vec = (v) => [P[3 * v] - c[0], P[3 * v + 1] - c[1], P[3 * v + 2] - c[2]];
+  const normalOf = (a, b, d) => cross(sub(vec(b), vec(a)), sub(vec(d), vec(a)));
+  const edgesOf = () => {
+    const m = new Map();
+    for (const f of faces) {
+      for (let i = 0; i < 3; i++) {
+        const k = ekey(T[3 * f + i], T[3 * f + (i + 1) % 3]);
+        const l = m.get(k); if (l) l.push(f); else m.set(k, [f]);
+      }
+    }
+    return m;
+  };
+  // which way the patch faces (a ball, or a spherical cavity)
+  let side = 0;
+  for (const f of faces) {
+    const [a, b, d] = [T[3 * f], T[3 * f + 1], T[3 * f + 2]];
+    const ctr = vec(a).map((x, k) => (x + vec(b)[k] + vec(d)[k]) / 3);
+    side += dot(normalOf(a, b, d), ctr);
+  }
+  side = Math.sign(side) || 1;
+  const facesOut = (list) => list.every(([a, b, d]) => {
+    const n = normalOf(a, b, d);
+    const ctr = vec(a).map((x, k) => (x + vec(b)[k] + vec(d)[k]) / 3);
+    return side * dot(n, ctr) > 1e-9 * R * R * R;
+  });
+  const fixed = new Set();
+  for (const [k, l] of edgesOf()) if (l.length !== 2) for (const v of k.split(",")) fixed.add(+v);
+  const savedP = new Map(), savedT = faces.map((f) => [T[3 * f], T[3 * f + 1], T[3 * f + 2]]);
+  for (const f of faces) for (let i = 0; i < 3; i++) { const v = T[3 * f + i]; savedP.set(v, [P[3 * v], P[3 * v + 1], P[3 * v + 2]]); }
+  const angleAt = (o, a, b) => {
+    const u = sub(vec(a), vec(o)), w = sub(vec(b), vec(o));
+    return Math.acos(Math.max(-1, Math.min(1, dot(u, w) / (Math.hypot(...u) * Math.hypot(...w) || 1))));
+  };
+
+  for (let it = 0; it < iters; it++) {
+    // flips toward 3D Delaunay
+    const em = edgesOf();
+    const touched = new Set();
+    for (const [k, l] of em) {
+      if (l.length !== 2) continue;
+      const [f, g] = l;
+      if (touched.has(f) || touched.has(g)) continue;
+      let i = 0;
+      while (ekey(T[3 * f + i], T[3 * f + (i + 1) % 3]) !== k) i++;
+      const a = T[3 * f + i], b = T[3 * f + (i + 1) % 3], cc = T[3 * f + (i + 2) % 3];
+      let d = -1;
+      for (let j = 0; j < 3; j++) { const x = T[3 * g + j]; if (x !== a && x !== b) d = x; }
+      if (d < 0 || em.has(ekey(cc, d))) continue;
+      if (angleAt(cc, a, b) + angleAt(d, a, b) <= Math.PI + 1e-6) continue;
+      // (a,b,c) + (b,a,d) -> (a,d,c) + (d,b,c)
+      if (!facesOut([[a, d, cc], [d, b, cc]])) continue;
+      T[3 * f] = a; T[3 * f + 1] = d; T[3 * f + 2] = cc;
+      T[3 * g] = d; T[3 * g + 1] = b; T[3 * g + 2] = cc;
+      touched.add(f); touched.add(g);
+    }
+    // tangential smoothing: each free vertex to the mean of its neighbours,
+    // back onto the sphere
+    const nbr = new Map();
+    for (const f of faces) {
+      for (let i = 0; i < 3; i++) {
+        const v = T[3 * f + i];
+        if (fixed.has(v)) continue;
+        let s = nbr.get(v); if (!s) nbr.set(v, s = new Set());
+        s.add(T[3 * f + (i + 1) % 3]); s.add(T[3 * f + (i + 2) % 3]);
+      }
+    }
+    const next = [];
+    for (const [v, s] of nbr) {
+      const m = [0, 0, 0];
+      for (const u of s) for (let k = 0; k < 3; k++) m[k] += P[3 * u + k];
+      const q = [m[0] / s.size - c[0], m[1] / s.size - c[1], m[2] / s.size - c[2]];
+      const l = Math.hypot(...q) || 1;
+      next.push([v, c[0] + (q[0] / l) * R, c[1] + (q[1] / l) * R, c[2] + (q[2] / l) * R]);
+    }
+    for (const [v, x, y, z] of next) { P[3 * v] = x; P[3 * v + 1] = y; P[3 * v + 2] = z; }
+  }
+  if (!facesOut(faces.map((f) => [T[3 * f], T[3 * f + 1], T[3 * f + 2]]))) {
+    for (const [v, p] of savedP) { P[3 * v] = p[0]; P[3 * v + 1] = p[1]; P[3 * v + 2] = p[2]; }
+    faces.forEach((f, i) => { T[3 * f] = savedT[i][0]; T[3 * f + 1] = savedT[i][1]; T[3 * f + 2] = savedT[i][2]; });
+    return false;
+  }
+  return true;
+}
+
 // ------------------------------------------------------------- the remesh
 
 /**
@@ -316,9 +457,13 @@ function latticePoints(spec, x0, y0, x1, y1) {
  *   L        target edge on textured faces (mm)
  *   wants(n) does a facet with this unit normal get textured?
  *   lattice(region) -> spec | null   optional pattern-aligned lattice for a
- *            region: { kind: "crossed", A, off } or { kind: "equi", L, dir, pitch, phase }
+ *            region: { kind: "crossed" | "grid", A, off, quarter? } or { kind: "equi", L, dir, pitch, phase }
  *   maxTris  triangle budget for the whole result
- * @returns {{ verts: Float64Array, faces: Uint32Array, onAxisCyl: Uint8Array, L: number } | null}
+ * @returns {{ verts: Float64Array, faces: Uint32Array, frame: Uint8Array, L: number } | null}
+ *   frame, per vertex: bit 1 = on a textured wall of a cylinder about Z,
+ *   bit 2 = on a textured plane or cylinder (a surface with a flat layout),
+ *   bit 4 = on a face that is NOT textured, bit 8 = on one that is
+ *   (4 and 8 together: the border where texture meets a plain face)
  */
 export function remeshForTexture(soup, opt) {
   remeshForTexture.why = "";
@@ -465,10 +610,43 @@ export function remeshForTexture(soup, opt) {
     return { kind: "cyl", axis: ax, e1, e2, c: c3, R, th, cut, tris };
   };
 
+  // every vertex on one sphere? (algebraic fit: x2+y2+z2 + Dx + Ey + Fz + G = 0)
+  const trySphere = (tris) => {
+    if (tris.length < 8) return null;
+    const vs = vertsOf(tris);
+    const m = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]];
+    for (const v of vs) {
+      const p = pos(v), row = [p[0], p[1], p[2], 1], rhs = -(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) m[r][c] += row[r] * row[c];
+        m[r][4] += row[r] * rhs;
+      }
+    }
+    for (let c = 0; c < 4; c++) {
+      let piv = c;
+      for (let r = c + 1; r < 4; r++) if (Math.abs(m[r][c]) > Math.abs(m[piv][c])) piv = r;
+      [m[c], m[piv]] = [m[piv], m[c]];
+      if (Math.abs(m[c][c]) < 1e-18) return null;
+      for (let r = 0; r < 4; r++) {
+        if (r === c) continue;
+        const f = m[r][c] / m[c][c];
+        for (let k = c; k < 5; k++) m[r][k] -= f * m[c][k];
+      }
+    }
+    const sol = [0, 1, 2, 3].map((r) => m[r][4] / m[r][r]);
+    const c = [-sol[0] / 2, -sol[1] / 2, -sol[2] / 2];
+    const R = Math.sqrt(Math.max(0, dot(c, c) - sol[3]));
+    if (!(R > 0) || R > diag * 20) return null;
+    for (const v of vs) if (Math.abs(Math.hypot(...sub(pos(v), c)) - R) > Math.max(tolD * 10, R * 2e-3)) return null;
+    return { c, R };
+  };
+
   for (const tris of comps) {
     let reg = tryPlane(tris) || tryCyl(tris);
     if (reg) { const id = regions.length; regions.push(reg); for (const t of tris) region[t] = id; continue; }
-    // neither: fall apart into coplanar groups
+    // neither: fall apart into coplanar groups. If the whole component sits
+    // on one sphere, remember it: those facets get relaxed together afterwards.
+    const sph = trySphere(tris);
     const inComp = new Set(tris);
     for (const s of tris) {
       if (region[s] >= 0) continue;
@@ -488,6 +666,8 @@ export function remeshForTexture(soup, opt) {
       }
       reg = tryPlane(list);
       if (!reg) return fail("a degenerate facet with no plane");
+      reg.sphere = sph;
+      reg.facet = true;                      // one facet of a curved surface, not a real plane
       regions.push(reg);
     }
   }
@@ -538,8 +718,8 @@ export function remeshForTexture(soup, opt) {
     for (const reg of regions) {
       if (!reg.textured) { est += reg.tris.length; continue; }
       const s = specOf(reg, L, aligned);
-      const triArea = s.kind === "crossed"
-        ? (1 / 16) / Math.abs(s.A[0][0] * s.A[1][1] - s.A[0][1] * s.A[1][0])
+      const triArea = s.A
+        ? (s.kind === "grid" ? 1 / 32 : s.kind === "rosette" ? 1 / 36 : 1 / 16) / Math.abs(s.A[0][0] * s.A[1][1] - s.A[0][1] * s.A[1][0])
         : ((s.pitch ? (2 * s.pitch) / Math.sqrt(3) : s.L) * (s.pitch || (s.L * Math.sqrt(3)) / 2)) / 2;
       est += Math.max(reg.tris.length, reg.area / triArea);
     }
@@ -598,15 +778,22 @@ export function remeshForTexture(soup, opt) {
 
   // ---- output vertex table
   const outP = Array.from(P);
-  const onAxisCyl = [];
+  const frame = [];
   const splitId = new Map();                 // "a_b_k" -> vertex id (a<b)
   const newVert = (p) => { outP.push(p[0], p[1], p[2]); return outP.length / 3 - 1; };
   const outT = [];
+  const sphereFaces = new Map();             // sphere -> output faces from its remeshed facets
 
   for (const reg of regions) {
+    if (!reg.textured) for (const t of reg.tris) for (let i = 0; i < 3; i++) frame[T[3 * t + i]] = (frame[T[3 * t + i]] || 0) | 4;
     if (!reg.redo) {
       for (const t of reg.tris) outT.push(T[3 * t], T[3 * t + 1], T[3 * t + 2]);
       continue;
+    }
+    if (reg.sphere) {
+      let l = sphereFaces.get(reg.sphere);
+      if (!l) sphereFaces.set(reg.sphere, l = []);
+      reg.outFrom = l;
     }
     let tubeL = (2 * Math.PI * (reg.R || 0)) / 5;
     for (let pass = 0; pass < 4; pass++, tubeL /= 2) {
@@ -641,8 +828,8 @@ export function remeshForTexture(soup, opt) {
     // BOTH copies of a seam vertex (a 5 mm pin at a big part's spacing did
     // exactly that). Keep five edges round, and halve again below if the
     // result still folds onto itself.
-    if (reg.tube && tubeL < (spec.kind === "crossed" ? L : spec.L)) spec = { kind: "equi", L: tubeL };
-    let M = spec.kind === "crossed" ? [spec.A[0].slice(), spec.A[1].slice()] : [[1, 0], [0, 1]];
+    if (reg.tube && tubeL < (spec.A ? L : spec.L)) spec = { kind: "equi", L: tubeL };
+    let M = spec.A ? [spec.A[0].slice(), spec.A[1].slice()] : [[1, 0], [0, 1]];
     for (let i = 0; i < tri.x.length; i++) {
       const x = tri.x[i], y = tri.y[i];
       tri.x[i] = M[0][0] * x + M[0][1] * y; tri.y[i] = M[1][0] * x + M[1][1] * y;
@@ -725,7 +912,10 @@ export function remeshForTexture(soup, opt) {
 
     // drop the lattice in
     const tol = { area: minArea, circle: 0 };
-    const prefer = spec.kind === "crossed" ? (ta, tb) => !(ta === 2 && tb === 2) : null;
+    // cocircular tie-break toward the pattern's creases
+    const prefer = spec.kind === "crossed" ? (ta, tb) => !(ta === 2 && tb === 2)
+      : spec.kind === "grid" || spec.kind === "rosette" ? (ta, tb) => Math.max(ta, tb)
+      : null;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (let i = 0; i < tri.x.length; i++) {
       x0 = Math.min(x0, tri.x[i]); x1 = Math.max(x1, tri.x[i]); y0 = Math.min(y0, tri.y[i]); y1 = Math.max(y1, tri.y[i]);
@@ -739,7 +929,8 @@ export function remeshForTexture(soup, opt) {
     const lat = latticePoints(spec, px0, py0, px1, py1);
     // nearest-neighbour spacing where we triangulate: corner to centre is
     // (1/4, 1/4) in the crossed lattice's (u, w)
-    const h = spec.kind === "crossed" ? Math.SQRT2 / 4 : lat.h;
+    // (the rosette's rings sit 0.15 apart: clear them at 0.55 * 0.25, not more)
+    const h = spec.kind === "crossed" ? Math.SQRT2 / 4 : spec.kind === "grid" || spec.kind === "rosette" ? 0.25 : lat.h;
     tol.circle = h ** 4 * 1e-7;
     const clear = 0.55 * h;
     // grid hash of boundary segments and existing points
@@ -848,17 +1039,22 @@ export function remeshForTexture(soup, opt) {
       }
       if (folded) continue;                  // finer, from scratch (split points are reused)
     }
-    const axisZ = reg.kind === "cyl" && reg.textured && Math.abs(reg.axis[2]) > 0.999;
+    const fl = !reg.textured ? 4
+      : 8 | (reg.kind === "cyl" && Math.abs(reg.axis[2]) > 0.999 ? 1 : 0) | (reg.facet ? 0 : 2);
     for (let t = 0; t < tri.count; t++) {
       const a = gid[tri.v[3 * t]], b = gid[tri.v[3 * t + 1]], c = gid[tri.v[3 * t + 2]];
       // (the CDT space was mirrored if needed so the region's own triangles
       // read CCW there: CCW in it is the 3D winding)
+      if (reg.outFrom) reg.outFrom.push(outT.length / 3);
       outT.push(a, b, c);
-      if (axisZ) { onAxisCyl[a] = 1; onAxisCyl[b] = 1; onAxisCyl[c] = 1; }
+      if (fl) for (const v of [a, b, c]) frame[v] = (frame[v] || 0) | fl;
     }
     break;
     }
   }
+
+  // ---- even out remeshed sphere patches (their facets were done one by one)
+  for (const [sph, faces] of sphereFaces) relaxSpherePatch(outP, outT, faces, sph);
 
   // ---- must be closed, consistently wound, and free of collapsed triangles
   const nOut = outP.length / 3;
@@ -877,7 +1073,7 @@ export function remeshForTexture(soup, opt) {
     if (!seen.has(q * nOut + p)) return fail("result is not closed");
   }
   const flags = new Uint8Array(nOut);
-  for (let i = 0; i < onAxisCyl.length; i++) if (onAxisCyl[i]) flags[i] = 1;
-  return { verts: Float64Array.from(outP), faces: Uint32Array.from(outT), onAxisCyl: flags, L };
+  for (let i = 0; i < frame.length; i++) if (frame[i]) flags[i] = frame[i];
+  return { verts: Float64Array.from(outP), faces: Uint32Array.from(outT), frame: flags, L };
   }
 }

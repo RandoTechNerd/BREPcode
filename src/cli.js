@@ -12,7 +12,7 @@ import { build, toSTL, stats } from "./render.js";
 import { fromOpenSCAD, looksLikeOpenSCAD } from "./openscad.js";
 
 function parseArgs(argv) {
-  const out = { input: null, output: null, defines: {}, info: false, help: false, tolerance: 6, lang: null };
+  const out = { input: null, output: null, defines: {}, info: false, help: false, tolerance: 6, lang: null, engine: "auto" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
@@ -20,6 +20,10 @@ function parseArgs(argv) {
     else if (a === "-o" || a === "--output") out.output = argv[++i];
     else if (a === "-t" || a === "--tolerance") out.tolerance = Number(argv[++i]);
     else if (a === "-l" || a === "--lang") out.lang = argv[++i];
+    else if (a === "-e" || a === "--engine") {
+      out.engine = argv[++i];
+      if (!["auto", "split", "js"].includes(out.engine)) throw new Error(`--engine takes auto, split or js (got "${out.engine}")`);
+    }
     else if (a === "-D" || a === "--define") {
       const [k, ...rest] = String(argv[++i] ?? "").split("=");
       const raw = rest.join("=");
@@ -44,6 +48,9 @@ Options:
   -D, --define K=V      Inject a parameter, readable as params.K in the model
   -l, --lang NAME       Force "openscad" or "brepscript" (default: by extension)
   -t, --tolerance N     Export decimal precision (default 6)
+  -e, --engine NAME     auto (default): Rust kernel for exact parts, manifold for
+                        meshes, JS kernel if either refuses. split: no fallback.
+                        js: the JS kernel only.
       --info            Print facet counts and bounding boxes, write nothing
   -h, --help            Show this message
 
@@ -103,7 +110,7 @@ async function main() {
       }
       shape = typeof exported === "function" ? await exported(args.defines) : exported;
     }
-    result = await build(shape, { tolerance: args.tolerance });
+    result = await build(shape, { tolerance: args.tolerance, engine: args.engine });
   } catch (e) {
     console.error(`Build failed: ${e.message}`);
     process.exit(1);
@@ -121,6 +128,10 @@ async function main() {
     );
   }
 
+  console.error(result.fallback
+    ? `  engine: JS kernel (the split engine refused: ${result.fallback})`
+    : `  engine: ${result.engine === "js" ? "JS kernel" : result.engine === "exact" ? "Exact (Rust kernel)" : "Mesh (Rust + manifold)"}`);
+
   if (args.info) {
     console.error(`built in ${ms}ms (no file written)`);
     return;
@@ -131,7 +142,9 @@ async function main() {
   console.error(`wrote ${outPath} in ${ms}ms`);
 }
 
-main().catch((e) => {
+// Exit explicitly: the kernels leave timers/wasm workers alive, so the process
+// used to finish its work and then never return to the shell.
+main().then(() => process.exit(0), (e) => {
   console.error(e?.stack || String(e));
   process.exit(1);
 });

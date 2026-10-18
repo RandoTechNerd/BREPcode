@@ -110,6 +110,18 @@
   }
   </script>
   <!--
+    The 10.8MB OCCT wasm (curved STEP, the SVG blueprint, STEP import). The
+    /brep/ folder on brepcode.com will not take a file that size, so the host
+    serves it from its asset store and this points there. Everywhere else it is
+    left unset and viewer/curved.js tries the copy beside the app, then a pinned
+    public copy of the same bytes. Baked in here because it used to be patched
+    into the live page by hand, and the next upload wiped it.
+  -->
+  <script>
+    if (/(^|\.)brepcode\.com$/.test(location.hostname))
+      window.__BREP_REPLICAD_WASM_URL = "/__l5e/assets-v1/8c128b71-bdc1-4582-ba91-70b8024c999b/replicad_single.wasm";
+  </script>
+  <!--
     Before ANY module runs. The vendored kernel's manifold build sniffs for a
     `process` global to decide whether it is in Node, and a browser extension or
     a bundler shim that leaves one lying about sends it down the Node path,
@@ -1621,6 +1633,42 @@
     #tools-menu b { font-size: 13px; font-weight: 600; }
     #tools-menu small { font-size: 11px; color: var(--muted2); }
     #tools-menu button.active small { color: rgba(255,255,255,.8); }
+    #tools-examples { display: flex; flex-direction: column; border-top: 1px solid var(--border-soft, #1c2437); margin-top: 4px; padding-top: 2px; }
+    /* "where this example came from": a build video, the files on Printables */
+    #brep-example-note { position: fixed; left: 12px; bottom: 108px; z-index: 60; width: min(340px, calc(100vw - 24px));
+      background: var(--card, #121826); color: var(--text, #e8eefc); border: 1px solid var(--border-soft, #2a3654); border-radius: 14px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.5); overflow: hidden; font: 13px/1.4 system-ui, sans-serif; }
+    #brep-example-note .xn-top { display: flex; gap: 11px; padding: 11px 34px 10px 11px; align-items: center; }
+    #brep-example-note .xn-thumb { position: relative; flex: none; width: 112px; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden;
+      background: #000; display: block; }
+    #brep-example-note .xn-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+    #brep-example-note .xn-thumb:hover img { transform: scale(1.05); }
+    #brep-example-note .xn-play { position: absolute; left: 50%; top: 50%; width: 34px; height: 24px; margin: -12px 0 0 -17px;
+      background: #ff0033; border-radius: 7px; display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+    #brep-example-note .xn-txt { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    #brep-example-note .xn-eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted2, #8ea0c0); }
+    #brep-example-note .xn-head { font-size: 14px; font-weight: 650; line-height: 1.25; }
+    #brep-example-note .xn-blurb { color: var(--muted2, #8ea0c0); font-size: 12px; }
+    #brep-example-note .xn-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 11px 11px; }
+    #brep-example-note .xn-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; font-size: 12.5px;
+      font-weight: 600; text-decoration: none; white-space: nowrap; border: 1px solid transparent; }
+    #brep-example-note .xn-yt { background: #ff0033; color: #fff; }
+    #brep-example-note .xn-yt:hover { background: #e0002d; }
+    #brep-example-note .xn-pr { background: #fa6831; color: #fff; }
+    #brep-example-note .xn-pr:hover { background: #e2561f; }
+    #brep-example-note .xn-ch { color: var(--text, #e8eefc); border-color: var(--border-soft, #2a3654); }
+    #brep-example-note .xn-ch:hover { background: var(--hover, #1a2334); }
+    #brep-example-note .xn-btn:focus-visible, #brep-example-note .xn-thumb:focus-visible, #brep-example-note .xn-x:focus-visible { outline: 2px solid var(--accent, #7fd1ff); outline-offset: 2px; }
+    #brep-example-note .xn-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border-radius: 7px; background: none; border: 0;
+      color: var(--muted2, #8ea0c0); font-size: 18px; line-height: 1; cursor: pointer; }
+    #brep-example-note .xn-x:hover { background: var(--hover, #1a2334); color: var(--text, #fff); }
+    #brep-example-note .xn-look { border-top: 1px solid var(--border-soft, #2a3654); padding: 8px 11px; font-size: 12px; color: var(--muted2, #8ea0c0);
+      display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+    #brep-example-note .xn-look button { background: none; border: 0; padding: 0; color: var(--accent, #7fd1ff); font: inherit; font-weight: 600; cursor: pointer; }
+    .hint-link { background: none; border: 0; padding: 0; color: var(--accent, #7fd1ff); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+    @media (max-width: 560px) { #brep-example-note { bottom: 92px; } #brep-example-note .xn-thumb { width: 88px; } }
+    #tools-menu .tools-group-head { font-size: 10.5px; font-weight: 600; text-transform: uppercase; font-variant: small-caps;
+      letter-spacing: .1em; color: var(--muted2, #8ea0bd); padding: 8px 10px 3px; }
 
     #more-menu {
       position: fixed; z-index: 40; display: none;
@@ -3092,6 +3140,11 @@
             </svg>
             <span><b>Free-form corners <small class="beta">beta</small></b><small>drag one corner on its own to skew</small></span>
           </label>
+          <!-- The example models (welcome.js EXAMPLES), always reachable: the
+               welcome card shows once. Filled at startup; one row each. -->
+          <div id="tools-examples" data-brep-examples>
+            <div class="tools-group-head">Examples</div>
+          </div>
         </div>
         <div id="more-menu">
           <button data-act="params-btn">Parameters…</button>
@@ -4264,6 +4317,26 @@
     // storage, this makes the worker narrate its lifecycle and each build stage
     // to the console. A build that never comes back is otherwise invisible —
     // there is no stack to look at, just silence.
+    // Which engine builds the model (src/engine.js). "auto": the Rust kernel
+    // for exact parts and manifold for meshes, the JS kernel when either
+    // refuses. "split": no fallback (to see the refusal). "js": JS kernel only.
+    // ?engine=js on the URL, or brepscript.setEngine("js") in the console.
+    const ENGINES = ["auto", "split", "js"];
+    function buildEngine() {
+      const q = /[?&]engine=(\w+)/.exec(location.search)?.[1];
+      if (ENGINES.includes(q)) return q;
+      try { const v = localStorage.getItem("brepcode.engine"); if (ENGINES.includes(v)) return v; } catch { /* private mode */ }
+      return "auto";
+    }
+    let lastEngine = null;
+    // " · Exact" (Rust kernel, STEP-able), " · Mesh" (has textures/imports),
+    // " · JS kernel (...)" when the split engine refused and the JS kernel built it.
+    function engineNote(e) {
+      if (!e) return "";
+      if (e.engine === "exact") return " · Exact";
+      if (e.engine === "mesh") return " · Mesh";
+      return e.fallback ? " · JS kernel (Rust refused)" : "";
+    }
     const WORKER_DEBUG = /[?&]workerdebug/.test(location.search)
       || !!(() => { try { return localStorage.getItem("brepcode-worker-debug"); } catch { return null; } })();
     const workerPending = new Map();
@@ -5497,9 +5570,11 @@
 
         // The flake tint for a cell — colour, or a rainbow drawn from the cell
         // itself so a speck keeps its colour as the part turns.
-        vec3 fxFlakeTint(vec3 cell) {
+        // shift: holographic flake changes colour with the angle you see it
+        // at, so the caller passes how the flake faces the light and the eye.
+        vec3 fxFlakeTint(vec3 cell, float shift) {
           if (uFxRainbow > 0.5) {
-            vec3 c = 0.5 + 0.5 * cos(6.28318 * (tHash(cell + 3.7) + vec3(0.0, 0.33, 0.67)));
+            vec3 c = 0.5 + 0.5 * cos(6.28318 * (tHash(cell + 3.7) + shift + vec3(0.0, 0.33, 0.67)));
             // Saturate hard. The raw cosine palette never lets a channel reach
             // zero, so every speck carries a lot of white — which is invisible
             // added onto the pale, nearly clear body that rainbow glitter
@@ -5541,54 +5616,115 @@
       // clips to white. That blow-out is what reads as a speck GLOWING rather
       // than merely being a pale dot.
       const FLAKE = `
-        // One layer of specks at a given cell frequency.
-        vec3 fxFlakeLayer(vec3 nrm, vec3 V, float freq, float cover, float sharp, float gain) {
-          vec3 cell = floor(vFxWorld * freq);
+        // VOLUME GLITTER. Real flake is suspended IN the plastic, not painted
+        // on it: small hexagons at every depth, each tilted its own way. The
+        // earlier version drew one layer exactly on the surface and filled
+        // whole grid cells, so specks came out as axis-aligned squares stuck
+        // to the face, all the same size, and their tilt was fixed relative
+        // to the CAMERA, so orbiting the part barely changed them.
+        //
+        // Now, per layer:
+        //   - the sample point is where the REFRACTED view ray sits at that
+        //     depth, so deeper flakes slide against the surface as you orbit
+        //     (parallax: the cue that says "inside")
+        //   - each cell holds one hexagonal flake at a random spot, mostly
+        //     small, a few large, with clear plastic between them
+        //   - the flake's tilt is fixed to the OBJECT (world space), so as you
+        //     turn the part a flake blazes at one angle and goes dark at the
+        //     next, which is what glitter does
+        //   - deeper layers are dimmer and take on the filament's colour,
+        //     because their light crossed more plastic
+        //   - rainbow flake shifts hue with the angle, like holographic film
+        // Peak brightness still runs past 1.0 so the heart of a flash clips to
+        // white: that blow-out is what reads as GLOWING rather than a pale dot.
+        float fxHex(vec2 p) {
+          p = abs(p);
+          return max(dot(p, vec2(0.8660254, 0.5)), p.y);
+        }
+        vec3 fxFlakeLayer(vec3 Nw, vec3 Vw, vec3 Rw, vec3 body, float depth, float freq,
+                          float cover, float sharp, float gain, float seed) {
+          // where the view ray is, depth mm under the surface
+          float t = depth / max(dot(Rw, -Nw), 0.25);
+          vec3 Q = (vFxWorld + Rw * t) * freq + seed;
+          vec3 cell = floor(Q);
           if (tHash(cell) > cover) return vec3(0.0);
-          // Suspended nearly flat, tilted a little — not pointing anywhere.
+          // tilt: mostly along the surface (flakes lie in the flow), but each
+          // its own way, fixed to the part
           vec3 jitter = vec3(tHash(cell + 11.0), tHash(cell + 23.0), tHash(cell + 41.0)) - 0.5;
-          vec3 facet = normalize(nrm + jitter * 1.35);
-          vec3 tint = fxFlakeTint(cell);
+          vec3 facetW = normalize(Nw + jitter * 1.6);
+          // the hexagon, in the flake's own plane
+          vec3 centre = vec3(tHash(cell + 5.1), tHash(cell + 9.7), tHash(cell + 13.3)) * 0.5 + 0.25;
+          vec3 o = (Q - cell) - centre;
+          vec3 ax = normalize(cross(facetW, abs(facetW.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+          vec3 ay = cross(facetW, ax);
+          float spin = tHash(cell + 29.0) * 1.0472;
+          vec2 p = vec2(dot(o, ax), dot(o, ay));
+          p = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * p;
+          // radius in cells: with density 2-4 cells/mm that is flake about
+          // 0.2-0.35 mm across, a few up to half a millimetre, like the real
+          // stuff (finer read as dust, larger as confetti)
+          float size = mix(0.27, 0.48, pow(tHash(cell + 17.9), 2.5));
+          float d = fxHex(p);
+          float aa = max(fwidth(d), 0.002);
+          float shape = 1.0 - smoothstep(size - aa, size + aa, d);
+          if (shape <= 0.0) return vec3(0.0);
+          // light it: a tiny mirror tested against each light's half-vector
+          vec3 facet = normalize((viewMatrix * vec4(facetW, 0.0)).xyz);
+          vec3 V = normalize(vViewPosition);
           vec3 acc = vec3(0.0);
+          float align = 0.0;
           #if NUM_DIR_LIGHTS > 0
             for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
               vec3 H = normalize(directionalLights[i].direction + V);
-              acc += directionalLights[i].color * pow(max(dot(facet, H), 0.0), sharp);
+              float h = max(dot(facet, H), 0.0);
+              align = max(align, h);
+              acc += directionalLights[i].color * pow(h, sharp);
             }
           #endif
           #if NUM_POINT_LIGHTS > 0
             for (int i = 0; i < NUM_POINT_LIGHTS; i++) {
               vec3 H = normalize(normalize(pointLights[i].position + vViewPosition) + V);
-              acc += pointLights[i].color * pow(max(dot(facet, H), 0.0), sharp);
+              float h = max(dot(facet, H), 0.0);
+              align = max(align, h);
+              acc += pointLights[i].color * pow(h, sharp);
             }
           #endif
-          return tint * acc * gain;
+          vec3 tint = fxFlakeTint(cell, align * 1.4);
+          // a faint metallic glint even off-angle, so flake reads as flake and
+          // not only as the few that happen to line up; and the FLASH, which
+          // runs toward white at its peak (holographic film goes nearly white
+          // at the exact angle, colour only at the fringes) and past 1.0 so
+          // its heart clips: that is what reads as a speck blazing
+          vec3 flash = acc * mix(tint, vec3(1.0), 0.5);
+          // light that reached a deeper flake crossed more plastic
+          float deep = 1.0 - exp(-depth * 0.9);
+          vec3 through = mix(vec3(1.0), body, deep * 0.75) * (1.0 - deep * 0.45);
+          return (tint * 0.06 + flash) * through * gain * shape;
         }
 
-        vec3 fxFlake(vec3 nrm) {
+        vec3 fxFlake(vec3 nrm, vec3 body) {
           vec3 N = normalize(nrm);
           vec3 V = normalize(vViewPosition);
+          // world-space normal and view direction: the flake field lives in
+          // the part, so orbiting moves the eye through it
+          vec3 Nw = normalize((vec4(N, 0.0) * viewMatrix).xyz);
+          vec3 Vw = normalize(cameraPosition - vFxWorld);
+          vec3 Rw = refract(-Vw, Nw, 1.0 / 1.5);
+          if (dot(Rw, Rw) < 0.5) Rw = -Nw;
           float s = max(uFxSparkle, 0.0);
-          // Sparkle drives BRIGHTNESS ONLY, and the exponents are constants.
-          //
-          // The first attempt tied the exponent to sparkle as well, on the
-          // theory that a tighter lobe is glitterier. It is exactly backwards:
-          // tightening the lobe means fewer flakes fall inside it, so turning
-          // sparkle up made the surface SPARSER and dimmer — the gain rose and
-          // the hit rate fell faster. Measured by eye at sparkle 2.0 against
-          // 1.0 and the higher setting was visibly less glittery.
-          //
-          // So: 70 for the coarse layer, wide enough that a decent number of
-          // flakes catch something from three lights, tight enough that each
-          // one is a point rather than a sheen. 34 for the fine layer, because
-          // sub-pixel specks need a broader lobe to survive being averaged
-          // down. Sparkle then multiplies what is left, squared, so the dial
-          // has real travel at the top end.
-          vec3 g = fxFlakeLayer(N, V, uFxFlakeD, uFxFlakeS, 70.0, 1.0)
-                 + fxFlakeLayer(N, V, uFxFlakeD * 2.7, uFxFlakeS * 0.55, 34.0, 0.5);
-          // Grazing angles show more flake, because you are looking along the
-          // plastic and through more of it. Subtle, but it is why a curved
-          // glittered part sparkles most around its silhouette.
+          // Sparkle drives BRIGHTNESS only; the lobes are constants (a tighter
+          // lobe on a sparkle dial made the surface SPARSER, measured). Three
+          // depths: at the surface, just under it, deep inside. Same flake
+          // size at every depth (a millimetre further in is not visibly
+          // smaller; a finer grid there turned the deep layers into dust),
+          // each with its own seed so the layers do not line up, a little
+          // sparser and with a broader lobe as they go deeper.
+          vec3 g = fxFlakeLayer(Nw, Vw, Rw, body, 0.02, uFxFlakeD, uFxFlakeS,        38.0, 2.4,  0.0)
+                 + fxFlakeLayer(Nw, Vw, Rw, body, 0.6,  uFxFlakeD, uFxFlakeS,        30.0, 1.9,  37.0)
+                 + fxFlakeLayer(Nw, Vw, Rw, body, 1.7,  uFxFlakeD, uFxFlakeS * 0.9,  24.0, 1.4,  71.0);
+          // Grazing angles show more flake: you look along the plastic and
+          // through more of it, which is why a curved part sparkles most
+          // around its silhouette.
           float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.5);
           return g * uFxFlakeK * s * s * (1.0 + 1.6 * fres);
         }`;
@@ -5596,6 +5732,13 @@
       shader.fragmentShader = shader.fragmentShader
         .replace("#include <common>", "#include <common>\n" + HELPERS)
         .replace("#include <lights_pars_begin>", "#include <lights_pars_begin>\n" + FLAKE)
+        // What you see THROUGH filament is frosted. Three blurs the refracted
+        // image only by the surface roughness, so a glossy spool showed the
+        // inside of a cup glass-sharp and the part read as clear glass the
+        // moment it had anything inside it. A floor on the blur keeps the
+        // inside a soft shape behind the wall.
+        .replace("#include <transmission_fragment>",
+          THREE.ShaderChunk.transmission_fragment.replace("n, v, material.roughness,", "n, v, max(material.roughness, 0.62),"))
         .replace("#include <color_fragment>", `#include <color_fragment>
           if ((uTexKind >= 3 && uTexKind <= 5) || uTexKind == 7 || uTexKind == 8)
             diffuseColor.rgb *= tTint(tCoord(vTexPos));
@@ -5606,7 +5749,7 @@
         // light disappears the moment it faces away, and real glitter does the
         // opposite — it is brightest at the angle nothing else is.
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-          if (uFxFlake > 0.5) totalEmissiveRadiance += fxFlake(normal);`)
+          if (uFxFlake > 0.5) totalEmissiveRadiance += fxFlake(normal, diffuseColor.rgb);`)
         .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
           if (uTexKind > 0 && uTexDepth > 0.0) {
             vec3 P = tCoord(vTexPos);
@@ -5617,7 +5760,28 @@
             float hz = tHeight(P + vec3(0.0,0.0,e));
             vec3 grad = vec3(hx-h, hy-h, hz-h) / e;
             normal = normalize(normal - grad * uTexDepth * 1.2);
-          }`);
+          }`)
+        // See-through parts: a surface seen from BEHIND (the far wall of a
+        // hole, the underside) draws fainter than one facing you, so what is
+        // under the part reads as under it rather than on top. Opaque
+        // materials draw without blending, so this changes nothing for them.
+        .replace("#include <dithering_fragment>", `#include <dithering_fragment>
+          gl_FragColor.a *= gl_FrontFacing ? 1.0 : 0.55;
+          // Translucent filament looks more SOLID at its silhouette: looking
+          // along a surface, light crosses far more plastic than looking
+          // straight in. Only on transmissive (filament) materials, so the
+          // plain opacity x-ray stays even.
+          #ifdef USE_TRANSMISSION
+            // A back face only ever reaches the screen through the refraction
+            // capture (the near-skin depth pass rejects it everywhere else):
+            // it is the inside of the part, so it takes on the plastic's own
+            // colour and loses its lighting, like a shape seen through a wall.
+            if (!gl_FrontFacing) gl_FragColor.rgb = mix(gl_FragColor.rgb, diffuseColor.rgb * 0.5, 0.65);
+            {
+              float fr = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
+              gl_FragColor.a = mix(gl_FragColor.a, min(1.0, gl_FragColor.a + 0.35), fr);
+            }
+          #endif`);
     }
     // Every solid mesh gets a material from this factory: same texture + shading,
     // its own colour. matForFeature() hands each shape either the shared default
@@ -6148,7 +6312,9 @@
 
     // ------------------------------------------- material & lighting panel
     const MAT_DEFAULTS = {
-      color: "#9fb4d6", metal: 10, rough: 55, opacity: 100, emissive: "#000000", emissiveInt: 0,
+      // satin printed plastic: no metalness (a plastic part has none) and a
+      // soft sheen, so a model with no colours of its own still looks printed
+      color: "#9fb4d6", metal: 0, rough: 48, opacity: 100, emissive: "#000000", emissiveInt: 0,
       filament: "opaque",
       // 1 = the spool as specified. The dial goes to 2.5 for anyone who
       // wants it unmistakable rather than accurate.
@@ -6363,6 +6529,10 @@
       // Orca-style labels for fuzzy skin
       $("tex-depth-lbl").textContent = mat.texture === 1 ? "Thickness" : "Depth";
       $("tex-scale-lbl").textContent = mat.texture === 1 ? "Point dist." : "Scale";
+      // opacity or filament may have just made a part see-through (or solid
+      // again): switch its hidden-edge treatment to match. Guarded because this
+      // can run during startup, before the outline code further down exists.
+      try { syncHiddenEdges(); syncSkin(); } catch { /* outlines not set up yet */ }
     }
     // Save the user's OWN lighting, never a rig a spool is currently borrowing.
     //
@@ -6849,6 +7019,14 @@
     // Everything back to baseline. This is the button you press when the view
     // has gone strange and you do not want to work out why — so it has to put
     // back EVERY layer, not just the ones with sliders.
+    // Would the saved look paint over a model's own colours? Outline and
+    // background choices are taste and leave the colours alone; these do not.
+    function lookOverridesDesign() {
+      const d = MAT_DEFAULTS;
+      return (mat.filament || "opaque") !== "opaque" || mat.opacity < 100 || mat.emissiveInt > 0
+        || mat.metal > 50 || (mat.exposure ?? 100) > 125 || mat.filmic
+        || mat.key > d.key * 1.5 || mat.ambient > d.ambient * 1.6 || mat.fill > d.fill * 2 || mat.rim > 120;
+    }
     function resetLook() {
       // Reset the LOOK, keep the palette: colours the user added are their own
       // work, not part of the material, and silently binning them on a reset is
@@ -7928,6 +8106,35 @@
         ctl.appendChild(sel);
         row._sync = (q) => { sel.value = String(q.value); };
 
+      } else if (p.kind === "color") {
+        // a swatch that opens the system picker, and the hex beside it for
+        // typing or pasting an exact colour
+        const six = (v) => {
+          const s = String(v);
+          return s.length === 4 ? "#" + [...s.slice(1)].map((c) => c + c).join("") : s;
+        };
+        const pick = document.createElement("input");
+        pick.type = "color"; pick.className = "prm-color";
+        pick.style.cssText = "width:38px;height:26px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;flex:none";
+        pick.value = six(p.value);
+        const hex = document.createElement("input");
+        hex.type = "text"; hex.className = "prm-text";
+        hex.style.cssText = "width:84px;flex:none;font-family:ui-monospace,monospace";
+        hex.value = String(p.value);
+        // the picker fires on every drag; the rebuild debounce takes care of that
+        pick.addEventListener("input", () => { hex.value = pick.value; setParam(p.name, pick.value); });
+        hex.addEventListener("change", () => {
+          if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex.value.trim())) {
+            pick.value = six(hex.value.trim());
+            setParam(p.name, hex.value.trim());
+          } else hex.value = pick.value;
+        });
+        ctl.append(pick, hex);
+        row._sync = (q) => {
+          if (document.activeElement !== hex) hex.value = String(q.value);
+          pick.value = six(q.value);
+        };
+
       } else {
         const box = document.createElement("input");
         box.type = "text"; box.className = "prm-text";
@@ -8180,6 +8387,26 @@
           if (group === IMPORT_GROUP) continue;          // lives in the Imported tab
           body.appendChild(groupHead(group));
           for (const spec of SPECS.filter((s) => s.group === group)) body.appendChild(specItem(spec));
+        }
+        // The welcome card's example models, as their own group ahead of the
+        // recipes: the card shows once, this list is always here. Filled from
+        // welcome.js when it arrives; the marker stops a second copy.
+        if (!body.querySelector("[data-brep-examples]")) {
+          const exBox = document.createElement("div");
+          exBox.dataset.brepExamples = "";
+          exBox.appendChild(groupHead("Examples"));
+          body.appendChild(exBox);
+          import("./welcome.js").then((W) => {
+            for (const ex of W.EXAMPLE_ORDER.map((k) => W.EXAMPLES[k])) {
+              const b = document.createElement("button");
+              b.className = "cheat-item";
+              b.innerHTML = `<code></code><small></small>`;
+              b.querySelector("code").textContent = ex.title;
+              b.querySelector("small").textContent = "example — a working starting point";
+              b.addEventListener("click", () => frontDoorHooks(W).loadExample(ex.code, ex.title, ex.coach, ex.note));
+              exBox.appendChild(b);
+            }
+          }).catch(() => exBox.remove());
         }
         body.appendChild(groupHead("Ready-made"));
         for (const r of RECIPES) body.appendChild(recipeItem(r));
@@ -9339,10 +9566,11 @@ ${joined}`)(...vs);
         cancelWorkerBuild();
         if (json && getBuildWorker()) {
           try {
-            const r = await workerCall({ op: "build", key: "model", json });
+            const r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
             if (mine !== token) return;
             solids = r.solids;
             fromWorker = true;
+            lastEngine = { engine: r.engine || "js", fallback: r.fallback || null, stats: r.stats || null };
             // How much of the model actually had to be rebuilt. Worth showing:
             // it is the difference between "this edit was cheap" and "this edit
             // threw the cache away", and without it an incremental build that
@@ -9350,11 +9578,13 @@ ${joined}`)(...vs);
             rebuiltNote = r.incremental && r.total
               ? ` · rebuilt ${r.rebuilt}/${r.total}`
               : "";
+            rebuiltNote += engineNote(lastEngine);
             // Alongside workerInfo(): when a build is slower than it should be,
             // the first question is whether the cache was used and the second
             // is why not, and neither is answerable from the status line alone.
             window.brepscript.lastWorkerBuild = {
               incremental: !!r.incremental, rebuilt: r.rebuilt, total: r.total, reason: r.reason,
+              engine: r.engine, fallback: r.fallback, stats: r.stats,
             };
           } catch (e) {
             if (mine !== token) return;             // cancelled by a newer build
@@ -10040,17 +10270,99 @@ ${joined}`)(...vs);
       transparent: true, opacity: 0.95, alphaToCoverage: false,
     });
     sizeOutlineMat();
+    // HIDDEN EDGES on see-through parts. A translucent face does not write
+    // depth (it would tear the part into black patches, see applyMaterial),
+    // so every edge used to pass the depth test and the far rim of a hole drew
+    // exactly as strongly as the near one: the bottom of the hole read as if
+    // it were on top. The CAD answer is hidden lines, drawn fainter:
+    //   order 0  the translucent faces, as before
+    //   order 1  edges of OPAQUE parts, unchanged (drawn before the depth
+    //            write below, so a shell never hides the parts inside it)
+    //   order 2  an invisible depth-only copy of each translucent part
+    //   order 3  that part's edges twice: in front of its surface at full
+    //            strength, behind it wide and faint, which reads as soft
+    // Everything is built once per model; syncHiddenEdges() only flips
+    // visibility and order when the opacity or filament changes.
+    const outlineHiddenMat = new LineMaterial({
+      color: 0x0d1117, linewidth: 3, worldUnits: false,
+      transparent: true, opacity: 0.16, depthFunc: THREE.GreaterDepth, depthWrite: false,
+    });
+    // the SAME resolution vector as the visible edges, so sizeOutlineMat()
+    // (which runs on every resize) keeps both widths right
+    outlineHiddenMat.uniforms.resolution.value = outlineMat.uniforms.resolution.value;
+    const depthOnlyMat = new THREE.MeshBasicMaterial({
+      colorWrite: false, depthWrite: true, transparent: true,
+      // a hair behind the surface, so edges lying ON it still count as in front
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+      side: THREE.FrontSide,
+    });
     const OUTLINE_LIMIT = 120000;      // verts past which building edges stalls the tab
     let outlineNote = "";
 
     function clearOutlines() {
       for (const o of [...outlineGroup.children]) {
         outlineGroup.remove(o);
-        o.geometry?.dispose?.();
+        // the depth-only copies and the hidden-edge lines BORROW geometry from
+        // the model mesh and from the visible edge line; disposing it here
+        // would pull it out from under them
+        if (!o.userData.borrowed) o.geometry?.dispose?.();
+      }
+    }
+
+    // a part is see-through when its material blends and stops writing depth
+    const seeThrough = (mesh) => !!mesh?.material && mesh.material.transparent && !mesh.material.depthWrite;
+    function syncHiddenEdges() {
+      outlineHiddenMat.color.copy(outlineMat.color);
+      outlineHiddenMat.linewidth = Math.max(2, outlineMat.linewidth * 2);
+      for (const o of outlineGroup.children) {
+        const glass = seeThrough(o.userData.source);
+        if (o.userData.role === "edge") o.renderOrder = glass ? 3 : 1;
+        else if (o.userData.role === "depth" || o.userData.role === "hidden") o.visible = glass;
+      }
+    }
+
+    // THE NEAR WALL WINS. A translucent filament puts every face of the part
+    // (each B-rep face is its own mesh) in three's transmissive list with depth
+    // writing off, so faces paint in centre-distance order, and a bore's centre
+    // ties with the outer wall's: the inside of a cup drew ON TOP of its own
+    // near wall, and any part with something inside read as clear glass.
+    // A depth-only copy of each face draws first in that same list
+    // (transmission > 0 is what files it there; FrontSide keeps it out of the
+    // back-face transmission capture), so only the nearest skin gets the
+    // filament. What is inside still shows, through the transmission
+    // refraction, blurred by the plastic's own roughness: below, not on top.
+    const skinGroup = new THREE.Group();
+    scene.add(skinGroup);
+    const skinDepthMat = new THREE.MeshBasicMaterial({
+      colorWrite: false, depthWrite: true, side: THREE.FrontSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+    });
+    skinDepthMat.transmission = 1;
+    // ...which also defines USE_TRANSMISSION, and the basic shader then reads
+    // a `material.transmissionAlpha` it never declared: the program failed to
+    // compile and the pass silently drew nothing. It writes depth only, so
+    // the define has no business here.
+    skinDepthMat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = "#undef USE_TRANSMISSION\n" + shader.fragmentShader;
+    };
+    function syncSkin() {
+      skinGroup.clear();                       // geometry is borrowed: nothing to dispose
+      for (const m of modelGroup.children) {
+        const mm = m.material;
+        if (!m.isMesh || !m.visible || !mm || Array.isArray(mm)) continue;
+        if (!(mm.transmission > 0) || mm.depthWrite) continue;
+        const d = new THREE.Mesh(m.geometry, skinDepthMat);
+        d.renderOrder = -1;
+        d.matrixAutoUpdate = false;
+        d.matrix.copy(m.matrixWorld);
+        d.matrixWorld.copy(m.matrixWorld);
+        d.raycast = () => {};                  // never picked instead of the face
+        skinGroup.add(d);
       }
     }
 
     function refreshOutlines() {
+      try { syncSkin(); } catch { /* before the model exists */ }
       clearOutlines();
       outlineNote = "";
       if (!mat.outline || !modelGroup.children.length) return;
@@ -10079,8 +10391,18 @@ ${joined}`)(...vs);
         const seg = new LineSegments2(geo, outlineMat);
         // model meshes are already in world space (adoptSolid bakes transforms)
         seg.renderOrder = 3;
+        seg.userData = { role: "edge", source: m };
         outlineGroup.add(seg);
+        // the see-through treatment (hidden until syncHiddenEdges says so)
+        const depth = new THREE.Mesh(m.geometry, depthOnlyMat);
+        depth.renderOrder = 2;
+        depth.userData = { role: "depth", source: m, borrowed: true };
+        const hidden = new LineSegments2(geo, outlineHiddenMat);
+        hidden.renderOrder = 3;
+        hidden.userData = { role: "hidden", source: m, borrowed: true };
+        outlineGroup.add(depth, hidden);
       }
+      syncHiddenEdges();
     }
 
     // Translucent stand-in for a cutter being dragged, so the hole's future
@@ -13953,12 +14275,14 @@ ${joined}`)(...vs);
       try {
         let size;
         // The recipe travels with the part. A mesh is a dead end — "make it 3mm
-        // taller" a year later means starting over — so both mesh formats carry
-        // the source that built them and the importer offers it straight back.
+        // taller" a year later means starting over — so the 3MF carries the
+        // source that built it and the importer offers it straight back. The
+        // STL cannot: Bambu, Prusa and Orca reject an STL with anything after
+        // the mesh ("no geometry"). See stlToBinary in exporters.js.
         const src = code.value.trim();
         if (fmt === "stl") {
           const exp = await getExporters();
-          size = download(`${base}.stl`, exp.stlWithSource(await exportSTL(), src), "model/stl");
+          size = download(`${base}.stl`, exp.stlToBinary(await exportSTL(), base), "model/stl");
         } else if (fmt === "obj") {
           const exp = await getExporters();
           size = download(`${base}.obj`, exp.stlToObj(await exportSTL(), base), "text/plain");
@@ -15739,6 +16063,13 @@ let SIMPLIFY_TARGET = 10000;
           if (!pick) return;
           if (pick.action === "fizz") return openFizz({ file });
           if (pick.action === "fins") return openFizz({ file }, "fins");
+          if (pick.action === "exact") {
+            // Import it as the mesh first (repair, recentre, the usual), then
+            // rebuild that mesh exactly. The mesh stays registered, so "Back
+            // to mesh" is one click and costs nothing.
+            await importMeshFile(file);
+            return convertImportToExact(file.name);
+          }
           await importMeshFile(file);
           if (pick.action === "tool" && pick.tool) {
             // the tools act on the built model, so wait for the import's build
@@ -15749,6 +16080,63 @@ let SIMPLIFY_TARGET = 10000;
         }
       }
       await importMeshFile(file);
+    }
+
+    // ------------------------------------------- mesh -> exact solid (beta)
+    // The upstream stl2step reconstruction (in the Rust kernel's wasm, see
+    // BREPcodeRustKernel/brepcode-kernel) turns the imported triangles into a
+    // STEP solid: real planes and cylinders where the mesh has them, facets
+    // where it doesn't. The result swaps in as importedSolid(...) and builds
+    // right away, so the viewport IS the preview; Keep or Back to mesh decides.
+    // CAD-made parts come out beautifully (1,202 triangles -> 33 faces); an
+    // organic model mostly stays facets, and the summary says so.
+    async function convertImportToExact(name) {
+      const stl = dsl.getImport(name);
+      if (typeof stl !== "string" || !/^\s*solid/.test(stl)) {
+        setStatus("err", `${name}: there's no mesh text to rebuild (it may not have imported).`);
+        return;
+      }
+      const meshCode = code.value;
+      setStatus("busy", `Rebuilding ${name} as an exact solid…`);
+      let r;
+      try {
+        r = await withLoadBar("Rebuilding the surfaces…",
+          workerCall({ op: "stl2step", stl, name: name.replace(/\.\w+$/, ""), rustWasmUrl: window.__BREP_RUST_WASM_URL }));
+      } catch (e) {
+        const why = String(e?.message || e).replace(/:?\s*\[ValidationIssue.*$/s, "").slice(0, 220);
+        logEvent("exact", name, { ok: false });
+        hint.innerHTML = `Couldn't rebuild <b>${esc(name)}</b> as an exact solid (${esc(why)}). `
+          + `It stays a mesh, which prints, cuts and exports exactly as before.`;
+        scheduleBuild();
+        return;
+      }
+      const stepName = name.replace(/\.(stl|3mf|obj)$/i, "") + ".step";
+      dsl.registerImport(stepName, r.step, { mesh: stl });
+      logEvent("exact", name, { ok: true, faces: r.faces, tris: r.sourceTriangles, ms: r.ms });
+      pushHistory(code.value);
+      code.value = `importedSolid(${JSON.stringify(stepName)})`;
+      pushHistory();
+      scheduleBuild();
+      const kinds = [[r.planes, "plane"], [r.cylinders, "cylinder"], [r.cones, "cone"], [r.spheres, "sphere"], [r.tori, "torus"]]
+        .filter(([n]) => n).map(([n, w]) => `${n.toLocaleString()} ${w}${n === 1 ? "" : w === "torus" ? "es" : "s"}`).join(", ");
+      // Mostly facets = the triangles came back as triangles: it's still exact,
+      // but there was no CAD shape hiding in it, and the mesh is the lighter one.
+      const faceted = r.faces > 0.4 * r.sourceTriangles;
+      hint.innerHTML = `<b>${esc(name)}</b> rebuilt as an exact solid in ${(r.ms / 1000).toFixed(1)} s: `
+        + `${r.sourceTriangles.toLocaleString()} triangles → <b>${r.faces.toLocaleString()} face${r.faces === 1 ? "" : "s"}</b>${kinds ? ` (${kinds})` : ""}`
+        + `${r.solids > 1 ? `, ${r.solids} separate solids` : ""}. `
+        + (faceted
+          ? `Most of it is still facets: this looks like an organic or sculpted shape, so there were few real surfaces to recover. The mesh is usually the better choice here. `
+          : `Those are real surfaces now: fillet its edges, cut it exactly, and STEP export carries true geometry. `)
+        + `<button id="exact-keep" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Keep exact</button> <button id="exact-back" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Back to mesh</button>`;
+      $("exact-keep").addEventListener("click", () => { hint.textContent = `Kept ${stepName} as an exact solid.`; });
+      $("exact-back").addEventListener("click", () => {
+        pushHistory(code.value);
+        code.value = meshCode;
+        pushHistory();
+        scheduleBuild();
+        hint.textContent = `Back to the mesh of ${name}. The exact version is still on hand as importedSolid(${JSON.stringify(stepName)}).`;
+      });
     }
 
     // ---------------------------------------------------- FizzCore infill
@@ -15915,17 +16303,96 @@ let SIMPLIFY_TARGET = 10000;
       }
       return null;
     }
+    // Same idea for the examples: ?example=<name> (or #example=) loads one
+    // straight away, the way the welcome card's chips do. Shared links like
+    // brepcode.com/tpu-box land here as ?example=tpubox.
+    function launchExample() {
+      for (const L of hostLocations()) {
+        const e = new URLSearchParams(L.search).get("example")
+          || new URLSearchParams(L.hash.replace(/^#/, "")).get("example");
+        if (e) return e.toLowerCase();
+      }
+      return null;
+    }
+    // A one-off card that points back at where an example came from (a build
+    // video, the original files on Printables). Dismissable, and a fresh copy
+    // replaces any old one, so back-to-back examples never stack.
+    function showExampleNote(note, lookNote = null) {
+      const vid = /(?:youtu\.be\/|[?&]v=|\/shorts\/)([\w-]{11})/.exec(note.video || "")?.[1];
+      if (!note.video && !note.printables && !lookNote) return;
+      document.getElementById("brep-example-note")?.remove();
+      const el = document.createElement("div");
+      el.id = "brep-example-note";
+      el.setAttribute("role", "complementary");
+      el.setAttribute("aria-label", "Where this example came from");
+      const play = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10.2 6z" fill="currentColor"/></svg>';
+      const out = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2H10v5.5M10 2 3 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+      el.innerHTML = `
+        <div class="xn-top">
+          ${vid ? `<a class="xn-thumb" target="_blank" rel="noopener" aria-label="Watch the build video on YouTube"><img alt="" loading="lazy"><span class="xn-play">${play.replace('currentColor', '#fff')}</span></a>` : ""}
+          <div class="xn-txt"><span class="xn-eyebrow">From RandoTechNerd</span><span class="xn-head"></span><span class="xn-blurb"></span></div>
+        </div>
+        <div class="xn-acts">
+          ${note.video ? `<a class="xn-btn xn-yt" data-k="video" target="_blank" rel="noopener">${play}Watch the build</a>` : ""}
+          ${note.printables ? `<a class="xn-btn xn-pr" data-k="printables" target="_blank" rel="noopener">Files on Printables${out}</a>` : ""}
+          <a class="xn-btn xn-ch" href="https://www.youtube.com/@RandoTechNerd" target="_blank" rel="noopener">More builds${out}</a>
+        </div>
+        ${lookNote ? `<div class="xn-look"><span>Shown in its own colours.</span><button type="button">Use my look</button></div>` : ""}
+        <button type="button" class="xn-x" title="Close" aria-label="Close">&times;</button>`;
+      el.querySelector(".xn-head").textContent = note.heading || "Where this came from";
+      const blurb = note.blurb || (note.video ? "Watch it go from a code file to a printed part." : "");
+      el.querySelector(".xn-blurb").textContent = blurb;
+      if (!blurb) el.querySelector(".xn-blurb").remove();
+      if (vid) {
+        const a = el.querySelector(".xn-thumb");
+        a.href = note.video;
+        a.querySelector("img").src = `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`;
+        a.querySelector("img").addEventListener("error", () => a.remove());
+      }
+      for (const a of el.querySelectorAll("[data-k]")) a.href = note[a.dataset.k];
+      el.querySelector(".xn-x").addEventListener("click", () => el.remove());
+      el.querySelector(".xn-look button")?.addEventListener("click", () => {
+        lookNote();
+        el.querySelector(".xn-look").remove();
+      });
+      document.body.appendChild(el);
+    }
     function frontDoorHooks(W) {
       const hooks = {
         openChat: () => $("chat-btn").click(),
         pickFile: pickAFile,
         startTour: () => $("tour-btn").click(),
-        loadExample: (src) => {
+        loadExample: async (src, title, coach, note) => {
+          // An example is DESIGNED in its own colours, and a look saved from
+          // some earlier model (a see-through spool, glow, dimmed opacity,
+          // blown-out lights) was painting over them: the teal-and-pink TPU
+          // box came up glowing white. So it opens in the baseline look, and
+          // the note offers the old one back in one click.
+          let restoreLook = null;
+          if (lookOverridesDesign()) {
+            const prev = JSON.stringify(mat), prevBg = matUserBg;
+            resetLook();
+            restoreLook = () => {
+              mat = JSON.parse(prev); matUserBg = prevBg;
+              applyMaterial(); saveMat();
+            };
+          }
+          toggleCard(panel, openBtn, true);     // the code is the point: show it
           pushHistory(code.value);
           code.value = src;
           pushHistory();
           updateHint();
           rebuild();
+          // an example that has a coach walks you to its controls once it is
+          // on screen (pointing at an empty Parameters panel teaches nothing)
+          if (coach && await whenBuilt(20000)) startCoach(coach);
+          // examples that came from somewhere else say where — dismissable,
+          // so it asks once and then leaves the editor alone
+          if (note) showExampleNote(note, restoreLook);
+          else if (restoreLook) {
+            hint.innerHTML = `Opened in its own colours. <button type="button" class="hint-link">Use my look</button>`;
+            hint.querySelector("button").addEventListener("click", () => { restoreLook(); hint.textContent = "Your look is back."; });
+          }
         },
         openTool: (name) => { toolCard = W.showToolCard(name, hooks) || null; },
         armDrop: (spec) => { pendingDropTool = spec; },
@@ -16426,8 +16893,8 @@ let SIMPLIFY_TARGET = 10000;
             embeddedProject = exp.parseBcodeFile(new TextDecoder().decode(part));
             embedded = embeddedProject.source;
           } else if (isAsciiStl) {
-            // An STL has no container, so the source travels alone; there is
-            // nowhere to put a scene without inventing a second convention.
+            // Only STLs exported before the download went binary carry source
+            // (after endsolid, which slicers choke on); still read them back.
             embedded = exp.extractSourceFromStl(new TextDecoder().decode(buf));
           }
         } catch { /* no source in there — the overwhelmingly normal case */ }
@@ -17910,7 +18377,7 @@ let SIMPLIFY_TARGET = 10000;
       pushHistory();
       buildAfterToolEdit();
       hint.innerHTML = `Wrapped the model in <code>texture()</code> — REAL geometry, so it survives into the STL/3MF. `
-        + `Patterns: <code>knurl</code> (diamond grip), <code>fuzzy</code> (fuzzy skin), <code>layers</code>, <code>bumps</code>, <code>waffle</code>. `
+        + `Patterns: <code>knurl</code> (diamond grip), <code>fuzzy</code> (fuzzy skin), <code>layers</code>, <code>bumps</code> (round dots), <code>waffle</code>, <code>studs</code> (raised diamonds). `
         + `Tune <code>depth</code> (mm), <code>scale</code> (pattern size), <code>faces</code> ("sides", "top", "bottom", "all"). `
         + `Want a finer pattern? Lower <code>scale</code>. On a big part, raise <code>maxTris</code> (default 16000) if the pattern looks coarser than its scale.`;
     });
@@ -18175,6 +18642,25 @@ let SIMPLIFY_TARGET = 10000;
         highlight();
       }
 
+      // The Examples group at the bottom of the toolbox: one row per example
+      // model. A click loads it the same way the welcome card does (into the
+      // editor, undoable, rebuilt, and its coach if it has one).
+      import("./welcome.js").then((W) => {
+        const box = $("tools-examples");
+        for (const k of W.EXAMPLE_ORDER) {
+          const ex = W.EXAMPLES[k];
+          const b = document.createElement("button");
+          b.dataset.example = k;
+          b.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.9" y="7.2" width="6.2" height="6.4" rx="1" /><circle cx="11.3" cy="5" r="2.9" /><path d="M10.4 9.6l3.6 4" opacity=".6" /></svg><span><b></b><small>example — loads instantly, then change it</small></span>`;
+          b.querySelector("b").textContent = ex.title;
+          b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toolsMenu.classList.remove("open");
+            frontDoorHooks(W).loadExample(ex.code, ex.title, ex.coach, ex.note);
+          });
+          box.appendChild(b);
+        }
+      }).catch(() => { $("tools-examples").remove(); });
       $("shelf-row").addEventListener("click", async (e) => {
         e.stopPropagation();
         toolsMenu.classList.remove("open");
@@ -20056,6 +20542,13 @@ let SIMPLIFY_TARGET = 10000;
     // Dev helper (console only): brepscript.lockKey(key, password, provider, model)
     // prints the encrypted blob to paste into viewer/locked-key.js.
     window.brepscript = window.brepscript || {};
+    // Pick the build engine and rebuild: "auto" | "split" | "js" (see buildEngine()).
+    window.brepscript.setEngine = (name) => {
+      if (!ENGINES.includes(name)) throw new Error(`engine is one of ${ENGINES.join(", ")}`);
+      try { localStorage.setItem("brepcode.engine", name); } catch { /* private mode */ }
+      return name;
+    };
+    window.brepscript.engine = () => ({ setting: buildEngine(), last: lastEngine });
     // What the chat is shown when "see the model" is on — exposed so you can
     // read exactly what it got rather than infer it from the answer.
     window.brepscript.modelDigest = (...a) => modelDigest(...a);
@@ -20467,8 +20960,13 @@ let SIMPLIFY_TARGET = 10000;
       // A message that was ONLY directives has no request left in it; send what
       // they typed so the model has something to answer.
       const text = dir?.any && dir.text ? dir.text : raw;
+      // These two notes go in the request log, which does not exist until the
+      // waiting bubble does (further down). Logging them here threw "cannot
+      // access logLine before initialization", which lost the message and
+      // killed every #tag and /command, so they wait in a list.
+      const steerNotes = [];
       if (dir?.any) {
-        logLine(`steered: ${[
+        steerNotes.push(`steered: ${[
           ...dir.force.map((t) => "+#" + t), ...dir.drop.map((t) => "-#" + t),
           dir.approach && `/${dir.approach === "iterative" ? "simple" : "complex"}`,
           dir.language && `/${dir.language}`,
@@ -20477,7 +20975,7 @@ let SIMPLIFY_TARGET = 10000;
       // A mistyped tag is worth one quiet line: silently ignoring it is how
       // someone concludes the feature does not work.
       if (dir?.unknown.length) {
-        logLine(`not a command, left in the message: ${dir.unknown.join(" ")}`);
+        steerNotes.push(`not a command, left in the message: ${dir.unknown.join(" ")}`);
       }
 
       if (text !== RETRY_TEXT) {
@@ -20586,7 +21084,7 @@ let SIMPLIFY_TARGET = 10000;
         addMsg("bot", r.reply);
         chatLog.push({ role: "assistant", text: r.reply });
         if (r.code !== undefined) applyGeneratedCode(r.code);
-        maybeOfferRealAI();
+        maybeOfferRealAI(r);
         return;
       }
 
@@ -20615,6 +21113,7 @@ let SIMPLIFY_TARGET = 10000;
       const logLine = (s) => {
         busyLog.textContent += `${((performance.now() - t0) / 1000).toFixed(1)}s  ${s}\n`;
       };
+      for (const note of steerNotes) logLine(note);
       // Once real progress arrives (streamed deltas, CLI events) the label
       // switches from a bare timer to what is actually happening — watching
       // the character count climb is the difference between "it's working"
@@ -21343,29 +21842,82 @@ let SIMPLIFY_TARGET = 10000;
         }
       }
     }
-    // After a light-mode reply, say ONCE per session what the user is talking
-    // to and hand them the free upgrade. Every reply would be nagging; never
-    // saying it leaves people thinking the hardcoded helper is the AI.
-    let offeredRealAI = false;
-    function maybeOfferRealAI() {
-      if (offeredRealAI || aiProvider.value !== "builtin") return;
-      offeredRealAI = true;
-      const el = addMsg("bot", "That answer came from the light built-in helper — hardcoded, simple shapes only. For a real AI that designs whole parts: ");
-      const b = document.createElement("button");
-      b.className = "hist-btn";
-      b.style.cssText = "font-weight:700";
-      b.textContent = "⚡ Try the free in-browser AI";
-      b.addEventListener("click", () => {
-        aiProvider.value = "browser";
+    // After a light-mode reply, say what the user is talking to and hand them
+    // every way up: the free in-browser model, their own AI of choice, or the
+    // desktop app. Twice at most per session: once after the first reply
+    // ("that was the light helper"), and once the first time it could NOT
+    // build what was asked ("that's beyond it"), which is exactly when someone
+    // wants a real AI. Every reply would be nagging; never saying it leaves
+    // people thinking the hardcoded helper is the AI.
+    const BREPCODE_RELEASES = "https://github.com/RandoTechNerd/BREPcode/releases/latest";
+    const offeredRealAI = { info: false, complex: false };
+    function maybeOfferRealAI(r) {
+      if (aiProvider.value !== "builtin") return;
+      // (a guided flow asking its next question is still going fine)
+      const couldNotBuild = r && r.code === undefined && !r.pending && !botState.flow;
+      const why = couldNotBuild ? "complex" : "info";
+      if (offeredRealAI[why] || (why === "info" && offeredRealAI.complex)) return;
+      offeredRealAI[why] = true;
+      offerConnectAI(couldNotBuild
+        ? "That's more than the light built-in helper can design: it only knows simple shapes. Connect a real AI and ask again:"
+        : "That answer came from the light built-in helper (hardcoded, simple shapes only). For a real AI that designs whole parts:");
+    }
+    function offerConnectAI(headline) {
+      const el = addMsg("bot", headline);
+      const box = document.createElement("div");
+      box.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:8px";
+      el.appendChild(box);
+      const row = (label, note, onClick, href) => {
+        const line = document.createElement("div");
+        const b = document.createElement(href ? "a" : "button");
+        b.className = "hist-btn";
+        b.style.cssText = "font-weight:700;text-decoration:none;display:inline-block";
+        b.textContent = label;
+        if (href) { b.href = href; b.target = "_blank"; b.rel = "noopener"; }
+        else b.addEventListener("click", onClick);
+        line.appendChild(b);
+        if (note) {
+          const n = document.createElement("span");
+          n.className = "note";
+          n.style.marginLeft = "8px";
+          n.textContent = note;
+          line.appendChild(n);
+        }
+        box.appendChild(line);
+        return line;
+      };
+      // switch the chat to a provider and open ⚙ with the key box ready
+      const use = (provider, base) => () => {
+        aiProvider.value = provider;
         aiProvider.dispatchEvent(new Event("change", { bubbles: true }));
+        if (base != null) {
+          aiBase.value = base;
+          aiBase.dispatchEvent(new Event("change", { bubbles: true }));
+        }
         $("chat-settings").classList.add("open");
-      });
-      el.appendChild(b);
-      const note = document.createElement("span");
-      note.className = "note";
-      note.style.marginLeft = "8px";
-      note.textContent = "— no key, one download, nothing leaves this machine. Or add a Gemini/Claude key in ⚙.";
-      el.appendChild(note);
+        if (provider !== "browser" && provider !== "local" && provider !== "claude-code") setTimeout(() => aiKey.focus(), 50);
+      };
+      const desktop = !!window.brepcodeDesktop;
+      const ccOpt = $("opt-claude-code");
+      if (desktop && ccOpt && !ccOpt.hidden) {
+        row("🤖 Claude Code on this computer", "uses your Claude subscription, no key to paste", use("claude-code"));
+      }
+      row("⚡ Free in-browser AI", "no key, one download, nothing leaves this machine", use("browser"));
+      row("🟠 Claude", "paste an Anthropic API key", use("claude"));
+      row("🔵 Gemini", "paste a Google key (free tier available)", use("gemini"));
+      row("🌐 OpenRouter", "one key reaches 400+ models, GPT included", use("openai", "https://openrouter.ai/api/v1"));
+      row("🖥 Local model", "LM Studio, Ollama or Lemonade on your machine", use("local"));
+      if (!desktop) {
+        row("⬇ BREPcode desktop app (.exe)", "free from GitHub: runs on your Claude subscription with no key, and lets Claude Desktop / Claude Code drive it over MCP", null, BREPCODE_RELEASES);
+      }
+      const keys = document.createElement("div");
+      keys.className = "note";
+      keys.style.cssText = "margin-top:2px";
+      keys.innerHTML = 'Get a key: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:inherit">Claude</a> · '
+        + '<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:inherit">Gemini</a> · '
+        + '<a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style="color:inherit">OpenRouter</a>. '
+        + "Keys stay in this browser and go only to the provider you pick.";
+      box.appendChild(keys);
     }
 
     $("chat-send").addEventListener("click", sendChat);
@@ -21627,6 +22179,29 @@ let SIMPLIFY_TARGET = 10000;
       });
     });
 
+    // A coach: the tour's driver on a few steps that follow an example (the
+    // name tag walks you to its Parameters). Shares stopTour, so the Tour
+    // button cancels one and two never stack.
+    async function startCoach(name) {
+      const { startTour, COACHES } = await getTour();
+      const steps = COACHES[name];
+      if (!steps || stopTour) return;
+      stopTour = startTour({
+        steps,
+        openCard: (id) => {
+          // Parameters has no shortcut letter, so it isn't in cardFor
+          if (id === "params") {
+            toggleCard(paramsCard, paramsBtn, true);
+            refreshParams(true);         // its rows are built only while open
+            return;
+          }
+          const entry = Object.values(cardFor).find(([c]) => c && c.id === id);
+          if (entry) toggleCard(entry[0], entry[1], true);
+        },
+        onFinish: () => { stopTour = null; },
+      });
+    }
+
     // brepcode.com/tour — a link you can hand someone. The site is static, so
     // /tour is a folder whose index.html bounces here with ?tour=1.
     //
@@ -21640,6 +22215,23 @@ let SIMPLIFY_TARGET = 10000;
     // anything, and then straight in — the tour module's own fetch is the only
     // real delay left.
     whenBuilt(60000).then((ok) => { if (ok) warmLikelyFeatures(); });
+    // brepcode.com/welcome (a folder bouncing to ?welcome=1), ?welcome=1 or
+    // #welcome: show the entry card again, every time, by forgetting that it
+    // was seen. The flag is cleared and the marker taken off the address
+    // before anything below reads it, so a reload or a shared link stays
+    // clean. Checked on the framing page too, like ?tour=1. A first visit
+    // without it is unchanged: the card shows once.
+    for (const L of hostLocations()) {
+      const q = /[?&]welcome=1(&|$)/.test(L.search), h = /^#welcome$/i.test(L.hash);
+      if (!q && !h && !/(^|\/)welcome\/?$/.test(L.pathname)) continue;
+      try { localStorage.removeItem("brepcode-welcomed"); } catch { /* private window */ }
+      if (q || h) {
+        const u = new URL(L.href);
+        u.searchParams.delete("welcome");
+        if (h) u.hash = "";
+        try { (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash); } catch { /* cross-origin */ }
+      }
+    }
     if (tourRequested()) {
       // A frame normally; a timer as well, because a tab opened in the
       // background (a link middle-clicked from an article) gets no animation
@@ -21653,6 +22245,15 @@ let SIMPLIFY_TARGET = 10000;
         let W;
         try { W = await import("./welcome.js"); } catch { return; }
         const hooks = frontDoorHooks(W);
+        // A shared example link (?example=tpubox, as brepcode.com/tpu-box
+        // serves) loads the model like a welcome-card chip would and skips the
+        // entry card — the visitor came for THIS model, not the front door.
+        const exName = launchExample();
+        if (exName && W.EXAMPLES[exName]) {
+          const ex = W.EXAMPLES[exName];
+          hooks.loadExample(ex.code, ex.title, ex.coach, ex.note);
+          return;
+        }
         const t = launchTool();
         if (t) { toolCard = W.showToolCard(t, hooks) || null; if (toolCard !== null) return; }
         if (!W.welcomed()) W.showWelcome(hooks);
@@ -21882,6 +22483,38 @@ let SIMPLIFY_TARGET = 10000;
       },
     };
 
+    // WebMCP: the same tools, offered to an AI agent working IN the browser
+    // (document.modelContext, a W3C community draft; a Chrome origin trial in
+    // 2026). The desktop app reaches Claude Code / Claude Desktop through
+    // agent/mcp-server.mjs; this is the web page's equivalent, so a browser
+    // agent can call set_code instead of typing into the editor. As of mid
+    // 2026 no mainstream agent calls these yet, so it is feature-detected and
+    // costs nothing where it is missing. Descriptions match the MCP server's.
+    {
+      const mc = document.modelContext || navigator.modelContext;
+      if (mc?.registerTool) {
+        const S = { type: "string" };
+        const tools = [
+          ["get_state", "What is in the BREPcode editor right now: the code, the model name, the build status and message, the model's size in mm, and the named parameters with their values. Call this first, and again after the user may have typed.", {}, [], true],
+          ["set_code", "Replace the editor's contents and build it: the model on screen changes. Returns get_state's fields; status.kind 'err' means the build FAILED and status.text says why. Goes through the undo stack, so the user can Ctrl+Z it. Source can be BREPcode DSL, OpenSCAD or JSCAD, in millimetres.", { code: { ...S, description: "the complete new source" }, name: { ...S, description: "optional model name, used for exported filenames" } }, ["code"]],
+          ["build", "Rebuild whatever is in the editor now, without changing it.", {}, []],
+          ["set_param", "Turn one of the model's named parameters (the sliders the user sees) and rebuild. Cheaper than rewriting the source for a dimension change.", { name: { ...S, description: "the parameter name from get_state.params" }, value: { description: "the new value" } }, ["name", "value"]],
+          ["set_view", "Point the camera at a named angle.", { view: { ...S, enum: ["home", "top", "front", "right", "left", "up", "down", "opposite"] } }, ["view"]],
+          ["fit", "Frame the model in the viewport.", {}, []],
+        ];
+        for (const [name, description, properties, required, readOnly] of tools) {
+          try {
+            Promise.resolve(mc.registerTool({
+              name, description,
+              inputSchema: { type: "object", properties, required },
+              ...(readOnly ? { annotations: { readOnlyHint: true } } : {}),
+              execute: async (input) => JSON.stringify(await window.__brepAgent.run({ ...(input || {}), action: name })),
+            })).catch(() => { /* an older or stricter draft: the page works the same without it */ });
+          } catch { /* ditto */ }
+        }
+      }
+    }
+
     // A share link and a handoff both carry their own model, so both must be
     // checked BEFORE the default build — otherwise the visitor watches a
     // starter cube appear and then get replaced, which reads as the link having
@@ -21899,5 +22532,9 @@ let SIMPLIFY_TARGET = 10000;
     (window.requestIdleCallback || ((f) => setTimeout(f, 2500)))(
       () => setTimeout(() => { try { loadSpools(); } catch { /* fine */ } }, 1200));
   </script>
+  <!-- Publish and the cloud stash: a host file brepcode.com serves beside the
+       app (site/quicksave.js is the reference copy). Never bundled, so on any
+       other host this 404s and Publish says plainly that it is unavailable. -->
+  <script type="module" src="./quicksave.js"></script>
 </body>
 </html>
