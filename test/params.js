@@ -278,5 +278,107 @@ console.log("\nit does not fall over on real input\n");
   check("scientific notation", byName("const TINY = 1e-3;", "TINY").value === 0.001);
 }
 
+// colours: a "#rrggbb" string is a colour picker, not a text box, and writes
+// back as a quoted string like any text
+{
+  const src = `const tag_color = "#7b4fe0";\nconst short = '#fff';\nconst label = "#1 fan";\ncolorize(tag_color, cube(10))`;
+  const ps = findParams(src);
+  const kind = (n) => ps.find((p) => p.name === n)?.kind;
+  check("a #rrggbb value is a colour", kind("tag_color") === "color");
+  check("...so is #rgb", kind("short") === "color");
+  check("...but text that merely starts with # stays text", kind("label") === "text");
+  const out = applyParam(src, "tag_color", "#00ff00");
+  check("a picked colour is written back quoted", out.includes(`const tag_color = "#00ff00";`), out.split("\n")[0]);
+  check("...and keeps its own quote style", applyParam(src, "short", "#000").includes(`const short = '#000';`));
+}
+
+// the name tag example: every setting is a control of the right kind
+{
+  const { EXAMPLES } = await import("../viewer/welcome.js");
+  const ps = findParams(EXAMPLES.tag.code);
+  const kinds = Object.fromEntries(ps.map((p) => [p.name, p.kind]));
+  check("name tag: name is a text box, font a dropdown, two colour pickers",
+    kinds.name === "text" && kinds.font === "choice" && kinds.text_color === "color" && kinds.tag_color === "color", JSON.stringify(kinds));
+  check("name tag: the sizes are sliders, corners and fillet included",
+    ["text_size", "text_height", "width", "tag_height", "thickness", "corner_r", "edge_fillet", "hole_d"].every((n) => kinds[n] === "number"));
+  check("name tag: the helper lines are not offered as dials", !("slab" in kinds) && !("r" in kinds) && !("textX" in kinds));
+}
+
+// the TPU box example: every customizer setting is a control, and it builds
+{
+  const { EXAMPLES } = await import("../viewer/welcome.js");
+  const src = EXAMPLES.tpubox.code;
+  const kinds = Object.fromEntries(findParams(src).map((p) => [p.name, p.kind]));
+  check("TPU box: show and pattern are dropdowns, riser and lift cross are switches",
+    kinds.show === "choice" && kinds.pattern === "choice" && kinds.riser === "bool" && kinds.lift_cross === "bool", JSON.stringify(kinds));
+  check("TPU box: box, seal and riser sizes are sliders",
+    ["inner_length", "inner_width", "inner_height", "wall", "corner_r", "lid_height", "lid_gap", "bead_from_top", "bead_r", "groove_r", "riser_height", "pattern_size", "pattern_spacing"].every((n) => kinds[n] === "number"));
+  // build it headless with the app's own vocabulary (the DSL plus polyhedron)
+  const D = await import("../src/dsl.js");
+  const { polyhedron } = await import("../src/jscad.js");
+  const { build, toSTL } = await import("../index.js");
+  const V = { ...D, polyhedron };
+  const names = Object.keys(V).filter((k) => /^[a-zA-Z_$][\w$]*$/.test(k));
+  const set = (s, k, v) => s.replace(new RegExp(`const ${k} = [^;]+;`), `const ${k} = ${v};`);
+  for (const [label, s] of [
+    ["base", set(src, "show", '"base"')],
+    ["lid", set(src, "show", '"lid"')],
+    ["riser (slits)", set(set(src, "show", '"riser"'), "pattern", '"slits"')],
+    ["riser (holes)", set(set(src, "show", '"riser"'), "pattern", '"holes"')],
+    ["riser (hearts)", set(set(src, "show", '"riser"'), "pattern", '"hearts"')],
+    // Show=riser with the Riser box unticked once handed group() nothing
+    ["riser shown with Riser unticked", set(set(src, "show", '"riser"'), "riser", "false")],
+  ]) {
+    let ok = false, detail = "";
+    try {
+      const r = await build(new Function(...names, s)(...names.map((n) => V[n])));
+      const tris = (toSTL(r, "t").match(/facet/g) || []).length;
+      ok = tris > 100; detail = `${tris} tris`;
+    } catch (e) { detail = e.message; }
+    check(`TPU box builds: ${label}`, ok, detail);
+  }
+  // the lift cross once had fixed 30mm arms, which cut a narrow riser apart
+  const pieces = (stl) => {
+    const parent = new Map();
+    const find = (a) => { while (parent.get(a) !== a) a = parent.get(a); return a; };
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => `${(+m[1]).toFixed(3)},${(+m[2]).toFixed(3)},${(+m[3]).toFixed(3)}`);
+    for (let i = 0; i < v.length; i += 3) {
+      for (const k of v.slice(i, i + 3)) if (!parent.has(k)) parent.set(k, k);
+      parent.set(find(v[i + 1]), find(v[i])); parent.set(find(v[i + 2]), find(v[i]));
+    }
+    return new Set([...parent.keys()].map(find)).size;
+  };
+  const narrow = set(set(set(src, "show", '"riser"'), "inner_width", 30), "inner_length", 30);
+  const r = await build(new Function(...names, narrow)(...names.map((n) => V[n])));
+  check("TPU box: a 30 x 30 riser stays one piece", pieces(toSTL(r, "t")) === 1, `${pieces(toSTL(r, "t"))} pieces`);
+}
+
+// the name tag and the knob, at the settings that once broke them
+{
+  const { EXAMPLES } = await import("../viewer/welcome.js");
+  const D = await import("../src/dsl.js");
+  const { build, toSTL } = await import("../index.js");
+  const set = (s, k, v) => s.replace(new RegExp(`const ${k} = [^;]+;`), `const ${k} = ${v};`);
+  const run = (src) => {
+    const own = new Set([...src.matchAll(/const (\w+)/g)].map((m) => m[1]));   // the knob has its own `nut`
+    const names = Object.keys(D).filter((k) => /^[a-zA-Z_$][\w$]*$/.test(k) && !own.has(k));
+    return build(new Function(...names, src)(...names.map((n) => D[n])));
+  };
+  const verts = (r) => [...toSTL(r, "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  // a fillet over half the thickness pushed the tag below the bed
+  for (const [th, ef] of [[2, 1.4], [1.2, 1.5]]) {
+    const s = set(set(EXAMPLES.tag.code, "edge_fillet", ef), "thickness", th);
+    const z = verts(await run(s.slice(0, s.indexOf("const holeX")) + "return tag;")).map((p) => p[2]);
+    check(`name tag, ${th}mm thick with a ${ef}mm fillet, sits on the bed at its set thickness`,
+      Math.abs(Math.min(...z)) < 1e-6 && Math.abs(Math.max(...z) - th) < 1e-6, `${Math.min(...z)} .. ${Math.max(...z)}`);
+  }
+  // knurling the finished knob knurled its bore and nut pocket too
+  const knob = verts(await run(EXAMPLES.knob.code.replace(/\ndifference\(/, "\nreturn difference(")));
+  const inner = new Set(knob.map((p) => Math.hypot(p[0], p[1])).filter((r) => r < 10).map((r) => r.toFixed(2)));
+  check("knob: the bore and the nut pocket are plain (only the bore radius and the hex corners)",
+    inner.size === 2 && inner.has("2.60") && inner.has("4.73"), [...inner].join(", "));
+  check("...and the outside is knurled", Math.max(...knob.map((p) => Math.hypot(p[0], p[1]))) > 17.2);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

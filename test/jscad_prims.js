@@ -119,5 +119,16 @@ throws("center explains the swap",
 // ---- maths -----------------------------------------------------------------
 check("degToRad/radToDeg round-trip", Math.abs(maths.radToDeg(maths.degToRad(37)) - 37) < 1e-9);
 
+// ---- rotate order: X, then Y, then Z about fixed axes, as JSCAD does ---------
+{
+  const s = transforms.rotate([Math.PI / 2, 0, Math.PI / 2],
+    transforms.translate([5, 10, 15], primitives.cuboid({ size: [10, 20, 30] })));
+  const v = [...toSTL(await build(s), "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  const bb = [0, 1, 2].map((k) => [Math.min(...v.map((p) => p[k])), Math.max(...v.map((p) => p[k]))]);
+  const want = [[0, 30], [0, 10], [0, 20]];
+  check("rotate([pi/2, 0, pi/2]) turns the way JSCAD does",
+    bb.every((r, k) => Math.abs(r[0] - want[k][0]) < 0.02 && Math.abs(r[1] - want[k][1]) < 0.02), JSON.stringify(bb));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -319,7 +319,10 @@ function findParamsUncached(src) {
     const p = {
       name,
       label: humanLabel(name),
-      kind: ann.choices ? "choice" : val.kind,
+      // a "#rrggbb" string is a colour, and gets a picker rather than a text box
+      kind: ann.choices ? "choice"
+        : val.kind === "text" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(val.value) ? "color"
+        : val.kind,
       value: val.value,
       start: val.start,
       end: val.end,
@@ -367,7 +370,7 @@ export function applyParam(src, name, value, index = null) {
   } else if (p.kind === "bool") {
     text = p.py ? (value ? "True" : "False") : (value ? "true" : "false");
     start = p.start; end = p.end;
-  } else if (p.kind === "text" || p.kind === "choice") {
+  } else if (p.kind === "text" || p.kind === "choice" || p.kind === "color") {
     const q = p.quote || '"';
     text = p.kind === "choice" && typeof p.value === "number"
       ? formatNumber(value) : q + String(value).replace(new RegExp(q, "g"), "\\" + q) + q;

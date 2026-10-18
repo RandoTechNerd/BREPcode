@@ -10,7 +10,7 @@
 //   const { cuboid, cylinder } = primitives;
 
 import * as dsl from "./dsl.js";
-import { isProfile, profileOp, profileToSolid, offsetPolygon } from "./openscad.js";
+import { isProfile, profileOp, profileToSolid, offsetPolygon, fixedAxisRotation } from "./openscad.js";
 
 const RAD2DEG = 180 / Math.PI;
 const vec3 = (v, fallback = 0) =>
@@ -369,8 +369,10 @@ export const translateY = (n, ...shapes) => dsl.translate([0, n, 0], shapes.flat
 export const translateZ = (n, ...shapes) => dsl.translate([0, 0, n], shapes.flat());
 
 // radians in, degrees out
+// JSCAD turns about X, then Y, then Z (fixed axes), like OpenSCAD: see
+// fixedAxisRotation for why the angles cannot go to dsl.rotate as they are.
 export const rotate = (angles, ...shapes) =>
-  dsl.rotate(vec3(angles).map((a) => a * RAD2DEG), shapes.flat());
+  dsl.rotate(fixedAxisRotation(vec3(angles).map((a) => a * RAD2DEG)), shapes.flat());
 export const rotateX = (a, ...shapes) => dsl.rotate([a * RAD2DEG, 0, 0], shapes.flat());
 export const rotateY = (a, ...shapes) => dsl.rotate([0, a * RAD2DEG, 0], shapes.flat());
 export const rotateZ = (a, ...shapes) => dsl.rotate([0, 0, a * RAD2DEG], shapes.flat());

@@ -448,11 +448,17 @@ export function splitConnectedParts(groups) {
       if (!part) { part = { colours: new Map() }; parts.set(root, part); }
       let sub = part.colours.get(g.color);
       if (!sub) { sub = { color: g.color, verts: [], tris: [], local: new Map() }; part.colours.set(g.color, sub); }
+      // Keyed by the WELDED id, not the index inside this group: the groups
+      // come one per face, so keying by group index gave every face its own
+      // copy of the corners it shares, and each part left as open triangle
+      // soup that slicers flag as non-manifold.
       const li = t.map((vi) => {
-        let l = sub.local.get(vi);
-        if (l === undefined) { l = sub.verts.length; sub.local.set(vi, l); sub.verts.push(g.verts[vi]); }
+        const w = ids[vi];
+        let l = sub.local.get(w);
+        if (l === undefined) { l = sub.verts.length; sub.local.set(w, l); sub.verts.push(g.verts[vi]); }
         return l;
       });
+      if (li[0] === li[1] || li[1] === li[2] || li[0] === li[2]) continue;   // collapsed by the weld
       sub.tris.push(li);
     }
   });
@@ -884,23 +890,54 @@ export function parseBcodeFile(text) {
   };
 }
 
-// The same idea for STL, which has no container at all — the source goes after
-// `endsolid`, where a well-behaved reader stops.
+// The STL download is BINARY and carries nothing but triangles.
 //
-// It is BASE64, not plain text, and that is deliberate: three.js's ASCII STL
-// loader regex-scans the WHOLE file for `facet normal` blocks rather than
-// stopping at endsolid. Source that happened to contain those words — a
-// comment, a string, one of our own generated-STL examples — would inject
-// phantom triangles into anything that reimported it. Base64 cannot collide
-// with the grammar. The plain-English header above it says what it is.
-export function stlWithSource(stl, code) {
-  const source = code ? String(code).trim() : "";
-  if (!source) return stl;
-  const b64 = btoa(unescape(encodeURIComponent(source)));
-  return `${stl.trimEnd()}\n${SOURCE_MARKER}\n`
-    + "The BREPcode that generated this part, as base64 of UTF-8. Decode it and\n"
-    + "paste it into BREPcode.com to get the editable, parametric model back.\n"
-    + `${(b64.match(/.{1,76}/g) || []).join("\n")}\nEND-${SOURCE_MARKER}\n`;
+// It used to be ASCII with the source appended after `endsolid`, on the theory
+// that a reader stops there. Bambu Studio, PrusaSlicer, OrcaSlicer and
+// SuperSlicer all read STL with admesh, and admesh does not stop there: it
+// sizes an ASCII file by counting its lines (every 7 lines of 5+ characters is
+// one facet), then reads exactly that many facets, and a single one that does
+// not parse fails the whole file. Any source longer than a line or two added
+// phantom facets to the count, so the slicer went looking for triangles in the
+// base64, failed, and reported the part as having no geometry. Its binary
+// reader is no friendlier to a passenger: the file must be exactly
+// 84 + 50 * n bytes. So the source rides in the 3MF (and the .bcode), which
+// has a place for it, and the STL stays a plain mesh. test/stlcompat.js runs
+// a port of admesh's reader over every export so this cannot come back.
+//
+// Binary rather than ASCII because it is what slicers expect, a fifth the
+// size, and keeps every solid of a multi-part model in one mesh; some ASCII
+// readers stop after the first `endsolid` and quietly drop the rest.
+export function stlToBinary(stl, name = "model") {
+  const num = "(\\S+)";
+  const re = new RegExp(`facet\\s+normal\\s+${num}\\s+${num}\\s+${num}\\s+outer\\s+loop`
+    + `\\s+vertex\\s+${num}\\s+${num}\\s+${num}\\s+vertex\\s+${num}\\s+${num}\\s+${num}`
+    + `\\s+vertex\\s+${num}\\s+${num}\\s+${num}\\s+endloop\\s+endfacet`, "g");
+  const facets = [];
+  for (const m of String(stl).matchAll(re)) facets.push(m.slice(1, 13).map(Number));
+  const out = new Uint8Array(84 + facets.length * 50);
+  const dv = new DataView(out.buffer);
+  // The header must not begin with "solid": some readers take that to mean
+  // ASCII and never look at the size.
+  const head = `BREPcode binary STL ${name}`.replace(/[^\x20-\x7e]/g, "_").slice(0, 80);
+  for (let i = 0; i < head.length; i++) out[i] = head.charCodeAt(i);
+  dv.setUint32(80, facets.length, true);
+  let off = 84;
+  for (const f of facets) {
+    let [nx, ny, nz] = f;
+    if (!(Number.isFinite(nx) && Number.isFinite(ny) && Number.isFinite(nz)) || !(nx || ny || nz)) {
+      // a missing normal: take it from the winding, as a slicer would
+      const ux = f[6] - f[3], uy = f[7] - f[4], uz = f[8] - f[5];
+      const vx = f[9] - f[3], vy = f[10] - f[4], vz = f[11] - f[5];
+      nx = uy * vz - uz * vy; ny = uz * vx - ux * vz; nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nx /= l; ny /= l; nz /= l;
+    }
+    dv.setFloat32(off, nx, true); dv.setFloat32(off + 4, ny, true); dv.setFloat32(off + 8, nz, true);
+    for (let k = 3; k < 12; k++) dv.setFloat32(off + k * 4, f[k], true);
+    off += 50;                                     // the last two bytes stay 0: no attributes
+  }
+  return out;
 }
 
 // Take our own header off the 3MF source part, and nothing else. Stripping
@@ -914,7 +951,8 @@ export function stripSourceHeader(text) {
 }
 
 // Pull it back out of an STL. Returns "" when there is none, which is the
-// normal case for a file from anywhere else.
+// normal case for a file from anywhere else. Nothing writes this any more (see
+// stlToBinary), but STLs exported before that still reopen as code.
 export function extractSourceFromStl(text) {
   const m = new RegExp(
     `${SOURCE_MARKER}\\n[\\s\\S]*?\\n((?:[A-Za-z0-9+/=]+\\n)+)END-${SOURCE_MARKER}`).exec(text);

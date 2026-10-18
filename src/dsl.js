@@ -121,7 +121,12 @@ export function feature(code, params = {}) {
 const IMPORTS = new Map();
 let hullSeq = 0;          // unique names for hull() result meshes
 let texSeq = 0;           // unique names for texture()/heightmap() result meshes
-export function registerImport(name, contents) {
+// For an exact import (STEP text), the mesh it was rebuilt from: the JS
+// kernel can't read STEP, so when it has to build the model (the split engine
+// refused, or ?engine=js) the part comes in as that mesh instead.
+const EXACT_MESH = new Map();
+export function registerImport(name, contents, { mesh } = {}) {
+  if (typeof mesh === "string") EXACT_MESH.set(name, mesh); else EXACT_MESH.delete(name);
   // The viewer converts binary STL to ASCII through the kernel before it gets
   // here, but the CLI has no such step — and a binary STL is what every slicer
   // exports. Decode it directly so `registerImport(name, readFileSync(path))`
@@ -325,6 +330,19 @@ export function importedMesh(name, opts = {}) {
   }
   return node({ kind: "import", name, opts, fix: IDENTITY });
 }
+
+// An imported part rebuilt as an EXACT solid: real planes and cylinders
+// reconstructed from the mesh (the drop menu's "Open as an exact solid"), held
+// in the registry as STEP text. Same call shape as importedMesh; the
+// difference is that it can be filleted, cut exactly and exported as true STEP.
+export function importedSolid(name, opts = {}) {
+  if (typeof name !== "string" || !name) {
+    throw new TypeError('importedSolid() needs the converted file name, e.g. importedSolid("part.step")');
+  }
+  return node({ kind: "import", name, opts, fix: IDENTITY });
+}
+
+const isStepText = (data) => typeof data === "string" && /^\s*ISO-10303-21/.test(data);
 
 // ------------------------------------------------------------- 2D + extrude
 
@@ -907,9 +925,11 @@ export function look(opts, ...children) {
 //   texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, shape)
 //
 // patterns: "knurl" (diamond grip), "fuzzy" (fuzzy-skin noise), "layers"
-// (proud layer-lines), "bumps" (round grip dots), "waffle" (square grid).
+// (proud layer-lines), "bumps" (round grip dots), "waffle" (square grid),
+// "studs" (raised diamonds on a flat ground). knurl, studs, bumps and waffle
+// are laid out on the surface: around a round wall, across a flat one.
 // faces: "sides" (default — walls only), "top", "bottom", "all".
-export const TEXTURE_PATTERNS = ["knurl", "fuzzy", "layers", "bumps", "waffle"];
+export const TEXTURE_PATTERNS = ["knurl", "fuzzy", "layers", "bumps", "waffle", "studs"];
 export function texture(opts, ...children) {
   const o = opts || {};
   const kids = collect(children);
@@ -1078,46 +1098,81 @@ function vnoise(x, y, z) {
 // pattern value in [0,1] at a world point. Everything is a function of the
 // welded position (+ smoothed normal for knurl's tangent frame), which is what
 // keeps shared vertices in lockstep and the shell closed.
-function texAmp(o, px, py, pz, nx, ny, nz, onCyl = false) {
+// Patterns laid out ON the surface rather than in world X/Y/Z.
+const SURFACE_PATTERNS = new Set(["knurl", "studs", "bumps", "waffle"]);
+const BUMP_R = 0.35;          // a bumps dot's radius, in periods (texLattice rings it)
+
+// (u, w) of a surface point, in pattern periods.
+// SIDE faces: "around" is the ANGLE about the part's own vertical axis, with
+// a whole number of periods per turn so the pattern closes with no seam. (It
+// used to be position . tangent, which is ZERO everywhere on a cylinder
+// centred on its axis: the knurl collapsed into horizontal rings. bumps and
+// waffle used world X/Y, so a round knob only got dots where the wall happened
+// to face an axis.) Up is plain height.
+// Flat walls facing straight along X or Y keep the plain tangent frame: there
+// the angle about the centre would stretch the pattern. A vertex the remesher
+// found on a vertical cylinder wall always uses the angle, so the pattern
+// can't change frames partway round the knob.
+//
+// The layout is CENTRED on the part, half a period off: the middle of the part
+// falls between rows, so the margins at both ends match. (Plain z / s put dot
+// rows exactly on the rims of an 18 mm knob at scale 3, and every dot there
+// was cut in half.)
+function surfaceUW(o, px, py, pz, nx, ny, nz, frame) {
   const s = o.scale;
+  const cx = o.knurlCx || 0, cy = o.knurlCy || 0, cz = o.knurlCz || 0;
+  if (o.knurlN && ((frame & 1) || (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97))) {
+    const th = Math.atan2(py - cy, px - cx);
+    return [(th / (2 * Math.PI)) * o.knurlN, (pz - cz) / s + 0.5];
+  }
+  // flat faces: tangent frame from the smoothed normal (level t, b up the face)
+  let tx = -ny, ty = nx;
+  const tl = Math.hypot(tx, ty);
+  if (tl < 1e-6) { tx = 1; ty = 0; } else { tx /= tl; ty /= tl; }
+  const bx = -nz * ty, by = nz * tx, bz = nx * ty - ny * tx;
+  const qx = px - cx, qy = py - cy, qz = pz - cz;
+  return [(qx * tx + qy * ty) / s + 0.5, (qx * bx + qy * by + qz * bz) / s + 0.5];
+}
+
+// frame: the remesher's per-vertex flags (bit 1: vertical cylinder wall,
+// bit 2: on a plane or cylinder, bit 4: on an untextured face, bit 8: on a
+// textured one), or 0 when it didn't run.
+function texAmp(o, px, py, pz, nx, ny, nz, frame) {
+  const s = o.scale;
+  if (o.pattern === "fuzzy") return vnoise(px / s, py / s, pz / s);
+  if (o.pattern === "layers") return triWave(pz / s);
+  // Off planes and cylinders (a sphere, a fillet corner) there is no flat
+  // layout to follow and the tangent frame swings with the normal, which
+  // scrambles a dot or grid pattern: those keep their world-axis form there.
+  if (!(frame & 2) && o.pattern === "bumps") {
+    const c = (t) => 0.5 + 0.5 * Math.cos(2 * Math.PI * t);
+    return Math.max(0, c(px / s) * c(py / s) * c(pz / s) * 2 - 1);
+  }
+  if (!(frame & 2) && o.pattern === "waffle") {
+    return Math.max(Math.max(0, triWave(px / s) * 2 - 1), Math.max(0, triWave(py / s) * 2 - 1));
+  }
+  const [u, w] = surfaceUW(o, px, py, pz, nx, ny, nz, frame);
   switch (o.pattern) {
-    case "fuzzy": return vnoise(px / s, py / s, pz / s);
-    case "layers": return triWave(pz / s);
+    case "knurl":
+      // Classic diamond knurl: two sets of V-grooves crossing at +-45 degrees,
+      // and the surface is whichever groove profile is LOWER, so the whole
+      // face tiles with sharp four-sided pyramids. (It used to be
+      // max(0, T(a) + T(b) - 1), which leaves flat valleys over half the
+      // area: that look lives on as "studs".)
+      return Math.min(triWave(u + w), triWave(u - w));
+    case "studs":
+      return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
     case "bumps": {
-      const c = (t) => 0.5 + 0.5 * Math.cos(2 * Math.PI * t);
-      // product of three lobes -> isolated round dots rather than ridges
-      return Math.max(0, c(px / s) * c(py / s) * c(pz / s) * 2 - 1);
+      // a round dome on every lattice point, 0.7 of a period across: a grip
+      // dot on flat ground. (A product of cosines made dots ~0.4 across, too
+      // small for the mesh to show as anything rounder than a pyramid.)
+      const r = Math.hypot(u - Math.round(u), w - Math.round(w)) / BUMP_R;
+      return r < 1 ? Math.sqrt(1 - r * r) : 0;
     }
     case "waffle": {
-      const rx = Math.max(0, triWave(px / s) * 2 - 1);
-      const ry = Math.max(0, triWave(py / s) * 2 - 1);
-      return Math.max(rx, ry);
-    }
-    case "knurl": {
-      // SIDE faces: "around" is the ANGLE about the part's own vertical axis,
-      // with a whole number of diamonds per turn so the pattern closes with no
-      // seam. (This used to be position . tangent, which is ZERO everywhere on
-      // a cylinder centred on its axis: the knurl collapsed into horizontal
-      // rings.) Up is plain height.
-      // (Flat walls facing straight along X or Y keep the plain tangent frame
-      // below: there the angle about the centre would stretch the diamonds.)
-      // A vertex the remesher found on a vertical cylinder wall always uses the
-      // angle, so the pattern can't change frames partway round the knob.
-      if (o.knurlN && (onCyl || (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97))) {
-        const th = Math.atan2(py - o.knurlCy, px - o.knurlCx);
-        const u = (th / (2 * Math.PI)) * o.knurlN;
-        const w = pz / s;
-        return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
-      }
-      // flat faces: tangent frame from the smoothed normal, diamonds as two
-      // triangle waves at +-45 degrees in that frame
-      let tx = -ny, ty = nx;
-      const tl = Math.hypot(tx, ty);
-      if (tl < 1e-6) { tx = 1; ty = 0; } else { tx /= tl; ty /= tl; }
-      const bx = -nz * ty, by = nz * tx, bz = nx * ty - ny * tx;
-      const u = (px * tx + py * ty) / s;
-      const w = (px * bx + py * by + pz * bz) / s;
-      return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
+      const ru = Math.max(0, triWave(u) * 2 - 1);
+      const rw = Math.max(0, triWave(w) * 2 - 1);
+      return Math.max(ru, rw);
     }
     default: return 0;
   }
@@ -1163,30 +1218,24 @@ function texWants(o, n) {
 }
 
 // A lattice that follows the pattern's own creases, where the pattern is
-// piecewise linear in the region's parameter space. Knurl diamonds are linear
-// between the lines u, w in 1/4 + Z/2 and the diagonals u +- w in Z/2, so a
-// lattice on those lines reproduces them EXACTLY. Layers are linear between
-// rows z in (s/2)Z. null = plain equilateral lattice.
+// piecewise linear in the region's parameter space: then a lattice on those
+// lines reproduces it EXACTLY instead of sampling it. Layers are linear
+// between rows z in (s/2)Z. null = plain equilateral lattice.
 function texLattice(o, reg, L) {
   if (o.map) return null;
   const s = o.scale;
-  if (o.pattern === "knurl") {
-    if (reg.kind === "cyl") {
-      if (Math.abs(reg.axis[2]) < 0.999) return null;
-      // the knurl measures its angle about the part's centre: only a wall
-      // centred there has u linear in arc length
-      if (Math.hypot(reg.c[0] - o.knurlCx, reg.c[1] - o.knurlCy) > 1e-3 * reg.R + 1e-4) return null;
-      const sg = Math.sign(reg.axis[2]);
-      const alpha = Math.atan2(reg.e1[1], reg.e1[0]);
-      const k = o.knurlN / (2 * Math.PI);
-      // theta_z = alpha + sg * (cut + x / R); z = sg * y
-      return { kind: "crossed", A: [[(sg * k) / reg.R, 0], [0, sg / s]], off: [(alpha + sg * reg.cut) * k, 0] };
-    }
-    const [nx, ny, nz] = reg.n;
-    // walls that texAmp knurls by angle about the centre aren't linear in the plane
-    if (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97) return null;
-    // otherwise texAmp's tangent frame IS the plane's (e1, e2): u = x/s, w = y/s
-    return { kind: "crossed", A: [[1 / s, 0], [0, 1 / s]], off: [0, 0] };
+  if (SURFACE_PATTERNS.has(o.pattern)) {
+    // the affine map param -> (u, w) where surfaceUW is linear in the region
+    const uw = surfaceAffine(o, reg, s);
+    if (!uw) return null;
+    // knurl: creases on u, w in Z/2 and u +- w in Z/2. studs: u, w in
+    // 1/4 + Z/2 and u +- w in Z/2. waffle: u, w in Z/4 plus the diagonals
+    // through integer points. bumps: rings round every dot centre, the outer
+    // one on the dot's edge (s/2 spacing used to catch one corner of a dot).
+    if (o.pattern === "knurl") return { kind: "crossed", ...uw };
+    if (o.pattern === "studs") return { kind: "crossed", quarter: true, ...uw };
+    if (o.pattern === "bumps") return { kind: "rosette", r: BUMP_R, ...uw };
+    return { kind: "grid", ...uw };
   }
   if (o.pattern === "layers") {
     const k = Math.max(1, Math.round((s / 2) / ((L * Math.sqrt(3)) / 2)));
@@ -1201,6 +1250,30 @@ function texLattice(o, reg, L) {
     return { kind: "equi", L, dir: [1, 0], pitch: pz / tl, phase: (-reg.d * reg.n[2]) / tl };
   }
   return null;
+}
+
+function surfaceAffine(o, reg, s) {
+  if (reg.kind === "cyl") {
+    if (Math.abs(reg.axis[2]) < 0.999) return null;
+    // surfaceUW measures its angle about the part's centre: only a wall
+    // centred there has u linear in arc length
+    if (Math.hypot(reg.c[0] - o.knurlCx, reg.c[1] - o.knurlCy) > 1e-3 * reg.R + 1e-4) return null;
+    const sg = Math.sign(reg.axis[2]);
+    const alpha = Math.atan2(reg.e1[1], reg.e1[0]);
+    const k = o.knurlN / (2 * Math.PI);
+    // theta_z = alpha + sg * (cut + x / R); z = sg * y (+ the axis offset, which
+    // is zero: reg.c has no component along the axis)
+    return { A: [[(sg * k) / reg.R, 0], [0, sg / s]], off: [(alpha + sg * reg.cut) * k, 0.5 - o.knurlCz / s] };
+  }
+  const [nx, ny, nz] = reg.n;
+  // walls that surfaceUW maps by angle about the centre aren't linear in the plane
+  if (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97) return null;
+  // otherwise surfaceUW's tangent frame IS the plane's (e1, e2):
+  // u = (x - C.e1) / s + 1/2, w = (y - C.e2) / s + 1/2, C the part's centre
+  const C = [o.knurlCx, o.knurlCy, o.knurlCz];
+  const ce1 = C[0] * reg.e1[0] + C[1] * reg.e1[1] + C[2] * reg.e1[2];
+  const ce2 = C[0] * reg.e2[0] + C[1] * reg.e2[1] + C[2] * reg.e2[2];
+  return { A: [[1 / s, 0], [0, 1 / s]], off: [0.5 - ce1 / s, 0.5 - ce2 / s] };
 }
 
 // The whole displacement pipeline on a flat triangle soup. Exported for tests.
@@ -1228,14 +1301,15 @@ export function displacedPositions(soupIn, o) {
       if (soup[i + a] > bb.max[a]) bb.max[a] = soup[i + a];
     }
   }
-  // knurl around the sides: how many diamonds fit round the part, and its axis
-  if (o.pattern === "knurl") {
+  // surface patterns round the sides: how many periods fit round the part, and its axis
+  if (SURFACE_PATTERNS.has(o.pattern)) {
     const R = ((bb.max[0] - bb.min[0]) + (bb.max[1] - bb.min[1])) / 4;
     o = { ...o, knurlCx: (bb.min[0] + bb.max[0]) / 2, knurlCy: (bb.min[1] + bb.max[1]) / 2,
+      knurlCz: (bb.min[2] + bb.max[2]) / 2,
       knurlN: Math.max(4, Math.round((2 * Math.PI * R) / o.scale)) };
   }
 
-  let verts, faces, onCyl = null;
+  let verts, faces, frame = null;
   const re = o.remesh === false ? null : remeshForTexture(soup, {
     L: spacing,
     wants: (n) => texWants(o, n),
@@ -1243,7 +1317,7 @@ export function displacedPositions(soupIn, o) {
     maxTris: o.maxTris || 24000,
   });
   if (re) {
-    verts = re.verts; faces = re.faces; onCyl = re.onAxisCyl;
+    verts = re.verts; faces = re.faces; frame = re.frame;
   } else {
     // fallback: uniform subdivision, fine enough for the pattern, capped by a
     // triangle budget the kernel can actually rebuild in reasonable time
@@ -1300,6 +1374,11 @@ export function displacedPositions(soupIn, o) {
   // different direction at every point around it.
   const wrap = o.map && o.side === "wrap";
   const cx = (bb.min[0] + bb.max[0]) / 2, cy = (bb.min[1] + bb.max[1]) / 2;
+  // Where a textured wall meets a plain face (a knob's rim, a box's top edge)
+  // the pattern fades to nothing over half a period, so the edge stays crisp
+  // and a dot or pyramid cut by it slopes away instead of standing up as a
+  // tent off the border (the shared vertices used to move half a pattern).
+  const fade = frame && !o.map ? texFade(verts, frame, Math.max(0.4, o.scale / 2)) : null;
   const axisVec = [0, 0, 0];
   if (o.map && !wrap) axisVec[SIDE_AXIS[o.side[1]]] = o.side[0] === "+" ? 1 : -1;
   const out = new Float64Array(verts.length);
@@ -1323,8 +1402,9 @@ export function displacedPositions(soupIn, o) {
         : o.faces === "top" ? Math.max(0, nz)
         : o.faces === "bottom" ? Math.max(0, -nz)
         : Math.min(1, Math.max(0, (1 - Math.abs(nz)) * 2));    // "sides"
-      amp = w ? texAmp(o, px, py, pz, nx, ny, nz, onCyl && onCyl[i / 3]) * w : 0;
+      amp = w ? texAmp(o, px, py, pz, nx, ny, nz, frame ? frame[i / 3] : 0) * w : 0;
     }
+    if (fade) amp *= fade[i / 3];
     const d = o.depth * amp;
     out[i] = px + dx * d; out[i + 1] = py + dy * d; out[i + 2] = pz + dz * d;
   }
@@ -1339,6 +1419,38 @@ export function displacedPositions(soupIn, o) {
 }
 
 const SIDE_AXIS = { x: 0, y: 1, z: 2 };
+
+// 0 on the border between textured and plain faces, rising to 1 at distance
+// `width` from it (straight-line distance to the nearest border vertex).
+function texFade(verts, frame, width) {
+  const n = verts.length / 3;
+  const cell = width;
+  const grid = new Map();
+  const key = (i, j, k) => `${i},${j},${k}`;
+  let any = false;
+  for (let v = 0; v < n; v++) {
+    if ((frame[v] & 12) !== 12) continue;
+    any = true;
+    const k = key(Math.floor(verts[3 * v] / cell), Math.floor(verts[3 * v + 1] / cell), Math.floor(verts[3 * v + 2] / cell));
+    const l = grid.get(k); if (l) l.push(v); else grid.set(k, [v]);
+  }
+  const out = new Float64Array(n).fill(1);
+  if (!any) return out;
+  for (let v = 0; v < n; v++) {
+    if (!(frame[v] & 8)) continue;
+    const x = verts[3 * v], y = verts[3 * v + 1], z = verts[3 * v + 2];
+    const ci = Math.floor(x / cell), cj = Math.floor(y / cell), ck = Math.floor(z / cell);
+    let best = width;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+      const l = grid.get(key(ci + a, cj + b, ck + c));
+      if (!l) continue;
+      for (const u of l) best = Math.min(best, Math.hypot(verts[3 * u] - x, verts[3 * u + 1] - y, verts[3 * u + 2] - z));
+    }
+    const t = best / width;
+    out[v] = t * t * (3 - 2 * t);
+  }
+  return out;
+}
 // pixel pitch of the map on the model face — the subdivision target
 function mapSpacing(soup, o) {
   if (o.side === "wrap") {
@@ -1889,6 +2001,30 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       let data = IMPORTS.get(n.name);
       if (data == null) {
         throw new Error(`importedMesh("${n.name}"): no imported file by that name — use the Import button first`);
+      }
+      // An exact import (STEP text): one IMPORT3D carrying the STEP, which
+      // the Rust kernel reads exactly (`stepText`), and the source mesh in
+      // `fileToImport` for the JS kernel, which has no STEP reader. Placement is a Transform feature, not baked
+      // vertices: there are no vertices to bake.
+      if (isStepText(data)) {
+        const f = await partHistory.newFeature("IMPORT3D");
+        const mesh = EXACT_MESH.get(n.name);
+        if (mesh) f.inputParams.fileToImport = mesh;
+        f.inputParams.stepText = data;
+        f.inputParams.centerMesh = false;
+        const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+        if (!world.equals(IDENTITY)) {
+          const pos = new Vector3(), quat = new Quaternion(), scl = new Vector3();
+          world.decompose(pos, quat, scl);
+          const e = new Euler().setFromQuaternion(quat, "XYZ");
+          const xf = await partHistory.newFeature("XFORM");
+          xf.inputParams.solids = [f.inputParams.id];
+          xf.inputParams.translate = [pos.x, pos.y, pos.z];
+          xf.inputParams.rotateEulerDeg = [MathUtils.radToDeg(e.x), MathUtils.radToDeg(e.y), MathUtils.radToDeg(e.z)];
+          xf.inputParams.scale = [scl.x, scl.y, scl.z];
+        }
+        trace?.push({ id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+        return f.inputParams.id;
       }
       // Make imported solids safe to clone so they can act as boolean tools.
       await ensureImportClonePatch(partHistory);

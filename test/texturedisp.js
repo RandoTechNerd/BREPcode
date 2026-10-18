@@ -3,6 +3,13 @@
 // WATERTIGHT. Volume is measured from the exported STL, never trusted.
 
 import { build, toSTL } from "../index.js";
+
+// The remesh tests below start from the triangles texture() is actually handed,
+// and texture() tessellates its child on the JS kernel while compiling
+// (src/dsl.js, its scratch PartHistory). So those fixtures are built on the JS
+// kernel. build() itself now defaults to the split engine (src/engine.js),
+// whose Rust tessellation is a different (finer, exact-circle) mesh.
+const kernelTris = (shape) => build(shape, { engine: "js" });
 import { cube, cylinder, sphere, difference, translate, texture, heightmap, displacedPositions, TEXTURE_PATTERNS } from "../src/dsl.js";
 import { remeshForTexture } from "../src/texmesh.js";
 
@@ -264,28 +271,34 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
     "sphere (no plane or cylinder to unroll)": sphere({ r: 10 }),
   };
   for (const [name, shape] of Object.entries(shapes)) {
-    const soup = flatSoup(await build(shape));
+    const soup = flatSoup(await kernelTris(shape));
     const r = remeshForTexture(soup, { L: 1.5, wants: sidesWanted, maxTris: 20000 });
     check(`remesh engages on the kernel's ${name}`, !!r, `declined: ${remeshForTexture.why}`);
     if (!r) continue;
     const out = toSoup(r);
     check(`...${name}: still watertight`, isWatertight(out));
     const v0 = soupVolume(soup), v1 = soupVolume(out);
-    check(`...${name}: same solid (volume within 0.5%)`, Math.abs(v1 - v0) / v0 < 0.005, `${v0.toFixed(1)} -> ${v1.toFixed(1)}`);
+    if (/sphere/.test(name)) {
+      // relaxed vertices go back onto the TRUE sphere, so the volume moves from
+      // the kernel's faceted one toward 4/3 pi r^3, never past it
+      const vTrue = (4 / 3) * Math.PI * 1000;
+      check(`...${name}: same solid (between the facets and the true sphere)`, v1 >= v0 - 1e-6 && v1 <= vTrue, `${v0.toFixed(1)} -> ${v1.toFixed(1)} (true ${vTrue.toFixed(1)})`);
+    } else {
+      check(`...${name}: same solid (volume within 0.5%)`, Math.abs(v1 - v0) / v0 < 0.005, `${v0.toFixed(1)} -> ${v1.toFixed(1)}`);
+    }
     const q = qualityOn(out, onSide);
-    // A sphere can't be unrolled flat, so it is remeshed facet by facet: the
-    // kernel's own facets bound the quality there. Planes and cylinders get
-    // the real lattice.
-    const curved = /sphere/.test(name);
-    const good = curved ? q.med > 0.75 && q.min > 0.25 : q.med > 0.9 && q.p05 > 0.55 && q.min > 0.25;
-    check(`...${name}: textured faces are ${curved ? "decent (per-facet)" : "near-equilateral"}`, good,
+    // (A sphere can't be unrolled flat: it is remeshed facet by facet and then
+    // relaxed on the true sphere. Before the relaxing its median was 0.82 and
+    // its 5th percentile 0.35, the kernel's UV facets showing through.)
+    const good = q.med > 0.9 && q.p05 > 0.55 && q.min > 0.25;
+    check(`...${name}: textured faces are near-equilateral`, good,
       `median ${q.med?.toFixed(3)}, 5th pct ${q.p05?.toFixed(3)}, worst ${q.min?.toFixed(3)} over ${q.n}`);
     check(`...${name}: and as small as the pattern asks`, q.maxEdge < 1.5 * 2, `longest textured edge ${q.maxEdge.toFixed(2)} mm`);
   }
 }
 {
   // the regression itself: knob wall triangles used to stay 9 mm tall
-  const soup = flatSoup(await build(knobShape()));
+  const soup = flatSoup(await kernelTris(knobShape()));
   const out = displacedPositions(soup, { pattern: "knurl", depth: 0.6, scale: 3, faces: "sides", maxTris: 6000 });
   check("knurled knob: displaced shell watertight", isWatertight(out));
   const q = qualityOn(out, (f, i) => {
@@ -305,13 +318,17 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
   // pattern is linear: the mean of its corners equals its value at the
   // centroid. Sampled on arbitrary triangles that fails on most of them.
   const R = 17, H = 18, s = 3, depth = 0.6;
-  const soup = flatSoup(await build(cylinder({ r: R, h: H, $fn: 96 })));
+  const soup = flatSoup(await kernelTris(cylinder({ r: R, h: H, $fn: 96 })));
   const N = Math.max(4, Math.round((2 * Math.PI * R) / s));
   const tw = (t) => Math.abs(t - Math.floor(t) - 0.5) * 2;
-  const knurl = (x, y, z) => {
-    const u = (Math.atan2(y, x) / (2 * Math.PI)) * N, w = z / s;
-    return Math.max(0, tw(u + w) + tw(u - w) - 1);
+  const PATTERN = {
+    knurl: (u, w) => Math.min(tw(u + w), tw(u - w)),
+    studs: (u, w) => Math.max(0, tw(u + w) + tw(u - w) - 1),
+    waffle: (u, w) => Math.max(Math.max(0, tw(u) * 2 - 1), Math.max(0, tw(w) * 2 - 1)),
   };
+  let f = PATTERN.knurl;
+  // (laid out centred on the part: the middle height sits between rows)
+  const knurl = (x, y, z) => f((Math.atan2(y, x) / (2 * Math.PI)) * N, (z - H / 2) / s + 0.5);
   const linearShare = (out) => {
     let linear = 0, total = 0;
     for (let i = 0; i < out.length; i += 9) {
@@ -326,13 +343,43 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
     }
     return { linear, total };
   };
-  const got = linearShare(displacedPositions(soup, { pattern: "knurl", depth, scale: s, faces: "sides", maxTris: 20000 }));
-  check("knurl lattice follows the creases: the pattern is linear on the wall triangles",
-    got.total > 1000 && got.linear / got.total > 0.9, `${got.linear}/${got.total} linear`);
+  for (const pattern of ["knurl", "studs", "waffle"]) {
+    f = PATTERN[pattern];
+    const got = linearShare(displacedPositions(soup, { pattern, depth, scale: s, faces: "sides", maxTris: 20000 }));
+    check(`${pattern} lattice follows the creases: the pattern is linear on the wall triangles`,
+      got.total > 1000 && got.linear / got.total > 0.9, `${got.linear}/${got.total} linear`);
+  }
+  // knurl tiles the whole wall with pyramids: no flat ground left at r = R
+  // (studs, the old knurl, left about half of it flat)
+  const flatShare = (pattern) => {
+    const out = displacedPositions(soup, { pattern, depth, scale: s, faces: "sides", maxTris: 20000 });
+    let flat = 0, all = 0;
+    for (let i = 0; i < out.length; i += 9) {
+      const zs = [out[i + 2], out[i + 5], out[i + 8]];
+      if (zs.some((z) => z < 1.5 || z > H - 1.5)) continue;
+      all++;
+      if ([0, 3, 6].every((o) => Math.hypot(out[i + o], out[i + o + 1]) < R + 0.01)) flat++;
+    }
+    return flat / all;
+  };
+  const fk = flatShare("knurl"), fs = flatShare("studs");
+  check("knurl has no flat valleys between its diamonds (studs does)", fk < 0.02 && fs > 0.3,
+    `flat wall triangles: knurl ${(fk * 100).toFixed(1)}%, studs ${(fs * 100).toFixed(1)}%`);
+  // bumps and waffle go all the way round a round part, not just where the
+  // wall happens to face a world axis
+  for (const pattern of ["bumps", "waffle"]) {
+    const out = displacedPositions(soup, { pattern, depth, scale: s, faces: "sides", maxTris: 20000 });
+    const hit = new Set();
+    for (let i = 0; i < out.length; i += 3) {
+      const r = Math.hypot(out[i], out[i + 1]);
+      if (r > R + depth * 0.5) hit.add(Math.floor(((Math.atan2(out[i + 1], out[i]) + Math.PI) / (2 * Math.PI)) * 24) % 24);
+    }
+    check(`${pattern} stands proud all the way round a cylinder`, hit.size === 24, `${hit.size}/24 sectors`);
+  }
 }
 {
   // budget: a big part at a fine scale trades spacing for staying interactive
-  const soup = flatSoup(await build(cylinder({ r: 40, h: 60, $fn: 128 })));
+  const soup = flatSoup(await kernelTris(cylinder({ r: 40, h: 60, $fn: 128 })));
   const out = displacedPositions(soup, { pattern: "fuzzy", depth: 0.4, scale: 1, faces: "sides", maxTris: 6000 });
   check("over-budget remesh coarsens instead of blowing the budget", out.length / 9 <= 6600 && isWatertight(out), `${out.length / 9} tris`);
 }
@@ -340,7 +387,7 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
   // A thin bore at a coarse spacing: the unrolled tube is a narrow strip whose
   // two long edges are the same seam, and a lattice point mid-strip used to
   // join both copies of one vertex (a doubled edge, so the remesh gave up).
-  const soup = flatSoup(await build(difference(cube([60, 60, 20]), translate([30, 30, -1], cylinder({ r: 2.7, h: 22, $fn: 32 })))));
+  const soup = flatSoup(await kernelTris(difference(cube([60, 60, 20]), translate([30, 30, -1], cylinder({ r: 2.7, h: 22, $fn: 32 })))));
   const r = remeshForTexture(soup, { L: 6, wants: sidesWanted, maxTris: 1e9 });
   check("a thin bore at a coarse spacing doesn't fold across its seam", !!r && isWatertight(toSoup(r)), r ? "" : remeshForTexture.why);
 }

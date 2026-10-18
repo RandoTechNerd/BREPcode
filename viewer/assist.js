@@ -170,6 +170,11 @@ export const SPECS = [
     snippet: 'importedMesh("mount.stl", { split: true })', argStart: 13,
     hint: "Brings in an STL/OBJ/3MF mesh you imported (use the Import button first). { split: true } splits a multi-body file into separate solids. Wrap it in difference() to drill, union() to add, or stretch() to lengthen. Note: mesh geometry, not editable CAD parameters.",
   },
+  {
+    name: "importedSolid", group: "Edit a part", sig: 'importedSolid("file.step")',
+    snippet: 'importedSolid("mount.step")', argStart: 14,
+    hint: "An imported part rebuilt as an EXACT solid: real planes and cylinders recovered from the mesh (drop an STL and pick \"Open as an exact solid\"). Fillet its edges, cut it exactly, export true STEP. Best on parts that came from CAD; organic models stay meshes.",
+  },
 
   // --- combining ----------------------------------------------------------
   {
@@ -929,7 +934,7 @@ const KIND_CODES = {
   sphere: ["P.S"], spheroid: ["P.S"],
   cylinder: ["P.CY", "P.CO"], cyl: ["P.CY", "P.CO"],
   cone: ["P.CO"], torus: ["P.T"],
-  importedMesh: ["IMPORT3D"],
+  importedMesh: ["IMPORT3D"], importedSolid: ["IMPORT3D"],
   // drill() is a cylinder under an xform, so it reaches the trace as one P.CY
   // and nothing else. Leaving it out did not merely make drilled holes
   // unclickable: the trace then held a P.CY the source could not account for,

@@ -211,6 +211,52 @@ export function placePopup(anchor, pop, view, prefer = "auto") {
   return { place, left: Math.max(0, left), top: Math.max(0, top) };
 }
 
+// Short walks that follow an example rather than the whole tour: the first
+// thing someone who just opened the name tag wants is "where do I change it?".
+// Same driver, same rules (data here, selectors checked by test/tour.js).
+export const COACHES = {
+  nametag: [
+    {
+      sel: "#params-btn",
+      open: "panel",
+      title: "Your controls are here",
+      body: "This sliders button opens Parameters. It lights up whenever a model has settings, like this tag's name, font, colours and sizes.",
+    },
+    {
+      sel: "#params",
+      open: "params",
+      title: "Make it yours",
+      body: "Type a new name, pick a font, choose the tag and letter colours, and drag the sizes: rounded corners, edge fillet, thickness, keyring hole. It rebuilds as you go.",
+    },
+    {
+      sel: "#code",
+      open: "panel",
+      title: "Same numbers, in the code",
+      body: "Every control is one line at the top of the code. Change it in either place and the other follows. Export when it looks right: a 3MF keeps the two colours.",
+    },
+  ],
+  tpubox: [
+    {
+      sel: "#params-btn",
+      open: "panel",
+      title: "Size it here",
+      body: "This sliders button opens Parameters: the box's inside size, walls, the lid's snap seal and the soap riser.",
+    },
+    {
+      sel: "#params",
+      open: "params",
+      title: "A box that snaps shut",
+      body: "Set the inside size and the lid follows. The bead and groove line up on their own; Lid gap is the fit, tighter for a firmer snap. Pick holes, slits, hearts or solid for the riser, and Show to export one part at a time.",
+    },
+    {
+      sel: "#code",
+      open: "panel",
+      title: "Print it in TPU",
+      body: "The snap relies on TPU flexing over the bead: in a stiff filament like PLA the lid may not go on. The lid is laid out top-down, the way it prints best. Every control is a line at the top of this code.",
+    },
+  ],
+};
+
 // The whole run, in order, so the driver and the tests agree on the length.
 export function tourPlan() {
   return [
@@ -433,9 +479,13 @@ export function startTour({
   doc = document, setCode, openCard, onFinish,
   cubeHTML,                       // the app's build-cube factory, for the bullets
   brandMark = "favicon.svg",      // the product mark, next to the wordmark
+  steps = null,                   // a COACHES walk instead of the full tour
 } = {}) {
   styles(doc);
-  const plan = tourPlan();
+  const plan = steps || tourPlan();
+  // a coach is not the tour: finishing it neither celebrates nor marks the
+  // tour as done
+  const coach = !!steps;
   let i = 0;
 
   // The bullet sequence. CUBE_CYCLE must match the animation-duration the CSS
@@ -458,7 +508,7 @@ export function startTour({
     spot.remove(); pop.remove();
     removeEventListener("resize", place);
     doc.removeEventListener("keydown", onKey, true);
-    if (done) {
+    if (done && !coach) {
       try { localStorage.setItem(TOUR_DONE_KEY, new Date().toISOString()); } catch { /* private window */ }
       celebrate({ doc, onClose: onFinish });
     } else onFinish?.();
@@ -574,7 +624,7 @@ export function startTour({
       pop.querySelector("p").after(ul);
     }
     pop.querySelector(".bc-tour-count").textContent = `${i + 1} / ${plan.length}`;
-    pop.querySelector(".bc-tour-next").textContent = i === plan.length - 1 ? "Finish" : "Next";
+    pop.querySelector(".bc-tour-next").textContent = i === plan.length - 1 ? (coach ? "Got it" : "Finish") : "Next";
     pop.querySelector(".bc-tour-back").disabled = i === 0;
     pop.querySelector(".bc-tour-next").onclick = () => go(1);
     pop.querySelector(".bc-tour-back").onclick = () => go(-1);

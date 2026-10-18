@@ -23,7 +23,14 @@ let replicadReady = null;
 // it loads the copy shipped beside the app, so offline and desktop keep working.
 // NB build-site.mjs rewrites the default path for the static site.
 const WASM_URL = "/node_modules/replicad-opencascadejs/src/replicad_single.wasm";
-const wasmUrl = () => (typeof window !== "undefined" && window.__BREP_REPLICAD_WASM_URL) || WASM_URL;
+// The last resort: a pinned public copy of the very same bytes, for a host
+// that cannot serve a file this size at all (brepcode.com's /brep/ folder
+// 404s it). build-site.mjs fails the build if this version stops matching the
+// one in node_modules, so it can never hand the loader a mismatched wasm.
+const WASM_CDN = "https://cdn.jsdelivr.net/npm/replicad-opencascadejs@0.23.0/src/replicad_single.wasm";
+const wasmUrls = () => [...new Set([
+  typeof window !== "undefined" && window.__BREP_REPLICAD_WASM_URL, WASM_URL, WASM_CDN,
+].filter(Boolean))];
 
 export function loadReplicad() {
   replicadReady ??= (async () => {
@@ -31,12 +38,21 @@ export function loadReplicad() {
       import("/node_modules/replicad/dist/replicad.js"),
       import("/node_modules/replicad-opencascadejs/src/replicad_single.js"),
     ]);
-    const OC = await loader.default({
-      locateFile: () => wasmUrl(),
-    });
-    r.setOC(OC);
-    return r;
+    // Each place in turn: a 404 (or an HTML error page where the wasm should
+    // be) fails that instance, and the next URL gets a fresh one.
+    let lastErr;
+    for (const url of wasmUrls()) {
+      try {
+        const OC = await loader.default({ locateFile: () => url });
+        r.setOC(OC);
+        return r;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
   })();
+  // A failed load is not remembered: the next curved export tries again
+  // rather than repeating the old rejection for the rest of the session.
+  replicadReady.catch(() => { replicadReady = null; });
   return replicadReady;
 }
 

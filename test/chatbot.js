@@ -141,6 +141,24 @@ console.log("\nguided flows\n");
   const vol = await volumeOf(r2.code);
   check("frame builds hollow", vol > 4000 && vol < 126 * 176 * 5, `${vol.toFixed(0)} mm3`);
 }
+// ...but "frame" inside a bigger request is not a picture frame
+{
+  const state = {};
+  const r = respond("design me a quadcopter drone frame with four motor mounts, a battery bay and a GoPro mount", state);
+  check("a drone frame isn't asked what size photo it holds", !/photo/i.test(r.reply) && state.flow?.kind !== "frame", r.reply);
+  const s2 = {};
+  respond("make a frame", s2);
+  check("...while a short 'make a frame' still starts the frame flow", s2.flow?.kind === "frame");
+  // longer asks still reach it when something says what goes in the frame
+  for (const ask of ["make a frame for an 8x10 poster", "a frame for my 5x7 print", "I need a frame for a diploma please"]) {
+    const s = {};
+    respond(ask, s);
+    check(`"${ask}" starts the frame flow`, s.flow?.kind === "frame");
+  }
+  const s3 = {};
+  respond("bike frame", s3);
+  check("...and a short 'bike frame' is not asked about photos", s3.flow?.kind !== "frame");
+}
 
 // holder: wall-mount variant
 {

@@ -113,5 +113,42 @@ console.log("\ncode generation + kernel round-trip\n");
     `removed ${removed.toFixed(0)}, through-hole ~${(holeArea * 4).toFixed(0)}`);
 }
 
+// ---- rings -> one extruded solid (what smooth text() is built from) -------
+{
+  const { ringsToPrismStl } = await import("../viewer/trace.js");
+  const { ShapeUtils, Vector2 } = await import("three");
+  const tri = (o, hs) => ShapeUtils.triangulateShape(o.map(([x, y]) => new Vector2(x, y)), hs.map((h) => h.map(([x, y]) => new Vector2(x, y))));
+  const ring = (cx, cy, r, n, cw = false) => Array.from({ length: n }, (_, i) => {
+    const a = ((cw ? -i : i) / n) * 2 * Math.PI;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+  // an "O" (disc with a hole) and a separate square "I", windings deliberately wrong
+  const outers = [ring(0, 0, 10, 64, true), [[20, -10], [20, 10], [24, 10], [24, -10]]];
+  const holes = [ring(0, 0, 6, 64)];
+  const stl = ringsToPrismStl(outers, holes, 2, tri);
+  const P = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => `${(+m[1]).toFixed(5)},${(+m[2]).toFixed(5)},${(+m[3]).toFixed(5)}`);
+  const edges = new Map();
+  for (let i = 0; i < P.length; i += 3) for (let e = 0; e < 3; e++) {
+    const k = `${P[i + e]}>${P[i + (e + 1) % 3]}`;
+    edges.set(k, (edges.get(k) || 0) + 1);
+  }
+  // closed AND consistently wound: every directed edge once, its reverse once
+  const closed = [...edges.keys()].every((k) => { const [a, b] = k.split(">"); return edges.get(k) === 1 && edges.get(`${b}>${a}`) === 1; });
+  check("rings extrude into one closed, consistently wound shell", closed);
+  const want = (Math.PI * (100 - 36)) * 2 + 4 * 20 * 2;      // smooth-circle volume; the 64-gon is ~0.5% less
+  let signed = 0;
+  const V = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  for (let i = 0; i < V.length; i += 3) {
+    const [a, b, c] = V.slice(i, i + 3);
+    signed += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+  }
+  check("...with the hole cut and normals pointing out (positive volume)", signed > 0 && near(signed, want, want * 0.01), `${signed.toFixed(1)} vs ${want.toFixed(1)}`);
+  // and the kernel takes it as a solid (this is the road text() uses)
+  const { registerImport, importedMesh } = await import("../src/dsl.js");
+  registerImport("__rings_test.stl", stl);
+  const got = volOf(toSTL(await build(importedMesh("__rings_test.stl")), "t"));
+  check("...and imports through the kernel as one solid", near(got, signed, signed * 0.01), `${got.toFixed(1)}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

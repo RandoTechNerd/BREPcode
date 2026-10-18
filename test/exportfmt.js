@@ -142,6 +142,25 @@ const tetra = (ox, oy, oz, color) => ({
     shared[0]?.groups.length === 2, String(shared[0]?.groups.length));
 }
 {
+  // The app hands this ONE GROUP PER FACE, each with its own copy of the
+  // corners. Keying by the index inside the group left every part as open
+  // triangle soup: a cube came out 24 corners and 24 open edges.
+  const C = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10]];
+  const quads = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
+  const perFace = quads.map((q) => ({ color: "#aa0000", verts: q.map((i) => [...C[i]]), tris: [[0, 1, 2], [0, 2, 3]] }));
+  const parts = splitConnectedParts(perFace);
+  const g = parts[0]?.groups[0];
+  const edges = new Map();
+  for (const t of g?.tris || []) for (let k = 0; k < 3; k++) {
+    const e = [t[k], t[(k + 1) % 3]].sort((a, b) => a - b).join();
+    edges.set(e, (edges.get(e) || 0) + 1);
+  }
+  check("a cube given face by face is one part with 8 corners", parts.length === 1 && g?.verts.length === 8,
+    `${parts.length} part(s), ${g?.verts.length} corners`);
+  check("...and closed: every edge shared by exactly two triangles", [...edges.values()].every((n) => n === 2),
+    `${[...edges.values()].filter((n) => n !== 2).length} open edges`);
+}
+{
   // an assembly: a lid FLOATING ABOVE a base, same x/y — assembled they overlap
   // in plan view, laid out they must sit apart, both ON the bed
   const base = tetra(0, 0, 0, "#aa0000");
