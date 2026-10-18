@@ -31,6 +31,12 @@ export default {
     { names: ["herb pot", "kitchen herb planter"], title: "Herb pot", params: { topD: 120, bottomD: 95, height: 110 } },
     { names: ["seedling pot", "seed starter", "seed starting pot"], title: "Seedling pot", params: { topD: 50, bottomD: 40, height: 50, wall: 1.6, saucer: "no", drain: 6 } },
     { names: ["large planter", "big plant pot", "large pot"], title: "Large planter", params: { topD: 200, bottomD: 150, height: 180, wall: 3, floor: 4 } },
+    { names: ["bonsai pot", "bonsai planter", "bonsai tray"], title: "Bonsai pot", params: { topD: 160, bottomD: 140, height: 45, rim: 2, drain: 14, saucer: "no" } },
+    { names: ["succulent bowl", "shallow planter", "bowl planter", "shallow pot"], title: "Succulent bowl", params: { topD: 150, bottomD: 95, height: 55, drain: 8 } },
+    { names: ["tall planter", "cylinder planter", "straight planter", "tall pot"], title: "Tall planter", params: { topD: 120, bottomD: 120, height: 170, wall: 2.6 } },
+    { names: ["nursery pot", "grow pot", "plastic nursery pot"], title: "Nursery pot", params: { topD: 100, bottomD: 80, height: 90, wall: 1.6, rim: 2, saucer: "no" } },
+    { names: ["desk planter", "mini planter", "tiny succulent planter"], title: "Desk planter", params: { topD: 60, bottomD: 48, height: 55, drain: 6 } },
+    { names: ["orchid pot", "orchid planter"], title: "Orchid pot", params: { topD: 130, bottomD: 100, height: 120, drain: 26 } },
   ],
   body: `
 const rt = topD / 2, rb = Math.min(bottomD, topD) / 2;   // never wider at the foot: that would overhang
