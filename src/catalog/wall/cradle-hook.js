@@ -10,7 +10,7 @@ export default {
   title: "Wall cradle hook",
   summary: "a U-shaped wall hook that cradles anything round: mats, rollers, coiled hoses and cords.",
   print: "on its side as shown (no supports); the flat back goes against the wall. Long things want two.",
-  names: ["wall hook", "cradle hook", "u hook", "wall cradle", "round hook", "j hook", "wall hanger"],
+  names: ["cradle hook", "u hook", "wall cradle", "round hook", "wall hanger", "cradle hanger", "saddle hook"],
   nouns: ["hook", "hanger", "holder", "rack", "mount", "cradle"],
   keywords: ["wall", "hang", "roll", "rolled", "coil", "store"],
   fits: ["round"],
@@ -18,7 +18,7 @@ export default {
   fromSpec: (s) => ({ itemD: s.dims.d }),
   tips: ["for a foam roller", "200 mm across", "60 mm wide", "deeper lip"],
   examples: ["make me a hook for yoga roll", "a wall hook for my foam roller",
-    "hose hanger for the garage", "wall hook that holds something 120mm across"],
+    "hose hanger for the garage", "cradle hook that holds something 120mm across"],
   params: {
     itemD: { default: 80, min: 20, max: 300, unit: "mm", label: "diameter of what it holds", say: ["diameter", "across", "round", "roll", "mat", "roller"], more: ["bigger", "larger"], less: ["smaller"] },
     gap: { default: 3, min: 0, max: 20, unit: "mm", label: "room around it", say: ["gap", "clearance", "room"] },
@@ -42,6 +42,8 @@ export default {
     { names: ["poster tube holder", "blueprint holder", "rolled poster holder"],
       title: "Poster tube holder", spec: "poster-tube", params: { width: 30 } },
     { names: ["towel roll holder", "rolled towel holder"], title: "Rolled towel holder", spec: "towel-rolled", params: { width: 50 } },
+    { names: ["wrapping paper holder", "gift wrap holder", "wrapping paper storage", "wrapping paper rack", "wrapping paper hanger"],
+      title: "Wrapping paper holder", spec: "wrapping-paper", params: { width: 30, lipAngle: 45 } },
   ],
   body: `
 // side profile: x runs out from the wall, y runs up; printed lying on it
