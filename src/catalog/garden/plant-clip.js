@@ -9,7 +9,7 @@ export default {
   summary: "a snap-on clip that holds a stem to a stake, cane or trellis; a big one is a support ring.",
   print: "flat as shown, no supports. PETG flexes without cracking; print a few spare.",
   names: ["plant clip", "plant support clip", "garden clip", "stake clip", "plant stake clip", "stem clip",
-    "cane clip", "plant support ring", "plant ring"],
+    "bamboo cane clip", "garden cane clip", "plant support ring", "plant ring"],
   nouns: ["clip", "ring", "support"],
   keywords: ["plant", "stem", "stake", "cane", "vine", "tomato", "trellis", "garden", "bamboo"],
   fits: ["stake"],

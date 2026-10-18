@@ -27,7 +27,7 @@ export default {
       words: { no: ["tile", "no studs", "smooth top", "without studs"], yes: ["studs"] } },
     bottom: { default: "hollow", unit: "choice", choices: ["hollow", "solid"], label: "hollow with tubes, or solid (a base plate)",
       words: { solid: ["solid", "base plate", "baseplate", "flat bottom"], hollow: ["hollow"] } },
-    studD: { default: 4.8, min: 4.5, max: 5.1, unit: "mm", label: "stud diameter (nudge for clutch)", say: ["stud diameter"] },
+    studD: { default: 4.8, min: 4.5, max: 5.1, unit: "mm", label: "stud diameter (nudge for clutch)", say: ["stud"] },
     tubeD: { default: 6.51, min: 6.2, max: 6.8, unit: "mm", label: "underside tube diameter", say: ["tube"] },
     wall: { default: 1.2, min: 1, max: 2, unit: "mm", label: "wall thickness", say: ["wall"] },
     fit: { default: 0.1, min: 0, max: 0.3, unit: "mm", label: "outside trim per side", say: ["fit", "tolerance", "clearance"] },

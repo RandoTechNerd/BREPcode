@@ -27,7 +27,7 @@ export default {
     spoolW: { default: 70, min: 30, max: 120, unit: "mm", label: "spool width", say: ["wide", "width"] },
     boreD: { default: 53, min: 15, max: 80, unit: "mm", label: "spool hub hole", say: ["hub", "bore", "hole", "center"] },
     axleD: { default: 16, min: 8, max: 30, unit: "mm", label: "axle diameter", say: ["axle", "rod", "shaft"] },
-    spools: { default: 1, min: 1, max: 3, unit: "count", label: "spools side by side", say: ["roll", "colour", "color", "bay"] },
+    spools: { default: 1, min: 1, max: 3, unit: "count", label: "spools side by side", say: ["spool", "roll", "colour", "color", "bay"] },
     wall: { default: 5, min: 3, max: 10, unit: "mm", label: "base and upright thickness", say: ["wall", "thick", "strong"], more: ["stronger", "sturdier"] },
   },
   things: [

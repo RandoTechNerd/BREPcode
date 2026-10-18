@@ -39,7 +39,7 @@ export default {
       params: { height: 50, baseW: 60, topW: 50, cupW: 36, cupDepth: 20, shape: "round" } },
     { names: ["tall bed riser", "high bed riser", "extra tall bed riser"], title: "Tall bed riser",
       params: { height: 140, baseW: 130, topW: 95, cupDepth: 30 } },
-    { names: ["dresser riser", "cabinet riser", "bookcase riser"], title: "Cabinet riser", params: { height: 40, cupW: 55, cupDepth: 12 } },
+    { names: ["dresser riser", "cabinet leg riser", "bookcase riser"], title: "Cabinet riser", params: { height: 40, cupW: 55, cupDepth: 12 } },
   ],
   body: `
 const tw = Math.min(topW, baseW);

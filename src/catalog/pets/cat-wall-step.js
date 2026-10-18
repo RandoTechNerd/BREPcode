@@ -27,7 +27,7 @@ export default {
     depth: { default: 200, min: 40, max: 300, unit: "mm", label: "how far it sticks out", say: ["deep", "depth", "out"], more: ["deeper"], less: ["shallower"] },
     stepT: { default: 8, min: 3, max: 15, unit: "mm", label: "step plate thickness", say: ["thick", "thickness", "plate"], more: ["thicker", "stronger", "sturdier"] },
     backH: { default: 70, min: 25, max: 150, unit: "mm", label: "back plate height above the step", say: ["back", "tall", "high", "height"] },
-    backT: { default: 6, min: 3, max: 12, unit: "mm", label: "back plate thickness", say: ["back thickness"] },
+    backT: { default: 6, min: 3, max: 12, unit: "mm", label: "back plate thickness", say: ["back"] },
     gusset: { default: 0.7, min: 0.3, max: 1, unit: "ratio", label: "how far the end gussets reach forward (share of the depth)" },
     lipH: { default: 15, min: 0, max: 40, unit: "mm", label: "front lip height (0 = none)", say: ["lip", "rail", "edge"] },
     recess: { default: 3, min: 0, max: 6, unit: "mm", label: "carpet pad recess depth (0 = none)", say: ["recess", "carpet", "pad"] },

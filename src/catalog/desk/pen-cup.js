@@ -28,7 +28,6 @@ export default {
   things: [
     { names: ["makeup brush holder", "cosmetic brush holder"], title: "Makeup brush holder", params: { diameter: 90, height: 120, compartments: 3 } },
     { names: ["utensil holder", "kitchen utensil holder", "utensil crock", "spatula holder"], title: "Utensil holder", params: { diameter: 120, height: 160, compartments: 3, wall: 2.4 } },
-    { names: ["toothbrush holder", "toothbrush cup"], title: "Toothbrush holder", params: { diameter: 70, height: 100, compartments: 4 } },
     { names: ["paint brush holder", "art brush holder"], title: "Paint brush holder", params: { diameter: 90, height: 110, compartments: 4, form: "hex" } },
     { names: ["hex pen holder", "hexagonal pen holder", "honeycomb pen holder"], title: "Hex pen holder", params: { form: "hex" } },
   ],

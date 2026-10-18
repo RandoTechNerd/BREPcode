@@ -22,7 +22,7 @@ export default {
     gripW: { default: 24, min: 14, max: 40, unit: "mm", label: "handle width", say: ["wide", "width", "fat"], more: ["fatter", "wider"] },
     gripT: { default: 14, min: 8, max: 25, unit: "mm", label: "handle thickness", say: ["thick", "thickness"], more: ["thicker"] },
     loopL: { default: 34, min: 20, max: 50, unit: "mm", label: "loop length", say: ["loop"] },
-    loopW: { default: 14, min: 8, max: 24, unit: "mm", label: "loop width", say: ["loop width"] },
+    loopW: { default: 14, min: 8, max: 24, unit: "mm", label: "loop width", say: ["loop"] },
     wireT: { default: 2.6, min: 1.8, max: 4, unit: "mm", label: "loop wire thickness", say: ["wire"], more: ["stronger"] },
     zip: { default: "yes", unit: "choice", choices: ["no", "yes"], label: "zip hook on the other end",
       words: { no: ["no zip hook", "without zip hook", "without zipper hook", "no zipper hook", "button only"], yes: ["zip hook", "zipper hook", "zipper", "zip"] } },

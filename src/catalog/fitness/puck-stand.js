@@ -9,7 +9,7 @@ export default {
   title: "Puck and disc stand",
   summary: "a slotted stand that holds a puck, disc, medal or coin upright, leaning back a little.",
   print: "upright as shown, no supports.",
-  names: ["puck stand", "puck display stand", "puck holder", "disc display stand", "disc stand", "slot display stand",
+  names: ["puck stand", "puck display stand", "puck holder", "disc display stand", "disc stand",
     "hockey puck display", "disc golf stand"],
   nouns: ["stand", "holder", "display"],
   keywords: ["puck", "disc", "hockey", "medal", "coin", "display", "signed", "golf"],

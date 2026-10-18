@@ -27,7 +27,7 @@ export default {
       words: { no: ["no marks", "plain", "no grooves", "without marks", "blank"], yes: ["marks", "grooves", "marked"] } },
   },
   things: [
-    { names: ["20mm calibration cube", "20 mm test cube", "20mm cube"], title: "20 mm calibration cube", params: { size: 20 } },
+    { names: ["20mm calibration cube", "20 mm test cube"], title: "20 mm calibration cube", params: { size: 20 } },
     { names: ["10mm test cube", "small calibration cube", "mini test cube"], title: "10 mm test cube", params: { size: 10 } },
     { names: ["40mm calibration cube", "large calibration cube", "big test cube"], title: "40 mm calibration cube", params: { size: 40 } },
     { names: ["single wall cube", "flow calibration cube", "flow test cube", "vase mode cube", "hollow calibration cube", "extrusion multiplier cube"],

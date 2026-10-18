@@ -82,13 +82,34 @@ use the common size and say so in `note`.
 - **Prints with no supports, in the orientation it is built in.** Choose the
   orientation for printing (a hook lies on its side, a shelf on its back plate),
   not for how it hangs. Overhangs stay within 45 degrees of vertical; flat
-  ceilings are bridges and must be short.
+  ceilings are bridges and must be short. A family that MEANS to have one (a
+  bridge or overhang test print) declares it with `bridgeArea(values)`, the
+  mm2 of down-facing area the test should allow.
+- **`rotate([x, y, z])` applies Z first**, the reverse of OpenSCAD. Nest
+  single-axis rotates when the order matters; `rotate([90, 90, 0])` sends a
+  profile's x to y, its y to z and the extrusion to +x.
 - **Sits on z = 0** with a real footprint, and the default fits a 256 mm bed.
 - **Watertight.** Overshoot every cut by at least 0.01 mm past the face it goes
   through; overlap unioned parts.
 - **Builds fast.** A side profile `polygon()` + `linearExtrude()` or `revolve()`
   is cheapest; `hull()` of corner cylinders for rounded boxes; avoid fillets on
-  whole parts. Default under 2 s; the test fails past 15 s.
+  whole parts. Default under 2 s; the test fails past 15 s. What the six
+  category sessions measured (time a family in a FRESH process: identical
+  geometry is cached and re-builds instantly):
+  - `difference(a, ...cutters)` as a flat list is fast; `difference(a, union(...cutters))`
+    is the slow path (11 s to 0.55 s for 48 pockets).
+  - A cut costs by the TARGET's face count: ~5 ms per hole in a cube, 150-300 ms
+    in a revolve or an exact cylinder, growing per hole. Cut holes in a plain plate
+    first, then union it to the round part; cutting from `hull()` pieces is fast.
+  - A revolve minus a cylinder on its own axis: 8-15 s. Put the cavity in the
+    revolve profile instead (0.1 s), or build from `cylinder({ r1, r2 })`.
+  - Near-coincident geometry (0.01 mm overlaps, a cone rim exactly on a cylinder
+    radius, tangent faces) turns 1 s into 20 s and can leave the mesh not
+    watertight. Overlap by 0.4-1 mm or touch exactly.
+  - Many parts: `union(body, union(...parts))`, not `union(body, ...parts)`
+    (31 s to 2.4 s for a brick with 64 studs). Tilted round pegs: use 8-gons.
+  - A low `$fn` IS the polygon: `$fn: 8` grips an axle fine and costs a quarter
+    of `$fn: 24`. `revolve()` needs an edge on x = 0 (no ring profiles).
 - **No name a DSL word**, as a param or as a `const` in the body (`hook`,
   `slot`, `shell`, `handle`, `knob`, `standoff`… the test lists the clash).
 - **Only the params become sliders.** A body `const N = 48;` turns into a
@@ -103,6 +124,17 @@ use the common size and say so in `note`.
   fit, 0.6+ for "drops in", interference (negative) only for snap rings.
 
 ## Routing
+
+What the matcher understands, so names do not have to work around it:
+fractions ("5/8 inch", "1-1/4"), units (mm, cm, inch, ", degrees), "W x D x H",
+counts both ways ("3 cables", "cables 3"), brand names mapped to generic ones
+(lego, frisbee, post-it, velcro, sharpie), and model numbers glued to letters
+(cat6, m4, 18650, 18v) or inside a named object ("iPhone 15") are names, never
+sizes. Filler words are dropped from requests and names alike ("a", "my",
+"printed", "3d", "can you"); "3", "d", "can" and "one" are kept, because
+"d ring", "can rack" and "3 inch grommet" need them. The test fails any
+several-word name that filler removal shrinks to one word, and any phrase two
+families both claim.
 
 `match.js` scores each family against a request: a whole name phrase is strong
 (10+), a noun is weak (4), keywords weaker (1), and a spec the family `fits`

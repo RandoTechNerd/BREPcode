@@ -29,7 +29,7 @@ export default {
     loop: { default: "leash", unit: "choice", choices: ["leash", "none"], label: "leash loop on the side, or none",
       words: { none: ["no leash loop", "no loop", "without a loop", "without loop", "no strap", "no leash"], leash: ["leash loop", "loop", "strap"] } },
     strapW: { default: 26, min: 10, max: 50, unit: "mm", label: "leash or strap width the loop takes", say: ["strap", "leash", "belt", "webbing"] },
-    strapT: { default: 5, min: 3, max: 12, unit: "mm", label: "room for the strap's thickness", say: ["strap thickness"] },
+    strapT: { default: 5, min: 3, max: 12, unit: "mm", label: "room for the strap's thickness", say: ["strap"] },
     capFit: { default: 0.25, min: 0.1, max: 0.8, unit: "mm", label: "cap clearance per side (more = looser)", say: ["fit", "tolerance", "cap"], more: ["looser"], less: ["tighter"] },
   },
   bridgeArea: (v) => (v.loop === "leash" ? v.strapT * Math.max(4, v.wall * 2) : 0) + v.slotW * v.wall,

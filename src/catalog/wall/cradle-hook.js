@@ -10,7 +10,7 @@ export default {
   title: "Wall cradle hook",
   summary: "a U-shaped wall hook that cradles anything round: mats, rollers, coiled hoses and cords.",
   print: "on its side as shown (no supports); the flat back goes against the wall. Long things want two.",
-  names: ["cradle hook", "u hook", "wall cradle", "round hook", "wall hanger", "cradle hanger", "saddle hook"],
+  names: ["cradle hook", "u hook", "wall cradle", "round hook", "cradle hanger", "saddle hook"],
   nouns: ["hook", "hanger", "holder", "rack", "mount", "cradle"],
   keywords: ["wall", "hang", "roll", "rolled", "coil", "store"],
   fits: ["round"],

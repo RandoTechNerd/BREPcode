@@ -9,7 +9,7 @@ export default {
   title: "Carabiner clip",
   summary: "a light-duty carabiner clip with a springy flex gate, for keys, bottles and light gear.",
   print: "flat as shown, no supports. PETG or nylon so the gate springs. Not for climbing or any load that matters: keys, a bottle, light gear.",
-  names: ["carabiner", "carabiner clip", "carabiner hook", "printed carabiner", "spring clip", "snap clip", "gate clip"],
+  names: ["carabiner", "carabiner clip", "carabiner hook", "spring clip", "snap clip", "gate clip"],
   nouns: ["clip", "biner"],
   keywords: ["keys", "keychain", "backpack", "bottle", "belt", "gear", "hiking", "camping"],
   tips: ["50 mm long", "thicker", "wider gap"],

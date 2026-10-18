@@ -18,8 +18,8 @@ export default {
   params: {
     rimD: { default: 45, min: 20, max: 90, unit: "mm", label: "rim diameter", say: ["across", "diameter", "wide", "rim"], more: ["bigger", "wider"], less: ["smaller"] },
     stemD: { default: 8, min: 4, max: 14, unit: "mm", label: "stem diameter", say: ["stem", "handle"] },
-    stemL: { default: 16, min: 8, max: 40, unit: "mm", label: "stem length", say: ["stem length", "long"] },
-    rimH: { default: 4, min: 1, max: 25, unit: "mm", label: "rim band height", say: ["rim height", "band", "tall"] },
+    stemL: { default: 16, min: 8, max: 40, unit: "mm", label: "stem length", say: ["stem", "long"] },
+    rimH: { default: 4, min: 1, max: 25, unit: "mm", label: "rim band height", say: ["rim", "band", "tall"] },
     point: { default: 0.8, min: 0.4, max: 1.5, unit: "ratio", label: "point height, as a share of the rim radius", say: ["point", "tip"] },
     sides: { default: 0, min: 0, max: 8, unit: "count", label: "flat sides (0 = round)", say: ["side", "sided", "face"] },
   },

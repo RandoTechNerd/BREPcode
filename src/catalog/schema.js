@@ -137,6 +137,9 @@ export function validateFamily(f, { dslNames = [] } = {}) {
       need(p.default >= p.min && p.default <= p.max, `param ${k}: default inside [min, max]`);
     }
     need(new RegExp(`\\b${k}\\b`).test(f.body || ""), `param ${k} is never used in the body`);
+    // numbers are tied to params one neighbouring word at a time, so a
+    // multi-word `say` can never match
+    for (const w of p.say || []) need(!/\s/.test(w.trim()), `param ${k}: say "${w}" is several words; say entries match one word at a time`);
   }
   for (const t of f.things || []) {
     need(Array.isArray(t.names) && t.names.length >= 1, `thing without names`);

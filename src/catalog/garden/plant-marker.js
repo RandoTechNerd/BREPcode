@@ -20,7 +20,7 @@ export default {
     labelW: { default: 60, min: 25, max: 120, unit: "mm", label: "label width", say: ["wide", "width", "label"], more: ["wider"], less: ["narrower"] },
     labelH: { default: 25, min: 12, max: 80, unit: "mm", label: "label height", say: ["tall", "high"], more: ["taller"], less: ["shorter"] },
     stakeL: { default: 100, min: 30, max: 200, unit: "mm", label: "stake length", say: ["stake", "long", "length"], more: ["longer"], less: ["shorter"] },
-    stakeW: { default: 10, min: 5, max: 20, unit: "mm", label: "stake width", say: ["stake width"] },
+    stakeW: { default: 10, min: 5, max: 20, unit: "mm", label: "stake width", say: ["stake"] },
     thick: { default: 2.4, min: 1.6, max: 5, unit: "mm", label: "thickness", say: ["thick", "thickness"], more: ["thicker", "stronger"], less: ["thinner"] },
     recess: { default: 0.6, min: 0, max: 1.2, unit: "mm", label: "writing panel depth (0 = flat)", say: ["recess", "panel"] },
     count: { default: 3, min: 1, max: 10, unit: "count", label: "how many", say: ["marker", "label", "tag", "stake", "sign"] },

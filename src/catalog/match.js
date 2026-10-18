@@ -28,12 +28,36 @@ import { resolveParams, familyCode } from "./schema.js";
 
 // ---------------------------------------------------------------- words
 
+// NOT stop words, though they look like filler: "3" and "d" ("3 inch grommet",
+// "d ring", "d pull"), "can" ("can rack", "can holder") and "one" ("one
+// battery holder"). Dropping them collapsed whole names into a single generic
+// word that then took every request. "3d" and "can you" are removed as
+// phrases instead (keyTokens).
 const STOP = new Set(["a", "an", "the", "me", "my", "i", "im", "want", "need", "make", "build",
-  "print", "printed", "create", "design", "please", "can", "you", "could", "would", "like",
+  "print", "printed", "create", "design", "please", "you", "could", "would", "like",
   "some", "something", "to", "of", "with", "for", "and", "that", "this", "it", "is", "be",
-  "one", "new", "nice", "simple", "little", "do", "get", "give", "model", "3", "d", "3d",
+  "new", "nice", "simple", "little", "do", "get", "give", "model", "3d",
   "on", "in", "into", "so", "just", "our", "your", "id", "lets", "let", "us", "kind",
   "sort", "type", "thing", "hey", "hi", "how", "about"]);
+
+// Brand names people type for generic things. Applied to requests AND to
+// names, so both sides meet on the generic word; the catalog itself never
+// uses the trademark.
+const SYNONYMS = [
+  [/\blegos?\b/g, "building"], [/\bduplos?\b/g, "large building"],
+  [/\bfrisbees?\b/g, "flying disc"], [/\bpost[\s-]?its?(?:\s+notes?)?\b/g, "sticky note"],
+  [/\bvelcro\b/g, "hook and loop"], [/\bsharpies?\b/g, "marker"],
+];
+
+// "5/8", "1 1/8", "1-1/4": one number. Only the denominators fractions of an
+// inch actually use, and only a proper fraction, so "16/22 tubing" (a size
+// pair) is left alone.
+function fractions(t) {
+  const DEN = "(2|3|4|8|16|32|64)";
+  return t
+    .replace(new RegExp(`(\\d+)[\\s-]+(\\d+)/${DEN}(?!\\d)`, "g"), (m, a, b, c) => +b < +c ? String(+a + +b / +c) : m)
+    .replace(new RegExp(`(?<![\\d.])(\\d+)/${DEN}(?!\\d)`, "g"), (m, b, c) => +b < +c ? String(+b / +c) : m);
+}
 
 export function stem(w) {
   if (/^\d/.test(w) || w.length <= 3) return w;
@@ -46,7 +70,9 @@ export function stem(w) {
 // lowercase, "+" -> plus, letters split from digits ("s24" -> "s 24"),
 // punctuation gone except a decimal point inside a number
 export function normalise(text) {
-  return String(text).toLowerCase()
+  let t = fractions(String(text).toLowerCase());
+  for (const [re, w] of SYNONYMS) t = t.replace(re, w);
+  return t
     .replace(/(\d)\s*(?:["”″]|''|inches|inch)(?![a-z])/g, "$1 in ")
     .replace(/(\d)\s*°/g, "$1 deg ")
     .replace(/\+/g, " plus ")
@@ -57,8 +83,18 @@ export function normalise(text) {
     .trim();
 }
 const allTokens = (text) => normalise(text).split(/\s+/).filter(Boolean);
-// stop words go BEFORE stemming: "this" would otherwise stem to "thi" and stay
-export const keyTokens = (text) => allTokens(text).filter((w) => !STOP.has(w)).map(stem);
+// stop words go BEFORE stemming: "this" would otherwise stem to "thi" and stay.
+// "3 d" (from "3d") and "can" asking a question ("can you…") go as phrases.
+function dropPhrases(toks) {
+  const out = [];
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i] === "3" && toks[i + 1] === "d") { i++; continue; }
+    if (toks[i] === "can" && ["you", "u", "i", "we"].includes(toks[i + 1])) continue;
+    out.push(toks[i]);
+  }
+  return out;
+}
+export const keyTokens = (text) => dropPhrases(allTokens(text)).filter((w) => !STOP.has(w)).map(stem);
 
 // Does `phrase` appear in `toks` as a run of words? Returns its index or -1.
 function findRun(toks, phrase) {
@@ -96,8 +132,8 @@ export function readings(text) {
     const head = raw[at - 1];
     const tail = [];
     for (let j = at + 1; j < raw.length && tail.length < 4; j++) {
-      if (FILLER.has(raw[j])) continue;
-      if (STOP.has(raw[j]) || /^\d/.test(raw[j])) break;
+      if (FILLER.has(raw[j]) || /^\d/.test(raw[j])) continue;
+      if (STOP.has(raw[j])) break;
       tail.push(raw[j]);
     }
     if (tail.length) out.push(keyTokens([...tail, head].join(" ")));
@@ -106,6 +142,20 @@ export function readings(text) {
 }
 
 // ---------------------------------------------------------------- specs
+
+// Every spec the request names, longest alias first.
+export function findSpecs(text) {
+  const toks = specTokens(text);
+  const out = [];
+  for (const s of SPECS) {
+    let len = 0;
+    for (const p of phrasesOf(s, "names", specTokens)) {
+      if (findRun(toks, p) >= 0) len = Math.max(len, p.length * 100 + p.join(" ").length);
+    }
+    if (len) out.push({ spec: s, len });
+  }
+  return out.sort((a, b) => b.len - a.len).map((x) => x.spec);
+}
 
 export function findSpec(text, { kinds = null } = {}) {
   const toks = specTokens(text);
@@ -123,22 +173,27 @@ export function findSpec(text, { kinds = null } = {}) {
 
 // ---------------------------------------------------------------- scoring
 
+// The reading the user actually typed counts a little more than the one
+// rebuilt from "X for Y": with a car coin holder FOR euro coins, the car coin
+// holder is the thing, the euro coins are what it holds.
 function scoreFamily(f, reads, spec) {
-  let best = { score: 0, thing: null, named: false };
-  for (const toks of reads) {
+  let best = { score: 0, span: 0, thing: null, named: false };
+  reads.forEach((toks, i) => {
     const r = scoreReading(f, toks, spec);
-    if (r.score > best.score) best = r;
-  }
+    if (i > 0) r.span = Math.max(0, r.span - 0.5);
+    if (r.span > best.span || (r.span === best.span && r.score > best.score)) best = r;
+  });
   return best;
 }
 function scoreReading(f, toks, spec) {
-  let phrase = 0, thing = null;
+  let phrase = 0, thing = null, span = 0;
   for (const p of phrasesOf(f, "names")) {
-    if (findRun(toks, p) >= 0) phrase = Math.max(phrase, 10 + 3 * (p.length - 1));
+    if (findRun(toks, p) >= 0) { phrase = Math.max(phrase, 10 + 3 * (p.length - 1)); span = Math.max(span, p.length); }
   }
   (f.things || []).forEach((t, i) => {
     for (const p of phrasesOf(t, "names")) {
       if (findRun(toks, p) < 0) continue;
+      span = Math.max(span, p.length);
       const w = 12 + 3 * (p.length - 1);
       if (w > phrase && (!thing || w > thing.w)) thing = { i, w };
     }
@@ -156,17 +211,25 @@ function scoreReading(f, toks, spec) {
       if (!thing && phrasesOf(t, "keywords").some((p) => findRun(toks, p) >= 0)) thing = { i, w: 0 };
     });
   }
-  return { score, thing: thing ? thing.i : null, named: phrase > 0 || !!thing };
+  return { score, span, thing: thing ? thing.i : null, named: phrase > 0 || !!thing };
 }
 
 export const THRESHOLD = 9;
 
 export function rankFamilies(text) {
   const reads = readings(text);
-  const spec = findSpec(text);
-  return FAMILIES.map((f) => ({ family: f, ...scoreFamily(f, reads, spec) }))
+  // Each family is sized by the first named object of a KIND it fits. One
+  // spec for everyone gave the fit bonus only to whichever category's alias
+  // was registered first.
+  const specs = findSpecs(text);
+  // THE MOST SPECIFIC PHRASE WINS, then the score. "glue bottle rack" is the
+  // tool rack's thing even though the kitchen's "bottle rack" plus the noun
+  // "rack" adds up to more: three words someone wrote down together say more
+  // about what they want than two words and a generic noun. With 200 families
+  // a short phrase is almost always the tail of somebody else's longer one.
+  return FAMILIES.map((f) => ({ family: f, ...scoreFamily(f, reads, specs.find((s) => (f.fits || []).includes(s.kind)) || null) }))
     .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => (b.span - a.span) || (b.score - a.score));
 }
 
 // ---------------------------------------------------------------- numbers
@@ -180,11 +243,28 @@ const UNIT_WORDS = {
 const unitOf = (w) => Object.keys(UNIT_WORDS).find((u) => UNIT_WORDS[u].includes(w)) || null;
 
 // Every number in the request, with its unit and the words around it.
-export function readNumbers(text) {
-  const toks = allTokens(text);
+// A number glued to letters is part of a NAME, not a size: cat6, m4, e27,
+// 18v, s24, ws2812b, 3kg. Units glued on are still sizes: 6mm, 10cm, 2in,
+// 70deg, and so is "100x70x50". Names become a placeholder word before the
+// request is read for numbers, so they can be neither a size nor a count.
+const UNIT_GLUE = /^\d+(?:\.\d+)?(?:mm|cm|in|inch|inches|deg|x\d.*|")?$/;
+function hideModelNumbers(text) {
+  return String(text).toLowerCase().replace(/[a-z0-9.]*[0-9][a-z0-9.]*/g, (w) => {
+    if (!/[a-z]/.test(w) || UNIT_GLUE.test(w)) return w;
+    return "modelno";
+  });
+}
+
+export function readNumbers(text, { skip = [] } = {}) {
+  const toks = allTokens(fractions(hideModelNumbers(text)));
   const out = [];
+  // numbers that belong to a named object ("iphone 15", "608 bearing",
+  // "2 inch pvc") are its name, used once each
+  const owed = [...skip];
   for (let i = 0; i < toks.length; i++) {
     if (!/^\d+(\.\d+)?$/.test(toks[i])) continue;
+    const at = owed.indexOf(toks[i]);
+    if (at >= 0) { owed.splice(at, 1); continue; }
     const v = +toks[i];
     const u = unitOf(toks[i + 1]);
     let value = v, kind = u === "deg" ? "deg" : u ? "mm" : null;
@@ -200,9 +280,13 @@ export function readNumbers(text) {
   return out;
 }
 
-// Tie numbers to params. Returns overrides and the numbers it used.
-function numbersToParams(f, text) {
-  const nums = readNumbers(text);
+// Tie numbers to params. Returns overrides and the numbers it used. `spec`
+// is the named object (its digits are its name, not sizes); `thing` the
+// variant matched (its own name's choice words are already its settings).
+function numbersToParams(f, text, { spec = null, thing = null } = {}) {
+  const specDigits = spec ? (phrasesOf(spec, "names", specTokens)
+    .find((p) => findRun(specTokens(text), p) >= 0) || []).filter((w) => /^\d/.test(w)) : [];
+  const nums = readNumbers(text, { skip: specDigits });
   const over = {}, used = [];
   const taken = new Set();
   const sayOf = (p) => (p.say || []).map((s) => stem(s.toLowerCase()));
@@ -249,7 +333,9 @@ function numbersToParams(f, text) {
       // counts first: "3 cables" — an integer straight before a count word
       const counts = entries.filter(([, p]) => p.unit === "count");
       if (!n.unit && Number.isInteger(n.raw)) {
-        const c = counts.find(([kk, p]) => !taken.has(kk) && n.near.some((w) => w.after && w.dist <= 2 && sayOf(p).includes(w.w)));
+        // "3 cables" (number first) or "seed 7" / "cables: 3" (word first)
+        const c = counts.find(([kk, p]) => !taken.has(kk) && n.near.some((w) => w.after && w.dist <= 2 && sayOf(p).includes(w.w)))
+          || counts.find(([kk, p]) => !taken.has(kk) && n.near.some((w) => !w.after && w.dist === 1 && sayOf(p).includes(w.w)));
         if (c) k = c[0];
       }
       if (!k) k = pick(n, entries.filter(([, p]) => p.unit === "mm"));
@@ -260,12 +346,15 @@ function numbersToParams(f, text) {
     over[k] = n.value;
     used.push({ param: k, value: n.value });
   }
-  // choice params: a word that names a choice selects it
+  // choice params: a word that names a choice selects it, unless the word is
+  // part of the matched thing's own name ("lidless box" already says no lid)
   const toks = keyTokens(text);
+  const own = (thing?.names || []).map((n) => keyTokens(n).join(" "));
   for (const [k, p] of entries) {
     if (p.unit !== "choice" || !p.words) continue;
     for (const [choice, words] of Object.entries(p.words)) {
-      if (words.some((w) => findRun(toks, keyTokens(w)) >= 0)) { over[k] = choice; break; }
+      const hit = words.find((w) => findRun(toks, keyTokens(w)) >= 0);
+      if (hit && !own.some((n) => n.includes(keyTokens(hit).join(" ")))) { over[k] = choice; break; }
     }
   }
   return { over, used };
@@ -327,7 +416,7 @@ export function matchRequest(text) {
     const i = (f.things || []).findIndex((t) => t.spec === spec.id);
     if (i >= 0) thingIdx = i;
   }
-  const { over, used } = numbersToParams(f, text);
+  const { over, used } = numbersToParams(f, text, { spec, thing: thingIdx == null ? null : f.things[thingIdx] });
   const res = assemble(f, { thingIdx, spec, over });
   res.score = top.score;
   res.used = used;
@@ -344,7 +433,7 @@ export function refineRequest(memo, text) {
   const f = familyById(memo?.familyId);
   if (!f) return null;
   const spec = findSpec(text, { kinds: f.fits || [] });
-  const { over, used } = numbersToParams(f, text);
+  const { over, used } = numbersToParams(f, text, { spec });
   const nudge = nudges(f, text, memo.values);
   if (!spec && !used.length && !Object.keys(over).length && !Object.keys(nudge).length) return null;
   const keepSpec = spec || (memo.specId ? specFor(memo.specId) : null);

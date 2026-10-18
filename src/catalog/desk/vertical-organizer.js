@@ -37,7 +37,7 @@ export default {
       "multi device dock", "multi laptop stand"], title: "Laptop and tablet dock", params: { slots: 3, slotW: 20, finH: 60, depth: 110 } },
     { names: ["vertical tablet stand", "vertical ipad stand", "ipad organizer", "tablet organizer", "ipad storage stand"],
       title: "Vertical tablet stand", params: { slots: 2, slotW: 12, finH: 50, depth: 80, finT: 6 } },
-    { names: ["mail organizer", "mail sorter", "letter sorter", "letter holder", "envelope holder", "bill organizer", "mail holder"],
+    { names: ["mail sorter", "letter sorter", "desk mail organizer", "desk letter holder", "desk mail sorter"],
       title: "Mail organizer", params: { slots: 3, slotW: 18, finH: 70, depth: 60, finT: 5, step: 15 } },
     { names: ["file sorter", "file organizer", "folder holder", "desk file organizer", "folder organizer", "binder holder"],
       title: "File sorter", params: { slots: 4, slotW: 30, finH: 100, depth: 120, finT: 6, step: 20 } },

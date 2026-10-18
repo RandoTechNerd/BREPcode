@@ -10,7 +10,7 @@ export default {
   title: "Mail holder",
   summary: "a wall pocket for mail and letters, with one or more stepped pockets.",
   print: "upright as shown, no supports.",
-  names: ["mail holder", "mail organizer", "letter holder", "letter organizer", "wall mail holder", "mail sorter",
+  names: ["mail holder", "mail organizer", "letter holder", "letter organizer", "wall mail holder",
     "wall pocket", "wall organizer", "envelope holder", "letter rack", "mail rack"],
   nouns: ["holder", "organizer", "pocket", "sorter", "rack"],
   keywords: ["mail", "letter", "letters", "envelope", "bill", "paper", "wall", "post"],
@@ -30,7 +30,7 @@ export default {
   things: [
     { names: ["magazine holder", "magazine rack", "wall magazine holder", "magazine organizer"], title: "Magazine holder",
       params: { width: 230, depth: 80, pocketH: 200, frontH: 120, backH: 230 } },
-    { names: ["wall file holder", "file holder", "folder holder", "file organizer", "wall file organizer"], title: "Wall file holder",
+    { names: ["wall file holder", "file holder", "wall folder holder", "wall file organizer"], title: "Wall file holder",
       params: { width: 250, depth: 50, pocketH: 180, frontH: 100, backH: 240 } },
     { names: ["tiered mail organizer", "mail sorter with pockets", "three pocket mail holder", "tiered letter holder"], title: "Tiered mail organizer",
       params: { pockets: 3, depth: 90, pocketH: 140, frontH: 60, backH: 180 } },

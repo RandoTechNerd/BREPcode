@@ -71,6 +71,30 @@ console.log("every family is well formed\n");
       if (t.spec) check(`${f.id}: thing "${t.names[0]}" names a real spec`, !!specFor(t.spec), t.spec);
     }
   }
+  // Every phrase belongs to ONE family. Six categories were built in parallel,
+  // and a phrase two families claim routes to whichever ranks first, so the
+  // other one silently stops being findable by it.
+  {
+    const { keyTokens } = await import("../src/catalog/match.js");
+    const owner = new Map(), clash = [];
+    for (const f of FAMILIES) {
+      const mine = new Set([...f.names, ...(f.things || []).flatMap((t) => t.names)].map((n) => keyTokens(n).join(" ")));
+      for (const ph of mine) {
+        if (owner.has(ph) && owner.get(ph) !== f.id) clash.push(`"${ph}": ${owner.get(ph)} and ${f.id}`);
+        else owner.set(ph, f.id);
+      }
+    }
+    check("no phrase is claimed by two families", !clash.length, clash.slice(0, 12).join("; "));
+    // a several-word name that filler-word removal shrinks to ONE word turns
+    // into a generic noun that takes every request containing it
+    const shrunk = [];
+    for (const f of families) {
+      for (const n of [...f.names, ...(f.things || []).flatMap((t) => t.names)]) {
+        if (n.trim().split(/\s+/).length > 1 && keyTokens(n).length === 1) shrunk.push(`${f.id}: "${n}"`);
+      }
+    }
+    check("no several-word name collapses to one word", !shrunk.length, shrunk.slice(0, 12).join("; "));
+  }
   const specIds = new Set();
   for (const s of SPECS) {
     check(`spec ${s.id}: unique, named, measured`, !specIds.has(s.id) && s.names?.length && s.dims && Object.values(s.dims).every((v) => v > 0));

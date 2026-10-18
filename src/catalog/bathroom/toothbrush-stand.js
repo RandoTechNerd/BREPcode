@@ -11,7 +11,7 @@ export default {
   title: "Toothbrush stand",
   summary: "a countertop block with holes the toothbrushes stand in, a drain under each hole and an optional toothpaste hole.",
   print: "upright as shown, no supports. PETG copes with a wet sink better than PLA.",
-  names: ["toothbrush stand", "countertop toothbrush holder", "toothbrush block", "family toothbrush stand",
+  names: ["toothbrush stand", "toothbrush holder", "countertop toothbrush holder", "toothbrush block", "family toothbrush stand",
     "toothbrush organizer", "toothbrush holder stand", "bathroom toothbrush stand", "toothbrush caddy"],
   nouns: ["stand", "holder", "block"],
   keywords: ["toothbrush", "toothbrushes", "bathroom", "sink", "countertop", "brush"],
