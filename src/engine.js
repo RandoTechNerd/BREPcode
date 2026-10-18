@@ -280,10 +280,15 @@ function indexedToManifold(mf, verts, tris, what, own) {
 
 // Rust tessellation -> one buffer set per B-rep face, named like the JS
 // kernel's faces so colours and click-to-code keep working.
-function exactFaces(rk, handle, faceNames, tol) {
+// NB the tessellator's face_ids are POSITIONS in the solid's shell/face order
+// (0, 1, 2, ...), not the B-rep face ids the names are keyed by (1..7 on one
+// solid, 105, 111, ... on another). face_names_handle lists every face in that
+// same order, named or not, so the name is looked up by position.
+function exactFaces(rk, handle, tol) {
   const m = rk.tessellate_handle(handle, tol);
   const P = m.take_positions(), N = m.take_normals(), I = m.take_indices(), F = m.take_face_ids();
-  const names = new Map(faceNames.map(([id, name]) => [Number(id), name]));
+  const ordered = JSON.parse(rk.face_names_handle(handle));
+  const names = new Map(ordered.map(([, name], i) => [i, name]));
   const groups = new Map();
   for (let t = 0; t < I.length / 3; t++) {
     const id = F[t];
@@ -443,7 +448,7 @@ export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05, tr
     for (const [from, to] of rename) jsName.set(to, from);
     const solids = [];
     for (const a of live.values()) {
-      solids.push({ name: jsName.get(a.name) || a.name, exact: true, handle: a.handle, faces: exactFaces(rk, a.handle, a.face_names, tolerance) });
+      solids.push({ name: jsName.get(a.name) || a.name, exact: true, handle: a.handle, faces: exactFaces(rk, a.handle, tolerance) });
     }
     for (const [name, solid] of meshes) {
       solids.push({ name, exact: false, faces: meshFaces(solid, sourceOf) });
