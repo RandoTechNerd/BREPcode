@@ -32,6 +32,12 @@ export default {
     { names: ["hdmi cable clip"], title: "HDMI cable clip", spec: "hdmi", params: { count: 2 } },
     { names: ["power cord clip", "power cable clip"], title: "Power cord clip", spec: "extension-lead", params: { count: 1, mount: "screw" } },
     { names: ["nightstand cable clip", "bedside cable holder"], title: "Bedside cable clip", spec: "usb-c", params: { count: 2 } },
+    { names: ["speaker wire clip", "speaker cable clip"], title: "Speaker wire clip", spec: "speaker-wire", params: { count: 2, mount: "screw" } },
+    { names: ["laptop charger clip", "laptop cable clip", "laptop cord clip"], title: "Laptop charger clip", spec: "laptop-power", params: { count: 1 } },
+    { names: ["lamp cord clip", "lamp cable clip", "light cord clip"], title: "Lamp cord clip", spec: "lamp-cord", params: { count: 1, mount: "screw" } },
+    { names: ["headphone cable clip", "aux cable clip", "audio cable clip"], title: "Audio cable clip", spec: "audio", params: { count: 2 } },
+    { names: ["lightning cable clip", "iphone cable clip"], title: "Lightning cable clip", spec: "lightning", params: { count: 3 } },
+    { names: ["single cable clip", "single cord clip", "single wire clip"], title: "Single cable clip", params: { count: 1 } },
   ],
   body: `
 const r = cableD / 2 + 0.2;                     // snug round the cable

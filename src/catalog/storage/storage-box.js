@@ -39,6 +39,18 @@ export default {
     { names: ["sd card box", "memory card box"], title: "SD card box", params: { width: 70, depth: 40, height: 30, divX: 3, cornerR: 4 } },
     { names: ["tea box", "tea bag box", "tea bag organizer"], title: "Tea box", params: { width: 170, depth: 90, height: 75, divX: 2 } },
     { names: ["desk tray", "catch all tray", "valet tray", "key tray"], title: "Desk tray", params: { width: 160, depth: 100, height: 25, lid: "no", cornerR: 12 } },
+    { names: ["tackle box insert", "tackle tray", "fishing tackle tray", "lure box insert"], title: "Tackle tray",
+      params: { width: 200, depth: 110, height: 35, divX: 4, divY: 1, lid: "no", cornerR: 3 } },
+    { names: ["drawer organizer", "drawer organizer tray", "drawer tray", "drawer organizer bin", "modular drawer organizer"], title: "Drawer organizer tray",
+      params: { width: 150, depth: 75, height: 50, lid: "no", cornerR: 5 } },
+    { names: ["sorting tray", "bead sorting tray", "parts sorting tray", "screw sorting tray"], title: "Sorting tray",
+      params: { width: 140, depth: 100, height: 15, lid: "no", cornerR: 14 } },
+    { names: ["craft box", "craft storage box", "art supply box", "sewing box"], title: "Craft box",
+      params: { width: 200, depth: 120, height: 60, divX: 2 } },
+    { names: ["keepsake box", "memory box", "stash box", "secret box"], title: "Keepsake box",
+      params: { width: 140, depth: 100, height: 60, cornerR: 10 } },
+    { names: ["sewing button box", "button organizer", "button storage box"], title: "Button box",
+      params: { width: 120, depth: 80, height: 30, divX: 3, divY: 1, cornerR: 5 } },
   ],
   body: `
 const rr = Math.max(0.6, Math.min(cornerR, width / 2 - 1, depth / 2 - 1));
