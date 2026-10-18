@@ -46,7 +46,7 @@ export default {
       title: "Coin cell holder", spec: "cr2032", params: { cols: 6, rows: 3, hold: 0.6 } },
     { names: ["9v battery holder", "9 volt battery holder", "9v battery organizer"], title: "9V battery holder", spec: "9v", params: { cols: 4, rows: 2, hold: 0.5 } },
     { names: ["c battery holder", "c cell holder"], title: "C battery holder", spec: "c-cell", params: { cols: 4, rows: 2 } },
-    { names: ["d battery holder", "d cell holder"], title: "D battery holder", spec: "d-cell", params: { cols: 3, rows: 2 } },
+    { names: ["d size battery holder", "d cell battery holder", "mono battery holder"], title: "D battery holder", spec: "d-cell", params: { cols: 3, rows: 2 } },
     { names: ["cr123a holder", "cr123 battery holder", "16340 holder", "camera battery holder"], title: "CR123A holder", spec: "cr123a", params: { cols: 5, rows: 2 } },
     { names: ["lr44 holder", "ag13 holder", "button battery organizer"], title: "LR44 holder", spec: "lr44", params: { cols: 8, rows: 3, hold: 0.6 } },
   ],
