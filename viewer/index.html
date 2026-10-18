@@ -6580,12 +6580,16 @@
     if (!("outlineWidth" in mat)) { mat.outline = true; mat.outlineWidth = MAT_DEFAULTS.outlineWidth; }
     // The old default lighting was dim. A saved blob still sitting on exactly
     // the old defaults never chose them, so it moves to the new ones once;
-    // lighting anyone actually tuned is left alone.
-    if (!mat.lights2) {
-      if (mat.ambient === 55 && mat.key === 150 && mat.fill === 50 && mat.rim === 0 && !mat.filmic) {
+    // lighting anyone actually tuned is left alone. The four light levels are
+    // the test: the first version also required filmic off, and anyone who
+    // had ticked filmic kept the dim set (lights2 marked it done, so lights3).
+    if (!mat.lights3) {
+      if (mat.ambient === 55 && mat.key === 150 && mat.fill === 50 && mat.rim === 0) {
         for (const k of ["ambient", "key", "fill", "rim", "exposure", "filmic"]) mat[k] = MAT_DEFAULTS[k];
       }
-      mat.lights2 = true;
+      mat.lights3 = true;
+      delete mat.lights2;
+      try { localStorage.setItem("brepcode-material", JSON.stringify(mat)); } catch { /* private mode */ }
     }
     // SOLID UNLESS YOU SAID OTHERWISE. A see-through spool tried once (funfetti
     // ships opacity 88) used to be saved and fade every model opened after it,
