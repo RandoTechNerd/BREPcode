@@ -383,6 +383,22 @@ try {
 } catch (e) {
   check("a sketch object straight in a BuildPart explains itself", /BuildSketch/.test(e.message) && /line 3/.test(e.message), e.message.slice(0, 90));
 }
+{
+  // The finished part is NOT called part/result here, and the uncut block is
+  // called `body`: show_object() says which one is the model. (A rewrite once
+  // preferred the name "body" and built the uncut block.)
+  const src = `from build123d import *
+body = Box(40, 40, 20)
+hole = Cylinder(5, 30)
+stand = body - hole
+show_object(stand)
+`;
+  const { stl } = await run(src);
+  const expect = 40 * 40 * 20 - Math.PI * 25 * 20;
+  check("show_object() picks the model, not the variable named body", near(volumeOf(stl), expect, expect * 0.01), volumeOf(stl).toFixed(0));
+  const { stl: s2 } = await run(src.replace("show_object(stand)\n", ""));
+  check("...and without show(), the last solid made wins over `body`", near(volumeOf(s2), expect, expect * 0.01), volumeOf(s2).toFixed(0));
+}
 check("builder code detected as python", looksLikePython("with BuildPart() as p:\n    Box(1, 1, 1)"));
 check("python loop around build123d detected", looksLikePython("part = Box(1,1,1)\nfor i in range(3):\n    part += Pos(i,0,0) * Box(1,1,1)"));
 

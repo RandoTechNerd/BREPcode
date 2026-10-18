@@ -26,7 +26,7 @@
 
 import {
   cube, cylinder, cone, sphere, torus, freeform,
-  union, difference, intersection, translate, rotate, mirror,
+  union, difference, intersection, translate, rotate, mirror, group,
   fillet as dslFillet, chamfer as dslChamfer,
 } from "./dsl.js";
 // BuildSketch/BuildLine ride the SAME 2D profile species as the OpenSCAD
@@ -1355,6 +1355,13 @@ export function fromPython(src) {
   }
   const globals = new Scope(null);
   let lastShape = null;
+  const shown = [];
+  const noteShown = (args) => {
+    for (const a of args.flatMap((x) => (Array.isArray(x) ? x : [x]))) {
+      const s = a?.__wp ? a.shape : a?.__handle?.kind === "part" ? a.__handle.shape : isShape(a) ? a : null;
+      if (s && !shown.includes(s)) shown.push(s);
+    }
+  };
 
   // ---- value helpers
   const truthy = (v) => !(v === null || v === undefined || v === false || v === 0 || v === ""
@@ -1845,7 +1852,11 @@ export function fromPython(src) {
     reversed: py((v) => [...toIter(v)].reverse()),
     sorted: (c) => { const a = [...toIter(c.args[0])]; const key = c.kw.key; a.sort((x, y) => { const kx = key ? callValue(key, { args: [x], kw: {} }) : x; const ky = key ? callValue(key, { args: [y], kw: {} }) : y; return kx < ky ? -1 : kx > ky ? 1 : 0; }); if (c.kw.reverse) a.reverse(); return a; },
     isinstance: () => true,
-    print: () => null, show: () => null, show_object: () => null, show_all: () => null, show_topology: () => null,
+    // show()/show_object() is how a build123d / CadQuery script says "this is
+    // the model", so what it shows wins over any guess from variable names.
+    show: (c) => { noteShown(c.args); return null; },
+    show_object: (c) => { noteShown(c.args.slice(0, 1)); return null; },
+    show_all: () => null, print: () => null, show_topology: () => null,
     export_stl: () => null, export_step: () => null, export_gltf: () => null, set_port: () => null, set_defaults: () => null,
   });
   const MATH = {
@@ -2246,9 +2257,12 @@ export function fromPython(src) {
 
   exec(program, globals);
 
-  // ---- the result: conventional names first, then the last solid made
+  // ---- the result: what show() showed, then conventional names, then the
+  // last solid made. ("body" is NOT a result name: scripts call the uncut
+  // block body and the finished part something else.)
   const lang = langBox.lang || "build123d";
-  for (const name of ["part", "result", "model", "shape", "solid", "body", "obj"]) {
+  if (shown.length) return { shape: shown.length === 1 ? shown[0] : group(...shown), lang };
+  for (const name of ["part", "result", "model", "shape", "solid"]) {
     if (!(name in globals.vars)) continue;
     const s = asShape(globals.vars[name]);
     if (s) return { shape: s, lang };
