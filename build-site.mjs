@@ -267,6 +267,11 @@ for (const f of ["favicon.svg", "favicon.png", "apple-touch-icon.png"]) {
 for (const f of readdirSync("src").filter((n) => n.endsWith(".js") && n !== "cli.js")) {
   cpSync(`src/${f}`, join(OUT, "src", f));
 }
+// The model catalog is a folder tree (one folder per category, one file per
+// family), so it is copied whole. The import check below walks the bundle
+// recursively, so a family registered in an index but missing on disk still
+// fails the build.
+cpSync("src/catalog", join(OUT, "src", "catalog"), { recursive: true });
 
 // ---- vendor: replicad + OCCT wasm (curved STEP export, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "replicad"), { recursive: true });

@@ -1,6 +1,9 @@
 // The BREPcode assistant: a hardcoded rule engine for simple requests, plus
 // optional bring-your-own-key API mode (Gemini / Claude) that generates code.
 
+import { matchRequest, refineRequest, catalogSummary } from "../src/catalog/match.js";
+import { catalogStats } from "../src/catalog/index.js";
+
 // ------------------------------------------------------------ rule engine
 
 // NB: "tube" is deliberately absent — it's the torus thickness parameter, and
@@ -632,12 +635,83 @@ export function opCode(currentCode, op) {
 
 // Main entry. state persists between calls: { pending, flow }
 // dims is the built model's measured [x, y, z] size in mm, when there is one.
+// ---------------------------------------------------------------- catalog
+//
+// "I want a phone holder", "make me a hook for yoga roll": real objects the
+// catalog has a tested, printable, parametric design for (src/catalog). A
+// fresh request is matched there BEFORE the edit commands, because "a phone
+// stand 90mm wide" is a new thing, not a resize of whatever is on screen. But
+// with a model open, a request has to sound like a new thing ("I want…",
+// "make me…", "a…") — "make the shelf deeper" is about the open model.
+const NEW_THING = /\b(want|need|like|make me|make a|make an|make us|build|print|design|create|new|another|give me|how about|got a|got an|do a|do an)\b|^(a|an|some)\s/;
+const EDIT_THIS = /^(make|turn|set|change)\s+(it|this|that|the)\b|\b(it|this|that)\b.*\b(wider|narrower|taller|shorter|deeper|longer|bigger|smaller|thicker|thinner)\b/;
+
+function catalogReply(res, { refined = false } = {}) {
+  const what = res.title.toLowerCase();
+  const fmt = (u) => {
+    const p = res.family.params[u.param];
+    const v = +(+u.value).toFixed(1);
+    return `${p.label} ${v}${p.unit === "deg" ? "°" : p.unit === "mm" ? " mm" : ""}`;
+  };
+  let reply = refined ? `Updated the ${what}` : `Here's a ${what}`;
+  if (res.spec && (!refined || res.changedSpec)) reply += `, sized for ${res.sizedFor[0] || res.spec.label}`;
+  if (refined && res.changes?.length) {
+    // say what actually moved: "width 70 → 84 mm"
+    reply += `: ${res.changes.map(({ k, from, to }) => {
+      const p = res.family.params[k];
+      const u = p.unit === "deg" ? "°" : p.unit === "mm" ? " mm" : "";
+      if (typeof to === "string") return `${p.label}: ${to}`;
+      return `${p.label} ${+(+from).toFixed(1)} → ${+(+to).toFixed(1)}${u}`;
+    }).join(", ")}`;
+  } else if (res.used?.length) reply += ` (${res.used.map(fmt).join(", ")})`;
+  reply += ".";
+  for (const c of res.clamped) {
+    const p = res.family.params[c.param];
+    reply += ` ${p.label} stops at ${c.used}${p.unit === "deg" ? "°" : " mm"}, so I used that.`;
+  }
+  if (!refined && res.family.print) reply += ` Prints ${res.family.print.replace(/\.$/, "")}.`;
+  if (res.question) reply += ` ${res.question.text}`;
+  else if (refined) reply += " (◀ undoes it.)";
+  else if (res.family.tips?.length) reply += ` Every size is a slider (≡ Params), or just say ${res.family.tips.slice(0, 3).map((x) => `“${x}”`).join(", ")}.`;
+  if (!refined && res.alternatives?.length) reply += ` (If you meant a ${res.alternatives[0].toLowerCase()}, say so.)`;
+  return reply;
+}
+
+function catalogTurn(t, lower, state, currentCode) {
+  if (/^(what can you (make|build|do)|what do you know|show me (the )?catalog|catalog|list)\b/.test(lower)) {
+    const s = catalogStats();
+    return { reply: `I know ${s.families} designs covering ${s.things} things, each tested to print without supports: ${catalogSummary().join(". ")}. Ask for one by name (“I want a phone stand”), what it's for (“a hook for my yoga mat”) and any sizes.` };
+  }
+  // a follow-up to the catalog model still in the editor
+  const mine = state.catalog && currentCode.trim() === state.catalog.code;
+  if (mine) {
+    const r = refineRequest(state.catalog.memo, t);
+    if (r) {
+      const before = state.catalog.memo.values;
+      r.changes = Object.keys(r.values).filter((k) => r.values[k] !== before[k])
+        .map((k) => ({ k, from: before[k], to: r.values[k] }));
+      state.catalog = { memo: r.memo, code: r.code.trim() };
+      return { reply: catalogReply(r, { refined: true }), code: r.code, fromCatalog: true };
+    }
+  }
+  const editing = currentCode.trim() && !mine && EDIT_THIS.test(lower);
+  if (editing || (currentCode.trim() && !mine && !NEW_THING.test(lower))) return null;
+  const m = matchRequest(t);
+  if (!m) return null;
+  state.catalog = { memo: m.memo, code: m.code.trim() };
+  state.flow = null; state.pending = null;
+  return { reply: catalogReply(m), code: m.code, clearPending: true, fromCatalog: true };
+}
+
 export function respond(text, state = {}, currentCode = "", dims = null) {
   const t = text.trim();
   const lower = t.toLowerCase();
 
+  const fromCatalog = catalogTurn(t, lower, state, currentCode);
+  if (fromCatalog) return fromCatalog;
+
   if (/^(help|\?|what can you do)/.test(lower)) {
-    return { reply: "Simple things first: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder — just name one. With a model on screen I can resize it through the middle: “decrease width by 30%”, “make it 50mm wide”, “20mm longer”. Say “smoother” or “low poly” to change facets. For anything fancier, add an API key in ⚙." };
+    return { reply: "Ask for a real thing: “I want a phone stand”, “a hook for my yoga mat”, “a cable clip for 3 cables”, “a small wall shelf” — say “what can you make” for the whole list. Simple shapes too: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder — just name one. With a model on screen I can resize it through the middle: “decrease width by 30%”, “make it 50mm wide”, “20mm longer”. Say “smoother” or “low poly” to change facets. For anything fancier, add an API key in ⚙." };
   }
 
   // Resize before anything else: it works on whatever is already in the editor,
@@ -856,7 +930,7 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
 
   const shapes = findShapes(lower);
   if (!shapes.length) {
-    return { reply: "I didn't spot a shape I know (box, cylinder, cone, sphere, torus). Try “make a box with a cone on top” — or add an API key in ⚙ settings for free-form requests." };
+    return { reply: "I didn't spot a shape or a thing I know. Try “I want a phone stand”, “a hook for my yoga mat”, or “make a box with a cone on top” — “what can you make” lists the catalog. For anything else, add an API key in ⚙ settings." };
   }
 
   // per-shape local sizes: numbers immediately after the shape word

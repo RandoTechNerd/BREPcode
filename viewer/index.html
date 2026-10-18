@@ -22381,6 +22381,9 @@ let SIMPLIFY_TARGET = 10000;
     const offeredRealAI = { info: false, complex: false };
     function maybeOfferRealAI(r) {
       if (aiProvider.value !== "builtin") return;
+      // A catalog design is a tested, finished part, not a "simple shape":
+      // following it with "that came from the light helper" undersells it.
+      if (r?.fromCatalog) return;
       // (a guided flow asking its next question is still going fine)
       const couldNotBuild = r && r.code === undefined && !r.pending && !botState.flow;
       const why = couldNotBuild ? "complex" : "info";

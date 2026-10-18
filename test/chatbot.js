@@ -162,8 +162,12 @@ console.log("\nguided flows\n");
 
 // holder: wall-mount variant
 {
+  // a pen holder is a catalog design now (src/catalog/desk/pen-cup.js); the
+  // generic guided holder flow is what a holder of nothing in particular gets
+  const pen = respond("I need a pen holder", {});
+  check("a pen holder comes from the catalog", typeof pen.code === "string" && /Pen holder/.test(pen.code), pen.reply);
   const state = {};
-  respond("I need a pen holder", state);
+  respond("I need a holder", state);
   respond("50 wide, 90 deep", state);
   const r = respond("wall mount", state);
   check("wall-mount holder has a screw hole", typeof r.code === "string" && r.code.includes("rotate([90, 0, 0]"), r.reply);
