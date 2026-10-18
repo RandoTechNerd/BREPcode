@@ -152,7 +152,7 @@ module.exports = { main }`,
   {
     lang: "build123d",
     title: "Paste build123d",
-    body: "Python, in ALGEBRA mode - shapes combined with + and -. CadQuery-style scripts are understood too.",
+    body: "Python: algebra mode (shapes combined with + and -) or builder mode (with BuildPart():), loops and functions included. CadQuery-style scripts are understood too.",
     code: `from build123d import *
 
 part = Box(60, 40, 10) - Cylinder(radius=6, height=12)`,

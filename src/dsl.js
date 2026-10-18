@@ -1869,7 +1869,16 @@ function edgeOp(code, opts, children, amountKey, verb) {
   if (!kids.length) throw new Error(`${verb}() needs a shape to work on`);
   const child = kids.length === 1 ? kids[0] : union(kids);
   const faces = o.faces ?? o.sides ?? o.only ?? "all";
-  return node({ kind: "edgeop", code, amount, faces, child });
+  // edges: pick EDGES instead of faces. "x" | "y" | "z" = the straight edges
+  // running along that axis (a box's vertical corners for "z"); "top" /
+  // "bottom" = every edge lying at the solid's highest / lowest Z; "all".
+  // build123d's part.edges().filter_by(Axis.Z) and .group_by(Axis.Z)[-1]
+  // arrive here.
+  const edges = o.edges ?? null;
+  if (edges != null && !["x", "y", "z", "top", "bottom", "all"].includes(edges)) {
+    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom" or "all" (got ${JSON.stringify(edges)})`);
+  }
+  return node({ kind: "edgeop", code, amount, faces, edges, child });
 }
 
 export function fillet(opts, ...children) { return edgeOp("F", opts, children, "radius", "fillet"); }
@@ -1910,6 +1919,42 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // read its real face names. runHistory rebuilds from scratch each call
   // (idempotent), so an intermediate run here is safe; the caller's final run
   // just rebuilds the same graph plus whatever comes after.
+  // The same, for EDGES picked by direction or height. Edge names are
+  // "FACEA|FACEB[i]" in both kernels; helper edges such as a cylinder's
+  // "_AXIS" have no "|" and are never real edges of the solid.
+  async function childEdgeNames(childId, spec) {
+    await partHistory.runHistory({ throwOnFeatureError: true });
+    const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
+    const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
+    if (!solid) return [];
+    const edges = [];
+    solid.traverse((o) => {
+      if (o.type !== "EDGE" || !String(o.name || "").includes("|") || typeof o.points !== "function") return;
+      let pts;
+      try { pts = o.points().map((p) => (Array.isArray(p) ? p : [p.x, p.y, p.z])); } catch { return; }
+      if (pts.length >= 2) edges.push({ name: o.name, pts });
+    });
+    if (spec === "all") return edges.map((e) => e.name);
+    if (spec === "top" || spec === "bottom") {
+      let lo = Infinity, hi = -Infinity;
+      for (const e of edges) for (const p of e.pts) { lo = Math.min(lo, p[2]); hi = Math.max(hi, p[2]); }
+      const at = spec === "top" ? hi : lo, tol = Math.max(1e-4, (hi - lo) * 1e-4);
+      return edges.filter((e) => e.pts.every((p) => Math.abs(p[2] - at) <= tol)).map((e) => e.name);
+    }
+    const k = { x: 0, y: 1, z: 2 }[spec];
+    return edges.filter(({ pts }) => {
+      const a = pts[0], b = pts[pts.length - 1];
+      const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], len = Math.hypot(...d);
+      if (len < 1e-9 || Math.abs(d[k]) / len < 0.9998) return false;      // not along the axis
+      // straight: every sample on the chord
+      return pts.every((p) => {
+        const v = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+        const c = [v[1] * d[2] - v[2] * d[1], v[2] * d[0] - v[0] * d[2], v[0] * d[1] - v[1] * d[0]];
+        return Math.hypot(...c) / len < 1e-4 * Math.max(1, len);
+      });
+    }).map((e) => e.name);
+  }
+
   async function childFaceNames(childId, filter) {
     await partHistory.runHistory({ throwOnFeatureError: true });
     const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
@@ -2062,7 +2107,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
     if (n.kind === "edgeop") {
       const childId = await emit(n.child, matrix, st);
-      const faces = await childFaceNames(childId, n.faces);
+      const faces = n.edges ? await childEdgeNames(childId, n.edges) : await childFaceNames(childId, n.faces);
       if (!faces.length) {
         throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): couldn't find any edges to work on for this shape`);
       }

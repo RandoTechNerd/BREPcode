@@ -975,8 +975,11 @@ console.log("\nbuild style — language, approach, passes\n");
   check("BREPcode adds no language block", !/OUTPUT LANGUAGE/.test(composeStyle({ language: "brepcode" })));
   check("OpenSCAD is named", /OUTPUT LANGUAGE — OpenSCAD/.test(composeStyle({ language: "openscad" })));
   check("JSCAD asks for a real module", /module\.exports/.test(composeStyle({ language: "jscad" })));
-  check("build123d pins ALGEBRA mode",
-    /ALGEBRA/.test(STYLE_LANGUAGES.build123d) && /not builder mode/i.test(STYLE_LANGUAGES.build123d));
+  // The translator reads builder mode now too, so the assistant may use either;
+  // what it must keep doing is pick faces/edges the translator understands.
+  check("build123d accepts algebra and builder mode",
+    /algebra mode/.test(STYLE_LANGUAGES.build123d) && /builder mode/.test(STYLE_LANGUAGES.build123d)
+      && /sort_by\(Axis\.Z\)/.test(STYLE_LANGUAGES.build123d));
 
   const it = composeStyle({ approach: "iterative" });
   check("iterative asks for the block, not the statue", /SIMPLEST solid/.test(it) && /sculptor/.test(it));

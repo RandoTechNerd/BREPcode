@@ -509,7 +509,16 @@ export function profileToRevolved(p, angle, fn) {
 // caps never sit coincident with the kept solid's faces.
 export function profileToSolid(p, h, overshoot = false) {
   if (p.leaf) {
-    const solid = dsl.linearExtrude({ h: overshoot ? h + 2 : h }, dsl.polygon(p.pts));
+    const H = overshoot ? h + 2 : h;
+    // A sampled full circle (circle(), build123d's Circle) extrudes as a real
+    // cylinder: the exact kernel then has one round wall instead of 64 flat
+    // ones, which matters to everything after it (a fillet next to a
+    // 64-facet pocket took 8 s on the Rust kernel, 0.1 s next to a cylinder).
+    // Small $fn polygons (a hexagon) stay polygons, as the engine keeps them.
+    const circ = sampledCircle(p.pts);
+    const solid = circ
+      ? dsl.translate([circ.cx, circ.cy, 0], dsl.cylinder({ r: circ.r, h: H, $fn: p.pts.length }))
+      : dsl.linearExtrude({ h: H }, dsl.polygon(p.pts));
     return overshoot ? dsl.translate([0, 0, -1], solid) : solid;
   }
   const kids = p.children.map((c, i) =>
@@ -517,6 +526,23 @@ export function profileToSolid(p, h, overshoot = false) {
   if (p.op === "UNION") return dsl.union(kids);
   if (p.op === "SUBTRACT") return dsl.difference(kids);
   return dsl.intersection(kids);
+}
+
+// { cx, cy, r } when the points are a regular polygon of more than 16 sides
+// (equal radius, equal spacing): a circle as far as anyone meant it.
+function sampledCircle(pts) {
+  const n = pts.length;
+  if (n <= 16) return null;
+  const cx = pts.reduce((a, q) => a + q[0], 0) / n, cy = pts.reduce((a, q) => a + q[1], 0) / n;
+  const r = Math.hypot(pts[0][0] - cx, pts[0][1] - cy);
+  if (!(r > 1e-9)) return null;
+  const chord = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
+  for (let i = 0; i < n; i++) {
+    const q = pts[i], nx = pts[(i + 1) % n];
+    if (Math.abs(Math.hypot(q[0] - cx, q[1] - cy) - r) > r * 1e-6) return null;
+    if (Math.abs(Math.hypot(nx[0] - q[0], nx[1] - q[1]) - chord) > r * 1e-6) return null;
+  }
+  return { cx, cy, r };
 }
 
 const circlePts = (r, n) => Array.from({ length: n }, (_, i) => {
