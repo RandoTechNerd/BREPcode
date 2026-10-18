@@ -6417,6 +6417,12 @@
     // saved blob with no outlineWidth predates the change, so adopt the new
     // default once; after that their own choice is honoured.
     if (!("outlineWidth" in mat)) { mat.outline = true; mat.outlineWidth = MAT_DEFAULTS.outlineWidth; }
+    // SOLID UNLESS YOU SAID OTHERWISE. A see-through spool tried once (funfetti
+    // ships opacity 88) used to be saved and fade every model opened after it,
+    // which reads as the part rendering broken. Each session starts solid; only
+    // an opacity you set yourself on the slider survives a reload.
+    mat.filamentChosen = false;
+    if (mat.opacity < 100 && !mat.opacityByHand) mat.opacity = 100;
     let matUserBg = mat.bg !== MAT_DEFAULTS.bg;   // did the user override the theme's background?
 
     const pct = (v) => v / 100;
@@ -6845,7 +6851,9 @@
     }
 
     const bindRange = (id, key, off) => $(id).addEventListener("input", (e) => {
-      mat[key] = +e.target.value; if (off) clearPreset(); applyMaterial(); saveMat();
+      mat[key] = +e.target.value; if (off) clearPreset();
+      if (key === "opacity") mat.opacityByHand = mat.opacity < 100;
+      applyMaterial(); saveMat();
     });
     bindRange("mat-metal", "metal", true); bindRange("mat-rough", "rough", true); bindRange("mat-opacity", "opacity", true);
     bindRange("mat-tex-depth", "texDepth"); bindRange("mat-tex-scale", "texScale");
@@ -7000,6 +7008,7 @@
       // Picked BY HAND, with the result on screen — the one path where a
       // spool's translucency is a choice rather than a surprise.
       mat.filamentChosen = true;
+      mat.opacityByHand = false;         // the spool decides the fade now
       // A named spool IS a colour, so it takes over the default material.
       // Shapes given their own colorize() keep theirs — a four-filament model
       // does not collapse to one hue just because a spool was picked.
@@ -10363,13 +10372,22 @@ ${joined}`)(...vs);
     skinDepthMat.onBeforeCompile = (shader) => {
       shader.fragmentShader = "#undef USE_TRANSMISSION\n" + shader.fragmentShader;
     };
+    // The opacity slider fades without transmission, so those faces sit in
+    // the plain transparent list: their skin goes there too, at renderOrder
+    // -1, AFTER everything opaque (the bed still shows through the part) and
+    // BEFORE the faces, so only the nearest surface blends. Frosted plastic,
+    // not inner walls and pocket floors punching through the outside.
+    const skinAlphaMat = new THREE.MeshBasicMaterial({
+      colorWrite: false, depthWrite: true, transparent: true, side: THREE.FrontSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+    });
     function syncSkin() {
       skinGroup.clear();                       // geometry is borrowed: nothing to dispose
       for (const m of modelGroup.children) {
         const mm = m.material;
         if (!m.isMesh || !m.visible || !mm || Array.isArray(mm)) continue;
-        if (!(mm.transmission > 0) || mm.depthWrite) continue;
-        const d = new THREE.Mesh(m.geometry, skinDepthMat);
+        if (mm.depthWrite || !mm.transparent && !(mm.transmission > 0)) continue;
+        const d = new THREE.Mesh(m.geometry, mm.transmission > 0 ? skinDepthMat : skinAlphaMat);
         d.renderOrder = -1;
         d.matrixAutoUpdate = false;
         d.matrix.copy(m.matrixWorld);
