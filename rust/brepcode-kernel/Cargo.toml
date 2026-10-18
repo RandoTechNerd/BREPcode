@@ -1,0 +1,27 @@
+# BREPcode's build of the Rust BREP kernel: the kernel's own wasm exports plus
+# the STL -> exact B-rep reconstruction (stl2step's engine), in ONE wasm so the
+# browser doesn't load the kernel twice. Upstream: the next.BREP.io Rust BREP
+# kernel by mmiscool (github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL),
+# pinned to a commit and used unmodified.
+[package]
+name = "brep_kernel"
+version = "0.9.0-brepcode.1"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+kernel = { package = "BREP_kernel", git = "https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL", rev = "75bad91750536b9b4fbac607b14c44b68070de6c" }
+brep_reconstruction = { package = "BREP_reconstruction", git = "https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL", rev = "75bad91750536b9b4fbac607b14c44b68070de6c" }
+wasm-bindgen = "0.2"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+overflow-checks = false

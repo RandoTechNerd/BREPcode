@@ -42,6 +42,17 @@ Autodrop3d via pull request, so this project deliberately never patches it. If t
 to change, the change belongs upstream. If BREPcode is useful to you, the kernel is the part worth
 starring.
 
+### ...and now on the next.BREP.io Rust kernel
+
+Since v0.6.0, exact parts build on the **[next.BREP.io](https://next.brep.io) Rust BREP kernel**,
+also by [@mmiscool](https://github.com/mmiscool) / Autodrop3d
+([source](https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL)): true curved surfaces and
+1.4 to 4x faster builds on real models. Meshes (imports, textures) go to
+[manifold-3d](https://github.com/elalish/manifold), and the JS BREP.io kernel above builds anything
+either one refuses. Dropping an STL can rebuild it as an exact solid with the same project's
+`stl2step` reconstruction. The Rust kernel is used unmodified too, pinned to an upstream commit;
+`rust/brepcode-kernel` is the small wrapper that builds it to wasm (see its README).
+
 ```js
 // bracket.js
 import { cube, cylinder, difference, translate } from "brepscript";

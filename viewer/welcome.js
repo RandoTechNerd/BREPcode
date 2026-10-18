@@ -154,7 +154,7 @@ group(
       heading: "This box began life in OpenSCAD",
       blurb: "Printed in TPU: the lid snaps over a bead and seals.",
       video: "https://youtu.be/UCiVWNFtfVw",
-      printables: "",  // the Printables model URL, added once known
+      printables: "https://www.printables.com/model/1304098-tpu-soap-box-with-lid-and-riser",
     },
     code: `// TPU snap box: a base with a bead round the outside, a lid with a matching
 // groove that snaps over it (TPU flexes, then holds), and an optional riser
