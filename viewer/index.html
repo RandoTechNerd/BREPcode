@@ -531,6 +531,21 @@
       padding-bottom: 1.5px;
     }
     #open-btn.active { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+    #app-settings {
+      display: grid; gap: 7px; padding: 4px 2px 12px; margin-bottom: 10px;
+      border-bottom: 1px solid var(--border-soft, var(--border));
+    }
+    #app-settings .set-title { font-weight: 700; font-size: 13px; color: var(--text); }
+    #app-settings .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+    #app-settings .set-row > span { color: var(--muted); flex: none; }
+    #app-settings select {
+      min-width: 0; max-width: 62%; background: var(--input-bg); color: var(--text2);
+      border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font: inherit;
+    }
+    #app-settings .set-check { justify-content: flex-start; cursor: pointer; }
+    #app-settings .set-check > span { flex: 1 1 auto; }
+    #app-settings .set-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    #app-settings .set-btns .hist-btn { border: 1px solid var(--border); }
 
     /* deliberately quiet: small monotone icons, no fill until you touch them */
     #cheat-btn, #about-btn, #hist2-btn, #chat-btn {
@@ -594,12 +609,25 @@
        nudge it inside the layout. flex:none because a docked card is a flex
        item in a column, where flex-basis beats height and the window came out
        short of the screen no matter what height said. */
+    /* Maximised = the whole screen EXCEPT the strip the dock buttons live in
+       (--dock-clear, measured in JS), the way a maximised window stops at the
+       taskbar. Covering them left no way to reach any other window. */
     .card.expanded {
-      position: fixed !important; inset: 0 !important; flex: none !important;
-      width: 100vw !important; height: 100vh !important;
+      position: fixed !important; inset: 0 0 var(--dock-clear, 76px) 0 !important; flex: none !important;
+      width: auto !important; height: auto !important;
       max-width: none !important; max-height: none !important;
-      border-radius: 0; z-index: 50;
+      border-radius: 0 0 12px 12px; z-index: 50;
     }
+    /* the editor has no card-body: its textarea is what fills the window */
+    .card.expanded > #code { flex: 1 1 auto !important; height: auto !important; min-height: 0; resize: none; }
+    /* drag a window to an edge or corner: this is where it will land */
+    #snap-ghost {
+      position: fixed; z-index: 9; pointer-events: none; display: none;
+      border: 2px solid color-mix(in srgb, var(--accent, #5b8cff) 55%, transparent);
+      background: color-mix(in srgb, var(--accent, #5b8cff) 10%, transparent);
+      border-radius: 12px; transition: left .12s ease, top .12s ease, width .12s ease, height .12s ease;
+    }
+    #snap-ghost.on { display: block; }
     .card.expanded > header { cursor: default; }
     .card.floating { position: fixed; margin: 0; }
     /* resize handle in the bottom-right corner of every card */
@@ -768,6 +796,16 @@
       display: flex; align-items: center; gap: 2px;
       margin-left: auto; flex: none;
     }
+    /* Windows-style caption buttons: minimise, maximise/restore, close. Same
+       glyphs, same order, close turns red on hover. */
+    .card > header .win-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 30px; height: 26px; padding: 0; border-radius: 5px; opacity: 1;
+      color: var(--muted); font-size: 0; line-height: 0;
+    }
+    .card > header .win-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+    .card > header .win-btn:hover { background: var(--border); color: var(--text); }
+    .card > header .close-btn.win-btn:hover { background: #c42b1c; color: #fff; }
     .close-btn:hover { background: var(--border); color: #fff; }
 
     .hist-btn {
@@ -2990,7 +3028,7 @@
               <path d="M8 10.2V2.2M4.8 5.4L8 2.2l3.2 3.2M2.8 13.2h10.4" />
             </svg>
           </button>
-          <input type="file" id="import-file" accept=".bcode,.stl,.3mf,.obj,.svg,.step,.stp" style="display: none" />
+          <input type="file" id="import-file" accept=".bcode,.js,.scad,.py,.stl,.3mf,.obj,.svg,.step,.stp" style="display: none" />
           <button id="export-btn" class="hist-btn ovf" title="Download STL">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
@@ -3562,6 +3600,34 @@
         <button class="close-btn" data-close="about" title="Close">&times;</button>
       </header>
       <div class="card-body" id="about-body">
+        <!-- Settings: the few app-wide defaults. Saved per browser. -->
+        <div id="app-settings">
+          <div class="set-title">Settings</div>
+          <label class="set-row"><span>Rotate around</span>
+            <select id="set-orbit">
+              <option value="model">The model's centre</option>
+              <option value="view">The view centre (classic)</option>
+            </select></label>
+          <label class="set-row"><span>Editor opens</span>
+            <select id="set-editor-home">
+              <option value="right">Filling the right</option>
+              <option value="left">Filling the left</option>
+              <option value="dock">In the stack</option>
+            </select></label>
+          <label class="set-row"><span>Assistant opens</span>
+            <select id="set-chat-home">
+              <option value="top">Top corner, opposite the editor</option>
+              <option value="bottom">Bottom corner, opposite the editor</option>
+              <option value="dock">In the stack</option>
+            </select></label>
+          <label class="set-row set-check"><input type="checkbox" id="set-snap" />
+            <span>Snap windows to edges and corners while dragging</span></label>
+          <div class="set-btns">
+            <button id="set-tidy" class="hist-btn" title="Put every open window back in its spot">Tidy windows</button>
+            <button id="set-lights" class="hist-btn" title="Back to the default studio lighting">Default lighting</button>
+            <button id="set-reset" class="hist-btn" title="Settings back to how they ship">Reset settings</button>
+          </div>
+        </div>
         <div id="about-docs">
           <div class="docs-credit">
             <strong>Documentation</strong> — every modelling capability below is the
@@ -4214,7 +4280,14 @@
           <path d="M2.5 3.5h11v7h-6l-3 2.8v-2.8h-2z" />
         </svg>
       </button>
-      <button id="about-btn" title="About / links" aria-label="About">&#9432;</button>
+      <button id="about-btn" title="Settings, about and links" aria-label="Settings and about">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="8.6" r=".55" fill="currentColor"/>
+          <path d="M12 11.2v4.6"/>
+        </svg>
+      </button>
       <script>
         // "Which build am I running?" must cost ONE hover, not a hunt. The
         // version element carries the build stamp in its tooltip; copy both
@@ -4222,7 +4295,7 @@
         addEventListener("DOMContentLoaded", () => {
           const v = document.getElementById("app-version");
           const b = document.getElementById("about-btn");
-          if (v && b) b.title = `About / links — ${v.textContent} · ${v.title}`;
+          if (v && b) b.title = `Settings, about and links — ${v.textContent} · ${v.title}`;
         });
       </script>
     </div>
@@ -4574,6 +4647,21 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 
+    // ---- settings (the gear around the ⓘ) ------------------------------
+    // A handful of app-wide defaults, separate from the material blob so a
+    // material Reset never touches how the app behaves.
+    const PREFS_DEFAULTS = {
+      orbit: "model",          // "model": spin the part about its own centre; "view": classic orbit
+      editorHome: "right",     // where the editor opens: right | left | dock
+      chatHome: "top",         // where the assistant opens: top | bottom (corner opposite the editor) | dock
+      snapZones: true,         // drag a window to an edge or corner to snap it there
+    };
+    const prefs = (() => {
+      try { return { ...PREFS_DEFAULTS, ...JSON.parse(localStorage.getItem("brepcode-prefs") || "{}") }; }
+      catch { return { ...PREFS_DEFAULTS }; }
+    })();
+    const savePrefs = () => { try { localStorage.setItem("brepcode-prefs", JSON.stringify(prefs)); } catch { /* private mode */ } };
+
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambientLight);
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -4674,6 +4762,79 @@
       if (measureArmed || drillArmed || shaveArmed || codeArmed || finsArmed || embossArmed) return;
       recentrePivot();
     }, true);
+
+    // SPIN THE PART, NOT THE WORLD. OrbitControls turns everything about
+    // `controls.target`, which sits wherever the view was framed or panned to
+    // — so a part parked beside an open window, or built away from 0,0, swung
+    // around a point in empty space. People expect the thing itself to turn.
+    // A left-drag here turns the CAMERA rigidly about the model's own centre:
+    // camera and target both rotate about that point, so the part stays
+    // exactly where it is on screen and spins in place, whatever the layout
+    // has done to the framing. Pan and zoom stay with OrbitControls. The
+    // classic behaviour is one setting away (gear > Rotate around).
+    const spinUp = new THREE.Vector3(0, 0, 1);
+    const spinQ = new THREE.Quaternion();
+    function orbitAbout(pivot, dx, dy) {
+      const h = renderer.domElement.clientHeight || 1;
+      const k = 2 * Math.PI / h * controls.rotateSpeed;
+      const turn = (axis, ang) => {
+        spinQ.setFromAxisAngle(axis, ang);
+        camera.position.sub(pivot).applyQuaternion(spinQ).add(pivot);
+        controls.target.sub(pivot).applyQuaternion(spinQ).add(pivot);
+      };
+      spinUp.copy(camera.up).normalize();
+      turn(spinUp, -dx * k);
+      // tilt about the camera's own right-hand axis, stopped short of the
+      // poles where "up" stops meaning anything
+      const look = controls.target.clone().sub(camera.position).normalize();
+      const right = look.clone().cross(spinUp);
+      if (right.lengthSq() > 1e-9) {
+        right.normalize();
+        const tilt = -dy * k;
+        const next = look.clone().applyQuaternion(spinQ.setFromAxisAngle(right, tilt));
+        const polar = Math.acos(THREE.MathUtils.clamp(-next.dot(spinUp), -1, 1));
+        if (polar > 0.02 && polar < Math.PI - 0.02) turn(right, tilt);
+      }
+      controls.update();
+      controls.dispatchEvent({ type: "change" });
+    }
+    const applyOrbitPref = () => { controls.enableRotate = prefs.orbit === "view"; };
+    applyOrbitPref();
+    let spin = null;
+    const spinPointers = new Set();
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      spinPointers.add(e.pointerId);
+      if (prefs.orbit === "view") return;
+      if (spinPointers.size > 1) { spin = null; return; }   // two fingers: pinch/pan
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.shiftKey || e.ctrlKey || e.metaKey) return;    // modifier + drag pans
+      spin = { id: e.pointerId, x: e.clientX, y: e.clientY, started: false, pivot: null };
+    });
+    addEventListener("pointermove", (e) => {
+      if (!spin || e.pointerId !== spin.id) return;
+      // a grab (part, handle, split widget) switches the controls off in its
+      // own pointerdown: that drag is not a spin
+      if (!controls.enabled) { spin = null; return; }
+      const dx = e.clientX - spin.x, dy = e.clientY - spin.y;
+      spin.x = e.clientX; spin.y = e.clientY;
+      if (!dx && !dy) return;
+      if (!spin.started) {
+        spin.started = true;
+        const box = new THREE.Box3().setFromObject(modelGroup);
+        spin.pivot = box.isEmpty() ? controls.target.clone() : box.getCenter(new THREE.Vector3());
+        controls.dispatchEvent({ type: "start" });
+      }
+      orbitAbout(spin.pivot, dx, dy);
+    });
+    const endSpin = (e) => {
+      spinPointers.delete(e.pointerId);
+      if (spin && e.pointerId === spin.id) {
+        if (spin.started) controls.dispatchEvent({ type: "end" });
+        spin = null;
+      }
+    };
+    addEventListener("pointerup", endSpin);
+    addEventListener("pointercancel", endSpin);
 
     // ---- axis labels + grid ruler -----------------------------------------
     // Which way is X? Without an answer, "take 2mm off the right" is a guess,
@@ -6342,10 +6503,10 @@
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
       selOutline: true, selOutlineCol: "#3b9dff",
       grabCol: "#2e76f2", ballCol: "#eaf1ff",
-      ambient: 55, key: 150, fill: 50, rim: 0,
-      // 100 = 1.0 and filmic off is exactly the renderer's old behaviour, so a
-      // model saved before these existed opens looking the same.
-      exposure: 100, filmic: false,
+      // brighter, rounder studio light: a strong ambient so dark filaments
+      // still read, a rim for edge pop, filmic so the brights do not clip
+      ambient: 146, key: 97, fill: 87, rim: 105,
+      exposure: 100, filmic: true,
       // per-light tints: fillcol/rimcol empty = follow the old single-tint
       // behaviour, so stored settings from before the split load unchanged
       lightcol: "#ffffff", fillcol: "", rimcol: "", bg: "#0b0f16",
@@ -6417,6 +6578,15 @@
     // saved blob with no outlineWidth predates the change, so adopt the new
     // default once; after that their own choice is honoured.
     if (!("outlineWidth" in mat)) { mat.outline = true; mat.outlineWidth = MAT_DEFAULTS.outlineWidth; }
+    // The old default lighting was dim. A saved blob still sitting on exactly
+    // the old defaults never chose them, so it moves to the new ones once;
+    // lighting anyone actually tuned is left alone.
+    if (!mat.lights2) {
+      if (mat.ambient === 55 && mat.key === 150 && mat.fill === 50 && mat.rim === 0 && !mat.filmic) {
+        for (const k of ["ambient", "key", "fill", "rim", "exposure", "filmic"]) mat[k] = MAT_DEFAULTS[k];
+      }
+      mat.lights2 = true;
+    }
     // SOLID UNLESS YOU SAID OTHERWISE. A see-through spool tried once (funfetti
     // ships opacity 88) used to be saved and fade every model opened after it,
     // which reads as the part rendering broken. Each session starts solid; only
@@ -7578,8 +7748,126 @@
       card.style.top = `${Math.round(Math.max(8, (innerHeight - h) / 2))}px`;
     }
 
+    // ---- window layout: home spots and snap zones -----------------------
+    // How much of the bottom the dock's button row needs. Maximised windows
+    // and the right-hand zones stop above it, so the buttons stay reachable.
+    function dockClear() {
+      const b = $("buttons")?.getBoundingClientRect();
+      return b && b.height ? Math.max(0, Math.round(innerHeight - b.top)) + 8 : 76;
+    }
+    const syncDockClear = () => document.documentElement.style.setProperty("--dock-clear", `${dockClear()}px`);
+    const ZM = 8;
+    function zoneRect(z) {
+      const W = innerWidth, H = innerHeight, clear = dockClear();
+      const botL = H - ZM, botR = H - clear;
+      const half = Math.round(W / 2);
+      const side = Math.round(Math.min(Math.max(W * 0.4, 420), W * 0.6));
+      const corner = Math.round(Math.min(Math.max(W * 0.3, 340), 480));
+      const midL = Math.round((ZM + botL) / 2), midR = Math.round((ZM + botR) / 2);
+      const R = (l, t, r, b) => ({ l, t, w: r - l, h: b - t });
+      switch (z) {
+        case "max": return R(0, 0, W, H - clear);
+        case "left": return R(ZM, ZM, half - ZM / 2, botL);
+        case "right": return R(half + ZM / 2, ZM, W - ZM, botR);
+        case "topleft": return R(ZM, ZM, half - ZM / 2, midL - ZM / 2);
+        case "bottomleft": return R(ZM, midL + ZM / 2, half - ZM / 2, botL);
+        case "topright": return R(half + ZM / 2, ZM, W - ZM, midR - ZM / 2);
+        case "bottomright": return R(half + ZM / 2, midR + ZM / 2, W - ZM, botR);
+        // home spots: a full-height editor column, a corner for the assistant
+        case "home-right": return R(W - ZM - side, ZM, W - ZM, botR);
+        case "home-left": return R(ZM, ZM, ZM + side, botL);
+        case "home-top-left": return R(ZM, ZM, ZM + corner, Math.round(H * 0.56));
+        case "home-bottom-left": return R(ZM, Math.round(H * 0.44), ZM + corner, botL);
+        case "home-top-right": return R(W - ZM - corner, ZM, W - ZM, Math.round(H * 0.56));
+        case "home-bottom-right": return R(W - ZM - corner, Math.round(H * 0.44), W - ZM, botR);
+      }
+      return null;
+    }
+    // Where a window opens when nobody has put it anywhere yet. The editor
+    // takes a side, the assistant the top or bottom corner on the OTHER side,
+    // so the two never land on each other. Phones keep the stacked dock.
+    const roomForHomes = () => innerWidth >= 900 && innerHeight >= 560;
+    function homeZone(card) {
+      if (!roomForHomes()) return null;
+      const edSide = prefs.editorHome === "left" ? "left" : "right";
+      if (card.id === "panel") return prefs.editorHome === "dock" ? null : `home-${edSide}`;
+      if (card.id === "chat") {
+        if (prefs.chatHome === "dock") return null;
+        const other = edSide === "right" ? "left" : "right";
+        return `home-${prefs.chatHome === "bottom" ? "bottom" : "top"}-${other}`;
+      }
+      return null;
+    }
+    // Put a window into a zone, sized to it, its body filling the height.
+    function applyZone(card, z) {
+      const r = zoneRect(z);
+      if (!r) return false;
+      if (!card._preSnap) {
+        const now = card.getBoundingClientRect();
+        card._preSnap = { w: now.width, h: now.height, resized: card.classList.contains("resized") };
+      }
+      if (!card.classList.contains("floating")) { card.classList.add("floating"); markDockShared(); }
+      card.classList.add("resized");
+      const b = mainScroll(card);
+      if (b) { b.style.flex = "1 1 auto"; b.style.minHeight = "0"; b.style.maxHeight = "none"; }
+      card.style.left = `${r.l}px`; card.style.top = `${r.t}px`;
+      card.style.width = `${r.w}px`; card.style.height = `${r.h}px`;
+      return true;
+    }
+    function placeHome(card) {
+      const z = homeZone(card);
+      if (!z || !applyZone(card, z)) return false;
+      card.dataset.placed = z;            // app-placed: free to move it again
+      return true;
+    }
+    // A window still in the stack can open on top of one the app placed (the
+    // stack is bottom-right, the editor's home is the right). Lift it out
+    // to the nearest clear spot instead.
+    function unstackDocked() {
+      if (!roomForHomes()) return;
+      const loose = [...document.querySelectorAll(".card.open.floating:not(.expanded)")].map((c) => c.getBoundingClientRect());
+      if (!loose.length) return;
+      for (const c of document.querySelectorAll(".card.open:not(.floating):not(.expanded):not(.maxed)")) {
+        const r = c.getBoundingClientRect();
+        if (!r.width || !loose.some((o) => overlaps(r, o))) continue;
+        c.style.width = `${r.width}px`;
+        c.style.left = `${r.left}px`; c.style.top = `${r.top}px`;
+        c.classList.add("floating");
+        c.style.zIndex = ++cardZ;
+        placeCardClear(c);
+        syncWindowChrome(c);
+      }
+      markDockShared();
+    }
+    let snapGhost = null;
+    function showSnapGhost(z) {
+      if (!snapGhost) { snapGhost = document.createElement("div"); snapGhost.id = "snap-ghost"; document.body.appendChild(snapGhost); }
+      const r = z && zoneRect(z);
+      snapGhost.classList.toggle("on", !!r);
+      if (r) Object.assign(snapGhost.style, { left: `${r.l}px`, top: `${r.t}px`, width: `${r.w}px`, height: `${r.h}px` });
+    }
+    // Windows Snap, lightly: the pointer at a side edge halves the screen,
+    // at a side edge near a corner quarters it, at the top edge maximises.
+    function zoneAt(x, y) {
+      if (!prefs.snapZones || !roomForHomes()) return null;
+      const E = 24, W = innerWidth, H = innerHeight;
+      if (x <= E) return y < H * 0.25 ? "topleft" : y > H * 0.75 ? "bottomleft" : "left";
+      if (x >= W - E) return y < H * 0.25 ? "topright" : y > H * 0.75 ? "bottomright" : "right";
+      if (y <= E) return "max";
+      return null;
+    }
+
+    // The editor reopens where you left it in the code, unless the code has
+    // changed since, in which case it starts at the top-left.
+    let editorScroll = null;
+    function rememberEditorScroll() {
+      const c = $("code");
+      if (c) editorScroll = { code: c.value, top: c.scrollTop, left: c.scrollLeft };
+    }
+
     function toggleCard(card, btn, on) {
       const next = on ?? !card.classList.contains("open");
+      if (!next && card.id === "panel" && card.classList.contains("open")) rememberEditorScroll();
       card.classList.toggle("open", next);
       btn?.classList.toggle("active", next);
       if (!next) {
@@ -7588,9 +7876,22 @@
         card.classList.remove("maxed", "expanded");
         preExpand.delete(card);
       }
-      if (next && card.classList.contains("floating") && !card.classList.contains("maxed")) {
+      // minimised while maximised: come back maximised
+      if (next && card._restoreExpanded) {
+        preExpand.set(card, card._restoreExpanded);
+        card._restoreExpanded = null;
+        syncDockClear();
+        card.style.zIndex = ++cardZ;
+        card.classList.add("expanded");
+      }
+      if (next && !card.classList.contains("floating") && !card.classList.contains("expanded")) {
+        placeHome(card);
+      }
+      if (next && card.classList.contains("floating") && !card.classList.contains("maxed")
+        && !card.dataset.placed) {
         placeCardClear(card);
       }
+      if (next) requestAnimationFrame(unstackDocked);
       // After placement, and measured — so it rescues a card however it ended
       // up out of reach, not only the cases anyone thought of.
       if (next && !card.classList.contains("maxed")) {
@@ -7676,6 +7977,7 @@
         width: card.style.width, height: card.style.height,
       });
       card.style.zIndex = ++cardZ;
+      syncDockClear();
       card.classList.add("expanded");
       syncWindowChrome(card);
       windowsChanged();
@@ -7689,6 +7991,8 @@
     function redockCard(card) {
       card.classList.remove("floating", "resized", "expanded");
       preExpand.delete(card);
+      card._preSnap = null;
+      delete card.dataset.placed;
       card.style.left = card.style.top = card.style.width = card.style.height = card.style.zIndex = "";
       const b = mainScroll(card);
       if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
@@ -7700,6 +8004,12 @@
     // Every window gets the same two controls, built here rather than typed
     // into thirteen headers — which is how the old hand-written set had drifted
     // out of step between one window and the next.
+    const WIN_ICONS = {
+      min: '<svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg>',
+      max: '<svg viewBox="0 0 10 10"><rect x=".6" y=".6" width="8.8" height="8.8"/></svg>',
+      restore: '<svg viewBox="0 0 10 10"><rect x=".6" y="2.6" width="6.8" height="6.8"/><path d="M2.6 2.6V.6h6.8v6.8h-2"/></svg>',
+      close: '<svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg>',
+    };
     function syncWindowChrome(card) {
       // Descendant of the header, not a child of it — see the insert below:
       // some headers keep their controls in a wrapper div.
@@ -7707,13 +8017,13 @@
       const dock = card.querySelector(":scope > header .win-dock");
       const big = card.classList.contains("expanded");
       if (exp) {
-        exp.textContent = big ? "⤡" : "⤢";
+        exp.innerHTML = big ? WIN_ICONS.restore : WIN_ICONS.max;
         exp.title = big
           ? "Back to its own size (or double-click the header)"
           : "Fill the screen (or double-click the header)";
         exp.setAttribute("aria-label", exp.title);
       }
-      if (dock) dock.hidden = big || !card.classList.contains("floating");
+      if (dock) dock.hidden = big || !card.classList.contains("floating") || !!card.dataset.placed;
     }
 
     for (const card of document.querySelectorAll(".card")) {
@@ -7729,7 +8039,16 @@
       dock.textContent = "⇲";
       dock.title = "Put it back in the stack";
       dock.hidden = true;
-      const exp = mk("win-expand", () => toggleExpand(card));
+      const exp = mk("win-expand win-btn", () => toggleExpand(card));
+      // Minimise: tuck it away behind its dock button. Unlike the close
+      // button, a window minimised while maximised comes back maximised.
+      const min = mk("win-min win-btn", () => {
+        card._restoreExpanded = preExpand.get(card) || null;
+        toggleCard(card, cardButtons[card.id], false);
+      });
+      min.innerHTML = WIN_ICONS.min;
+      min.title = "Minimise";
+      min.setAttribute("aria-label", "Minimise");
       // Before the × — closing is the last thing in every header, and moving it
       // would retrain the one button everybody already knows the position of.
       //
@@ -7766,7 +8085,9 @@
         group = box;
       }
       group.insertBefore(dock, close || null);
+      group.insertBefore(min, close || null);
       group.insertBefore(exp, close || null);
+      if (close) { close.innerHTML = WIN_ICONS.close; close.classList.add("win-btn"); }
       syncWindowChrome(card);
     }
 
@@ -7801,10 +8122,26 @@
           card.classList.add("floating");
         markDockShared();   // it left the column, so the others may grow
         }
+        delete card.dataset.placed;                // the user is placing it now
+        let zone = null;
+        // Pulling a snapped window out gives it back the size it had before,
+        // keeping the header under the pointer.
+        const pre = card._preSnap;
+        if (pre) {
+          card._preSnap = null;
+          card.style.width = `${pre.w}px`;
+          card.style.height = pre.resized ? `${pre.h}px` : "";
+          if (!pre.resized) {
+            card.classList.remove("resized");
+            const b = mainScroll(card);
+            if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
+          }
+        }
         card.style.left = `${rect.left}px`;
         card.style.top = `${rect.top}px`;
         card.style.zIndex = ++cardZ;               // last touched card on top
-        const grabX = e.clientX - rect.left, grabY = e.clientY - rect.top;
+        const grabX = pre ? Math.min(e.clientX - rect.left, pre.w - 60) : e.clientX - rect.left;
+        const grabY = e.clientY - rect.top;
         try { headerEl.setPointerCapture(e.pointerId); } catch { /* synthetic pointers throw */ }
         const move = (ev) => {
           // keep enough of the header on screen to grab it again
@@ -7812,11 +8149,21 @@
           const top = Math.min(Math.max(ev.clientY - grabY, 0), innerHeight - 44);
           card.style.left = `${left}px`;
           card.style.top = `${top}px`;
+          const z = zoneAt(ev.clientX, ev.clientY);
+          if (z !== zone) { zone = z; showSnapGhost(z); }
         };
         const up = () => {
           headerEl.removeEventListener("pointermove", move);
           headerEl.removeEventListener("pointerup", up);
           headerEl.removeEventListener("pointercancel", up);
+          showSnapGhost(null);
+          if (zone) {
+            if (zone === "max") toggleExpand(card);
+            else applyZone(card, zone);
+            syncWindowChrome(card);
+            windowsChanged();
+            return;
+          }
           // Dropped on top of the dock buttons? Slide it clear. Only on release —
           // fighting the pointer mid-drag feels broken; correcting once you let
           // go reads as the window tidying itself.
@@ -7860,7 +8207,9 @@
     addEventListener("resize", () => {
       clearTimeout(reclampT);
       reclampT = setTimeout(() => {
+        syncDockClear();
         for (const card of document.querySelectorAll(".card.floating.open:not(.maxed)")) {
+          if (card.dataset.placed) { applyZone(card, homeZone(card) || card.dataset.placed); continue; }
           const r = card.getBoundingClientRect();
           const l = Math.min(Math.max(parseFloat(card.style.left) || 0, 70 - r.width), innerWidth - 70);
           const t = Math.min(Math.max(parseFloat(card.style.top) || 0, 0), innerHeight - 44);
@@ -7924,10 +8273,51 @@
     });
 
     openBtn.addEventListener("click", () => {
-      if (toggleCard(panel, openBtn)) { code.focus(); updateHint(); }
+      if (toggleCard(panel, openBtn)) {
+        const same = editorScroll && editorScroll.code === code.value;
+        if (!same) code.setSelectionRange(0, 0);
+        code.focus({ preventScroll: true });
+        const put = () => { code.scrollTop = same ? editorScroll.top : 0; code.scrollLeft = same ? editorScroll.left : 0; };
+        put(); requestAnimationFrame(put);
+        updateHint();
+      }
     });
     cheatBtn.addEventListener("click", () => toggleCard(cheat, cheatBtn));
     aboutBtn.addEventListener("click", () => toggleCard(aboutCard, aboutBtn));
+
+    // ---- settings ---------------------------------------------------------
+    function syncSettingsUI() {
+      $("set-orbit").value = prefs.orbit;
+      $("set-editor-home").value = prefs.editorHome;
+      $("set-chat-home").value = prefs.chatHome;
+      $("set-snap").checked = !!prefs.snapZones;
+    }
+    // Re-place every window the APP put somewhere; ones you moved stay put.
+    function rehomeWindows({ all = false } = {}) {
+      for (const c of document.querySelectorAll(".card.open")) {
+        if (c.classList.contains("expanded") || c.classList.contains("maxed")) continue;
+        if (!all && !c.dataset.placed) continue;
+        if (homeZone(c)) { c._preSnap = null; placeHome(c); }
+        else if (c.dataset.placed || all) redockCard(c);
+      }
+      markDockShared();
+      requestAnimationFrame(unstackDocked);
+      windowsChanged();
+    }
+    const setPref = (k, v) => { prefs[k] = v; savePrefs(); };
+    $("set-orbit").addEventListener("change", (e) => { setPref("orbit", e.target.value); applyOrbitPref(); });
+    $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
+    $("set-chat-home").addEventListener("change", (e) => { setPref("chatHome", e.target.value); rehomeWindows(); });
+    $("set-snap").addEventListener("change", (e) => setPref("snapZones", e.target.checked));
+    $("set-tidy").addEventListener("click", () => rehomeWindows({ all: true }));
+    $("set-lights").addEventListener("click", () => {
+      for (const k of ["ambient", "key", "fill", "rim", "exposure", "filmic"]) mat[k] = MAT_DEFAULTS[k];
+      applyMaterial(); saveMat();             // also moves the sliders
+    });
+    $("set-reset").addEventListener("click", () => {
+      Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); syncSettingsUI(); rehomeWindows();
+    });
+    syncSettingsUI();
     $("about-docs-btn").addEventListener("click", () => {
       const on = $("about-docs").classList.toggle("open");
       $("about-docs-btn").classList.toggle("active", on);
@@ -9377,6 +9767,7 @@ ${joined}`)(...vs);
     // The X only means anything while something is running, and only offers to
     // put things back when there IS something to put back.
     const setStatus = (cls, msg) => {
+      if (cls !== "busy") clearHistGhost();
       status.className = cls;
       statusText.textContent = msg;
       const c = $("build-cancel");
@@ -9386,6 +9777,61 @@ ${joined}`)(...vs);
     // The source of the last build that actually finished, and the line that
     // reported it. Reverting is just going back to these.
     let lastBuiltSource = null, lastGoodStatus = null;
+
+    // INSTANT UNDO, HONEST BUILD. Stepping back through history used to show
+    // the old model only after a full kernel rebuild (seconds on an exact
+    // part). The last few finished models are kept by their source, and an
+    // undo/redo to one of them shows that shape AT ONCE while the real build
+    // runs behind it. The ghost is display only: picking, export and the
+    // feature map still wait for the real build, which replaces the ghost
+    // the moment it lands (or failing, clears it).
+    const histShots = new Map();             // source -> [{ geometry, material, matrix }]
+    const HIST_SHOTS = 8, HIST_TRI_CAP = 600000;
+    const histGhost = new THREE.Group();
+    scene.add(histGhost);
+    function snapHistShot(src) {
+      if (!src) return;
+      let tris = 0;
+      for (const m of modelGroup.children) tris += (m.geometry?.attributes?.position?.count || 0) / 3;
+      if (!tris || tris > HIST_TRI_CAP) return;
+      dropHistShot(src);
+      histShots.set(src, modelGroup.children.filter((m) => m.isMesh && m.geometry && m.visible).map((m) => ({
+        geometry: m.geometry.clone(),
+        material: Array.isArray(m.material) ? m.material.map((x) => x.clone()) : m.material?.clone(),
+        matrix: m.matrixWorld.clone(),
+      })));
+      while (histShots.size > HIST_SHOTS) dropHistShot(histShots.keys().next().value);
+    }
+    function dropHistShot(src) {
+      const shot = histShots.get(src);
+      if (!shot) return;
+      for (const e of shot) {
+        e.geometry.dispose();
+        for (const x of [].concat(e.material || [])) x.dispose?.();
+      }
+      histShots.delete(src);
+    }
+    function showHistGhost(src) {
+      clearHistGhost();
+      const shot = histShots.get(src);
+      if (!shot) return false;
+      for (const e of shot) {
+        const g = new THREE.Mesh(e.geometry, e.material);
+        g.matrixAutoUpdate = false;
+        g.matrix.copy(e.matrix);
+        g.raycast = () => {};
+        histGhost.add(g);
+      }
+      histGhost.updateMatrixWorld(true);
+      modelGroup.visible = false;
+      clearOutlines();
+      return true;
+    }
+    function clearHistGhost() {
+      if (!histGhost.children.length) return;
+      histGhost.clear();                   // geometry belongs to the cache
+      if (!previewGroup.children.length) modelGroup.visible = true;
+    }
     // One-shot "the next build finished" hooks. Used by the shared-link loader
     // to hold its glow until the model is really on the plate. Fired on FAILURE
     // too — a share that cannot build must stop glowing and show its error,
@@ -9463,6 +9909,7 @@ ${joined}`)(...vs);
         // nor a preview of an import the code no longer mentions.
         token++;
         if (previewGroup.children.length) clearMeshPreview();
+        clearHistGhost();
         clearModel();
         clearDragPreview();
         clearHandles();
@@ -9646,6 +10093,7 @@ ${joined}`)(...vs);
         // the same synchronous block that adds the new meshes, means no frame
         // is ever painted with neither on screen.
         if (previewGroup.children.length) clearMeshPreview();
+        clearHistGhost();
         clearModel();
         let tris = 0;
         // colours set by colorize() in the code — rebuilt every pass, keyed by
@@ -9703,6 +10151,7 @@ ${joined}`)(...vs);
         const dims = bb.isEmpty() ? "" :
           ` · ${["x", "y", "z"].map((a) => (bb.max[a] - bb.min[a]).toFixed(1)).join(" × ")} mm`;
         lastBuiltSource = typed;
+        try { snapHistShot(typed); } catch { /* a cache miss later is all it costs */ }
         // A measurement is a claim about geometry that no longer exists. Its
         // endpoints are world-space points, so they would happily keep drawing
         // a confident "12.50 mm" across a model that has changed underneath
@@ -9807,8 +10256,16 @@ ${joined}`)(...vs);
       updateHistButtons();
       closeComplete();
       updateHint();
+      buildFromHistory();
+    }
+    // Undo is a deliberate jump, not typing: no debounce (which waited up to
+    // 2.5 s after a slow build), and the cached shape on screen right away.
+    function buildFromHistory() {
       setStatus("busy", "…");
-      scheduleBuild();
+      const ghost = showHistGhost(code.value.trim());
+      if (ghost) statusText.textContent = "showing the saved shape while it rebuilds…";
+      clearTimeout(timer);
+      timer = setTimeout(rebuild, 0);
     }
     // Stop the build and put the model back.
     //
@@ -9870,7 +10327,7 @@ ${joined}`)(...vs);
       code.value = hist.stack[i];
       restoring = false;
       updateHistButtons();
-      closeComplete(); updateHint(); setStatus("busy", "…"); scheduleBuild();
+      closeComplete(); updateHint(); buildFromHistory();
       if (histCard.classList.contains("open")) renderHistory();
     }
     function deleteHistoryAt(i) {
@@ -15922,6 +16379,7 @@ ${joined}`)(...vs);
       const file = e.target.files?.[0];
       e.target.value = "";
       if (!file) return;
+      if (/\.(js|mjs|jscad|scad|py|txt)$/i.test(file.name)) return openScript(file);
       await importMeshFile(file);
     });
     // How many triangles are we really being handed? File size lies: a binary
@@ -16065,7 +16523,7 @@ let SIMPLIFY_TARGET = 10000;
         + "align-items:center; justify-content:center; font:600 20px/1.5 system-ui;"
         + "color:#eaf3ff; text-align:center; pointer-events:none";
       overlay.innerHTML = `<div>Drop to open<div style="font:400 14px/1.6 system-ui; color:#bcd8f5; margin-top:6px">`
-        + `.bcode restores the editable model · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
+        + `.bcode restores the editable model · .js / .scad / .py open as code · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
       document.body.appendChild(overlay);
       const show = (on) => { overlay.style.display = on ? "flex" : "none"; };
 
@@ -16089,13 +16547,31 @@ let SIMPLIFY_TARGET = 10000;
     // and go straight to a tool; "Always just open" restores the old
     // straight-in import. A ?tool= link has already said what it came for, so
     // its file skips the question.
-    const INCOMING = /\.(bcode|stl|3mf|obj|svg|step|stp)$/i;
+    const INCOMING = /\.(bcode|stl|3mf|obj|svg|step|stp|js|mjs|jscad|scad|py|txt)$/i;
+    async function openScript(file) {
+      const text = (await file.text()).replace(/^\uFEFF/, "");
+      if (!text.trim()) { setStatus("err", `${file.name} is empty.`); return; }
+      if (text.length > 2_000_000) { setStatus("err", `${file.name} is too big to be a model script.`); return; }
+      const name = file.name.replace(/\.[^.]+$/, "");
+      code.value = text;
+      modelName = name.slice(0, 60); paintName();
+      pushHistory(text);
+      updateHint();
+      if (!panel.classList.contains("open")) openBtn.click();
+      else { code.scrollTop = 0; code.scrollLeft = 0; }
+      setStatus("busy", `Opening ${file.name}…`);
+      clearTimeout(timer);
+      timer = setTimeout(rebuild, 0);
+    }
     async function handleIncomingFile(file) {
       if (!INCOMING.test(file.name)) {
-        setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .stl, .3mf, .obj, .svg, or .step.`);
+        setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .js, .scad, .py, .stl, .3mf, .obj, .svg, or .step.`);
         return;
       }
       if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
+      // A script (BREPcode .js, JSCAD, OpenSCAD, build123d .py) is just code:
+      // it goes into the editor, which detects the language, and builds.
+      if (/\.(js|mjs|jscad|scad|py|txt)$/i.test(file.name)) return openScript(file);
       if (/\.(stl|3mf|obj)$/i.test(file.name)) {
         if (pendingDropTool) {
           const spec = pendingDropTool;

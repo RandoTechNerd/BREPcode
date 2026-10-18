@@ -68,8 +68,9 @@ console.log("\nevery window gets the same controls\n");
 {
   check("they are built in code, not typed into thirteen headers",
     /function syncWindowChrome\(card\)/.test(HTML));
-  check("the expand button says which way it will go",
-    /exp\.textContent = big \? "⤡" : "⤢"/.test(HTML));
+  check("the expand button says which way it will go (Windows maximise / restore)",
+    /exp\.innerHTML = big \? WIN_ICONS\.restore : WIN_ICONS\.max/.test(HTML));
+  check("every window also gets a minimise button", /mk\("win-min win-btn"/.test(HTML));
   check("the put-back button is offered only when it applies",
     /dock\.hidden = big \|\| !card\.classList\.contains\("floating"\)/.test(HTML));
   // Still "before the ×", but into the ×'s own parent — the chat header keeps
@@ -142,7 +143,7 @@ console.log("\nevery way a window can change asks again\n");
     ["expanded or restored", "function toggleExpand(card)"],
   ]) {
     const at = HTML.indexOf(near);
-    const after = at >= 0 ? HTML.slice(at, at + 1500) : "";
+    const after = at >= 0 ? HTML.slice(at, at + 3000) : "";
     check(`a window being ${what} re-checks the model`, /windowsChanged\(\)/.test(after));
   }
   check("...and so does the browser window being resized",
@@ -187,7 +188,7 @@ console.log("\na tour link opens the tour, not a loading screen\n");
     "':scope > .close-btn' missed the chat's wrapped ×");
   check("...and the window buttons join THAT element's group",
     /let group = close \? close\.parentElement : header;/.test(HTML)
-    && /group\.insertBefore\(dock, close \|\| null\);\s*\n\s*group\.insertBefore\(exp, close \|\| null\)/.test(HTML),
+    && /group\.insertBefore\(dock, close \|\| null\);\s*\n\s*group\.insertBefore\(min, close \|\| null\);\s*\n\s*group\.insertBefore\(exp, close \|\| null\)/.test(HTML),
     "appending to the header makes a third flex group");
   check("nothing inserts into the header directly any more",
     !/header\.insertBefore\((dock|exp),/.test(HTML));
