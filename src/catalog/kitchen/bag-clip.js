@@ -29,6 +29,11 @@ export default {
     { names: ["coffee bag clip", "cereal bag clip", "large bag clip", "big chip clip", "freezer bag clip"],
       title: "Large bag clip", params: { length: 140, clipW: 16, armT: 4, springT: 3 } },
     { names: ["mini bag clip", "small bag clip", "spice bag clip"], title: "Mini bag clip", params: { length: 50, clipW: 8, armT: 2.4, loop: 6 } },
+    { names: ["dog food bag clip", "pet food bag clip", "kibble bag clip", "cat food bag clip", "pet food clip"],
+      title: "Pet food bag clip", params: { length: 200, clipW: 20, armT: 5, springT: 3.6, loop: 12 } },
+    { names: ["flour bag clip", "sugar bag clip", "rice bag clip", "pasta bag clip", "medium bag clip"],
+      title: "Pantry bag clip", params: { length: 115, clipW: 14, armT: 3.4, springT: 2.8 } },
+    { names: ["frozen vegetable clip", "frozen food bag clip", "ice bag clip"], title: "Freezer bag clip", params: { length: 120, clipW: 14, armT: 3.6, springT: 3 } },
   ],
   body: `
 const rI = loop / 2, rO = rI + springT;
