@@ -34,6 +34,12 @@ export default {
     { names: ["plant shelf", "succulent shelf"], title: "Plant shelf", params: { length: 220, depth: 110, lipH: 10 } },
     { names: ["figure shelf", "collectible shelf", "funko shelf", "lego shelf"], title: "Display shelf", params: { length: 240, depth: 90, lipH: 6 } },
     { names: ["phone shelf", "charging shelf", "outlet shelf"], title: "Charging shelf", params: { length: 120, depth: 90, lipH: 8 } },
+    { names: ["picture ledge", "photo ledge", "picture shelf", "art ledge", "picture rail shelf"], title: "Picture ledge",
+      params: { length: 280, depth: 50, lipH: 12, backH: 40 } },
+    { names: ["candle shelf", "candle ledge"], title: "Candle shelf", params: { length: 160, depth: 100, lipH: 6 } },
+    { names: ["security camera shelf", "camera shelf", "baby monitor shelf"], title: "Camera shelf", params: { length: 110, depth: 90, backH: 70 } },
+    { names: ["book ledge", "kids book ledge", "book display ledge", "bookshelf ledge"], title: "Book ledge",
+      params: { length: 280, depth: 80, lipH: 25, backH: 50 } },
   ],
   body: `
 // print orientation: x along the shelf, y up the wall, z out from the wall
