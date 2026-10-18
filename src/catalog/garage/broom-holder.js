@@ -21,7 +21,7 @@ export default {
     "clip for a rake handle", "broom holder for a 25mm handle"],
   params: {
     handleD: { default: 24, min: 10, max: 50, unit: "mm", label: "handle diameter", say: ["handle", "diameter", "thick", "pole", "broom"] },
-    grip: { default: 0.6, min: 0, max: 2, unit: "mm", label: "how much smaller than the handle (grip)", say: ["grip", "tight"] },
+    grip: { default: 0.6, min: 0, max: 2, unit: "mm", label: "how much smaller than the handle (grip)", say: ["tight", "tighter"] },
     ringT: { default: 3.5, min: 2, max: 6, unit: "mm", label: "ring thickness", say: ["ring"], more: ["stronger", "stiffer"] },
     height: { default: 25, min: 12, max: 60, unit: "mm", label: "clip height", say: ["tall", "high", "height"], more: ["taller"], less: ["shorter"] },
     plateW: { default: 64, min: 40, max: 140, unit: "mm", label: "wall plate width", say: ["plate", "wide", "width"] },
