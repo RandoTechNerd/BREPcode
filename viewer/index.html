@@ -118,8 +118,14 @@
     into the live page by hand, and the next upload wiped it.
   -->
   <script>
-    if (/(^|\.)brepcode\.com$/.test(location.hostname))
+    if (/(^|\.)brepcode\.com$/.test(location.hostname)) {
       window.__BREP_REPLICAD_WASM_URL = "/__l5e/assets-v1/8c128b71-bdc1-4582-ba91-70b8024c999b/replicad_single.wasm";
+      // The 14.5 MB Rust kernel (vendor/brep-kernel-rust/brep_kernel_bg.wasm)
+      // is too big for /brep/ too. Upload it to the asset store and put its
+      // address here (docs/deploy-lovable.md). Until then brepcode.com builds
+      // on the JS kernel: the worker tries the wasm once and remembers it failed.
+      // window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/<id>/brep_kernel_bg.wasm";
+    }
   </script>
   <!--
     Before ANY module runs. The vendored kernel's manifold build sniffs for a
@@ -4335,7 +4341,10 @@
       if (!e) return "";
       if (e.engine === "exact") return " · Exact";
       if (e.engine === "mesh") return " · Mesh";
-      return e.fallback ? " · JS kernel (Rust refused)" : "";
+      if (!e.fallback) return "";
+      return e.fallbackKind === "loading" ? " · JS kernel (Rust still loading)"
+        : e.fallbackKind === "unavailable" ? " · JS kernel (Rust unavailable)"
+        : " · JS kernel (Rust refused)";
     }
     const WORKER_DEBUG = /[?&]workerdebug/.test(location.search)
       || !!(() => { try { return localStorage.getItem("brepcode-worker-debug"); } catch { return null; } })();
@@ -4371,9 +4380,18 @@
         // Resolved against this document, so it works both in the dev tree
         // (/viewer/kernel-worker.js) and on the built site (/kernel-worker.js).
         const url = new URL("kernel-worker.js", import.meta.url);
-        if (WORKER_DEBUG) { url.search = "debug=1"; console.log("[page] spawning build worker"); }
+        if (WORKER_DEBUG) { url.searchParams.set("debug", "1"); console.log("[page] spawning build worker"); }
+        // The worker starts fetching the Rust kernel the moment it loads (not
+        // inside the first build, where the cancel heuristic would kill it
+        // mid-download), so it needs the engine and the wasm's URL up front.
+        url.searchParams.set("engine", buildEngine());
+        if (window.__BREP_RUST_WASM_URL) url.searchParams.set("rust", window.__BREP_RUST_WASM_URL);
         kernelWorker = new Worker(url, { type: "module" });
         kernelWorker.onmessage = ({ data }) => {
+          if (data?.rustReady) {                // the Rust kernel finished downloading
+            if (lastEngine?.fallbackKind === "loading") scheduleBuild();
+            return;
+          }
           if (data?.ready) {                    // the handshake — safe to post now
             workerReady = true;
             const queued = workerOutbox;
@@ -6215,7 +6233,7 @@
         if (!workerOut) { try { json = await ph.toJSON(); } catch { json = null; } }
         if (json && getBuildWorker()) {
           try {
-            const r = await workerCall({ op: "build", key: "cutters", json });
+            const r = await workerCall({ op: "build", key: "cutters", json, engine: buildEngine(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
             if (mine !== negToken) return;
             solids = r.solids;
             fromWorker = true;
@@ -9570,7 +9588,7 @@ ${joined}`)(...vs);
             if (mine !== token) return;
             solids = r.solids;
             fromWorker = true;
-            lastEngine = { engine: r.engine || "js", fallback: r.fallback || null, stats: r.stats || null };
+            lastEngine = { engine: r.engine || "js", fallback: r.fallback || null, fallbackKind: r.fallbackKind || null, stats: r.stats || null };
             // How much of the model actually had to be rebuilt. Worth showing:
             // it is the difference between "this edit was cheap" and "this edit
             // threw the cache away", and without it an incremental build that
@@ -9584,7 +9602,7 @@ ${joined}`)(...vs);
             // is why not, and neither is answerable from the status line alone.
             window.brepscript.lastWorkerBuild = {
               incremental: !!r.incremental, rebuilt: r.rebuilt, total: r.total, reason: r.reason,
-              engine: r.engine, fallback: r.fallback, stats: r.stats,
+              engine: r.engine, fallback: r.fallback, fallbackKind: r.fallbackKind, stats: r.stats,
             };
           } catch (e) {
             if (mine !== token) return;             // cancelled by a newer build
@@ -12404,7 +12422,7 @@ ${joined}`)(...vs);
         await dsl.compile(shape, ph, []);
         const json = await ph.toJSON();
         if (liveDrag !== L || !drag) return;                 // released meanwhile
-        const r = await workerCall({ op: "build", key: "drag", json });
+        const r = await workerCall({ op: "build", key: "drag", json, engine: buildEngine(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
         if (liveDrag !== L || !drag) return;                 // discard, never paint stale
         for (const c of [...dragGroup.children]) {
           c.geometry?.dispose?.();
@@ -13940,7 +13958,12 @@ ${joined}`)(...vs);
         // the session may hold more imports than the model mentions
         used = dsl.listImports().filter((n) => src.includes(JSON.stringify(n)));
       } catch { used = []; }
-      return exp.packMeshes(used, (n) => dsl.getImport(n));
+      // An exact import (importedSolid) travels with the mesh it was rebuilt
+      // from, as "<name>::mesh": the JS kernel has no STEP reader, so without
+      // it a reopened project has nothing to fall back to.
+      const MESH_TAG = "::mesh";
+      const withMeshes = used.flatMap((n) => (dsl.getExactMesh(n) ? [n, n + MESH_TAG] : [n]));
+      return exp.packMeshes(withMeshes, (n) => (n.endsWith(MESH_TAG) ? dsl.getExactMesh(n.slice(0, -MESH_TAG.length)) : dsl.getImport(n)));
     }
 
     // ...and the other half: register them before anything tries to build.
@@ -13948,8 +13971,15 @@ ${joined}`)(...vs);
       if (!meshes) return 0;
       try {
         const files = await exp.unpackMeshes(meshes);
-        for (const [n, body] of Object.entries(files)) dsl.registerImport(n, body);
-        return Object.keys(files).length;
+        const MESH_TAG = "::mesh";
+        let count = 0;
+        for (const [n, body] of Object.entries(files)) {
+          if (n.endsWith(MESH_TAG)) continue;
+          const mesh = files[n + MESH_TAG];
+          dsl.registerImport(n, body, typeof mesh === "string" ? { mesh } : {});
+          count++;
+        }
+        return count;
       } catch { return 0; }      // a bad blob must not cost the source
     }
 
@@ -16127,7 +16157,7 @@ let SIMPLIFY_TARGET = 10000;
         + `${r.solids > 1 ? `, ${r.solids} separate solids` : ""}. `
         + (faceted
           ? `Most of it is still facets: this looks like an organic or sculpted shape, so there were few real surfaces to recover. The mesh is usually the better choice here. `
-          : `Those are real surfaces now: fillet its edges, cut it exactly, and STEP export carries true geometry. `)
+          : `Those are real surfaces now: cut it exactly, and export STEP with <b>Surfaces: True curved</b> to hand a CAD program the real geometry (the faceted STEP stays triangles). `)
         + `<button id="exact-keep" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Keep exact</button> <button id="exact-back" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Back to mesh</button>`;
       $("exact-keep").addEventListener("click", () => { hint.textContent = `Kept ${stepName} as an exact solid.`; });
       $("exact-back").addEventListener("click", () => {

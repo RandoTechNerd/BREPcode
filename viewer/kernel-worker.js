@@ -24,16 +24,31 @@ import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 // NB build-site.mjs rewrites both paths for the static site; the page can
 // point the Rust wasm elsewhere (rustWasmUrl) on a host that can't serve 13 MB
 // from the app folder, as brepcode.com already does for replicad.
-let rustKernel = null;
-async function loadRust(wasmUrl) {
+const PARAMS = new URLSearchParams(self.location?.search || "");
+let rustKernel = null;         // the load promise, once started
+let rustModule = null;         // set when the load has finished
+let rustFailure = null;        // set when it failed: not retried this session
+function loadRust(wasmUrl) {
+  if (rustFailure) return Promise.reject(rustFailure);
   rustKernel ??= (async () => {
     const mod = await import("/vendor/brep-kernel-rust/brep_kernel.js");
-    await mod.default({ module_or_path: wasmUrl || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href) });
+    await mod.default({ module_or_path: wasmUrl || PARAMS.get("rust") || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href) });
+    rustModule = mod;
+    // builds that ran on the JS kernel while this downloaded can now be redone
+    self.postMessage({ rustReady: true });
     return mod;
-  })();
-  try { return await rustKernel; }
-  catch (e) { rustKernel = null; throw e; }
+  })().catch((e) => {
+    // Remember it. A host that can't serve the 13 MB wasm would otherwise
+    // re-fetch it, fail and warn on every single build.
+    rustFailure = e instanceof Error ? e : new Error(String(e));
+    console.warn("[kw] Rust kernel unavailable for this session; the JS kernel builds everything:", rustFailure.message);
+    throw rustFailure;
+  });
+  return rustKernel;
 }
+// Start the download now, while the page is still booting, unless the page
+// asked for the JS kernel only.
+if (PARAMS.get("engine") !== "js") loadRust().catch(() => { /* recorded in rustFailure */ });
 let manifoldWasm = null;
 function loadManifold() {
   manifoldWasm ??= (async () => {
@@ -194,7 +209,15 @@ self.onmessage = async ({ data }) => {
       const key = data.key || "model";
       const engine = data.engine || "auto";
       let fallback = null;
-      if (engine !== "js") {
+      let fallbackKind = null;
+      // auto never waits for the kernel download: until it lands, the JS
+      // kernel builds (and the badge says so). split waits, by definition.
+      const rustPending = engine === "auto" && !rustModule && !rustFailure;
+      if (engine !== "js" && rustPending) {
+        loadRust(data.rustWasmUrl).catch(() => {});
+        fallback = "the Rust kernel is still downloading";
+        fallbackKind = "loading";
+      } else if (engine !== "js") {
         try {
           const rust = await loadRust(data.rustWasmUrl);
           const out = await runEngine(data.json, { rust, manifold: loadManifold });
@@ -213,6 +236,7 @@ self.onmessage = async ({ data }) => {
           // also worth a JS attempt in auto mode, but is reported.
           if (engine === "split") throw e;
           fallback = String(e?.message || e).slice(0, 300);
+          fallbackKind = e === rustFailure ? "unavailable" : "refused";
           if (!(e instanceof EngineRefusal)) console.warn("[kw] split engine unavailable, using the JS kernel:", e);
           trace(`split engine refused: ${fallback}`);
         }
@@ -255,7 +279,7 @@ self.onmessage = async ({ data }) => {
       self.postMessage({
         id, ok: true, solids: payload,
         incremental: r.incremental, rebuilt, total: (ph.features || []).length,
-        reason: r.plan?.reason || "", engine: "js", fallback,
+        reason: r.plan?.reason || "", engine: "js", fallback, fallbackKind,
       }, transfer);
       return;
     }

@@ -195,7 +195,7 @@ export function chooseDropAction(file, { groups = [] } = {}) {
         <button class="fz-opt" data-a="open"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open in the editor</b><small>import it as a mesh you can cut, scale, combine and export</small></span></button>
         <button class="fz-opt" data-a="exact"><span class="ic">${icon("open", 20)}</span>
-          <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so you can fillet, cut exactly and export true STEP. Best for parts made in CAD; you can switch back to the mesh.</small></span></button>
+          <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so cuts are exact and a curved STEP export carries true surfaces. Best for parts made in CAD; you can switch back to the mesh.</small></span></button>
         <button class="fz-opt hero" data-a="fizz"><span class="ic">${icon("fizz", 20)}</span>
           <span><b>FizzCore bubble infill<span class="fz-new">NEW</span></b><small>fill it with graded, self-supporting bubbles: less plastic, and still strong. Support fins optional.</small></span></button>
         <button class="fz-opt" data-a="fins"><span class="ic">${icon("fins", 20)}</span>

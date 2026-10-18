@@ -51,7 +51,7 @@ application source.
 
 ## Host-owned files
 
-Two files live on brepcode.com and never in the zip:
+Three files live on brepcode.com and never in the zip:
 
 - `quicksave.js`: Publish and the private cloud stash. `index.html` loads it
   with a plain `<script>` tag, so on any other host it simply 404s.
@@ -61,6 +61,15 @@ Two files live on brepcode.com and never in the zip:
   `index.html` points there when it is running on brepcode.com. If that copy
   ever goes, `viewer/curved.js` falls back to a pinned public copy of the same
   bytes, so curved STEP keeps working; re-uploading it is still the better fix.
+
+- the Rust BREP kernel, `vendor/brep-kernel-rust/brep_kernel_bg.wasm`
+  (14.5 MB, the split engine's exact lane and "Open as an exact solid"). Too big
+  for `/brep/` as well. Upload it to the asset store, then uncomment the
+  `window.__BREP_RUST_WASM_URL` line in `viewer/index.html` with its address and
+  rebuild the zip. Without it the site still works: the worker tries the wasm
+  once per session, remembers that it failed, and every build runs on the JS
+  kernel (the status line says "JS kernel (Rust unavailable)"), and the drop
+  menu's exact-solid option reports that it can't load.
 
 These used to be patched into the live `index.html`, `welcome.js` and
 `curved.js` by hand (the `?example=` links, the example note, the wasm

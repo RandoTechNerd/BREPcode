@@ -45,6 +45,8 @@ export function toRustDialect(doc) {
   const r = (n) => (typeof n === "string" && rename.has(n) ? rename.get(n) : n);
   for (const f of doc.features) {
     const p = f.inputParams || {};
+    // the target as BREPcode named it, before any rename below rewrites it
+    const jsTarget = Array.isArray(p.targetSolid) ? p.targetSolid[0] : p.targetSolid;
     if (p.targetSolid != null) p.targetSolid = Array.isArray(p.targetSolid) ? p.targetSolid.map(r) : r(p.targetSolid);
     if (p.boolean?.targets) p.boolean.targets = p.boolean.targets.map(r);
     if (Array.isArray(p.solids)) p.solids = p.solids.map(r);
@@ -80,11 +82,15 @@ export function toRustDialect(doc) {
     }
     // 4. UNION/INTERSECT result name: JS keeps the target's, Rust takes the
     //    first tool's. Later references to the target follow the rename.
+    //    Keys are only ever BREPcode's own names: in union(union(a, b), c)
+    //    the second boolean's target is already "b" on the Rust side, and
+    //    keying "b" too would let the reverse map below report the final
+    //    solid as "b" instead of "a".
     if (f.type === "B" && (p.boolean?.operation === "UNION" || p.boolean?.operation === "INTERSECT") && p.boolean.targets?.length) {
       const tgt = Array.isArray(p.targetSolid) ? p.targetSolid[0] : p.targetSolid;
       const to = p.boolean.targets[0];
-      rename.set(tgt, to);
       for (const [k, v] of rename) if (v === tgt) rename.set(k, to);
+      rename.set(jsTarget, to);
     }
   }
   polygonCylinders(doc);
@@ -241,7 +247,7 @@ function stlSoup(text) {
 
 // Triangle soup -> manifold. STL repeats every corner per triangle; manifold
 // needs them welded to see a closed solid.
-function soupToManifold(mf, soup, what) {
+function soupToManifold(mf, soup, what, own) {
   const map = new Map(), verts = [], tris = [];
   const q = 1e4;
   for (let i = 0; i < soup.length; i += 3) {
@@ -255,17 +261,21 @@ function soupToManifold(mf, soup, what) {
     const [a, b, c] = [tris[t], tris[t + 1], tris[t + 2]];
     if (a !== b && b !== c && a !== c) keep.push(a, b, c);
   }
-  return indexedToManifold(mf, new Float32Array(verts), new Uint32Array(keep), what);
+  return indexedToManifold(mf, new Float32Array(verts), new Uint32Array(keep), what, own);
 }
 
-function indexedToManifold(mf, verts, tris, what) {
+// Manifolds live in manifold's wasm heap and are only freed by .delete(), so
+// every one this file makes goes through own() and runEngine deletes them all
+// once the faces are copied out. Without that, each mesh-lane rebuild in the
+// long-lived viewer worker leaked whole copies of the mesh.
+function indexedToManifold(mf, verts, tris, what, own) {
   const mesh = new mf.Mesh({ numProp: 3, vertProperties: verts, triVerts: tris });
   mesh.merge();
   let solid;
-  try { solid = new mf.Manifold(mesh); }
+  try { solid = own(new mf.Manifold(mesh)); }
   catch (e) { throw new EngineRefusal(`${what} isn't a closed solid (${e?.message || e})`, "mesh"); }
   if (solid.status && solid.status() !== "NoError") throw new EngineRefusal(`${what} isn't a closed solid (${solid.status()})`, "mesh");
-  return solid.asOriginal();
+  return own(solid.asOriginal());
 }
 
 // Rust tessellation -> one buffer set per B-rep face, named like the JS
@@ -334,8 +344,10 @@ function meshFaces(solid, sourceOf) {
  *   rust: the initialised vendor/brep-kernel-rust module
  *   manifold: the set-up manifold-3d wasm, or a loader for it (only called
  *             when the model has mesh features)
+ *   trackManifolds: optional array that receives every Manifold made (tests
+ *             check that each one is deleted by the time this returns)
  */
-export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05 } = {}) {
+export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null } = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
   const features = src.features || [];
   const { meshFeatures } = planLanes(features);
@@ -358,90 +370,97 @@ export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05 } =
   // MESH lane: walk the mesh features in order, pulling exact solids across
   // (tessellated) the first time one is read.
   const t1 = performance.now();
-  const meshes = new Map();
-  const sourceOf = new Map();
-  let mf = null;
-  if (meshFeatures.size) {
-    mf = typeof manifold === "function" ? await manifold() : manifold;
-    if (!mf) throw new EngineRefusal("mesh features need manifold-3d, and none was provided", "mesh");
-  }
-  const take = (name) => {
-    if (meshes.has(name)) { const m = meshes.get(name); meshes.delete(name); return m; }
-    const rn = rename.has(name) ? rename.get(name) : name;
-    const a = live.get(rn);
-    if (!a) throw new EngineRefusal(`mesh step reads "${name}", which no earlier feature made`, "mesh");
-    live.delete(rn);
-    const m = rk.tessellate_handle(a.handle, tolerance);
-    const P = m.take_positions(), I = m.take_indices();
-    const solid = indexedToManifold(mf, Float32Array.from(P), Uint32Array.from(I), `"${name}"`);
-    sourceOf.set(solid.originalID(), name);
-    return solid;
-  };
-  for (const f of features) {
-    const p = f.inputParams || {};
-    if (!meshFeatures.has(p.id)) continue;
-    if (f.type === "IMPORT3D") {
-      const data = p.fileToImport;
-      if (typeof data !== "string" || !/^\s*solid/.test(data)) {
-        throw new EngineRefusal(`IMPORT3D ${p.id}: only ASCII STL text goes through the mesh lane`, "mesh");
-      }
-      let solid = soupToManifold(mf, stlSoup(data), `the import "${p.id}"`);
-      sourceOf.set(solid.originalID(), p.id);
-      if (p.centerMesh) {
-        const bb = solid.boundingBox();
-        solid = solid.translate([0, 1, 2].map((k) => -(bb.min[k] + bb.max[k]) / 2));
-      }
-      if (p.extractMultipleSolids) {
-        const parts = solid.decompose();
-        if (parts.length > 1) throw new EngineRefusal(`IMPORT3D ${p.id}: splitting a multi-part import isn't in the mesh lane yet`, "mesh");
-      }
-      meshes.set(p.id, solid);
-    } else if (f.type === "B") {
-      const tName = Array.isArray(p.targetSolid) ? p.targetSolid[0] : p.targetSolid;
-      const op = p.boolean?.operation;
-      const target = take(tName);
-      const tools = (p.boolean?.targets || []).map(take);
-      let out = target;
-      if (tools.length) {
-        if (op === "UNION") out = mf.Manifold.union([target, ...tools]);
-        else if (op === "SUBTRACT") out = target.subtract(tools.length === 1 ? tools[0] : mf.Manifold.union(tools));
-        else if (op === "INTERSECT") out = mf.Manifold.intersection([target, ...tools]);
-      }
-      meshes.set(tName, out);
-    } else if (f.type === "XFORM") {
-      for (const s of p.solids || []) {
-        const solid = p.copy ? (meshes.has(s) ? meshes.get(s) : null) : take(s);
-        if (!solid) throw new EngineRefusal(`XFORM copy of "${s}" isn't in the mesh lane yet`, "mesh");
-        let pivot = [0, 0, 0];
-        if (String(p.pivot || "").toUpperCase() === "BBOX_CENTER") {
-          const bb = solid.boundingBox();
-          pivot = [0, 1, 2].map((k) => (bb.min[k] + bb.max[k]) / 2);
+  const owned = [];
+  const own = (m) => { owned.push(m); trackManifolds?.push(m); return m; };
+  try {
+    const meshes = new Map();
+    const sourceOf = new Map();
+    let mf = null;
+    if (meshFeatures.size) {
+      mf = typeof manifold === "function" ? await manifold() : manifold;
+      if (!mf) throw new EngineRefusal("mesh features need manifold-3d, and none was provided", "mesh");
+    }
+    const take = (name) => {
+      if (meshes.has(name)) { const m = meshes.get(name); meshes.delete(name); return m; }
+      const rn = rename.has(name) ? rename.get(name) : name;
+      const a = live.get(rn);
+      if (!a) throw new EngineRefusal(`mesh step reads "${name}", which no earlier feature made`, "mesh");
+      live.delete(rn);
+      const m = rk.tessellate_handle(a.handle, tolerance);
+      const P = m.take_positions(), I = m.take_indices();
+      const solid = indexedToManifold(mf, Float32Array.from(P), Uint32Array.from(I), `"${name}"`, own);
+      sourceOf.set(solid.originalID(), name);
+      return solid;
+    };
+    for (const f of features) {
+      const p = f.inputParams || {};
+      if (!meshFeatures.has(p.id)) continue;
+      if (f.type === "IMPORT3D") {
+        const data = p.fileToImport;
+        if (typeof data !== "string" || !/^\s*solid/.test(data)) {
+          throw new EngineRefusal(`IMPORT3D ${p.id}: only ASCII STL text goes through the mesh lane`, "mesh");
         }
-        meshes.set(p.copy ? `${s}_${p.id}` : s, solid.transform(trsMatrix(p.translate, p.rotateEulerDeg, p.scale, pivot)));
+        let solid = soupToManifold(mf, stlSoup(data), `the import "${p.id}"`, own);
+        sourceOf.set(solid.originalID(), p.id);
+        if (p.centerMesh) {
+          const bb = solid.boundingBox();
+          solid = own(solid.translate([0, 1, 2].map((k) => -(bb.min[k] + bb.max[k]) / 2)));
+        }
+        if (p.extractMultipleSolids) {
+          const parts = solid.decompose().map(own);
+          if (parts.length > 1) throw new EngineRefusal(`IMPORT3D ${p.id}: splitting a multi-part import isn't in the mesh lane yet`, "mesh");
+        }
+        meshes.set(p.id, solid);
+      } else if (f.type === "B") {
+        const tName = Array.isArray(p.targetSolid) ? p.targetSolid[0] : p.targetSolid;
+        const op = p.boolean?.operation;
+        const target = take(tName);
+        const tools = (p.boolean?.targets || []).map(take);
+        let out = target;
+        if (tools.length) {
+          if (op === "UNION") out = own(mf.Manifold.union([target, ...tools]));
+          else if (op === "SUBTRACT") out = own(target.subtract(tools.length === 1 ? tools[0] : own(mf.Manifold.union(tools))));
+          else if (op === "INTERSECT") out = own(mf.Manifold.intersection([target, ...tools]));
+        }
+        meshes.set(tName, out);
+      } else if (f.type === "XFORM") {
+        for (const s of p.solids || []) {
+          const solid = p.copy ? (meshes.has(s) ? meshes.get(s) : null) : take(s);
+          if (!solid) throw new EngineRefusal(`XFORM copy of "${s}" isn't in the mesh lane yet`, "mesh");
+          let pivot = [0, 0, 0];
+          if (String(p.pivot || "").toUpperCase() === "BBOX_CENTER") {
+            const bb = solid.boundingBox();
+            pivot = [0, 1, 2].map((k) => (bb.min[k] + bb.max[k]) / 2);
+          }
+          meshes.set(p.copy ? `${s}_${p.id}` : s, own(solid.transform(trsMatrix(p.translate, p.rotateEulerDeg, p.scale, pivot))));
+        }
       }
     }
-  }
-  const meshMs = performance.now() - t1;
+    const meshMs = performance.now() - t1;
 
-  // Report solids under the names the JS kernel would have used.
-  const jsName = new Map();
-  for (const [from, to] of rename) jsName.set(to, from);
-  const solids = [];
-  for (const a of live.values()) {
-    solids.push({ name: jsName.get(a.name) || a.name, exact: true, handle: a.handle, faces: exactFaces(rk, a.handle, a.face_names, tolerance) });
+    // Report solids under the names the JS kernel would have used.
+    const jsName = new Map();
+    for (const [from, to] of rename) jsName.set(to, from);
+    const solids = [];
+    for (const a of live.values()) {
+      solids.push({ name: jsName.get(a.name) || a.name, exact: true, handle: a.handle, faces: exactFaces(rk, a.handle, a.face_names, tolerance) });
+    }
+    for (const [name, solid] of meshes) {
+      solids.push({ name, exact: false, faces: meshFaces(solid, sourceOf) });
+    }
+    if (!solids.length) throw new EngineRefusal("the model produced no solids", meshFeatures.size ? "mesh" : "exact");
+    return {
+      lane: meshFeatures.size ? "mesh" : "exact",
+      solids,
+      stats: {
+        exactFeatures: exactDoc.features.length, meshFeatures: meshFeatures.size,
+        exactMs: Math.round(exactMs), meshMs: Math.round(meshMs),
+      },
+    };
+  } finally {
+    // everything returned is plain typed arrays by now, refusal or not
+    for (const m of new Set(owned)) { try { m.delete(); } catch { /* already gone */ } }
   }
-  for (const [name, solid] of meshes) {
-    solids.push({ name, exact: false, faces: meshFaces(solid, sourceOf) });
-  }
-  if (!solids.length) throw new EngineRefusal("the model produced no solids", meshFeatures.size ? "mesh" : "exact");
-  return {
-    lane: meshFeatures.size ? "mesh" : "exact",
-    solids,
-    stats: {
-      exactFeatures: exactDoc.features.length, meshFeatures: meshFeatures.size,
-      exactMs: Math.round(exactMs), meshMs: Math.round(meshMs),
-    },
-  };
 }
 
 // ASCII STL in the same shape the JS kernel's Solid.toSTL() writes, so every

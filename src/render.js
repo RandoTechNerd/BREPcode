@@ -22,8 +22,12 @@ export async function build(shape, { tolerance = 6, engine = process.env.BREPSCR
       }));
       return { partHistory: ph, solids, tolerance, engine: out.lane, stats: out.stats };
     } catch (e) {
-      if (engine === "split" || !(e instanceof EngineRefusal)) throw e;
-      fallback = e.message;
+      // auto means "the JS kernel if the split engine can't": a refusal, a
+      // wasm that won't load, a kernel panic, a manifold exception. The
+      // viewer worker falls back on all of them, and so does this.
+      if (engine === "split") throw e;
+      if (!(e instanceof EngineRefusal)) console.warn(`[engine] split engine failed, using the JS kernel: ${e?.message || e}`);
+      fallback = String(e?.message || e);
     }
   }
   await ph.runHistory({ throwOnFeatureError: true });

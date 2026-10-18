@@ -172,6 +172,13 @@ export async function buildCurved(root) {
     if (n.kind !== "import" || importShapes.has(n)) return;
     const text = getImport(n.name);
     if (!text) throw new Error(`importedMesh("${n.name}"): no imported file by that name — use the Import button first`);
+    // importedSolid(): the registry holds STEP text (an STL rebuilt exact on
+    // drop). OCCT reads it as the real planes and cylinders, which is the
+    // whole point of the curved STEP export; the STL reader would choke on it.
+    if (/^\s*ISO-10303-21/.test(text)) {
+      importShapes.set(n, await r.importSTEP(new Blob([text], { type: "model/step" })));
+      return;
+    }
     const facets = (text.match(/endfacet/g) || []).length;
     if (facets > 20000) {
       throw new Error(`importedMesh("${n.name}") is ~${(facets / 1000).toFixed(0)}k triangles — too dense for a drawing or curved STEP (hidden-line removal would take minutes). Decimate to under 20k triangles and re-import, or use the mesh exports (STL/3MF).`);

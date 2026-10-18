@@ -341,7 +341,7 @@ console.log("\nit is scenery, so the plate underneath stays live\n");
   check("the TPU box says where it came from", !!EXAMPLES.tpubox.note?.video);
   check("the host's Publish / cloud stash script is loaded", /<script type="module" src="\.\/quicksave\.js"><\/script>/.test(html));
   check("brepcode.com's wasm address is set only on brepcode.com",
-    /brepcode\\\.com\$\/\.test\(location\.hostname\)\)\s*window\.__BREP_REPLICAD_WASM_URL = /.test(html));
+    /brepcode\\\.com\$\/\.test\(location\.hostname\)\)\s*\{?\s*window\.__BREP_REPLICAD_WASM_URL = /.test(html));
   const v = JSON.parse(readFileSync(new URL("../node_modules/replicad-opencascadejs/package.json", import.meta.url), "utf8")).version;
   check("curved.js falls back to a pinned copy of the very same wasm version",
     curved.includes(`replicad-opencascadejs@${v}/src/replicad_single.wasm`) && /for \(const url of wasmUrls\(\)\)/.test(curved), v);

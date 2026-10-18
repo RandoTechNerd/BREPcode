@@ -168,6 +168,10 @@ function decodeStlBytes(bytes) {
 export function listImports() { return [...IMPORTS.keys()]; }
 // curved.js hands imported meshes to OCCT (importSTL) for blueprints/STEP
 export const getImport = (name) => IMPORTS.get(name) ?? null;
+// The mesh an exact import was rebuilt from (see registerImport's { mesh }).
+// Saved projects and links carry it beside the STEP so the JS-kernel fallback
+// still has geometry after a reopen.
+export const getExactMesh = (name) => EXACT_MESH.get(name) ?? null;
 
 // ------------------------------------------------------------ build estimate
 //
@@ -334,7 +338,8 @@ export function importedMesh(name, opts = {}) {
 // An imported part rebuilt as an EXACT solid: real planes and cylinders
 // reconstructed from the mesh (the drop menu's "Open as an exact solid"), held
 // in the registry as STEP text. Same call shape as importedMesh; the
-// difference is that it can be filleted, cut exactly and exported as true STEP.
+// difference is that it cuts exactly and exports as true curved STEP
+// (fillet() on it still falls back to the mesh: see BREPcodeRustKernel/README).
 export function importedSolid(name, opts = {}) {
   if (typeof name !== "string" || !name) {
     throw new TypeError('importedSolid() needs the converted file name, e.g. importedSolid("part.step")');
@@ -2002,6 +2007,9 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       if (data == null) {
         throw new Error(`importedMesh("${n.name}"): no imported file by that name — use the Import button first`);
       }
+      // Imported solids must be clone-safe to act as boolean tools on the JS
+      // kernel; that includes an exact import's fallback mesh.
+      if (isStepText(data) && EXACT_MESH.has(n.name)) await ensureImportClonePatch(partHistory);
       // An exact import (STEP text): one IMPORT3D carrying the STEP, which
       // the Rust kernel reads exactly (`stepText`), and the source mesh in
       // `fileToImport` for the JS kernel, which has no STEP reader. Placement is a Transform feature, not baked

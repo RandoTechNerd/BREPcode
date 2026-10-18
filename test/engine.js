@@ -107,7 +107,46 @@ await check("fillet on a texture is refused", fillet({ r: 1 }, texture({ pattern
   console.log(`${pass ? "ok   " : "FAIL "} stl -> exact: ${(stl.match(/facet normal/g) || []).length} triangles -> ${faces} faces, ${cyl} cylinder(s)`);
   d.registerImport("block.step", conv.step, { mesh: stl });
   await check("exact import routes through the exact lane", d.importedSolid("block.step"), { expectLane: "exact", volTol: 0.01 });
+  // the JS kernel (refusal fallback, --engine js) cuts with the source mesh,
+  // which needs the clone patch the STEP branch now installs too
+  {
+    const { build: b, toSTL: t } = await import("../src/render.js");
+    const r = await b(difference(cube([60, 30, 12]), translate([10, 5, 1], d.importedSolid("block.step"))), { engine: "js" });
+    const vol = stlStats(t(r)).vol;
+    const pass = r.engine === "js" && Math.abs(vol - (60 * 30 * 12 - 7500)) < 120;
+    if (!pass) fails++;
+    console.log(`${pass ? "ok   " : "FAIL "} JS kernel cuts with an exact import's mesh: vol ${vol.toFixed(1)} (expected ~${60 * 30 * 12 - 7500})`);
+  }
   await check("exact import moved and drilled", difference(translate([5, 0, 0], d.importedSolid("block.step")), translate([10, 10, -1], cylinder({ r: 2, h: 12 }))), { expectLane: "exact", volTol: 0.01 });
+}
+
+// union(union(a, b), c) keeps a's name, as the JS kernel does (a nested
+// union used to come back named after a consumed tool).
+{
+  const shape = union(union(cube([10, 10, 10]), translate([5, 0, 0], cube([10, 10, 10]))), translate([10, 0, 0], cube([10, 10, 10])));
+  const ph = new PartHistory();
+  await d.compile(shape, ph);
+  await ph.runHistory({ throwOnFeatureError: true });
+  const jsNames = ph.scene.children.filter((o) => o.type === "SOLID").map((s) => s.name);
+  const out = await runEngine(await ph.toJSON(), { rust, manifold: loadManifoldNode });
+  const pass = JSON.stringify(out.solids.map((s) => s.name)) === JSON.stringify(jsNames);
+  if (!pass) fails++;
+  console.log(`${pass ? "ok   " : "FAIL "} nested union keeps the target's name: ${out.solids.map((s) => s.name)} vs js ${jsNames}`);
+}
+
+// The mesh lane frees what it allocates: every Manifold it made is deleted
+// by the time it returns, on success and on a refusal partway through.
+{
+  const mf = await loadManifoldNode();
+  const shape = difference(cube([30, 30, 10]), translate([15, 15, 5], texture({ pattern: "bumps" }, sphere({ r: 8 }))));
+  const ph = new PartHistory();
+  await d.compile(shape, ph);
+  const made = [];
+  await runEngine(await ph.toJSON(), { rust, manifold: mf, trackManifolds: made });
+  const live = made.filter((m) => !m.isDeleted());
+  const pass = made.length > 3 && live.length === 0;
+  if (!pass) fails++;
+  console.log(`${pass ? "ok   " : "FAIL "} mesh lane frees its manifolds: ${made.length} made, ${live.length} still alive`);
 }
 
 if (process.argv.includes("--examples")) {

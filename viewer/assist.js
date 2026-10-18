@@ -173,7 +173,7 @@ export const SPECS = [
   {
     name: "importedSolid", group: "Edit a part", sig: 'importedSolid("file.step")',
     snippet: 'importedSolid("mount.step")', argStart: 14,
-    hint: "An imported part rebuilt as an EXACT solid: real planes and cylinders recovered from the mesh (drop an STL and pick \"Open as an exact solid\"). Fillet its edges, cut it exactly, export true STEP. Best on parts that came from CAD; organic models stay meshes.",
+    hint: "An imported part rebuilt as an EXACT solid: real planes and cylinders recovered from the mesh (drop an STL and pick \"Open as an exact solid\"). Cut it exactly, and export STEP with true curved surfaces. fillet() on it is not supported yet (it falls back to the mesh). Best on parts that came from CAD; organic models stay meshes.",
   },
 
   // --- combining ----------------------------------------------------------

@@ -191,7 +191,7 @@ console.log("\nstretching keeps the cut true\n");
   check("the live build sends exactly that text",
     /resizeNextText\(code\.value, drag, amount\)/.test(HTML));
   check("...to the worker under its own key",
-    /workerCall\(\{ op: "build", key: "drag", json \}\)/.test(HTML),
+    /workerCall\(\{ op: "build", key: "drag", json[ ,}]/.test(HTML),
     "the real model's cached build must not be evicted by drag chatter");
   check("one build in flight, never a queue", /if \(L\.inflight \|\| L\.dead\) return;/.test(HTML));
   check("heavy models keep the cheap preview",
