@@ -1,7 +1,8 @@
 // The BREPcode assistant: a hardcoded rule engine for simple requests, plus
 // optional bring-your-own-key API mode (Gemini / Claude) that generates code.
 
-import { matchRequest, refineRequest, catalogSummary } from "../src/catalog/match.js";
+import { matchRequest, catalogSummary } from "../src/catalog/match.js";
+import { catalogOf, editCatalog, capabilities } from "../src/catalog/edit.js";
 import { catalogStats } from "../src/catalog/index.js";
 
 // ------------------------------------------------------------ rule engine
@@ -196,11 +197,36 @@ return difference(
 function wrapCurrent(currentCode, wrap) {
   const src = currentCode.trim();
   if (!src) return null;
-  const m = src.match(/return\s+([\s\S]+?);?\s*$/);
-  if (m && /\b(const|let|var)\b/.test(src)) {
-    return src.slice(0, m.index) + `return ${wrap(`(${m[1].trim().replace(/;$/, "")})`)};`;
+  const at = topLevelReturn(src);
+  if (at >= 0 && /\b(const|let|var)\b/.test(src)) {
+    return src.slice(0, at) + `return ${wrap(`(${src.slice(at + 6).trim().replace(/;\s*$/, "")})`)};`;
   }
   return wrap(`(\n${src}\n)`);
+}
+
+// Where the model's own final `return` starts: the last one at brace depth 0.
+// A regex for "a line starting with return" found the FIRST such line, which
+// in any file with a helper function (`const arc = (…) => { … return [x, y]; }`)
+// is the helper's, and the wrap then swallowed the rest of the file:
+// "missing ) after argument list". Strings and comments are skipped so a
+// bracket inside one cannot unbalance the count.
+export function topLevelReturn(src) {
+  let depth = 0, at = -1;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "/" && src[i + 1] === "/") { const e = src.indexOf("\n", i); i = e < 0 ? src.length : e; continue; }
+    if (c === "/" && src[i + 1] === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 1; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      const q = c;
+      for (i++; i < src.length && src[i] !== q; i++) if (src[i] === "\\") i++;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (depth === 0 && c === "r" && src.startsWith("return", i)
+      && !/[\w$]/.test(src[i - 1] || "") && !/[\w$]/.test(src[i + 6] || "")) at = i;
+  }
+  return at;
 }
 
 function tryTransform(lower, currentCode) {
@@ -472,8 +498,8 @@ export function resizeCode(currentCode, r) {
 // comments above it alone.
 function wrapModel(currentCode, wrap) {
   const src = currentCode.trim();
-  const m = /(^|\n)(\s*)return\s+([\s\S]+?);?\s*$/.exec(src);
-  if (m) return src.slice(0, m.index) + `${m[1]}${m[2]}return ${wrap(m[3].trim())};`;
+  const at = topLevelReturn(src);
+  if (at >= 0) return src.slice(0, at) + `return ${wrap(src.slice(at + 6).trim().replace(/;\s*$/, ""))};`;
   return `return ${wrap(src.replace(/;$/, ""))};`;
 }
 
@@ -646,69 +672,182 @@ export function opCode(currentCode, op) {
 const NEW_THING = /\b(want|need|like|make me|make a|make an|make us|build|print|design|create|new|another|give me|how about|got a|got an|do a|do an)\b|^(a|an|some)\s/;
 const EDIT_THIS = /^(make|turn|set|change)\s+(it|this|that|the)\b|\b(it|this|that)\b.*\b(wider|narrower|taller|shorter|deeper|longer|bigger|smaller|thicker|thinner)\b/;
 
+// Where to go when the built-in helper runs out. Every "can't do that" ends
+// with the same three ways forward (the sliders, the code, an AI) and a human
+// to ask, rendered as buttons by the viewer (actions on the reply).
+export const CONTACT = { email: "RandoTechNerd@gmail.com", discord: "https://discord.gg/8fjQHDX8PQ" };
+export const HELP_ACTIONS = [
+  { label: "≡ Sliders", act: "params" },
+  { label: "</> Editor", act: "editor" },
+  { label: "✨ Connect an AI", act: "ai" },
+  { label: "✉ Email", act: "email" },
+  { label: "Discord", act: "discord" },
+];
+const WAYS_ON = "Drag the sliders (≡ Params), change the code in the Editor, or connect an AI in ⚙ (free in your browser, or your own Gemini, Claude or OpenRouter key) and ask it in plain words. "
+  + `Stuck? Email ${CONTACT.email} or ask on Discord.`;
+
+const unitOf = (p) => p.unit === "deg" ? "°" : p.unit === "mm" ? " mm" : "";
+
+// The colour words people actually use, as filament-ish swatches.
+export const COLOURS = {
+  red: "#e53935", orange: "#fb8c00", yellow: "#fdd835", lime: "#9ccc65", green: "#43a047",
+  mint: "#98e2c6", teal: "#00897b", turquoise: "#26c6da", cyan: "#00bcd4", "sky blue": "#4fc3f7",
+  blue: "#1e88e5", navy: "#1a237e", purple: "#8e24aa", violet: "#7e57c2", lavender: "#b39ddb",
+  pink: "#ec407a", magenta: "#d81b60", coral: "#ff7f6e", maroon: "#7b1f2b", brown: "#6d4c41",
+  tan: "#c8a27a", beige: "#d7c4a3", olive: "#7a7d2b", gold: "#d4af37", silver: "#c0c0c0",
+  black: "#212121", white: "#f5f5f5", grey: "#9e9e9e", gray: "#9e9e9e", "dark grey": "#4a4a4a", "dark gray": "#4a4a4a",
+};
+// "make it purple", "paint it gold", "in black", "#ff8800", or just "purple"
+export function parseColour(lower, { bare = true } = {}) {
+  const hex = /#([0-9a-f]{6}|[0-9a-f]{3})\b/.exec(lower);
+  const names = Object.keys(COLOURS).sort((a, b) => b.length - a.length);
+  const name = names.find((n) => new RegExp(`\\b${n}\\b`).test(lower));
+  if (!hex && !name) return null;
+  const verb = /\b(make|paint|colou?r|turn|change|in|switch|set)\b/.test(lower);
+  const short = lower.trim().split(/\s+/).length <= 3;
+  if (!verb && !(bare && short)) return null;
+  return { hex: hex ? `#${hex[1]}` : COLOURS[name], name: name || `#${hex[1]}` };
+}
+// Recolour by wrapping the model; a colour already wrapped on is replaced,
+// not nested, so "make it red" then "no, blue" stays one colorize().
+export function colourCode(currentCode, hex) {
+  const src = currentCode.trim();
+  const at = topLevelReturn(src);
+  const body = at >= 0 ? src.slice(at + 6).trim().replace(/;\s*$/, "") : src.replace(/;\s*$/, "");
+  const prior = /^colorize\("#[0-9a-fA-F]{3,6}",\s*([\s\S]*)\)$/.exec(body);
+  const inner = prior ? prior[1].trim() : body;
+  const wrapped = `colorize("${hex}", ${inner})`;
+  return at >= 0 ? `${src.slice(0, at)}return ${wrapped};` : `return ${wrapped};`;
+}
+const num1 = (v) => +(+v).toFixed(1);
+
 function catalogReply(res, { refined = false } = {}) {
   const what = res.title.toLowerCase();
   const fmt = (u) => {
     const p = res.family.params[u.param];
-    const v = +(+u.value).toFixed(1);
-    return `${p.label} ${v}${p.unit === "deg" ? "°" : p.unit === "mm" ? " mm" : ""}`;
+    return `${p.label} ${num1(u.value)}${unitOf(p)}`;
   };
   let reply = refined ? `Updated the ${what}` : `Here's a ${what}`;
-  if (res.spec && (!refined || res.changedSpec)) reply += `, sized for ${res.sizedFor[0] || res.spec.label}`;
+  if (res.spec && (!refined || res.changedSpec)) reply += `, sized for ${res.sizedFor?.[0] || res.spec.note || res.spec.label}`;
   if (refined && res.changes?.length) {
-    // say what actually moved: "width 70 → 84 mm"
-    reply += `: ${res.changes.map(({ k, from, to }) => {
+    // say what actually moved: "stand width 70 → 84 mm"
+    const said = res.changes.slice(0, 3).map(({ k, from, to }) => {
       const p = res.family.params[k];
-      const u = p.unit === "deg" ? "°" : p.unit === "mm" ? " mm" : "";
       if (typeof to === "string") return `${p.label}: ${to}`;
-      return `${p.label} ${+(+from).toFixed(1)} → ${+(+to).toFixed(1)}${u}`;
-    }).join(", ")}`;
+      return `${p.label} ${num1(from)} → ${num1(to)}${unitOf(p)}`;
+    });
+    if (res.changes.length > 3) said.push(`and ${res.changes.length - 3} more`);
+    reply += `: ${said.join(", ")}`;
   } else if (res.used?.length) reply += ` (${res.used.map(fmt).join(", ")})`;
   reply += ".";
-  for (const c of res.clamped) {
+  for (const c of res.clamped || []) {
     const p = res.family.params[c.param];
-    reply += ` ${p.label} stops at ${c.used}${p.unit === "deg" ? "°" : " mm"}, so I used that.`;
+    reply += ` ${p.label} stops at ${c.used}${unitOf(p)}, so I used that.`;
   }
   if (!refined && res.family.print) reply += ` Prints ${res.family.print.replace(/\.$/, "")}.`;
   if (res.question) reply += ` ${res.question.text}`;
   else if (refined) reply += " (◀ undoes it.)";
-  else if (res.family.tips?.length) reply += ` Every size is a slider (≡ Params), or just say ${res.family.tips.slice(0, 3).map((x) => `“${x}”`).join(", ")}.`;
+  else reply += " Every size is a slider (≡ Params), or tap a suggestion below.";
   if (!refined && res.alternatives?.length) reply += ` (If you meant a ${res.alternatives[0].toLowerCase()}, say so.)`;
   return reply;
 }
 
-function catalogTurn(t, lower, state, currentCode) {
+// One-tap follow-ups under a catalog reply: the family's own tips, then the
+// edits every catalog model understands.
+function catalogChips(f) {
+  return [...(f.tips || []).slice(0, 3), "bigger", "round the edges"];
+}
+const CATALOG_ACTIONS = [{ label: "⬇ Download STL", act: "stl" }, { label: "≡ Sliders", act: "params" }];
+
+// "This phone stand can change: …" when a follow-up is beyond its dials.
+export function catalogCantDo(f, text) {
+  const caps = capabilities(f);
+  return {
+    reply: `I couldn't do “${text}” with the built-in helper. This ${f.title.toLowerCase()} can change: ${caps.join(", ")}. `
+      + `Say one with a number (“${(f.tips || ["90 mm wide"])[0]}”), “bigger” / “smaller”, or “round the edges”. ${WAYS_ON}`,
+    chips: catalogChips(f),
+    actions: HELP_ACTIONS,
+    fromCatalog: true,
+  };
+}
+
+function catalogTurn(t, lower, state, currentCode, dims) {
   if (/^(what can you (make|build|do)|what do you know|show me (the )?catalog|catalog|list)\b/.test(lower)) {
     const s = catalogStats();
-    return { reply: `I know ${s.families} designs covering ${s.things} things, each tested to print without supports: ${catalogSummary().join(". ")}. Ask for one by name (“I want a phone stand”), what it's for (“a hook for my yoga mat”) and any sizes.` };
+    return {
+      reply: `I know ${s.families} designs covering ${s.things} things, each tested to print without supports: ${catalogSummary().join(". ")}. Ask for one by name (“I want a phone stand”), what it's for (“a hook for my yoga mat”) and any sizes.`,
+      chips: ["I want a phone stand", "a hook for my yoga mat", "a cable clip for 3 cables", "a small wall shelf"],
+    };
   }
-  // a follow-up to the catalog model still in the editor
-  const mine = state.catalog && currentCode.trim() === state.catalog.code;
-  if (mine) {
-    const r = refineRequest(state.catalog.memo, t);
-    if (r) {
-      const before = state.catalog.memo.values;
-      r.changes = Object.keys(r.values).filter((k) => r.values[k] !== before[k])
-        .map((k) => ({ k, from: before[k], to: r.values[k] }));
-      state.catalog = { memo: r.memo, code: r.code.trim() };
-      return { reply: catalogReply(r, { refined: true }), code: r.code, fromCatalog: true };
+  const open = catalogOf(currentCode);
+  const fresh = !currentCode.trim() || NEW_THING.test(lower) ? matchRequest(t) : null;
+  // A new thing of a DIFFERENT kind wins over editing the open one: "I want a
+  // phone stand 90 mm wide" with a shelf open is a phone stand, not a shelf
+  // 90 mm long.
+  if (open && !(fresh && fresh.familyId !== open.id)) {
+    const specId = state.catalog?.familyId === open.id ? state.catalog.specId : null;
+    const e = editCatalog(open, currentCode, t, { specId });
+    if (e?.kind === "round-generic") {
+      const op = parseOp(/\bround|fillet/.test(lower) ? t : `round the edges ${t}`, dims) || { kind: "round", r: 1.5 };
+      if (op.error) return { reply: `Can't do that: ${op.error}`, fromCatalog: true };
+      const r = op.kind === "round" ? op.r : 1.5;
+      return {
+        reply: `Rounded every edge with a ${r} mm fillet, wrapped round the design so its sliders still work. `
+          + "This one has no rounding slider of its own, and an all-over fillet doesn't take on every shape: if the edges look the same after it builds, "
+          + "try “chamfer the edges” instead, or ask an AI to round the specific edges you mean. (◀ undoes it.)",
+        code: opCode(currentCode, { kind: "round", r }),
+        fromCatalog: true,
+      };
     }
+    if (e?.kind === "no-change") {
+      const c = e.clamped?.[0];
+      return { reply: c ? `${e.family.params[c.param].label} is already at its limit (${c.used}${unitOf(e.family.params[c.param])}).` : "That's how it is already.", fromCatalog: true };
+    }
+    if (e && e.code) {
+      state.catalog = { familyId: open.id, specId: e.specId };
+      let lead = null;
+      if (e.kind === "scale") lead = `Scaled the ${open.title.toLowerCase()} ×${num1(e.note.factor)}; screw holes, clearances and wall thickness stay as they were`;
+      const reply = catalogReply({ ...e, title: open.title, changedSpec: !!e.spec, sizedFor: e.spec ? [e.spec.note || e.spec.label] : [] }, { refined: true });
+      return { reply: lead ? reply.replace(/^Updated the [^:.]+/, lead) : reply, code: e.code, fromCatalog: true, actions: CATALOG_ACTIONS };
+    }
+    if (e?.kind === "holes-generic") {
+      const op = parseOp(/\bhole/.test(lower) ? t : `add a hole`, dims);
+      if (op?.error) return { reply: `Can't do that: ${op.error}`, fromCatalog: true };
+      if (op?.kind === "hole") {
+        const sized = /\d/.test(lower);
+        const hole = sized ? op : { ...op, dia: 5 };
+        return {
+          reply: `Drilled a ${hole.dia} mm hole straight down through the middle${sized ? "" : " (screw size; say “a 8 mm hole” for another)"}. `
+            + "This design has no hole-count slider, so the hole is placed by position: to move it, change the x and y in its translate([…]) line in the Editor. (◀ undoes it.)",
+          code: opCode(currentCode, hole),
+          fromCatalog: true,
+        };
+      }
+    }
+    // anything else: let the general edits below try
+    if (!fresh) return null;
   }
-  const editing = currentCode.trim() && !mine && EDIT_THIS.test(lower);
-  if (editing || (currentCode.trim() && !mine && !NEW_THING.test(lower))) return null;
-  const m = matchRequest(t);
-  if (!m) return null;
-  state.catalog = { memo: m.memo, code: m.code.trim() };
+  if (currentCode.trim() && !open && (EDIT_THIS.test(lower) || !NEW_THING.test(lower))) return null;
+  if (!fresh) return null;
+  state.catalog = { familyId: fresh.familyId, specId: fresh.spec?.id || null };
   state.flow = null; state.pending = null;
-  return { reply: catalogReply(m), code: m.code, clearPending: true, fromCatalog: true };
+  const tint = parseColour(lower, { bare: false });
+  if (tint) fresh.code = colourCode(fresh.code, tint.hex) + "\n";
+  return { reply: catalogReply(fresh) + (tint ? ` In ${tint.name}.` : ""), code: fresh.code, clearPending: true, fromCatalog: true,
+    chips: fresh.question ? (fresh.question.choices || []) : catalogChips(fresh.family), actions: CATALOG_ACTIONS };
 }
 
 export function respond(text, state = {}, currentCode = "", dims = null) {
   const t = text.trim();
   const lower = t.toLowerCase();
 
-  const fromCatalog = catalogTurn(t, lower, state, currentCode);
+  const fromCatalog = catalogTurn(t, lower, state, currentCode, dims);
   if (fromCatalog) return fromCatalog;
+
+  if (currentCode.trim()) {
+    const tint = parseColour(lower);
+    if (tint) return { reply: `Made it ${tint.name}. (◀ undoes it.)`, code: colourCode(currentCode, tint.hex) };
+  }
 
   if (/^(help|\?|what can you do)/.test(lower)) {
     return { reply: "Ask for a real thing: “I want a phone stand”, “a hook for my yoga mat”, “a cable clip for 3 cables”, “a small wall shelf” — say “what can you make” for the whole list. Simple shapes too: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder — just name one. With a model on screen I can resize it through the middle: “decrease width by 30%”, “make it 50mm wide”, “20mm longer”. Say “smoother” or “low poly” to change facets. For anything fancier, add an API key in ⚙." };
@@ -769,7 +908,10 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
       };
     }
 
-    const r = parseResize(t, dims);
+    let r = parseResize(t, dims);
+    // a bare comparative ("make it wider", "taller") means a sensible 20%
+    const bare = !r && !/\d/.test(lower) && /\b(wider|narrower|taller|shorter|longer|deeper|thicker|thinner)\b/.exec(lower);
+    if (bare) r = parseResize(`make it 20% ${bare[1]}`, dims);
     if (r?.error) return { reply: `Can't do that — ${r.error}` };
     if (r) {
       const A = r.axis.toUpperCase();
@@ -902,13 +1044,13 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
         "try “centre it” for a single part"],
     ].find(([re]) => re.test(lower));
     if (defer) {
-      return { reply: `${defer[1]}. I can do the mechanical edits on my own — holes, fillets, chamfers, resizing, drop to the floor, centre it — but this one wants a real model: add a Gemini or Claude key in ⚙ and it'll be one shot. Otherwise ${defer[2]} and tell me the numbers.` };
+      return { reply: `${defer[1]}. I can do the mechanical edits on my own — holes, fillets, chamfers, resizing, drop to the floor, centre it — but this one wants a real model. Otherwise ${defer[2]} and tell me the numbers. ${WAYS_ON}`, actions: HELP_ACTIONS, cantDo: true };
     }
   }
 
   // requests clearly beyond the built-in skills -> recommend the API
   if (/\b(gear|thread|text|logo|hinge|screw thread|dragon|figurine|organic|helix|spiral|enclosure with lid|case for)\b/.test(lower)) {
-    return { reply: "That one's beyond my built-in tricks — I do boxes, stacks, holes, brackets, frames and holders. Add a Gemini or Claude API key in ⚙ settings and I'll pass your exact words to a real model that can write it." };
+    return { reply: `That one's beyond my built-in tricks: I do the catalog (“what can you make”), simple shapes, holes, brackets, frames and holders. ${WAYS_ON}`, actions: HELP_ACTIONS, cantDo: true };
   }
 
   // follow-up: accept defaults for a pending proposal
@@ -930,7 +1072,14 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
 
   const shapes = findShapes(lower);
   if (!shapes.length) {
-    return { reply: "I didn't spot a shape or a thing I know. Try “I want a phone stand”, “a hook for my yoga mat”, or “make a box with a cone on top” — “what can you make” lists the catalog. For anything else, add an API key in ⚙ settings." };
+    // a catalog model is open: say what ITS dials can do instead
+    const open = catalogOf(currentCode);
+    if (open) return { ...catalogCantDo(open, t), cantDo: true };
+    return {
+      reply: `I didn't spot a shape or a thing I know. Try “I want a phone stand”, “a hook for my yoga mat”, or “make a box with a cone on top”; “what can you make” lists the catalog. ${WAYS_ON}`,
+      chips: ["what can you make", "I want a phone stand", "a hook for my yoga mat"],
+      actions: HELP_ACTIONS, cantDo: true,
+    };
   }
 
   // per-shape local sizes: numbers immediately after the shape word

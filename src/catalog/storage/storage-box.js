@@ -22,7 +22,7 @@ export default {
     depth: { default: 70, min: 20, max: 250, unit: "mm", label: "outside depth", say: ["deep", "depth"], more: ["deeper"], less: ["shallower"] },
     height: { default: 50, min: 10, max: 200, unit: "mm", label: "box height", say: ["tall", "high", "height"], more: ["taller", "higher"], less: ["shorter", "lower"] },
     wall: { default: 2, min: 1.2, max: 4, unit: "mm", label: "wall thickness", say: ["wall"] },
-    cornerR: { default: 6, min: 1, max: 20, unit: "mm", label: "corner radius", say: ["corner", "round"] },
+    cornerR: { default: 6, min: 1, max: 20, unit: "mm", label: "corner radius", say: ["corner", "round"], role: "round" },
     divX: { default: 0, min: 0, max: 8, unit: "count", label: "dividers across", say: ["divider", "compartment", "section", "slot"] },
     divY: { default: 0, min: 0, max: 8, unit: "count", label: "dividers along", say: ["row"] },
     lid: { default: "yes", unit: "choice", choices: ["yes", "no"], label: "lid",

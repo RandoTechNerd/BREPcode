@@ -137,6 +137,74 @@ if (!CAT) {
   check("normalise splits letters from digits", normalise("Galaxy S24+") === "galaxy s 24 plus", normalise("Galaxy S24+"));
 }
 
+// ---------------------------------------------------------------- chat follow-ups
+//
+// A catalog model is edited IN PLACE: the dials are read back out of the code
+// and only their const lines are rewritten, so a fillet the chat wrapped
+// round it, or a line the user typed, survives the next "wider".
+if (!CAT) {
+  console.log("\nfollow-ups edit the model in the editor\n");
+  const { respond, topLevelReturn } = await import("../viewer/chatbot.js");
+  const { catalogOf, readValues } = await import("../src/catalog/edit.js");
+  const st = {};
+  let code = "";
+  const say = (q) => {
+    const r = respond(q, st, code, code ? { min: [-40, -40, 0], max: [40, 40, 90] } : null);
+    if (r.code !== undefined) code = r.code;
+    return r;
+  };
+  const ps = familyById => FAMILIES.find((f) => f.id === familyById);
+  const stand = ps("phone-stand");
+  say("I want a phone holder");
+  check("the code names its family", catalogOf(code)?.id === "phone-stand");
+  check("...and reads back its own values", readValues(stand, code).width === 70);
+  say("for a pixel 9");
+  check("'for a Pixel 9' rewrites the slot", readValues(stand, code).deviceT === 11.5, readValues(stand, code).deviceT);
+  check("...and the Sized-for line", /Sized for Pixel 9/.test(code));
+  say("make it wider");
+  check("'make it wider' widens by a fifth", readValues(stand, code).width === 84, readValues(stand, code).width);
+  const before = readValues(stand, code);
+  const sc = say("scale it up 20%");
+  const after = readValues(stand, code);
+  check("'scale it up 20%' scales the outside sizes", Math.abs(after.backH - before.backH * 1.2) < 0.02, `${before.backH} -> ${after.backH}`);
+  check("...but not the phone slot or the walls", after.deviceT === before.deviceT && after.wall === before.wall);
+  check("...and says so", /Scaled/.test(sc.reply), sc.reply);
+  const rd = say("round the edges");
+  check("no rounding dial: a fillet is wrapped round it", /return fillet\(/.test(code), rd.reply);
+  say("make it 100 mm wide");
+  check("a dial still changes under the wrap", readValues(stand, code).width === 100 && /return fillet\(/.test(code));
+  say("make it purple");
+  check("'make it purple' colours it", /colorize\("#8e24aa"/.test(code));
+  say("no, make it blue");
+  check("...and a second colour replaces the first", /colorize\("#1e88e5"/.test(code) && !/#8e24aa/.test(code));
+  const hole = say("add another hole");
+  check("'add another hole' drills a screw-size hole", /cylinder\(\{ r: 2\.5/.test(code), hole.reply);
+  check("the stacked edits still build", await (async () => {
+    try { const r = await build(evalCode(code)); return toSTL(r, "s").length > 1000; } catch (e) { console.log(e.message); return false; }
+  })());
+  const no = say("make it fly");
+  check("an impossible follow-up says what this design CAN change", /can change: .*lean angle/.test(no.reply), no.reply);
+  check("...and points at the sliders, the editor, an AI and a human",
+    ["params", "editor", "ai", "email", "discord"].every((a) => no.actions?.some((x) => x.act === a)) && /RandoTechNerd@gmail\.com/.test(no.reply));
+
+  const st2 = {};
+  let c2 = "";
+  const say2 = (q) => { const r = respond(q, st2, c2, c2 ? { min: [-50, -35, 0], max: [50, 35, 50] } : null); if (r.code !== undefined) c2 = r.code; return r; };
+  say2("a storage box");
+  const box = ps("storage-box");
+  const r0 = readValues(box, c2).cornerR;
+  say2("round the edges");
+  check("a design with a rounding dial turns that up instead", readValues(box, c2).cornerR > r0 && !/fillet\(/.test(c2), `${r0} -> ${readValues(box, c2).cornerR}`);
+  const sw = say2("I want a phone stand 90 mm wide");
+  check("a new thing of another kind replaces the open one", catalogOf(c2)?.id === "phone-stand" && readValues(stand, c2).width === 90, sw.reply);
+  const fresh = respond("make me a purple phone stand", {}, "", null);
+  check("a colour in the first request comes out in it", /colorize\("#8e24aa"/.test(fresh.code));
+  check("the first reply offers one-tap follow-ups and a download",
+    respond("a storage box", {}, "", null).chips?.length >= 3 && respond("a storage box", {}, "", null).actions?.some((a) => a.act === "stl"));
+  const helper = "const arc = (r) => {\n  return [r, r];\n};\nreturn cube([2, 2, 2]);";
+  check("the wrap finds the model's own return, not a helper's", helper.slice(topLevelReturn(helper)).startsWith("return cube"));
+}
+
 // ---------------------------------------------------------------- building
 
 async function measure(code) {

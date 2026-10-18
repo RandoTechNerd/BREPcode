@@ -57,3 +57,22 @@ export const LOCKED = {
 // On a PUBLIC host the blob is downloadable by anyone and PBKDF2 only buys
 // time against offline guessing — so this suits a private hand-off, not a
 // website.
+
+// ---------------------------------------------------------------------------
+// FORM 3 — ASSIST MODE, the "AI hops in when the helper is stuck" demo.
+//
+// The built-in helper (rule engine + model catalog) stays the chat. Only when
+// it says it can't do something, or what it made fails to build, does the
+// chat offer a "✨ Let the AI try" button, and that one request goes to the
+// house AI. Prefer `proxy`: an OpenAI-compatible endpoint you run (see
+// docs/house-ai.md for a 30-line Cloudflare Worker) that holds the OpenRouter
+// key server-side, so nothing secret ships in the bundle. `open` works too,
+// for a quick demo, with the same plain-text caveats as FORM 1.
+//
+// export const LOCKED = {
+//   mode: "assist",
+//   proxy: "https://brepcode-ai.<you>.workers.dev/v1",   // or: open: "sk-or-v1-…",
+//   model: "z-ai/glm-5.3-flash",
+//   baseUrl: "https://openrouter.ai/api/v1",             // only used with `open`
+//   label: "BREPcode AI (demo)",
+// };

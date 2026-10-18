@@ -42,7 +42,7 @@ Read `desk/phone-stand.js` and `wall/cradle-hook.js` first: they are the pattern
 | `fits` + `fromSpec(spec)` | spec kinds that can size it, and how a spec's dims become params |
 | `primary` | the param a bare "150 mm" means when nothing else says (e.g. a diameter) |
 | `triple` | params that "120 x 80 x 50" fills, in order |
-| `ask` | `{ unless: [params], text }`: the one question to ask when no spec was named |
+| `ask` | `{ unless: [params], text, choices }`: the one question to ask when no spec was named; `choices` become one-tap replies |
 | `tips` | three short follow-ups the chat suggests: "75 degrees", "90 mm wide" |
 | `examples` | at least two whole requests that MUST route here (tested) |
 | `params` | the dials; see below |
@@ -54,6 +54,12 @@ A param: `{ default, min, max, unit, label, say, more, less }`.
 `words: { choice: [phrases] }`, and order matters: put "no lid" before "lid").
 `say` are the words that tie a number to it ("120 mm wide" -> `say: ["wide"]`),
 `more`/`less` the comparatives that nudge it ("wider", "narrower").
+`role` marks a dial the chat should reach for by job: `role: "round"` for an
+edge or corner radius ("round the edges" turns it up), `role: "holes"` for a count
+of screw or drill holes ("add another hole"). Without them the chat falls back to
+a generic fillet / a hole down the middle, which is cruder.
+`fixed: true` keeps a size out of "scale it up" (anything matching a real
+object or a fit: screws, clearances, walls and device sizes are kept by default).
 
 ### Things are how a few families cover a thousand requests
 

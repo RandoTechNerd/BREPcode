@@ -24,6 +24,7 @@ export default {
   ask: {
     unless: ["deviceT"],
     text: "Which phone is it for? Name it (“for an iPhone 16”) and I’ll size the slot to it; I used 12 mm, a typical phone in a case.",
+    choices: ["for an iPhone 16", "for a Pixel 9", "for a Galaxy S25", "for an iPad"],
   },
   tips: ["for a Pixel 9", "75 degrees", "90 mm wide", "no cable hole"],
   examples: ["I want a phone holder", "make me a phone stand for my iPhone 15 Pro",

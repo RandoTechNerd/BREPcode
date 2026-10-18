@@ -1874,6 +1874,9 @@
       font: 12px system-ui, sans-serif; padding: 5px 11px; cursor: pointer;
     }
     .quick-chip:hover { background: var(--accent); color: #fff; }
+    /* action buttons sit quieter than the say-this chips above them */
+    .action-chip { background: transparent; border-color: var(--border); color: var(--muted); text-decoration: none; display: inline-block; }
+    .action-chip:hover { background: var(--hover-strong, var(--border)); color: var(--text); }
     .msg.bot.thinking { color: var(--muted); font-style: italic; }
     #chat-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); position: relative; }
     /* # and / autocomplete. Opens UPWARD: the chat input sits at the bottom of
@@ -16835,6 +16838,31 @@ let SIMPLIFY_TARGET = 10000;
       }
       return null;
     }
+    // ?ask=<words> (or #ask=): the /make page's hand-off. The chat opens and
+    // the request goes in exactly as typed, so a newcomer's first click is
+    // their own sentence turning into a model.
+    function launchAsk() {
+      for (const L of hostLocations()) {
+        const a = new URLSearchParams(L.search).get("ask") ?? new URLSearchParams(L.hash.replace(/^#/, "")).get("ask");
+        if (a !== null) return a.slice(0, 500);
+      }
+      return null;
+    }
+    async function openChatAndAsk(text) {
+      if (!chatCard.classList.contains("open")) chatBtn.click();
+      // the chat module and its greeting arrive first, then the request
+      await ensureChat();
+      await new Promise((r) => setTimeout(r, 250));
+      if (text.trim()) { chatInput.value = text.trim(); sendChat(); }
+      for (const L of hostLocations()) {
+        try {
+          const u = new URL(L.href);
+          if (!u.searchParams.has("ask")) continue;
+          u.searchParams.delete("ask");
+          (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
+        } catch { /* cross-origin frame */ }
+      }
+    }
     // Same idea for the examples: ?example=<name> (or #example=) loads one
     // straight away, the way the welcome card's chips do. Shared links like
     // brepcode.com/tpu-box land here as ?example=tpubox.
@@ -21065,8 +21093,67 @@ let SIMPLIFY_TARGET = 10000;
     // exactly what the house key is for.
     const KEYLESS = ["claude-code", "browser", "local"];
     const hasOwnAI = !!(aiCfg.key || "").trim() || KEYLESS.includes(aiCfg.provider);
-    if (LOCKED.open && !hasOwnAI) {
+    if (LOCKED.open && !hasOwnAI && LOCKED.mode !== "assist") {
       applyShippedKey(LOCKED.open, LOCKED);
+    }
+
+    // THE HOUSE AI, ASSIST MODE. The built-in helper (rule engine + catalog)
+    // stays the chat; a house AI only steps in when the helper is stuck: it
+    // could not do what was asked, or what it made would not build. Then the
+    // chat offers ONE button, and only that one request goes to the AI.
+    //
+    // Where it comes from, first match wins:
+    //   1. localStorage "brepcode-house-ai": {"proxy": "...", "model": "..."}
+    //      or {"key": "...", "baseUrl": "...", "model": "..."}. For trying it
+    //      out on your own machine without a rebuild.
+    //   2. locked-key.js with mode: "assist": `proxy` (an OpenAI-compatible
+    //      endpoint that holds the key server-side; nothing secret ships) or
+    //      `open` (a plain key in the bundle: cap its spend at OpenRouter).
+    // Nothing configured means no offer at all: the helper points at the
+    // sliders, the editor, connecting your own AI, and email / Discord.
+    // docs/house-ai.md has the OpenRouter proxy and the switch to flip.
+    let houseNext = null;
+    function houseCfg() {
+      let dev = null;
+      try { dev = JSON.parse(localStorage.getItem("brepcode-house-ai") || "null"); } catch { /* bad JSON = none */ }
+      const src = dev || (LOCKED.mode === "assist" ? LOCKED : null);
+      if (!src) return null;
+      const model = succeedModel(src.model || "z-ai/glm-5.3-flash");
+      if (src.proxy) return { provider: "openai", model, key: "house", baseUrl: src.proxy, label: src.label };
+      const key = src.key || src.open;
+      if (key) return { provider: src.provider || "openai", model, key, baseUrl: src.baseUrl || "https://openrouter.ai/api/v1", label: src.label };
+      return null;
+    }
+    const houseAiReady = () => !!houseCfg();
+    function offerHouseAI(text, why = "That one needs a real AI.") {
+      const cfg = houseCfg();
+      if (!cfg) return;
+      const name = cfg.label || "BREPcode AI (demo)";
+      const el = addMsg("bot", `${why} ${name} can have a go at it: one request, your words as you typed them.`);
+      const b = document.createElement("button");
+      b.className = "quick-chip";
+      b.style.marginTop = "6px";
+      b.textContent = "✨ Let the AI try";
+      b.addEventListener("click", () => {
+        b.remove();
+        houseNext = houseCfg();
+        chatInput.value = text;
+        sendChat();
+      });
+      el.appendChild(document.createElement("br"));
+      el.appendChild(b);
+    }
+    // The helper made code and it would not build: say so, and offer the way on.
+    function watchHelperBuild(text) {
+      onceBuilt((ok) => {
+        if (ok) return;
+        const err = (statusText?.textContent || "").trim();
+        if (houseAiReady()) offerHouseAI(`fix this so it builds: ${text}`, `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}.`);
+        else {
+          addMsg("bot", `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}. Undo with ◀, adjust it in the Editor, or connect an AI to fix it.`);
+          actionRow(CHAT?.HELP_ACTIONS || []);
+        }
+      });
     }
     $("unlock-btn").addEventListener("click", tryUnlock);
     $("unlock-pw").addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
@@ -21475,6 +21562,9 @@ let SIMPLIFY_TARGET = 10000;
       const raw = chatInput.value.trim();
       if (!raw) return;
       chatInput.value = "";
+      // the house AI's one request (offerHouseAI), consumed here
+      const house = houseNext;
+      houseNext = null;
 
       // #tags and /commands steer the request; they are not part of it. The
       // bubble keeps what was typed — it is their message and they should see
@@ -21579,7 +21669,7 @@ let SIMPLIFY_TARGET = 10000;
       // Claude Code needs no key, so it must not fall through the key test
       // into the built-in bot. And when it is selected but not yet installed,
       // the honest answer is the CONNECTION steps — not a shape parser's shrug.
-      if (aiProvider.value === "claude-code") {
+      if (!house && aiProvider.value === "claude-code") {
         if (!window.brepcodeDesktop) {
           addMsg("bot", "Claude Code chat works in the desktop app — a web page can't run programs. Download BREPcode.exe, or pick Gemini/Claude with an API key here.");
           return;
@@ -21605,7 +21695,7 @@ let SIMPLIFY_TARGET = 10000;
           }
         }
       }
-      const useApi = aiProvider.value === "claude-code"
+      const useApi = !!house || aiProvider.value === "claude-code"
         || aiProvider.value === "local"        // no key: blank URL = localhost default
         || aiProvider.value === "browser"      // no key: the model runs in this tab
         || (aiProvider.value !== "builtin" && aiKey.value.trim());
@@ -21615,15 +21705,18 @@ let SIMPLIFY_TARGET = 10000;
         if (r.clearPending) botState.pending = null;
         addMsg("bot", r.reply);
         chatLog.push({ role: "assistant", text: r.reply });
-        if (r.code !== undefined) applyGeneratedCode(r.code);
-        maybeOfferRealAI(r);
+        if (r.code !== undefined) { watchHelperBuild(text); applyGeneratedCode(r.code); }
+        replyExtras(r);
+        // the built-in helper is out of its depth: the house AI may step in
+        if (r.cantDo && houseAiReady()) offerHouseAI(text);
+        else maybeOfferRealAI(r);
         return;
       }
 
       // Default gem policy: try the hardcoded assistant first — if it can
       // actually handle this (it built code, or it's running a guided flow),
       // answer locally and save the API round-trip.
-      if (gemWantsLocalFirst()) {
+      if (!house && gemWantsLocalFirst()) {
         const local = botRespond(text, botState, code.value, modelDims);
         if (local.code !== undefined || local.pending) {
           if (local.pending) botState.pending = local.pending;
@@ -21631,6 +21724,7 @@ let SIMPLIFY_TARGET = 10000;
           addMsg("bot", `${local.reply}  ⚡ handled locally`);
           chatLog.push({ role: "assistant", text: local.reply });
           if (local.code !== undefined) applyGeneratedCode(local.code);
+          replyExtras(local);
           return;
         }
       }
@@ -21770,8 +21864,9 @@ let SIMPLIFY_TARGET = 10000;
         const msgs = [...chatLog.slice(-8, -1), { role: "user", text: context }];
         // `let`, not const: a model whose pool is full sends us to the
         // fallback below, which means swapping the model on a copy of this.
-        let cfg = { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
-          baseUrl: aiBase.value.trim() };
+        let cfg = house ? { provider: house.provider, model: house.model, key: house.key, baseUrl: house.baseUrl }
+          : { provider: aiProvider.value, model: aiModel.value.trim(), key: aiKey.value.trim(),
+            baseUrl: aiBase.value.trim() };
 
         logLine(`request → ${cfg.provider} · ${cfg.model}`);
 
@@ -22383,6 +22478,41 @@ let SIMPLIFY_TARGET = 10000;
     // people thinking the hardcoded helper is the AI.
     const BREPCODE_RELEASES = "https://github.com/RandoTechNerd/BREPcode/releases/latest";
     const offeredRealAI = { info: false, complex: false };
+    // One-tap follow-ups (chips send a message) and buttons (actions do a thing)
+    // under a built-in reply. Chips are how a newcomer learns what to say next;
+    // the action row is where "can't do that" points: sliders, code, an AI, a human.
+    function replyExtras(r) {
+      if (!r) return;
+      if (r.chips?.length) quickReplies(r.chips, r.chips);
+      if (r.actions?.length) actionRow(r.actions);
+    }
+    function actionRow(actions) {
+      const contact = CHAT?.CONTACT || { email: "RandoTechNerd@gmail.com", discord: "https://discord.gg/8fjQHDX8PQ" };
+      const row = document.createElement("div");
+      row.className = "quick-row action-row";
+      for (const a of actions) {
+        const link = a.act === "email" || a.act === "discord";
+        const b = document.createElement(link ? "a" : "button");
+        b.className = "quick-chip action-chip";
+        b.textContent = a.label;
+        if (a.act === "email") b.href = `mailto:${contact.email}?subject=${encodeURIComponent("BREPcode help")}`;
+        else if (a.act === "discord") { b.href = contact.discord; b.target = "_blank"; b.rel = "noopener"; }
+        else b.addEventListener("click", () => runChatAction(a.act));
+        row.appendChild(b);
+      }
+      chatMsgs.appendChild(row);
+      chatMsgs.scrollTop = chatMsgs.scrollHeight;
+    }
+    function runChatAction(act) {
+      if (act === "stl") exportSTL();
+      else if (act === "params") toggleCard(paramsCard, paramsBtn, true);
+      else if (act === "editor") { if (!panel.classList.contains("open")) openBtn.click(); }
+      else if (act === "ai") {
+        $("chat-settings").classList.add("open");
+        $("chat-settings").scrollIntoView?.({ block: "nearest" });
+      }
+    }
+
     function maybeOfferRealAI(r) {
       if (aiProvider.value !== "builtin") return;
       // A catalog design is a tested, finished part, not a "simple shape":
@@ -22567,7 +22697,11 @@ let SIMPLIFY_TARGET = 10000;
     // (addMsg is textContent by design — set HTML on the returned node.)
     {
       const hello = addMsg("bot", "");
-      hello.innerHTML = "Hi! I'm in <b>light mode</b> — a small built-in helper that only knows simple shapes (try “make a box with a cone on top”). For a real AI, open ⚙: <b>In your browser</b> is free with no key and no install (a one-time ~1 GB download), or paste a Gemini / Claude API key.";
+      hello.innerHTML = "Hi! Tell me what you want to print: <b>“a phone stand”</b>, <b>“a hook for my yoga mat”</b>, <b>“a cable clip for 3 cables”</b>. "
+        + "I'm the built-in helper (no AI, nothing to set up): I know a catalog of tested designs and simple shapes, and I can change what I make: “wider”, “for an iPhone 16”, “round the edges”, “make it blue”. "
+        + "Say <b>what can you make</b> for the list. For anything else, open ⚙ to connect an AI: <b>In your browser</b> is free with no key, or paste your own Gemini, Claude or OpenRouter key.";
+      quickReplies(["I want a phone stand", "a hook for my yoga mat", "a small wall shelf", "what can you make"],
+        ["I want a phone stand", "a hook for my yoga mat", "a small wall shelf", "what can you make"]);
 
       // The house key, offered as a BUTTON rather than applied behind the
       // user's back.
@@ -22783,6 +22917,8 @@ let SIMPLIFY_TARGET = 10000;
         // A shared example link (?example=tpubox, as brepcode.com/tpu-box
         // serves) loads the model like a welcome-card chip would and skips the
         // entry card — the visitor came for THIS model, not the front door.
+        const ask = launchAsk();
+        if (ask !== null) { openChatAndAsk(ask); return; }
         const exName = launchExample();
         if (exName && W.EXAMPLES[exName]) {
           const ex = W.EXAMPLES[exName];

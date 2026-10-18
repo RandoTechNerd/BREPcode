@@ -178,6 +178,12 @@ bounce("tour", "tour=1", "BREPcode — guided tour",
 // The welcome card normally shows once per browser. ?welcome=1 forgets that,
 // so this is the link to hand out when the first thing someone should see is
 // the start screen (examples, describe a part, bring an STL).
+// ---- /make : the front door for newcomers --------------------------------
+// One question ("What do you want to 3D print?"), a box and some examples.
+// It hands the words to the app as ?ask=, where the chat opens and answers.
+// A real page rather than a bounce: it is the thing people land on.
+mkdirSync(join(OUT, "make"), { recursive: true });
+writeFileSync(join(OUT, "make", "index.html"), readFileSync("viewer/make.html", "utf8"));
 bounce("welcome", "welcome=1", "BREPcode — free CAD in your browser",
   "BREPcode: type it, describe it, or drop in an STL and upgrade it. Real solid modelling in a browser tab, no install, no account.",
   "Opening BREPcode");

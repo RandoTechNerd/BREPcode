@@ -104,7 +104,8 @@ export function familyCode(family, values, { sizedFor = [], title = family.title
     `// ${title}: ${family.summary}`,
     ...sizedFor.map((s) => `// Sized for ${s}`),
     ...(family.print ? [`// Print: ${family.print}`] : []),
-    `// Every number below is a slider (Params). From the BREPcode catalog.`,
+    // the family id is how a later chat follow-up knows what this is (edit.js)
+    `// Every number below is a slider (Params). From the BREPcode catalog: ${family.id}.`,
   ];
   return [...head, ...paramLines(family, values), "", family.body.trim(), ""].join("\n");
 }
