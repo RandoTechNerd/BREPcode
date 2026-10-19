@@ -13,7 +13,7 @@ export default {
     "hexagon shelves", "honeycomb shelves"],
   nouns: ["shelf"],
   keywords: ["hexagon", "hex", "honeycomb", "geometric", "wall", "display", "plant", "decor"],
-  tips: ["with a back", "200 mm across", "a triangle", "a shelf across the middle"],
+  tips: ["with a back", "240 mm across", "a triangle", "a shelf across the middle"],
   examples: ["I want a hexagon shelf", "make me a honeycomb shelf 180mm across",
     "a hexagon wall shelf with a back", "a triangle shelf 120mm deep"],
   params: {

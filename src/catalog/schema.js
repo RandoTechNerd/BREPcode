@@ -57,8 +57,7 @@ const round2 = (v) => Math.round(v * 100) / 100;
 export function resolveParams(family, ...layers) {
   const values = {}, clamped = [];
   for (const [k, p] of Object.entries(family.params)) values[k] = p.default;
-  for (const layer of layers) {
-    if (!layer) continue;
+  const put = (layer) => {
     for (const [k, v] of Object.entries(layer)) {
       const p = family.params[k];
       if (!p || v === undefined || v === null) continue;
@@ -76,6 +75,15 @@ export function resolveParams(family, ...layers) {
       }
       values[k] = p.unit === "count" ? n : round2(n);
     }
+  };
+  for (const layer of layers) if (layer) put(layer);
+  // A family may fold one dial into others once everything is in: the
+  // battery organizer turns "12 batteries" into a 4 x 3 grid and sets the
+  // count back to 0, so the code shows the grid and the follow-up reports
+  // "pockets across 6 -> 4, rows 4 -> 3". Same clamps as any layer.
+  if (family.derive) {
+    const more = family.derive(values);
+    if (more) put(more);
   }
   return { values, clamped };
 }

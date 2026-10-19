@@ -14,7 +14,7 @@ export default {
   nouns: ["tray", "organizer", "insert"],
   keywords: ["token", "tokens", "board", "game", "pieces", "bits", "scoop", "compartment"],
   triple: ["width", "depth", "height"],
-  tips: ["4 compartments", "2 rows", "150 x 100 x 25"],
+  tips: ["4 compartments", "3 rows", "200 x 120 x 30"],
   examples: ["I want a token tray", "board game organizer with 4 compartments and 2 rows",
     "token tray 160 x 90 x 25", "a dice tray"],
   params: {

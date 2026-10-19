@@ -16,7 +16,7 @@ export default {
   nouns: ["brick", "bricks", "block", "plate", "tile"],
   keywords: ["building", "studs", "stud", "interlocking", "construction", "toy", "kids", "compatible"],
   bridgeArea: (v) => v.bottom === "solid" ? 0 : Math.max(0, (v.studsX * 8 - 2 * v.fit - 2 * v.wall) * (v.studsY * 8 - 2 * v.fit - 2 * v.wall)),
-  tips: ["2 x 2", "a plate", "no studs (a tile)"],
+  tips: ["2 x 2", "a 2x4 plate", "no studs (a tile)"],
   examples: ["I want a building brick", "make me a 2x4 building brick", "a toy brick 6 studs long",
     "stud compatible brick plate 4 x 4"],
   params: {

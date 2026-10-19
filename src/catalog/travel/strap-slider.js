@@ -21,7 +21,7 @@ export default {
   params: {
     kind: { default: "slider", unit: "choice", choices: ["slider", "keeper", "rectangle", "dring"], label: "which piece",
       words: { keeper: ["keeper", "strap loop", "retainer"], rectangle: ["rectangle ring", "rectangular ring", "square ring"],
-        dring: ["dring", "half moon"], slider: ["slider", "tri glide", "triglide", "adjuster"] } },
+        dring: ["dring", "d ring", "half moon"], slider: ["slider", "tri glide", "triglide", "adjuster"] } },
     strapW: { default: 25.4, min: 10, max: 52, unit: "mm", label: "webbing width", say: ["wide", "width"] },
     strapT: { default: 2.5, min: 1, max: 5, unit: "mm", label: "webbing thickness", say: ["thick"] },
     bar: { default: 3.5, min: 2, max: 6, unit: "mm", label: "bar width", say: ["bar"], more: ["stronger"] },
@@ -30,7 +30,7 @@ export default {
   things: [
     { names: ["strap keeper", "strap loop", "webbing keeper", "strap retainer", "webbing loop keeper"], title: "Strap keeper", params: { kind: "keeper" } },
     { names: ["rectangle ring", "rectangular ring", "strap ring", "webbing ring"], title: "Rectangle ring", params: { kind: "rectangle", bar: 4 } },
-    { names: ["dring", "half moon ring", "semicircle ring", "webbing dring"], title: "D-ring", params: { kind: "dring", bar: 4 } },
+    { names: ["dring", "d ring", "half moon ring", "semicircle ring", "webbing dring", "webbing d ring"], title: "D-ring", params: { kind: "dring", bar: 4 } },
     { names: ["backpack strap adjuster", "backpack buckle slider", "backpack strap slider"], title: "Backpack strap adjuster", spec: "webbing-25mm" },
     { names: ["luggage strap adjuster", "suitcase strap slider"], title: "Luggage strap adjuster", spec: "webbing-38mm", params: { bar: 4.5, thick: 3.5 } },
     { names: ["camera strap adjuster", "camera strap slider"], title: "Camera strap adjuster", spec: "webbing-1in" },

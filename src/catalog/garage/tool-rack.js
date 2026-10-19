@@ -15,7 +15,7 @@ export default {
     "tool wall rack", "tool hanging rack", "tool shelf rack"],
   nouns: ["rack", "organizer", "holder", "shelf"],
   keywords: ["garage", "workshop", "workbench", "tool", "wall", "shed"],
-  tips: ["8 holes", "slots instead of holes", "12 mm holes", "40 mm deep"],
+  tips: ["10 holes", "slots instead of holes", "12 mm holes", "40 mm deep"],
   examples: ["I want a tool rack for the garage", "make me a screwdriver rack with 10 holes",
     "a plier rack with slots", "wall tool rack 6 slots 40mm deep"],
   params: {

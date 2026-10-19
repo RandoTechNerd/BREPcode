@@ -12,13 +12,14 @@ import frenchCleat from "./french-cleat.js";
 import cleatHook from "./cleat-hook.js";
 import pegboardHook from "./pegboard-hook.js";
 import pegboardBin from "./pegboard-bin.js";
+import skadisBin from "./skadis-bin.js";
 import mailHolder from "./mail-holder.js";
 import pictureHook from "./picture-hook.js";
 import doorHook from "./door-hook.js";
 import sHook from "./s-hook.js";
 
 export const FAMILIES = [cradleHook, wallShelf, coatHook, keyRack, guitarHanger, frenchCleat, cleatHook,
-  pegboardHook, pegboardBin, mailHolder, pictureHook, doorHook, sHook];
+  pegboardHook, pegboardBin, skadisBin, mailHolder, pictureHook, doorHook, sHook];
 
 // Real objects the wall families are sized for.
 //

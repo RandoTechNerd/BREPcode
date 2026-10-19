@@ -17,7 +17,7 @@ export default {
   fits: ["card"],
   fromSpec: (s) => ({ slotW: s.dims.t + 0.8, length: Math.min(250, Math.max(30, s.dims.w * 0.55)), slotDepth: Math.min(30, Math.max(8, s.dims.h * 0.12)) }),
   specNote: "the slot is 0.8 mm wider than the card",
-  tips: ["a set of 8", "for 3 mm acrylic", "leaning back 15 degrees", "round"],
+  tips: ["a set of 8 stands", "for 3 mm acrylic", "leaning back 15 degrees", "round"],
   examples: ["I want a card stand", "make me a photo stand for a 4x6 photo",
     "8 place card holders", "table number holder for a wedding", "a sign holder for 3mm acrylic"],
   params: {

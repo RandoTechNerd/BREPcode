@@ -20,7 +20,7 @@ export default {
     unless: ["ballD"],
     text: "Which ball is it for? Name it (“for a soccer ball”, “golf ball”) and I’ll size the ring to it; I used a baseball, 74 mm.",
   },
-  tips: ["for a basketball", "3 in a row", "taller"],
+  tips: ["for a basketball", "3 balls in a row", "taller"],
   examples: ["I want a ball display stand", "make me a ball stand for a soccer ball", "golf ball display stand for 3 balls",
     "a stand for my signed baseball"],
   params: {

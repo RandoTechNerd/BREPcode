@@ -22,7 +22,7 @@ export default {
   examples: ["I want a shelf pin", "make me a shelf support for a 5mm hole",
     "shelf pins for my ikea bookcase", "a shelf support pin with a 15mm ledge"],
   params: {
-    pinD: { default: 4.8, min: 3, max: 8, unit: "mm", label: "peg diameter (the hole size)", say: ["diameter", "hole", "peg"] },
+    pinD: { default: 4.8, min: 3, max: 8, unit: "mm", label: "peg diameter (the hole size)", say: ["diameter", "hole", "peg", "pin"] },
     pinL: { default: 8, min: 4, max: 20, unit: "mm", label: "how far the peg goes in", say: ["long", "length", "into"] },
     ledgeL: { default: 12, min: 5, max: 40, unit: "mm", label: "how far the ledge sticks out", say: ["ledge", "out", "deep", "depth"], more: ["longer", "deeper"] },
     width: { default: 10, min: 6, max: 30, unit: "mm", label: "support width", say: ["wide", "width"], more: ["wider"], less: ["narrower"] },

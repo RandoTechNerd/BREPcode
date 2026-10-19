@@ -11,11 +11,12 @@ import leashRack from "./leash-rack.js";
 import aquariumClip from "./aquarium-clip.js";
 import feedingRing from "./feeding-ring.js";
 import treatRoller from "./treat-roller.js";
+import treatBall from "./treat-ball.js";
 import catWallStep from "./cat-wall-step.js";
 import smallAnimalHide from "./small-animal-hide.js";
 import petFoodCanLid from "./pet-food-can-lid.js";
 
-export const FAMILIES = [petFoodScoop, bowlStand, petBowl, poopBagDispenser, leashRack, aquariumClip, feedingRing, treatRoller, catWallStep, smallAnimalHide, petFoodCanLid];
+export const FAMILIES = [petFoodScoop, bowlStand, petBowl, poopBagDispenser, leashRack, aquariumClip, feedingRing, treatRoller, treatBall, catWallStep, smallAnimalHide, petFoodCanLid];
 
 // Real things these parts fit. Pet gear is sold by nominal size, not by a
 // standard, so every size here is the common one and says "about": the part

@@ -32,7 +32,7 @@ export default {
     { names: ["two row card holder", "double card holder", "2 row card holder", "two tier card holder"], title: "Two-row card holder",
       params: { slots: 2, length: 200 } },
     { names: ["uno card holder", "large card holder", "big card holder"], title: "Large card holder", params: { length: 230, slots: 2, slotTop: 3.2 } },
-    { names: ["domino holder", "domino rack", "domino stand", "mexican train domino holder"], title: "Domino rack",
+    { names: ["domino holder", "domino rack", "domino stand", "dominoes holder", "dominoes rack", "mexican train domino holder"], title: "Domino rack",
       params: { length: 200, height: 22, slotTop: 11.5, slotBottom: 10.6, slotDepth: 12, base: 30 } },
     { names: ["tile rack", "game tile holder", "letter tile holder"], title: "Tile rack",
       params: { length: 190, height: 20, slotTop: 6, slotBottom: 5.2, slotDepth: 8, base: 28 } },

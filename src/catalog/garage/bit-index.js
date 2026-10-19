@@ -13,7 +13,7 @@ export default {
     "bit storage block", "bit index", "hex bit organizer", "bit stand", "impact bit holder"],
   nouns: ["block", "index", "organizer", "stand", "holder"],
   keywords: ["bit", "drill", "router", "hex", "shank", "workbench", "garage"],
-  tips: ["3 rows", "round holes", "stepped rows", "12 per row"],
+  tips: ["3 rows", "round holes", "with stepped rows", "12 per row"],
   examples: ["I want a hex bit holder", "make me a drill bit index from 1 to 10 mm",
     "router bit holder for 1/4 inch shanks", "bit organizer with 3 rows of 12"],
   params: {

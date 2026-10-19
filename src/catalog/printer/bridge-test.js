@@ -13,7 +13,7 @@ export default {
     "bridge torture test", "bridging tower", "bridge span test"],
   nouns: ["tester"],
   keywords: ["bridge", "bridging", "calibration", "test", "printer", "span"],
-  tips: ["5 gaps", "start at 20 mm", "taller posts"],
+  tips: ["7 gaps", "start at 20 mm", "taller posts"],
   examples: ["make me a bridge test", "a bridging test from 10 to 50 mm",
     "bridge calibration with 6 gaps", "bridge test starting at 20mm"],
   bridgeArea: (v) => {

@@ -32,7 +32,7 @@ export default {
     shape: { default: "round", unit: "choice", choices: ["round", "square", "cone"], label: "round ring, square ring, or a slotted worm-feeder cone",
       words: { cone: ["cone", "worm", "bloodworm", "live food", "frozen", "tubifex"], square: ["square"], round: ["round", "circle"] } },
     glassT: { default: 6, min: 3, max: 25, unit: "mm", label: "glass (or frame) thickness", say: ["glass", "thick", "thickness", "frame"] },
-    armL: { default: 15, min: 3, max: 80, unit: "mm", label: "gap between the glass and the ring", say: ["arm", "away", "gap", "from"] },
+    armL: { default: 15, min: 3, max: 80, unit: "mm", label: "gap between the glass and the ring", say: ["arm", "away", "gap", "from"], more: ["farther", "further"], less: ["closer", "nearer"] },
     legH: { default: 25, min: 12, max: 60, unit: "mm", label: "how far the clip hangs down the glass", say: ["clip", "leg"] },
     wall: { default: 2.4, min: 1.6, max: 4, unit: "mm", label: "wall thickness", say: ["wall"] },
     slitW: { default: 2, min: 1, max: 6, unit: "mm", label: "worm slit width (cone)", say: ["slit", "slot"] },

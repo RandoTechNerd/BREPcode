@@ -36,7 +36,8 @@ export default {
     lean: { default: 10, min: 0, max: 30, unit: "deg", label: "lean back from upright", say: ["lean", "angle", "tilt", "degree"] },
   },
   things: [
-    { names: ["treadmill holder", "treadmill ipad holder", "treadmill tablet stand"], title: "Treadmill tablet holder" },
+    { names: ["treadmill holder", "treadmill tablet stand"], title: "Treadmill tablet holder" },
+    { names: ["treadmill ipad holder", "ipad holder for treadmill", "treadmill ipad mount"], title: "Treadmill iPad holder", spec: "ipad" },
     { names: ["treadmill phone holder", "treadmill phone mount"], title: "Treadmill phone holder", params: { deviceT: 12, backH: 60, width: 60 } },
     { names: ["exercise bike tablet holder", "exercise bike holder", "spin bike tablet mount", "stationary bike tablet holder", "exercise bike phone holder", "spin bike holder"], title: "Exercise bike tablet holder", params: { consoleT: 35, hookD: 30 } },
     { names: ["elliptical tablet holder", "elliptical phone holder", "elliptical holder"], title: "Elliptical tablet holder", params: { consoleT: 25 } },

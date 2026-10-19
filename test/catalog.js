@@ -150,6 +150,12 @@ if (!CAT) {
   check("'without a lid' beats 'lid'", m6?.values.lid === "no", m6?.values.lid);
   const big = matchRequest("wall shelf 900mm long");
   check("an out-of-range size is clamped and reported", big?.values.length === 300 && big.clamped.length === 1, JSON.stringify(big?.clamped));
+  const b12 = matchRequest("holder for 12 AA batteries");
+  check("a battery count becomes the grid", b12?.familyId === "battery-organizer" && b12.values.cols === 4 && b12.values.rows === 3 && b12.values.count === 0, JSON.stringify(b12?.values));
+  const b10 = matchRequest("battery organizer for 10 AAA batteries");
+  check("...the squarest grid that holds them exactly", b10?.values.cols === 5 && b10?.values.rows === 2 && b10.spec?.id === "battery-aaa", JSON.stringify(b10?.values));
+  const mz = matchRequest("maze puzzle 12 x 8");
+  check("a maze can be a rectangle", mz?.values.cells === 12 && mz?.values.rows === 8, JSON.stringify(mz?.values));
   const ph = matchRequest("I want a phone holder");
   check("an unsized phone stand asks which phone", !!ph?.question);
   const r1 = refineRequest(ph.memo, "for a pixel 9");
@@ -227,6 +233,32 @@ if (!CAT) {
     respond("a storage box", {}, "", null).chips?.length >= 3 && respond("a storage box", {}, "", null).actions?.some((a) => a.act === "stl"));
   const helper = "const arc = (r) => {\n  return [r, r];\n};\nreturn cube([2, 2, 2]);";
   check("the wrap finds the model's own return, not a helper's", helper.slice(topLevelReturn(helper)).startsWith("return cube"));
+}
+
+// ---------------------------------------------------------------- advertised follow-ups
+//
+// Every follow-up a family advertises (its tips, and the one-tap choices of
+// its question) must DO something on the family's own default code: change
+// a dial, switch a thing, or ask a question. The chat dry-runs chips before
+// showing them, so a dead tip is never seen as a chip; it is still what the
+// family teaches people to type, and "I couldn't do that" is the wrong lesson.
+console.log("\nevery advertised follow-up does something\n");
+{
+  const { respond } = await import("../viewer/chatbot.js");
+  const dims = { min: [-60, -60, 0], max: [60, 60, 100] };
+  for (const f of families) {
+    const code = familyCode(f, resolveParams(f).values);
+    const tips = [...(f.tips || []), ...(f.ask?.choices || [])];
+    const dead = [];
+    for (const tip of tips) {
+      let r;
+      try { r = respond(tip, { catalog: { familyId: f.id, specId: null } }, code, dims); }
+      catch (e) { r = { reply: `threw: ${e.message}` }; }
+      if (!(r.code !== undefined || r.asked)) dead.push(`"${tip}" -> ${String(r.reply).slice(0, 70)}`);
+    }
+    check(`${f.id}: every tip and ask choice does something (${tips.length})`, tips.length >= 2 && !dead.length,
+      tips.length < 2 ? "fewer than two tips" : dead.join("; "));
+  }
 }
 
 // ---------------------------------------------------------------- building

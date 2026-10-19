@@ -13,7 +13,7 @@ export default {
     "printer riser feet", "damper feet", "vibration damper", "printer foot cup", "printer riser", "noise dampening feet"],
   nouns: ["feet", "foot", "riser", "damper"],
   keywords: ["printer", "vibration", "noise", "squash", "ball", "quiet"],
-  tips: ["squash ball", "40 mm tall", "for 25 mm feet"],
+  tips: ["squash ball", "40 mm tall", "for 30 mm feet"],
   examples: ["make me printer feet", "anti vibration feet with squash balls",
     "a printer riser 40mm tall for 30mm feet", "vibration dampening feet for my printer"],
   params: {

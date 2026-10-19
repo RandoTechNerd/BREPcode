@@ -15,7 +15,7 @@ export default {
   keywords: ["yoga", "pilates", "stretch", "stretching", "exercise", "workout", "meditation"],
   triple: ["length", "width", "height"],
   primary: "height",
-  tips: ["4 inches tall", "wedge", "15 degrees"],
+  tips: ["4 inches tall", "wedge", "20 degree wedge"],
   examples: ["I want a yoga block", "make me a yoga block 229 x 152 x 76", "a 4 inch yoga block",
     "pilates block 50mm tall"],
   params: {

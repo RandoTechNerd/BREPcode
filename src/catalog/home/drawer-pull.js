@@ -24,7 +24,7 @@ export default {
     "a 3 inch drawer pull", "arch pull 96mm"],
   params: {
     spacing: { default: 96, min: 32, max: 256, unit: "mm", label: "hole spacing, centre to centre", say: ["spacing", "centre", "center", "centers", "centres", "apart", "cc"] },
-    overhang: { default: 20, min: 0, max: 60, unit: "mm", label: "bar past each hole", say: ["overhang", "past", "extra"] },
+    overhang: { default: 20, min: 0, max: 60, unit: "mm", label: "bar past each hole", say: ["overhang", "past", "extra"], more: ["longer"], less: ["shorter"] },
     gap: { default: 25, min: 12, max: 50, unit: "mm", label: "finger gap behind the bar", say: ["gap", "finger", "clearance", "deep", "depth", "out"], more: ["deeper"], less: ["shallower"] },
     barT: { default: 10, min: 6, max: 20, unit: "mm", label: "bar thickness", say: ["thick", "thickness"], more: ["thicker", "chunkier"], less: ["thinner", "slimmer"] },
     barH: { default: 12, min: 8, max: 30, unit: "mm", label: "bar height", say: ["tall", "high", "height"] },

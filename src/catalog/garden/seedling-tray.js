@@ -15,7 +15,7 @@ export default {
   keywords: ["seed", "seedling", "seedlings", "sprout", "starter", "germinate", "cells"],
   triple: ["cols", "rows"],
   primary: "cell",
-  tips: ["8 x 4 cells", "30 mm cells", "deeper cells"],
+  tips: ["8 x 4 cells", "30 mm square cells", "deeper cells"],
   examples: ["I want a seedling tray", "make me a seed starting tray with 6 x 3 cells",
     "seed tray with 30mm cells", "a plug tray for seedlings"],
   params: {

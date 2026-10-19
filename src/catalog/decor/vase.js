@@ -34,6 +34,7 @@ export default {
     { names: ["bud vase", "small bud vase", "single flower vase", "mini vase"], title: "Bud vase", params: { shape: "bud", height: 120, width: 60, neck: 0.4 } },
     { names: ["tall vase", "tall flower vase", "floor vase"], title: "Tall vase", params: { height: 250, width: 100 } },
     { names: ["twisted vase", "twist vase", "spiral vase", "swirl vase"], title: "Twisted vase", params: { sides: 6, twist: 90, shape: "classic" } },
+    { names: ["twisted hexagon vase", "twisted hex vase", "spiral hexagon vase", "hexagon twist vase"], title: "Twisted hexagon vase", params: { sides: 6, twist: 90, shape: "classic", width: 90 } },
     { names: ["hexagon vase", "hexagonal vase", "hex vase"], title: "Hexagon vase", params: { sides: 6, shape: "cylinder", width: 90 } },
     { names: ["geometric vase", "low poly vase", "faceted vase", "polygon vase"], title: "Geometric vase", params: { sides: 7, twist: 40, shape: "bulb" } },
     { names: ["cylinder vase", "straight vase", "tube vase", "column vase"], title: "Cylinder vase", params: { shape: "cylinder", width: 80, height: 200 } },

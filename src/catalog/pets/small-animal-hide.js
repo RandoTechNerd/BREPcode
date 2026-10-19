@@ -19,7 +19,7 @@ export default {
   nouns: ["hide", "hideout", "cave", "house", "hut"],
   keywords: ["hamster", "gecko", "reptile", "mouse", "rat", "terrarium", "aquarium", "enclosure", "cage"],
   primary: "width",
-  tips: ["150 mm long", "one door", "A-frame roof", "more windows"],
+  tips: ["200 mm long", "one door", "A-frame roof", "more windows"],
   examples: ["I want a hamster hideout", "make me a gecko hide 150mm long",
     "a reptile cave with a closed back", "small animal hide with open ends"],
   params: {
@@ -30,7 +30,7 @@ export default {
     roof: { default: "arch", unit: "choice", choices: ["arch", "a-frame"], label: "pointed arch, or a straight A-frame",
       words: { "a-frame": ["a frame", "a-frame", "triangle", "triangular", "tent"], arch: ["arch", "arched", "gothic", "pointed"] } },
     ends: { default: "doors", unit: "choice", choices: ["doors", "open", "cave"], label: "a doorway at each end, open ends, or one door (a cave)",
-      words: { cave: ["single door", "single entrance", "closed back", "closed end", "back wall"], open: ["open ends", "open ended", "open end", "tunnel", "no ends"], doors: ["two doors", "doorways", "two entrances", "both ends"] } },
+      words: { cave: ["single door", "single entrance", "one door", "one doorway", "one entrance", "closed back", "closed end", "back wall"], open: ["open ends", "open ended", "open end", "tunnel", "no ends"], doors: ["two doors", "doorways", "two entrances", "both ends"] } },
     door: { default: 0.6, min: 0.3, max: 0.85, unit: "ratio", label: "doorway size as a share of the inside" },
     windows: { default: 2, min: 0, max: 6, unit: "count", label: "diamond windows along each side", say: ["window", "windows"] },
   },

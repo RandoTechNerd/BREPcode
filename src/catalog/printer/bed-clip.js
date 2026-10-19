@@ -13,7 +13,7 @@ export default {
     "glass plate clip", "bed clamp", "bed surface clip"],
   nouns: ["clip", "clamp"],
   keywords: ["bed", "glass", "plate", "printer", "mirror", "heated"],
-  tips: ["for 3 mm bed and 4 mm glass", "15 mm wide", "longer reach"],
+  tips: ["for 4 mm bed and 6 mm glass", "15 mm wide", "longer reach"],
   examples: ["make me a bed clip", "glass bed clip for a 3mm bed with 4mm glass",
     "bed clip for 4mm glass", "a print bed clip for my ender"],
   params: {

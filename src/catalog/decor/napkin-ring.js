@@ -11,7 +11,7 @@ export default {
   names: ["napkin ring", "napkin rings", "table napkin ring", "napkin band", "cloth napkin ring"],
   nouns: ["ring", "band"],
   keywords: ["napkin", "serviette", "table", "dinner", "wedding", "party", "place setting"],
-  tips: ["a set of 6", "hexagon", "twisted", "wider band"],
+  tips: ["a set of 6 rings", "hexagon", "twisted", "wider band"],
   examples: ["I want a napkin ring", "make me 6 napkin rings", "a twisted hexagon napkin ring",
     "napkin ring 30mm wide"],
   params: {

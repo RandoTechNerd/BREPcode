@@ -9,7 +9,7 @@ export default {
   title: "Sock aid",
   summary: "a thin flexible sheet that curls round inside a sock, with slots for pull cords, to put socks on without bending.",
   print: "flat as shown, no supports. Print it in PETG or PP so it bends; thread cord or webbing through the slots.",
-  names: ["sock aid", "sock helper", "stocking aid", "sock assist", "compression sock aid", "sock slider", "sock puller",
+  names: ["sock aid", "sock helper", "stocking aid", "sock assist", "sock slider", "sock puller",
     "sock aid for seniors", "sock donner"],
   nouns: ["aid", "helper"],
   keywords: ["sock", "socks", "stocking", "dressing", "bend", "hip", "knee"],
@@ -24,7 +24,7 @@ export default {
     slotL: { default: 22, min: 10, max: 40, unit: "mm", label: "cord slot length", say: ["slot", "cord", "strap"] },
   },
   things: [
-    { names: ["compression stocking aid", "compression sock helper", "support stocking aid"], title: "Compression stocking aid",
+    { names: ["compression stocking aid", "compression sock aid", "compression sock helper", "support stocking aid"], title: "Compression stocking aid",
       params: { topW: 165, bottomW: 115, length: 190, thick: 2 } },
     { names: ["small sock aid", "kids sock aid", "child sock aid"], title: "Small sock aid", params: { topW: 120, bottomW: 85, length: 140 } },
   ],

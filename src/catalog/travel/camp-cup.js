@@ -13,7 +13,7 @@ export default {
   names: ["camping cup", "camp cup", "camping mug", "camp mug", "outdoor cup", "hiking cup", "backpacking cup", "trail cup", "picnic cup"],
   nouns: ["cup", "mug"],
   keywords: ["camping", "camp", "hiking", "backpacking", "outdoor", "carabiner", "trail"],
-  tips: ["taller", "no handle", "300 ml"],
+  tips: ["taller", "no handle", "100 mm across"],
   examples: ["I want a camping cup", "make me a camp mug 100mm tall",
     "a backpacking cup with no handle", "camping cup 90mm across"],
   params: {

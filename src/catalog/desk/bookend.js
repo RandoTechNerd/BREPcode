@@ -12,7 +12,7 @@ export default {
   names: ["bookend", "bookends", "book end", "book ends", "book stopper", "book support", "shelf bookend", "desk bookend"],
   nouns: ["bookend", "stopper"],
   keywords: ["book", "books", "shelf", "desk", "library"],
-  tips: ["200 mm tall", "heavier brace", "just one"],
+  tips: ["200 mm tall", "heavier brace", "just one bookend"],
   examples: ["I want a pair of bookends", "make me a bookend 180mm tall",
     "a book end for my shelf", "heavy duty bookends"],
   params: {
