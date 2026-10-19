@@ -1682,6 +1682,35 @@ export const OPENAI_PRESETS = [
   { name: "OpenAI", url: "https://api.openai.com/v1", browser: false },
 ];
 
+// THE HOUSE AI'S MODELS: the picker beside the chat input lists these, and
+// the house request carries the chosen id. Cheap, fast code models on
+// OpenRouter, checked against its live /models list (2026-10-19). The first
+// is the default. GLM Flash was the default until it proved to think for
+// too long per reply; house requests now ask for low reasoning regardless.
+//
+// `tier` is the paywall hook: everything is "free" for now, and
+// houseModels(tiers) is the one place that decides what a visitor may pick.
+// A model whose tier is later withheld simply drops out of the picker, and a
+// saved choice of it falls back to the default.
+export const HOUSE_MODELS = [
+  { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash", tier: "free" },
+  { id: "google/gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite", tier: "free" },
+  { id: "anthropic/claude-haiku-5.5", label: "Claude Haiku 5.5", tier: "free" },
+  { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", tier: "free" },
+  { id: "qwen/qwen3-coder-next", label: "Qwen3 Coder Next", tier: "free" },
+  { id: "inception/mercury-3", label: "Mercury 3", tier: "free" },
+  { id: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash", tier: "free" },
+];
+export const HOUSE_DEFAULT_MODEL = HOUSE_MODELS[0].id;
+export const houseModels = (tiers = ["free"]) => HOUSE_MODELS.filter((m) => tiers.includes(m.tier));
+// The model to send: the visitor's pick when it is still offered, else the
+// configured default, else the list's first.
+export function houseModelFor(picked, fallback = HOUSE_DEFAULT_MODEL, tiers) {
+  const ok = houseModels(tiers);
+  return ok.find((m) => m.id === picked)?.id || fallback || HOUSE_DEFAULT_MODEL;
+}
+export const modelLabel = (id) => HOUSE_MODELS.find((m) => m.id === id)?.label || id;
+
 export const LOCAL_PRESETS = [
   { name: "LM Studio", url: "http://localhost:1234/v1" },
   { name: "Ollama", url: "http://localhost:11434/v1", origins: "OLLAMA_ORIGINS" },
@@ -1761,8 +1790,10 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
           // whole time and gets nothing. "effort: low" is OpenRouter's unified
           // reasoning control (their routers translate it per vendor);
           // reasoning_effort is the same knob on OpenAI proper.
-          ...(opts.capReasoning
-            ? (compatibleHost ? { reasoning: { effort: "low" } } : { reasoning_effort: "low" })
+          // lowReasoning: the house AI asks for it on every request, because
+          // its visitors are waiting on a quick answer, not a long think.
+          ...(opts.capReasoning || opts.lowReasoning
+            ?(compatibleHost ? { reasoning: { effort: "low" } } : { reasoning_effort: "low" })
             : {}),
           messages: [
             // reasoning models take "developer" where the rest take "system"

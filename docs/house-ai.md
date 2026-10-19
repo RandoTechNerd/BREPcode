@@ -16,6 +16,17 @@ one request, as typed, to the house AI through the normal AI path (same
 harness, same model ladder, same build). The next message goes back to the
 helper. A visitor who connects their own AI in ⚙ uses theirs as usual.
 
+## Picking the model
+
+While a house AI is configured, a small model picker sits beside the chat
+input. Its list is `HOUSE_MODELS` in `viewer/chatbot.js`: cheap, fast code
+models on OpenRouter (Gemini Flash variants, Claude Haiku, DeepSeek Flash,
+Qwen3 Coder, Mercury, GLM Flash), the first one the default. The choice is
+kept in `localStorage["brepcode-house-model"]`, every AI reply is labelled
+"answered by …", and house requests always ask for low reasoning, so models
+can be compared in real use. Each entry has a `tier` ("free" for all of them
+today); `houseModels(tiers)` is the single place a paywall would gate them.
+
 Nothing is enabled until you configure it. With nothing configured the helper
 points people at the sliders, the editor, connecting their own AI, and your
 email / Discord.
@@ -30,11 +41,11 @@ In the browser console on the site or the desktop app:
 
 ```js
 localStorage.setItem("brepcode-house-ai", JSON.stringify({
-  key: "sk-or-v1-…", model: "z-ai/glm-5.3-flash", baseUrl: "https://openrouter.ai/api/v1",
+  key: "sk-or-v1-…", model: "google/gemini-3.8-flash", baseUrl: "https://openrouter.ai/api/v1",
 }));
 ```
 
-or point it at a proxy: `{ "proxy": "https://…/v1", "model": "z-ai/glm-5.3-flash" }`.
+or point it at a proxy: `{ "proxy": "https://…/v1", "model": "google/gemini-3.8-flash" }`.
 `localStorage.removeItem("brepcode-house-ai")` turns it off again. This is
 per browser, so only you see it.
 
@@ -44,7 +55,7 @@ The key lives on a server you control; the bundle only knows the proxy URL.
 A Cloudflare Worker is enough:
 
 ```js
-// wrangler secret put OPENROUTER_KEY      (and optionally MODEL, ALLOW_ORIGIN)
+// wrangler secret put OPENROUTER_KEY      (and optionally MODELS, ALLOW_ORIGIN)
 export default {
   async fetch(req, env) {
     const cors = {
@@ -58,7 +69,10 @@ export default {
       return new Response("not found", { status: 404, headers: cors });
     }
     const body = await req.json();
-    body.model = env.MODEL || "z-ai/glm-5.3-flash";        // the house picks the model, not the page
+    // The page sends the visitor's pick; only models on this list go through
+    // (keep it in step with HOUSE_MODELS in viewer/chatbot.js).
+    const allowed = (env.MODELS || "google/gemini-3.8-flash").split(",").map((s) => s.trim());
+    if (!allowed.includes(body.model)) body.model = allowed[0];
     if (body.max_tokens) body.max_tokens = Math.min(body.max_tokens, 16000);
     const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -89,7 +103,7 @@ Then in `viewer/locked-key.js` (gitignored; copy `locked-key.example.js`):
 export const LOCKED = {
   mode: "assist",
   proxy: "https://brepcode-ai.<you>.workers.dev/v1",
-  model: "z-ai/glm-5.3-flash",
+  model: "google/gemini-3.8-flash",
   label: "BREPcode AI (demo)",
 };
 ```

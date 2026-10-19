@@ -377,6 +377,22 @@ console.log("\nmodel discovery\n");
   ).options.body);
   check("...and OpenAI proper gets its own spelling of the same knob",
     bare.reasoning_effort === "low" && bare.reasoning === undefined);
+  check("a house request asks for low reasoning on every send",
+    body({ lowReasoning: true }).reasoning?.effort === "low");
+
+  // The house AI's model picker: one config, a Gemini Flash default, and a
+  // saved pick that is no longer offered falls back instead of being sent.
+  const ids = CB.HOUSE_MODELS.map((m) => m.id);
+  check("house models: Gemini Flash is the default", /^google\/gemini-[\d.]+-flash$/.test(CB.HOUSE_DEFAULT_MODEL));
+  check("house models: every id is an OpenRouter slug, no duplicates",
+    ids.every((id) => /^[a-z0-9-]+\/[\w.-]+$/.test(id)) && new Set(ids).size === ids.length);
+  check("house models: every entry has a label and a tier", CB.HOUSE_MODELS.every((m) => m.label && m.tier));
+  check("house models: a listed pick is honoured", CB.houseModelFor("z-ai/glm-5.3-flash") === "z-ai/glm-5.3-flash");
+  check("house models: an unknown pick falls back to the configured model",
+    CB.houseModelFor("nobody/nothing", "qwen/qwen3-coder-next") === "qwen/qwen3-coder-next");
+  check("house models: no pick and no config means the default", CB.houseModelFor("", "") === CB.HOUSE_DEFAULT_MODEL);
+  check("house models: a tier withheld drops out of the picker", CB.houseModels(["paid"]).length === 0
+    && CB.houseModelFor("z-ai/glm-5.3-flash", "", ["paid"]) === CB.HOUSE_DEFAULT_MODEL);
 
   const { readFileSync: rf } = await import("node:fs");
   const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");

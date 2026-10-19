@@ -1901,6 +1901,11 @@
       border-radius: 8px; padding: 8px 10px; font: 13px system-ui, sans-serif; outline: none;
     }
     #chat-input:focus { border-color: var(--border-focus); }
+    #house-model {
+      flex: none; max-width: 128px; background: var(--input-bg); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 8px; padding: 0 4px; font: 11.5px system-ui, sans-serif;
+    }
+    .msg .msg-model { display: block; margin-top: 4px; font-size: 11px; color: var(--muted3); }
     #chat-send {
       background: var(--accent); color: #fff; border: 0; border-radius: 8px;
       padding: 0 14px; cursor: pointer; font: 600 13px system-ui, sans-serif;
@@ -3568,6 +3573,9 @@
             <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3.2"/>
           </svg>
         </button>
+        <!-- The house AI's model, shown only when a house AI is configured.
+             The list is HOUSE_MODELS in chatbot.js. -->
+        <select id="house-model" title="Which model the BREPcode AI uses when it steps in" aria-label="House AI model" hidden></select>
         <input id="chat-input" placeholder="e.g. make a box with a cone on top" autocomplete="off" />
         <button id="chat-send">Send</button>
         <!-- Typing # or / here offers the real subject tags and commands. It
@@ -20092,6 +20100,7 @@ let SIMPLIFY_TARGET = 10000;
         if (!aiHarness.value.trim()) aiHarness.value = CHAT.DEFAULT_HARNESS;
         refreshHarnessTags();          // chips need CHAT loaded to parse tags
         verifyConnection(false);                     // re-verify a stored key quietly
+        fillHousePicker();
       }
       return CHAT;
     }
@@ -21118,13 +21127,33 @@ let SIMPLIFY_TARGET = 10000;
       try { dev = JSON.parse(localStorage.getItem("brepcode-house-ai") || "null"); } catch { /* bad JSON = none */ }
       const src = dev || (LOCKED.mode === "assist" ? LOCKED : null);
       if (!src) return null;
-      const model = succeedModel(src.model || "z-ai/glm-5.3-flash");
+      // The visitor's pick in the picker wins, then the configured model,
+      // then HOUSE_MODELS' first (chatbot.js).
+      const model = CHAT ? CHAT.houseModelFor(housePicked(), succeedModel(src.model || ""))
+        : succeedModel(src.model || "google/gemini-3.8-flash");
       if (src.proxy) return { provider: "openai", model, key: "house", baseUrl: src.proxy, label: src.label };
       const key = src.key || src.open;
       if (key) return { provider: src.provider || "openai", model, key, baseUrl: src.baseUrl || "https://openrouter.ai/api/v1", label: src.label };
       return null;
     }
     const houseAiReady = () => !!houseCfg();
+    // THE MODEL PICKER beside the chat input: lists the house models, keeps
+    // the choice in localStorage, and only shows when a house AI exists.
+    const HOUSE_PICK_KEY = "brepcode-house-model";
+    function housePicked() {
+      try { return localStorage.getItem(HOUSE_PICK_KEY) || ""; } catch { return ""; }
+    }
+    function fillHousePicker() {
+      const sel = $("house-model");
+      const cfg = CHAT && houseCfg();
+      sel.hidden = !cfg;
+      if (!cfg) return;
+      sel.replaceChildren(...CHAT.houseModels().map((m) => new Option(m.label, m.id)));
+      sel.value = cfg.model;
+    }
+    $("house-model").addEventListener("change", (e) => {
+      try { localStorage.setItem(HOUSE_PICK_KEY, e.target.value); } catch { /* private mode */ }
+    });
     function offerHouseAI(text, why = "That one needs a real AI.") {
       const cfg = houseCfg();
       if (!cfg) return;
@@ -22110,6 +22139,7 @@ let SIMPLIFY_TARGET = 10000;
                 lessons,
                 // Set once the watchdog has fired: same model, reasoning low.
                 capReasoning: capThinking === "applied",
+                lowReasoning: !!house,
                 override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
             // One controller per ATTEMPT, so the watchdog can kill a stuck
             // attempt while the loop lives on to retry — a shared controller
@@ -22302,9 +22332,16 @@ let SIMPLIFY_TARGET = 10000;
           th.style.fontSize = "12px";
         }
         const unsafe = fence && aiCodeUnsafe(fence[1]);
-        addMsg("bot", unsafe
+        const replyEl = addMsg("bot", unsafe
           ? "⚠️ That reply contained browser code, not a CAD model, so I didn't run it. If you actually trust it, review and paste it in yourself."
           : (prose || (fence ? "Here you go — building it now." : answer)));
+        // Which model wrote this, so models can be compared in real use.
+        if (cfg?.model) {
+          const tag = document.createElement("small");
+          tag.className = "msg-model";
+          tag.textContent = `answered by ${CHAT.modelLabel(cfg.model)}`;
+          replyEl.appendChild(tag);
+        }
         chatLog.push({ role: "assistant", text: answer });
         if (fence && !unsafe) {
           let r = await applyGeneratedCode(fence[1].trim());
