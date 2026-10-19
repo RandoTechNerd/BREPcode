@@ -102,3 +102,22 @@ until you build something and then hangs with no obvious cause, a file was
 skipped or rewritten on the way in. Re-upload with the "do not
 process anything under `public/brep/`" instruction stated first — that is the
 rule an AI builder is most likely to help you out of.
+
+## The vendor cache (`sw.js`)
+
+brepcode.com sends no cache headers, so without help a browser keeps nothing
+between visits: ~9 MB again every time, and the kernel twice per visit (the
+page and the build worker each fetched their own copy). `sw.js`, at the top
+of the zip, is a service worker that caches `vendor/` only, in a cache named
+for a hash of the vendor files, and shares one download between the page and
+the worker. Measured on a throttled phone profile: one kernel download instead
+of two on a first visit, and a return visit fetching ~1.6 MB instead of all of it,
+with the loading screen gone in 1.3 s instead of 3.1 s.
+
+- It must be served from `/brep/sw.js` (it is, if the zip is unzipped as-is).
+- `?nosw` on the app's address skips it, for comparing.
+- A new zip with changed vendor files ships a new hash: the browser picks up
+  the new `sw.js` on the next visit and drops the old cache.
+- To retire it, ship an `sw.js` that only unregisters itself
+  (`self.addEventListener("install", () => self.registration.unregister())`).
+  Deleting the file is not enough: a registered worker outlives a 404.

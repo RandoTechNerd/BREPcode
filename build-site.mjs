@@ -347,6 +347,26 @@ cpSync("node_modules/brep-io-kernel/LICENSE.md", join(OUT, "vendor/kernel/LICENS
 // to a 404 and the kernel fails to load at all, so this is not optional.
 cpSync("viewer/vendor/kernel/node-module-shim.js", join(OUT, "vendor/kernel/node-module-shim.js"));
 
+// ---- sw.js : the vendor cache (see viewer/sw.js) ----------------------
+// Named for a hash of every file under vendor/, so a build that changes any
+// of them ships a new worker and a fresh cache, and one that changes none
+// keeps returning visitors' cached copies.
+{
+  const { createHash } = await import("node:crypto");
+  const h = createHash("sha256");
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir).sort()) {
+      const p = join(dir, entry);
+      if (statSync(p).isDirectory()) walk(p);
+      else h.update(relative(OUT, p).split(sep).join("/")).update(readFileSync(p));
+    }
+  };
+  walk(join(OUT, "vendor"));
+  const vendorHash = h.digest("hex").slice(0, 12);
+  writeFileSync(join(OUT, "sw.js"), readFileSync("viewer/sw.js", "utf8").split("__VENDOR_HASH__").join(vendorHash));
+  console.log(`  sw.js: vendor cache brep-vendor-${vendorHash}`);
+}
+
 // ---- zip --------------------------------------------------------------
 const zip = new JSZip();
 const addDir = (dir, zdir) => {
@@ -423,7 +443,10 @@ console.log(`BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
   // modulepreload hints name hashed kernel chunks; a kernel update renames
   // them, and a stale hint is a silent wasted download. Fail loudly instead.
   const pageHtml = readFileSync(join(OUT, "index.html"), "utf8");
-  const missingPreload = [...pageHtml.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)]
+  // the kernel's hints are added by script (after the service worker), so
+  // its quoted chunk paths count as hints too
+  const missingPreload = [...pageHtml.matchAll(/<link rel="modulepreload" href="([^"]+)"/g),
+    ...pageHtml.matchAll(/"(\.\/vendor\/kernel\/[\w.-]+\.js)"/g)]
     .map((m) => m[1]).filter((h) => !existsSync(join(OUT, h)));
   if (missingPreload.length) throw new Error(`modulepreload names files the bundle does not have: ${missingPreload.join(", ")}`);
   console.log(`preloads: every modulepreload hint names a real file`);
