@@ -1849,11 +1849,21 @@ console.log("\nhearing a newcomer\n");
     check("the Download STL button really downloads", /if \(act === "stl"\) \{ if \(lastSolids\.length\) exportAs\("stl"\);/.test(HTML));
     check("the Sliders button fills the Params card", /else if \(act === "params"\) \{ toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\); \}/.test(HTML));
     check("Connect an AI lands on the AI tab", /document\.querySelector\('#cs-tabs \[data-cstab="ai"\]'\)\?\.click\(\);/.test(HTML));
+    check("the greeting's house-key button stays out of assist and premium mode", /if \(LOCKED\.open && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML));
     check("a reply that only informs or asks never triggers the 'beyond the helper' offer",
       /if \(r\?\.asked \|\| r\?\.chips\?\.length \|\| r\?\.run\?\.length\) return;/.test(HTML) && /const couldNotBuild = !!r\?\.cantDo/.test(HTML));
     check("the house AI's own failed code goes back to the house AI", /if \(house\) houseNext = house;\s*chatInput\.value = RETRY_TEXT;/.test(HTML)
       && /if \(house\) houseNext = house;\s*\/\/ the same house request/.test(HTML));
     check("a Stop pressed during a desktop relay is honoured", /if \(userStopped\) throw new DOMException\("stopped", "AbortError"\);/.test(HTML));
+    // the premium door: the house AI as the chat's AI, only through /rtn2026
+    check("premium mode only through its door", /LOCKED\.mode === "premium" && premiumVisit/.test(HTML)
+      && /const PREMIUM_DOORS = \["rtn2026"\];/.test(HTML));
+    check("a house-mode key is never applied as the visitor's own AI",
+      /if \(LOCKED\.open && !hasOwnAI && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML)
+      && /if \(LOCKED\.open && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML));
+    check("premium: the catalog still answers first",
+      HTML.indexOf("THE CATALOG ANSWERS FIRST") > 0 && HTML.indexOf("if (premiumHouse) house = premiumHouse;") > HTML.indexOf("THE CATALOG ANSWERS FIRST"));
+    check("premium is remembered for the tab, not as the visitor's AI", /sessionStorage\.setItem\("brepcode-premium", "1"\)/.test(HTML));
     check("the regular helper offers the .exe, the tour and the videos when stuck",
       /row\("2-minute tour"/.test(HTML) && /youtube\.com\/@RandoTechNerd/.test(HTML) && /a\.act === "ai"\) && !r\?\.cantDo\) return;/.test(HTML));
     check("the house request sends no images to a proxy that may not take them", /const vision = !house && !\["local", "browser", "claude-code"\]/.test(HTML));
