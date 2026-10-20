@@ -1,0 +1,18 @@
+# Every text file checks out with LF, whatever core.autocrlf says.
+#
+# The tests read sources byte for byte. test/recipes.js compares the committed
+# manifest exactly and holds each recipe under 6KB (the bytes the model is
+# sent, \r included), and test/boot.js matches "\n        fireBuilt();\n" in
+# viewer/index.html. A Windows checkout with autocrlf=true wrote CRLF and failed
+# all three while the main copy, which happened to be LF, passed. The repo
+# already stores everything as LF, so this changes no committed bytes.
+* text=auto eol=lf
+
+# Never converted, whatever the content sniffing would guess.
+*.png binary
+*.jpg binary
+*.wasm binary
+*.stl binary
+*.3mf binary
+*.glb binary
+*.zip binary
