@@ -184,6 +184,13 @@ bounce("tour", "tour=1", "BREPcode — guided tour",
 // A real page rather than a bounce: it is the thing people land on.
 mkdirSync(join(OUT, "make"), { recursive: true });
 writeFileSync(join(OUT, "make", "index.html"), readFileSync("viewer/make.html", "utf8"));
+// ---- /rtn2026 : the premium door -----------------------------------------
+// The app with the house AI as the chat's AI, when locked-key.js says
+// mode: "premium" (see docs/house-ai.md). Without that file in the build it
+// is simply the app: the door unlocks nothing that is not there.
+bounce("rtn2026", "rtn2026=1", "BREPcode, AI included",
+  "BREPcode with an AI included: say what you want to 3D print and get a printable model you can resize and download as an STL.",
+  "Opening BREPcode");
 bounce("welcome", "welcome=1", "BREPcode — free CAD in your browser",
   "BREPcode: type it, describe it, or drop in an STL and upgrade it. Real solid modelling in a browser tab, no install, no account.",
   "Opening BREPcode");

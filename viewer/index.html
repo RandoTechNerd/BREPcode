@@ -21139,8 +21139,26 @@ let SIMPLIFY_TARGET = 10000;
     // them alone". Everything else means the chat is dead, and a dead chat is
     // exactly what the house key is for.
     const KEYLESS = ["claude-code", "browser", "local"];
+    // locked-key.js modes in which the key is the HOUSE's, never applied as
+    // the visitor's own AI (see houseCfg below)
+    const HOUSE_MODES = ["assist", "premium"];
+    const PREMIUM_DOORS = ["rtn2026"];
+    const premiumVisit = (() => {
+      let hit = false;
+      try {
+        for (const L of hostLocations()) {
+          const q = new URLSearchParams(L.search), h = new URLSearchParams(L.hash.replace(/^#/, ""));
+          if (PREMIUM_DOORS.some((d) => q.has(d) || h.has(d) || new RegExp(`(^|/)${d}/?(index\\.html)?$`, "i").test(L.pathname))) hit = true;
+        }
+      } catch { /* cross-origin frame */ }
+      try {
+        if (hit) sessionStorage.setItem("brepcode-premium", "1");
+        else hit = sessionStorage.getItem("brepcode-premium") === "1";
+      } catch { /* private mode: this page only */ }
+      return hit;
+    })();
     const hasOwnAI = !!(aiCfg.key || "").trim() || KEYLESS.includes(aiCfg.provider);
-    if (LOCKED.open && !hasOwnAI && LOCKED.mode !== "assist") {
+    if (LOCKED.open && !hasOwnAI && !HOUSE_MODES.includes(LOCKED.mode)) {
       applyShippedKey(LOCKED.open, LOCKED);
     }
 
@@ -21158,12 +21176,20 @@ let SIMPLIFY_TARGET = 10000;
     //      `open` (a plain key in the bundle: cap its spend at OpenRouter).
     // Nothing configured means no offer at all: the helper points at the
     // sliders, the editor, connecting your own AI, and email / Discord.
+    //
+    // THE PREMIUM DOOR. locked-key.js with mode: "premium" is the same house
+    // AI, but only for a visit that came in through one of PREMIUM_DOORS
+    // (brepcode.com/rtn2026, or ?rtn2026 on the app's address), and there it
+    // is the chat's AI rather than a button: the catalog still answers first
+    // when it has a tested design, and everything else goes to the house AI.
+    // Remembered for the tab (sessionStorage), never as the visitor's own AI,
+    // so the same browser on plain brepcode.com gets the plain helper.
     // docs/house-ai.md has the OpenRouter proxy and the switch to flip.
     let houseNext = null;
     function houseCfg() {
       let dev = null;
       try { dev = JSON.parse(localStorage.getItem("brepcode-house-ai") || "null"); } catch { /* bad JSON = none */ }
-      const src = dev || (LOCKED.mode === "assist" ? LOCKED : null);
+      const src = dev || (LOCKED.mode === "assist" || (LOCKED.mode === "premium" && premiumVisit) ? LOCKED : null);
       if (!src) return null;
       // The visitor's pick in the picker wins, then the configured model,
       // then HOUSE_MODELS' first (chatbot.js).
@@ -21175,6 +21201,7 @@ let SIMPLIFY_TARGET = 10000;
       return null;
     }
     const houseAiReady = () => !!houseCfg();
+    const premiumOn = () => LOCKED.mode === "premium" && premiumVisit && !!houseCfg();
     // THE MODEL PICKER beside the chat input: lists the house models, keeps
     // the choice in localStorage, and only shows when a house AI exists.
     const HOUSE_PICK_KEY = "brepcode-house-model";
@@ -21188,6 +21215,7 @@ let SIMPLIFY_TARGET = 10000;
       if (!cfg) return;
       sel.replaceChildren(...CHAT.houseModels().map((m) => new Option(m.label, m.id)));
       sel.value = cfg.model;
+      if (premiumOn() && aiProvider.value === "builtin") $("chat-mode").textContent = "BREPcode AI (included)";
     }
     $("house-model").addEventListener("change", (e) => {
       try { localStorage.setItem(HOUSE_PICK_KEY, e.target.value); } catch { /* private mode */ }
@@ -21637,8 +21665,11 @@ let SIMPLIFY_TARGET = 10000;
       if (!raw) return;
       chatInput.value = "";
       // the house AI's one request (offerHouseAI), consumed here
-      const house = houseNext;
+      let house = houseNext;
       houseNext = null;
+      // the premium door: the house AI is this chat's AI, for a visitor with
+      // none of their own; the catalog still gets the first look (below)
+      const premiumHouse = !house && aiProvider.value === "builtin" && premiumOn() ? houseCfg() : null;
 
       // #tags and /commands steer the request; they are not part of it. The
       // bubble keeps what was typed — it is their message and they should see
@@ -21769,7 +21800,7 @@ let SIMPLIFY_TARGET = 10000;
           }
         }
       }
-      const useApi = !!house || aiProvider.value === "claude-code"
+      const useApi = !!house || !!premiumHouse || aiProvider.value === "claude-code"
         || aiProvider.value === "local"        // no key: blank URL = localhost default
         || aiProvider.value === "browser"      // no key: the model runs in this tab
         || (aiProvider.value !== "builtin" && aiKey.value.trim());
@@ -21786,6 +21817,8 @@ let SIMPLIFY_TARGET = 10000;
         else maybeOfferRealAI(r);
         return;
       }
+
+      if (premiumHouse) house = premiumHouse;
 
       // Default gem policy: try the hardcoded assistant first — if it can
       // actually handle this (it built code, or it's running a guided flow),
@@ -22606,7 +22639,7 @@ let SIMPLIFY_TARGET = 10000;
       if (offeredRealAI[why] || (why === "info" && offeredRealAI.complex)) return;
       offeredRealAI[why] = true;
       offerConnectAI(couldNotBuild
-        ? "That's more than the light built-in helper can design: it only knows simple shapes. Connect a real AI and ask again:"
+        ? "That's more than the built-in helper can design. Connect a real AI and ask again, or learn the app:"
         : "That answer came from the light built-in helper (hardcoded, simple shapes only). For a real AI that designs whole parts:");
     }
     function offerConnectAI(headline) {
@@ -22779,7 +22812,11 @@ let SIMPLIFY_TARGET = 10000;
     // (addMsg is textContent by design — set HTML on the returned node.)
     {
       const hello = addMsg("bot", "");
-      hello.innerHTML = "Hi! Tell me what you want to print: <b>“a phone stand”</b>, <b>“a hook for my yoga mat”</b>, <b>“a cable clip for 3 cables”</b>. "
+      // through the premium door: an AI is included, so say so instead
+      if (premiumOn()) hello.innerHTML = "Hi! Tell me what you want to print, in plain words: <b>“a phone stand”</b>, <b>“a gear with 20 teeth”</b>, <b>“a box for my Raspberry Pi”</b>. "
+        + "<b>AI included:</b> tested catalog designs come first, and anything else goes to the BREPcode AI, free, no key. "
+        + "Pick its model in the box under the chat. Then change it in words: “wider”, “round the edges”, “make it blue”. Say <b>undo</b> to step back.";
+      else hello.innerHTML = "Hi! Tell me what you want to print: <b>“a phone stand”</b>, <b>“a hook for my yoga mat”</b>, <b>“a cable clip for 3 cables”</b>. "
         + "I'm the built-in helper (no AI, nothing to set up): I know a catalog of tested designs and simple shapes, and I can change what I make: “wider”, “for an iPhone 16”, “round the edges”, “make it blue”. "
         + "Say <b>what can you make</b> for the list. For anything else, open ⚙ to connect an AI: <b>In your browser</b> is free with no key, or paste your own Gemini, Claude or OpenRouter key.";
       quickReplies(["I want a phone stand", "a hook for my yoga mat", "a small wall shelf", "what can you make"],
@@ -22794,7 +22831,7 @@ let SIMPLIFY_TARGET = 10000;
       // button cannot lose that race — it runs when clicked, long after
       // everything has settled — and it is honest: someone whose own key is
       // set still sees the offer, and nobody's settings move unless they ask.
-      if (LOCKED.open) {
+      if (LOCKED.open && !HOUSE_MODES.includes(LOCKED.mode)) {
         const name = LOCKED.model || "the shared model";
         const row = document.createElement("div");
         row.style.cssText = "display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:6px 0 2px";

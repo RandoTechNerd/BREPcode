@@ -31,6 +31,38 @@ Nothing is enabled until you configure it. With nothing configured the helper
 points people at the sliders, the editor, connecting their own AI, and your
 email / Discord.
 
+## The premium door (/rtn2026)
+
+`mode: "premium"` in `locked-key.js` makes two sites out of one zip:
+
+- **brepcode.com/rtn2026** (or `?rtn2026` on the app's address): the house AI
+  is the chat's AI. The catalog still answers first when it has a tested
+  design; everything else goes straight to the house AI, no button. The model
+  picker sits under the chat. Remembered for the browser tab only.
+- **brepcode.com**: the built-in helper. When it is stuck it offers the ways
+  on: your own key (Claude, Gemini, OpenRouter), the free in-browser AI, a
+  local model, the BREPcode .exe, the 2-minute tour and the video tutorials.
+
+A visitor who has connected their own AI keeps using it on either door. The
+door is a link, not a lock: the key is in the bundle, so use a dedicated
+OpenRouter key with a credit limit (or a proxy). The doors live in
+`PREMIUM_DOORS` in `viewer/index.html`; the build writes a `/rtn2026/` folder
+that bounces in, and on Lovable the route is an iframe of
+`/brep/index.html?rtn2026=1`, the same as `/make`.
+
+```js
+export const LOCKED = {
+  mode: "premium",
+  open: "sk-or-v1-…",            // a dedicated key with a credit limit
+  provider: "openai",
+  model: "google/gemini-3.8-flash",
+  baseUrl: "https://openrouter.ai/api/v1",
+  label: "BREPcode AI",
+};
+```
+
+Build with `node build-site.mjs --with-locked-key`.
+
 ## Turning it on
 
 Pick one. The first one found wins.

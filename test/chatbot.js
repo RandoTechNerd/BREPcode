@@ -1571,15 +1571,15 @@ console.log("\nwires are swept, not chained\n");
   // Storing a provider is not the same as having a key that works.
   check("the house key applies whenever there is no working key",
     /const hasOwnAI = !!\(aiCfg\.key \|\| ""\)\.trim\(\) \|\| KEYLESS\.includes\(aiCfg\.provider\);/.test(HTML)
-    && /if \(LOCKED\.open && !hasOwnAI && LOCKED\.mode !== "assist"\) \{/.test(HTML),
+    && /if \(LOCKED\.open && !hasOwnAI && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML),
     "gating on !aiCfg.provider skipped every returning visitor");
   // assist mode (docs/house-ai.md): the built-in helper stays the chat, and
   // the house AI is only ever one offered request when the helper is stuck
   check("an assist-mode house key never becomes the visitor's provider",
-    /LOCKED\.mode !== "assist"\) \{\s*applyShippedKey/.test(HTML) && /function offerHouseAI\(/.test(HTML)
+    /!HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{\s*applyShippedKey/.test(HTML) && /const HOUSE_MODES = \["assist", "premium"\];/.test(HTML) && /function offerHouseAI\(/.test(HTML)
     && /if \(r\.cantDo && houseAiReady\(\)\) offerHouseAI\(text\)/.test(HTML));
   check("...and its one request rides the normal AI path",
-    /const house = houseNext;\s*houseNext = null;/.test(HTML) && /const useApi = !!house \|\|/.test(HTML));
+    /let house = houseNext;\s*houseNext = null;/.test(HTML) && /const useApi = !!house \|\| !!premiumHouse \|\|/.test(HTML));
   check("...and a deliberately keyless provider counts as having one",
     /const KEYLESS = \["claude-code", "browser", "local"\];/.test(HTML),
     "Claude Code, the in-browser model and a local server all work without a key — do not stomp them");

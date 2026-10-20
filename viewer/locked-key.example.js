@@ -76,3 +76,19 @@ export const LOCKED = {
 //   baseUrl: "https://openrouter.ai/api/v1",             // only used with `open`
 //   label: "BREPcode AI (demo)",
 // };
+
+// ---------------------------------------------------------------------------
+// FORM 3 — PREMIUM: the house AI for one door only. brepcode.com/rtn2026 (or
+// ?rtn2026 on the app's address) gets the AI as the chat's AI, with the model
+// picker under the chat; plain brepcode.com gets the built-in helper and the
+// "connect your own AI / download the .exe / tutorials" offers. The key is
+// still plain text in the bundle (the door is a link, not a lock): use a
+// dedicated OpenRouter key with a credit limit, or `proxy` instead of `open`
+// (docs/house-ai.md).
+//
+// export const LOCKED = {
+//   mode: "premium",
+//   open: "sk-or-v1-PUT-A-CAPPED-OPENROUTER-KEY-HERE",
+//   model: "google/gemini-3.8-flash",
+//   label: "BREPcode AI",
+// };
