@@ -364,6 +364,9 @@ function card(html, onClose) {
 }
 
 export const welcomed = () => lsGet(WELCOMED_KEY) === "1";
+// The quick door (make.js) counts as having been welcomed: whoever came in
+// through it has already been asked what they want.
+export const markWelcomed = () => lsSet(WELCOMED_KEY, "1");
 
 /**
  * The first-visit card.
@@ -377,9 +380,9 @@ export function showWelcome(hooks) {
       <button class="wl-x" title="Close" aria-label="Close">&times;</button>
     </div>
     <div class="wl-body">
-      <button class="wl-act" data-w="chat"><span class="ic">${icon("chat", 20)}</span>
-        <span><b>Describe a part</b><small>"a 40 mm phone stand with a cable slot": get code you can edit</small></span></button>
-      <button class="wl-act hero" data-w="stl"><span class="ic">${icon("part", 20)}</span>
+      <button class="wl-act hero" data-w="make"><span class="ic">${icon("chat", 20)}</span>
+        <span><b>Just tell me what to print</b><small>"a phone stand for my iPhone 16": a tested, printable model from one sentence, no CAD needed</small></span></button>
+      <button class="wl-act" data-w="stl"><span class="ic">${icon("part", 20)}</span>
         <span><b>Fix or upgrade an STL</b><small>drop one anywhere: bubble infill, support fins, texture, QR codes, drill, stretch, thicken…</small></span></button>
       <div class="wl-act" style="cursor:default"><span class="ic">${icon("example", 20)}</span>
         <span><b>Try an example</b><small>a real model, ready to change</small>
@@ -399,6 +402,7 @@ export function showWelcome(hooks) {
     const b = e.target.closest("[data-w],[data-ex],[data-tool]");
     if (!b) return;
     close();
+    if (b.dataset.w === "make") (hooks.openMake || hooks.openChat)?.();
     if (b.dataset.w === "chat") hooks.openChat?.();
     if (b.dataset.w === "stl") hooks.pickFile?.();
     if (b.dataset.w === "tour") hooks.startTour?.();
@@ -408,8 +412,9 @@ export function showWelcome(hooks) {
     }
     if (b.dataset.tool) hooks.openTool?.(b.dataset.tool);
     // Anything but the tour leaves you in the app with the card gone. A slim
-    // bar keeps the way forward (and back) in reach until you close it.
-    if (b.dataset.w !== "tour") showNextBar(hooks);
+    // bar keeps the way forward (and back) in reach until you close it. The
+    // quick door is its own full screen, so the bar would only sit under it.
+    if (b.dataset.w !== "tour" && b.dataset.w !== "make") showNextBar(hooks);
   });
 }
 

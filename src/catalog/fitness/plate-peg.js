@@ -45,12 +45,17 @@ const screwCut = (x, y) => [translate([x, y, -1], cylinder({ r: 2.6, h: plateT +
 const sx = W / 2 - 12, sy = H / 2 - 12;
 const wallPlate = difference(translate([-W / 2, -H / 2, 0], cube([W, H, plateT])),
   ...screwCut(-sx, -sy), ...screwCut(sx, -sy), ...screwCut(-sx, sy), ...screwCut(sx, sy));
-// the peg: a root cone, the shank, and a lip flaring out at 50 degrees
+// the peg: a root cone, the shank, and a lip flaring out at 50 degrees.
+// The root cone stays inside the wall plate's edge: on a narrow plate it
+// used to poke past the side face, and its seam crossing that face left
+// the union with overused edges (not watertight).
 const z0 = plateT - 0.5, L = pegL + 0.5, lipH = collar * 1.2;
-const prof = [[0, 0], [rp + 8, 0], [rp, 8]];
+const rootR = Math.max(rp + 2, Math.min(rp + 8, W / 2 - 1, H / 2 - 1));
+const prof = [[0, 0], [rootR, 0], [rp, 8]];
 if (collar > 0) prof.push([rp, L - lipH - 2], [rp + collar, L - 2], [rp + collar, L]);
 else prof.push([rp, L]);
 prof.push([0, L]);
-return union(wallPlate, translate([0, 0, z0], revolve(360, polygon(prof))));
+// turned a little so the revolve's seam never lies along a plate edge
+return union(wallPlate, translate([0, 0, z0], rotate([0, 0, 10], revolve(360, polygon(prof)))));
 `,
 };

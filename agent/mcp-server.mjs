@@ -22,7 +22,7 @@ const NOT_RUNNING =
 // Builds are the slow part and they are the whole point, so the client-side
 // deadline has to be generous enough for a real one. It sits above the app's
 // own ceiling so the app's clearer message ("the app did not answer") wins.
-const LONG = new Set(["set_code", "build", "set_param", "save_stl"]);
+const LONG = new Set(["set_code", "build", "set_param", "save_stl", "catalog_find"]);
 
 function call(method, path, body) {
   return new Promise((resolve) => {
@@ -57,6 +57,7 @@ How to work:
 5. Language: BREPcode's own DSL, OpenSCAD and JSCAD all work, the editor auto-detects. Units are millimetres. Prefer named parameters at the top of the file: they become sliders in the app, and set_param turns them without rewriting the text.
 6. Before a screenshot, set_view to a named angle (home, top, front, right, left, up, down, opposite) so the picture comes from somewhere known rather than wherever the camera was left.
 7. save_stl writes the built mesh to a path you choose. Ask before overwriting a file that already exists.
+8. The app has a CATALOG of 200+ tested, printable designs (phone stands, hooks, clips, boxes, planters, …), each with every size a slider. For a request that sounds like a real thing ("a phone stand for my iPhone 16", "a hook for my yoga mat", "a cable clip for 3 cables") call catalog_find FIRST, with apply: true to put it on screen; write the part yourself with set_code only when it says found: false. A catalog model's code starts with a header line ("From the BREPcode catalog: <id>.") and const dials: keep those lines when you edit it, so the user's own chat follow-ups ("wider", "for a Pixel 9") keep working. catalog_list shows what is covered.
 
 If a tool says BREPcode is not reachable, the app is almost certainly just closed. Ask them to open it; do not keep retrying.`;
 
@@ -71,6 +72,8 @@ const TOOLS = [
   { name: "fit", description: "Frame the model in the viewport. Use when a part has grown or shrunk and is running off the edge of the view.", inputSchema: { type: "object", properties: {} } },
   { name: "screenshot", description: "A PNG of the BREPcode window as the user sees it. Take one after any change that should look different, and LOOK at it: a build can succeed and still be the wrong shape.", inputSchema: { type: "object", properties: {} } },
   { name: "save_stl", description: "Write the built model to an STL file. Fails if nothing has built yet. Ask the user before overwriting an existing file.", inputSchema: { type: "object", properties: { path: { ...str, description: "absolute path to write, ending in .stl" } }, required: ["path"] } },
+  { name: "catalog_find", description: "Ask the app's catalog of 200+ tested, printable designs for a plain-words request ('a phone stand for my iPhone 16', 'a hook for my yoga mat', 'a cable clip for 3 cables'). Returns found:true with the family, title, what it was sized for, a question to relay if one is open, the dial values and the code; or found:false with suggestions. With apply:true the design is put on screen (undoable) and the state comes back. Call this BEFORE writing a common thing yourself with set_code.", inputSchema: { type: "object", properties: { text: { ...str, description: "the user's request, in their words" }, apply: { type: "boolean", description: "put the design on screen now (default false)" } }, required: ["text"] } },
+  { name: "catalog_list", description: "What the catalog covers: every family's id, title, names and example requests, or one category's (desk, wall, storage, kitchen, bathroom, garage, garden, electronics, home, fitness, gaming, pets, travel, kids, printer, vehicle, decor, access).", inputSchema: { type: "object", properties: { category: { ...str, description: "optional category id" } } } },
 ];
 
 const TEXT = (v) => ({ content: [{ type: "text", text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });

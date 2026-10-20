@@ -17,7 +17,7 @@ export default {
     "watering stake", "bottle top waterer", "drip waterer", "bottle plant waterer"],
   nouns: ["spike", "waterer", "rose", "sprinkler"],
   keywords: ["bottle", "watering", "water", "drip", "vacation", "holiday", "plant", "soda"],
-  fits: ["neck"],
+  fits: ["bottle-neck"],
   fromSpec: (s) => ({ neckD: s.dims.d, sockD: Math.min(30, Math.max(10, s.dims.h - 1)) }),
   tips: ["for a wine bottle", "longer spike", "rose"],
   examples: ["I want a bottle watering spike", "make me a plant watering spike for a 2 liter bottle",
@@ -44,31 +44,42 @@ export default {
     { names: ["bottle watering can top", "bottle watering can", "seedling watering cap"], title: "Bottle watering can top", params: { style: "rose", roseD: 45, holeD: 1.2 } },
   ],
   body: `
+// Everything here is FLAT-FACED: rings of points hulled into cones and tubes,
+// n-gon prisms for the bores. A true (curved) revolve with a twelve-sided
+// socket cut out of it took the kernel 15 to 25 s per build; this builds in
+// well under a second and prints the same.
 const rb = neckD / 2 + fit;                               // the socket's flats sit here
 const Rs = rb / Math.cos(Math.PI / 12) + wall;            // outside of the socket
-const socket = (z0, h) => translate([0, 0, z0], rotate([0, 0, 15], cylinder({ r: rb / Math.cos(Math.PI / 12), h, $fn: 12 })));
 const k60 = Math.tan(60 * Math.PI / 180), k50 = Math.tan(50 * Math.PI / 180);
+const thin = Math.min(0.5, wall / 4);                     // a hulled ring is a thin slice (derived: not a slider)
+const ringPts = (r, n, turn) => { const o = []; for (let i = 0; i < n; i++) { const a = (turn || 0) + i * 2 * Math.PI / n; o.push([r * Math.cos(a), r * Math.sin(a)]); } return o; };
+const ring = (r, z0, h, n, turn) => translate([0, 0, z0], linearExtrude({ h }, polygon(ringPts(r, n || 48, turn))));
+// the twelve-sided socket bore: its flats sit at rb and bite the thread
+const sock12 = (z0, h) => ring(rb / Math.cos(Math.PI / 12), z0, h, 12, Math.PI / 12);
 
 if (style === "rose") {
   // face down: perforated plate, a 50 degree cone up to the socket, socket open on top
   const Rr = Math.max(roseD / 2, Rs + 4), pt = 2;
   const zc = pt + (Rr - wall - rb) * k50;                 // inside of the cone reaches the socket here
-  // the face: a flat disc cut into parallel slots holeD wide (slots in a plain disc cut fast)
+  const zs = pt + (Rr - Rs) * k50;                        // outside of the cone reaches the socket wall here
+  // the face: a flat disc cut into parallel slots holeD wide
   const rIn = Rr - wall - 1, sp = holeD * 3;
   const slots = [];
   for (let y = -Math.floor(rIn / sp) * sp; y <= rIn - holeD; y += sp) {
     const half = Math.sqrt(Math.max(0, rIn * rIn - (Math.abs(y) + holeD / 2) ** 2)) - 1.5;
     if (half > 2) slots.push(translate([-half, y - holeD / 2, -1], cube([2 * half, holeD, pt + 2])));
   }
-  const face = difference(cylinder({ r: Rr, h: pt }), ...slots);
-  // above it, the cone and socket: the outside cone is the inside one moved out a wall
-  // thickness, and it overlaps the face by half a millimetre so the two join cleanly
-  const upper = difference(
-    revolve(360, polygon([[0, pt - 0.5], [Rr, pt - 0.5], [Rr, pt], [Rs, pt + (Rr - Rs) * k50], [Rs, zc + sockD], [0, zc + sockD]])),
-    translate([0, 0, pt - 1.5], cylinder({ r1: Rr - wall + 1.5 / k50, r2: rb, h: zc - pt + 2 })),
-    socket(zc, sockD + 1),
-  );
-  return union(face, upper);
+  const face = difference(ring(Rr, 0, pt), ...slots);
+  // the cone: a thin-walled frustum (outer hull minus inner hull), overlapping
+  // the face by half a millimetre; then the socket tube on top of it
+  const outerC = hull(ring(Rr, pt - thin, thin), ring(Rs, zs - thin, thin));
+  const innerC = hull(ring(Rr - wall + 1.5 / k50, pt - 1.5, thin), ring(rb, zc + thin, thin));
+  // the socket tube on top. The inner cone is cut from the frustum AND the
+  // tube together: cut from the frustum alone, the tube's solid base was left
+  // as a flat ceiling over the cone, a 45 degree overhang the print needs no supports for.
+  const sockTube = ring(Rs, zs - thin, zc + sockD - zs + thin);
+  const upperShell = difference(union(outerC, sockTube), innerC, sock12(zc, sockD + 1));
+  return union(face, upperShell);
 }
 
 // spike: point up, socket open on the bed, a 60 degree cone ceiling up to a water channel
@@ -77,12 +88,13 @@ const rp = rc + wall;                                     // the spike tube
 const zs = sockD + (Rs - rp) * k60;                       // top of the shoulder
 const tipR = holeD / 2 + 0.8, tipL = (rp - tipR) * 2.5;
 const zt = zs + spikeL;                                   // the point starts here
-const outer = revolve(360, polygon([[0, 0], [Rs, 0], [Rs, sockD], [rp, zs], [rp, zt], [tipR, zt + tipL], [0, zt + tipL]]));
+// the outside is convex (socket, shoulder, tube, point), so one hull of three rings is it
+const outer = hull(ring(Rs, 0, sockD), ring(rp, zs, zt - zs), ring(tipR, zt + tipL - thin, thin, 24));
 const zch = sockD + (rb - rc) * k60;                      // the inside cone meets the channel
-const ceiling = translate([0, 0, sockD - 0.01], rotate([0, 0, 15], cylinder({ r1: rb / Math.cos(Math.PI / 12), r2: rc, h: zch - sockD + 0.01, $fn: 12 })));
+const ceiling = hull(sock12(sockD - 0.01, thin), ring(rc, zch - thin, thin, 24));
 const zEnd = zt + tipL * (rp - rc - 1) / (rp - tipR);     // keep a millimetre of wall in the point
-const channel = translate([0, 0, zch - 0.01], cylinder({ r: rc, h: zEnd - zch, $fn: 24 }));
-const outlet = translate([0, 0, zEnd - 1], cylinder({ r: holeD / 2, h: zt + tipL - zEnd + 2, $fn: 16 }));
-return difference(outer, socket(-1, sockD + 1), ceiling, channel, outlet);
+const channel = ring(rc, zch - 0.01, zEnd - zch + 0.01, 24);
+const outlet = ring(holeD / 2, zEnd - 1, zt + tipL - zEnd + 2, 16);
+return difference(outer, sock12(-1, sockD + 1), ceiling, channel, outlet);
 `,
 };

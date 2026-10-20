@@ -1,9 +1,9 @@
 // The BREPcode assistant: a hardcoded rule engine for simple requests, plus
 // optional bring-your-own-key API mode (Gemini / Claude) that generates code.
 
-import { matchRequest, catalogSummary } from "../src/catalog/match.js";
+import { matchRequest, catalogSummary, rankFamilies, keyTokens, stem } from "../src/catalog/match.js";
 import { catalogOf, editCatalog, capabilities } from "../src/catalog/edit.js";
-import { catalogStats } from "../src/catalog/index.js";
+import { catalogStats, FAMILIES, SPECS, CATEGORIES } from "../src/catalog/index.js";
 
 // ------------------------------------------------------------ rule engine
 
@@ -390,8 +390,11 @@ export function parseScale(text, dims) {
   const box = boxOf(dims);
   if (!box) return null;
   const lower = text.toLowerCase();
-  // stems, not whole words — \bdoubl\b can never match "double"
-  if (!/\b(?:scal\w*|doubl\w*|tripl\w*|halv\w*|half|quarter|twice|times|\d+\s*x|x\s*\d+)\b/.test(lower)) return null;
+  // stems, not whole words — \bdoubl\b can never match "double". A size
+  // pair ("8 x 6", "120 x 80 x 50") is sizes, never a factor: the x must not
+  // be followed by another number.
+  if (!/\b(?:scal\w*|doubl\w*|tripl\w*|halv\w*|half|quarter|twice|times|\d+\s*x(?!\s*\d)|x\s*\d+)\b/.test(lower)) return null;
+  if (/\b\d+(?:\.\d+)?\s*(?:x|by)\s*\d/.test(lower) && !/\bscal\w*\b/.test(lower)) return null;
 
   let k = null;
   for (const [re, v] of SCALE_WORDS) if (re.test(lower)) { k = v; break; }
@@ -399,7 +402,9 @@ export function parseScale(text, dims) {
     const pct = /\bto\s+(\d+(?:\.\d+)?)\s*%/.exec(lower) || /\bscale[^\d]{0,12}(\d+(?:\.\d+)?)\s*%/.exec(lower);
     if (pct) k = +pct[1] / 100;
     else {
-      const f = /\bby\s+(\d+(?:\.\d+)?)\s*(?:x|times)\b/.exec(lower) || /\b(\d+(?:\.\d+)?)\s*(?:x|times)\b/.exec(lower);
+      const f = /\bby\s+(\d+(?:\.\d+)?)\s*(?:x|times)\b(?!\s*\d)/.exec(lower) || /\b(\d+(?:\.\d+)?)\s*(?:x|times)\b(?!\s*\d)/.exec(lower)
+        // "scale it by 2", "scale it 1.5": the word scale makes a bare number a factor
+        || /\bscal\w*\s+(?:it\s+|everything\s+|the\s+\w+\s+)?(?:up\s+|down\s+)?(?:by\s+)?(\d+(?:\.\d+)?)\b(?!\s*(?:%|mm|cm|x\s*\d))/.exec(lower);
       if (f) k = +f[1];
     }
   }
@@ -565,13 +570,24 @@ export function scaleCode(currentCode, r) {
 // Overshooting by a hair costs nothing and removes the whole class of bug.
 export const EPS = 0.01;
 
+// Holes are tested FIRST: "put a round hole through it" names a hole, and
+// "round" there is the hole's shape, not a verb. The round regex also skips
+// a "round" that is directly followed by a noun.
 const OPS = {
+  hole: /\b(punch|bore|drill|put|cut|make|add|another|more|extra)\b[^.]{0,20}\bholes?\b|\btake a bite\b/,
   floor: /\b(drop|sit|sink|put|move|place)\b[^.]{0,24}\b(floor|bed|ground|z\s*=?\s*0|plate)\b|\bon the (floor|bed|plate)\b/,
   centre: /\b(cent(?:er|re)) (it|them|this|the (?:part|model|shape))\b|\bcent(?:er|re) (?:it|on) (?:the )?origin\b|^\s*cent(?:er|re)\s*(?:it)?\s*$/,
-  round: /\b(round(?:ed)?|smooth|soften)\b[^.]{0,20}\b(edge|edges|corner|corners|it|off)\b|\bfillet\b|^\s*smooth it\s*$/,
+  round: /\b(round(?:ed|er)?(?!\s+(?:hole|holes|slot|cutout|base|tray|box|dish|disc|disk|peg|rod|bar|tube|pipe|knob|button|loop|ring|coin|magnet|cup|pot|window|opening|notch))|smooth(?:er)?|soften)\b[^.]{0,20}\b(edge|edges|corner|corners|it|off)\b|\bfillet\b|^\s*smooth it\s*$|\brounder edges\b/,
   bevel: /\bbevel\b|\bchamfer\b|\bslant\b[^.]{0,16}\bedge/,
-  hole: /\b(punch|bore|drill|put|cut|make|add)\b[^.]{0,20}\bhole\b|\btake a bite\b/,
 };
+const COUNT_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, couple: 2, pair: 2 };
+// "add two more holes", "3 screw holes": how many, or 1 when it does not say
+export function holeCount(lower) {
+  const m = /\b(\d+|two|three|four|five|six|couple of|pair of)\s+(?:more\s+|extra\s+|new\s+|other\s+|further\s+)?(?:screw\s+|drill\s+|mounting\s+|bolt\s+)?holes\b/.exec(lower);
+  if (!m) return 1;
+  const n = COUNT_WORDS[m[1].split(" ")[0]] || +m[1];
+  return Math.max(1, Math.min(8, n || 1));
+}
 
 export function parseOp(text, dims) {
   const box = boxOf(dims);
@@ -614,19 +630,37 @@ export function parseOp(text, dims) {
     // Down the middle of the footprint, through the whole height, unless the
     // user gave a size. A third of the smaller footprint edge looks right and
     // always leaves a wall.
+    // Several unsized holes are screw holes (5 mm), not a third of the part
+    // each: "add 3 holes" to a 30 mm plate must fit.
+    const askedCount = holeCount(lower);
     const dia = num(/(\d+(?:\.\d+)?)\s*mm\b/, null)
       ?? num(/\b(?:d|dia|diameter)\s*(?:of\s*)?(\d+(?:\.\d+)?)/, null)
-      ?? round2(Math.min(w, d) / 3);
+      ?? round2(askedCount > 1 ? Math.min(5, Math.min(w, d) / 3) : Math.min(w, d) / 3);
     const byRadius = /\b(?:r|radius)\s*(?:of\s*)?(\d+(?:\.\d+)?)/.test(lower);
     const D = byRadius ? num(/\b(?:r|radius)\s*(?:of\s*)?(\d+(?:\.\d+)?)/, dia) * 2 : dia;
     if (!(D > 0)) return null;
     if (D >= Math.min(w, d)) {
       return { error: `a ${round2(D)}mm hole doesn't fit — the part is only ${round2(Math.min(w, d))}mm across at its narrowest.` };
     }
+    // Several holes go in a row along the longer footprint edge, evenly
+    // spaced, each at least a diameter in from the ends.
+    const count = holeCount(lower);
+    const axis = w >= d ? 0 : 1;
+    const len = axis ? d : w;
+    if (count > 1 && count * D * 1.5 > len) {
+      return { error: `${count} holes of ${round2(D)}mm don't fit in a row — the part is only ${round2(len)}mm along that edge.` };
+    }
+    const margin = Math.max(D, len * 0.12);
+    const other = round2((box.min[1 - axis] + box.max[1 - axis]) / 2);
+    const spots = count === 1
+      ? [[round2((box.min[0] + box.max[0]) / 2), round2((box.min[1] + box.max[1]) / 2)]]
+      : Array.from({ length: count }, (_, i) => {
+        const along = round2(box.min[axis] + margin + (i * (len - 2 * margin)) / (count - 1));
+        return axis ? [other, along] : [along, other];
+      });
     return {
-      kind, dia: round2(D),
-      cx: round2((box.min[0] + box.max[0]) / 2),
-      cy: round2((box.min[1] + box.max[1]) / 2),
+      kind, dia: round2(D), count, axisName: axis ? "Y" : "X", spots,
+      cx: spots[0][0], cy: spots[0][1],
       z0: round2(box.min[2] - EPS),
       height: round2(h + EPS * 2),
       box,
@@ -646,14 +680,18 @@ export function opCode(currentCode, op) {
       return wrap((inner) => `fillet(${op.r},\n  ${inner.replace(/\n/g, "\n  ")})`);
     case "bevel":
       return wrap((inner) => `chamfer(${op.r},\n  ${inner.replace(/\n/g, "\n  ")})`);
-    case "hole":
+    case "hole": {
       // The cutter starts EPS below the base and runs EPS past the top, so
-      // neither end is flush with a face it has to breach.
+      // neither end is flush with a face it has to breach. Several holes are
+      // several cutters in the same difference().
+      const spots = op.spots || [[op.cx, op.cy]];
+      const cutters = spots.map(([x, y]) =>
+        `  translate([${x}, ${y}, ${op.z0}],\n    cylinder({ r: ${round2(op.dia / 2)}, h: ${op.height}, $fn: 64 }))`).join(",\n");
       return wrap((inner) =>
         `difference(\n  ${inner.replace(/\n/g, "\n  ")},\n`
-        + `  // cutter overshoots both faces by ${EPS}mm so no face is coincident\n`
-        + `  translate([${op.cx}, ${op.cy}, ${op.z0}],\n`
-        + `    cylinder({ r: ${round2(op.dia / 2)}, h: ${op.height}, $fn: 64 })))`);
+        + `  // cutter${spots.length > 1 ? "s overshoot" : " overshoots"} both faces by ${EPS}mm so no face is coincident\n`
+        + `${cutters})`);
+    }
     default:
       return currentCode;
   }
@@ -669,19 +707,22 @@ export function opCode(currentCode, op) {
 // stand 90mm wide" is a new thing, not a resize of whatever is on screen. But
 // with a model open, a request has to sound like a new thing ("I want…",
 // "make me…", "a…") — "make the shelf deeper" is about the open model.
-const NEW_THING = /\b(want|need|like|make me|make a|make an|make us|build|print|design|create|new|another|give me|how about|got a|got an|do a|do an)\b|^(a|an|some)\s/;
+const NEW_THING = /\b(want|need|like|make me|make a|make an|make us|build|print|design|create|new|another|give me|how about|got a|got an|do a|do an|something|anything|some thing|a thing|a way to)\b|^(a|an|some)\s/;
 const EDIT_THIS = /^(make|turn|set|change)\s+(it|this|that|the)\b|\b(it|this|that)\b.*\b(wider|narrower|taller|shorter|deeper|longer|bigger|smaller|thicker|thinner)\b/;
 
 // Where to go when the built-in helper runs out. Every "can't do that" ends
 // with the same three ways forward (the sliders, the code, an AI) and a human
 // to ask, rendered as buttons by the viewer (actions on the reply).
 export const CONTACT = { email: "RandoTechNerd@gmail.com", discord: "https://discord.gg/8fjQHDX8PQ" };
+// `icon` names a line icon in viewer/icons.js: the row is drawn in one
+// weight and one colour, never as a string of emoji.
 export const HELP_ACTIONS = [
-  { label: "≡ Sliders", act: "params" },
-  { label: "</> Editor", act: "editor" },
-  { label: "✨ Connect an AI", act: "ai" },
-  { label: "✉ Email", act: "email" },
-  { label: "Discord", act: "discord" },
+  { label: "Sliders", act: "params", icon: "sliders" },
+  { label: "Editor", act: "editor", icon: "code" },
+  { label: "Tour", act: "tour", icon: "tour" },
+  { label: "Connect an AI", act: "ai", icon: "spark" },
+  { label: "Email", act: "email", icon: "mail" },
+  { label: "Discord", act: "discord", icon: "chat" },
 ];
 const WAYS_ON = "Drag the sliders (≡ Params), change the code in the Editor, or connect an AI in ⚙ (free in your browser, or your own Gemini, Claude or OpenRouter key) and ask it in plain words. "
   + `Stuck? Email ${CONTACT.email} or ask on Discord.`;
@@ -752,42 +793,329 @@ function catalogReply(res, { refined = false } = {}) {
   return reply;
 }
 
-// One-tap follow-ups under a catalog reply: the family's own tips, then the
-// edits every catalog model understands.
-function catalogChips(f) {
-  return [...(f.tips || []).slice(0, 3), "bigger", "round the edges"];
+// ---- hearing it right ------------------------------------------------------
+//
+// Two things people type that the matcher, read literally, cannot place:
+// a typo ("fone stand") and a roundabout phrasing ("something to hold my
+// phone"). Both are repaired here BEFORE matching, and a repair is only ever
+// used when the repaired sentence actually lands on a family: a guess that
+// matches nothing is thrown away, so this can never turn a request the
+// catalog does not know into one it does.
+//
+// Words that are ordinary English, or the size words the matcher ties
+// numbers with, are never touched: "wide" must not become "wire".
+const COMMON = new Set(("a an the my our your this that these those it its i me we you they them him her " +
+  "want wants need needs like would could should can make makes made build builds give get got have has had " +
+  "with without for from into onto about over under near next between around through along across " +
+  "and or but not no yes please thanks thank some any more less most least very bit little slightly quite " +
+  "big bigger small smaller large larger wide wider narrow narrower tall taller short shorter long longer " +
+  "deep deeper shallow thick thicker thin thinner high higher low lower huge tiny " +
+  "side sides top bottom left right front back middle centre center edge edges corner corners " +
+  "round rounded square flat sharp smooth hole holes screw screws " +
+  "inch inches mm cm degree degrees angle size sized sizes same other another new one two three four five six " +
+  "print printed printing printer design designed model thing things something way use used " +
+  "hold holds holding hang hangs hanging stand stands keep keeps store stores carry carries fit fits " +
+  "also just only really maybe perhaps again still now then there here what which where when how why " +
+  "than too much many lid open closed").split(/\s+/));
+
+let VOCAB = null;
+// the catalog's own words, as stems, plus a loose "sounds like" index
+function vocabulary() {
+  if (VOCAB) return VOCAB;
+  const words = new Set(), bySound = new Map();
+  const add = (phrase) => { for (const w of keyTokens(phrase)) if (!/^\d/.test(w)) words.add(w); };
+  for (const f of FAMILIES) {
+    for (const n of [...f.names, ...(f.nouns || []), ...(f.keywords || [])]) add(n);
+    for (const t of f.things || []) for (const n of t.names) add(n);
+  }
+  for (const s of SPECS) for (const n of s.names) add(n);
+  for (const w of words) { const k = soundOf(w); if (!bySound.has(k)) bySound.set(k, []); bySound.get(k).push(w); }
+  // shortest first: "shelf" before "shelves", the plain word before a variant
+  for (const list of bySound.values()) list.sort((a, b) => a.length - b.length || a.localeCompare(b));
+  VOCAB = { words, bySound };
+  return VOCAB;
 }
-const CATALOG_ACTIONS = [{ label: "⬇ Download STL", act: "stl" }, { label: "≡ Sliders", act: "params" }];
+// Every catalog word that sounds like this one, other than itself. "shelve"
+// is a real stem (a family's "shelves" keyword) and still means "shelf".
+export function soundAlikes(word) {
+  const w = stem(String(word).toLowerCase());
+  return (vocabulary().bySound.get(soundOf(w)) || []).filter((v) => v !== w);
+}
+// The sentence with one word swapped for each of its sound-alikes, best
+// guesses first. Used when the sentence as typed lands nowhere.
+export function heardAs(text) {
+  const lower = String(text).toLowerCase();
+  const out = [];
+  for (const m of lower.matchAll(/\b[a-z]{3,}\b/g)) {
+    const w = m[0];
+    if (COMMON.has(w)) continue;
+    // a three-letter word is only ever re-heard when it is not a word the
+    // catalog knows ("hok", never "cup")
+    if (w.length === 3 && vocabulary().words.has(stem(w))) continue;
+    for (const alt of soundAlikes(w)) {
+      out.push({ text: lower.slice(0, m.index) + alt + lower.slice(m.index + w.length), fixes: [[w, alt]] });
+    }
+  }
+  return out;
+}
+// "fone" and "phone" sound alike; so do "shelve" and "shelf"
+export function soundOf(w) {
+  return String(w).toLowerCase()
+    .replace(/ph/g, "f").replace(/ck/g, "k").replace(/c(?=[eiy])/g, "s").replace(/c/g, "k").replace(/qu/g, "kw")
+    .replace(/z/g, "s").replace(/y/g, "i").replace(/ve\b/, "f").replace(/(.)\1+/g, "$1").replace(/[aeiou]+/g, "a");
+}
+function editDistance(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  const m = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 0; j <= b.length; j++) m[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    m[i][j] = Math.min(m[i - 1][j] + 1, m[i][j - 1] + 1, m[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) m[i][j] = Math.min(m[i][j], m[i - 2][j - 2] + 1);
+  }
+  return m[a.length][b.length];
+}
+// The closest catalog word to a misspelt one, or null when nothing is close.
+export function nearestWord(word) {
+  const w = String(word).toLowerCase();
+  if (w.length < 4 || /\d/.test(w) || COMMON.has(w)) return null;
+  const V = vocabulary();
+  const s = stem(w);
+  if (V.words.has(s)) return null;                 // spelt right already
+  const bySound = V.bySound.get(soundOf(s))?.[0];
+  if (bySound) return bySound;
+  const limit = w.length >= 7 ? 2 : 1;
+  let best = null, bestD = limit + 1;
+  for (const v of V.words) {
+    if (v.length < 3) continue;
+    const d = editDistance(s, v);
+    if (d < bestD) { bestD = d; best = v; }
+  }
+  return best;
+}
+
+// Roundabout ways of naming a thing, read as the thing. "something to hold
+// my phone" is a phone holder; "a thing to hang my keys on" is a key hook.
+const PARAPHRASES = [
+  [/\b(?:something|some thing|a thing|anything|a way|a gadget|a gizmo|a part)\s+(?:to|that will|that can|which can|that|which)\s+(?:hold|holds|carry|carries|store|stores|keep|keeps|organi[sz]e|organi[sz]es|prop|props)\s+(?:up\s+)?(?:my|the|a|an|our|some|all my)?\s*([a-z0-9 ]{2,30}?)(?:\s+(?:on|at|by|near|next to|in|up|upright|together|tidy|safe)\b.*)?$/, "$1 holder"],
+  [/\b(?:something|some thing|a thing|anything|a way)\s+(?:to|that)\s+(?:hang|hangs)\s+(?:up\s+)?(?:my|the|a|an|our)?\s*([a-z0-9 ]{2,30}?)(?:\s+(?:on|up|from|off|by)\b.*)?$/, "$1 hook"],
+  [/\b(?:something|some thing|a thing|anything)\s+(?:to|that)\s+(?:stand|stands|lean|leans|sit|sits|rest|rests)\s+(?:up\s+)?(?:my|the|a|an)?\s*([a-z0-9 ]{2,30}?)(?:\s+(?:on|up|at|against)\b.*)?$/, "$1 stand"],
+  [/\b(?:to|that will|that can)\s+(?:hold|carry|store|keep)\s+(?:my|the|a|an)?\s*([a-z0-9 ]{2,30}?)(?:\s+(?:on|at|in|together)\b.*)?$/, "$1 holder"],
+];
+
+// The request as the catalog would hear it, or null when nothing changes.
+// `fixes` lists what was read differently, so the reply can say so.
+export function understand(text) {
+  let t = String(text).toLowerCase().trim();
+  const fixes = [];
+  for (const [re, to] of PARAPHRASES) {
+    if (!re.test(t)) continue;
+    const next = t.replace(re, to).replace(/\s+/g, " ").trim();
+    if (next !== t) { fixes.push([t, next]); t = next; }
+    break;
+  }
+  const fixed = t.replace(/\b[a-z]{4,}\b/g, (w) => {
+    const near = nearestWord(w);
+    if (!near || near === w) return w;
+    fixes.push([w, near]);
+    return near;
+  });
+  if (!fixes.length) return null;
+  return { text: fixed, fixes };
+}
+
+// The catalog match, trying the sentence as typed and then as heard.
+export function matchCatalog(text) {
+  const direct = matchRequest(text);
+  if (direct) return direct;
+  // ONE repair at most. Two guesses compounding ("tour bus" heard as "tier
+  // bass") can land on a thing nobody asked for, and sound confident doing it.
+  const heard = understand(text);
+  if (heard && heard.fixes.length === 1) {
+    const m = matchRequest(heard.text);
+    if (m) { m.heard = heard; return m; }
+  }
+  // a word that is spelt like one catalog word and sounds like another
+  for (const alt of heardAs(text)) {
+    const m = matchRequest(alt.text);
+    if (m) { m.heard = alt; return m; }
+  }
+  return null;
+}
+
+// "hook", "a stand", "something for my desk": too vague to build, but not
+// too vague to ASK about. Every family whose noun matched is a candidate;
+// up to four become one-tap chips, so the follow-up is a tap rather than a
+// guess. Shape words ("a box") stay with the rule engine, and the nouns the
+// older guided flows own keep their flows.
+const FLOW_NOUNS = /\b(bracket|frame|holder|cup|pen ?pot|bin|caddy)\b/;
+export function catalogSuggest(text) {
+  const lower = String(text).toLowerCase();
+  if (findShapes(lower).length || FLOW_NOUNS.test(lower)) return null;
+  // the noun may be misspelt ("a shelve"): rank the sentence as heard, and
+  // failing that with each sound-alike swapped in, keeping the best reading.
+  // (Called only when matchRequest found nothing, so a family over the
+  // threshold here is one that tied with another and was not chosen.)
+  const nouns = (s) => rankFamilies(s).filter((r) => r.score >= 4);
+  let ranked = nouns(text);
+  if (!ranked.length) {
+    const heard = understand(text);
+    if (heard) ranked = nouns(heard.text);
+    if (!ranked.length) {
+      for (const alt of heardAs(heard ? heard.text : text)) {
+        const r = nouns(alt.text);
+        if (r.length > ranked.length) ranked = r;
+      }
+    }
+  }
+  const seen = new Set(), picks = [];
+  for (const r of ranked) {
+    if (seen.has(r.family.id)) continue;
+    seen.add(r.family.id);
+    picks.push(r.family);
+    if (picks.length === 4) break;
+  }
+  if (picks.length < 2) return null;
+  const article = (n) => (/^[aeiou]/.test(n) ? "an" : "a");
+  return {
+    reply: `I know a few things like that. Which did you mean? Tap one, or say what it is for (“a hook for my yoga mat”) and I'll size it to that.`,
+    chips: [...picks.map((f) => `${article(f.names[0])} ${f.names[0]}`), "what can you make"],
+    fromCatalog: true, asked: true,
+  };
+}
+
+// One-tap follow-ups under a catalog reply: the family's own tips, then the
+// edits every catalog model understands. A tip is only offered when it would
+// actually DO something on this code (dry-run through the editor): a chip
+// that answers "I couldn't do that" teaches the wrong lesson.
+function catalogChips(f, code = null) {
+  const works = (tip) => {
+    if (!code) return true;
+    try {
+      const e = editCatalog(f, code, tip);
+      return !!(e && (e.code || /generic|ask-spec/.test(e.kind || "")));
+    } catch { return false; }
+  };
+  const tips = (f.tips || []).filter(works).slice(0, 3);
+  // "bigger" means nothing on a design whose every size is a fit or a count
+  return [...tips, ...["bigger", "round the edges"].filter(works)];
+}
+const CATALOG_ACTIONS = [{ label: "Download STL", act: "stl", icon: "download" }, { label: "Sliders", act: "params", icon: "sliders" }];
 
 // "This phone stand can change: …" when a follow-up is beyond its dials.
-export function catalogCantDo(f, text) {
+export function catalogCantDo(f, text, code = null) {
   const caps = capabilities(f);
   return {
     reply: `I couldn't do “${text}” with the built-in helper. This ${f.title.toLowerCase()} can change: ${caps.join(", ")}. `
       + `Say one with a number (“${(f.tips || ["90 mm wide"])[0]}”), “bigger” / “smaller”, or “round the edges”. ${WAYS_ON}`,
-    chips: catalogChips(f),
+    chips: catalogChips(f, code),
     actions: HELP_ACTIONS,
     fromCatalog: true,
   };
 }
 
-function catalogTurn(t, lower, state, currentCode, dims) {
-  if (/^(what can you (make|build|do)|what do you know|show me (the )?catalog|catalog|list)\b/.test(lower)) {
-    const s = catalogStats();
+// A one-sided cut or stretch ("take 10 mm off the bottom", "remove the top
+// portion", "extend the back by 20") is the face editor's, in respond(): a
+// number in it must never land on a dial.
+const FACE = "(?:top|bottom|left|right|front|back)";
+const FACE_CUT = new RegExp(`\\b(?:take|shave|trim|cut|remove|shear|slice|knock|chop|lop|shorten|delete|lose|extend|lengthen|grow|raise|push)\\b[^.]{0,20}\\b(?:off|from|out of|onto|to|at|on)?\\s*(?:the|its)?\\s*${FACE}\\b|\\b${FACE}\\s+(?:portion|part|section|bit|edge|face|side|half|third|quarter)\\b|\\b${FACE}\\s+(?:off|away)\\b`);
+// a short acknowledgement, and a short "no", after the catalog has answered
+const ACK = /^(ok|okay|yes|yep|yeah|sure|fine|good|great|cool|nice|perfect|thanks|thank you|thx|cheers|looks good|that'?s (?:fine|good|great|it|perfect)|love it|done)\b[.!]*$/;
+const NAY = /^(no|nope|not that|not quite|not really|wrong|no thanks|hmm|meh)\b[.!]*$/;
+const WANTS_FILE = /\b(download|export|save (?:it|the file|the stl)|get the (?:file|stl)|print it|send (?:it )?to (?:my |the )?(?:printer|slicer)|the stl|an stl)\b/;
+const SMOOTH_ALONE = /^\s*(?:make it )?smooth(?:er)?(?: it)?(?: out| please)?\s*[.!]*$/;
+const article = (n) => (/^[aeiou]/i.test(n) ? "an" : "a");
+
+// Questions about the APP, not the model: the tour, help, how to download,
+// where things are. Answered before anything tries to read them as shapes.
+const APP_INTENTS = [
+  // the tour, asked for as the tour ("a tour bus holder" is a holder)
+  [/^(?:please\s+)?(?:i(?:'d| would)? (?:like|want|need) (?:to )?(?:take |see |do )?)?(?:take |start |show |give me |run |do |open |play )?(?:the |a |me the )?(?:guided )?(?:tour|tutorial|walk ?through)\b(?:\s*(?:please|now))?[.!]*$|^(?:show me around|how does this work|how do i use this|where is everything|getting started|i'?m lost|i am lost)\b/,
+    () => ({ reply: "Starting the tour: two minutes, every control.", run: ["tour"], actions: HELP_ACTIONS })],
+  [/\b(bug|broken|not working|doesn'?t work|crash|error|went wrong|report)\b/, () => ({
+    reply: `Sorry about that. Press ◀ to step back, or “undo”. If it keeps happening, say what you typed and what you saw: email ${CONTACT.email} or ask on Discord, and a screenshot helps.`,
+    actions: HELP_ACTIONS, asked: true })],
+  [/\b(sliders?|params|parameters|where (are|is) the (sliders|numbers))\b/, () => ({ reply: "The sliders are under Params: every number in the code is one. Drag, and the model rebuilds.", run: ["params"], actions: CATALOG_ACTIONS })],
+];
+function appIntent(lower) {
+  // a request that also names a thing ("a tour bus holder") is not about the app
+  if (matchRequest(lower) || findShapes(lower).length) return null;
+  for (const [re, fn] of APP_INTENTS) if (re.test(lower) && lower.split(/\s+/).length <= 12) return fn();
+  return null;
+}
+
+// "what can you make": one line and a chip per category, not a wall of 212
+// names; "what can you make for the kitchen" lists that category.
+function catalogOverview(lower) {
+  const s = catalogStats();
+  const cats = Object.entries(CATEGORIES);
+  const asked = cats.find(([id, label]) => new RegExp(`\\b${id}\\b`).test(lower) || lower.includes(label.toLowerCase().split(" ")[0]));
+  if (asked) {
+    const [id, label] = asked;
+    const names = FAMILIES.filter((f) => f.category === id).map((f) => f.names[0]);
     return {
-      reply: `I know ${s.families} designs covering ${s.things} things, each tested to print without supports: ${catalogSummary().join(". ")}. Ask for one by name (“I want a phone stand”), what it's for (“a hook for my yoga mat”) and any sizes.`,
-      chips: ["I want a phone stand", "a hook for my yoga mat", "a cable clip for 3 cables", "a small wall shelf"],
+      reply: `${label}: ${names.join(", ")}. Ask for one by name, or say what it is for (“a hook for my yoga mat”) and any sizes.`,
+      chips: [...names.slice(0, 6).map((n) => `${article(n)} ${n}`), "what can you make"], asked: true,
     };
   }
+  return {
+    reply: `I know ${s.families} tested designs covering ${s.things} things, in ${cats.length} groups. Tap a group to see what is in it, or just ask for a thing (“a phone stand”, “a hook for my yoga mat”, “a cable clip for 3 cables”) with any sizes.`,
+    chips: cats.map(([id, label]) => `what can you make for ${label.split(" ")[0].toLowerCase()}`),
+    asked: true,
+  };
+}
+
+function catalogTurn(t, lower, state, currentCode, dims) {
+  // a guided flow (bracket / frame / holder) hears its answer before the
+  // catalog gets a look-in, unless the message plainly asks for a new thing
+  if (state.flow && !NEW_THING.test(lower)) return null;
+  // a bracket or a picture frame is the rule engine's own guided flow, even
+  // when the sentence goes on to name a catalog thing ("a bracket for a shelf")
+  if (/^(?:please\s+)?(?:i (?:want|need)|make me|make|build me|build|design me|give me)?\s*(?:an?\s+|the\s+)?(?:l[- ]?bracket|bracket|picture frame|photo frame)\b/.test(lower)) return null;
+  if (/^(what can you (make|build|do)|what do you know|show me (the )?catalog|catalog|list)\b/.test(lower)) return catalogOverview(lower);
+  const app = appIntent(lower);
+  if (app) return app;
   const open = catalogOf(currentCode);
-  const fresh = !currentCode.trim() || NEW_THING.test(lower) ? matchRequest(t) : null;
+  let wantsNew = !currentCode.trim() || NEW_THING.test(lower);
+  let fresh = wantsNew ? matchCatalog(t) : null;
+  // the exact name of a DIFFERENT design, with one open ("phone tripod
+  // mount" after a wrong guess): that is the new thing, "I want" or not
+  if (!fresh && open && !wantsNew) {
+    const byName = matchRequest(t);
+    if (byName?.named && byName.familyId !== open.id && byName.score >= 12) { fresh = byName; wantsNew = true; }
+  }
   // A new thing of a DIFFERENT kind wins over editing the open one: "I want a
   // phone stand 90 mm wide" with a shelf open is a phone stand, not a shelf
   // 90 mm long.
   if (open && !(fresh && fresh.familyId !== open.id)) {
+    const what = open.title.toLowerCase();
+    // a one-sided cut is the face editor's (respond), not a dial's
+    if (FACE_CUT.test(lower) && !/\bhole/.test(lower)) return null;
+    // the small talk round a model: "thanks", "no", "how do I get the file"
+    if (lower.split(/\s+/).length <= 4 && ACK.test(lower)) {
+      return { reply: `Kept the ${what} as it is. Change anything by name (“wider”, “for a Pixel 9”, “round the edges”), or drag a slider.`,
+        chips: catalogChips(open, currentCode), actions: CATALOG_ACTIONS, fromCatalog: true, asked: true };
+    }
+    if (lower.split(/\s+/).length <= 3 && NAY.test(lower)) {
+      return { reply: `What would you change about the ${what}? Say it with a number or a word (“90 mm wide”, “flatter”, “no cable hole”), tap one, or ◀ to undo the last change.`,
+        chips: catalogChips(open, currentCode), actions: HELP_ACTIONS, fromCatalog: true, asked: true };
+    }
+    if (WANTS_FILE.test(lower) && !/\d/.test(lower)) {
+      return { reply: "Download STL gives you the file; open it in your slicer and print. 3MF, STEP and the others are under the download menu in the Editor.",
+        actions: CATALOG_ACTIONS, run: ["stl"], fromCatalog: true };
+    }
+    if (SMOOTH_ALONE.test(lower)) {
+      return { reply: "Smoother how: rounder edges, or finer curves?", chips: ["round the edges", "finer curves"], fromCatalog: true, asked: true };
+    }
     const specId = state.catalog?.familyId === open.id ? state.catalog.specId : null;
     const e = editCatalog(open, currentCode, t, { specId });
     if (e?.kind === "round-generic") {
+      // "sharp corners" on a design with no rounding dial: take off a fillet
+      // the chat wrapped on earlier, or say the edges are sharp already
+      if (/\b(sharp|square|unround|less round)\b/.test(lower)) {
+        const m = /return fillet\((\d+(?:\.\d+)?),\s*\n?([\s\S]*)\);\s*$/.exec(currentCode.trim());
+        if (m) return { reply: "Took the rounding off: the edges are sharp again. (◀ undoes it.)", code: `${currentCode.trim().slice(0, m.index)}return ${m[2].trim()};\n`, fromCatalog: true, actions: CATALOG_ACTIONS };
+        return { reply: `The ${what} has sharp edges already; this design has no rounding of its own to take off.`, chips: catalogChips(open, currentCode), fromCatalog: true };
+      }
       const op = parseOp(/\bround|fillet/.test(lower) ? t : `round the edges ${t}`, dims) || { kind: "round", r: 1.5 };
       if (op.error) return { reply: `Can't do that: ${op.error}`, fromCatalog: true };
       const r = op.kind === "round" ? op.r : 1.5;
@@ -796,53 +1124,170 @@ function catalogTurn(t, lower, state, currentCode, dims) {
           + "This one has no rounding slider of its own, and an all-over fillet doesn't take on every shape: if the edges look the same after it builds, "
           + "try “chamfer the edges” instead, or ask an AI to round the specific edges you mean. (◀ undoes it.)",
         code: opCode(currentCode, { kind: "round", r }),
+        fromCatalog: true, actions: CATALOG_ACTIONS,
+      };
+    }
+    if (e?.kind === "ask-spec") {
+      // "bigger phone": which phone? the family's own question, with choices
+      const q = open.ask;
+      return { reply: q ? q.text : `Which one is it for? Name it (“for a Pixel 9”) and I'll size the ${what} to it.`,
+        chips: q?.choices?.length ? q.choices : catalogChips(open, currentCode), fromCatalog: true, asked: true };
+    }
+    if (e?.kind === "missing-dial") {
+      const names = e.missing.map((k) => `“${open.params[k].label}”`).join(", ");
+      return {
+        reply: `The ${names} line${e.missing.length > 1 ? "s are" : " is"} no longer a plain number in the code, so I can't turn ${e.missing.length > 1 ? "them" : "it"} from here. `
+          + `Put it back as “const ${e.missing[0]} = …;”, press ◀ to undo, or change it in the Editor.`,
+        actions: [{ label: "Undo", act: "undo", icon: "undo" }, { label: "Editor", act: "editor", icon: "code" }, { label: "Sliders", act: "params", icon: "sliders" }],
         fromCatalog: true,
       };
     }
     if (e?.kind === "no-change") {
       const c = e.clamped?.[0];
-      return { reply: c ? `${e.family.params[c.param].label} is already at its limit (${c.used}${unitOf(e.family.params[c.param])}).` : "That's how it is already.", fromCatalog: true };
+      const had = e.already ? open.params[e.already] : null;
+      return { reply: c ? `${e.family.params[c.param].label} is already at its limit (${c.used}${unitOf(e.family.params[c.param])}).`
+        : had ? `It already has that: ${had.label} is ${num1(e.values[e.already])}${unitOf(had)}. Say a size to change it, or “no ${(had.say || [])[0] || had.label}” to take it off.`
+        : "That's how it is already.",
+        chips: catalogChips(open, currentCode), fromCatalog: true };
     }
     if (e && e.code) {
       state.catalog = { familyId: open.id, specId: e.specId };
       let lead = null;
-      if (e.kind === "scale") lead = `Scaled the ${open.title.toLowerCase()} ×${num1(e.note.factor)}; screw holes, clearances and wall thickness stay as they were`;
-      const reply = catalogReply({ ...e, title: open.title, changedSpec: !!e.spec, sizedFor: e.spec ? [e.spec.note || e.spec.label] : [] }, { refined: true });
-      return { reply: lead ? reply.replace(/^Updated the [^:.]+/, lead) : reply, code: e.code, fromCatalog: true, actions: CATALOG_ACTIONS };
+      const fx = (k) => +(+k).toFixed(2);
+      if (e.kind === "scale") lead = `Scaled the ${what} ×${fx(e.note.factor)}; screw holes, clearances and wall thickness stay as they were`;
+      if (e.kind === "scale-axis") lead = `Scaled ${e.note.dials.map((k) => open.params[k].label).join(" and ")} ×${fx(e.note.factor)}`;
+      if (e.kind === "nudge") lead = `Made ${e.note.dials.map((k) => open.params[k].label).join(" and ")} ${e.note.factor > 1 ? "bigger" : "smaller"} (×${fx(e.note.factor)})`;
+      if (e.kind === "thing") lead = `Set it up as the ${String(e.note.thing).toLowerCase()}`;
+      // "make it blue and wider": the colour rides along with the edit
+      const tint = parseColour(lower, { bare: false });
+      if (tint) e.code = colourCode(e.code, tint.hex) + "\n";
+      let reply = catalogReply({ ...e, title: open.title, changedSpec: !!e.spec, sizedFor: e.spec ? [e.spec.note || e.spec.label] : [] }, { refined: true });
+      if (lead) reply = reply.replace(/^Updated the [^:.]+/, lead);
+      if (tint) reply = reply.includes(" (◀ undoes it.)") ? reply.replace(" (◀ undoes it.)", ` In ${tint.name}. (◀ undoes it.)`) : `${reply} In ${tint.name}.`;
+      return { reply, code: e.code, fromCatalog: true, actions: CATALOG_ACTIONS, chips: catalogChips(open, currentCode) };
     }
     if (e?.kind === "holes-generic") {
       const op = parseOp(/\bhole/.test(lower) ? t : `add a hole`, dims);
       if (op?.error) return { reply: `Can't do that: ${op.error}`, fromCatalog: true };
       if (op?.kind === "hole") {
-        const sized = /\d/.test(lower);
+        // a diameter was given ("a 8 mm hole"); a bare count was not
+        const sized = /\d+(?:\.\d+)?\s*mm\b/.test(lower) || /\b(?:d|dia|diameter|r|radius)\s*(?:of\s*)?\d/.test(lower);
         const hole = sized ? op : { ...op, dia: 5 };
+        const many = (hole.count || 1) > 1;
         return {
-          reply: `Drilled a ${hole.dia} mm hole straight down through the middle${sized ? "" : " (screw size; say “a 8 mm hole” for another)"}. `
-            + "This design has no hole-count slider, so the hole is placed by position: to move it, change the x and y in its translate([…]) line in the Editor. (◀ undoes it.)",
+          reply: (many
+            ? `Drilled ${hole.count} ${hole.dia} mm holes in a row along ${hole.axisName}, straight down through everything`
+            : `Drilled a ${hole.dia} mm hole straight down through the middle`)
+            + `${sized ? "" : " (screw size; say “a 8 mm hole” for another)"}. `
+            + `This design has no hole-count slider, so the hole${many ? "s are" : " is"} placed by position: to move ${many ? "them" : "it"}, change the x and y in the translate([…]) line${many ? "s" : ""} in the Editor. (◀ undoes it.)`,
           code: opCode(currentCode, hole),
           fromCatalog: true,
         };
       }
     }
+    // a different, vaguer thing ("I meant a hook"): ask which, with chips
+    if (!fresh && wantsNew && !EDIT_THIS.test(lower)) {
+      const sug = catalogSuggest(t);
+      if (sug) return sug;
+    }
     // anything else: let the general edits below try
     if (!fresh) return null;
   }
   if (currentCode.trim() && !open && (EDIT_THIS.test(lower) || !NEW_THING.test(lower))) return null;
-  if (!fresh) return null;
+  if (!fresh) {
+    // nothing confident, but a noun the catalog knows: ask which, with chips
+    if (wantsNew && !state.flow) {
+      const sug = catalogSuggest(t);
+      if (sug) { state.pending = null; return { ...sug, clearPending: true }; }
+    }
+    return null;
+  }
   state.catalog = { familyId: fresh.familyId, specId: fresh.spec?.id || null };
   state.flow = null; state.pending = null;
   const tint = parseColour(lower, { bare: false });
   if (tint) fresh.code = colourCode(fresh.code, tint.hex) + "\n";
-  return { reply: catalogReply(fresh) + (tint ? ` In ${tint.name}.` : ""), code: fresh.code, clearPending: true, fromCatalog: true,
-    chips: fresh.question ? (fresh.question.choices || []) : catalogChips(fresh.family), actions: CATALOG_ACTIONS };
+  // a typo or a roundabout phrase was read as something else: say so
+  const heard = fresh.heard ? `I read that as “${fresh.heard.text}”. ` : "";
+  // one-tap follow-ups: the question's own choices when it has them, else
+  // the family's tips; and the near-misses as things to say instead
+  const chips = fresh.question?.choices?.length ? fresh.question.choices : catalogChips(fresh.family, fresh.code);
+  const alts = (fresh.alternativeNames || []).map((n) => `${article(n)} ${n}`).filter((c) => !chips.includes(c));
+  return { reply: heard + catalogReply(fresh) + (tint ? ` In ${tint.name}.` : ""), code: fresh.code, clearPending: true, fromCatalog: true,
+    chips: [...chips, ...alts], actions: CATALOG_ACTIONS };
 }
 
+// One message, two edits: "make it blue and wider", "remove the bottom
+// portion and add an extra screw hole". With a model open, the clauses are
+// answered in turn, each on the code the one before produced, and the
+// replies are joined, so nothing said is silently dropped. A fresh request
+// ("a box and a lid") is never split.
+const CLAUSE_SPLIT = /\s+(?:and then|and also|and|then|also|plus)\s+|\s*;\s*|,\s*(?:then|and|also)\s+/;
 export function respond(text, state = {}, currentCode = "", dims = null) {
+  const t = String(text).trim();
+  const lower = t.toLowerCase();
+  const editing = currentCode.trim() && !NEW_THING.test(lower) && (catalogOf(currentCode) || !findShapes(lower).length)
+    && !/\b(between|and a half|side by side|black and white|back and forth)\b/.test(lower);
+  let clauses = editing ? t.split(CLAUSE_SPLIT).map((s) => s.trim()).filter(Boolean) : [t];
+  if (clauses.length < 2) return respondOne(t, state, currentCode, dims);
+  // A colour clause ("blue", "make it blue", "in red") is a coat of paint on
+  // whatever the other clauses produce, not a step of its own: it goes on
+  // last, and the reply says it in the same breath.
+  const COLOUR_ONLY = /^(?:(?:make|paint|colou?r|turn|change|set)\s+)?(?:it|this|that|them)?\s*(?:in\s+)?(?:the\s+colou?r\s+)?([a-z #0-9]{3,18})$/;
+  let tint = null;
+  clauses = clauses.filter((c) => {
+    const m = COLOUR_ONLY.exec(c.toLowerCase());
+    const col = m && parseColour(m[1].trim());
+    if (col && !tint) { tint = col; return false; }
+    return true;
+  });
+  if (!clauses.length) return respondOne(t, state, currentCode, dims);
+  if (clauses.length === 1 && !tint) return respondOne(clauses[0], state, currentCode, dims);
+  let code = currentCode, any = false;
+  const replies = [], run = [];
+  let chips = null, actions = null, asked = false, cantDo = false, fromCatalog = false;
+  for (const c of clauses) {
+    const r = respondOne(c, state, code, dims);
+    if (r.code !== undefined) { code = r.code; any = true; }
+    replies.push(r.reply);
+    if (!chips && r.chips?.length) chips = r.chips;
+    if (r.actions?.length) actions = r.actions;
+    if (r.run) run.push(...r.run);
+    if (r.asked) asked = true;
+    if (r.cantDo) cantDo = true;
+    if (r.fromCatalog) fromCatalog = true;
+    if (r.pending) state.pending = r.pending;
+  }
+  if (tint) {
+    code = colourCode(code, tint.hex) + "\n";
+    any = true;
+    const last = replies.length - 1;
+    replies[last] = replies[last].includes(" (◀ undoes it.)")
+      ? replies[last].replace(" (◀ undoes it.)", ` In ${tint.name}. (◀ undoes it.)`)
+      : `${replies[last]} In ${tint.name}.`;
+  }
+  const out = { reply: replies.join("\n"), fromCatalog };
+  if (any) out.code = code;
+  if (chips) out.chips = chips;
+  if (actions) out.actions = actions;
+  if (run.length) out.run = run;
+  if (asked) out.asked = true;
+  if (cantDo && !any) out.cantDo = true;
+  return out;
+}
+
+function respondOne(text, state = {}, currentCode = "", dims = null) {
   const t = text.trim();
   const lower = t.toLowerCase();
 
   const fromCatalog = catalogTurn(t, lower, state, currentCode, dims);
   if (fromCatalog) return fromCatalog;
+
+  // "undo" in the chat is the editor's ◀: one step back through the model's
+  // history, whoever made the change. `run` is carried out by the viewer.
+  if (/^(undo|go back|revert|put it back|undo that|take that back)\b/.test(lower)) {
+    return { reply: "Stepped back one change (the editor's ◀). Say undo again for another step.", run: ["undo"],
+      actions: [{ label: "Undo again", act: "undo", icon: "undo" }] };
+  }
 
   if (currentCode.trim()) {
     const tint = parseColour(lower);
@@ -850,12 +1295,34 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
   }
 
   if (/^(help|\?|what can you do)/.test(lower)) {
-    return { reply: "Ask for a real thing: “I want a phone stand”, “a hook for my yoga mat”, “a cable clip for 3 cables”, “a small wall shelf” — say “what can you make” for the whole list. Simple shapes too: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder — just name one. With a model on screen I can resize it through the middle: “decrease width by 30%”, “make it 50mm wide”, “20mm longer”. Say “smoother” or “low poly” to change facets. For anything fancier, add an API key in ⚙." };
+    return {
+      reply: "Ask for a real thing: “I want a phone stand”, “a hook for my yoga mat”, “a cable clip for 3 cables”, “a small wall shelf”; say “what can you make” for the whole list. Simple shapes too: “box with a cone on top”, “plate with a hole”, “two cubes side by side”. I can also walk you through a bracket, a picture frame, or a holder: just name one. With a model on screen I can change it: “wider”, “make it 50mm wide”, “take 10 mm off the bottom”, “round the edges”, “add two holes”, “make it blue”, “scale it up 20%”, and “undo” steps back. Say “smoother” or “low poly” to change facets. Lost? The tour shows where everything is. "
+        + WAYS_ON,
+      chips: ["what can you make", "I want a phone stand", "a hook for my yoga mat"],
+      actions: HELP_ACTIONS,
+    };
   }
 
   // Resize before anything else: it works on whatever is already in the editor,
   // including an import, and it is pure arithmetic off the measured size.
   if (currentCode.trim() && dims) {
+    // "remove the bottom portion", "cut off the top": a one-sided cut with no
+    // amount is a question, not a guess. The chips are the answers.
+    const faceWord = /\b(bottom|top|left|right|front|back)\b/.exec(lower)?.[1];
+    const cutWords = /\b(remove|cut|take|shave|trim|chop|lop|slice|knock|shorten|get rid of|lose|delete)\b/.test(lower)
+      || /\b(off|away|gone|portion|part|section|bit)\b/.test(lower);
+    if (faceWord && cutWords && !/\d/.test(lower) && !/\bhole/.test(lower)) {
+      const box = boxOf(dims);
+      const axis = faceWord === "top" || faceWord === "bottom" ? 2 : faceWord === "left" || faceWord === "right" ? 0 : 1;
+      const len = box ? Math.round(box.size[axis] * 10) / 10 : 0;
+      const word = ["wide", "deep", "tall"][axis];
+      const quarter = Math.max(1, Math.round(len / 4));
+      return {
+        reply: `How much off the ${faceWord}? The part is ${len} mm ${word} there. Tap an amount or say one (“take 12 mm off the ${faceWord}”).`,
+        chips: [`take 5 mm off the ${faceWord}`, `take 10 mm off the ${faceWord}`, `take ${quarter} mm off the ${faceWord}`],
+        asked: true,
+      };
+    }
     // A named face wins over a bare axis: "take 0.2mm off the top" is one-sided
     // work, not a cut through the middle, and reading it as the latter would
     // quietly delete a slab out of the centre of the part.
@@ -888,8 +1355,10 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
         centre: () => `Centred it on the origin — moved ${op.dx}mm on X and ${op.dy}mm on Y.`,
         round: () => `Rounded every edge with a ${op.r}mm fillet.`,
         bevel: () => `Chamfered every edge by ${op.r}mm.`,
-        hole: () => `Punched a ${op.dia}mm hole straight down the middle, all the way through.`
-          + ` The cutter overshoots both faces by ${EPS}mm so no face is left coincident —`
+        hole: () => (op.count > 1
+          ? `Drilled ${op.count} ${op.dia}mm holes in a row along ${op.axisName}, all the way through.`
+          : `Punched a ${op.dia}mm hole straight down the middle, all the way through.`)
+          + ` The cutter${op.count > 1 ? "s overshoot" : " overshoots"} both faces by ${EPS}mm so no face is left coincident:`
           + ` that's what stops a slicer seeing a lid over the hole.`,
       }[op.kind]();
       return { reply: `${said} (◀ undoes it.)`, code: opCode(currentCode, op) };
@@ -933,8 +1402,11 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
   }
 
   // facet commands operate on the current code
-  if (/\b(smoother|more facets|higher res|round(er)? edges)\b/.test(lower)) {
-    if (!/\$fn:\s*\d+/.test(currentCode)) return { reply: "The current model has no $fn values to raise — curved shapes get them automatically when I generate." };
+  if (/\b(smoother|more facets|higher res|finer curves)\b/.test(lower)) {
+    if (!/\$fn:\s*\d+/.test(currentCode)) {
+      return { reply: "This model has no facet setting to raise: its curves are already as smooth as they get. If it is the edges you want softer, say “round the edges”.",
+        chips: ["round the edges", "chamfer the edges"] };
+    }
     const code = currentCode.replace(/\$fn:\s*(\d+)/g, (_, n) => `$fn: ${Math.min(+n * 2, 128)}`);
     return { reply: "Doubled the facet counts (capped at 128). Smoother, slower.", code };
   }
@@ -949,6 +1421,15 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
   if (transformed) return transformed;
 
   // ---- active guided flow: interpret this message as the answer ----------
+  // ...unless it is plainly a change of mind: a catalog thing named mid-flow
+  // ("hook", while the holder flow waits for a size) drops the flow rather
+  // than being read as "80 mm across".
+  const FLOW_ANSWER = /\b(none|no|yes|yep|ok|okay|sure|go ahead|wall|mount|screw|hang|free|freestanding|standing|round|rounded|square)\b/;
+  if (state.flow && !/\d/.test(lower) && !FLOW_ANSWER.test(lower) && (matchCatalog(t) || catalogSuggest(t))) {
+    state.flow = null;
+    const sug = matchCatalog(t) ? null : catalogSuggest(t);
+    if (sug) return sug;
+  }
   if (state.flow) {
     const f = state.flow;
     const sizes = extractSizes(lower);
@@ -1072,9 +1553,12 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
 
   const shapes = findShapes(lower);
   if (!shapes.length) {
+    // a noun the catalog knows several of ("I meant a hook"): ask which
+    const sug = catalogSuggest(t);
+    if (sug) return sug;
     // a catalog model is open: say what ITS dials can do instead
     const open = catalogOf(currentCode);
-    if (open) return { ...catalogCantDo(open, t), cantDo: true };
+    if (open) return { ...catalogCantDo(open, t, currentCode), cantDo: true };
     return {
       reply: `I didn't spot a shape or a thing I know. Try “I want a phone stand”, “a hook for my yoga mat”, or “make a box with a cone on top”; “what can you make” lists the catalog. ${WAYS_ON}`,
       chips: ["what can you make", "I want a phone stand", "a hook for my yoga mat"],
@@ -1179,6 +1663,7 @@ export function respond(text, state = {}, currentCode = "", dims = null) {
 // produced code that BUILT. Rounding, colour and fancier forms come in the
 // Polish pass below, on code that already works.
 export const COMPACT_HARNESS = `You write BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. Parts sit on z=0.
+CATALOG CODE: keep a leading "From the BREPcode catalog: <id>." header, its "// Sized for" line and the const dials above the model exactly as they are; the app's follow-ups read them.
 SHAPES (the ONLY primitives): cube([x,y,z]) corner at origin · cylinder({r,h,$fn:48}) rises +Z from origin · sphere({r}).
 COMBINE: union(a,b,...) welds · difference(base, ...cutters) cuts holes · group(...parts) keeps parts separate — end multi-part assemblies with group(), never one big union.
 MOVE: translate([x,y,z], shape) · rotate([rx,ry,rz], shape) degrees.
@@ -1196,6 +1681,7 @@ REPLY SHAPE: one short sentence, then ONE fenced code block of complete runnable
 // instead of inventing — the easier job. This is where the wider vocabulary
 // unlocks, one step at a time, exactly the way a person sands after shaping.
 export const POLISH_HARNESS = `You improve existing BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. The code you are given ALREADY BUILDS — keep its structure and sizes, refine it.
+Keep any leading "From the BREPcode catalog" header and its const dials as they are.
 YOU MAY NOW ALSO USE: tube(path, {r}) sweeps a round profile along a point list — cables, bowden tubes, handles, hoops; ONE solid however many bends, with real arcs at the corners, so replace any chain of cylinders-and-spheres you find with it · helix({r,turns,pitch}) and circlePath({r}) give it point lists · fillet(r, shape) rounds all edges (r 1-2 typical) · chamfer(c, shape) bevels · roundedGrow(mm, shape) — also spelled minkowski(mm, shape) — rounds EVERY outside edge and corner at once and grows the part by that much on every face (a 20mm cube becomes 26mm at 3) · roundedShrink(mm, shape) takes an even layer off · cone({r1,r2,h}) · torus({R,r}) · colorize("#hex", shape) per part · colorByHeight({every|at, colors}, shape) bands by height as SEPARATE solids · scale([x,y,z], shape) · mirror([1,0,0], shape).
 POLISH MEANS: fillet or chamfer edges a hand touches · colorize each logical part differently · swap a crude block for a cone/torus where the real object is round · keep every screw hole and mating size EXACTLY as it is.
 ROUNDING, WHICH TO REACH FOR: fillet(r) when the part must keep its size — it rounds in place. roundedGrow(mm) when the whole thing should read as soft and pillowy, or when fillet() fails on the shape; it is the one that works on an imported mesh. It GROWS the part, so never use it on a mating face, a shaft or a bore — say in your sentence that the outside got mm bigger. Never use it to round a single edge, and never to make two parts FIT — that is clearance(gap, shape), which grows a shape about its own centre by the gap ON DIAMETER.
@@ -1331,6 +1817,9 @@ COLOUR: 2-3 flat colours via colorize(), matte (rough 0.6+, no gloss) — matte 
 DEEP MODEL — a reply costs the user minutes, not seconds, so do NOT hold work back for follow-ups: deliver the COMPLETE part in one reply, every feature asked for, named constants throughout. One sentence plus the code — long thinking is not licence to narrate. Ambiguous request? Choose the sensible reading and state the assumption in that sentence.
 THINK ON A BUDGET, LIKE A MATERIAL. Plan in ONE brief pass — shapes, sizes, build order — then write code. Deliberation is for what is genuinely hard (a gear train that must mesh, parts that must clear each other), never for a fillet radius. If you catch yourself circling — revisiting a settled choice, re-planning mid-thought — the design phase is OVER: keep what you have, one quick review pass for errors, then OUTPUT it. NEVER restart the design mid-reply. A good part now beats a perfect one that never arrives; the app iterates on real code, not on abandoned thoughts.
 Also spend some of that budget on the LOOK: set the scene with look({...}) — a material and lighting that suit the object — and use finish()/glass()/glow() on the parts that deserve them. Here it costs nothing extra.
+
+#catalog
+CATALOG CODE. The current model came from the app's own tested catalog: it begins with "// Every number below is a slider (Params). From the BREPcode catalog: <id>." Keep that header line, any "// Sized for" line and the "const name = number;" dials at the top EXACTLY as they are (change a dial's number if the request is about it; never rename or remove one), and make your change in the geometry below them. The app's own follow-ups ("wider", "for a Pixel 9") read those lines, and they stop working the moment the header goes.
 
 #languages
 OTHER LANGUAGES
@@ -1571,6 +2060,8 @@ export const AUTO_SECTIONS = {
   organic: (c) => /\b(animal|creature|character|mascot|figurine|cute|plush|toy|pet|dog|puppy|cat|kitten|bear|giraffe|elephant|bunny|rabbit|duck|dino(saur)?|dragon|monster|snowman|gnome|owl|fox|frog|pig|cow|horse|unicorn|whale|octopus|penguin|smoothUnion|blob)\b/i.test(c.text || ""),
   languages: (c) => !!c.pastedCode
     || /\b(openscad|jscad|cadquery|build123d|python|\.scad)\b/i.test(c.text || ""),
+  // only while a catalog design is the model on screen (its header line)
+  catalog: (c) => !!c.catalogCode,
 };
 
 export function composeSystemParts(opts = {}) {

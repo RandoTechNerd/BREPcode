@@ -14,7 +14,7 @@ export default {
     "bird feeding tray", "bird seed tray", "diy bird feeder"],
   nouns: ["feeder", "tray", "dish", "bath"],
   keywords: ["bird", "birds", "seed", "garden", "bottle", "hanging", "feed"],
-  fits: ["neck"],
+  fits: ["bottle-neck"],
   fromSpec: (s) => ({ neckD: s.dims.d }),
   primary: "trayD",
   tips: ["200 mm across", "platform feeder", "bird bath"],

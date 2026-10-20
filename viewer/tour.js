@@ -34,7 +34,7 @@ export const TOUR_STEPS = [
     body: "Real solid modelling - no install, no account, no server. Two minutes and you will know where all of it is.",
     brag: [
       ["Four languages, one kernel", "Write BREPcode, or paste OpenSCAD, JSCAD or build123d. They all compile to the same BREP solids."],
-      ["An AI that hands you code", "Describe a part and it writes readable, editable BREPcode with named sizes - not a mesh you can never change again."],
+      ["Ask for a thing, get a tested part", "Say “a hook for my yoga mat” and a printable design appears, sized to the real object, every number a slider. No AI and no key; connect one later for anything the catalog does not know."],
       ["Code and mouse, same model", "Drag a face handle and the number in the source changes. Edit the number and the model moves."],
       ["Straight to the printer", "STL, OBJ, 3MF, GLB and STEP - with a layer preview and supports built in, so you catch a bad part before you slice it."],
       ["Nothing leaves this machine", "Every model, every key, every byte stays local. MIT licensed, and the whole thing fits in a URL you can share."],
@@ -59,9 +59,21 @@ export const TOUR_STEPS = [
   },
   {
     sel: "#chat-btn",
-    title: "Describe it instead",
-    body: "Ask for a part in plain words and it writes BREPcode you can read and edit - not a mesh. Change one const afterwards and it is still your part. Needs an AI key, set in the gear.",
+    title: "Just say what you want to print",
+    body: "Type “a phone stand for my iPhone 16” or “a hook for my yoga mat” and the built-in helper hands you a tested, printable design: no AI, no key. Then change it in words: “wider”, “for a Pixel 9”, “round the edges”, “make it blue”. The gear connects a real AI for anything else.",
     open: "chat",
+  },
+  {
+    sel: "#params-btn",
+    open: "panel",
+    title: "Every size is a slider",
+    body: "Anything the chat makes has its numbers here. Drag a slider and the model rebuilds; the line of code it belongs to changes with it, so you can always see what moved.",
+  },
+  {
+    sel: "#undo-btn",
+    open: "panel",
+    title: "Nothing is final",
+    body: "This steps back through every change, yours or the chat's, and the arrow next to it goes forward again. Typing “undo” in the chat does the same.",
   },
   {
     sel: "#cheat-btn",

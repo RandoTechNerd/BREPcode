@@ -26,7 +26,9 @@ const laptop = (id, names, w, d, t, note) => ({ id, kind: "laptop", names, dims:
 // generic sizes are typical cases for that layout and say so.
 const keyboard = (id, names, w, d, h, note) => ({ id, kind: "keyboard", names, dims: { w, d, h }, label: names[0], note });
 // Cards that stand on edge in a holder, and paper that lies flat: w x h in mm.
-const card = (id, names, w, h, note) => ({ id, kind: "card", names, dims: { w, h }, label: names[0], note });
+// t (thickness) too: the storage card holder sizes a slot from every "card"
+// spec, and a business card is about 0.35 mm
+const card = (id, names, w, h, note, t = 0.35) => ({ id, kind: "card", names, dims: { w, h, t }, label: names[0], note });
 const paper = (id, names, w, h, note) => ({ id, kind: "paper", names, dims: { w, h }, label: names[0], note });
 // Holes cut through a desktop for cables (d = hole diameter).
 const hole = (id, names, d, note) => ({ id, kind: "grommet", names, dims: { d }, label: names[0], note });

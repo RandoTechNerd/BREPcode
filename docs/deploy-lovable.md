@@ -40,7 +40,12 @@ application source.
 >
 > 5. Add a route at `/m/:slug` that immediately redirects to
 >    `/brep/index.html#s=` followed by the slug, rendering nothing at all — no
->    layout, no flash of the landing page. Every other route stays as it is.
+>    layout, no flash of the landing page.
+>
+> 5b. Add three more redirects the same way, rendering nothing:
+>    `/make` -> `/brep/index.html?make=1` (the quick door for newcomers),
+>    `/tour` -> `/brep/index.html?tour=1`, and `/welcome` -> `/brep/index.html?welcome=1`.
+>    Every other route stays as it is.
 >
 > 6. Keep the files under `public/brep/` that the zip does not contain:
 >    `quicksave.js` (and `locked-key.js`, if there is one). Unzip over the

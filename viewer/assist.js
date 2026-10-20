@@ -773,17 +773,19 @@ export const NAMES = SPECS.map((s) => s.name);
 export const specOf = (name) => SPECS.find((s) => s.name === name) || null;
 
 // Things people reach for out of habit that BrepScript genuinely doesn't have.
+// Kept honest against src/dsl.js: fillet, chamfer, revolve, text and colour
+// all exist now, so the advice points at the real call rather than saying
+// "not yet" about something that works.
 const NOT_HERE = {
-  linear_extrude: "here it's linearExtrude({ h: 10 }, polygon([[x, y], ...])) — or paste OpenSCAD and it translates",
-  rotate_extrude: "not supported yet — only linear extrusion is",
+  linear_extrude: "here it's linearExtrude({ h: 10 }, polygon([[x, y], ...])), or paste the OpenSCAD and it translates",
+  rotate_extrude: "here it's revolve(360, polygon([...])) with the profile touching x = 0, or paste the OpenSCAD and it translates",
   circle: "use cylinder({ r, h }) for a round solid, or polygon(...) + linearExtrude",
   square: "use cube([X, Y, Z]), or polygon(...) + linearExtrude",
-  fillet: "not wired up yet — it needs edge selection",
-  chamfer: "not wired up yet — it needs edge selection",
-  extrude: "not wired up yet",
-  revolve: "not wired up yet",
-  color: "the viewer shades everything the same way",
-  text: "not wired up in the DSL yet",
+  extrude: "use linearExtrude({ h }, polygon([...])) for a flat outline, or revolve(360, polygon([...])) for a lathe shape",
+  color: "use colorize(\"#ff8800\", shape) (a name, hex or [r, g, b]); the viewer keeps each part's colour and a 3MF prints them",
+  colour: "use colorize(\"#ff8800\", shape) (a name, hex or [r, g, b])",
+  roundover: "use fillet(r, shape), or fillet({ r, faces: 'top' }, shape) for one side",
+  bevel: "use chamfer(d, shape)",
 };
 
 function editDistance(a, b) {

@@ -12,8 +12,14 @@ now four ways into the same model, and you can move between them mid-build:
 
 - **✍️ Write it.** An OpenSCAD-style language that rebuilds as you type. Or paste
   OpenSCAD, JSCAD, build123d or CadQuery and it translates on the way in.
-- **💬 Describe it.** Tell the built-in chat what you want in plain English and it
-  writes the code. Bring your own Claude or Gemini key, stored in your browser.
+- **💬 Describe it.** Say “a phone stand for my iPhone 16” or “a hook for my yoga
+  mat” and the built-in helper hands you one of 200+ tested, printable designs
+  with every size a slider, no AI and no key. Then change it in words: “wider”,
+  “for a Pixel 9”, “round the edges”, “add two holes”, “make it blue”. For
+  anything the catalog does not know, connect an AI: a free one that runs in
+  your browser, your own Claude, Gemini or OpenRouter key, or (desktop) your
+  Claude Code login. The quick door for newcomers is
+  [brepcode.com/make](https://brepcode.com/make).
 - **🖱 Grab it.** Click a shape to select its code, then drag the handles to
   resize it. Alt+arrows nudge any number. The edit lands back in the source.
 - **🧰 Import and edit it.** Bring in an STL, 3MF, OBJ or SVG, then drill it,
@@ -212,7 +218,7 @@ Everything lives in the header bar. Nothing here needs the terminal.
 
 | Panel | What it does |
 |---|---|
-| **💬 Chat** | Describe a part in plain English and get code. Bring your own API key (Claude or Gemini), stored locally in your browser, never sent anywhere but the provider. Optionally password-locked so you can publish a build with a key baked in |
+| **💬 Chat** | Say what you want to print and the built-in helper answers from a catalog of 200+ tested parametric designs (`src/catalog`), no AI needed; follow-ups edit the dials in place. Simple shapes, holes, fillets, resizes and colours are built in too. Connect an AI for the rest: free in-browser (WebGPU), a local server, or your own Claude / Gemini / OpenRouter key, stored locally and sent only to that provider. A site can ship an assist-mode house AI (`docs/house-ai.md`) that steps in only when the helper is stuck |
 | **📖 Cheat sheet** | Every word in the language, grouped and tabbed by dialect, click to insert working code |
 | **🎨 Material and lighting** | Colour, metalness, roughness, opacity, textures, presets, CAD outline mode, lighting rig, background |
 | **🖼 Trace image** | PNG or JPG to an extrudable outline |

@@ -38,7 +38,7 @@ const PORT = Number(process.env.BREPCODE_AGENT_PORT || 5757);
 // Long jobs get their own ceiling. A kernel build of a heavy part legitimately
 // runs for minutes and the default would report a timeout on a build that was
 // going perfectly well — the same mistake VidHelm's bridge made on exports.
-const LONG = new Set(["set_code", "build", "set_param", "get_stl"]);
+const LONG = new Set(["set_code", "build", "set_param", "get_stl", "catalog_find"]);
 const timeoutFor = (action) => (LONG.has(action) ? 10 * 60 * 1000 : 20000);
 
 let state = { listening: false, port: PORT, error: "" };

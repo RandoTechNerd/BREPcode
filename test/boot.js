@@ -206,7 +206,7 @@ console.log("\na link that cannot open says why, somewhere that survives\n");
   // with a cube and no explanation, which reads as the link having been
   // silently ignored.
   check("a dead short link writes to the hint, not just the status",
-    /hint\.innerHTML = `⚠️ <b>That link did not open<\/b>/.test(html));
+    /hint\.innerHTML = `\$\{lineIcon\("warn", 13\)\} <b>That link did not open<\/b>/.test(html));
   check("...and names what was actually asked for",
     /That link did not open<\/b> — \$\{esc\(String\(e\?\.message \|\| e\)\)\}/.test(html));
   check("an unreadable payload explains itself too",
@@ -345,6 +345,60 @@ console.log("\nit is scenery, so the plate underneath stays live\n");
   const v = JSON.parse(readFileSync(new URL("../node_modules/replicad-opencascadejs/package.json", import.meta.url), "utf8")).version;
   check("curved.js falls back to a pinned copy of the very same wasm version",
     curved.includes(`replicad-opencascadejs@${v}/src/replicad_single.wasm`) && /for \(const url of wasmUrls\(\)\)/.test(curved), v);
+}
+
+// The quick door: brepcode.com/make. One question over the loading cube,
+// inside the app, then the chat with the answer in it. It is an overlay
+// rather than a separate page so the kernel downloads while the visitor
+// types, and nothing reloads between the question and the model.
+console.log("\nthe quick door (/make) is wired in\n");
+{
+  const build = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
+  const welcome = readFileSync(new URL("../viewer/welcome.js", import.meta.url), "utf8");
+  const M = await import("../viewer/make.js");
+  check("the app looks for ?make=1, #make and /make", /function makeRequested\(\)/.test(html)
+    && /\[\?&\]make=1\(&\|\$\)/.test(html) && /\^#make\$/.test(html) && /make\\\/\?\(index\\\.html\)\?\$/.test(html));
+  check("...and not a model called make (/m/make)", /m\\\/make/.test(html) && M.isMakeUrl({ pathname: "/m/make" }) === false);
+  check("...on the framing page too", /function makeRequested\(\) \{[\s\S]{0,200}for \(const L of hostLocations\(\)\)/.test(html));
+  check("the flag is taken off the address", /function makeRequested\(\) \{[\s\S]{0,900}u\.searchParams\.delete\("make"\)/.test(html));
+  check("the door is checked before the welcome card and the ?ask= handoff, and opens at once",
+    html.indexOf("} else if (!urlCarriesModel() && makeRequested()) {") > 0
+    && html.indexOf("} else if (!urlCarriesModel() && makeRequested()) {") < html.indexOf("const ask = launchAsk();")
+    && html.indexOf("} else if (!urlCarriesModel() && makeRequested()) {") < html.indexOf("if (!W.welcomed()) W.showWelcome(hooks);")
+    && /makeRequested\(\)\) \{[\s\S]{0,400}openMakeDoor\(import\("\.\/welcome\.js"\)\);/.test(html));
+  check("make.js is asked for from <head> on a /make visit", /\["make\.js", "icons\.js"\]\.forEach/.test(html));
+  check("the door takes over the host page's stand-in (#mkc): text, submit, hidden at once",
+    /getElementById\("mkc"\)/.test(M.showMake.toString() + readFileSync(new URL("../viewer/make.js", import.meta.url), "utf8"))
+    && /__mkcSubmitted/.test(readFileSync(new URL("../viewer/make.js", import.meta.url), "utf8"))
+    && /if \(closed\) return;/.test(readFileSync(new URL("../viewer/make.js", import.meta.url), "utf8")));
+  check("the door is a lazy module the site build ships", /import\("\.\/make\.js"\)/.test(html) && /"make\.js",/.test(build));
+  check("/make bounces into the app the way /tour does", /bounce\("make", "make=1"/.test(build) && !/viewer\/make\.html/.test(build));
+  check("the module exports what the app calls", typeof M.showMake === "function" && typeof M.pickExamples === "function" && typeof M.isMakeUrl === "function");
+  check("the door's hooks are all provided", ["ask:", "openChat:", "openEditor:", "pickFile:", "startTour:", "cubeHTML:", "ready:", "examples:", "onClose:"]
+    .every((k) => new RegExp(`M\\.showMake\\(\\{[\\s\\S]{0,1600}\\b${k.replace(":", "")}:`).test(html)));
+  check("the chips come from the catalog", /examples: \(\) => import\("\.\.\/src\/catalog\/index\.js"\)/.test(html));
+  check("the door keeps the editor out of the way", /let quietEditor = false;/.test(html)
+    && /else if \(ok && show === "editor" && !quietEditor\) toggleCard\(panel, openBtn, true\);/.test(html)
+    && /async function openChatAndAsk\(text\) \{[\s\S]{0,300}quietEditor = true;/.test(html));
+  check("...and 'Open the full editor' opens the editor, not just the chat",
+    /openEditor: async \(\) => \{\s*quietEditor = false;\s*if \(!panel\.classList\.contains\("open"\)\) openBtn\.click\(\);/.test(html));
+  check("...and counts as the welcome", /onClose: \(\) => Wp\.then\(\(w\) => \{ try \{ w\?\.markWelcomed\?\.\(\); \}/.test(html) && /export const markWelcomed/.test(welcome));
+  check("the welcome card leads with it", /data-w="make"/.test(welcome) && /openMake/.test(welcome)
+    && welcome.indexOf('data-w="make"') < welcome.indexOf('data-w="stl"'));
+  check("...and the app gives the card that hook", /openMake: \(\) => openMakeDoor\(W\),/.test(html));
+  check("typing in the door never reaches the app's shortcuts",
+    /for \(const ev of \["keydown", "keyup", "pointerdown", "wheel"\]\)[\s\S]{0,300}e\.stopPropagation\(\)/.test(readFileSync(new URL("../viewer/make.js", import.meta.url), "utf8")));
+  check("a chip is a request the matcher is known to answer", M.chipText("I want a phone holder") === "a phone holder"
+    && M.chipText("make me a hook for yoga roll") === "a hook for yoga roll");
+  const { FAMILIES } = await import("../src/catalog/index.js");
+  const { matchRequest } = await import("../src/catalog/match.js");
+  let seed = 7;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const drawn = Array.from({ length: 6 }, () => M.pickExamples(FAMILIES, { random: rnd })).flat();
+  const unrouted = [...new Set(drawn), ...M.FALLBACK_EXAMPLES].filter((t) => !matchRequest(t));
+  check("...every chip it can draw routes to a family", drawn.length >= 40 && !unrouted.length, unrouted.join(" | "));
+  check("the door's copy has no em dashes",
+    !/—/.test(readFileSync(new URL("../viewer/make.js", import.meta.url), "utf8")));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

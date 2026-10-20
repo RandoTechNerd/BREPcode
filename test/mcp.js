@@ -74,7 +74,7 @@ check("a notification gets no reply", out.length === 3, `got ${out.length} repli
 
 const tools = byId[2]?.result?.tools || [];
 const names = tools.map((t) => t.name);
-for (const want of ["get_state", "set_code", "build", "set_param", "set_view", "fit", "screenshot", "save_stl"]) {
+for (const want of ["get_state", "set_code", "build", "set_param", "set_view", "fit", "screenshot", "save_stl", "catalog_find", "catalog_list"]) {
   check(`tools/list offers ${want}`, names.includes(want), names.join(","));
 }
 // A tool with no description is a tool the model will not pick correctly.

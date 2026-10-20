@@ -49,6 +49,11 @@ const SYNONYMS = [
   [/\bvelcro\b/g, "hook and loop"], [/\bsharpies?\b/g, "marker"],
 ];
 
+// Number words become digits, so "two more holes", "three cables" and "a
+// couple of hooks" count. "one" stays a word: "one more" and "the one with a
+// lid" are not sizes.
+const NUMBER_WORDS = { two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10", eleven: "11", twelve: "12" };
+
 // "5/8", "1 1/8", "1-1/4": one number. Only the denominators fractions of an
 // inch actually use, and only a proper fraction, so "16/22 tubing" (a size
 // pair) is left alone.
@@ -73,6 +78,12 @@ export function normalise(text) {
   let t = fractions(String(text).toLowerCase());
   for (const [re, w] of SYNONYMS) t = t.replace(re, w);
   return t
+    .replace(/\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, (w) => NUMBER_WORDS[w])
+    .replace(/\ba (?:couple|pair) of\b/g, "2")
+    // "one" only when it plainly counts something: "one door", "just one"
+    .replace(/\b(?:just|only) one\b/g, "1")
+    .replace(/\bone (?=(?:door|hole|row|cell|slot|divider|compartment|handle|hook|peg|window|battery|bay|prong|shelf|tier|pocket|cable|card|coin)s?\b)/g, "1 ")
+    .replace(/×/g, " x ")
     .replace(/(\d)\s*(?:["”″]|''|inches|inch)(?![a-z])/g, "$1 in ")
     .replace(/(\d)\s*°/g, "$1 deg ")
     .replace(/\+/g, " plus ")
@@ -127,8 +138,9 @@ const FILLER = new Set(["a", "an", "the", "my", "our", "your", "his", "her", "th
 export function readings(text) {
   const raw = allTokens(text);
   const out = [keyTokens(text)];
-  const at = raw.indexOf("for");
-  if (at > 0) {
+  // every "for", not only the first: "a holder for my desk for pens"
+  raw.forEach((w, at) => {
+    if (w !== "for" || at === 0) return;
     const head = raw[at - 1];
     const tail = [];
     for (let j = at + 1; j < raw.length && tail.length < 4; j++) {
@@ -137,7 +149,7 @@ export function readings(text) {
       tail.push(raw[j]);
     }
     if (tail.length) out.push(keyTokens([...tail, head].join(" ")));
-  }
+  });
   return out;
 }
 
@@ -283,7 +295,10 @@ export function readNumbers(text, { skip = [] } = {}) {
 // Tie numbers to params. Returns overrides and the numbers it used. `spec`
 // is the named object (its digits are its name, not sizes); `thing` the
 // variant matched (its own name's choice words are already its settings).
-function numbersToParams(f, text, { spec = null, thing = null } = {}) {
+// `fresh` is a first request: only then does a loose "150 mm" fall to the
+// family's primary dial. On a follow-up a number that ties to nothing is
+// left alone (it is probably a face edit or a hole size for another handler).
+function numbersToParams(f, text, { spec = null, thing = null, fresh = true } = {}) {
   const specDigits = spec ? (phrasesOf(spec, "names", specTokens)
     .find((p) => findRun(specTokens(text), p) >= 0) || []).filter((w) => /^\d/.test(w)) : [];
   const nums = readNumbers(text, { skip: specDigits });
@@ -309,7 +324,7 @@ function numbersToParams(f, text, { spec = null, thing = null } = {}) {
       let j = i;
       while (/^\d+(\.\d+)?$/.test(toks[j] || "") && run.length < f.triple.length) {
         run.push(j);
-        if (toks[j + 1] !== "x") break;
+        if (toks[j + 1] !== "x" && toks[j + 1] !== "by") break;     // "120 x 80" and "120 by 80"
         j += 2;
       }
       if (run.length < 2) continue;
@@ -338,8 +353,10 @@ function numbersToParams(f, text, { spec = null, thing = null } = {}) {
           || counts.find(([kk, p]) => !taken.has(kk) && n.near.some((w) => !w.after && w.dist === 1 && sayOf(p).includes(w.w)));
         if (c) k = c[0];
       }
-      if (!k) k = pick(n, entries.filter(([, p]) => p.unit === "mm"));
-      if (!k && n.unit === "mm" && f.primary && !taken.has(f.primary)) k = f.primary;
+      // a bare number next to an angle word ("make the angle 60", "tilt 70")
+      // is the angle; the nearest say word wins across mm and degree dials
+      if (!k) k = pick(n, entries.filter(([, p]) => p.unit === "mm" || (!n.unit && p.unit === "deg")));
+      if (!k && n.unit === "mm" && fresh && f.primary && !taken.has(f.primary)) k = f.primary;
     }
     if (!k) continue;
     taken.add(k);
@@ -385,12 +402,14 @@ function describeSpec(s) {
 }
 
 // Build the result for a family + layers of overrides.
-function assemble(f, { thingIdx = null, spec = null, over = {}, base = null } = {}) {
+function assemble(f, { thingIdx = null, spec = null, over = {}, base = null, layers = null } = {}) {
   const thing = thingIdx == null ? null : f.things[thingIdx];
   const thingSpec = !spec && thing?.spec ? specFor(thing.spec) : null;
   const useSpec = spec || thingSpec;
   const fromSpec = useSpec && f.fromSpec ? f.fromSpec(useSpec) : null;
-  const { values, clamped } = resolveParams(f, base, thing?.params, fromSpec, over);
+  // a follow-up passes its own layering (refineRequest); a fresh request is
+  // the thing's presets, the named object's sizes, then the numbers said
+  const { values, clamped } = resolveParams(f, ...(layers || [base, thing?.params, fromSpec, over]));
   const sizedFor = useSpec ? [describeSpec(useSpec) + (f.specNote ? `; ${f.specNote}` : "")] : [];
   const title = thing?.title || (thing ? cap(thing.names[0]) : f.title);
   let question = null;
@@ -408,6 +427,12 @@ export function matchRequest(text) {
   const ranked = rankFamilies(text);
   const top = ranked[0];
   if (!top || top.score < THRESHOLD) return null;
+  // "a mount for my iPhone 16": four families carry a noun and the phone,
+  // none by name, and the one registered first would win. A tie with no
+  // name on either side is a question, not an answer (catalogSuggest asks).
+  const second = ranked[1];
+  if (second && !top.named && !second.named && second.score === top.score && second.span === top.span
+      && second.family.id !== top.family.id) return null;
   const f = top.family;
   const spec = findSpec(text, { kinds: f.fits || [] });
   // "a hook for my yoga mat" names no thing, but the spec it names has one
@@ -419,10 +444,13 @@ export function matchRequest(text) {
   const { over, used } = numbersToParams(f, text, { spec, thing: thingIdx == null ? null : f.things[thingIdx] });
   const res = assemble(f, { thingIdx, spec, over });
   res.score = top.score;
+  res.named = !!top.named;        // a name phrase or a thing, not just a noun
   res.used = used;
-  res.alternatives = ranked.slice(1, 3)
-    .filter((r) => r.score >= THRESHOLD && r.family.id !== f.id && top.score - r.score <= 3)
-    .map((r) => r.family.title);
+  const close = ranked.slice(1, 3)
+    .filter((r) => r.score >= THRESHOLD && r.family.id !== f.id && top.score - r.score <= 3);
+  res.alternatives = close.map((r) => r.family.title);
+  // ...as something that can be said back ("a tablet stand"), for a chip
+  res.alternativeNames = close.map((r) => r.family.names[0]);
   return res;
 }
 
@@ -433,15 +461,23 @@ export function refineRequest(memo, text) {
   const f = familyById(memo?.familyId);
   if (!f) return null;
   const spec = findSpec(text, { kinds: f.fits || [] });
-  const { over, used } = numbersToParams(f, text, { spec });
+  const thing = memo.thingIdx == null ? null : f.things[memo.thingIdx];
+  // a message that is only a size ("80 mm", "3 inch") means the main dial;
+  // one with other words in it ties by those words or not at all
+  const bare = keyTokens(text).every((w) => /^\d/.test(w) || unitOf(w));
+  const { over, used } = numbersToParams(f, text, { spec, thing, fresh: bare });
   const nudge = nudges(f, text, memo.values);
   if (!spec && !used.length && !Object.keys(over).length && !Object.keys(nudge).length) return null;
-  const keepSpec = spec || (memo.specId ? specFor(memo.specId) : null);
-  // Earlier values stay, except those the new spec would size: naming a
-  // different phone must re-measure the slot, not keep the old one.
-  const base = { ...memo.values };
-  if (spec && f.fromSpec) for (const k of Object.keys(f.fromSpec(spec) || {})) delete base[k];
-  const res = assemble(f, { thingIdx: memo.thingIdx, spec: keepSpec, over: { ...nudge, ...over }, base });
+  const memoSpec = memo.specId ? specFor(memo.specId) : null;
+  const keepSpec = spec || memoSpec;
+  // What the user has set since (memo.values) sits OVER the thing's presets
+  // and the remembered object's sizes, so a slot they widened by hand stays
+  // widened on an unrelated follow-up; only a NEWLY named object sits over
+  // their values, because naming a different phone must re-measure the slot.
+  const under = !spec && memoSpec && f.fromSpec ? f.fromSpec(memoSpec) : null;
+  const onTop = spec && f.fromSpec ? f.fromSpec(spec) : null;
+  const res = assemble(f, { thingIdx: memo.thingIdx, spec: keepSpec, over: { ...nudge, ...over },
+    layers: [thing?.params, under, memo.values, onTop, { ...nudge, ...over }] });
   res.used = used;
   res.changedSpec = !!spec;
   return res;

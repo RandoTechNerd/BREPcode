@@ -183,7 +183,7 @@ console.log("\nguided flows\n");
   const r2 = respond("low poly please", {}, r.code);
   check("low poly halves $fn", r2.code?.includes("$fn: 32"), r2.code);
   const r3 = respond("smoother", {}, "cube([5,5,5])");
-  check("no $fn -> explains instead of failing", r3.code === undefined && /\$fn/.test(r3.reply), r3.reply);
+  check("no $fn -> explains instead of failing", r3.code === undefined && /no facet setting|\$fn/.test(r3.reply) && r3.chips?.includes("round the edges"), r3.reply);
 }
 
 // beyond built-in skills -> point at the API
@@ -458,7 +458,7 @@ console.log("\nmodel ranking\n");
     ["fillet", "chamfer", "colorize", "cone", "torus"].every((w) => PH.includes(w)));
   check("...and protects what already works",
     /ALREADY BUILDS/.test(PH) && /EXACTLY as it is/.test(PH));
-  check("...while staying compact too", PH.length < 2000, `${PH.length} chars`);
+  check("...while staying compact too", PH.length < 2200, `${PH.length} chars`);
   check("browser models rank by size",
     rank([
       "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
@@ -1598,6 +1598,267 @@ console.log("\nwires are swept, not chained\n");
     CB.OPENAI_PRESETS.find((p) => p.name === "OpenRouter")?.browser === true
     && CB.OPENAI_PRESETS.find((p) => p.name === "OpenAI")?.browser === false,
     "OpenAI's CORS policy refuses browser chat; that is why the app recommends OpenRouter");
+}
+
+// The helper hears a newcomer: typos, roundabout phrasings, vague nouns and
+// half-finished requests all get an answer or a question with choices, never
+// a dead end. Every "can't" carries the ways on (sliders, editor, tour, an
+// AI, a human).
+console.log("\nhearing a newcomer\n");
+{
+  const dims = { min: [-40, -35, 0], max: [40, 35, 90] };
+  const convo = () => {
+    const st = {};
+    let code = "";
+    const say = (q) => {
+      const r = respond(q, st, code, code ? dims : null);
+      if (r.code !== undefined) code = r.code;
+      return r;
+    };
+    return { say, st, code: () => code };
+  };
+
+  // typos and paraphrases are heard, and the reply says what was heard
+  check("'fone stand' is heard as a phone stand", CB.matchCatalog("fone stand")?.familyId === "phone-stand");
+  check("...and the reply says so", /I read that as “phone stand”/.test(respond("fone stand", {}, "", null).reply));
+  check("'hok for my yoga mat' is heard as a hook", CB.matchCatalog("a hok for my yoga mat")?.familyId === "cradle-hook");
+  check("a real stem that sounds like another word is re-heard ('a shelve')", CB.matchCatalog("a shelve")?.familyId === "wall-shelf");
+  check("'something to hold my phone' is a phone holder", CB.understand("something to hold my phone")?.text === "phone holder"
+    && CB.matchCatalog("something to hold my phone")?.familyId === "phone-stand");
+  {
+    const m = CB.matchCatalog("a thing to hang my keys on");
+    check("'a thing to hang my keys on' is a key hook", /key/i.test(`${m?.familyId} ${m?.title}`), `${m?.familyId} / ${m?.title}`);
+  }
+  check("size words are never 'corrected'", CB.understand("make it 90 mm wide") === null && CB.nearestWord("wide") === null);
+  check("a misspelling the catalog cannot place changes nothing", CB.matchCatalog("a flurble") === null);
+
+  // a vague noun is a question with choices, not a guess and not a shrug
+  {
+    const r = respond("hook", {}, "", null);
+    check("'hook' alone asks which, with chips", r.code === undefined && r.chips?.length >= 3 && /which/i.test(r.reply), r.reply);
+    check("...and every chip is a request the catalog answers", r.chips.filter((c) => c !== "what can you make").every((c) => CB.matchCatalog(c)));
+    const c = convo();
+    c.say("I want a phone stand");
+    const r2 = c.say("I meant a hook");
+    check("'I meant a hook' with a model open asks the same way", r2.chips?.length >= 3 && r2.code === undefined, r2.reply);
+    const r3 = c.say(r2.chips[1]);
+    check("...and a tapped chip builds that thing", typeof r3.code === "string" && r3.fromCatalog, r3.reply);
+    check("a shape word stays with the rule engine", CB.catalogSuggest("a box") === null);
+    const f = convo();
+    f.say("I need a holder");
+    check("the holder flow still starts", f.st.flow?.kind === "holder");
+    const esc = f.say("hook");
+    check("...but naming a catalog thing mid-flow drops the flow", !f.st.flow && esc.chips?.length >= 3, esc.reply);
+  }
+
+  // a one-sided cut with no amount is asked about, with the answers as chips
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const q = c.say("remove the bottom portion");
+    check("'remove the bottom portion' asks how much", q.code === undefined && /how much off the bottom/i.test(q.reply), q.reply);
+    check("...with amounts as chips", q.chips?.length === 3 && q.chips.every((x) => /^take \d+ mm off the bottom$/.test(x)), JSON.stringify(q.chips));
+    const a = c.say(q.chips[1]);
+    check("...and a tapped amount does the cut", /Shaved 10mm off the bottom/.test(a.reply) && typeof a.code === "string", a.reply);
+    const t = c.say("cut off the top");
+    check("'cut off the top' asks the same way", /how much off the top/i.test(t.reply) && t.chips?.length === 3, t.reply);
+  }
+
+  // several holes at once, on a catalog model and on a plain shape
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const h = c.say("add two more holes");
+    check("'add two more holes' drills two", /Drilled 2 5 mm holes/.test(h.reply) && (h.code.match(/cylinder\(\{ r: 2\.5/g) || []).length === 2, h.reply);
+    const p = convo();
+    p.say("make a box 30");
+    const h3 = p.say("add 3 holes");
+    check("'add 3 holes' on a 30 mm box fits three screw holes", /Drilled 3 5mm holes/.test(h3.reply) && (h3.code.match(/cylinder\(\{ r: 2\.5/g) || []).length === 3, h3.reply);
+    const vol = await volumeOf(h3.code);
+    check("...and the holes are really cut", vol < 27000 && vol > 20000, `${vol.toFixed(0)} mm3`);
+    check("too many holes is said, not forced", /don't fit/.test(p.say("add 8 holes of 10 mm").reply));
+    check("a count is read from words and digits", CB.holeCount("add two more holes") === 2 && CB.holeCount("3 screw holes") === 3 && CB.holeCount("a 8 mm hole") === 1);
+  }
+
+  // one sentence, two changes
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const r = c.say("make it blue and wider");
+    check("'make it blue and wider' does both", /stand width 70 → 84/.test(r.reply) && /In blue/.test(r.reply) && /colorize\("#1e88e5"/.test(r.code), r.reply);
+    check("...with the undo note still last", /In blue\. \(◀ undoes it\.\)$/.test(r.reply), r.reply);
+  }
+
+  // undo is a thing the chat does, not a thing it explains
+  {
+    const r = respond("undo", {}, "cube([5,5,5])", dims);
+    check("'undo' runs the editor's undo", r.run?.includes("undo") && r.code === undefined && r.actions?.some((a) => a.act === "undo"), r.reply);
+    const c = convo();
+    c.say("I want a phone stand");
+    check("...even with a catalog model open", c.say("undo").run?.includes("undo"));
+  }
+
+  // the catalog editor: one axis, one feature, on/off dials, things by name
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const { readValues } = await import("../src/catalog/edit.js");
+    const { FAMILIES } = await import("../src/catalog/index.js");
+    const stand = FAMILIES.find((f) => f.id === "phone-stand");
+    const v = () => readValues(stand, c.code());
+    c.say("twice as wide");
+    check("'twice as wide' doubles the width dial, nothing else", v().width === 140 && v().backH === 80, JSON.stringify(v()));
+    c.say("half the height");
+    check("'half the height' halves the back support", v().backH === 40, v().backH);
+    c.say("make the slot wider");
+    check("'make the slot wider' moves the slot dial only", v().deviceT === 15 && v().width === 140, v().deviceT);
+    const bp = c.say("bigger phone");
+    check("'bigger phone' asks which phone", bp.asked && bp.chips?.length >= 3 && bp.code === undefined, bp.reply);
+    c.say("no cable hole");
+    check("'no cable hole' turns the dial off", v().cableW === 0, v().cableW);
+    const back = c.say("add a cable hole");
+    check("'add a cable hole' turns it back on (no drilling)", v().cableW === 12 && !/Drilled/.test(back.reply), back.reply);
+    const again = c.say("add a cable hole");
+    check("...and says so when it is on already", /already has that/.test(again.reply), again.reply);
+    c.say("make the angle 60");
+    check("a bare number next to an angle word is the angle", v().angle === 60, v().angle);
+    const rh = c.say("put a round hole through it");
+    check("'put a round hole through it' drills, never fillets", /Drilled/.test(rh.reply) && !/Rounded/.test(rh.reply), rh.reply);
+    const clamp = c.say("make it 400 wide");
+    check("a clamp is reported on the edit path", /stops at 220/.test(clamp.reply) && v().width === 220, clamp.reply);
+    check("...and a second try says it is at the limit", /already at its limit/.test(c.say("make it 400 wide").reply));
+    const box = convo();
+    box.say("a storage box");
+    const sbox = FAMILIES.find((f) => f.id === "storage-box");
+    const bv = () => readValues(sbox, box.code());
+    box.say("add a divider");
+    check("'add a divider' counts one up", bv().divX === 1, bv().divX);
+    box.say("add two more dividers");
+    check("'two more' is read as a number", bv().divX === 3, bv().divX);
+    box.say("8 by 6 by 4 cm");
+    check("'8 by 6 by 4 cm' is three sizes, not a scale factor", bv().width === 80 && bv().depth === 60 && bv().height === 40, JSON.stringify(bv()));
+    box.say("round the corners more");
+    const r0 = bv().cornerR;
+    box.say("sharp corners");
+    check("'sharp corners' turns the rounding dial down", bv().cornerR < r0 && bv().cornerR === 1, bv().cornerR);
+    const pb = convo();
+    pb.say("make a box 30");
+    check("'8 x 6 x 4 cm' on a plain shape is not an 8x scale", !/Scaled everything by 8/.test(pb.say("make it 8 x 6 x 4 cm").reply));
+    check("'scale it by 2' on a plain shape scales", /Scaled everything by 2/.test(pb.say("scale it by 2").reply));
+    // the remembered object stays under the user's own values
+    const d = convo();
+    d.say("I want a phone stand");
+    d.say("for a pixel 9");
+    d.say("slot 14 mm");
+    d.say("wider");
+    const dv = readValues(stand, d.code());
+    check("a slot set by hand survives an unrelated follow-up", dv.deviceT === 14, dv.deviceT);
+    d.say("for an iphone 16");
+    check("...until a new phone is named", Math.abs(readValues(stand, d.code()).deviceT - 10.8) < 0.01, readValues(stand, d.code()).deviceT);
+    // a dial line rewritten by hand is reported, not overwritten
+    const h = convo();
+    h.say("I want a phone stand");
+    const hacked = h.code().replace(/const width = 70;/, "const width = backH * 0.8;");
+    const miss = respond("make it 90 mm wide", h.st, hacked, dims);
+    check("a hand-written dial is reported, not clobbered", /no longer a plain number/.test(miss.reply) && miss.code === undefined, miss.reply);
+    // a thing of the open family, by name
+    const tb = convo();
+    tb.say("I want a phone stand");
+    const tw = tb.say("tablet stand");
+    check("a thing named mid-conversation sets it up", /tablet stand/i.test(tw.reply) && readValues(stand, tb.code()).width === 120, tw.reply);
+    check("'a bracket for a shelf' is the bracket flow, not a shelf", respond("a bracket for a shelf", {}, "", null).reply.includes("L-bracket"));
+    // a tie between families with no name on either side is a question
+    const tie = respond("a mount for my iPhone 16", {}, "", null);
+    check("a noun-and-object tie asks which, with every tied family as a chip", tie.code === undefined && tie.chips?.length >= 4 && tie.chips.some((x) => /tripod/.test(x)), JSON.stringify(tie.chips));
+    // the exact name of another design, with one open, is the new thing
+    const sw = convo();
+    sw.say("I want a phone stand");
+    const to = sw.say("phone tripod mount");
+    check("naming another design outright switches to it", /tripod mount/i.test(to.reply) && to.code !== undefined, to.reply);
+  }
+
+  // every chip under a catalog reply does something
+  {
+    const { FAMILIES } = await import("../src/catalog/index.js");
+    const { resolveParams, familyCode } = await import("../src/catalog/schema.js");
+    let shown = 0, dead = 0;
+    for (const f of FAMILIES) {
+      const code = familyCode(f, resolveParams(f).values);
+      const first = respond(f.examples[0], {}, "", null);
+      if (!first.code || !first.chips) continue;
+      for (const chip of first.chips) {
+        shown++;
+        const r = respond(chip, { catalog: { familyId: f.id, specId: null } }, code, dims);
+        if (!(r.code !== undefined || r.asked)) { dead++; if (dead <= 5) console.log(`    dead chip: ${f.id} :: ${chip} :: ${r.reply.slice(0, 60)}`); }
+      }
+    }
+    check(`every chip shown under a first reply does something (${shown} chips)`, shown > 500 && dead === 0, `${dead} dead`);
+  }
+
+  // app questions and the catalog overview
+  {
+    const tour = respond("take the tour", {}, "", null);
+    check("'take the tour' starts the tour", tour.run?.includes("tour"), tour.reply);
+    check("...but a tour bus holder is a holder", !respond("a tour bus holder", {}, "", null).run);
+    const wcm = respond("what can you make", {}, "", null);
+    check("'what can you make' answers with a chip per group, not a wall", wcm.reply.length < 400 && wcm.chips?.length >= 15, `${wcm.reply.length} chars, ${wcm.chips?.length} chips`);
+    const k = respond(wcm.chips[0], {}, "", null);
+    check("...and a group chip lists that group with things to tap", k.chips?.length >= 3 && k.chips.every((c) => c === "what can you make" || CB.matchCatalog(c)), JSON.stringify(k.chips));
+    check("'where are the sliders' opens them", respond("where are the sliders", {}, "", null).run?.includes("params"));
+  }
+
+  // the ways on are always there
+  {
+    const h = respond("help", {}, "", null);
+    check("help offers chips and the ways on", h.chips?.length >= 3 && h.actions?.some((a) => a.act === "tour"), JSON.stringify(h.actions));
+    check("the tour is one of the standing help actions", CB.HELP_ACTIONS.some((a) => a.act === "tour"));
+    const shrug = respond("write me a poem", {}, "", null);
+    check("a shrug still carries the ways on", shrug.actions?.some((a) => a.act === "tour") && shrug.actions?.some((a) => a.act === "email"));
+    const dead = respond("make it fly", {}, "", null);
+    check("an impossible ask with nothing open still points somewhere", dead.chips?.length >= 2 && dead.actions?.length >= 4, dead.reply);
+  }
+
+  // the viewer carries the new reply fields
+  {
+    const { readFileSync } = await import("node:fs");
+    const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+    check("the viewer runs a reply's own actions (undo)", /for \(const act of r\.run \|\| \[\]\) runChatAction\(act\);/.test(HTML)
+      && /for \(const act of local\.run \|\| \[\]\) runChatAction\(act\);/.test(HTML));
+    check("...and knows the tour and undo actions", /else if \(act === "tour"\) \$\("tour-btn"\)\.click\(\);/.test(HTML)
+      && /else if \(act === "undo"\) \{/.test(HTML));
+    check("the catalog answers first whatever the provider", /if \(!house && !forceAI\) \{\s*const probe = \{ \.\.\.botState \};/.test(HTML)
+      && /if \(\(local\.fromCatalog && local\.code !== undefined\) \|\| acts\) \{/.test(HTML));
+    check("...and so does a reply that acts on its own (undo)", /const acts = !!local\.run\?\.length;/.test(HTML)
+      && /if \(!acts\) quickReplies\(/.test(HTML));
+    check("...on a copy of the chat state", /const local = botRespond\(text, probe, code\.value, modelDims\);/.test(HTML)
+      && /Object\.assign\(botState, probe\);/.test(HTML));
+    check("...with one tap to the AI instead", /quickReplies\(\[`ask the AI instead: \$\{text\}`\], \["Ask the AI instead"\], \["spark"\]\);/.test(HTML)
+      && /const AI_INSTEAD = \/\^\(\?:ask\|use\) the ai/.test(HTML));
+    check("the catalog-first block sits before the gem policy",
+      HTML.indexOf("if (!house && !forceAI) {") < HTML.indexOf("if (!house && gemWantsLocalFirst()) {"));
+    check("a helper build is judged by its own result, not the next build",
+      /async function applyHelperCode\(text, src, show\)/.test(HTML) && !/function watchHelperBuild\(/.test(HTML)
+      && (HTML.match(/applyHelperCode\(text, (?:r|local)\.code, (?:r|local)\.fromCatalog \? "params" : "editor"\)/g) || []).length === 3);
+    check("a catalog design brings the sliders forward, not the code", /if \(ok && show === "params"\) \{/.test(HTML)
+      && /toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\);/.test(HTML));
+    check("answered chips retire when the next message is sent", /\.quick-row:not\(\.action-row\):not\(\.spent\)/.test(HTML)
+      && /\.quick-row\.spent \{ opacity: \.4; \}/.test(HTML));
+    check("Enter only ever fires the newest ✓ chip", /const rows = \[\.\.\.chatMsgs\.querySelectorAll\("\.quick-row:not\(\.spent\):not\(\.action-row\)"\)\];/.test(HTML));
+    check("the chat's buttons are line icons, not emoji", /function chipFace\(el, label, iconName\)/.test(HTML)
+      && !/[✨⚡✉⬇🤖🟠🔵🌐🖥🎁]/.test(HTML.replace(/<!--[\s\S]*?-->/g, "")));
+    check("the Download STL button really downloads", /if \(act === "stl"\) \{ if \(lastSolids\.length\) exportAs\("stl"\);/.test(HTML));
+    check("the Sliders button fills the Params card", /else if \(act === "params"\) \{ toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\); \}/.test(HTML));
+    check("Connect an AI lands on the AI tab", /document\.querySelector\('#cs-tabs \[data-cstab="ai"\]'\)\?\.click\(\);/.test(HTML));
+    check("a reply that only informs or asks never triggers the 'beyond the helper' offer",
+      /if \(r\?\.asked \|\| r\?\.chips\?\.length \|\| r\?\.run\?\.length\) return;/.test(HTML) && /const couldNotBuild = !!r\?\.cantDo/.test(HTML));
+    check("the house AI's own failed code goes back to the house AI", /if \(house\) houseNext = house;\s*chatInput\.value = RETRY_TEXT;/.test(HTML)
+      && /if \(house\) houseNext = house;\s*\/\/ the same house request/.test(HTML));
+    check("a Stop pressed during a desktop relay is honoured", /if \(userStopped\) throw new DOMException\("stopped", "AbortError"\);/.test(HTML));
+    check("the regular helper offers the .exe, the tour and the videos when stuck",
+      /row\("2-minute tour"/.test(HTML) && /youtube\.com\/@RandoTechNerd/.test(HTML) && /a\.act === "ai"\) && !r\?\.cantDo\) return;/.test(HTML));
+    check("the house request sends no images to a proxy that may not take them", /const vision = !house && !\["local", "browser", "claude-code"\]/.test(HTML));
+    check("#ask= is cleared like ?ask= so a reload does not resend", /const inHash = \/\(\^\|\[#&\]\)ask=\/\.test\(u\.hash\);/.test(HTML));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

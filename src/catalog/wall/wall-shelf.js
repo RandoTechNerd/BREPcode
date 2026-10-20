@@ -12,6 +12,9 @@ export default {
   title: "Wall shelf",
   summary: "a small shelf with built-in brackets that hangs on two keyhole slots.",
   print: "lying on its back plate as shown, no supports.",
+  // "shelf" alone is this family: it is what most people mean, and the
+  // reply offers the other shelves as chips. (The chat keeps "a bracket for a
+  // shelf" for its bracket flow before the catalog sees it.)
   names: ["shelf", "wall shelf", "small shelf", "floating shelf", "hanging shelf", "mini shelf", "ledge shelf", "display shelf"],
   nouns: ["shelf", "ledge"],
   keywords: ["wall", "display", "small", "mini"],

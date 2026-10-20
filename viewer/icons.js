@@ -32,6 +32,23 @@ const P = {
   thicken: '<rect x="2" y="2" width="12" height="12" rx="1"/><rect x="5.2" y="5.2" width="5.6" height="5.6" rx=".5"/>',
   rotate: '<path d="M13 8.2a5 5 0 1 1-1.6-3.8"/><path d="M11.8 1.8v2.9H8.9"/>',
   flip: '<path d="M2 8h12" opacity=".55"/><path d="M5 2.6h6L8 6.1zM5 13.4h6L8 9.9z"/>',
+  // the chat's own buttons: one line weight, no colour, so the row reads as
+  // controls rather than a string of emoji
+  sliders: '<path d="M2.5 4.3h11M2.5 8h11M2.5 11.7h11"/><circle cx="6.2" cy="4.3" r="1.5"/><circle cx="10.4" cy="8" r="1.5"/><circle cx="5" cy="11.7" r="1.5"/>',
+  code: '<path d="M5.6 4.4 2 8l3.6 3.6M10.4 4.4 14 8l-3.6 3.6"/>',
+  spark: '<path d="M8 2.3c.5 3.1 1.9 4.6 5.7 5.7-3.8 1.1-5.2 2.6-5.7 5.7-.5-3.1-1.9-4.6-5.7-5.7 3.8-1.1 5.2-2.6 5.7-5.7z"/><path d="M12.8 1.6c.2 1.1.7 1.6 1.9 2-1.2.4-1.7.9-1.9 2-.2-1.1-.7-1.6-1.9-2 1.2-.4 1.7-.9 1.9-2z" opacity=".65"/>',
+  mail: '<rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="M2.5 4.5 8 8.5l5.5-4"/>',
+  download: '<path d="M8 2.5v7.4M4.9 7 8 10.1 11.1 7"/><path d="M2.5 11.4v2.1h11v-2.1"/>',
+  undo: '<path d="M2.6 4.3v3.1h3.1"/><path d="M3.2 7.4a5.2 5.2 0 1 1 1.1 4.1"/>',
+  play: '<path d="M4.6 2.9v10.2L13 8z"/>',
+  robot: '<rect x="2.5" y="5" width="11" height="8" rx="2"/><path d="M8 2.2V5M5.5 13v1.2M10.5 13v1.2"/><circle cx="5.8" cy="8.6" r="1"/><circle cx="10.2" cy="8.6" r="1"/><path d="M6 11.2h4" opacity=".6"/>',
+  globe: '<circle cx="8" cy="8" r="5.8"/><path d="M2.2 8h11.6M8 2.2c-2.2 2.6-2.2 9 0 11.6M8 2.2c2.2 2.6 2.2 9 0 11.6"/>',
+  monitor: '<rect x="1.8" y="2.8" width="12.4" height="8.4" rx="1.5"/><path d="M5.5 13.6h5M8 11.2v2.4"/>',
+  // status marks for hints and the short-link panel
+  warn: '<path d="M8 2.4 14 13.2H2z"/><path d="M8 6.6v3.2M8 11.6v.2"/>',
+  check: '<circle cx="8" cy="8" r="6"/><path d="M5 8.2l2 2 4-4.2"/>',
+  lock: '<rect x="3.2" y="7" width="9.6" height="6.8" rx="1.4"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7"/>',
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.6V8l2.4 1.6"/>',
 };
 
 const WIDTH = { fizz: 1.3, texture: 1.3, emboss: 1.3, gridfinity: 1.3, qr: 1.4, measure: 1.4, shelf: 1.4, cutter: 1.4 };

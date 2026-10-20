@@ -10,6 +10,8 @@ are sliders.
 src/catalog/
   schema.js        what a family is; resolveParams, familyCode, validateFamily
   match.js         request -> family + spec + params (no AI)
+  edit.js          follow-ups on an OPEN model: reads the dials back out of the
+                   code and rewrites only the const lines that change
   index.js         registry (imports each category's index.js)
   specs/           real-object sizes shared by everyone (phones, tablets, round things, handles, cables)
   <category>/      one folder per category, each with its own index.js
@@ -43,10 +45,11 @@ Read `desk/phone-stand.js` and `wall/cradle-hook.js` first: they are the pattern
 | `primary` | the param a bare "150 mm" means when nothing else says (e.g. a diameter) |
 | `triple` | params that "120 x 80 x 50" fills, in order |
 | `ask` | `{ unless: [params], text, choices }`: the one question to ask when no spec was named; `choices` become one-tap replies |
-| `tips` | three short follow-ups the chat suggests: "75 degrees", "90 mm wide" |
+| `tips` | three short follow-ups the chat suggests: "75 degrees", "90 mm wide". Every tip (and every `ask.choices` entry) must change a dial or ask a question on the family's own default code: the test sends each through the chat and fails a dead one |
 | `examples` | at least two whole requests that MUST route here (tested) |
 | `params` | the dials; see below |
 | `things` | named variants: `{ names, title, params, spec, keywords }` |
+| `derive(values)` | optional: fold one dial into others after every layer is in, returning overrides (clamped like any layer). The battery organizer turns `count: 12` into `cols: 4, rows: 3, count: 0`, so "holder for 12 AA batteries" sets the grid and the code shows it |
 | `body` | BREPcode that uses the param names and RETURNS the part |
 
 A param: `{ default, min, max, unit, label, say, more, less }`.
@@ -122,6 +125,48 @@ use the common size and say so in `note`.
 - Mounting: countersunk holes for screws (the face the head goes on), keyholes
   for hanging, a flat back for adhesive. Clearances: 0.3 mm per side for a slip
   fit, 0.6+ for "drops in", interference (negative) only for snap rings.
+
+## Follow-ups (edit.js)
+
+The code the chat puts in the editor carries one header line that every
+later follow-up keys on:
+
+```
+// Every number below is a slider (Params). From the BREPcode catalog: phone-stand.
+```
+
+`catalogOf(code)` finds the family from it; `editCatalog(family, code, text)`
+reads the dials back out of the `const` lines and rewrites only the ones a
+message changes, so a fillet the chat wrapped on, a colour, or a line the user
+typed all survive "wider". What it understands, in the order it tries them:
+
+- a dial named outright, on or off: "no cable hole", "add a divider", "with a lid"
+  ("with stepped rows" turns a dial sitting at zero up to a third of its range)
+- holes: "add another hole", "two more holes" (`role: "holes"`, else a drilled hole)
+- rounding: "round the edges", "sharp corners" (`role: "round"`, else a fillet wrap)
+- one feature: "bigger drainage hole", "make the slot wider" (by `say` words)
+- an object: "bigger phone" asks which phone, with the family's `ask.choices`
+- one axis: "twice as wide", "half the height"
+- the whole part: "scale it up 20%", "bigger" (clearances, walls and fits stay)
+- numbers and words: "90 mm wide", "for a Pixel 9", "70 degrees", "120 x 80 x 50"
+
+A line that is no longer a plain number (`const width = w * 2;`) is reported
+back ("missing-dial") rather than overwritten. Anything an AI writes over the
+code must keep the header line, or the follow-ups stop (LLM_PROMPT.md says so).
+
+What the editor does NOT do, so tips and names work round it:
+- a thing's name wins over the numbers in the same message ("a set of 8
+  place card holders" sets the place-card thing, whose preset count is 4):
+  a count tip names the dial's own word instead ("a set of 8 stands");
+- a thing is only recognised by the words that are not the family's own
+  names and nouns: "for compression socks" cannot reach a thing when
+  "compression sock aid" is also a family name, so the phrase lives on the
+  thing alone;
+- a plural is stemmed by one letter: "dominoes" is not "domino", so a thing
+  that answers to both lists both;
+- "3 in a row" reads "in" as inches; say "3 balls in a row";
+- a tip equal to the default ("8 holes" on an 8-hole rack) changes nothing
+  and reads as dead: tips must move something.
 
 ## Routing
 

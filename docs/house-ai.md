@@ -11,10 +11,12 @@ stuck:
 - the helper replies that it can't do what was asked, or
 - code the helper made fails to build.
 
-Then the chat shows one button, **✨ Let the AI try**. Pressing it sends that
-one request, as typed, to the house AI through the normal AI path (same
-harness, same model ladder, same build). The next message goes back to the
-helper. A visitor who connects their own AI in ⚙ uses theirs as usual.
+Then the chat shows one button, **Let the AI try**. Pressing it sends that one
+request to the house AI through the normal AI path (same harness, same build
+and auto-fix retry; when the helper's own code failed to build the request is
+prefixed "fix this so it builds:"). The next message goes back to the helper.
+A visitor who connects their own AI in ⚙ uses theirs as usual. The free-model
+ladder does not apply to a proxy: do any fallback in the Worker.
 
 ## Picking the model
 
@@ -26,6 +28,12 @@ kept in `localStorage["brepcode-house-model"]`, every AI reply is labelled
 "answered by …", and house requests always ask for low reasoning, so models
 can be compared in real use. Each entry has a `tier` ("free" for all of them
 today); `houseModels(tiers)` is the single place a paywall would gate them.
+
+In the desktop app (`BREPcode.exe`) every AI request goes through the main
+process relay (`desktop/aiproxy.cjs`), which only talks to an allowlist of
+hosts. `*.workers.dev` is on it; a proxy on a custom domain has to be added to
+`ALLOWED_HOSTS` there before it works in the exe. The relay sends no `Origin`,
+so the Worker's CORS list only matters for the website.
 
 Nothing is enabled until you configure it. With nothing configured the helper
 points people at the sliders, the editor, connecting their own AI, and your
@@ -87,13 +95,18 @@ The key lives on a server you control; the bundle only knows the proxy URL.
 A Cloudflare Worker is enough:
 
 ```js
-// wrangler secret put OPENROUTER_KEY      (and optionally MODELS, ALLOW_ORIGIN)
+// wrangler secret put OPENROUTER_KEY      (and optionally MODELS, ALLOW_ORIGINS)
 export default {
   async fetch(req, env) {
+    // ALLOW_ORIGINS: a comma list. The site, plus a dev server while you test
+    // (http://localhost:5320). The desktop app needs none: its relay has no origin.
+    const origins = (env.ALLOW_ORIGINS || "https://brepcode.com").split(",").map((s) => s.trim());
+    const origin = req.headers.get("origin") || "";
     const cors = {
-      "access-control-allow-origin": env.ALLOW_ORIGIN || "https://brepcode.com",
+      "access-control-allow-origin": origins.includes(origin) ? origin : origins[0],
       "access-control-allow-headers": "content-type, authorization",
       "access-control-allow-methods": "POST, OPTIONS",
+      "vary": "origin",
     };
     if (req.method === "OPTIONS") return new Response(null, { headers: cors });
     const url = new URL(req.url);
@@ -153,7 +166,7 @@ example file), which is the "AI fully included" setup, not this one.
 
 ## Where it lives
 
-- `viewer/index.html`: `houseCfg()`, `offerHouseAI()`, `watchHelperBuild()`,
+- `viewer/index.html`: `houseCfg()`, `offerHouseAI()`, `applyHelperCode()`,
   and the `house` override at the top of `sendChat()`.
 - `viewer/chatbot.js`: replies the helper can't complete carry `cantDo: true`
   and the help buttons (`HELP_ACTIONS`, `CONTACT`).

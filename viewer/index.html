@@ -1912,9 +1912,20 @@
       font: 12px system-ui, sans-serif; padding: 5px 11px; cursor: pointer;
     }
     .quick-chip:hover { background: var(--accent); color: #fff; }
+    .quick-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* answered: the row stays as a record of what was offered, and no more */
+    .quick-row.spent { opacity: .4; }
+    .quick-row.spent .quick-chip { cursor: default; pointer-events: none; }
+    /* on a touch screen a chip is a target, not a label */
+    @media (pointer: coarse) { .quick-chip { min-height: 36px; padding: 7px 13px; } }
+    /* a chip's line icon sits on the text's baseline, in the text's colour */
+    .quick-chip .chip-ic { display: inline-flex; vertical-align: -2px; margin-right: 5px; }
+    .quick-chip .chip-ic svg { width: 13px; height: 13px; display: block; }
     /* action buttons sit quieter than the say-this chips above them */
     .action-chip { background: transparent; border-color: var(--border); color: var(--muted); text-decoration: none; display: inline-block; }
     .action-chip:hover { background: var(--hover-strong, var(--border)); color: var(--text); }
+    /* the example in the box is plainly an example, not something typed */
+    #chat-input::placeholder { color: var(--muted2); opacity: .6; }
     .msg.bot.thinking { color: var(--muted); font-style: italic; }
     #chat-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); position: relative; }
     /* # and / autocomplete. Opens UPWARD: the chat input sits at the bottom of
@@ -2486,6 +2497,18 @@
       tourHint.rel = "modulepreload";
       tourHint.href = "tour.js";
       document.head.appendChild(tourHint);
+    }
+    // The quick door (/make, ?make=1, #make) is drawn by make.js: ask for it
+    // now so it is here when the module reaches it, instead of queueing
+    // behind the kernel.
+    if (/[?&]make=1(&|$)/.test(location.search) || /^#make$/i.test(location.hash)
+        || (/(^|\/)make\/?(index\.html)?$/i.test(location.pathname) && !/(^|\/)m\/make\/?$/i.test(location.pathname))) {
+      ["make.js", "icons.js"].forEach(function (f) {
+        var l = document.createElement("link");
+        l.rel = "modulepreload";
+        l.href = f;
+        document.head.appendChild(l);
+      });
     }
   </script>
   <div id="hint-corner">drag to orbit &middot; scroll to zoom</div>
@@ -3355,7 +3378,7 @@
           <button class="close-btn" data-close="chat" title="Close">&times;</button>
         </div>
       </header>
-      <div class="card-body" id="chat-msgs"></div>
+      <div class="card-body" id="chat-msgs" aria-live="polite" aria-relevant="additions"></div>
       <div id="chat-settings">
         <div id="cs-tabs">
           <button data-cstab="ai" class="sel">AI</button>
@@ -3559,9 +3582,9 @@
             </div>
           </div>
           <div class="row" style="gap:6px; flex-wrap:wrap">
-            <button id="email-model-btn" class="hist-btn" style="font-size:12px">✉ Model + explainer</button>
-            <button id="email-drawing-btn" class="hist-btn" style="font-size:12px">✉ Engineering drawing</button>
-            <button id="email-idea-btn" class="hist-btn" style="font-size:12px">✉ Rough-draft note</button>
+            <button id="email-model-btn" class="hist-btn" style="font-size:12px">Model + explainer</button>
+            <button id="email-drawing-btn" class="hist-btn" style="font-size:12px">Engineering drawing</button>
+            <button id="email-idea-btn" class="hist-btn" style="font-size:12px">Rough-draft note</button>
           </div>
           <div class="note" id="email-how">Each button downloads the file(s), then opens a pre-written draft addressed to the email above — attach the download and hit send.</div>
 
@@ -3799,7 +3822,7 @@
         <div id="secret-lib" style="display:none">
           <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
           <div style="display:flex; align-items:center; gap:8px">
-            <b>🔒 Stashed models</b>
+            <b>Stashed models</b>
             <button id="gate-lock" class="hist-btn" title="Lock it again" style="font-size:11.5px">Lock</button>
             <button id="secret-refresh" class="hist-btn" title="Reload the list">&#8635;</button>
             <span class="note" id="secret-status" style="flex:1"></span>
@@ -3815,7 +3838,7 @@
                model source, which is most of what makes it worth reading. -->
           <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;" />
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
-            <b>📝 Write a log file</b>
+            <b>Write a log file</b>
             <label style="display:flex; align-items:center; gap:6px; font:11.5px system-ui, sans-serif">
               <input type="checkbox" id="log-on" /> on
             </label>
@@ -4655,6 +4678,8 @@
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
       drillParts,
     } from "./assist.js";
+    // the line icons the chat's chips and buttons are drawn with (icons.js)
+    import { icon as lineIcon } from "./icons.js";
 
     // A password-locked API key (see lockbox.js) is OPTIONAL, and viewer/locked-key.js
     // is gitignored — so a fresh clone of the public repo does not have one, and a
@@ -4699,6 +4724,15 @@
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    // ZOOM TOWARD THE SPOT YOU AIM AT, NOT THE MIDDLE OF THE SCREEN.
+    // OrbitControls dollies toward `controls.target` by default, so a part
+    // sitting in the bottom-left corner slid further off-screen the harder
+    // you pinched at it: every zoom was a zoom into screen centre. With
+    // zoomToCursor the camera moves down the ray under the pointer instead,
+    // so the point you aim at stays put while everything around it grows.
+    // OrbitControls feeds it the midpoint of the two fingers for a pinch and
+    // the cursor for a wheel, which is what every desktop CAD tool does too.
+    controls.zoomToCursor = true;
 
     // ---- settings (the gear around the ⓘ) ------------------------------
     // A handful of app-wide defaults, separate from the material blob so a
@@ -11410,6 +11444,12 @@ ${joined}`)(...vs);
 
     let downAt = null;
     let drag = null;   // {fid, site, start:Vector3, planeZ, meshes, delta, moved}
+    // The one pointer a drag belongs to, with where it was last seen. Every
+    // other pointer's moves and release are ignored while it runs: on a
+    // touch screen the second finger of a pinch used to land on the same
+    // handlers and drive the drag the first finger had started.
+    let dragPointer = null;   // {id, x, y}
+    let replayingPointer = false;   // a pointerdown we dispatched ourselves, for OrbitControls only
     let drillArmed = false;   // "Drill" tool: next click on a face bores a hole there
 
     // A preview is pictures, not geometry: there is nothing to cut, measure or
@@ -11880,7 +11920,7 @@ ${joined}`)(...vs);
       renderer.domElement.style.cursor = measureArmed ? "crosshair" : "";
       if (measureArmed) {
         measureHeldUntil = 0;
-        hint.innerHTML = "📏 <b>Measure armed</b> — it snaps to <b>corners</b> and <b>edges</b>. "
+        hint.innerHTML = lineIcon("measure", 13) + " <b>Measure armed</b> — it snaps to <b>corners</b> and <b>edges</b>. "
           + "Switch to <b>Face</b> for the gap or angle between two faces, or <b>Info</b> for one face's size. "
           + "<b>Esc</b> closes it.";
         measureLiveText(null);
@@ -11920,7 +11960,7 @@ ${joined}`)(...vs);
       $("drill-btn").classList.toggle("active", drillArmed);
       renderer.domElement.style.cursor = drillArmed ? "crosshair" : "";
       if (drillArmed) {
-        hint.innerHTML = "🕳️ <b>Drill armed</b> — click any face and a 4mm hole bores straight in along its normal. Tweak the diameter/depth in the code after. Click <b>Drill</b> again or press <b>Esc</b> to cancel.";
+        hint.innerHTML = lineIcon("drill", 13) + " <b>Drill armed</b> — click any face and a 4mm hole bores straight in along its normal. Tweak the diameter/depth in the code after. Click <b>Drill</b> again or press <b>Esc</b> to cancel.";
       }
     }
 
@@ -11946,7 +11986,7 @@ ${joined}`)(...vs);
       $("shave-btn").classList.toggle("active", shaveArmed);
       renderer.domElement.style.cursor = shaveArmed ? "crosshair" : "";
       if (shaveArmed) {
-        hint.innerHTML = "🪒 <b>Shave armed</b> — click a whisker or any thin strand and it is cut "
+        hint.innerHTML = lineIcon("whisker", 13) + " <b>Shave armed</b> — click a whisker or any thin strand and it is cut "
           + "flush where it meets the body. It follows what you clicked, so it can only ever remove "
           + "that; click something solid and it will decline rather than guess. "
           + "<b>Ctrl+Z</b> puts one back. Click <b>Shave</b> again or press <b>Esc</b> to cancel.";
@@ -11994,7 +12034,7 @@ ${joined}`)(...vs);
           "too-small": "there is almost nothing there to cut",
         }[res.reason] || res.reason;
         setStatus("warn", `Shave declined: ${why}`);
-        hint.innerHTML = `🪒 <b>Nothing cut</b> — ${why}. Nothing was changed: when the trace is not `
+        hint.innerHTML = `${lineIcon("whisker", 13)} <b>Nothing cut</b> — ${why}. Nothing was changed: when the trace is not `
           + `confident it stops rather than guessing, which is why it will never take a bite out of an `
           + `ear or the body. About two clicks in three land first time on a whisker; the rest usually `
           + `work a few millimetres further along.`;
@@ -12011,7 +12051,7 @@ ${joined}`)(...vs);
       syncPendingSimplify();
       setStatus("ok", `Shaved ${res.removed} triangles, capped ${res.holes} `
         + `hole${res.holes === 1 ? "" : "s"} · ${Math.round(performance.now() - t0)} ms`);
-      hint.innerHTML = `🪒 Cut <b>${res.removed}</b> triangles at the root and closed it back up. `
+      hint.innerHTML = `${lineIcon("whisker", 13)} Cut <b>${res.removed}</b> triangles at the root and closed it back up. `
         + `Click another strand, <b>Ctrl+Z</b> to put it back, or <b>Esc</b> when you are done — `
         + `then Export to save the STL.`;
     }
@@ -12337,7 +12377,70 @@ ${joined}`)(...vs);
       return true;
     }
 
+    // A drag that has to be dropped as if it never happened: a second finger
+    // landed (the gesture is a pinch, not a move), or the browser cancelled
+    // the pointer. Same as the no-movement branch of pointerup: nothing is
+    // committed, the nudged meshes go back where the build put them, and the
+    // camera is handed back.
+    function abandonDrag() {
+      if (!drag) return;
+      const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
+      controls.enabled = true;
+      clearGhosts();
+      for (const m of drag.meshes) { m.position.set(0, 0, 0); m.scale.set(1, 1, 1); }
+      drag = null;
+      dragPointer = null;
+      downAt = null;              // the fingers' release is not a click either
+      clearDragPreview();
+      if (wasSplit) refreshSplit();
+    }
+
+    // OrbitControls' own pointerdown listener runs before ours (it was added
+    // first), so it tracked the first finger — and was then switched off by
+    // the drag that finger started, so it skipped the second finger's
+    // pointerdown entirely. Replay both to it as plain DOM events: a pointer
+    // it already tracks is ignored, the missing one is added, and two tracked
+    // touches put it in its own pinch/pan state, which is where a two-finger
+    // gesture was always meant to go. The replay reaches every pointerdown
+    // listener on the canvas, so ours steps aside for it.
+    function handPinchToControls(first, second) {
+      replayingPointer = true;
+      try {
+        for (const p of [first, second]) {
+          renderer.domElement.dispatchEvent(new PointerEvent("pointerdown", {
+            bubbles: true, cancelable: true, pointerId: p.id, pointerType: "touch",
+            isPrimary: p === first, clientX: p.x, clientY: p.y, button: 0, buttons: 1,
+          }));
+        }
+      } finally { replayingPointer = false; }
+    }
+
     renderer.domElement.addEventListener("pointerdown", (e) => {
+      if (replayingPointer) return;
+      if (drag && dragPointer && e.pointerId !== dragPointer.id) {
+        // A second finger on a touch drag means PINCH: the first finger just
+        // happened to land on the part. Drop the drag before it has edited
+        // anything and give both fingers to the camera. Any other extra
+        // pointer is simply not the one dragging.
+        if (e.pointerType === "touch") {
+          const first = dragPointer;
+          abandonDrag();
+          handPinchToControls(first, { id: e.pointerId, x: e.clientX, y: e.clientY });
+        }
+        return;
+      }
+      dragPointer = null;
+      pressOnStage(e);
+      if (drag) dragPointer = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    });
+
+    // The browser pulling a pointer out from under a drag (a palm, a system
+    // gesture) must not leave the part nudged and the camera locked.
+    renderer.domElement.addEventListener("pointercancel", (e) => {
+      if (drag && (!dragPointer || e.pointerId === dragPointer.id)) abandonDrag();
+    });
+
+    function pressOnStage(e) {
       downAt = [e.clientX, e.clientY];
       // Imported model: dragging ON the mesh slides it around the plate (cheap —
       // we just move the existing meshes, then bake one translate() on release,
@@ -12639,7 +12742,7 @@ ${joined}`)(...vs);
         controls.enabled = false;
         try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
       }
-    });
+    }
 
     // Measure's hover preview. Before the `if (!drag) return` below, because
     // measuring never drags — and the whole point of the preview is to show
@@ -12681,6 +12784,10 @@ ${joined}`)(...vs);
 
     renderer.domElement.addEventListener("pointermove", (e) => {
       if (!drag) return;
+      if (dragPointer) {
+        if (e.pointerId !== dragPointer.id) return;   // not the finger that is dragging
+        dragPointer.x = e.clientX; dragPointer.y = e.clientY;
+      }
 
       // stretch() widgets: slide the cut plane (`at`) or open the gap (`by`).
       // Movement is measured along the stretch axis only — on Z we fall back to
@@ -13246,6 +13353,8 @@ ${joined}`)(...vs);
 
     renderer.domElement.addEventListener("pointerup", (e) => {
       if (drag) {
+        if (dragPointer && e.pointerId !== dragPointer.id) return;   // not the finger that is dragging
+        dragPointer = null;
         controls.enabled = true;
         const wasDrag = drag.moved;
         clearGhosts();
@@ -14341,7 +14450,7 @@ ${joined}`)(...vs);
             // into the status bar a moment later — so the status alone left the
             // visitor looking at a cube with no idea why, which reads as the
             // app having quietly ignored the link.
-            hint.innerHTML = `⚠️ <b>That link did not open</b> — ${esc(String(e?.message || e))}. `
+            hint.innerHTML = `${lineIcon("warn", 13)} <b>That link did not open</b> — ${esc(String(e?.message || e))}. `
               + `Short links can be renamed or removed by whoever made them. Ask them for a fresh link — `
               + `or start your own model here, everything works.`;
             bootDismiss();      // nothing is coming; stop covering an empty plate
@@ -14352,7 +14461,7 @@ ${joined}`)(...vs);
         }
         const unreadable = () => {
           setStatus("err", "That link did not carry a model this app could read.");
-          hint.innerHTML = `⚠️ <b>That link did not carry a readable model.</b> A long link holds the whole `
+          hint.innerHTML = `${lineIcon("warn", 13)} <b>That link did not carry a readable model.</b> A long link holds the whole `
             + `model in the address bar, so it breaks if it was cut short on the way — by an email client `
             + `wrapping it, or a chat app trimming it. Ask for it again as a short link.`;
           bootDismiss();
@@ -14610,7 +14719,8 @@ ${joined}`)(...vs);
     function claimPanel({ tone, icon, head, sub, acts = [] }) {
       const el = $("claim-note");
       el.className = tone || "";
-      $("claim-icon").textContent = icon;
+      // a line icon by name (icons.js); anything else is shown as text
+      $("claim-icon").innerHTML = /^[a-z]+$/.test(icon || "") ? lineIcon(icon, 18) : esc(icon || "");
       $("claim-head").textContent = head;
       $("claim-sub").innerHTML = sub;
       const box = $("claim-acts");
@@ -14628,7 +14738,7 @@ ${joined}`)(...vs);
     async function runClaim(slug) {
       const cl = await getCloud();
       const url = await cl.bestShortUrl(shareBase(), slug);
-      claimPanel({ icon: "⏳", head: `Claiming “${slug}”…`, sub: "asking brepcode.com whether that name is free." });
+      claimPanel({ icon: "clock", head: `Claiming “${slug}”…`, sub: "asking brepcode.com whether that name is free." });
       let res;
       try {
         res = await cl.checkName(slug);
@@ -14640,7 +14750,7 @@ ${joined}`)(...vs);
       // why the advice is "keep this link", not "start again".
       if (res.offline) {
         claimPanel({
-          tone: "warn", icon: "📡",
+          tone: "warn", icon: "globe",
           head: "No connection to brepcode.com",
           sub: `Your model is safe — it is inside this page's own address, so nothing was lost. `
             + `Keep this link, and open it again when you are back online to claim `
@@ -14656,11 +14766,11 @@ ${joined}`)(...vs);
       // Taken by someone else. An error is half an answer, so go and find a
       // name that IS free rather than shrugging.
       if (!res.ok && res.free === false) {
-        claimPanel({ tone: "warn", icon: "🔒", head: `“${slug}” is already taken`,
+        claimPanel({ tone: "warn", icon: "lock", head: `“${slug}” is already taken`,
           sub: "looking for one that is free…" });
         const alt = await cl.suggestFreeName(slug);
         claimPanel({
-          tone: "warn", icon: "🔒",
+          tone: "warn", icon: "lock",
           head: `“${slug}” is already taken`,
           sub: alt
             ? `<code>${alt}</code> is free. Claim that instead, or pick your own name.`
@@ -14677,7 +14787,7 @@ ${joined}`)(...vs);
       }
 
       if (!res.ok) {
-        claimPanel({ tone: "warn", icon: "⚠️", head: "That name will not work", sub: res.reason });
+        claimPanel({ tone: "warn", icon: "warn", head: "That name will not work", sub: res.reason });
         return;
       }
 
@@ -14687,7 +14797,7 @@ ${joined}`)(...vs);
         if (!text) throw new Error("this link does not carry a model");
         await cl.saveShort({ slug, text, name: modelName || slug });
       } catch (e) {
-        claimPanel({ tone: "warn", icon: "⚠️", head: "Could not save the short link",
+        claimPanel({ tone: "warn", icon: "warn", head: "Could not save the short link",
           sub: `${e?.message || e}. The link you already have still works.`,
           acts: [{ label: "Try again", primary: true, run: () => runClaim(slug) }] });
         return;
@@ -14695,7 +14805,7 @@ ${joined}`)(...vs);
       const shortU = await cl.bestShortUrl(shareBase(), slug);
       try { await navigator.clipboard.writeText(shortU); } catch { /* no permission */ }
       claimPanel({
-        tone: "ok", icon: "✅",
+        tone: "ok", icon: "check",
         head: "Done — your short link is ready",
         sub: `<code>${shortU}</code><br>Copied to your clipboard. `
           + `It can be updated from <em>this browser</em>, which is where its key lives.`,
@@ -16895,19 +17005,79 @@ let SIMPLIFY_TARGET = 10000;
       return null;
     }
     async function openChatAndAsk(text) {
+      // Someone who arrived by asking a question wants the model and the
+      // chat, not the source: the editor stays closed until they open it.
+      quietEditor = true;
       if (!chatCard.classList.contains("open")) chatBtn.click();
       // the chat module and its greeting arrive first, then the request
       await ensureChat();
       await new Promise((r) => setTimeout(r, 250));
       if (text.trim()) { chatInput.value = text.trim(); sendChat(); }
+      // ...and the request comes off the address, in both forms, so a reload
+      // or a copied link does not send it again over whatever was built.
       for (const L of hostLocations()) {
         try {
           const u = new URL(L.href);
-          if (!u.searchParams.has("ask")) continue;
+          const inHash = /(^|[#&])ask=/.test(u.hash);
+          if (!u.searchParams.has("ask") && !inHash) continue;
           u.searchParams.delete("ask");
+          if (inHash) {
+            const h = new URLSearchParams(u.hash.replace(/^#/, ""));
+            h.delete("ask");
+            u.hash = h.toString();
+          }
           (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
         } catch { /* cross-origin frame */ }
       }
+    }
+    // brepcode.com/make (a folder bouncing to ?make=1), ?make=1 or #make: the
+    // quick door. One question over the loading cube, then the chat with the
+    // answer in it. The flag is taken off the address so a reload is a plain
+    // visit. Checked on the framing page too, like ?tour=1.
+    function makeRequested() {
+      let hit = false;
+      for (const L of hostLocations()) {
+        if (!/[?&]make=1(&|$)/.test(L.search) && !/^#make$/i.test(L.hash)
+            && !(/(^|\/)make\/?(index\.html)?$/i.test(L.pathname) && !/(^|\/)m\/make\/?$/i.test(L.pathname))) continue;
+        hit = true;
+        try {
+          const u = new URL(L.href);
+          u.searchParams.delete("make");
+          if (/^#make$/i.test(u.hash)) u.hash = "";
+          (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
+        } catch { /* cross-origin frame */ }
+      }
+      return hit;
+    }
+    // The editor normally comes forward when the chat builds something. Not
+    // for someone who came in through the quick door or an ?ask= link: they
+    // asked for a thing, not for code, and the sliders and the chat are the
+    // controls they were promised. Any way of opening the editor still works.
+    let quietEditor = false;
+    // W is welcome.js or a promise of it: the door does not wait for it.
+    async function openMakeDoor(W) {
+      const Wp = Promise.resolve(W).catch(() => null);
+      let M;
+      try { M = await import("./make.js"); } catch { $("chat-btn").click(); return; }
+      M.showMake({
+        ask: (text) => openChatAndAsk(text),
+        openChat: async () => { quietEditor = true; if (!chatCard.classList.contains("open")) chatBtn.click(); await ensureChat(); },
+        // "Open the full editor" means the editor, with the chat alongside
+        openEditor: async () => {
+          quietEditor = false;
+          if (!panel.classList.contains("open")) openBtn.click();
+          if (!chatCard.classList.contains("open")) chatBtn.click();
+          await ensureChat();
+        },
+        pickFile: pickAFile,
+        startTour: () => $("tour-btn").click(),
+        cubeHTML: buildCubeHTML,
+        ready: whenBuilt(60000),
+        // the chips are real catalog requests, drawn fresh from the catalog
+        examples: () => import("../src/catalog/index.js").then((c) => M.pickExamples(c.FAMILIES)),
+        // the door counts as the welcome: the entry card need not follow it
+        onClose: () => Wp.then((w) => { try { w?.markWelcomed?.(); } catch { /* private window */ } }),
+      });
     }
     // Same idea for the examples: ?example=<name> (or #example=) loads one
     // straight away, the way the welcome card's chips do. Shared links like
@@ -16966,6 +17136,7 @@ let SIMPLIFY_TARGET = 10000;
     function frontDoorHooks(W) {
       const hooks = {
         openChat: () => $("chat-btn").click(),
+        openMake: () => openMakeDoor(W),
         pickFile: pickAFile,
         startTour: () => $("tour-btn").click(),
         loadExample: async (src, title, coach, note) => {
@@ -18928,7 +19099,7 @@ let SIMPLIFY_TARGET = 10000;
       $("fins-btn").classList.toggle("active", finsArmed);
       renderer.domElement.style.cursor = finsArmed ? "crosshair" : "";
       if (finsArmed) {
-        hint.innerHTML = "🛟 <b>Fins armed</b> — click the model face you want supported. The fins land on that side, leaning at the face's own angle, so the teeth stay short and close. <b>Esc</b> cancels.";
+        hint.innerHTML = lineIcon("fins", 13) + " <b>Fins armed</b> — click the model face you want supported. The fins land on that side, leaning at the face's own angle, so the teeth stay short and close. <b>Esc</b> cancels.";
       }
     }
     function finsAtHit(hit) {
@@ -18998,7 +19169,7 @@ let SIMPLIFY_TARGET = 10000;
       if (embossArmed) { setDrillArmed(false); setCodeArmed(false); setFinsArmed(false); }
       renderer.domElement.style.cursor = embossArmed ? "crosshair" : "";
       if (embossArmed) {
-        hint.innerHTML = `🖼 <b>Emboss armed</b> — click the face that should carry <b>${esc(embossGrid.name)}</b>. Darker parts of the image stand out further. <b>Esc</b> cancels.`;
+        hint.innerHTML = `${lineIcon("emboss", 13)} <b>Emboss armed</b> — click the face that should carry <b>${esc(embossGrid.name)}</b>. Darker parts of the image stand out further. <b>Esc</b> cancels.`;
       }
     }
     $("emboss-btn").addEventListener("click", () => {
@@ -20703,7 +20874,7 @@ let SIMPLIFY_TARGET = 10000;
       const winHTML =
         h("Easiest — LM Studio (no typing at all)")
         + step(1, `Go to <b>lmstudio.ai</b>, click <b>Download for Windows</b>, run the installer.`)
-        + step(2, `In LM Studio, use the 🔍 search: try <b>Qwen2.5 Coder 7B</b> (small &amp; quick) — click <b>Download</b>.`)
+        + step(2, `In LM Studio, use the search box: try <b>Qwen2.5 Coder 7B</b> (small &amp; quick) — click <b>Download</b>.`)
         + step(3, `Click the green <b>Developer</b> tab on the left, flip <b>Start Server</b> on.`)
         + step(4, `Back here: put ${cmd("http://localhost:1234/v1")} in the <b>Server URL</b> box above. You'll see a ✓.`)
         + h("Or — Ollama (one command)")
@@ -21231,7 +21402,7 @@ let SIMPLIFY_TARGET = 10000;
       const b = document.createElement("button");
       b.className = "quick-chip";
       b.style.marginTop = "6px";
-      b.textContent = "✨ Let the AI try";
+      chipFace(b, "Let the AI try", "spark");
       b.addEventListener("click", () => {
         b.remove();
         houseNext = houseCfg();
@@ -21241,17 +21412,21 @@ let SIMPLIFY_TARGET = 10000;
       el.appendChild(document.createElement("br"));
       el.appendChild(b);
     }
-    // The helper made code and it would not build: say so, and offer the way on.
-    function watchHelperBuild(text) {
-      onceBuilt((ok) => {
-        if (ok) return;
-        const err = (statusText?.textContent || "").trim();
-        if (houseAiReady()) offerHouseAI(`fix this so it builds: ${text}`, `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}.`);
-        else {
-          addMsg("bot", `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}. Undo with ◀, adjust it in the Editor, or connect an AI to fix it.`);
-          actionRow(CHAT?.HELP_ACTIONS || []);
-        }
-      });
+    // The helper made code: apply it, and if it would not build, say so and
+    // offer the way on. Judged by THIS build's own result (applyGeneratedCode
+    // returns it), not by whatever builds next: a hook on the next build
+    // dangled across a heavy model held behind the Build button and fired on
+    // an unrelated slider drag.
+    async function applyHelperCode(text, src, show) {
+      const res = await applyGeneratedCode(src, { show });
+      if (res.ok || /held behind/.test(res.detail || "")) return res;
+      const err = (res.detail || "").trim();
+      if (houseAiReady()) offerHouseAI(`fix this so it builds: ${text}`, `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}.`);
+      else {
+        addMsg("bot", `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}. Undo with ◀, adjust it in the Editor, or connect an AI to fix it.`);
+        actionRow(CHAT?.HELP_ACTIONS || []);
+      }
+      return res;
     }
     $("unlock-btn").addEventListener("click", tryUnlock);
     $("unlock-pw").addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
@@ -21302,13 +21477,16 @@ let SIMPLIFY_TARGET = 10000;
     // sizes, clicking beats retyping "yes, use your assumptions" — and it sends
     // the same wording every time, so the model gets an unambiguous go-ahead.
     // The row removes itself once used so old chips can't be re-fired later.
-    function quickReplies(messages, labels) {
+    function quickReplies(messages, labels, icons = []) {
       const row = document.createElement("div");
       row.className = "quick-row";
+      row.setAttribute("role", "group");
+      row.setAttribute("aria-label", "Suggested replies");
       messages.forEach((msg, i) => {
         const b = document.createElement("button");
         b.className = "quick-chip";
-        b.textContent = labels[i];
+        if (icons[i]) chipFace(b, labels[i], icons[i]);
+        else b.textContent = labels[i];
         b.addEventListener("click", () => {
           row.remove();
           chatInput.value = msg;
@@ -21391,7 +21569,10 @@ let SIMPLIFY_TARGET = 10000;
     // while the model silently stayed a box (an unsupported op passed through,
     // or the code threw) is the worst failure mode there is — the user trusts a
     // claim the screen contradicts.
-    async function applyGeneratedCode(newCode) {
+    // `show` is what comes forward once it has built: the editor (the code is
+    // the point, for an AI reply), the Params card (the sliders are the point,
+    // for a catalog design), or nothing.
+    async function applyGeneratedCode(newCode, { show = "editor" } = {}) {
       code.value = newCode;
       pushHistory();
       paintPartsBar();
@@ -21424,8 +21605,14 @@ let SIMPLIFY_TARGET = 10000;
       }
       const ok = status.className === "ok";
       // A model that built: bring the editor forward so the result is SEEN —
-      // the reply landing silently behind the chat was easy to miss.
-      if (ok) toggleCard(panel, openBtn, true);
+      // the reply landing silently behind the chat was easy to miss. Except
+      // for someone who came in through the quick door (quietEditor): they
+      // asked for a part, and the code would cover the part. A catalog
+      // design brings the SLIDERS forward instead, where there is room for
+      // them beside the chat; on a phone the chat's own buttons are enough.
+      if (ok && show === "params") {
+        if (roomForHomes() && !panel.classList.contains("open")) { toggleCard(paramsCard, paramsBtn, true); refreshParams(true); }
+      } else if (ok && show === "editor" && !quietEditor) toggleCard(panel, openBtn, true);
       const detail = $("status-text")?.textContent || "";
       const warned = fixnote.textContent.trim();
       return { ok, detail, warned };
@@ -21689,7 +21876,13 @@ let SIMPLIFY_TARGET = 10000;
       } catch { /* no library — send it as typed */ }
       // A message that was ONLY directives has no request left in it; send what
       // they typed so the model has something to answer.
-      const text = dir?.any && dir.text ? dir.text : raw;
+      let text = dir?.any && dir.text ? dir.text : raw;
+      // "ask the AI: a phone stand" skips the catalog-first answer below and
+      // sends the words to the connected AI. The chip under a catalog reply
+      // sends exactly this.
+      const AI_INSTEAD = /^(?:ask|use) the ai(?: instead)?[:,]?\s*/i;
+      const forceAI = AI_INSTEAD.test(text);
+      if (forceAI) text = text.replace(AI_INSTEAD, "").trim() || raw;
       // These two notes go in the request log, which does not exist until the
       // waiting bubble does (further down). Logging them here threw "cannot
       // access logLine before initialization", which lost the message and
@@ -21712,6 +21905,14 @@ let SIMPLIFY_TARGET = 10000;
         autoFixTries = 0;                          // a real request, fresh budget
         lessonPrompt = text;                       // ...and what it was actually for
         lessonFirstError = "";
+      }
+      // The say-this chips under earlier replies were answers to earlier
+      // questions: once a new message is sent they are history, and must not
+      // stay live to re-fire on a model that has since changed. Action rows
+      // (download, sliders, the ways on) act on the current model and stay.
+      for (const row of chatMsgs.querySelectorAll(".quick-row:not(.action-row):not(.spent)")) {
+        row.classList.add("spent");
+        for (const b of row.querySelectorAll("button")) b.disabled = true;
       }
       const userEl = addMsg("user", raw);
       // The attached images appear IN the sent bubble. They used to vanish from
@@ -21813,12 +22014,41 @@ let SIMPLIFY_TARGET = 10000;
         if (r.clearPending) botState.pending = null;
         addMsg("bot", r.reply);
         chatLog.push({ role: "assistant", text: r.reply });
-        if (r.code !== undefined) { watchHelperBuild(text); applyGeneratedCode(r.code); }
+        if (r.code !== undefined) applyHelperCode(text, r.code, r.fromCatalog ? "params" : "editor");
+        // things the reply does on its own ("undo" steps the editor back)
+        for (const act of r.run || []) runChatAction(act);
         replyExtras(r);
         // the built-in helper is out of its depth: the house AI may step in
         if (r.cantDo && houseAiReady()) offerHouseAI(text);
         else maybeOfferRealAI(r);
         return;
+      }
+
+      // THE CATALOG ANSWERS FIRST, whatever the provider. A tested design that
+      // builds in a second beats a model round-trip for the same thing, and a
+      // follow-up on it ("wider", "for a Pixel 9") is one const line rewritten.
+      // Only a CONFIDENT catalog answer (a design, or an edit of the open
+      // design) short-circuits; anything the catalog cannot place still goes
+      // to the AI, and "ask the AI instead" sends even a catalog hit on.
+      // The probe runs on a copy of the chat state, so a guided flow it might
+      // start is not left behind to swallow the next AI-bound message.
+      if (!house && !forceAI) {
+        const probe = { ...botState };
+        const local = botRespond(text, probe, code.value, modelDims);
+        // ...and a reply that ACTS on its own ("undo" steps the editor back)
+        // is never a question for a model.
+        const acts = !!local.run?.length;
+        if ((local.fromCatalog && local.code !== undefined) || acts) {
+          Object.assign(botState, probe);
+          if (local.clearPending) botState.pending = null;
+          addMsg("bot", acts ? local.reply : `${local.reply}  · from the catalog`);
+          chatLog.push({ role: "assistant", text: local.reply });
+          if (local.code !== undefined) applyHelperCode(text, local.code, local.fromCatalog ? "params" : "editor");
+          for (const act of local.run || []) runChatAction(act);
+          replyExtras(local);
+          if (!acts) quickReplies([`ask the AI instead: ${text}`], ["Ask the AI instead"], ["spark"]);
+          return;
+        }
       }
 
       if (premiumHouse) house = premiumHouse;
@@ -21831,9 +22061,10 @@ let SIMPLIFY_TARGET = 10000;
         if (local.code !== undefined || local.pending) {
           if (local.pending) botState.pending = local.pending;
           if (local.clearPending) botState.pending = null;
-          addMsg("bot", `${local.reply}  ⚡ handled locally`);
+          addMsg("bot", `${local.reply}  · handled locally`);
           chatLog.push({ role: "assistant", text: local.reply });
-          if (local.code !== undefined) applyGeneratedCode(local.code);
+          if (local.code !== undefined) applyHelperCode(text, local.code, local.fromCatalog ? "params" : "editor");
+          for (const act of local.run || []) runChatAction(act);
           replyExtras(local);
           return;
         }
@@ -21879,8 +22110,8 @@ let SIMPLIFY_TARGET = 10000;
         busyLabel.classList.add("live");
         const chars = liveState.chars != null ? ` · ${liveState.chars.toLocaleString()} characters` : "";
         const head = liveState.phase === "writing"
-          ? `🔭 building the model… ${s}s${chars}`
-          : `🧠 thinking… ${s}s${chars}`;
+          ? `building the model… ${s}s${chars}`
+          : `thinking… ${s}s${chars}`;
         // A SOFT limit. Nothing here can end a request on its own — a
         // reasoning model can legitimately spend minutes, and killing good
         // work to satisfy a timer is worse than waiting. But a request with no
@@ -22049,7 +22280,9 @@ let SIMPLIFY_TARGET = 10000;
             if (digest) {
               reference = `${reference ? reference + "\n\n" : ""}${digest}`;
               sawModel = "silhouettes";
-              const vision = !["local", "browser", "claude-code"].includes(cfg.provider);
+              // The house proxy picks its own model, which may not take
+              // images: the house request gets the text digest only.
+              const vision = !house && !["local", "browser", "claude-code"].includes(cfg.provider);
               if (vision) {
                 const shots = modelViewImages();
                 if (shots.length) {
@@ -22077,6 +22310,9 @@ let SIMPLIFY_TARGET = 10000;
           pastedCode: looksLikeOpenSCAD(context)
             || /module\.exports|@jscad\/modeling|build123d|cadquery/.test(context),
           builtModel: reference.includes("THE BUILT MODEL"),
+          // a catalog design is on screen: the #catalog section tells the
+          // model to keep its header and dials so chat follow-ups keep working
+          catalogCode: /From the BREPcode catalog: [a-z0-9-]+\./.test(code.value),
         };
         if (imgs.length && (cfg.provider === "local" || cfg.provider === "browser")) {
           // these small models are text-only, and a vision payload errors the
@@ -22111,7 +22347,7 @@ let SIMPLIFY_TARGET = 10000;
             else if (/thinking/.test(s)) liveState = { phase: "thinking", chars: null };
             paintBusy();
           };
-          const r = await window.brepcodeDesktop.claudeAsk({
+          const ccArgs = {
             system,
             prompt: context + (imagePaths.length
               ? `\n\nThe user attached ${imagePaths.length === 1 ? "an image" : imagePaths.length + " images"}.`
@@ -22122,7 +22358,16 @@ let SIMPLIFY_TARGET = 10000;
             effort: $("cc-effort").value,
             resume: ccSession,
             imagePaths,
-          });
+          };
+          let r = await window.brepcodeDesktop.claudeAsk(ccArgs);
+          // A session id the CLI can no longer resume (an update, a cleared
+          // session store, an expiry) used to poison every later message
+          // until the page was reloaded. Drop it and ask once more, fresh.
+          if (!r?.ok && ccSession && /session|resume|conversation/i.test(r?.error || "")) {
+            logLine("the previous Claude Code session is gone: starting a fresh one");
+            ccSession = null;
+            r = await window.brepcodeDesktop.claudeAsk({ ...ccArgs, resume: null });
+          }
           ccProgress = null;
           if (!r?.ok) throw new Error(r?.error || "Claude Code didn't answer");
           ccSession = r.sessionId || ccSession;
@@ -22142,7 +22387,7 @@ let SIMPLIFY_TARGET = 10000;
             const b = document.createElement("button");
             b.className = "hist-btn";
             b.style.cssText = "margin-left:6px; font-weight:700";
-            b.textContent = "⬇ Load, then answer me";
+            chipFace(b, "Load, then answer me", "download");
             b.addEventListener("click", async () => {
               b.disabled = true;
               const prog = document.createElement("div");
@@ -22238,6 +22483,10 @@ let SIMPLIFY_TARGET = 10000;
             // surfaces from the reader, not from the fetch.
             try {
               const resp = await aiFetch(url, { ...options, signal: attemptCtl.signal });
+              // The desktop relay cannot be aborted mid-flight, so a Stop
+              // pressed while it ran lands here: honour it, do not apply the
+              // late reply.
+              if (userStopped) throw new DOMException("stopped", "AbortError");
               if (wantStream && resp.ok && /text\/event-stream/.test(resp.headers.get("content-type") || "")) {
                 let lastPaint = 0;
                 // `text` is the model's current thought, and forgetting it here
@@ -22381,7 +22630,7 @@ let SIMPLIFY_TARGET = 10000;
             const gift = addMsg("bot", "");
             gift.style.cssText = "font-size:12.5px";
             gift.innerHTML =
-              `🎁 <b>Every free model was busy, so this one is on RandoTechNerd.</b> `
+              `<b>Every free model was busy, so this one is on RandoTechNerd.</b> `
               + `${esc(cfg.model)} is a paid model — you just got the good answer at his expense, `
               + `no key and no account needed.`
               + `<div style="margin-top:6px; opacity:.85">If BREPcode saved you an afternoon, `
@@ -22414,7 +22663,7 @@ let SIMPLIFY_TARGET = 10000;
         }
         const unsafe = fence && aiCodeUnsafe(fence[1]);
         const replyEl = addMsg("bot", unsafe
-          ? "⚠️ That reply contained browser code, not a CAD model, so I didn't run it. If you actually trust it, review and paste it in yourself."
+          ? "That reply contained browser code, not a CAD model, so I didn't run it. If you actually trust it, review and paste it in yourself."
           : (prose || (fence ? "Here you go — building it now." : answer)));
         // Which model wrote this, so models can be compared in real use.
         if (cfg?.model) {
@@ -22459,13 +22708,16 @@ let SIMPLIFY_TARGET = 10000;
             if (autoFixTries <= maxAutoFix()) {
               addMsg("bot", `That didn't build — ${r.detail} Fixing it (attempt ${autoFixTries} of ${maxAutoFix()})…`);
               chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
+              // the house AI's own mistake goes back to the house AI, not to
+              // the rule engine (which would read the fix request as a shape)
+              if (house) houseNext = house;
               chatInput.value = RETRY_TEXT;
               await sendChat();
               return;
             }
-            addMsg("bot", `⚠️ Still not building after ${maxAutoFix()} tries: ${r.detail}`);
+            addMsg("bot", `Still not building after ${maxAutoFix()} tries: ${r.detail}`);
             chatLog.push({ role: "user", text: `That code failed to build with: ${r.detail}\nFix it and return the corrected complete model.` });
-            quickReplies([RETRY_TEXT], ["⚠ Try once more"]);
+            quickReplies([RETRY_TEXT], ["Try once more"], ["undo"]);
             // Gave up. Worth recording precisely BECAUSE it never worked — this
             // is the kind that should shape the next first attempt.
             rememberBuild({ ok: false, error: lessonFirstError || r.detail, attempts: autoFixTries });
@@ -22487,7 +22739,7 @@ let SIMPLIFY_TARGET = 10000;
                 && !/held behind/.test(r.detail || "")) {
               quickReplies(
                 ["Polish the current model: round the edges people touch with fillet, colour each part with colorize, and refine crude blocks — keep every size and hole exactly the same."],
-                ["✨ Polish it — round edges, add colour"]);
+                ["Polish it: round edges, add colour"], ["spark"]);
             }
           }
         }
@@ -22533,7 +22785,7 @@ let SIMPLIFY_TARGET = 10000;
         // guess about which field.
         if (busyModel) {
           el.innerHTML =
-            `<b>${esc(aiModel.value || "That model")} is busy right now.</b> Free models sit in a pool `
+            `<b>${esc(house ? (house.label || house.model) : (aiModel.value || "That model"))} is busy right now.</b> Free models sit in a pool `
             + `everyone shares, and it is currently full — nothing is wrong with your key or the app.`
             + `<div style="margin-top:8px">Two ways on:</div>`
             + `<div style="margin:4px 0 2px"><b>1.</b> Wait a few seconds and send again — it usually clears.</div>`
@@ -22558,6 +22810,7 @@ let SIMPLIFY_TARGET = 10000;
               const mine = [...chatMsgs.querySelectorAll(".msg.user")];
               const text = mine[mine.length - 1]?.textContent?.trim();
               if (text) chatInput.value = text;
+              if (house) houseNext = house;        // the same house request, not the rule engine
               if (chatInput.value.trim()) sendChat();
             }),
             mk("Use my own key", "Open the AI settings with the key field ready", () => {
@@ -22581,7 +22834,7 @@ let SIMPLIFY_TARGET = 10000;
           b.style.cssText = "font:inherit;padding:2px 10px;margin-left:8px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer";
           b.addEventListener("click", async () => {
             await window.brepcodeDesktop.claudeLogin();
-            addMsg("bot", "A black Claude window just opened. One-time setup, three steps:  1️⃣ In that window, type /login and press Enter.  2️⃣ Your browser opens — sign in with your Claude account and approve (it may ask twice; that's normal).  3️⃣ Close the black window, come back here, and send your message again. You never have to do this again on this computer.");
+            addMsg("bot", "A black Claude window just opened. One-time setup, three steps:  1. In that window, type /login and press Enter.  2. Your browser opens: sign in with your Claude account and approve (it may ask twice; that's normal).  3. Close the black window, come back here, and send your message again. You never have to do this again on this computer.");
           });
           el.appendChild(b);
         }
@@ -22604,15 +22857,29 @@ let SIMPLIFY_TARGET = 10000;
       if (r.chips?.length) quickReplies(r.chips, r.chips);
       if (r.actions?.length) actionRow(r.actions);
     }
+    // A chip's face: an optional line icon (icons.js, one weight, one
+    // colour) and the words. No emoji anywhere in the row.
+    function chipFace(el, label, iconName) {
+      el.textContent = "";
+      if (iconName) {
+        const span = document.createElement("span");
+        span.className = "chip-ic";
+        span.innerHTML = lineIcon(iconName, 13);
+        el.appendChild(span);
+      }
+      el.appendChild(document.createTextNode(label));
+    }
     function actionRow(actions) {
       const contact = CHAT?.CONTACT || { email: "RandoTechNerd@gmail.com", discord: "https://discord.gg/8fjQHDX8PQ" };
       const row = document.createElement("div");
       row.className = "quick-row action-row";
+      row.setAttribute("role", "group");
+      row.setAttribute("aria-label", "Ways forward");
       for (const a of actions) {
         const link = a.act === "email" || a.act === "discord";
         const b = document.createElement(link ? "a" : "button");
         b.className = "quick-chip action-chip";
-        b.textContent = a.label;
+        chipFace(b, a.label, a.icon);
         if (a.act === "email") b.href = `mailto:${contact.email}?subject=${encodeURIComponent("BREPcode help")}`;
         else if (a.act === "discord") { b.href = contact.discord; b.target = "_blank"; b.rel = "noopener"; }
         else b.addEventListener("click", () => runChatAction(a.act));
@@ -22622,12 +22889,28 @@ let SIMPLIFY_TARGET = 10000;
       chatMsgs.scrollTop = chatMsgs.scrollHeight;
     }
     function runChatAction(act) {
-      if (act === "stl") exportSTL();
-      else if (act === "params") toggleCard(paramsCard, paramsBtn, true);
+      // exportAs() is the real download (binary STL, a filename, "nothing to
+      // export" when nothing has built); exportSTL() only returns the text.
+      if (act === "stl") { if (lastSolids.length) exportAs("stl"); else addMsg("bot", "Nothing has built yet, so there is nothing to download."); }
+      // the Params card builds its rows only when asked (refreshParams(true)),
+      // so opening the card alone showed an empty panel
+      else if (act === "params") { toggleCard(paramsCard, paramsBtn, true); refreshParams(true); }
       else if (act === "editor") { if (!panel.classList.contains("open")) openBtn.click(); }
       else if (act === "ai") {
         $("chat-settings").classList.add("open");
+        // the AI pane, whichever tab was open last
+        document.querySelector('#cs-tabs [data-cstab="ai"]')?.click();
         $("chat-settings").scrollIntoView?.({ block: "nearest" });
+        setTimeout(() => aiProvider?.focus(), 50);
+      }
+      // the guided tour, for someone who is lost rather than stuck
+      else if (act === "tour") $("tour-btn").click();
+      // "undo" typed into the chat is the same ◀ as the editor's: one step
+      // back through the model's history. Disabled means nothing to undo.
+      else if (act === "undo") {
+        const b = $("undo-btn");
+        if (b && !b.disabled) b.click();
+        else addMsg("bot", "Nothing to undo yet.");
       }
     }
 
@@ -22636,8 +22919,16 @@ let SIMPLIFY_TARGET = 10000;
       // A catalog design is a tested, finished part, not a "simple shape":
       // following it with "that came from the light helper" undersells it.
       if (r?.fromCatalog) return;
+      // A reply that already carries the ways on (the help buttons, "Connect
+      // an AI" among them) must not be followed by a second offer of the same,
+      // unless the helper could not do it at all: then the full list (your own
+      // key, the .exe, the tour, the videos) is the answer, once per visit.
+      if (r?.actions?.some((a) => a.act === "ai") && !r?.cantDo) return;
+      // A question the helper asked, or an answer in words ("what can you
+      // make", "help", a name), is not a failure to build.
+      if (r?.asked || r?.chips?.length || r?.run?.length) return;
       // (a guided flow asking its next question is still going fine)
-      const couldNotBuild = r && r.code === undefined && !r.pending && !botState.flow;
+      const couldNotBuild = !!r?.cantDo || (r && r.code === undefined && !r.pending && !botState.flow);
       const why = couldNotBuild ? "complex" : "info";
       if (offeredRealAI[why] || (why === "info" && offeredRealAI.complex)) return;
       offeredRealAI[why] = true;
@@ -22650,12 +22941,13 @@ let SIMPLIFY_TARGET = 10000;
       const box = document.createElement("div");
       box.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-top:8px";
       el.appendChild(box);
-      const row = (label, note, onClick, href) => {
+      const row = (label, note, onClick, href, ic) => {
         const line = document.createElement("div");
         const b = document.createElement(href ? "a" : "button");
         b.className = "hist-btn";
-        b.style.cssText = "font-weight:700;text-decoration:none;display:inline-block";
-        b.textContent = label;
+        b.style.cssText = "font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px";
+        if (ic) { const s = document.createElement("span"); s.style.display = "inline-flex"; s.innerHTML = lineIcon(ic, 13); b.appendChild(s); }
+        b.appendChild(document.createTextNode(label));
         if (href) { b.href = href; b.target = "_blank"; b.rel = "noopener"; }
         else b.addEventListener("click", onClick);
         line.appendChild(b);
@@ -22683,16 +22975,19 @@ let SIMPLIFY_TARGET = 10000;
       const desktop = !!window.brepcodeDesktop;
       const ccOpt = $("opt-claude-code");
       if (desktop && ccOpt && !ccOpt.hidden) {
-        row("🤖 Claude Code on this computer", "uses your Claude subscription, no key to paste", use("claude-code"));
+        row("Claude Code on this computer", "uses your Claude subscription, no key to paste", use("claude-code"), null, "robot");
       }
-      row("⚡ Free in-browser AI", "no key, one download, nothing leaves this machine", use("browser"));
-      row("🟠 Claude", "paste an Anthropic API key", use("claude"));
-      row("🔵 Gemini", "paste a Google key (free tier available)", use("gemini"));
-      row("🌐 OpenRouter", "one key reaches 400+ models, GPT included", use("openai", "https://openrouter.ai/api/v1"));
-      row("🖥 Local model", "LM Studio, Ollama or Lemonade on your machine", use("local"));
+      row("Free in-browser AI", "no key, one download, nothing leaves this machine", use("browser"), null, "spark");
+      row("Claude", "paste an Anthropic API key", use("claude"), null, "chat");
+      row("Gemini", "paste a Google key (free tier available)", use("gemini"), null, "chat");
+      row("OpenRouter", "one key reaches 400+ models, GPT included", use("openai", "https://openrouter.ai/api/v1"), null, "globe");
+      row("Local model", "LM Studio, Ollama or Lemonade on your machine", use("local"), null, "monitor");
       if (!desktop) {
-        row("⬇ BREPcode desktop app (.exe)", "free from GitHub: runs on your Claude subscription with no key, and lets Claude Desktop / Claude Code drive it over MCP", null, BREPCODE_RELEASES);
+        row("BREPcode desktop app (.exe)", "free from GitHub: runs on your Claude subscription with no key, and lets Claude Desktop / Claude Code drive it over MCP", null, BREPCODE_RELEASES, "download");
       }
+      // ...or learn the app instead of asking for more AI
+      row("2-minute tour", "what every button does", () => $("tour-btn").click(), null, "tour");
+      row("Video tutorials", "how-tos on the RandoTechNerd YouTube channel", null, "https://www.youtube.com/@RandoTechNerd", "play");
       const keys = document.createElement("div");
       keys.className = "note";
       keys.style.cssText = "margin-top:2px";
@@ -22803,9 +23098,11 @@ let SIMPLIFY_TARGET = 10000;
         if (e.key === "Escape") { e.preventDefault(); closeChatComplete(); return; }
       }
       if (e.key !== "Enter") return;
-      // Empty input + a ✓ chip waiting = Enter IS the go-ahead
+      // Empty input + a ✓ chip waiting = Enter IS the go-ahead. Only the
+      // newest row counts: an old ✓ further up the chat is not this answer.
       if (!chatInput.value.trim()) {
-        const yes = [...document.querySelectorAll(".quick-chip")].find((b) => b.textContent.startsWith("✓"));
+        const rows = [...chatMsgs.querySelectorAll(".quick-row:not(.spent):not(.action-row)")];
+        const yes = rows.length ? [...rows[rows.length - 1].querySelectorAll(".quick-chip")].find((b) => b.textContent.startsWith("✓")) : null;
         if (yes) { yes.click(); return; }
       }
       sendChat();
@@ -22821,7 +23118,8 @@ let SIMPLIFY_TARGET = 10000;
         + "Pick its model in the box under the chat. Then change it in words: “wider”, “round the edges”, “make it blue”. Say <b>undo</b> to step back.";
       else hello.innerHTML = "Hi! Tell me what you want to print: <b>“a phone stand”</b>, <b>“a hook for my yoga mat”</b>, <b>“a cable clip for 3 cables”</b>. "
         + "I'm the built-in helper (no AI, nothing to set up): I know a catalog of tested designs and simple shapes, and I can change what I make: “wider”, “for an iPhone 16”, “round the edges”, “make it blue”. "
-        + "Say <b>what can you make</b> for the list. For anything else, open ⚙ to connect an AI: <b>In your browser</b> is free with no key, or paste your own Gemini, Claude or OpenRouter key.";
+        + "Say <b>what can you make</b> for the list. Changed your mind? Say <b>undo</b>. Stuck? Type <b>help</b> or take the <b>tour</b>. "
+        + "For anything else, open ⚙ to connect an AI: <b>In your browser</b> is free with no key, or paste your own Gemini, Claude or OpenRouter key.";
       quickReplies(["I want a phone stand", "a hook for my yoga mat", "a small wall shelf", "what can you make"],
         ["I want a phone stand", "a hook for my yoga mat", "a small wall shelf", "what can you make"]);
 
@@ -22834,6 +23132,8 @@ let SIMPLIFY_TARGET = 10000;
       // button cannot lose that race — it runs when clicked, long after
       // everything has settled — and it is honest: someone whose own key is
       // set still sees the offer, and nobody's settings move unless they ask.
+      // Not in assist mode: there the key is only ever the one offered
+      // request (offerHouseAI), never the visitor's provider.
       if (LOCKED.open && !HOUSE_MODES.includes(LOCKED.mode)) {
         const name = LOCKED.model || "the shared model";
         const row = document.createElement("div");
@@ -22858,6 +23158,13 @@ let SIMPLIFY_TARGET = 10000;
           verifyConnection(true);
         });
       }
+    }
+
+    // The Email tab's three buttons wear the same line icon as the chat's
+    // Email action, instead of an envelope glyph that renders as an emoji.
+    for (const id of ["email-model-btn", "email-drawing-btn", "email-idea-btn"]) {
+      const b = $(id);
+      if (b) chipFace(b, b.textContent.trim(), "mail");
     }
 
     // Handle for the console: brepscript.scene, .camera, .rebuild(), etc.
@@ -23031,6 +23338,11 @@ let SIMPLIFY_TARGET = 10000;
       const goTour = () => { if (tourGo) return; tourGo = true; $("tour-btn").click(); };
       requestAnimationFrame(goTour);
       setTimeout(goTour, 600);
+    } else if (!urlCarriesModel() && makeRequested()) {
+      // The quick door: at once, not after the welcome card's 700 ms. It is
+      // the first thing this visitor sees, and on brepcode.com/make the host
+      // page is holding up a stand-in for it until it appears.
+      openMakeDoor(import("./welcome.js"));
     } else if (!urlCarriesModel()) {
       setTimeout(async () => {
         let W;
@@ -23039,6 +23351,8 @@ let SIMPLIFY_TARGET = 10000;
         // A shared example link (?example=tpubox, as brepcode.com/tpu-box
         // serves) loads the model like a welcome-card chip would and skips the
         // entry card — the visitor came for THIS model, not the front door.
+        // The quick door (brepcode.com/make): the question comes first, and
+        // the welcome card is not needed after it.
         const ask = launchAsk();
         if (ask !== null) { openChatAndAsk(ask); return; }
         const exName = launchExample();
@@ -23250,6 +23564,42 @@ let SIMPLIFY_TARGET = 10000;
       },
 
       fit() { frameModel(); return { ok: true }; },
+
+      // THE CATALOG, for an outside AI. "a phone stand for my iPhone 16" is
+      // a tested, printable design the app already has, with every size a
+      // slider; an assistant that writes it from scratch instead gets a worse
+      // part and a longer wait. This is the same answer the chat gives.
+      // `apply` puts it on screen (through set_code, so it is undoable).
+      async catalog_find({ text = "", apply = false } = {}) {
+        const C = await ensureChat();
+        const m = C.matchCatalog(String(text || ""));
+        if (!m) {
+          const sug = C.catalogSuggest(String(text || ""));
+          return {
+            ok: true, found: false,
+            suggestions: (sug?.chips || []).filter((c) => c !== "what can you make"),
+            hint: "nothing in the catalog matches; say what it is for (\"a hook for my yoga mat\"), try catalog_list, or write the part with set_code",
+          };
+        }
+        const out = {
+          ok: true, found: true, family: m.familyId, title: m.title, sizedFor: m.sizedFor || [],
+          question: m.question?.text || null, choices: m.question?.choices || [],
+          heard: m.heard?.text || null, params: m.values, code: m.code,
+          followUps: "with the design on screen, the chat's own follow-ups work on it: wider, for a Pixel 9, round the edges, add two holes, no cable hole, twice as wide, make it blue",
+        };
+        if (apply) { out.state = await agentActions.set_code({ code: m.code, name: m.title }); out.applied = true; }
+        return out;
+      },
+      // What the catalog covers: every family, or one category's.
+      async catalog_list({ category = "" } = {}) {
+        const { FAMILIES, CATEGORIES } = await import("../src/catalog/index.js");
+        const cat = String(category || "").toLowerCase().trim();
+        const families = FAMILIES.filter((f) => !cat || f.category === cat).map((f) => ({
+          id: f.id, category: f.category, title: f.title, names: f.names.slice(0, 4),
+          things: (f.things || []).length, examples: (f.examples || []).slice(0, 2),
+        }));
+        return { ok: true, categories: CATEGORIES, families };
+      },
 
       // The built mesh as STL text. The bridge writes it to disk — the page
       // never picks the path, so this cannot become "save anywhere".

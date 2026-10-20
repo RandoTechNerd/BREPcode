@@ -116,6 +116,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "fizz.js",
   // the first-visit welcome and the ?tool= link cards
   "welcome.js",
+  // the quick door (/make): one question over the loading cube
+  "make.js",
   // the line icons those cards and the drop menu share
   "icons.js",
   // the build worker: loaded by URL rather than imported, so nothing else
@@ -178,12 +180,15 @@ bounce("tour", "tour=1", "BREPcode — guided tour",
 // The welcome card normally shows once per browser. ?welcome=1 forgets that,
 // so this is the link to hand out when the first thing someone should see is
 // the start screen (examples, describe a part, bring an STL).
-// ---- /make : the front door for newcomers --------------------------------
-// One question ("What do you want to 3D print?"), a box and some examples.
-// It hands the words to the app as ?ask=, where the chat opens and answers.
-// A real page rather than a bounce: it is the thing people land on.
-mkdirSync(join(OUT, "make"), { recursive: true });
-writeFileSync(join(OUT, "make", "index.html"), readFileSync("viewer/make.html", "utf8"));
+// ---- /make : the quick door for newcomers --------------------------------
+// One question ("What do you want to 3D print?") over the loading cube, then
+// the app with the chat open and the answer in it. It lives INSIDE the app
+// (viewer/make.js, started by ?make=1) so the kernel downloads while the
+// visitor types and nothing reloads between the question and the model; this
+// folder only bounces there, the way /tour does.
+bounce("make", "make=1", "BREPcode: what do you want to 3D print?",
+  "Say what you want to 3D print, in plain words. BREPcode makes a tested, printable model you can resize with sliders and download as an STL. Free, no account, no AI key.",
+  "Opening BREPcode");
 // ---- /rtn2026 : the premium door -----------------------------------------
 // The app with the house AI as the chat's AI, when locked-key.js says
 // mode: "premium" (see docs/house-ai.md). Without that file in the build it

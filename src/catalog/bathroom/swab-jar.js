@@ -34,11 +34,11 @@ export default {
   },
   things: [
     { names: ["qtip holder", "q tip holder", "cotton swab holder", "q tip jar", "qtip jar", "cotton bud holder", "swab jar", "q tip container", "qtip dispenser"],
-      title: "Q-tip holder", spec: "bath-cotton-swab", params: { diameter: 68, height: 84 } },
+      title: "Q-tip holder", params: { diameter: 68, height: 84 } },
     { names: ["cotton ball jar", "cotton ball holder", "cotton ball container", "cotton wool jar"], title: "Cotton ball jar",
       params: { diameter: 92, height: 105 } },
     { names: ["q tip and cotton ball holder", "cotton swab and cotton ball holder", "swab and cotton ball jar"], title: "Swab and cotton ball jar",
-      spec: "bath-cotton-swab", params: { diameter: 95, height: 84, compartments: 2 } },
+      params: { diameter: 95, height: 84, compartments: 2 } },
     { names: ["floss pick holder", "floss pick jar", "flosser holder", "dental floss pick holder", "floss holder"], title: "Floss pick holder",
       params: { diameter: 62, height: 72 } },
     { names: ["hair tie jar", "hair tie container", "elastic jar", "bobby pin holder", "bobby pin jar", "hair clip jar"], title: "Hair tie jar",

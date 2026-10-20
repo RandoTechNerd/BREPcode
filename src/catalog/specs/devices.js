@@ -72,6 +72,12 @@ export const SPECS = [
   // generic sizes for when the model is not in the table
   phone("phone-small", ["small phone", "compact phone"], 135, 66, 8),
   phone("phone-large", ["big phone", "large phone", "phone max", "plus size phone"], 163, 78, 8.6),
+  // ...and for a brand with no model number: "an iphone stand", "a stand for
+  // my samsung". A typical current phone; the chat still offers to size it
+  // to the exact model. Not a bare "phone": that word is the thing itself.
+  { ...phone("phone-generic", ["iphone", "an iphone", "android phone", "android", "samsung phone", "samsung", "galaxy phone",
+    "pixel phone", "smartphone", "smart phone", "cell phone", "cellphone", "mobile phone", "mobile"], 150, 72, 8.2),
+    note: "a typical phone (about 150 x 72 x 8 mm); name the model to size it exactly" },
 
   // ---- tablets and e-readers
   tablet("ipad-pro-13", ["iPad Pro 13", "iPad Pro 12.9"], 281.6, 215.5, 5.1),
@@ -81,6 +87,8 @@ export const SPECS = [
   tablet("ipad-mini", ["iPad mini"], 195.4, 134.8, 6.3),
   tablet("ipad", ["iPad", "iPad 10th gen", "iPad 11th gen"], 248.6, 179.5, 7.0),
   tablet("galaxy-tab-s9", ["Galaxy Tab S9", "Galaxy Tab", "Samsung tablet"], 254.3, 165.8, 5.9),
+  { ...tablet("tablet-generic", ["android tablet", "a tablet", "my tablet", "fire tablet", "amazon fire", "kindle fire"], 250, 170, 7.5),
+    note: "a typical 10 inch tablet (about 250 x 170 x 7.5 mm); name the model to size it exactly" },
   tablet("kindle-paperwhite", ["Kindle Paperwhite"], 174.2, 124.6, 8.1),
   tablet("kindle", ["Kindle", "e-reader", "ereader"], 157.8, 108.6, 8.0),
   tablet("switch", ["Nintendo Switch", "Switch OLED", "Switch 2"], 102, 242, 13.9),   // landscape: w is the long side

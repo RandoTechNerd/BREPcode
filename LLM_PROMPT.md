@@ -216,6 +216,24 @@ If the user asks for one of these, say which one is missing and offer the closes
    hands every later boolean a heavy mesh — 44 s versus 5 s for the same silhouette. Spheres and tori
    are quadratic in `$fn`.
 
+## Editing a model the app's catalog made
+
+Inside BREPcode the built-in chat answers common requests ("a phone stand", "a hook for my yoga mat")
+from a catalog of tested designs. That code begins with a header line and one `const` per dial:
+
+```text
+// Phone stand: leans a phone back at a reading angle, with a charging-cable hole through the seat.
+// Every number below is a slider (Params). From the BREPcode catalog: phone-stand.
+const deviceT = 12;    // [5:30] device thickness with its case, mm
+const angle = 65;      // [45:80] lean angle from the desk, degrees
+```
+
+When you are asked to change such a model, **keep the header line, any `// Sized for` line and the
+`const name = number;` dials exactly as they are** (change a dial's number when the request is about
+it; never rename or remove one), and make your change in the geometry below them. The app's own
+follow-ups ("wider", "for a Pixel 9", "round the edges") read those lines, and they stop working the
+moment the header goes.
+
 ## Worked examples
 
 **"A 60×40×6 mounting plate with 5 mm bolt holes 7 mm in from each corner and a 20 mm hole in the middle"**

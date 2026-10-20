@@ -37,7 +37,9 @@ export const FAMILIES = [plantPot, selfWateringPlanter, hangingPlanter, wallPlan
 // the low end so a box prints on a 256 mm bed, which the birds accept.
 
 const stake = (id, names, d, note) => ({ id, kind: "stake", names, dims: { d }, label: names[0], note });
-const neck = (id, names, d, h, note) => ({ id, kind: "neck", names, dims: { d, h }, label: names[0], note });
+// "bottle-neck", not "neck": the wall category's "neck" is an instrument's
+// nut width, and a kind means one shape across the whole catalog.
+const neck = (id, names, d, h, note) => ({ id, kind: "bottle-neck", names, dims: { d, h }, label: names[0], note });
 const bird = (id, names, hole, floor, height, holeH, note) => ({ id, kind: "bird", names, dims: { hole, floor, height, holeH }, label: names[0], note });
 const IN = 25.4;
 

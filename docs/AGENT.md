@@ -83,10 +83,20 @@ nothing can spawn a script out of an archive.
 | `fit` | frame the model when it has grown out of the view |
 | `screenshot` | a PNG of your window, so Claude can see what you see |
 | `save_stl` | write the built mesh to a path |
+| `catalog_find` | ask the app's catalog of 200+ tested designs for a plain-words request; `apply: true` puts it on screen |
+| `catalog_list` | what the catalog covers, all of it or one category |
 
 `set_code` returns the state *after* the build, so `status.kind === "err"` is how
 Claude finds out it wrote something that does not build — and the kernel's own
 complaint comes back with it.
+
+`catalog_find` is the shortcut for common things. "A phone stand for my iPhone
+16" is a design the app already has, tested to print without supports and
+with every size a slider, so Claude is told to ask the catalog first and only
+write a part itself when the catalog has nothing. A catalog model's code
+starts with a header line (`From the BREPcode catalog: phone-stand.`) and one
+`const` per dial; Claude keeps those lines when it edits the model, so your own
+chat follow-ups ("wider", "for a Pixel 9") keep working afterwards.
 
 ## Ports and other apps
 
