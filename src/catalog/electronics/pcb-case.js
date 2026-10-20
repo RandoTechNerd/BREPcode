@@ -51,6 +51,7 @@ export default {
   things: [
     { names: ["raspberry pi 4 case", "pi 4 case", "raspberry pi 4 enclosure"], title: "Raspberry Pi 4 case", spec: "pcb-pi4" },
     { names: ["raspberry pi 5 case", "pi 5 case", "raspberry pi 5 enclosure"], title: "Raspberry Pi 5 case", spec: "pcb-pi5", params: { headroom: 26, vents: 10 } },
+    { names: ["raspberry pi 3 case", "pi 3 case", "raspberry pi 3 enclosure"], title: "Raspberry Pi 3 case", spec: "pcb-pi3" },
     { names: ["pi zero case", "raspberry pi zero case", "pi zero 2 case", "pi zero enclosure"], title: "Pi Zero case", spec: "pcb-pizero",
       params: { headroom: 10, endCut: 0, sideCut: 45, vents: 4 } },
     { names: ["pi pico case", "raspberry pi pico case", "pico case", "rp2040 case"], title: "Pi Pico case", spec: "pcb-pico",
