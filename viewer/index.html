@@ -21573,6 +21573,10 @@ let SIMPLIFY_TARGET = 10000;
     // the point, for an AI reply), the Params card (the sliders are the point,
     // for a catalog design), or nothing.
     async function applyGeneratedCode(newCode, { show = "editor" } = {}) {
+      // lastEngine is replaced by every worker build, so a new object means
+      // this code's build reported its lane; the same one means it did not
+      // (a main-thread build), and nothing is claimed about it.
+      const engineBefore = lastEngine;
       code.value = newCode;
       pushHistory();
       paintPartsBar();
@@ -21615,7 +21619,7 @@ let SIMPLIFY_TARGET = 10000;
       } else if (ok && show === "editor" && !quietEditor) toggleCard(panel, openBtn, true);
       const detail = $("status-text")?.textContent || "";
       const warned = fixnote.textContent.trim();
-      return { ok, detail, warned };
+      return { ok, detail, warned, engine: lastEngine !== engineBefore ? lastEngine : null };
     }
 
     // The editor runs code as real JavaScript, so an AI reply is auto-applied
@@ -21667,6 +21671,40 @@ let SIMPLIFY_TARGET = 10000;
       return Number.isFinite(v) ? v : 2;
     };
     let autoFixTries = 0;
+
+    // THE EXACT PASS. A model that BUILT, but off the exact B-rep lane for a
+    // reason the AI could have avoided (hull() for a rounded box, a hole down
+    // a revolve() axis, overlapping cutters in one difference(): see
+    // src/exactlane.js), goes back to the AI once with the reason. Exact is
+    // faster, exports STEP with real curves and can still be filleted. The
+    // working model is put back unless the rewrite comes back exact, so the
+    // pass can only improve what the user got. Off when auto-fix is 0.
+    const EXACT_TEXT = "That built, but not as an exact B-rep solid. Rewrite the construction with exact pieces and return the complete model.";
+    let exactPass = null;        // { code } of the working model while a rewrite is out
+    let exactTried = false;      // one exact pass per request
+    async function exactFollowUp(r, src, house) {
+      if (exactPass) {
+        const keep = exactPass.code;
+        exactPass = null;
+        if (r.engine?.engine === "exact") { addMsg("bot", "Now it builds as an exact B-rep solid."); return false; }
+        await applyGeneratedCode(keep);
+        addMsg("bot", "The rewrite still wasn't exact, so I put the first version back.");
+        return false;
+      }
+      if (exactTried || maxAutoFix() === 0 || !r.engine || /held behind/.test(r.detail || "")) return false;
+      let advice = null;
+      try { advice = (await import("../src/exactlane.js")).exactAdvice(r.engine, src, lessonPrompt); } catch { advice = null; }
+      if (!advice) return false;
+      exactTried = true;
+      exactPass = { code: src };
+      console.info(`[chat] exact pass: ${advice.lane} (${String(advice.why).slice(0, 120)})`);
+      addMsg("bot", `${advice.note} Asking for an exact version; this one stays if that doesn't work out…`);
+      chatLog.push({ role: "user", text: advice.ask });
+      if (house) houseNext = house;
+      chatInput.value = EXACT_TEXT;
+      await sendChat();
+      return true;
+    }
 
     // ---- learning from this machine's own build history --------------------
     //
@@ -21901,7 +21939,9 @@ let SIMPLIFY_TARGET = 10000;
         steerNotes.push(`not a command, left in the message: ${dir.unknown.join(" ")}`);
       }
 
-      if (text !== RETRY_TEXT) {
+      if (text !== RETRY_TEXT && text !== EXACT_TEXT) {
+        exactTried = false;                        // ...and a fresh exact pass
+        exactPass = null;
         autoFixTries = 0;                          // a real request, fresh budget
         lessonPrompt = text;                       // ...and what it was actually for
         lessonFirstError = "";
@@ -22215,7 +22255,7 @@ let SIMPLIFY_TARGET = 10000;
         // being written while this searches, so the answer costs no waiting —
         // and a failed search costs nothing at all. Only fires when the request
         // names something recognisable, and only on a retry-free first ask.
-        if (text !== RETRY_TEXT) maybeOfferPriorArt(text, cfg);
+        if (text !== RETRY_TEXT && text !== EXACT_TEXT) maybeOfferPriorArt(text, cfg);
 
         // Pull in only the reference material this message is actually about.
         // A miss costs nothing and must never block the request, so a broken
@@ -22693,6 +22733,16 @@ let SIMPLIFY_TARGET = 10000;
               r = await applyGeneratedCode(fence[1].trim());
             }
           }
+          if (!r.ok && exactPass) {
+            // The exact rewrite broke what was working: never repair it, put
+            // the model that built back.
+            const keep = exactPass.code;
+            exactPass = null;
+            await applyGeneratedCode(keep);
+            addMsg("bot", "The exact rewrite didn't build, so I put the working version back.");
+            chatLog.push({ role: "user", text: "That rewrite did not build, so the previous working model is back in the editor. Keep building on that one." });
+            return;
+          }
           if (!r.ok) {
             // Hand the failure back and RETRY IT OURSELVES. A build error is
             // something the model can almost always repair from the message
@@ -22730,6 +22780,7 @@ let SIMPLIFY_TARGET = 10000;
               ok: true, error: lessonFirstError,
               attempts: autoFixTries + 1, code: fence[1].trim(),
             });
+            if (await exactFollowUp(r, fence[1].trim(), house)) return;
             // The sculptor's second pass, offered rather than automatic: at
             // in-browser token speeds an auto-polish would double every wait,
             // and a blocky part that IS what the user wanted needs no pass 2.
@@ -23511,6 +23562,15 @@ let SIMPLIFY_TARGET = 10000;
           params,
           autoFix: !exact.checked,
           note: fixnote.textContent || "",
+          // Which kernel built it: "exact" (the Rust B-rep lane), "mesh", or
+          // "js" (a step the exact kernel refused, rebuilt on the slow one).
+          // exactAdvice is set when it left the exact lane for a reason the
+          // code could avoid, and says how (src/exactlane.js).
+          engine: lastEngine ? { lane: lastEngine.engine, fallback: lastEngine.fallback || null } : null,
+          exactAdvice: await (async () => {
+            try { return (await import("../src/exactlane.js")).exactAdvice(lastEngine, code.value)?.ask || null; }
+            catch { return null; }
+          })(),
         };
       },
 

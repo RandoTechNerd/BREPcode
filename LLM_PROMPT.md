@@ -92,7 +92,8 @@ union(a, b, ...)               difference(target, ...tools)     intersection(a, 
 group(a, b, ...)               // keeps pieces SEPARATE — see the colour rule below
 translate([x, y, z], shape)    rotate([rx, ry, rz], shape)      // degrees
 scale([x, y, z], shape)        scale(s, shape)                  mirror([nx, ny, nz], shape)
-hull(...shapes)                // one convex skin around everything
+hull(...shapes)                // one convex skin around everything; a mesh, see rule 9
+hull({ exact: true }, ...)     // the same as an exact polyhedron, for a few flat-sided pieces
 ```
 
 ### Rounding and offsets
@@ -211,10 +212,32 @@ If the user asks for one of these, say which one is missing and offer the closes
    slices through the middle of such a model and looks like the part vanishing.
 6. **Give curved primitives an explicit `$fn`**, or facet counts are unpredictable.
 7. **Name your dimensions.** Real numbers in `const`s at the top, everything else derived.
-8. **Triangles cost time.** Roughly 2 ms of build per triangle. A rounded box is `hull()` of four
-   corner cylinders (one cheap convex solid), not `roundedGrow()`, which rounds all twelve edges and
-   hands every later boolean a heavy mesh — 44 s versus 5 s for the same silhouette. Spheres and tori
-   are quadratic in `$fn`.
+8. **Mesh triangles cost time.** An exact solid costs per boolean and per face; a mesh step costs
+   roughly 2 ms of build per triangle. `roundedGrow()` rounds all twelve edges of a box into 13k
+   triangles and hands every later boolean a heavy mesh — 44 s versus 5 s for the same silhouette.
+   Spheres and tori are quadratic in `$fn`.
+9. **Exact B-rep first.** BREPcode builds on an exact B-rep kernel (true planes, cylinders and cones,
+   fast booleans, STEP with real curves). A model stays on it only while every step is exact; one
+   mesh step turns the rest of that branch into triangles, and a step the kernel refuses drops the
+   whole model to a slow fallback kernel.
+   - Exact: `cube`, `cylinder`, `cone`, `sphere`, `torus`, `polygon` + `linearExtrude`, `revolve`,
+     `union` / `difference` / `intersection`, `fillet`, `chamfer`, and `hull({ exact: true }, ...)` of a
+     few flat-sided pieces (boxes, polygons, `$fn` 3-8 cylinders). Mesh: plain `hull`, `roundedGrow` /
+     `minkowski` / `roundedShrink`, `tube`, `texture`, `blob` / `smoothUnion` / `blend`, `text`,
+     `importedMesh`. Use a mesh verb only when the design needs it, apply it last, and never
+     `fillet()` after it.
+   - A rounded box is `fillet({ r, edges: "z" }, cube([x, y, z]))`: rounded vertical corners, flat
+     top and bottom, exact. Not `hull()` of corner cylinders, and not `roundedGrow()`.
+   - A taper is `cylinder({ r1, r2, h })`. A tapered polygon (a hex pot) is `linearExtrude` of the
+     polygon with each side planed off by a tilted cube, one `difference()` at a time.
+   - Never cut a hole down a `revolve()` axis: the kernel refuses it. Build that round body from
+     cylinders and cones.
+   - Cutters that overlap each other go one at a time, `difference(difference(a, t1), t2)`: one
+     `difference(a, t1, t2)` unions the tools first, which is slow or refused when they cross.
+   - No grazing contact: solids that only touch along an edge are refused. Run one 0.5-1 mm into the
+     other.
+   - `cylinder({ $fn: 6 })` is a real hex prism (3-8 sides stay polygons); a cone with `$fn` 3-8 is
+     refused.
 
 ## Editing a model the app's catalog made
 
@@ -304,6 +327,8 @@ return colorByHeight({ at: [12], colors: ["#ffffff", "#2b6cb0"] }, body);   // �
 6. Heights that mean "off the build plate" are measured from the model, not from z = 0.
 7. The code is a single expression, or a block ending in `return`.
 8. Dimensions are named constants, not magic numbers scattered through the code.
+9. Every step is exact unless the design needs a mesh: no `hull()` or `roundedGrow()` where a cone,
+   a union or a `fillet()` would do, no hole down a `revolve()` axis, overlapping cutters one at a time.
 
 ---
 

@@ -120,6 +120,12 @@ export function feature(code, params = {}) {
 // references files by name so the model stays readable.
 const IMPORTS = new Map();
 let hullSeq = 0;          // unique names for hull() result meshes
+// The exact hull's cost grows with its face count, the mesh hull's barely
+// does (measured on the split engine, exact vs mesh): 10 faces 0.2 s vs
+// 0.2 s, a rounded box's 54 faces 0.19 s vs 0.09 s, 106 faces 1.2 s vs
+// 0.1 s, a hull of two spheres' 328 faces 4.7 s vs 0.09 s. Flat-sided hulls
+// (boxes, polygons, low-$fn cylinders) stay exact; round ones stay fast.
+export const HULL_EXACT_MAX_FACES = 64;
 let texSeq = 0;           // unique names for texture()/heightmap() result meshes
 // For an exact import (STEP text), the mesh it was rebuilt from: the JS
 // kernel can't read STEP, so when it has to build the model (the split engine
@@ -569,10 +575,18 @@ export const intersection = op("INTERSECT");
 // children in a scratch history, take every surface vertex, compute the 3D
 // convex hull (three's ConvexGeometry), and import the resulting mesh as a
 // solid. Great for smooth swept connectors and sloped lips.
+// hull({ exact: true }, ...shapes) hands the kernel an exact polyhedron
+// instead of a triangle mesh (src/hullstep.js): flat faces it can cut, export
+// to STEP and keep on the exact lane. Opt-in, because it is not free: a few
+// hulls of flat-sided pieces build in 0.1-0.4 s, but a part made of many
+// stacked, touching hulls (gridfinityBin) took 70 s on the exact kernel and
+// was then refused, against 0.5 s as meshes.
 export function hull(...children) {
+  const first = children[0];
+  const opts = first && typeof first === "object" && !Array.isArray(first) && !first.__brepscript && !first.kind ? children.shift() : {};
   const kids = collect(children);
   if (!kids.length) throw new Error("hull() needs at least one shape");
-  return node({ kind: "hull", children: kids, fix: IDENTITY });
+  return node({ kind: "hull", children: kids, exact: !!opts.exact, fix: IDENTITY });
 }
 
 // --------------------------------------------------- rounded grow / shrink
@@ -2597,6 +2611,47 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         });
       }
       if (pts.length < 4) throw new Error("hull(): the shapes have too little geometry to hull");
+      const name = `__hull${hullSeq++}`;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+
+      // EXACT on request (hull({ exact: true }, ...)): a convex hull is a polyhedron, so it goes to the kernel
+      // as flat faces in STEP (src/hullstep.js) on the exact-import path, with
+      // the triangles alongside for the JS kernel, which reads no STEP. Built
+      // in world space, so no transform follows it. A hull that fails the
+      // closed-solid check, or has more faces than HULL_EXACT_MAX_FACES (a
+      // hull of round things), falls through to the mesh import below.
+      if (n.exact) {
+        const wpos = new ConvexGeometry(pts.map((p) => p.clone().applyMatrix4(world))).attributes.position;
+        const tris = [];
+        let wstl = "solid hull\n";
+        for (let i = 0; i < wpos.count; i += 3) {
+          const t = [0, 1, 2].map((k) => [wpos.getX(i + k), wpos.getY(i + k), wpos.getZ(i + k)]);
+          const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+          const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+          const c = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+          const l = Math.hypot(...c);
+          if (l > 1e-12) tris.push({ normal: [c[0] / l, c[1] / l, c[2] / l], pts: t });
+          wstl += "facet normal 0 0 0\nouter loop\n";
+          for (const q of t) wstl += `vertex ${q[0]} ${q[1]} ${q[2]}\n`;
+          wstl += "endloop\nendfacet\n";
+        }
+        wstl += "endsolid hull\n";
+        const { polyhedronStep } = await import("./hullstep.js");
+        const exact = polyhedronStep(tris, name);
+        if (exact && exact.faces <= HULL_EXACT_MAX_FACES) {
+          await ensureImportClonePatch(partHistory);
+          IMPORTS.set(name, wstl);
+          const f = await partHistory.newFeature("IMPORT3D");
+          f.inputParams.fileToImport = wstl;
+          f.inputParams.stepText = exact.step;
+          f.inputParams.exactHull = true;   // engine.js retries it as a mesh if refused
+          f.inputParams.meshRepairLevel = "NONE";
+          f.inputParams.centerMesh = false;
+          trace?.push({ id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+          return f.inputParams.id;
+        }
+      }
+
       const pos = new ConvexGeometry(pts).attributes.position;
       let stl = "solid hull\n";
       for (let i = 0; i < pos.count; i += 3) {
@@ -2608,9 +2663,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
       // import the hull mesh, baking the accumulated transform into the STL
       await ensureImportClonePatch(partHistory);
-      const name = `__hull${hullSeq++}`;
       let data = stl;
-      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
       if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
       IMPORTS.set(name, data);
       const f = await partHistory.newFeature("IMPORT3D");

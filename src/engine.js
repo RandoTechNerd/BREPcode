@@ -362,7 +362,32 @@ function meshFaces(solid, sourceOf) {
  *   trackManifolds: optional array that receives every Manifold made (tests
  *             check that each one is deleted by the time this returns)
  */
-export async function runEngine(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null } = {}) {
+// hull() hands its result over as an exact polyhedron (STEP) AND as the
+// triangles it used to be (src/hullstep.js, dsl.js "hull"). Exact is the
+// better answer when the kernel takes it, but a model that hulls pieces into
+// touching or stacked blocks (gridfinityBin) can be refused where the same
+// model as meshes built in half a second. So a refusal in a model with exact
+// hulls is retried once with every hull as its mesh, before anyone falls back
+// to the JS kernel: an exact hull can only ever make a build better.
+export async function runEngine(json, opts = {}) {
+  const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
+  const hulls = (src.features || []).filter((f) => f.type === "IMPORT3D" && f.inputParams?.exactHull
+    && typeof f.inputParams.stepText === "string" && typeof f.inputParams.fileToImport === "string");
+  try {
+    return await runEngineOnce(src, opts);
+  } catch (e) {
+    if (!(e instanceof EngineRefusal) || !hulls.length) throw e;
+    const asMesh = structuredClone(src);
+    for (const f of asMesh.features) {
+      if (f.type === "IMPORT3D" && f.inputParams?.exactHull) delete f.inputParams.stepText;
+    }
+    const out = await runEngineOnce(asMesh, opts);
+    out.stats = { ...out.stats, hullsAsMesh: hulls.length, exactRefusal: String(e.message || e).slice(0, 200) };
+    return out;
+  }
+}
+
+async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null } = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
   const features = src.features || [];
   const { meshFeatures } = planLanes(features);

@@ -241,6 +241,32 @@
       ]
     },
     {
+      "tag": "exact",
+      "title": "Staying on the exact B-rep kernel",
+      "file": "exact.md",
+      "match": [
+        "rounded box",
+        "rounded corners",
+        "round corners",
+        "rounded edges",
+        "soft corners",
+        "taper",
+        "tapered",
+        "frustum",
+        "hull",
+        "revolve",
+        "lathe",
+        "turned",
+        "cone",
+        "b-rep",
+        "brep",
+        "exact",
+        "step file",
+        "step export",
+        "rounded rectangle"
+      ]
+    },
+    {
       "tag": "extrusion",
       "title": "Aluminium T-slot / V-slot extrusion",
       "file": "extrusion.md",

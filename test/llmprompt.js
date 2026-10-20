@@ -94,7 +94,12 @@ console.log("\nit carries the rules that were learned the hard way\n");
   check("height is measured from the model, not from z = 0",
     /A model does not necessarily sit on the\s*\n?\s*plate/.test(DOC),
     "an imported model spanning z -20..+28 is why a 0..0.9 cut looked like the part vanishing");
-  check("triangles cost build time", /2 ms of build per triangle/.test(DOC));
+  check("mesh triangles cost build time", /2 ms of build per triangle/.test(DOC));
+  // the Rust B-rep kernel is the fast lane; the guide must steer onto it
+  check("it puts exact B-rep first", /\*\*Exact B-rep first\.\*\*/.test(DOC));
+  check("...and a rounded box is exact, not hull()", /rounded box is `fillet\(\{ r, edges: "z" \}/.test(DOC)
+    && !/rounded box is `hull\(\)`/.test(DOC));
+  check("...and no hole down a revolve() axis", /hole down a `revolve\(\)` axis/.test(DOC));
   check("it says the in-app chat does this better", /Chatting \*\*inside BREPcode\*\* is better/.test(DOC),
     "the app adds a harness, a recipe library and a retry loop this file cannot");
 }

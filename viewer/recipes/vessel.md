@@ -21,15 +21,51 @@ these three mistakes, so check each before you answer:
    along x) rather than fused underneath. If it must sit under the pot, give
    the pot feet and leave a gap; do not union the two.
 
-Keep the outside plain: no texture(), hull bulges or smooth booleans on a pot
-unless asked. They multiply the triangle count (a 100k-triangle pot waits
-behind the Build button and cannot be checked), and a bulge can push the
-underside below z = 0.
+Keep the outside plain and EXACT: no texture(), hull() or smooth booleans on
+a pot unless asked. Those are triangle meshes: they multiply the triangle
+count (a 100k-triangle pot waits behind the Build button and cannot be
+checked), a bulge can push the underside below z = 0, and the pot stops being
+an exact B-rep solid.
+
+Round pots: cones. `cylinder({ r1: bottom, r2: top, h, $fn: 96 })` for the
+outside, the same for the cavity from the floor up. NOT `revolve()` when there
+is a centre drain hole: the kernel refuses a hole down a revolve's axis and
+the whole pot falls back to the slow kernel. A cone pot builds exact in about
+0.1 s.
 
 Polygon pots (hex, octagon): `linearExtrude` a regular `polygon`; an inward
-wall of `t` on an n-gon moves the corner radius in by `t / cos(PI / n)`.
-Round pots: `revolve(360, profile)` of the wall section, or a cylinder minus
-a cylinder.
+wall of `t` on an n-gon moves the corner radius in by `t / cos(PI / n)`. For
+straight walls that is the whole pot (the example below). For a TAPERED
+polygon, never a cone with `$fn: 6`
+(refused): extrude the polygon at its wider end, then plane each side off
+with a big cube tilted to the taper, ONE `difference()` AT A TIME. Handing
+difference() all n tilted cubes at once makes the kernel union the
+overlapping cubes first: 2.5 s at 12 sides, refused at 4 and 8. One at a
+time, every side count builds exact in 0.1-0.3 s:
+
+```js
+// apothem a0 at z0 to a1 at z1, n sides, a flat facing the front
+const n = 6;
+const k = 1 / Math.cos(Math.PI / n);
+const ngon = (a) => polygon(Array.from({ length: n }, (_, i) => {
+  const t = Math.PI / n - Math.PI / 2 + 2 * Math.PI * i / n;
+  return [a * k * Math.cos(t), a * k * Math.sin(t)];
+}));
+const taperedPrism = (a0, z0, a1, z1) => {
+  const h = z1 - z0, big = Math.max(a0, a1) + 1, L = 2 * (big * k + h) + 10;
+  const tilt = Math.atan((a1 - a0) / h) * 180 / Math.PI;
+  let solid = translate([0, 0, z0], linearExtrude({ h }, ngon(big)));
+  for (let i = 0; i < n; i++) solid = difference(solid, rotate([0, 0, -90 + 360 * i / n],
+    translate([a0, 0, z0], rotate([0, tilt, 0], translate([0, -L, -L], cube([L, 2 * L, 2 * L]))))));
+  return solid;
+};
+return taperedPrism(40, 0, 50, 80);   // a hex frustum, 80 to 100 across the flats
+```
+
+A flared rim on top is a second taper unioned on: start it 1 mm down inside
+the body on the same line, and run the body 1 mm past the knee, so the faces
+cross. A rim that only touches the body's top edge is refused. The catalog's
+plant pot (`sides`, `holes`, `saucer`) is built exactly this way.
 
 Before claiming a fix, state the z-ranges: pot 0..height, cavity
 floor..height+1, holes -1..floor+1, tray 0..tray_h with its cavity from
