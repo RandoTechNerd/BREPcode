@@ -11,6 +11,9 @@ import { MAX_FACES } from "./offset3d.js";
 import { meshFieldGrid } from "./fieldgrid.js";
 import { repairMesh, cutPinches } from "./meshrepair.js";
 import { remeshForTexture } from "./texmesh.js";
+// exact twins of hull()/minkowski() habits; calls back into this module only
+// when a model runs, so the import cycle is safe (as with parts.js)
+import { exactHull, exactMinkowski } from "./exactshapes.js";
 
 const DEG = Math.PI / 180;
 
@@ -575,17 +578,28 @@ export const intersection = op("INTERSECT");
 // children in a scratch history, take every surface vertex, compute the 3D
 // convex hull (three's ConvexGeometry), and import the resulting mesh as a
 // solid. Great for smooth swept connectors and sloped lips.
-// hull({ exact: true }, ...shapes) hands the kernel an exact polyhedron
-// instead of a triangle mesh (src/hullstep.js): flat faces it can cut, export
-// to STEP and keep on the exact lane. Opt-in, because it is not free: a few
-// hulls of flat-sided pieces build in 0.1-0.4 s, but a part made of many
-// stacked, touching hulls (gridfinityBin) took 70 s on the exact kernel and
-// was then refused, against 0.5 s as meshes.
+// hull({ exact: true }, ...shapes) stays on the exact lane where it can, in
+// this order:
+//   1. a shape it recognises (src/exactshapes.js) becomes its exact twin with
+//      true curves: equal upright cylinders are a rounded prism or stadium (the
+//      rounded box everyone hulls), coaxial cylinders and cones a cone or a
+//      lathe, two equal spheres a capsule, eight equal spheres on a box a box
+//      filleted all round;
+//   2. a hull of flat-sided pieces goes to the kernel as an exact polyhedron
+//      (src/hullstep.js) when it has 64 faces or fewer;
+//   3. anything else is the mesh it always was.
+// Opt-in, because step 2 is not free: a few hulls of flat-sided pieces build in
+// 0.1-0.4 s, but a part made of many stacked, touching hulls (gridfinityBin)
+// took 70 s on the exact kernel and was then refused, against 0.5 s as meshes.
 export function hull(...children) {
   const first = children[0];
   const opts = first && typeof first === "object" && !Array.isArray(first) && !first.__brepscript && !first.kind ? children.shift() : {};
   const kids = collect(children);
   if (!kids.length) throw new Error("hull() needs at least one shape");
+  if (opts.exact) {
+    const twin = exactHull(kids);
+    if (twin) return twin;
+  }
   return node({ kind: "hull", children: kids, exact: !!opts.exact, fix: IDENTITY });
 }
 
@@ -769,6 +783,13 @@ export function circlePath({ r = 10, radius, steps = 48, z = 0 } = {}) {
 export function minkowski(a, b, ...rest) {
   if (typeof a === "number") return roundedGrow(a, b, ...rest);
 
+  // A box or an upright cylinder with a ball, or a box with an upright
+  // cylinder, is an exact filleted solid: the same shape on the exact lane,
+  // with real curves (src/exactshapes.js).
+  if (isNode(a) && isNode(b) && !rest.length) {
+    const twin = exactMinkowski(a, b);
+    if (twin) return twin;
+  }
   // The OpenSCAD shape-and-a-ball form. Only a sphere has a meaning we can
   // honour; anything else is a different and much larger operation, and
   // guessing a radius from it would silently build the wrong part.

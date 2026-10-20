@@ -104,11 +104,17 @@ console.log("\nminkowski() is the word people arrive with\n");
     short.kind === grow.kind && short.amount === grow.amount,
     JSON.stringify({ kind: short.kind, amount: short.amount }));
 
-  // What someone hand-translating OpenSCAD types.
+  // What someone hand-translating OpenSCAD types. A box and a ball is the
+  // exact twin (the box grown by r, filleted all round); a part with no exact
+  // twin is still roundedGrow by the ball's radius.
   const openscadStyle = dsl.minkowski(dsl.cube([20, 20, 20]), dsl.sphere({ r: 3 }));
-  check("minkowski(part, sphere({r})) reads the radius off the ball",
-    openscadStyle.kind === "roundify" && openscadStyle.amount === 3,
+  check("minkowski(box, sphere({r})) is the exact filleted box",
+    openscadStyle.kind === "edgeop" && openscadStyle.code === "F" && openscadStyle.amount === 3,
     JSON.stringify({ kind: openscadStyle.kind, amount: openscadStyle.amount }));
+  const lumpy = dsl.minkowski(dsl.union(dsl.cube([20, 20, 20]), dsl.sphere({ r: 12 })), dsl.sphere({ r: 3 }));
+  check("minkowski(part, sphere({r})) reads the radius off the ball",
+    lumpy.kind === "roundify" && lumpy.amount === 3,
+    JSON.stringify({ kind: lumpy.kind, amount: lumpy.amount }));
 
   // Rolling one part around another shape is a different, much larger
   // operation. Guessing a radius from a cube would silently build the wrong

@@ -32,7 +32,7 @@ import {
 // BuildSketch/BuildLine ride the SAME 2D profile species as the OpenSCAD
 // translator, so booleans, extrude and the auto-1mm forgiveness are shared.
 import {
-  isProfile, profileLeaf, profileOp, profileToSolid, mapProfile, offsetPolygon,
+  isProfile, profileLeaf, roundedLeaf, profileOp, profileToSolid, mapProfile, offsetPolygon,
 } from "./openscad.js";
 
 export function looksLikePython(src) {
@@ -387,7 +387,10 @@ function makeEnv(langBox) {
     const h = num(arg(c, 1, "height"), "RectangleRounded height");
     const r = num(arg(c, 2, "radius"), "RectangleRounded radius");
     if (r <= 0 || r * 2 >= Math.min(w, h)) throw new Error("RectangleRounded radius must be > 0 and < half the short side");
-    return profileLeaf(offsetPolygon(rectPts(w - 2 * r, h - 2 * r), r, 32, true));
+    // remembered as a rounded outline, so an extrusion of it is the exact
+    // rounded prism (true arcs) rather than a fan of facets
+    const base = rectPts(w - 2 * r, h - 2 * r);
+    return roundedLeaf(offsetPolygon(base, r, 32, true), base, r);
   };
   env.Polygon = (c) => {
     const pts = (c.args.length === 1 && Array.isArray(c.args[0]) && Array.isArray(c.args[0][0]))

@@ -93,7 +93,8 @@ group(a, b, ...)               // keeps pieces SEPARATE — see the colour rule 
 translate([x, y, z], shape)    rotate([rx, ry, rz], shape)      // degrees
 scale([x, y, z], shape)        scale(s, shape)                  mirror([nx, ny, nz], shape)
 hull(...shapes)                // one convex skin around everything; a mesh, see rule 9
-hull({ exact: true }, ...)     // the same as an exact polyhedron, for a few flat-sided pieces
+hull({ exact: true }, ...)     // the same hull kept exact: equal corner cylinders, coaxial discs,
+                               // 2 or 8 equal spheres, or a few flat-sided pieces: see rule 9
 ```
 
 ### Rounding and offsets
@@ -104,6 +105,7 @@ chamfer(d, shape)              // bevels them
 roundedGrow(mm, shape)         // rounds EVERY outside edge and GROWS the part by mm on every face
 roundedShrink(mm, shape)       // takes an even layer off
 minkowski(mm, shape)           // the same thing as roundedGrow, under the name used elsewhere
+minkowski(part, sphere({ r })) // a box or upright cylinder rounded by a ball: built as an exact fillet
 clearance(gap, shape)          // grows a shape about its own centre by `gap` ON DIAMETER — for fits
 ```
 
@@ -221,13 +223,19 @@ If the user asks for one of these, say which one is missing and offer the closes
    mesh step turns the rest of that branch into triangles, and a step the kernel refuses drops the
    whole model to a slow fallback kernel.
    - Exact: `cube`, `cylinder`, `cone`, `sphere`, `torus`, `polygon` + `linearExtrude`, `revolve`,
-     `union` / `difference` / `intersection`, `fillet`, `chamfer`, and `hull({ exact: true }, ...)` of a
-     few flat-sided pieces (boxes, polygons, `$fn` 3-8 cylinders). Mesh: plain `hull`, `roundedGrow` /
-     `minkowski` / `roundedShrink`, `tube`, `texture`, `blob` / `smoothUnion` / `blend`, `text`,
-     `importedMesh`. Use a mesh verb only when the design needs it, apply it last, and never
-     `fillet()` after it.
+     `union` / `difference` / `intersection`, `fillet`, `chamfer`, the hardware and shelf parts (bar
+     the Gridfinity ones), and `hull({ exact: true }, ...)` when its pieces are equal upright cylinders
+     spanning the same heights (a rounded box or slot), cylinders and cones on one axis (a taper), two
+     equal spheres (a capsule), eight equal spheres on a box's corners, or a few flat-sided pieces.
+     `minkowski(box, sphere({ r }))` and `minkowski(box, upright cylinder)` are exact fillets too.
+     Mesh: plain `hull`, `roundedGrow` / `minkowski(mm, ...)` / `roundedShrink`, `tube`, `texture`,
+     `blob` / `smoothUnion` / `blend`, `text`, `importedMesh`. Use a mesh verb only when the design
+     needs it, apply it last, and never `fillet()` after it.
    - A rounded box is `fillet({ r, edges: "z" }, cube([x, y, z]))`: rounded vertical corners, flat
-     top and bottom, exact. Not `hull()` of corner cylinders, and not `roundedGrow()`.
+     top and bottom, exact (`hull({ exact: true }, ...)` of four equal corner cylinders builds the same
+     solid). Not a plain `hull()`, and not `roundedGrow()`.
+   - A rounded-off cylinder is `fillet({ r, edges: "bottom" }, fillet({ r, edges: "top" }, cylinder(...)))`:
+     one rim at a time. A single fillet of the whole cylinder is refused (it picks up the seam edge).
    - A taper is `cylinder({ r1, r2, h })`. A tapered polygon (a hex pot) is `linearExtrude` of the
      polygon with each side planed off by a tilted cube, one `difference()` at a time.
    - Never cut a hole down a `revolve()` axis: the kernel refuses it. Build that round body from
@@ -327,8 +335,8 @@ return colorByHeight({ at: [12], colors: ["#ffffff", "#2b6cb0"] }, body);   // �
 6. Heights that mean "off the build plate" are measured from the model, not from z = 0.
 7. The code is a single expression, or a block ending in `return`.
 8. Dimensions are named constants, not magic numbers scattered through the code.
-9. Every step is exact unless the design needs a mesh: no `hull()` or `roundedGrow()` where a cone,
-   a union or a `fillet()` would do, no hole down a `revolve()` axis, overlapping cutters one at a time.
+9. Every step is exact unless the design needs a mesh: no plain `hull()` or `roundedGrow()` where a
+   cone, a `fillet()` or `hull({ exact: true }, ...)` would do, no hole down a `revolve()` axis, overlapping cutters one at a time.
 
 ---
 
@@ -342,10 +350,14 @@ the scannable codes. Anything that sweeps, blends, rounds, letters or textures b
 **OpenSCAD** — prefer plain primitives. `include <BOSL2/std.scad>` is tolerated (a common subset —
 `up/down/left/right`, `cuboid`, `cyl`, `tube`, `torus` — is shimmed, with `rounding=` ignored and
 `attach()` reduced to centre placement), but code written against bare `cube`/`cylinder`/`sphere`
-translates exactly. `hull()` and `minkowski()` are supported and map onto BREPcode's own. The 2D
-subsystem works: `square`, `circle`, `polygon` (single path), 2D transforms and booleans, and
-`linear_extrude(height=, center=)` — but no `twist`, no extrusion `scale`, and no `rotate_extrude`
-(write it as BREPcode's `revolve` instead). A practical subset of the language is supported:
+translates exactly. `hull()` and `minkowski()` are supported, and the common forms land on exact
+B-rep: `hull()` of equal upright corner cylinders (a rounded box or slot), of coaxial cylinders (a
+taper) or of two or eight equal spheres, `minkowski()` of a cube with a sphere or an upright cylinder,
+and `offset(r=)` of a convex outline before `linear_extrude`; other hulls and minkowskis are meshes.
+The 2D subsystem works: `square`, `circle`, `polygon` (single path), 2D transforms and booleans,
+`offset`, and `linear_extrude(height=, center=)` — but no `twist` and no extrusion `scale`.
+`rotate_extrude` lathes a profile that touches the axis, and away from the axis takes a circle (a
+torus) or, for a full turn, a rectangle or trapezoid (a ring); never cut a hole down its axis. A practical subset of the language is supported:
 variables, arithmetic, `module` and `function` definitions, `for` (including `[start:step:end]`
 ranges), `if`/`else`, `children()`, the `*`/`!`/`#`/`%` modifiers, `cube`/`sphere`/`cylinder`, the
 three booleans, and `translate`/`rotate`/`scale`/`mirror`. `$fn` works globally or per-call.
@@ -376,9 +388,14 @@ const main = () => subtract(
 module.exports = { main }
 ```
 
-Only `primitives`, `booleans`, and `transforms` exist — `extrusions`, `expansions`, `hulls`, `text`,
-and `colors` do not; requiring them raises an error naming the missing namespace.
+The namespaces are `primitives`, `booleans`, `transforms`, `extrusions`, `hulls`, `expansions`,
+`colors`, `measurements`, `maths` and `utils`; `text`, `geometries` and `curves` do not exist, and
+requiring them raises an error naming the missing namespace. `roundedCuboid`, `roundedCylinder`,
+`hull` / `hullChain` over corner cylinders or spheres, and `extrudeLinear` of a `roundedRectangle` or
+a round `offset` of a convex outline all build as exact B-rep.
 
-Supported JSCAD names: `cuboid`, `cube`, `sphere`, `cylinder`, `cylinderElliptic`, `torus`;
+Supported JSCAD names include: `cuboid`, `cube`, `roundedCuboid`, `sphere`, `cylinder`,
+`cylinderElliptic`, `roundedCylinder`, `torus`, `polygon`, `rectangle`, `roundedRectangle`, `circle`,
+`extrudeLinear`, `extrudeRotate`, `hull`, `hullChain`, `offset` / `expand`, `colorize`;
 `union`, `subtract`, `intersect`; `translate`/`X`/`Y`/`Z`, `rotate`/`X`/`Y`/`Z`, `scale`/`X`/`Y`/`Z`,
 `mirror`/`X`/`Y`/`Z` — either bare or under the `primitives` / `booleans` / `transforms` namespaces.

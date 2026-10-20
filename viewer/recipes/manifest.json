@@ -254,6 +254,7 @@
         "tapered",
         "frustum",
         "hull",
+        "minkowski",
         "revolve",
         "lathe",
         "turned",
@@ -263,7 +264,9 @@
         "exact",
         "step file",
         "step export",
-        "rounded rectangle"
+        "rounded rectangle",
+        "rounded cylinder",
+        "stadium"
       ]
     },
     {

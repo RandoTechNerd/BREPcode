@@ -96,6 +96,124 @@ const lane = async (shape) => {
   check(`an octagon taper, one cut at a time, is exact (${Math.round(seq.ms)} ms)`, seq.engine === "exact", `${seq.engine} ${seq.fallback || ""}`);
 }
 
+console.log("\nhull({ exact: true }) and minkowski() build exact twins of the same shape\n");
+{
+  const { cube, cylinder, sphere, hull, translate, minkowski, union } = dsl;
+  const { toSTL } = await import("../index.js");
+  const volume = (r) => {
+    const v = [...toSTL(r, "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    let s = 0;
+    for (let i = 0; i < v.length; i += 3) {
+      const [a, b, c] = v.slice(i, i + 3);
+      s += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+    return Math.abs(s);
+  };
+  const bounds = (r) => {
+    const p = [...toSTL(r, "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    return [0, 1, 2].map((k) => [Math.min(...p.map((q) => q[k])), Math.max(...p.map((q) => q[k]))]);
+  };
+  // the twin against the mesh hull of the same pieces: exact, and within half a percent
+  // (the mesh is faceted, the twin is not)
+  const twin = async (label, kids) => {
+    const a = await build(hull({ exact: true }, ...kids)), b = await build(hull(...kids));
+    const va = volume(a), vb = volume(b);
+    check(`${label}: exact, same shape (${(100 * (va - vb) / vb).toFixed(2)}%)`, a.engine === "exact" && Math.abs(va - vb) / vb < 0.005,
+      `${a.engine} ${va.toFixed(0)} vs ${vb.toFixed(0)}`);
+  };
+  const c = (x, y, r = 6, h = 20) => translate([x, y, 0], cylinder({ r, h, $fn: 96 }));
+  await twin("rounded box from 4 corner cylinders", [c(6, 6), c(54, 6), c(6, 34), c(54, 34)]);
+  await twin("stadium from 2 cylinders", [c(0, 0, 4, 6), c(40, 0, 4, 6)]);
+  await twin("hexagon of 6 cylinders", Array.from({ length: 6 }, (_, i) => c(30 * Math.cos(i * Math.PI / 3), 30 * Math.sin(i * Math.PI / 3), 4, 10)));
+  await twin("taper from two coaxial discs", [cylinder({ r: 20, h: 0.01, $fn: 96 }), translate([0, 0, 30], cylinder({ r: 10, h: 0.01, $fn: 96 }))]);
+  await twin("lathe from a base and a neck", [cylinder({ r: 20, h: 5, $fn: 96 }), translate([0, 0, 25], cylinder({ r: 8, h: 10, $fn: 96 }))]);
+  await twin("box rounded all round from 8 spheres",
+    [0, 1].flatMap((i) => [0, 1].flatMap((j) => [0, 1].map((k) => translate([i * 40, j * 30, k * 20], sphere({ r: 4, $fn: 48 }))))));
+  await twin("capsule from 2 equal spheres", [sphere({ r: 5, $fn: 48 }), translate([50, 20, 10], sphere({ r: 5, $fn: 48 }))]);
+  const mixed = await build(hull({ exact: true }, c(0, 0), translate([20, 0, 30], sphere({ r: 5 }))));
+  check("...a mix it cannot prove (a cylinder and a sphere) stays the mesh hull", mixed.engine === "mesh", mixed.engine);
+
+  const mk = await build(minkowski(cube([20, 20, 20]), sphere({ r: 3 })));
+  const mb = bounds(mk);
+  check("minkowski(box, sphere) is exact, grown 3 mm both ways", mk.engine === "exact" && Math.abs(mb[0][0] + 3) < 0.05 && Math.abs(mb[0][1] - 23) < 0.05,
+    `${mk.engine} ${JSON.stringify(mb[0])}`);
+  const mc = await build(minkowski(cube([40, 30, 10]), cylinder({ r: 4, h: 2, $fn: 96 })));
+  const mcb = bounds(mc);
+  check("minkowski(box, upright cylinder) is exact: wider by r, taller by h", mc.engine === "exact"
+    && Math.abs(mcb[0][1] - mcb[0][0] - 48) < 0.05 && Math.abs(mcb[2][1] - mcb[2][0] - 12) < 0.05, `${mc.engine} ${JSON.stringify(mcb)}`);
+  const ms = await build(minkowski(cylinder({ r: 10, h: 20, $fn: 96 }), sphere({ r: 2 })));
+  check("minkowski(cylinder, sphere) is exact (the mesh offset refused this one)", ms.engine === "exact", ms.engine);
+  check("minkowski(mm, part) is still roundedGrow", minkowski(2, cube([10, 10, 10])).kind === "roundify");
+  check("...and a part with no exact twin keeps the ball's radius", minkowski(union(cube(10), sphere({ r: 7 })), sphere({ r: 2 })).kind === "roundify");
+}
+
+console.log("\nthe translators write exact B-rep\n");
+{
+  const { fromOpenSCAD } = await import("../src/openscad.js");
+  const jscad = await import("../src/jscad.js");
+  const { fromPython } = await import("../src/py123d.js");
+  const scad = async (label, src) => {
+    const r = await lane(fromOpenSCAD(src));
+    check(`OpenSCAD ${label}: exact`, r.engine === "exact", `${r.engine} ${r.fallback || ""}`);
+  };
+  await scad("rounded box as hull() of corner cylinders", `$fn = 64; W = 60; D = 40; R = 6;
+    hull() for (x = [R, W - R], y = [R, D - R]) translate([x, y, 0]) cylinder(r = R, h = 20);`);
+  await scad("rounded box as 8 corner spheres", `hull() for (x = [0, 40], y = [0, 30], z = [0, 20]) translate([x, y, z]) sphere(r = 4);`);
+  await scad("taper as hull() of two discs", `hull() { cylinder(r = 20, h = 0.01); translate([0, 0, 30]) cylinder(r = 10, h = 0.01); }`);
+  await scad("minkowski() { cube(); sphere(); }", `minkowski() { cube([20, 20, 10], center = true); sphere(r = 2); }`);
+  await scad("minkowski() { cube(); cylinder(); }", `minkowski() { cube([40, 30, 10]); cylinder(r = 4, h = 2); }`);
+  await scad("linear_extrude() offset(r) square()", `linear_extrude(4) offset(r = 3) square([30, 20]);`);
+  await scad("a rectangular rotate_extrude ring (a washer)", `rotate_extrude() translate([10, 0]) square([5, 3]);`);
+  await scad("a rounded box with a hole cut in it", `$fn = 64; difference() {
+      hull() for (x = [5, 55], y = [5, 35]) translate([x, y, 0]) cylinder(r = 5, h = 12);
+      translate([30, 20, -1]) cylinder(r = 4, h = 14); }`);
+  const ring = await build(fromOpenSCAD(`rotate_extrude() translate([10, 0]) square([5, 3]);`));
+  check("...and the washer is the right size", ring.engine === "exact");
+  const js = async (label, shape) => {
+    const r = await lane(shape);
+    check(`JSCAD ${label}: exact`, r.engine === "exact", `${r.engine} ${r.fallback || ""}`);
+  };
+  await js("roundedCuboid", jscad.roundedCuboid({ size: [40, 30, 20], roundRadius: 3 }));
+  await js("roundedCylinder", jscad.roundedCylinder({ height: 20, radius: 10, roundRadius: 2 }));
+  await js("extrudeLinear(roundedRectangle)", jscad.extrudeLinear({ height: 5 }, jscad.roundedRectangle({ size: [40, 20], roundRadius: 4 })));
+  await js("hull of corner cylinders", jscad.hull(...[[-20, -10], [20, -10], [-20, 10], [20, 10]].map(([x, y]) =>
+    jscad.translate([x, y, 0], jscad.cylinder({ radius: 4, height: 10, segments: 64 })))));
+  const py = await lane(fromPython(`from build123d import *
+with BuildPart() as p:
+    with BuildSketch():
+        RectangleRounded(40, 20, 4)
+    extrude(amount=5)
+`).shape);
+  check("build123d RectangleRounded extruded: exact", py.engine === "exact", `${py.engine} ${py.fallback || ""}`);
+}
+
+console.log("\nthe advice speaks the code's own language\n");
+{
+  const { codeLanguage, EXACT_SCAD, EXACT_JSCAD } = await import("../src/exactlane.js");
+  const scadSrc = "$fn = 64;\nhull() { sphere(r = 5); translate([20, 0, 0]) cylinder(r = 3, h = 9); }";
+  check("OpenSCAD is told apart from BREPcode", codeLanguage(scadSrc) === "openscad" && codeLanguage("return hull(a, b);") === "brepcode");
+  const sa = exactAdvice({ engine: "mesh" }, scadSrc);
+  check("an OpenSCAD hull on the mesh lane is answered in OpenSCAD", sa?.lang === "openscad" && /Keep it in OpenSCAD/.test(sa.ask)
+    && sa.ask.includes(EXACT_SCAD) && !/fillet\(\{ r, edges/.test(sa.ask), sa?.ask?.slice(0, 200));
+  const jsSrc = "const { hull } = require('@jscad/modeling').hulls\nconst main = () => hull(a, b)\nmodule.exports = { main }";
+  const ja = exactAdvice({ engine: "mesh" }, jsSrc);
+  check("...and a JSCAD module in JSCAD", ja?.lang === "jscad" && /Keep it a JSCAD module/.test(ja.ask) && ja.ask.includes(EXACT_JSCAD), ja?.ask?.slice(0, 200));
+  const rv = exactAdvice({ engine: "js", fallbackKind: "refused", fallback: "boolean SUBTRACT failed: the result SELF-INTERSECTS" },
+    "difference() { rotate_extrude() square([10, 20]); cylinder(r = 3, h = 30); }");
+  check("...including a refused rotate_extrude axis hole", rv?.lang === "openscad" && /rotate_extrude\(\) axis/.test(rv.ask), rv?.ask?.slice(0, 200));
+  const seam = exactAdvice({ engine: "js", fallbackKind: "refused", fallback: "F F2: fillet failed: fillet_edges: 2 of the 3 selected edges were blended" },
+    "return fillet({ r: 2 }, cylinder({ r: 10, h: 20 }));");
+  check("a fillet refused over a cylinder's seam: one rim at a time", /edges: "top"/.test(seam?.ask || ""), seam?.ask?.slice(0, 200));
+}
+
+console.log("\nthe shelf parts the AI reaches for are exact\n");
+{
+  for (const name of ["shell", "lidLip", "vent", "slot", "labelPlate", "pcbPlate", "handle"]) {
+    const r = await lane(dsl[name]());
+    check(`${name}() builds exact`, r.engine === "exact", `${r.engine} ${r.fallback || ""}`);
+  }
+}
+
 console.log("\nthe rules reach the AI\n");
 {
   const chat = await import("../viewer/chatbot.js");
@@ -105,6 +223,11 @@ console.log("\nthe rules reach the AI\n");
   check("...and no longer teaches hull() for a rounded box",
     !/rounded (vertical corners|box)[^.\n]{0,40}→ hull\(\)|A rounded box is hull\(\)/.test(chat.DEFAULT_HARNESS));
   check("the polish pass prefers exact verbs", /EXACT FIRST/.test(chat.POLISH_HARNESS));
+  check("...a rounded-off cylinder is two rim fillets, not one whole-cylinder fillet (refused)",
+    /fillet\(\{ r, edges: "bottom" \}, fillet\(\{ r, edges: "top" \}, cylinder/.test(chat.DEFAULT_HARNESS)
+    && !/rounded-off cylinder is fillet\(\{radius: r\}, cylinder/.test(chat.DEFAULT_HARNESS));
+  check("...hull({exact:true}) is taught as the exact hull", /hull\(\{exact:true\}\)/.test(chat.DEFAULT_HARNESS) && /hull\(\{ exact: true \}, \.\.\.\) stays exact/.test(EXACT_CORE));
+  check("...and the OpenSCAD notes say which forms translate exact", /EXACT IN OPENSCAD TOO/.test(chat.DEFAULT_HARNESS));
   const sys = chat.composeSystem({});
   check("...and the composed system prompt sends them", sys.includes("EXACT B-REP FIRST"));
   const page = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
