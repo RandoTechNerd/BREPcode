@@ -20994,6 +20994,7 @@ let SIMPLIFY_TARGET = 10000;
       reflectProviderUI();
       saveAiCfg();
       verifyConnection(true);
+      if (CHAT) fillHousePicker();     // shown only while the house AI answers
     });
     aiBase.addEventListener("change", () => { reflectProviderUI(); saveAiCfg(); verifyConnection(true); });
     reflectProviderUI();
@@ -21210,7 +21211,9 @@ let SIMPLIFY_TARGET = 10000;
     }
     function fillHousePicker() {
       const sel = $("house-model");
-      const cfg = CHAT && houseCfg();
+      // Only while it decides the model: a visitor whose chat runs on their own
+      // AI (⚙) is answered by that, and a picker naming another model lied.
+      const cfg = CHAT && aiProvider.value === "builtin" && houseCfg();
       sel.hidden = !cfg;
       if (!cfg) return;
       sel.replaceChildren(...CHAT.houseModels().map((m) => new Option(m.label, m.id)));
@@ -21373,8 +21376,8 @@ let SIMPLIFY_TARGET = 10000;
 
       setStatus("ok", `heavy model ready — press ▶ Build under the code (~${secs}s)`);
       const el = addMsg("bot", offThread
-        ? `That model is chunky (~${kTris}k triangles — roughly ${secs}s). It builds in the background so the app stays usable, but it's a long one, so it's waiting in the editor — press <b>▶ Build</b> under the code there, or right here: `
-        : `That model is chunky (~${kTris}k triangles — roughly ${secs}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). Press <b>▶ Build</b> under the code in the editor, or right here: `);
+        ? `That model is chunky (~${kTris}k triangles — roughly ${secs}s). It builds in the background so the app stays usable, but it's a long one, so it's waiting in the editor: press ▶ Build under the code there, or right here: `
+        : `That model is chunky (~${kTris}k triangles — roughly ${secs}s with the app paused while the kernel works; if the browser shows "Page Unresponsive", choose Wait — that's the build working, not a crash). Press ▶ Build under the code in the editor, or right here: `);
       const chatBtn = document.createElement("button");
       chatBtn.className = "hist-btn";
       chatBtn.style.cssText = "margin-left:6px; font-weight:700";

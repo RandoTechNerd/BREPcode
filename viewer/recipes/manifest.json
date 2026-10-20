@@ -981,6 +981,32 @@
       "ask": "Should it lie FLAT in a scooped pocket, or STAND UPRIGHT in a hole? And is a simple slot fine, or does the pocket need to follow the tool's real outline?"
     },
     {
+      "tag": "vessel",
+      "title": "Pots, planters, cups, bowls and drip trays",
+      "file": "vessel.md",
+      "match": [
+        "planter",
+        "plant pot",
+        "flower pot",
+        "pot",
+        "saucer",
+        "drip tray",
+        "drainage",
+        "drain hole",
+        "drip hole",
+        "vase",
+        "cup",
+        "mug",
+        "bowl",
+        "tub",
+        "bin",
+        "bucket",
+        "container",
+        "vessel"
+      ],
+      "ask": "How big across and how tall, and should it have drain holes and a drip tray?"
+    },
+    {
       "tag": "wires",
       "title": "Cables, bowden tubes and anything else shaped like a line",
       "file": "wires.md",
