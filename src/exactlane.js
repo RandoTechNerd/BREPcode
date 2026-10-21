@@ -38,7 +38,7 @@
 //   fillet() after hull()                          JS fallback (a mesh has no edges)
 
 // Always on: the one paragraph every request pays for.
-export const EXACT_CORE = `EXACT B-REP FIRST — the fast kernel is exact B-rep. Mesh verbs (plain hull, roundedGrow/minkowski(mm), tube, texture, blob/blend, text, importedMesh) turn the model to triangles (no fillet after); a refused step falls back to a slow kernel. Mesh only when needed, and last. hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres, or flat pieces. Rounded box: fillet({ r, edges: "z" }, cube(...)). Taper: cylinder({ r1, r2 }). No hole down a revolve() axis. Overlapping cutters: one difference() at a time. #exact has the rest.`;
+export const EXACT_CORE = `EXACT B-REP FIRST. Mesh verbs (plain hull, roundedGrow/minkowski(mm), tube, texture, blob/blend, text, importedMesh) turn the model to triangles (no fillet after); a refused step falls back to a slow kernel. Mesh only when needed, and last. hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres, or flat pieces. Rounded box: fillet({ r, edges: "z" }, cube(...)). Taper: cylinder({ r1, r2 }). No hole down a revolve() axis. Overlapping cutters: one difference() each. Fillet pieces before union, r < half the thinnest wall. #exact has the rest.`;
 
 export const EXACT_RULES = `EXACT B-REP FIRST — the app builds on an exact B-rep kernel: true planes, cylinders and cones, fast booleans, and STEP export with real curved surfaces. A model stays on it only while EVERY step is exact; one mesh step turns the rest of that branch into triangles (no fillet after it, faceted STEP), and a step the kernel refuses drops the whole model to the slow fallback kernel. So build from exact pieces and reach for a mesh verb only when the design truly needs it:
 · EXACT: cube, cylinder, cone / cylinder({r1, r2}), sphere, torus, polygon + linearExtrude, revolve, path2d, union / difference / intersection, fillet, chamfer, drill, the hardware parts, and the shelf parts except gridfinityBin and gridfinityBase (meshes).
@@ -51,6 +51,8 @@ export const EXACT_RULES = `EXACT B-REP FIRST — the app builds on an exact B-r
 · NO HOLE DOWN A revolve() AXIS: the kernel refuses the cut (the lathe's seam self-intersects) and the model falls back. A round body with a centre hole is built from cylinders and cones instead; off-axis holes in a revolve are fine.
 · OVERLAPPING CUTTERS GO ONE AT A TIME: difference(a, t1, t2, t3) unions t1..t3 first, and tilted or crossing tools that overlap each other are where that slows down or is refused. Nest them, difference(difference(a, t1), t2), or loop. Disjoint tools (a row of holes) are fine in one call.
 · NO GRAZING CONTACT: two solids that only touch along an edge or a line (a flare that starts exactly at another solid's top edge) are refused. Run one 0.5-1 mm into the other, on the same surface line, so the faces truly cross.
+· FILLET PIECES, NOT JOINS: one fillet over a part where a rib, gusset or post meets a plate is refused (inside and outside corners meet), and so is a radius bigger than a face it touches. Fillet each box on its own, r under half its thinnest side, then union them; inside corners stay sharp, which is stronger anyway.
+· mirror() IS EXACT for boxes, round cylinders and cones, spheres, tori, polygon extrusions, rounded boxes and full revolves: use it freely for symmetric parts. For a $fn 3-8 cylinder or a curved path2d profile, mirror the points yourself.
 · $fn: a cylinder with $fn 3-8 is a real polygon prism (cylinder({r, h, $fn: 6}) is a hex nut); above 8 it is a true circle whatever the number. A cone with $fn 3-8 is refused: make a tapered polygon as above.`;
 
 // The same rules for a model written in OpenSCAD: the translator lands these
@@ -145,6 +147,20 @@ function refusalHints(msg, src, lang) {
   }
   if (/genus|tool union|union.*failed|boolean assembly/i.test(msg)) {
     hints.push("overlapping cutters in one difference(), or solids that only touch along an edge: subtract overlapping tools one at a time, and run touching solids 0.5-1 mm into each other");
+  }
+  if (/reflection|orientation rever/i.test(msg)) {
+    hints.push(lang === "openscad"
+      ? "a mirror() of a piece that is not its own mirror image (a polygon-sided cylinder or an import): mirror the polygon's points yourself, or rotate() the copy"
+      : "a mirror() of a piece that is not its own mirror image (a $fn 3-8 cylinder, a curved path2d profile, an import): mirror that profile's points yourself (negate one coordinate and reverse the list), or rotate() the copy; mirror() of boxes, round cylinders, cones, spheres and polygon extrusions is already exact");
+  }
+  if (/fillet|chamfer/i.test(msg) && /too large|setback/i.test(msg)) {
+    hints.push("a fillet or chamfer bigger than a face it touches: keep r under half the thinnest wall or plate it rounds, or round each piece before the union so it only meets that piece's own faces");
+  }
+  if (/fillet|chamfer/i.test(msg) && /convexity|concave/i.test(msg)) {
+    hints.push("one fillet over edges where an inside corner meets an outside one (a plate with a rib or gusset joined to it): fillet each piece on its own, fillet({ r }, cube([...])), then union them, or pick edges: \"z\" / \"top\" on a single piece");
+  }
+  if (/tangent/i.test(msg)) {
+    hints.push("two solids that touch tangentially (a cylinder resting on a face, a fillet meeting another piece's edge): run one 0.5-1 mm into the other so the surfaces truly cross");
   }
   if (!hints.length) hints.push("the step the kernel names above: rebuild it from exact pieces, overlap solids 0.5-1 mm instead of letting them touch, and subtract overlapping cutters one at a time");
   return hints;

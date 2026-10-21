@@ -4871,16 +4871,19 @@
       };
       spinUp.copy(camera.up).normalize();
       turn(spinUp, -dx * k);
-      // tilt about the camera's own right-hand axis, stopped short of the
-      // poles where "up" stops meaning anything
+      // tilt about the camera's own right-hand axis, clamped short of the
+      // poles where "up" stops meaning anything. The clamp is on the SIGNED
+      // angle: a tilt about this axis moves the polar angle by exactly the
+      // tilt, so it is cur + tilt. Testing the unsigned angle after the turn
+      // let a quick drag hop straight over the top (0.05 - 0.1 reads as 0.05)
+      // and the view flipped back and forth there, while a slow one stalled.
       const look = controls.target.clone().sub(camera.position).normalize();
       const right = look.clone().cross(spinUp);
       if (right.lengthSq() > 1e-9) {
         right.normalize();
-        const tilt = -dy * k;
-        const next = look.clone().applyQuaternion(spinQ.setFromAxisAngle(right, tilt));
-        const polar = Math.acos(THREE.MathUtils.clamp(-next.dot(spinUp), -1, 1));
-        if (polar > 0.02 && polar < Math.PI - 0.02) turn(right, tilt);
+        const cur = Math.acos(THREE.MathUtils.clamp(-look.dot(spinUp), -1, 1));
+        const tilt = THREE.MathUtils.clamp(cur - dy * k, 0.02, Math.PI - 0.02) - cur;
+        if (Math.abs(tilt) > 1e-9) turn(right, tilt);
       }
       controls.update();
       controls.dispatchEvent({ type: "change" });
@@ -20500,6 +20503,14 @@ let SIMPLIFY_TARGET = 10000;
       populateModels(cached.length ? cached : (AI_MODELS[provider] ?? []), keep);
     }
     const aiCfg = JSON.parse(localStorage.getItem("brepcode-ai") || "{}");
+    // Builds before the house modes applied LOCKED.open as the visitor's OWN
+    // AI and saved it. With the key now the house's (assist/premium), that
+    // saved copy pins them to an old model, hides the house picker and skips
+    // the premium door, so hand them back to the built-in helper once.
+    if (["assist", "premium"].includes(LOCKED.mode) && LOCKED.open && (aiCfg.key || "").trim() === LOCKED.open) {
+      Object.assign(aiCfg, { provider: "builtin", model: "", key: "", baseUrl: "" });
+      try { localStorage.setItem("brepcode-ai", JSON.stringify(aiCfg)); } catch { /* private mode */ }
+    }
     if (aiCfg.fixTries != null && $("ai-fixtries")) $("ai-fixtries").value = String(aiCfg.fixTries);
     if (aiCfg.ccEffort && $("cc-effort")) $("cc-effort").value = aiCfg.ccEffort;
     for (const t of aiCfg.harnessOff || []) harnessOff.add(t);
@@ -21417,8 +21428,25 @@ let SIMPLIFY_TARGET = 10000;
     // returns it), not by whatever builds next: a hook on the next build
     // dangled across a heavy model held behind the Build button and fired on
     // an unrelated slider drag.
-    async function applyHelperCode(text, src, show) {
+    async function applyHelperCode(text, src, show, r = null, said = null) {
       const res = await applyGeneratedCode(src, { show });
+      if (res.ok && r?.sizeGuard && code.value === src) {
+        // An all-over round/bevel that changed the part's size (the exact
+        // kernel refused it and the fallback grew or collapsed the part) is
+        // taken back the way ◀ would, and the reply says why instead.
+        const bb = new THREE.Box3().setFromObject(modelGroup);
+        const after = bb.isEmpty() ? null : { min: [bb.min.x, bb.min.y, bb.min.z], max: [bb.max.x, bb.max.y, bb.max.z] };
+        const v = CHAT?.sizeGuardVerdict?.(r.sizeGuard.before, after, r.sizeGuard);
+        if (v) {
+          if (!undoBtn.disabled) undoBtn.click();
+          if (said) said.textContent = v.reply; else addMsg("bot", v.reply);
+          chatLog.push({ role: "assistant", text: v.reply });
+          if (v.chips.length) quickReplies(v.chips, v.chips);
+          if (houseAiReady()) offerHouseAI(text, "An AI can pick the edges by hand.");
+          else actionRow(CHAT?.HELP_ACTIONS || []);
+          return { ...res, ok: false, sizeRefused: v };
+        }
+      }
       if (res.ok || /held behind/.test(res.detail || "")) return res;
       const err = (res.detail || "").trim();
       if (houseAiReady()) offerHouseAI(`fix this so it builds: ${text}`, `That didn't build${err ? ` (${err.slice(0, 120)})` : ""}.`);
@@ -22052,9 +22080,9 @@ let SIMPLIFY_TARGET = 10000;
         const r = botRespond(text, botState, code.value, modelDims);
         if (r.pending) botState.pending = r.pending;
         if (r.clearPending) botState.pending = null;
-        addMsg("bot", r.reply);
+        const said = addMsg("bot", r.reply);
         chatLog.push({ role: "assistant", text: r.reply });
-        if (r.code !== undefined) applyHelperCode(text, r.code, r.fromCatalog ? "params" : "editor");
+        if (r.code !== undefined) applyHelperCode(text, r.code, r.fromCatalog ? "params" : "editor", r, said);
         // things the reply does on its own ("undo" steps the editor back)
         for (const act of r.run || []) runChatAction(act);
         replyExtras(r);
@@ -22081,9 +22109,9 @@ let SIMPLIFY_TARGET = 10000;
         if ((local.fromCatalog && local.code !== undefined) || acts) {
           Object.assign(botState, probe);
           if (local.clearPending) botState.pending = null;
-          addMsg("bot", acts ? local.reply : `${local.reply}  · from the catalog`);
+          const said = addMsg("bot", acts ? local.reply : `${local.reply}  · from the catalog`);
           chatLog.push({ role: "assistant", text: local.reply });
-          if (local.code !== undefined) applyHelperCode(text, local.code, local.fromCatalog ? "params" : "editor");
+          if (local.code !== undefined) applyHelperCode(text, local.code, local.fromCatalog ? "params" : "editor", local, said);
           for (const act of local.run || []) runChatAction(act);
           replyExtras(local);
           if (!acts) quickReplies([`ask the AI instead: ${text}`], ["Ask the AI instead"], ["spark"]);
@@ -22101,9 +22129,9 @@ let SIMPLIFY_TARGET = 10000;
         if (local.code !== undefined || local.pending) {
           if (local.pending) botState.pending = local.pending;
           if (local.clearPending) botState.pending = null;
-          addMsg("bot", `${local.reply}  · handled locally`);
+          const said = addMsg("bot", `${local.reply}  · handled locally`);
           chatLog.push({ role: "assistant", text: local.reply });
-          if (local.code !== undefined) applyHelperCode(text, local.code, local.fromCatalog ? "params" : "editor");
+          if (local.code !== undefined) applyHelperCode(text, local.code, local.fromCatalog ? "params" : "editor", local, said);
           for (const act of local.run || []) runChatAction(act);
           replyExtras(local);
           return;

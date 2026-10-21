@@ -1837,8 +1837,12 @@ console.log("\nhearing a newcomer\n");
     check("the catalog-first block sits before the gem policy",
       HTML.indexOf("if (!house && !forceAI) {") < HTML.indexOf("if (!house && gemWantsLocalFirst()) {"));
     check("a helper build is judged by its own result, not the next build",
-      /async function applyHelperCode\(text, src, show\)/.test(HTML) && !/function watchHelperBuild\(/.test(HTML)
-      && (HTML.match(/applyHelperCode\(text, (?:r|local)\.code, (?:r|local)\.fromCatalog \? "params" : "editor"\)/g) || []).length === 3);
+      /async function applyHelperCode\(text, src, show, r = null, said = null\)/.test(HTML) && !/function watchHelperBuild\(/.test(HTML)
+      && (HTML.match(/applyHelperCode\(text, (r|local)\.code, \1\.fromCatalog \? "params" : "editor", \1, said\)/g) || []).length === 3);
+    check("an all-over round/bevel that changed the size is taken back after its build",
+      /const v = CHAT\?\.sizeGuardVerdict\?\.\(r\.sizeGuard\.before, after, r\.sizeGuard\);/.test(HTML)
+      && /if \(!undoBtn\.disabled\) undoBtn\.click\(\);/.test(HTML)
+      && (HTML.match(/const said = addMsg\("bot", /g) || []).length === 3);
     check("a catalog design brings the sliders forward, not the code", /if \(ok && show === "params"\) \{/.test(HTML)
       && /toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\);/.test(HTML));
     check("answered chips retire when the next message is sent", /\.quick-row:not\(\.action-row\):not\(\.spent\)/.test(HTML)

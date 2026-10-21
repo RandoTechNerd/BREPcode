@@ -242,6 +242,11 @@ If the user asks for one of these, say which one is missing and offer the closes
      cylinders and cones.
    - Cutters that overlap each other go one at a time, `difference(difference(a, t1), t2)`: one
      `difference(a, t1, t2)` unions the tools first, which is slow or refused when they cross.
+   - Fillet pieces, not joins: one fillet over a part where a rib or gusset meets a plate is refused,
+     and so is a radius bigger than a face it touches. Fillet each box on its own (r under half its
+     thinnest side), then union them.
+   - `mirror()` is exact for boxes, round cylinders and cones, spheres, tori, polygon extrusions,
+     rounded boxes and full revolves. For a `$fn` 3-8 cylinder or a curved `path2d`, mirror the points.
    - No grazing contact: solids that only touch along an edge are refused. Run one 0.5-1 mm into the
      other.
    - `cylinder({ $fn: 6 })` is a real hex prism (3-8 sides stay polygons); a cone with `$fn` 3-8 is

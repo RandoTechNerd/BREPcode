@@ -85,6 +85,11 @@ The rules that follow from it:
 - **No grazing contact.** Two solids that only touch along an edge or a line
   (a flare that starts exactly at another solid's top edge) are refused. Run
   one 0.5-1 mm into the other on the same surface line, so the faces cross.
+- **Fillet pieces, not joins.** One fillet over a plate with ribs or gussets
+  is refused, and so is r bigger than a face it touches. Fillet each box (r
+  under half its thinnest side), then union.
+- **mirror() is exact** for boxes, round cylinders, cones, spheres, tori and
+  polygon extrusions; mirror a curved path2d's points yourself.
 - **$fn:** a cylinder with $fn 3-8 is a real polygon prism
   (`cylinder({ r, h, $fn: 6 })` is a hex nut); above 8 it is a true circle
   whatever the number.

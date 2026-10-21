@@ -265,5 +265,50 @@ console.log("\nno recipe teaches a mesh where exact would do\n");
   check("...and tapered polygons one cut at a time", /ONE `difference\(\)` AT A TIME/.test(vessel));
 }
 
+console.log("\nmirror() stays exact: the flip lands on pieces that are their own mirror image\n");
+{
+  const { cube, cylinder, sphere, torus, polygon, linearExtrude, translate, rotate, mirror, union, difference, fillet, hull } = dsl;
+  const { toSTL } = await import("../index.js");
+  const pts = (r) => [...toSTL(r, "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  // Every corner of the true reflection of the plain build must be a corner
+  // of the mirrored build: asymmetric parts, axis and oblique planes.
+  const miss = async (mk, v) => {
+    const n = Math.hypot(...v), u = v.map((c) => c / n);
+    const H = (p) => { const k = 2 * (p[0] * u[0] + p[1] * u[1] + p[2] * u[2]); return p.map((c, i) => c - k * u[i]); };
+    const want = pts(await build(mk())).map(H);
+    const r = await build(mirror(v, mk()));
+    const got = pts(r);
+    let worst = 0;
+    for (const p of want) {
+      let best = Infinity;
+      for (const q of got) best = Math.min(best, Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]));
+      worst = Math.max(worst, best);
+    }
+    return { engine: r.engine, worst, fallback: r.fallback };
+  };
+  const part = () => rotate([10, 0, 20], difference(
+    union(translate([5, 2, 0], cube([20, 10, 6])), translate([0, 0, 6], linearExtrude({ h: 3 }, polygon([[5, 2], [25, 2], [25, 9], [12, 12]])))),
+    translate([12, 7, -1], cylinder({ r: 2, h: 10, $fn: 32 }))));
+  for (const v of [[1, 0, 0], [0, 0, 1], [1, 2, 3]]) {
+    const m = await miss(part, v);
+    check(`a box + extrusion + hole mirrored across ${JSON.stringify(v)}: exact, the true reflection`,
+      m.engine === "exact" && m.worst < 1e-3, `${m.engine} miss ${m.worst} ${m.fallback || ""}`);
+  }
+  const rounded = () => translate([30, 4, 0], fillet({ r: 3, edges: "z" }, cube([20, 12, 5])));
+  const rm = await miss(rounded, [1, 0, 0]);
+  check("a rounded box (fillet edges z) mirrored: exact, same corners", rm.engine === "exact" && rm.worst < 1e-3, `${rm.engine} ${rm.worst}`);
+  const top = await lane(mirror([0, 0, 1], fillet({ r: 2, edges: "top" }, cube([20, 12, 5]))));
+  check("...a soft top mirrored upside down becomes a soft bottom, still exact", top.engine === "exact", `${top.engine} ${top.fallback || ""}`);
+  const round = await lane(mirror([1, 0, 0], union(translate([20, 0, 0], sphere({ r: 4 })), translate([40, 0, 0], torus({ r: 8, tube: 2 })),
+    translate([10, 10, 0], cylinder({ r1: 5, r2: 2, h: 8, $fn: 64 })))));
+  check("spheres, tori and cones mirror exact", round.engine === "exact", `${round.engine} ${round.fallback || ""}`);
+  const hx = await lane(mirror([1, 0, 0], translate([20, 0, 0], hull({ exact: true }, cylinder({ r: 3, h: 4 }), translate([15, 0, 0], cylinder({ r: 3, h: 4 }))))));
+  check("an exact hull (a stadium) mirrors exact", hx.engine === "exact", `${hx.engine} ${hx.fallback || ""}`);
+  // a hex prism's corners may not sit on the flip plane: it keeps the plain
+  // reflection (and still builds) rather than guessing
+  const hex = await lane(mirror([1, 0, 0], translate([10, 0, 0], cylinder({ r: 5, h: 3, $fn: 6 }))));
+  check("a $fn 6 prism still builds when mirrored", hex.engine !== "error", hex.fallback);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

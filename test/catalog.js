@@ -201,6 +201,7 @@ if (!CAT) {
   check("...and says so", /Scaled/.test(sc.reply), sc.reply);
   const rd = say("round the edges");
   check("no rounding dial: a fillet is wrapped round it", /return fillet\(/.test(code), rd.reply);
+  check("...and the viewer is told to measure it", rd.sizeGuard?.op === "round" && rd.sizeGuard.r > 0, JSON.stringify(rd.sizeGuard));
   say("make it 100 mm wide");
   check("a dial still changes under the wrap", readValues(stand, code).width === 100 && /return fillet\(/.test(code));
   say("make it purple");

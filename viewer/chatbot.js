@@ -678,9 +678,11 @@ export function opCode(currentCode, op) {
     case "centre":
       return wrap((inner) => `translate([${op.dx}, ${op.dy}, 0],\n  ${inner.replace(/\n/g, "\n  ")})`);
     case "round":
-      return wrap((inner) => `fillet(${op.r},\n  ${inner.replace(/\n/g, "\n  ")})`);
+      // pieces: true rounds each box the part is made of, then cuts the holes,
+      // so a hole rim or countersink is never an edge the fillet has to take
+      return wrap((inner) => `fillet({ r: ${op.r}, pieces: true },\n  ${inner.replace(/\n/g, "\n  ")})`);
     case "bevel":
-      return wrap((inner) => `chamfer(${op.r},\n  ${inner.replace(/\n/g, "\n  ")})`);
+      return wrap((inner) => `chamfer({ r: ${op.r}, pieces: true },\n  ${inner.replace(/\n/g, "\n  ")})`);
     case "hole": {
       // The cutter starts EPS below the base and runs EPS past the top, so
       // neither end is flush with a face it has to breach. Several holes are
@@ -696,6 +698,38 @@ export function opCode(currentCode, op) {
     default:
       return currentCode;
   }
+}
+
+// An all-over round or bevel must leave the part its own size. The exact
+// kernel either rounds it in place or refuses, and where it refuses the JS
+// fallback grows the part by about the radius on every face (a 10 mm light
+// clip came out 27 mm thick at r 3), or now and then collapses it. The viewer
+// builds the wrapped code, measures, and asks this whether to keep it.
+// before/after are { min, max } boxes; null = keep it.
+export const SIZE_GROW_TOL = 0.3;
+export function sizeGuardVerdict(before, after, guard) {
+  if (!before || !after || !guard) return null;
+  const r = +guard.r || 0;
+  const axes = ["X", "Y", "Z"];
+  const size = (b, i) => b.max[i] - b.min[i];
+  let worst = null;
+  for (let i = 0; i < 3; i++) {
+    const d = size(after, i) - size(before, i);
+    if (d > SIZE_GROW_TOL || d < -2 * r) {
+      if (!worst || Math.abs(d) > Math.abs(worst.d)) worst = { axis: axes[i], d, from: size(before, i), to: size(after, i) };
+    }
+  }
+  if (!worst) return null;
+  const did = guard.op === "bevel" ? "chamfer" : "round";
+  const how = `${worst.axis} would go from ${round2(worst.from)} to ${round2(worst.to)} mm`;
+  return {
+    axis: worst.axis, grew: worst.d > 0,
+    reply: `This design doesn't take an all-over ${did}: the edges it is built from can't all be ${did === "round" ? "rounded" : "chamfered"} in place, `
+      + `so it would change the part's size (${how}). I put it back as it was. `
+      + (did === "round" ? "Try “chamfer the edges”, or ask an AI to round the specific edges you mean."
+        : "Ask an AI to bevel the specific edges you mean."),
+    chips: did === "round" ? ["chamfer the edges"] : [],
+  };
 }
 
 // Main entry. state persists between calls: { pending, flow }
@@ -1113,8 +1147,8 @@ function catalogTurn(t, lower, state, currentCode, dims) {
       // "sharp corners" on a design with no rounding dial: take off a fillet
       // the chat wrapped on earlier, or say the edges are sharp already
       if (/\b(sharp|square|unround|less round)\b/.test(lower)) {
-        const m = /return fillet\((\d+(?:\.\d+)?),\s*\n?([\s\S]*)\);\s*$/.exec(currentCode.trim());
-        if (m) return { reply: "Took the rounding off: the edges are sharp again. (◀ undoes it.)", code: `${currentCode.trim().slice(0, m.index)}return ${m[2].trim()};\n`, fromCatalog: true, actions: CATALOG_ACTIONS };
+        const m = /return fillet\((?:\d+(?:\.\d+)?|\{ r: \d+(?:\.\d+)?, pieces: true \}),\s*\n?([\s\S]*)\);\s*$/.exec(currentCode.trim());
+        if (m) return { reply: "Took the rounding off: the edges are sharp again. (◀ undoes it.)", code: `${currentCode.trim().slice(0, m.index)}return ${m[1].trim()};\n`, fromCatalog: true, actions: CATALOG_ACTIONS };
         return { reply: `The ${what} has sharp edges already; this design has no rounding of its own to take off.`, chips: catalogChips(open, currentCode), fromCatalog: true };
       }
       const op = parseOp(/\bround|fillet/.test(lower) ? t : `round the edges ${t}`, dims) || { kind: "round", r: 1.5 };
@@ -1122,9 +1156,11 @@ function catalogTurn(t, lower, state, currentCode, dims) {
       const r = op.kind === "round" ? op.r : 1.5;
       return {
         reply: `Rounded every edge with a ${r} mm fillet, wrapped round the design so its sliders still work. `
-          + "This one has no rounding slider of its own, and an all-over fillet doesn't take on every shape: if the edges look the same after it builds, "
+          + "This one has no rounding slider of its own; if the edges look the same after it builds, "
           + "try “chamfer the edges” instead, or ask an AI to round the specific edges you mean. (◀ undoes it.)",
         code: opCode(currentCode, { kind: "round", r }),
+        // the viewer measures the build and takes it back if the size moved
+        sizeGuard: { op: "round", r, before: dims || null },
         fromCatalog: true, actions: CATALOG_ACTIONS,
       };
     }
@@ -1362,7 +1398,8 @@ function respondOne(text, state = {}, currentCode = "", dims = null) {
           + ` The cutter${op.count > 1 ? "s overshoot" : " overshoots"} both faces by ${EPS}mm so no face is left coincident:`
           + ` that's what stops a slicer seeing a lid over the hole.`,
       }[op.kind]();
-      return { reply: `${said} (◀ undoes it.)`, code: opCode(currentCode, op) };
+      const guard = op.kind === "round" || op.kind === "bevel" ? { sizeGuard: { op: op.kind, r: op.r, before: dims || null } } : {};
+      return { reply: `${said} (◀ undoes it.)`, code: opCode(currentCode, op), ...guard };
     }
 
     // Scale is its own thing and the user has to have asked for it by name —

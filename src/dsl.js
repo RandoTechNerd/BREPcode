@@ -532,7 +532,72 @@ export function mirror(v, ...children) {
     -2 * n.z * n.x, -2 * n.z * n.y, 1 - 2 * n.z * n.z, 0,
     0, 0, 0, 1,
   );
-  return wrap(m, children, "mirror");
+  const shape = wrap(m, children, "mirror");
+  return reflectDown(shape.child, m) ?? shape;
+}
+
+// A reflection reaching the exact kernel is refused ("reflection requires
+// orientation reversal") and the whole model falls back to the slow kernel,
+// and mirror() is what an AI reaches for on anything symmetric. But a box, a
+// round cylinder or cone, a sphere and a flat extrusion are each their own
+// mirror image: reflected, each is the same primitive moved and turned. So
+// the reflection is pushed down the tree to those pieces and each takes a
+// proper rigid placement instead (reflection x its own symmetry). Booleans
+// and transforms distribute over it. Anything else (a mesh, an import, a
+// curved profile, a polygon-sided cylinder) returns null and mirror() keeps
+// the plain reflection, as before.
+const flipX = new Matrix4().makeScale(-1, 1, 1);
+const flipY = new Matrix4().makeScale(1, -1, 1);
+function reflectDown(n, M) {
+  const place = (sym, leaf) => node({ kind: "xform", matrix: new Matrix4().multiplyMatrices(M, sym), child: leaf });
+  if (n.kind === "xform") return reflectDown(n.child, new Matrix4().multiplyMatrices(M, n.matrix));
+  if (n.kind === "group" || n.kind === "op") {
+    const kids = n.children.map((c) => reflectDown(c, M));
+    return kids.every(Boolean) ? { ...n, children: kids } : null;
+  }
+  if (n.kind === "prim" && n.code === "P.CU") {
+    // x -> sizeX - x maps the box onto itself
+    return place(new Matrix4().makeTranslation(n.params.sizeX, 0, 0).multiply(flipX), n);
+  }
+  if (n.kind === "hull") {
+    // the hull of mirrored pieces is the mirrored hull
+    const kids = n.children.map((c) => reflectDown(c, M) ?? node({ kind: "xform", matrix: M, child: c }));
+    return { ...n, children: kids };
+  }
+  if (n.kind === "edgeop") {
+    // A fillet or chamfer survives the flip when the flip is rigid (no
+    // scale, so the radius means the same) and its edge pick still names the
+    // same edges afterwards: "all" always; an axis pick when that axis lands
+    // on itself; "top"/"bottom" swap when Z turns over.
+    const e = M.elements;
+    const col = (i) => [e[4 * i], e[4 * i + 1], e[4 * i + 2]];
+    const rigid = [0, 1, 2].every((i) => Math.abs(Math.hypot(...col(i)) - 1) < 1e-9)
+      && Math.abs(col(0)[0] * col(1)[0] + col(0)[1] * col(1)[1] + col(0)[2] * col(1)[2]) < 1e-9;
+    if (!rigid || (n.faces && n.faces !== "all")) return null;
+    let edges = n.edges;
+    const axis = { x: 0, y: 1, z: 2 }[edges];
+    if (axis != null && Math.abs(Math.abs(col(axis)[axis]) - 1) > 1e-9) return null;
+    if (edges === "top" || edges === "bottom") {
+      const zz = col(2)[2];
+      if (Math.abs(Math.abs(zz) - 1) > 1e-9) return null;
+      if (zz < 0) edges = edges === "top" ? "bottom" : "top";
+    }
+    const child = reflectDown(n.child, M);
+    return child ? { ...n, edges, child } : null;
+  }
+  if (n.kind === "revolve" && n.angle === 360) return place(flipX, n);
+  if (n.kind === "prim" && (n.code === "P.S" || n.code === "P.T")) return place(flipX, n);
+  if (n.kind === "prim" && (n.code === "P.CY" || n.code === "P.CO")) {
+    // round only: $fn 3-8 is a polygon prism, whose corners may not sit
+    // symmetrically about the plane this would flip across
+    const res = n.params.resolution;
+    return res != null && res <= 8 ? null : place(flipX, n);
+  }
+  if (n.kind === "prism" && !n.segs) {
+    const pts = n.pts.map(([x, y]) => [x, -y]).reverse();
+    return place(flipY, { ...n, pts });
+  }
+  return null;
 }
 
 // ----------------------------------------------------------------- booleans
@@ -2006,6 +2071,37 @@ function edgeOp(code, opts, children, amountKey, verb) {
   const edges = o.edges ?? null;
   if (edges != null && !["x", "y", "z", "top", "bottom", "all"].includes(edges)) {
     throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom" or "all" (got ${JSON.stringify(edges)})`);
+  }
+  // pieces: true = round each box the part is built from, then union them and
+  // cut the holes. The chat's "round the edges" uses it on finished designs.
+  // An all-over fillet of the finished part also tries every hole rim and
+  // countersink lip, and every inside corner where a gusset meets a plate:
+  // the exact kernel refuses those (convex meets concave) and the JS fallback
+  // mangles the holes and grows the part by the radius. A box rounds exactly
+  // in a few hundred ms, its radius held under half its thinnest side, and
+  // the inside corners stay sharp, which is stronger anyway. A part with no
+  // boxes in it keeps the plain all-over op: pushing it under the
+  // difference() measured worse on hull-built bins (the fallback grew a
+  // stackable bin 17 mm).
+  if (o.pieces) {
+    let boxes = 0;
+    const each = (n) => {
+      if (n.kind === "xform") return { ...n, child: each(n.child) };
+      if (n.kind === "group" || (n.kind === "op" && n.operation === "UNION")) return { ...n, children: n.children.map(each) };
+      if (n.kind === "op" && n.operation === "SUBTRACT") {
+        const [base, ...cutters] = n.children;
+        return { ...n, children: [each(base), ...cutters] };
+      }
+      if (n.kind === "prim" && n.code === "P.CU") {
+        const r = Math.min(amount, 0.45 * Math.min(n.params.sizeX, n.params.sizeY, n.params.sizeZ));
+        if (r < 0.3) return n;
+        boxes++;
+        return node({ kind: "edgeop", code, amount: Math.round(r * 100) / 100, faces: "all", edges: null, child: n });
+      }
+      return n;
+    };
+    const out = each(child);
+    if (boxes) return out;
   }
   return node({ kind: "edgeop", code, amount, faces, edges, child });
 }

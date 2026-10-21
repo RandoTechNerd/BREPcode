@@ -5,6 +5,12 @@ import {
   cube, cylinder, sphere, polygon, fillet, chamfer, revolve,
   difference, union, translate, build, toSTL,
 } from "../index.js";
+import * as dsl from "../src/dsl.js";
+import { familyById } from "../src/catalog/index.js";
+import { familyCode, resolveParams } from "../src/catalog/schema.js";
+import { sizeGuardVerdict } from "../viewer/chatbot.js";
+// the DSL words a catalog body is run with, the way the viewer passes them
+const DSL = Object.fromEntries(Object.entries(dsl).filter(([k, v]) => typeof v === "function" && k !== "compile"));
 
 let pass = 0, fail = 0;
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
@@ -65,6 +71,45 @@ console.log("\nfillet / chamfer\n");
   const cutVol = volumeOf(await build(difference(fillet(3, cube([30, 30, 14])), translate([15, 15, -1], cylinder({ r: 6, h: 16 })))));
   check("filleted solid still cuts with difference()", near(blockVol - cutVol, Math.PI * 36 * 14, 300),
     `removed ${(blockVol - cutVol).toFixed(0)}, expected ${(Math.PI * 36 * 14).toFixed(0)}`);
+  // pieces: true (the chat's "round the edges" wrap) rounds each box and cuts
+  // the hole after, so the hole rim is never filleted: same solid as above
+  const part = translate([5, 0, 0], difference(cube([30, 30, 14]), translate([15, 15, -1], cylinder({ r: 6, h: 16 }))));
+  const wrapped = await build(fillet({ r: 3, pieces: true }, part));
+  check("fillet({ pieces: true }) cuts the hole after rounding", near(volumeOf(wrapped), cutVol, 5),
+    `${volumeOf(wrapped).toFixed(0)} vs ${cutVol.toFixed(0)}`);
+  check("...and stays on the exact kernel", wrapped.engine === "exact", wrapped.engine);
+  // the catalog wall shelf (plate + board + triangle gussets + keyholes) used
+  // to make the exact kernel refuse ("mixes convexity") and the fallback
+  // grow it by r and mangle the keyholes
+  const ws = familyById("wall-shelf");
+  const shelf = new Function(...Object.keys(DSL), `"use strict";\n${familyCode(ws, resolveParams(ws).values)}`)(...Object.values(DSL));
+  const plainShelf = boundsOf(await build(shelf));
+  const roundShelf = await build(fillet({ r: 3, pieces: true }, shelf));
+  const roundB = boundsOf(roundShelf);
+  const sameSize = ["x", "y", "z"].every((k) => near(roundB[k][1] - roundB[k][0], plainShelf[k][1] - plainShelf[k][0], 0.05));
+  check("...the wall shelf rounds exact and keeps its size", roundShelf.engine === "exact" && sameSize,
+    `${roundShelf.engine} ${roundShelf.fallback || ""} ${JSON.stringify(roundB)}`);
+  // The chat's size guard: the viewer builds the wrap, measures, and takes it
+  // back when the part changed size. A family with no boxes in it (the light
+  // clip) has the exact kernel refuse the all-over fillet and the fallback
+  // grow it, so it must be refused; the wall shelf must pass untouched.
+  const box3 = (b) => ({ min: [b.x[0], b.y[0], b.z[0]], max: [b.x[1], b.y[1], b.z[1]] });
+  const runFamily = (id) => {
+    const f = familyById(id);
+    return new Function(...Object.keys(DSL), `"use strict";\n${familyCode(f, resolveParams(f).values)}`)(...Object.values(DSL));
+  };
+  check("size guard keeps the rounded wall shelf",
+    sizeGuardVerdict(box3(plainShelf), box3(roundB), { op: "round", r: 3 }) === null);
+  const clip = runFamily("light-clip");
+  const plainClip = boundsOf(await build(clip));
+  const roundClip = await build(fillet({ r: 3, pieces: true }, clip));
+  const v = sizeGuardVerdict(box3(plainClip), box3(boundsOf(roundClip)), { op: "round", r: 3 });
+  check("size guard refuses the light clip's all-over round", v && v.grew && /doesn't take an all-over round/.test(v.reply)
+    && v.chips.includes("chamfer the edges") && !/—/.test(v.reply), `${roundClip.engine} ${JSON.stringify(boundsOf(roundClip))} ${v?.reply}`);
+  check("...a bevel refusal offers the AI, not another bevel",
+    /bevel the specific edges/.test(sizeGuardVerdict(box3(plainClip), box3(boundsOf(roundClip)), { op: "bevel", r: 3 })?.reply || ""));
+  check("...and a fallback that collapses the part is refused too",
+    sizeGuardVerdict({ min: [0, 0, 0], max: [40, 20, 10] }, { min: [0, 0, 0], max: [40, 20, 3] }, { op: "round", r: 3 })?.grew === false);
 }
 try {
   await build(fillet(0, cube([10, 10, 10])));
