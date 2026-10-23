@@ -4,7 +4,7 @@
 // what colours, click-to-code and fillet edge picks depend on).
 //
 // Skipped (exit 0) where the addon isn't built, which is everywhere but an
-// alpha build: `npm run build:nvidia` first. Under CI it must be there.
+// alpha build: `npm run build:nvidia` first. BREPCODE_REQUIRE_NVIDIA=1 (the alpha CI job) makes a missing addon a failure.
 
 import * as dsl from "../src/dsl.js";
 import { build } from "../index.js";
@@ -17,7 +17,7 @@ const check = (label, ok, detail = "") => {
 };
 
 if (!loadNvidiaKernel()) {
-  if (process.env.CI) { console.log("FAIL  the NVIDIA kernel addon isn't built in this CI job"); process.exit(1); }
+  if (process.env.BREPCODE_REQUIRE_NVIDIA) { console.log("FAIL  the NVIDIA kernel addon isn't built in this job"); process.exit(1); }
   console.log("skip  the NVIDIA kernel isn't built here (npm run build:nvidia)");
   process.exit(0);
 }

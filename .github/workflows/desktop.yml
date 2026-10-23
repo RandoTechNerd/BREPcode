@@ -74,6 +74,8 @@ jobs:
       - name: NVIDIA kernel check
         if: matrix.nvidia
         run: node test/nvidia.js
+        env:
+          BREPCODE_REQUIRE_NVIDIA: "1"
 
       - uses: actions/upload-artifact@v4
         with:
