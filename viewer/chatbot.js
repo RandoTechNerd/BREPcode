@@ -212,7 +212,16 @@ function wrapCurrent(currentCode, wrap) {
 // "missing ) after argument list". Strings and comments are skipped so a
 // bracket inside one cannot unbalance the count.
 export function topLevelReturn(src) {
-  let depth = 0, at = -1;
+  const all = topLevelReturns(src);
+  return all.length ? all[all.length - 1] : -1;
+}
+
+// Every return at the top level of the editor's code, in order: a design can
+// return early (`if (compartments < 2) return cup;`), and an op wrapped round
+// only the last return never reaches that one.
+function topLevelReturns(src) {
+  let depth = 0;
+  const at = [];
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
     if (c === "/" && src[i + 1] === "/") { const e = src.indexOf("\n", i); i = e < 0 ? src.length : e; continue; }
@@ -225,9 +234,29 @@ export function topLevelReturn(src) {
     if (c === "(" || c === "[" || c === "{") depth++;
     else if (c === ")" || c === "]" || c === "}") depth--;
     else if (depth === 0 && c === "r" && src.startsWith("return", i)
-      && !/[\w$]/.test(src[i - 1] || "") && !/[\w$]/.test(src[i + 6] || "")) at = i;
+      && !/[\w$]/.test(src[i - 1] || "") && !/[\w$]/.test(src[i + 6] || "")) at.push(i);
   }
   return at;
+}
+
+// Where the statement starting at i ends: the first ";" outside brackets,
+// strings and comments (or the end of the source).
+function statementEnd(src, i) {
+  let depth = 0;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (c === "/" && src[i + 1] === "/") { const e = src.indexOf("\n", i); i = e < 0 ? src.length : e; continue; }
+    if (c === "/" && src[i + 1] === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 1; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      const q = c;
+      for (i++; i < src.length && src[i] !== q; i++) if (src[i] === "\\") i++;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (depth === 0 && c === ";") return i;
+  }
+  return src.length;
 }
 
 function tryTransform(lower, currentCode) {
@@ -504,9 +533,36 @@ export function resizeCode(currentCode, r) {
 // comments above it alone.
 function wrapModel(currentCode, wrap) {
   const src = currentCode.trim();
-  const at = topLevelReturn(src);
-  if (at >= 0) return src.slice(0, at) + `return ${wrap(src.slice(at + 6).trim().replace(/;\s*$/, ""))};`;
-  return `return ${wrap(src.replace(/;$/, ""))};`;
+  const rets = topLevelReturns(src);
+  if (!rets.length) return `return ${wrap(src.replace(/;$/, ""))};`;
+  const last = rets[rets.length - 1];
+  let out = `return ${wrap(src.slice(last + 6).trim().replace(/;\s*$/, ""))};`, end = last;
+  // the early returns, back to front so the offsets before them hold
+  for (let k = rets.length - 2; k >= 0; k--) {
+    const at = rets[k], stop = Math.min(statementEnd(src, at + 6), end);
+    const expr = src.slice(at + 6, stop).trim();
+    out = (expr ? `return ${wrap(expr)};` : src.slice(at, Math.min(stop + 1, end))) + src.slice(Math.min(stop + 1, end), end) + out;
+    end = at;
+  }
+  return src.slice(0, end) + out;
+}
+
+// The chat's round wrap taken back off every return it went round (an early
+// return gets one too), or null when there is none to take off.
+export function unwrapRound(currentCode) {
+  const src = currentCode.trim();
+  const WRAP = /^fillet\((?:\d+(?:\.\d+)?|\{ r: \d+(?:\.\d+)?, pieces: true \}),\s*/;
+  let out = "", from = 0, hit = false;
+  for (const at of topLevelReturns(src)) {
+    const stop = statementEnd(src, at + 6);
+    const expr = src.slice(at + 6, stop).trim();
+    const m = WRAP.exec(expr);
+    if (!m || !expr.endsWith(")")) continue;
+    out += src.slice(from, at) + `return ${expr.slice(m[0].length, -1).trim()}`;
+    from = stop;
+    hit = true;
+  }
+  return hit ? `${out}${src.slice(from)}\n` : null;
 }
 
 // ---- one-sided face work --------------------------------------------------
@@ -732,6 +788,23 @@ export function sizeGuardVerdict(before, after, guard) {
   };
 }
 
+// A round/bevel that built but changed nothing: the exact kernel refused the
+// edges and the fallback kernel handed the part back untouched ("returning
+// clone"). Same volume to within tessellation noise = nothing happened, and
+// the reply must not say otherwise.
+export function noopVerdict(beforeVol, afterVol, guard) {
+  if (!(beforeVol > 0) || !(afterVol > 0) || !guard) return null;
+  if (Math.abs(afterVol - beforeVol) > Math.max(0.5, beforeVol * 1e-5)) return null;
+  const round = guard.op !== "bevel";
+  return {
+    reply: `I couldn't ${round ? "round" : "chamfer"} this design's edges: none of them would take it, `
+      + "so the part came back exactly as it was and I've left it that way. "
+      + (round ? "“Chamfer the edges” may take where a round won't, or ask an AI to round the specific edges you mean."
+        : "Ask an AI to bevel the specific edges you mean."),
+    chips: round ? ["chamfer the edges"] : [],
+  };
+}
+
 // Main entry. state persists between calls: { pending, flow }
 // dims is the built model's measured [x, y, z] size in mm, when there is one.
 // ---------------------------------------------------------------- catalog
@@ -744,6 +817,22 @@ export function sizeGuardVerdict(before, after, guard) {
 // "make me…", "a…") — "make the shelf deeper" is about the open model.
 const NEW_THING = /\b(want|need|like|make me|make a|make an|make us|build|print|design|create|new|another|give me|how about|got a|got an|do a|do an|something|anything|some thing|a thing|a way to)\b|^(a|an|some)\s/;
 const EDIT_THIS = /^(make|turn|set|change)\s+(it|this|that|the)\b|\b(it|this|that)\b.*\b(wider|narrower|taller|shorter|deeper|longer|bigger|smaller|thicker|thinner)\b/;
+// A message about the model already on screen ("add a hole for the
+// charger", "make it taller", "cut a heart in the back"), as opposed to a
+// new thing ("make me a pen holder"). The chat sends these to an AI as an
+// EDIT: keep the model, change only what was asked, think briefly.
+export function isQuickEdit(text) {
+  const lower = String(text || "").toLowerCase().trim();
+  if (!lower || lower.split(/\s+/).length > 40) return false;
+  if (EDIT_THIS.test(lower) || ADD_TO_THIS.test(lower)) return true;
+  // "now a cable clip for 3 cables" names another thing: a new design
+  return !NEW_THING.test(lower) && !matchCatalog(text);
+}
+// "add a hole for the charger", "cut a heart into the back", "put my name on
+// the front": with a model open these change IT. Read as a request for a new
+// thing, they asked "which did you mean?" with a list of unrelated designs,
+// and the AI behind that rewrote the whole part from scratch.
+const ADD_TO_THIS = /^(?:please\s+|can you\s+|could you\s+)?(?:add|put|cut|carve|engrave|emboss|deboss|stamp|drill|punch|attach|include|insert|stick|place|mount|give it|make room|remove|take off|take out|hollow)\b|\b(?:on|in|into|onto|to|through|from|off)\s+(?:it|this|that|the\s+(?:back|front|top|bottom|side|sides|base|middle|centre|center|end|edge|lid|wall|walls))\b/;
 
 // Where to go when the built-in helper runs out. Every "can't do that" ends
 // with the same three ways forward (the sliders, the code, an AI) and a human
@@ -1142,22 +1231,25 @@ function catalogTurn(t, lower, state, currentCode, dims) {
       return { reply: "Smoother how: rounder edges, or finer curves?", chips: ["round the edges", "finer curves"], fromCatalog: true, asked: true };
     }
     const specId = state.catalog?.familyId === open.id ? state.catalog.specId : null;
-    const e = editCatalog(open, currentCode, t, { specId });
+    // the cable a design makes room for is the charger's: "a hole for the
+    // charger" is its cable-hole dial, not a new thing called a charger
+    const tEdit = t.replace(/\b(?:phone\s+)?(?:charger|charging\s+(?:cable|cord|lead|port)|power\s+(?:cord|cable|lead)|usb(?:-?c)?(?:\s+(?:cable|cord|lead))?|lightning\s+(?:cable|cord)|cord|lead)\b/gi, "cable");
+    const e = editCatalog(open, currentCode, tEdit, { specId });
     if (e?.kind === "round-generic") {
       // "sharp corners" on a design with no rounding dial: take off a fillet
       // the chat wrapped on earlier, or say the edges are sharp already
       if (/\b(sharp|square|unround|less round)\b/.test(lower)) {
-        const m = /return fillet\((?:\d+(?:\.\d+)?|\{ r: \d+(?:\.\d+)?, pieces: true \}),\s*\n?([\s\S]*)\);\s*$/.exec(currentCode.trim());
-        if (m) return { reply: "Took the rounding off: the edges are sharp again. (◀ undoes it.)", code: `${currentCode.trim().slice(0, m.index)}return ${m[1].trim()};\n`, fromCatalog: true, actions: CATALOG_ACTIONS };
+        const sharp = unwrapRound(currentCode);
+        if (sharp) return { reply: "Took the rounding off: the edges are sharp again. (◀ undoes it.)", code: sharp, fromCatalog: true, actions: CATALOG_ACTIONS };
         return { reply: `The ${what} has sharp edges already; this design has no rounding of its own to take off.`, chips: catalogChips(open, currentCode), fromCatalog: true };
       }
       const op = parseOp(/\bround|fillet/.test(lower) ? t : `round the edges ${t}`, dims) || { kind: "round", r: 1.5 };
       if (op.error) return { reply: `Can't do that: ${op.error}`, fromCatalog: true };
       const r = op.kind === "round" ? op.r : 1.5;
       return {
-        reply: `Rounded every edge with a ${r} mm fillet, wrapped round the design so its sliders still work. `
-          + "This one has no rounding slider of its own; if the edges look the same after it builds, "
-          + "try “chamfer the edges” instead, or ask an AI to round the specific edges you mean. (◀ undoes it.)",
+        reply: `Rounded the outside edges with up to a ${r} mm fillet (less where a wall is thinner), wrapped round the design so its sliders still work; `
+          + "inside corners stay sharp, which is stronger. This one has no rounding slider of its own, "
+          + "so to round particular edges, ask an AI for the ones you mean. (◀ undoes it.)",
         code: opCode(currentCode, { kind: "round", r }),
         // the viewer measures the build and takes it back if the size moved
         sizeGuard: { op: "round", r, before: dims || null },
@@ -1223,7 +1315,7 @@ function catalogTurn(t, lower, state, currentCode, dims) {
       }
     }
     // a different, vaguer thing ("I meant a hook"): ask which, with chips
-    if (!fresh && wantsNew && !EDIT_THIS.test(lower)) {
+    if (!fresh && wantsNew && !EDIT_THIS.test(lower) && !ADD_TO_THIS.test(lower)) {
       const sug = catalogSuggest(t);
       if (sug) return sug;
     }
@@ -1390,8 +1482,8 @@ function respondOne(text, state = {}, currentCode = "", dims = null) {
       const said = {
         floor: () => `Dropped it ${Math.abs(op.drop)}mm so the base sits exactly on z = 0.`,
         centre: () => `Centred it on the origin — moved ${op.dx}mm on X and ${op.dy}mm on Y.`,
-        round: () => `Rounded every edge with a ${op.r}mm fillet.`,
-        bevel: () => `Chamfered every edge by ${op.r}mm.`,
+        round: () => `Rounded the outside edges with up to a ${op.r}mm fillet (less where a wall is thinner); inside corners stay sharp.`,
+        bevel: () => `Chamfered the edges by up to ${op.r}mm (less where a wall is thinner).`,
         hole: () => (op.count > 1
           ? `Drilled ${op.count} ${op.dia}mm holes in a row along ${op.axisName}, all the way through.`
           : `Punched a ${op.dia}mm hole straight down the middle, all the way through.`)
@@ -1591,12 +1683,15 @@ function respondOne(text, state = {}, currentCode = "", dims = null) {
 
   const shapes = findShapes(lower);
   if (!shapes.length) {
+    // a catalog model is open and this adds to it or cuts into it: an edit
+    // of THIS model (its dials, or the AI), never a list of other designs
+    const open = catalogOf(currentCode);
+    if (open && ADD_TO_THIS.test(lower)) return { ...catalogCantDo(open, t, currentCode), cantDo: true, editOpen: true };
     // a noun the catalog knows several of ("I meant a hook"): ask which
     const sug = catalogSuggest(t);
     if (sug) return sug;
     // a catalog model is open: say what ITS dials can do instead
-    const open = catalogOf(currentCode);
-    if (open) return { ...catalogCantDo(open, t, currentCode), cantDo: true };
+    if (open) return { ...catalogCantDo(open, t, currentCode), cantDo: true, editOpen: true };
     return {
       reply: `I didn't spot a shape or a thing I know. Try “I want a phone stand”, “a hook for my yoga mat”, or “make a box with a cone on top”; “what can you make” lists the catalog. ${WAYS_ON}`,
       chips: ["what can you make", "I want a phone stand", "a hook for my yoga mat"],
@@ -2382,8 +2477,13 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
     };
     // Ask thinking models to return their thoughts so the viewer can show
     // them. Non-thinking models reject the field — the caller retries without.
-    if (opts.includeThoughts) {
-      body.generationConfig = { thinkingConfig: { includeThoughts: true } };
+    // a quick edit (or the house AI) asks for a short think: Gemini 3 takes a
+    // level, 2.5 a token budget; older models have neither and get nothing
+    const quick = opts.lowReasoning || opts.capReasoning;
+    const brief = !quick ? {} : /gemini-3/i.test(model) ? { thinkingLevel: "low" }
+      : /gemini-2\.5-(flash|pro)/i.test(model) ? { thinkingBudget: 1024 } : {};
+    if (opts.includeThoughts || Object.keys(brief).length) {
+      body.generationConfig = { thinkingConfig: { ...(opts.includeThoughts ? { includeThoughts: true } : {}), ...brief } };
     }
     return {
       url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,

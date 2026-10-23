@@ -14,8 +14,36 @@
 // dark-on-light contrast — codes that scan reliably off an FDM part.
 
 import * as dsl from "../src/dsl.js";
+import { exactText } from "../src/textexact.js";
 import { ShapeUtils, Vector2 } from "three";
 import { toMask, marchingSquares, rdp, signedArea, pointInPoly, ringsToPrismStl } from "./trace.js";
+
+// EXACT TEXT. The letters' real outlines from a bundled font (Roboto,
+// Apache-2.0, viewer/fonts), extruded on the exact kernel by
+// src/textexact.js: true curves in a STEP, a fillet still works after, and a
+// deboss is one exact boolean. Loaded with this module (getCodes() in
+// index.html waits for it), so the first text() is already exact. The canvas
+// trace below stays for stencils, pixel: true, exact: false, and a font: the
+// bundle doesn't carry (any installed font, as before).
+const FONT_FILES = { bold: "Roboto-Bold.woff", regular: "Roboto-Regular.woff" };
+const fonts = {};
+let fontLoad = null;
+export function loadTextFont() {
+  return (fontLoad ??= (async () => {
+    const ot = await import("/node_modules/opentype.js/dist/opentype.module.js");
+    const parse = ot.parse || ot.default?.parse;
+    await Promise.all(Object.entries(FONT_FILES).map(async ([k, f]) => {
+      const res = await fetch(new URL(`./fonts/${f}`, import.meta.url));
+      if (!res.ok) throw new Error(`text font ${f}: HTTP ${res.status}`);
+      fonts[k] = parse(await res.arrayBuffer());
+    }));
+  })().catch((e) => { fontLoad = null; throw e; }));
+}
+const exactFontFor = (o) => {
+  if (o.exact === false || o.pixel || o.mode === "stencil") return null;
+  if (o.font && !/roboto/i.test(o.font)) return null;     // an installed font: the canvas trace
+  return fonts[o.bold === false ? "regular" : "bold"] || null;
+};
 
 let bwip = null;
 export async function loadCodes() {
@@ -370,6 +398,8 @@ export function makeTextOp() {
     const o = typeof optsOrText === "string" ? { text: optsOrText, ...(maybeOpts || {}) } : (optsOrText || {});
     const s = o.text ?? o.string ?? o.value;
     if (s == null || s === "") throw new Error('text() needs a string, e.g. text({ text: "PART-01", size: 8 })');
+    const font = exactFontFor(o);
+    if (font) return exactText(font, String(s), o);
     // stencils keep the grid (their tabs are found on it); pixel: true asks
     // for the old blocky look on purpose
     if (o.mode !== "stencil" && !o.pixel) return smoothText(String(s), o);

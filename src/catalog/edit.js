@@ -220,8 +220,10 @@ function toggles(f, lower, now) {
     // a number for the dial itself and not a toggle
     const WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
     let by = 1;
-    for (let j = i + 1; j <= Math.min(toks.length - 1, i + 4); j++) {
-      if (/^\d/.test(toks[j])) break;
+    // six words on, so "add a hole for the cable" reaches "cable"; a new
+    // clause ("and", "then") is another request
+    for (let j = i + 1; j <= Math.min(toks.length - 1, i + 6); j++) {
+      if (/^\d/.test(toks[j]) || /^(and|then|but|also)$/.test(toks[j])) break;
       if (WORDS[toks[j]]) { by = WORDS[toks[j]]; continue; }
       const w = stems[j];
       for (const [k, p] of Object.entries(f.params)) {

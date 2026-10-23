@@ -54,3 +54,12 @@ viewer/_*.json
 
 # FizzCore test parts, renders and patch scripts from the build session
 scratch_fz/
+
+# cargo build output of the native kernel (the .node it makes is copied to
+# vendor/brep-kernel-native/ by npm run build:native)
+rust/brepcode-native/target/
+
+# debug leftovers
+*.stackdump
+scratch_gag/
+viewer/__ff_*.png

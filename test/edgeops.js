@@ -2,13 +2,13 @@
 // surfaced through the DSL.
 
 import {
-  cube, cylinder, sphere, polygon, fillet, chamfer, revolve,
+  cube, cylinder, sphere, polygon, linearExtrude, fillet, chamfer, revolve,
   difference, union, translate, build, toSTL,
 } from "../index.js";
 import * as dsl from "../src/dsl.js";
 import { familyById } from "../src/catalog/index.js";
 import { familyCode, resolveParams } from "../src/catalog/schema.js";
-import { sizeGuardVerdict } from "../viewer/chatbot.js";
+import { sizeGuardVerdict, noopVerdict, opCode, unwrapRound } from "../viewer/chatbot.js";
 // the DSL words a catalog body is run with, the way the viewer passes them
 const DSL = Object.fromEntries(Object.entries(dsl).filter(([k, v]) => typeof v === "function" && k !== "compile"));
 
@@ -100,16 +100,51 @@ console.log("\nfillet / chamfer\n");
   };
   check("size guard keeps the rounded wall shelf",
     sizeGuardVerdict(box3(plainShelf), box3(roundB), { op: "round", r: 3 }) === null);
+  // the light clip (no boxes in it) used to be refused and grown 6 mm by the
+  // fallback; its outside edges now round exact and it keeps its size
   const clip = runFamily("light-clip");
   const plainClip = boundsOf(await build(clip));
   const roundClip = await build(fillet({ r: 3, pieces: true }, clip));
-  const v = sizeGuardVerdict(box3(plainClip), box3(boundsOf(roundClip)), { op: "round", r: 3 });
-  check("size guard refuses the light clip's all-over round", v && v.grew && /doesn't take an all-over round/.test(v.reply)
-    && v.chips.includes("chamfer the edges") && !/—/.test(v.reply), `${roundClip.engine} ${JSON.stringify(boundsOf(roundClip))} ${v?.reply}`);
+  check("the light clip rounds exact and keeps its size", roundClip.engine === "exact"
+    && sizeGuardVerdict(box3(plainClip), box3(boundsOf(roundClip)), { op: "round", r: 3 }) === null,
+    `${roundClip.engine} ${JSON.stringify(boundsOf(roundClip))}`);
+  // a part the fallback grew (the light clip's old 10 -> 16.17 mm) is refused
+  const grown = { min: [0, 0, 0], max: [13.3, 25.4, 16.17] }, was = { min: [0, 0, 0], max: [13.3, 25.4, 10] };
+  const v = sizeGuardVerdict(was, grown, { op: "round", r: 3 });
+  check("size guard refuses a round that grew the part", v && v.grew && /doesn't take an all-over round/.test(v.reply)
+    && v.chips.includes("chamfer the edges") && !/—/.test(v.reply), v?.reply);
   check("...a bevel refusal offers the AI, not another bevel",
-    /bevel the specific edges/.test(sizeGuardVerdict(box3(plainClip), box3(boundsOf(roundClip)), { op: "bevel", r: 3 })?.reply || ""));
+    /bevel the specific edges/.test(sizeGuardVerdict(was, grown, { op: "bevel", r: 3 })?.reply || ""));
   check("...and a fallback that collapses the part is refused too",
     sizeGuardVerdict({ min: [0, 0, 0], max: [40, 20, 10] }, { min: [0, 0, 0], max: [40, 20, 3] }, { op: "round", r: 3 })?.grew === false);
+
+  // edges: "convex" leaves the inside corner of an L out, so the exact kernel
+  // takes it (an all-edges selection mixes convexity at that corner)
+  const ell = () => linearExtrude({ h: 10 }, polygon([[0, 0], [30, 0], [30, 4], [4, 4], [4, 20], [0, 20]]));
+  const ellR = await build(fillet({ r: 1.5, edges: "convex" }, ell()));
+  check("fillet edges:'convex' rounds an L exact", ellR.engine === "exact" && volumeOf(ellR) < volumeOf(await build(ell())) - 10,
+    `${ellR.engine} ${volumeOf(ellR).toFixed(0)}`);
+  // the phone stand is an extruded side profile with 4 mm walls: the chat's
+  // wrap used to be refused at every radius and come back unrounded from the
+  // fallback; now its profile rounds on its outside edges, radius held under
+  // half the wall
+  const stand = runFamily("phone-stand");
+  const plainStand = await build(stand);
+  const roundStand = await build(fillet({ r: 3, pieces: true }, stand));
+  check("the phone stand's chat round really rounds, exact", roundStand.engine === "exact"
+    && volumeOf(roundStand) < volumeOf(plainStand) - 100,
+    `${roundStand.engine} ${volumeOf(plainStand).toFixed(0)} -> ${volumeOf(roundStand).toFixed(0)}`);
+  check("...and keeps its size", sizeGuardVerdict(box3(boundsOf(plainStand)), box3(boundsOf(roundStand)), { op: "round", r: 3 }) === null);
+  // a design that returns early (the pen cup's one-compartment case) gets the
+  // wrap on that return too, and "sharp corners" takes every one back off
+  const pc = familyById("pen-cup"), pcCode = familyCode(pc, resolveParams(pc).values);
+  const pcRound = opCode(pcCode, { kind: "round", r: 3 });
+  check("the round wraps an early return too", /if \(compartments < 2\) return fillet\(/.test(pcRound)
+    && unwrapRound(pcRound).trim() === pcCode.trim() && unwrapRound(pcCode) === null);
+  // a round that built but changed nothing is called out, not claimed
+  const nv = noopVerdict(106222, 106222, { op: "round", r: 3 });
+  check("no-op round is reported honestly", nv && /couldn't round/.test(nv.reply) && !/—/.test(nv.reply)
+    && noopVerdict(106222, 105562, { op: "round", r: 3 }) === null);
 }
 try {
   await build(fillet(0, cube([10, 10, 10])));

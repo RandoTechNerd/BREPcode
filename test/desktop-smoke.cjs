@@ -63,6 +63,7 @@ require("../desktop/mail.cjs").register();
 require("../desktop/recovery.cjs").register();
 require("../desktop/slicer.cjs").register();
 require("../desktop/claude.cjs").register();
+require("../desktop/kernel.cjs").register();
 
 app.whenReady().then(async () => {
   // The real shell window, not a lookalike: same sandbox flags, same preload,
@@ -108,13 +109,25 @@ app.whenReady().then(async () => {
     //     accepting one from the page.
     const EXPECTED_BRIDGE = "aiRelay,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
       + "fetchModel,isDesktop,lessonsAppend,lessonsForget,lessonsLoad,lessonsReveal,"
-      + "lessonsSave,lessonsWhere,loadMail,onClaudeProgress,onOpenFile,openBlueprint,"
+      + "lessonsSave,lessonsWhere,loadMail,nativeKernelPort,nativeKernelReset,onClaudeProgress,onOpenFile,openBlueprint,"
       + "openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,"
       + "sendMail,shortLink,slicerInfo,testMail";
     const bridgeKeys = await run("Object.keys(window.brepcodeDesktop).sort().join(',')");
     check("the bridge surface is exactly what was reviewed",
       bridgeKeys === EXPECTED_BRIDGE,
       bridgeKeys === EXPECTED_BRIDGE ? "" : `got ${bridgeKeys}`);
+
+    // The starter model builds at boot. On the desktop that build should have
+    // run on the native kernel (desktop/kernel-host.cjs), not the wasm one.
+    const eng = await (async () => {
+      for (let i = 0; i < 120; i++) {
+        const e = await run("window.brepscript?.engine?.().last || null");
+        if (e?.engine) return e;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return null;
+    })();
+    check("the model builds on the native Rust kernel", eng?.stats?.native === true, JSON.stringify(eng));
 
     check("nothing saved yet", (await run("window.brepcodeDesktop.loadMail()")).config === null);
 

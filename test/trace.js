@@ -1,7 +1,8 @@
 // Image autotrace: threshold -> contours -> mm polygons -> BREPcode, plus a
 // round-trip that actually extrudes the traced code through the kernel.
 
-import { traceImage, contoursToCode } from "../viewer/trace.js";
+import { traceImage, contoursToCode, imageSolid, autoMask } from "../viewer/trace.js";
+import * as dsl from "../src/dsl.js";
 import { polygon, linearExtrude, difference, union, translate, build, toSTL } from "../index.js";
 
 function volOf(stl) {
@@ -148,6 +149,28 @@ console.log("\ncode generation + kernel round-trip\n");
   registerImport("__rings_test.stl", stl);
   const got = volOf(toSTL(await build(importedMesh("__rings_test.stl")), "t"));
   check("...and imports through the kernel as one solid", near(got, signed, signed * 0.01), `${got.toFixed(1)}`);
+}
+
+console.log("\nimage(): a chat picture as an exact solid\n");
+{
+  // a dark ring with a dark disc inside it, on white: two islands, one hole
+  const W = 200, H = 200, data = new Uint8ClampedArray(W * H * 4).fill(255);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const r = Math.hypot(x - 100, y - 100);
+    if ((r > 80 && r < 95) || r < 40) { const i = (y * W + x) * 4; data[i] = data[i + 1] = data[i + 2] = 15; }
+  }
+  const img = { width: W, height: H, data };
+  const a = autoMask(img);
+  check("the automatic threshold reads the dark mark as ink", !a.invert && a.threshold > 15 && a.threshold < 255, JSON.stringify(a));
+  const r = await build(imageSolid(dsl, img, { size: 30, height: 2 }));
+  const vol = volOf(toSTL(r, "t"));
+  // ring (95-80 px) and disc (40 px), at 30 mm across the ring's 190 px
+  const k = 30 / 190, want = Math.PI * ((95 * k) ** 2 - (80 * k) ** 2 + (40 * k) ** 2) * 2;
+  check("image() builds exact, the ring's hole cut through and the disc kept", r.engine === "exact" && Math.abs(vol - want) / want < 0.06,
+    `${r.engine} ${vol.toFixed(1)} vs ${want.toFixed(1)}`);
+  // a light mark on a dark photo flips by itself
+  const inv = { width: W, height: H, data: data.map((v, i) => (i % 4 === 3 ? v : 255 - v)) };
+  check("...and a light mark on dark is read the right way round", autoMask(inv).invert === true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

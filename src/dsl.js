@@ -544,7 +544,7 @@ export function mirror(v, ...children) {
 // the reflection is pushed down the tree to those pieces and each takes a
 // proper rigid placement instead (reflection x its own symmetry). Booleans
 // and transforms distribute over it. Anything else (a mesh, an import, a
-// curved profile, a polygon-sided cylinder) returns null and mirror() keeps
+// partial revolve, a polygon-sided cylinder) returns null and mirror() keeps
 // the plain reflection, as before.
 const flipX = new Matrix4().makeScale(-1, 1, 1);
 const flipY = new Matrix4().makeScale(1, -1, 1);
@@ -593,9 +593,12 @@ function reflectDown(n, M) {
     const res = n.params.resolution;
     return res != null && res <= 8 ? null : place(flipX, n);
   }
-  if (n.kind === "prism" && !n.segs) {
+  if (n.kind === "prism") {
+    // flipped across its own x axis and wound back to CCW; a curved profile
+    // (path2d, exact text) flips segment by segment
     const pts = n.pts.map(([x, y]) => [x, -y]).reverse();
-    return place(flipY, { ...n, pts });
+    const segs = n.segs ? reverseSegs(n.segs).map((sg) => ({ t: sg.t, p: sg.p.map(([x, y]) => [x, -y]) })) : n.segs;
+    return place(flipY, { ...n, pts, segs });
   }
   return null;
 }
@@ -2052,6 +2055,119 @@ export function fins(opts, ...children) {
 // the selected faces to their shared edges.
 const SIDE_ALIASES = { top: "_PZ", bottom: "_NZ", front: "_NY", back: "_PY", left: "_NX", right: "_PX" };
 
+// The thinnest a straight-sided profile gets: its shortest side, or the
+// closest any corner comes to a side it is not on (a wall's thickness).
+function profileThinnest(pts) {
+  const n = pts.length;
+  let t = Infinity;
+  for (let j = 0; j < n; j++) {
+    const a = pts[j], b = pts[(j + 1) % n];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len2 = dx * dx + dy * dy;
+    if (len2 > 1e-12) t = Math.min(t, Math.sqrt(len2));
+    for (let i = 0; i < n; i++) {
+      if (i === j || i === (j + 1) % n || len2 <= 1e-12) continue;
+      const p = pts[i];
+      const s = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
+      t = Math.min(t, Math.hypot(p[0] - a[0] - s * dx, p[1] - a[1] - s * dy));
+    }
+  }
+  return t;
+}
+
+// edges: "convex" = only the OUTSIDE edges, where the solid's material meets
+// at less than 180 degrees. An inside corner (a lip meeting a seat, a wall
+// meeting a floor) and a smooth seam between tangent faces are left out: the
+// exact kernel refuses a selection that mixes convex and concave edges at one
+// corner, and a seam has nothing to round. Decided per edge from the two
+// faces' own triangles beside it: the direction INTO face A, against face B's
+// outward normal, is negative on a convex edge.
+function convexEdgeNames(solid, edges) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((v) => v / l) : null; };
+  const faces = new Map();
+  let vol = 0;
+  solid.updateMatrixWorld?.(true);
+  solid.traverse((f) => {
+    const pos = f.type === "FACE" && f.name ? f.geometry?.getAttribute?.("position") : null;
+    if (!pos) return;
+    const m = f.matrixWorld?.elements || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const P = (i) => {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      return [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+    };
+    const idx = f.geometry.getIndex?.();
+    const n = idx ? idx.count : pos.count;
+    const tris = faces.get(f.name) || [];
+    for (let k = 0; k + 2 < n; k += 3) {
+      const t = [P(idx ? idx.getX(k) : k), P(idx ? idx.getX(k + 1) : k + 1), P(idx ? idx.getX(k + 2) : k + 2)];
+      tris.push(t);
+      vol += dot(t[0], cross(t[1], t[2]));
+    }
+    faces.set(f.name, tris);
+  });
+  const sgn = vol < 0 ? -1 : 1;           // whichever way the tessellator winds
+  // the triangle of a face lying along segment p-q: its outward normal and
+  // the direction from the edge into the face
+  const beside = (tris, p, q) => {
+    const d = sub(q, p), len2 = dot(d, d);
+    if (!tris?.length || len2 < 1e-18) return null;
+    const off = (v) => {
+      const s = Math.max(0, Math.min(1, dot(sub(v, p), d) / len2));
+      const foot = [p[0] + d[0] * s, p[1] + d[1] * s, p[2] + d[2] * s];
+      return sub(v, foot);
+    };
+    let best = null, bestScore = Infinity;
+    for (const t of tris) {
+      const o = t.map(off), dist = o.map((v) => Math.hypot(...v));
+      const order = [0, 1, 2].sort((a, b) => dist[a] - dist[b]);
+      const score = dist[order[0]] + dist[order[1]];
+      if (score < bestScore && dist[order[2]] > 1e-6) { bestScore = score; best = { t, inward: o[order[2]] }; }
+    }
+    if (!best) return null;
+    const nrm = unit(cross(sub(best.t[1], best.t[0]), sub(best.t[2], best.t[0])));
+    const inward = unit(best.inward);
+    return nrm && inward ? { n: nrm.map((v) => v * sgn), inward } : null;
+  };
+  // the exact blend takes straight and circular edges; anything else sends it
+  // to a general blend that refused on every catalog part tried, slowly
+  // (57 s on the picture hook's swept hook)
+  const simple = (pts) => {
+    const a = pts[0], b = pts[pts.length - 1], len = Math.hypot(...sub(b, a));
+    const tol = 1e-3 * Math.max(1, len);
+    const d = len > 1e-9 ? sub(b, a).map((v) => v / len) : null;
+    if (d && pts.every((p) => Math.hypot(...cross(sub(p, a), d)) < tol)) return true;
+    if (pts.length < 3) return true;
+    // circle through first, middle, last sample; every sample on it and in its plane
+    const m = pts[Math.floor(pts.length / 2)] === a ? pts[1] : pts[Math.floor(pts.length / 2)];
+    const q = pts.find((p) => p !== a && p !== m && Math.hypot(...sub(p, a)) > tol && Math.hypot(...sub(p, m)) > tol);
+    if (!q) return true;
+    const u = sub(m, a), v = sub(q, a), w = cross(u, v), w2 = dot(w, w);
+    if (w2 < 1e-12) return false;
+    const c0 = cross(w, u).map((x) => x * dot(v, v)), c1 = cross(v, w).map((x) => x * dot(u, u));
+    const ctr = [0, 1, 2].map((k) => a[k] + (c0[k] + c1[k]) / (2 * w2));
+    const R = Math.hypot(...sub(a, ctr)), nrm = unit(w);
+    const ctol = 2e-3 * Math.max(1, R);
+    return pts.every((p) => Math.abs(Math.hypot(...sub(p, ctr)) - R) < ctol && Math.abs(dot(sub(p, ctr), nrm)) < ctol);
+  };
+  const out = [];
+  for (const e of edges) {
+    if (!simple(e.pts)) continue;
+    const [fa, fbRaw] = String(e.name).split("|");
+    const fb = String(fbRaw || "").replace(/\[\d+\]$/, "");
+    if (!fa || !fb || fa === fb) continue;
+    const k = Math.max(0, Math.floor((e.pts.length - 2) / 2));
+    const p = e.pts[k], q = e.pts[k + 1];
+    const A = beside(faces.get(fa), p, q), B = beside(faces.get(fb), p, q);
+    if (!A || !B) continue;
+    // both faces vote; tangent seams sit near zero and are left out
+    const c = (dot(A.inward, B.n) + dot(B.inward, A.n)) / 2;
+    if (c < -0.03) out.push(e.name);
+  }
+  return out;
+}
+
 function edgeOp(code, opts, children, amountKey, verb) {
   const o = typeof opts === "number" ? {} : (opts || {});
   const amount = typeof opts === "number" ? opts
@@ -2069,8 +2185,8 @@ function edgeOp(code, opts, children, amountKey, verb) {
   // build123d's part.edges().filter_by(Axis.Z) and .group_by(Axis.Z)[-1]
   // arrive here.
   const edges = o.edges ?? null;
-  if (edges != null && !["x", "y", "z", "top", "bottom", "all"].includes(edges)) {
-    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom" or "all" (got ${JSON.stringify(edges)})`);
+  if (edges != null && !["x", "y", "z", "top", "bottom", "convex", "all"].includes(edges)) {
+    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom", "convex" or "all" (got ${JSON.stringify(edges)})`);
   }
   // pieces: true = round each box the part is built from, then union them and
   // cut the holes. The chat's "round the edges" uses it on finished designs.
@@ -2085,6 +2201,10 @@ function edgeOp(code, opts, children, amountKey, verb) {
   // stackable bin 17 mm).
   if (o.pieces) {
     let boxes = 0;
+    // boxes first; extruded profiles only in a part with no boxes, because a
+    // profile is often a gusset or web joining boxes, and rounded webs meeting
+    // rounded plates measured as unions the exact kernel refuses (wall shelf)
+    let profiles = false;
     const each = (n) => {
       if (n.kind === "xform") return { ...n, child: each(n.child) };
       if (n.kind === "group" || (n.kind === "op" && n.operation === "UNION")) return { ...n, children: n.children.map(each) };
@@ -2096,12 +2216,29 @@ function edgeOp(code, opts, children, amountKey, verb) {
         const r = Math.min(amount, 0.45 * Math.min(n.params.sizeX, n.params.sizeY, n.params.sizeZ));
         if (r < 0.3) return n;
         boxes++;
-        return node({ kind: "edgeop", code, amount: Math.round(r * 100) / 100, faces: "all", edges: null, child: n });
+        return node({ kind: "edgeop", code, amount: Math.round(r * 100) / 100, faces: "all", edges: null, shrink: true, child: n });
+      }
+      // an extruded straight-sided profile (a phone stand's side, a bracket's
+      // L): its outside edges only, the radius held under half its thinnest
+      // wall and its shortest side, so the inside corners stay sharp and no
+      // two blends meet head on
+      if (profiles && n.kind === "prism" && !n.segs && n.pts.length >= 3) {
+        const r = Math.min(amount, 0.45 * Math.min(n.h, profileThinnest(n.pts)));
+        if (r < 0.3) return n;
+        boxes++;
+        return node({ kind: "edgeop", code, amount: Math.round(r * 100) / 100, faces: "all", edges: "convex", shrink: true, child: n });
       }
       return n;
     };
-    const out = each(child);
+    let out = each(child);
     if (boxes) return out;
+    profiles = true;
+    out = each(child);
+    if (boxes) return out;
+    // nothing box- or profile-shaped to round piece by piece: the whole part,
+    // outside edges only (an all-edges selection mixes in the inside corners,
+    // which the exact kernel refuses outright)
+    return node({ kind: "edgeop", code, amount, faces, edges: "convex", shrink: true, child });
   }
   return node({ kind: "edgeop", code, amount, faces, edges, child });
 }
@@ -2171,6 +2308,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       if (pts.length >= 2) edges.push({ name: o.name, pts });
     });
     if (spec === "all") return edges.map((e) => e.name);
+    if (spec === "convex") return convexEdgeNames(solid, edges);
     if (spec === "top" || spec === "bottom") {
       let lo = Infinity, hi = -Infinity;
       for (const e of edges) for (const p of e.pts) { lo = Math.min(lo, p[2]); hi = Math.max(hi, p[2]); }
@@ -2350,6 +2488,8 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const f = await partHistory.newFeature(n.code);
       f.inputParams.edges = faces;
       f.inputParams.direction = "AUTO";
+      // the chat's own rounding: the engine may try it smaller if refused
+      if (n.shrink) f.inputParams.shrink = true;
       if (n.code === "F") f.inputParams.radius = n.amount;
       else f.inputParams.distance = n.amount;
       // the fillet/chamfer modifies the target in place, keeping its id — so

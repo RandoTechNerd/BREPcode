@@ -46,9 +46,69 @@ function loadRust(wasmUrl) {
   });
   return rustKernel;
 }
+// The desktop app's NATIVE Rust kernel (desktop/kernel-host.cjs, a separate
+// process running the same engine on the kernel compiled to machine code). The
+// page passes this worker a MessagePort to it; ?native=1 says one is coming.
+// Until the native kernel turns out missing or broken, the 14 MB wasm is not
+// even downloaded. The website never sets native=1 and is unchanged.
+const NATIVE_EXPECTED = PARAMS.get("native") === "1";
+let nativePort = null;
+let nativeDown = !NATIVE_EXPECTED;   // nothing coming, or the host went away
+let nativeWaiters = [];
+let nativeSeq = 0;
+const nativePending = new Map();
+function nativeSettle(port) {
+  const w = nativeWaiters;
+  nativeWaiters = [];
+  for (const r of w) r(port);
+}
+function setNativePort(port) {
+  try { nativePort?.close(); } catch { /* gone */ }
+  nativePort = port;
+  nativeDown = false;
+  port.onmessage = ({ data }) => {
+    const p = nativePending.get(data?.id);
+    if (!p) return;
+    nativePending.delete(data.id);
+    if (data.ok) p.resolve(data);
+    // fromHost: the kernel answered "no" (or panicked and caught it); the
+    // host itself is fine. An error without it means the host went away.
+    else p.reject(Object.assign(new Error(data.error || "native kernel failed"), { refusal: !!data.refusal, fromHost: true, lane: data.lane }));
+  };
+  nativeSettle(port);
+}
+function dropNative(reason) {
+  const err = new Error(reason || "the native kernel went away");
+  for (const [, p] of nativePending) p.reject(err);
+  nativePending.clear();
+  try { nativePort?.close(); } catch { /* gone */ }
+  nativePort = null;
+  nativeDown = true;
+  nativeSettle(null);
+  console.warn("[kw] native kernel unavailable, using the wasm kernel:", err.message);
+  if (PARAMS.get("engine") !== "js") loadRust().catch(() => { /* recorded in rustFailure */ });
+}
+// The port, once the page has handed it over (a moment after start-up), or
+// null when there is none and the wasm kernel builds.
+function nativeKernel() {
+  if (nativePort || nativeDown) return Promise.resolve(nativePort);
+  return new Promise((resolve) => {
+    nativeWaiters.push(resolve);
+    setTimeout(() => { if (!nativePort && !nativeDown) dropNative("the native kernel didn't connect in time"); }, 5000);
+  });
+}
+function nativeCall(msg, transfer = []) {
+  const id = ++nativeSeq;
+  return new Promise((resolve, reject) => {
+    nativePending.set(id, { resolve, reject });
+    try { nativePort.postMessage({ ...msg, id }, transfer); }
+    catch (e) { nativePending.delete(id); reject(e); }
+  });
+}
+
 // Start the download now, while the page is still booting, unless the page
-// asked for the JS kernel only.
-if (PARAMS.get("engine") !== "js") loadRust().catch(() => { /* recorded in rustFailure */ });
+// asked for the JS kernel only or the native kernel is coming.
+if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) loadRust().catch(() => { /* recorded in rustFailure */ });
 let manifoldWasm = null;
 function loadManifold() {
   manifoldWasm ??= (async () => {
@@ -200,7 +260,7 @@ trace(`module evaluated, kernel present: ${typeof PartHistory}`);
 // the same tick as `new Worker(...)` can be dropped on the floor — no error, no
 // reply, a build that simply never comes back — so the page holds everything
 // until this arrives. Sent last, once the handler below is really installed.
-self.onmessage = async ({ data }) => {
+self.onmessage = async ({ data, ports }) => {
   const { id, op } = data || {};
   trace(`message: ${op} #${id}`);
   try {
@@ -210,10 +270,45 @@ self.onmessage = async ({ data }) => {
       const engine = data.engine || "auto";
       let fallback = null;
       let fallbackKind = null;
+      const postSplit = (out) => {
+        builds.set(key, { split: out, json: data.json, solids: out.solids });
+        const { payload, transfer } = splitPayload(out);
+        self.postMessage({
+          id, ok: true, solids: payload, engine: out.lane, stats: out.stats,
+          incremental: false, rebuilt: out.stats.exactFeatures + out.stats.meshFeatures,
+          total: out.stats.exactFeatures + out.stats.meshFeatures, reason: "",
+        }, transfer);
+      };
+      // Desktop: the native kernel first. Its refusal is the same kernel's
+      // refusal, so that goes straight to the JS kernel; anything else (the
+      // host crashed or was killed) leaves this build to the wasm kernel.
+      let nativeRefused = false;
+      if (engine !== "js" && await nativeKernel()) {
+        try {
+          const r = await nativeCall({ op: "build", json: data.json });
+          trace(`native engine: ${r.lane} (${r.stats.exactMs} ms exact, ${r.stats.meshMs} ms mesh)`);
+          postSplit({ lane: r.lane, solids: r.solids, stats: r.stats });
+          return;
+        } catch (e) {
+          if (e.refusal) {
+            if (engine === "split") throw e;
+            nativeRefused = true;
+            fallback = String(e.message || e).slice(0, 300);
+            fallbackKind = "refused";
+            trace(`native engine refused: ${fallback}`);
+          } else if (!e.fromHost && nativePort) {
+            dropNative(`native build failed: ${e.message || e}`);
+          }
+          // else: the kernel errored rather than refused; the wasm lane below
+          // gets its own try, as it did before there was a native one
+        }
+      }
       // auto never waits for the kernel download: until it lands, the JS
       // kernel builds (and the badge says so). split waits, by definition.
       const rustPending = engine === "auto" && !rustModule && !rustFailure;
-      if (engine !== "js" && rustPending) {
+      if (nativeRefused) {
+        // decided above: the JS kernel below builds it
+      } else if (engine !== "js" && rustPending) {
         loadRust(data.rustWasmUrl).catch(() => {});
         fallback = "the Rust kernel is still downloading";
         fallbackKind = "loading";
@@ -222,13 +317,7 @@ self.onmessage = async ({ data }) => {
           const rust = await loadRust(data.rustWasmUrl);
           const out = await runEngine(data.json, { rust, manifold: loadManifold });
           trace(`split engine: ${out.lane} (${out.stats.exactMs} ms exact, ${out.stats.meshMs} ms mesh)`);
-          builds.set(key, { split: out, json: data.json, solids: out.solids });
-          const { payload, transfer } = splitPayload(out);
-          self.postMessage({
-            id, ok: true, solids: payload, engine: out.lane, stats: out.stats,
-            incremental: false, rebuilt: out.stats.exactFeatures + out.stats.meshFeatures,
-            total: out.stats.exactFeatures + out.stats.meshFeatures, reason: "",
-          }, transfer);
+          postSplit(out);
           return;
         } catch (e) {
           // A refusal is the engine saying "not this model"; the JS kernel
@@ -328,11 +417,19 @@ self.onmessage = async ({ data }) => {
       // upstream stl2step reconstruction, built into the same wasm as the
       // kernel. Returns the STEP text plus what it recognised, so the page can
       // say "33 faces: 25 planes, 8 cylinders" before you keep it.
-      const rust = await loadRust(data.rustWasmUrl);
-      if (typeof rust.stl_to_step_json !== "function") throw new Error("this kernel build has no STL reconstruction (rebuild vendor/brep-kernel-rust from BREPcodeRustKernel/brepcode-kernel)");
       const t0 = performance.now();
-      const bytes = typeof data.stl === "string" ? new TextEncoder().encode(data.stl) : new Uint8Array(data.stl);
-      const out = JSON.parse(rust.stl_to_step_json(bytes, data.options ? JSON.stringify(data.options) : "", data.name || "part"));
+      let text = null;
+      if (await nativeKernel()) {
+        try { text = (await nativeCall({ op: "stl2step", stl: data.stl, options: data.options, name: data.name || "part" })).json; }
+        catch (e) { if (e.fromHost) throw e; dropNative(`native stl2step failed: ${e.message || e}`); }
+      }
+      if (text == null) {
+        const rust = await loadRust(data.rustWasmUrl);
+        if (typeof rust.stl_to_step_json !== "function") throw new Error("this kernel build has no STL reconstruction (rebuild vendor/brep-kernel-rust from BREPcodeRustKernel/brepcode-kernel)");
+        const bytes = typeof data.stl === "string" ? new TextEncoder().encode(data.stl) : new Uint8Array(data.stl);
+        text = rust.stl_to_step_json(bytes, data.options ? JSON.stringify(data.options) : "", data.name || "part");
+      }
+      const out = JSON.parse(text);
       const ms = Math.round(performance.now() - t0);
       const count = (re) => (out.step.match(re) || []).length;
       const faces = count(/ADVANCED_FACE\(/g);
@@ -346,6 +443,9 @@ self.onmessage = async ({ data }) => {
       return;
     }
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }
+    // from the page, no reply: the desktop's native kernel arriving or going
+    if (op === "nativePort") { if (ports?.[0]) setNativePort(ports[0]); return; }
+    if (op === "nativeDown") { if (NATIVE_EXPECTED) dropNative(data.reason); return; }
     throw new Error(`unknown op "${op}"`);
   } catch (e) {
     self.postMessage({ id, ok: false, error: String(e?.message || e || "worker error").slice(0, 400) });

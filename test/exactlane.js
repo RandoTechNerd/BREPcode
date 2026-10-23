@@ -294,6 +294,9 @@ console.log("\nmirror() stays exact: the flip lands on pieces that are their own
     check(`a box + extrusion + hole mirrored across ${JSON.stringify(v)}: exact, the true reflection`,
       m.engine === "exact" && m.worst < 1e-3, `${m.engine} miss ${m.worst} ${m.fallback || ""}`);
   }
+  const curvy = () => translate([4, 2, 0], linearExtrude({ h: 3 }, dsl.path2d([0, 0], [20, 0], dsl.bezierTo([24, 6], [14, 14], [6, 12]), [0, 8])));
+  const cm = await miss(curvy, [1, 1, 0]);
+  check("a curved path2d extrusion (the letters of text()) mirrors exact, same corners", cm.engine === "exact" && cm.worst < 1e-3, `${cm.engine} ${cm.worst} ${cm.fallback || ""}`);
   const rounded = () => translate([30, 4, 0], fillet({ r: 3, edges: "z" }, cube([20, 12, 5])));
   const rm = await miss(rounded, [1, 0, 0]);
   check("a rounded box (fillet edges z) mirrored: exact, same corners", rm.engine === "exact" && rm.worst < 1e-3, `${rm.engine} ${rm.worst}`);

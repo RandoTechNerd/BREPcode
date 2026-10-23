@@ -62,6 +62,8 @@ const rewrites = [
   ["/node_modules/replicad-opencascadejs/src/", "./vendor/replicad/"],
   // scannable codes (lazy-loaded by viewer/codes.js)
   ["/node_modules/bwip-js/dist/bwip-js.mjs", "./vendor/bwip/bwip-js.mjs"],
+  // glyph outlines for exact text (lazy-loaded by viewer/codes.js)
+  ["/node_modules/opentype.js/dist/opentype.module.js", "./vendor/opentype/opentype.module.js"],
   // in-browser LLM engine (lazy-loaded by viewer/webllm.js, weights from HF)
   ["/node_modules/@mlc-ai/web-llm/lib/index.js", "./vendor/webllm/index.js"],
   // mesh decimation (lazy-loaded by viewer/simplify.js on the Simplify button)
@@ -270,6 +272,14 @@ cpSync("node_modules/bwip-js/dist/bwip-js.mjs", join(OUT, "vendor/bwip/bwip-js.m
 // bwip-js.mjs imports its symbology tables from a sibling bwipp.mjs — ship both
 cpSync("node_modules/bwip-js/dist/bwipp.mjs", join(OUT, "vendor/bwip/bwipp.mjs"));
 cpSync("node_modules/bwip-js/LICENSE", join(OUT, "vendor/bwip/LICENSE"));
+
+// ---- vendor: opentype.js + the text fonts (exact text, lazy-loaded) ----
+// codes.js reads the letters' real outlines from viewer/fonts (Roboto,
+// Apache-2.0) and src/textexact.js extrudes them on the exact kernel.
+mkdirSync(join(OUT, "vendor", "opentype"), { recursive: true });
+cpSync("node_modules/opentype.js/dist/opentype.module.js", join(OUT, "vendor/opentype/opentype.module.js"));
+cpSync("node_modules/opentype.js/LICENSE", join(OUT, "vendor/opentype/LICENSE"));
+cpSync("viewer/fonts", join(OUT, "fonts"), { recursive: true });
 for (const f of ["favicon.svg", "favicon.png", "apple-touch-icon.png"]) {
   cpSync(`viewer/${f}`, join(OUT, f));
 }
@@ -380,6 +390,9 @@ cpSync("viewer/vendor/kernel/node-module-shim.js", join(OUT, "vendor/kernel/node
 }
 
 // ---- zip --------------------------------------------------------------
+// --no-zip: the desktop build only needs dist-site, and must not overwrite the
+// website's zip with whatever happens to be in the tree.
+const NO_ZIP = process.argv.includes("--no-zip");
 const zip = new JSZip();
 const addDir = (dir, zdir) => {
   for (const entry of readdirSync(dir)) {
@@ -388,11 +401,11 @@ const addDir = (dir, zdir) => {
     else zip.file(`${zdir}${entry}`, readFileSync(p));
   }
 };
-addDir(OUT, "");
-const bytes = await zip.generateAsync({
+if (!NO_ZIP) addDir(OUT, "");
+const bytes = NO_ZIP ? null : await zip.generateAsync({
   type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 },
 });
-writeFileSync("BREPcode-site.zip", bytes);
+if (!NO_ZIP) writeFileSync("BREPcode-site.zip", bytes);
 
 const totalRaw = (() => {
   let n = 0;
@@ -405,7 +418,7 @@ const totalRaw = (() => {
 })();
 
 console.log(`dist-site: ${(totalRaw / 1e6).toFixed(1)} MB raw, ${kernelFiles.length} kernel files`);
-console.log(`BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
+console.log(NO_ZIP ? "BREPcode-site.zip: not written (--no-zip)" : `BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
 
 // ---- every relative import in the bundle must resolve to a file in it ----
 //

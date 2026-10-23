@@ -371,6 +371,36 @@ function meshFaces(solid, sourceOf) {
 // to the JS kernel: an exact hull can only ever make a build better.
 export async function runEngine(json, opts = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
+  // A fillet/chamfer marked `shrink` (the chat's "round the edges", which
+  // picks its own radius) that the kernel turns down is tried again smaller,
+  // down to SHRINK_MIN, rather than dropping the whole model to the JS kernel
+  // (whose fillet hands the part back unrounded). Only that feature shrinks.
+  const shrinkable = new Map((src.features || [])
+    .filter((f) => (f.type === "F" || f.type === "CH") && f.inputParams?.shrink)
+    .map((f) => [f.inputParams.id, f]));
+  // Only refusals about SIZE are worth a smaller try: an edge the exact tool
+  // cannot blend at all ("neither straight nor circular", a boolean it does
+  // not support) fails at every radius, and the general blend it falls back
+  // to measured 57 s at 1.8 mm on the picture hook. Hence the budget too.
+  const t0 = performance.now();
+  for (let tries = 0; ; tries++) {
+    try {
+      return await runEngineHulls(src, opts);
+    } catch (e) {
+      const m = e instanceof EngineRefusal && /^Rust kernel, (?:F|CH) (\S+):/.exec(e.message);
+      const f = m && SHRINK_WHY.test(e.message) && shrinkable.get(m[1]);
+      const key = f?.type === "F" ? "radius" : "distance";
+      const next = f ? Math.round(f.inputParams[key] * 0.6 * 100) / 100 : 0;
+      if (!f || next < SHRINK_MIN || tries >= 6 || performance.now() - t0 > SHRINK_BUDGET_MS) throw e;
+      f.inputParams[key] = next;
+    }
+  }
+}
+const SHRINK_MIN = 0.4;
+const SHRINK_BUDGET_MS = 8000;
+const SHRINK_WHY = /too large|setbacks consume|could not co-blend|of the \d+ selected edges|no edge within tolerance/;
+
+async function runEngineHulls(src, opts) {
   const hulls = (src.features || []).filter((f) => f.type === "IMPORT3D" && f.inputParams?.exactHull
     && typeof f.inputParams.stepText === "string" && typeof f.inputParams.fileToImport === "string");
   try {

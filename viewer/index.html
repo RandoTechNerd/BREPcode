@@ -4488,8 +4488,10 @@
       // since a hole tuned against a faceted preview comes out a touch wider.
       const n = e.stats?.roundedCurves || 0;
       const rounded = n ? ` (${n} faceted $fn curve${n === 1 ? "" : "s"} made true)` : "";
-      if (e.engine === "exact") return " · Exact" + rounded;
-      if (e.engine === "mesh") return " · Mesh" + rounded;
+      // desktop: built by the Rust kernel as native code, not its wasm
+      const native = e.stats?.native ? " (native)" : "";
+      if (e.engine === "exact") return " · Exact" + native + rounded;
+      if (e.engine === "mesh") return " · Mesh" + native + rounded;
       if (!e.fallback) return "";
       return e.fallbackKind === "loading" ? " · JS kernel (Rust still loading)"
         : e.fallbackKind === "unavailable" ? " · JS kernel (Rust unavailable)"
@@ -4515,12 +4517,25 @@
       workerOutbox = [];
       workerReady = false;
       try { kernelWorker?.terminate(); } catch { /* already gone */ }
+      // a native build can't be stopped from here, only its process can
+      if (NATIVE_KERNEL) window.brepcodeDesktop.nativeKernelReset?.();
       kernelWorker = null;
       workerEpoch++;
       // Stop trying only when the worker is genuinely unusable: it broke before
       // it ever worked, or something asked for it to be off for good.
       if (permanent || (broken && !workerProven)) workerOut = true;
     }
+
+    // Desktop only: the Rust kernel as native code (desktop/kernel.cjs). Once
+    // the worker is listening the page asks for a MessagePort to the native
+    // kernel's process and hands it over; the worker builds there and keeps
+    // its wasm kernel as the fallback. The website has no brepcodeDesktop.
+    const NATIVE_KERNEL = typeof window.brepcodeDesktop?.nativeKernelPort === "function";
+    if (NATIVE_KERNEL) window.addEventListener("message", (e) => {
+      if (e.source !== window || !e.data?.brepcodeKernel || !kernelWorker) return;
+      if (e.data.brepcodeKernel === "port" && e.ports?.[0]) kernelWorker.postMessage({ op: "nativePort" }, [e.ports[0]]);
+      else if (e.data.brepcodeKernel === "down") kernelWorker.postMessage({ op: "nativeDown", reason: e.data.reason });
+    });
 
     function getBuildWorker() {
       if (workerOut) return null;
@@ -4535,6 +4550,7 @@
         // mid-download), so it needs the engine and the wasm's URL up front.
         url.searchParams.set("engine", buildEngine());
         if (window.__BREP_RUST_WASM_URL) url.searchParams.set("rust", window.__BREP_RUST_WASM_URL);
+        if (NATIVE_KERNEL) url.searchParams.set("native", "1");
         kernelWorker = new Worker(url, { type: "module" });
         kernelWorker.onmessage = ({ data }) => {
           if (data?.rustReady) {                // the Rust kernel finished downloading
@@ -4543,6 +4559,7 @@
           }
           if (data?.ready) {                    // the handshake — safe to post now
             workerReady = true;
+            if (NATIVE_KERNEL) window.brepcodeDesktop.nativeKernelPort();
             const queued = workerOutbox;
             workerOutbox = [];
             for (const q of queued) postToWorker(q);
@@ -4641,6 +4658,51 @@
     let _curved, _trace, _lock;
     const getCurved = () => (_curved ??= import("./curved.js"));
     const getTrace = () => (_trace ??= import("./trace.js"));
+    // Pictures attached in the chat, for image(): name -> ImageData at most
+    // 420 px on its long side (what the tracer reads). Kept in localStorage
+    // too, the last few, so a reload still builds the model that uses one.
+    let _traceMod = null;
+    const chatImages = new Map();
+    const IMG_STORE = "brepcode-chat-images";
+    const readImgStore = () => { try { return JSON.parse(localStorage.getItem(IMG_STORE) || "{}"); } catch { return {}; } };
+    function imageDataFrom(src) {
+      return new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => {
+          const s = Math.min(1, 420 / Math.max(im.width, im.height));
+          const w = Math.max(1, Math.round(im.width * s)), h = Math.max(1, Math.round(im.height * s));
+          const c = document.createElement("canvas"); c.width = w; c.height = h;
+          const g = c.getContext("2d", { willReadFrequently: true });
+          g.drawImage(im, 0, 0, w, h);
+          resolve({ data: g.getImageData(0, 0, w, h), small: c.toDataURL("image/png") });
+        };
+        im.onerror = () => reject(new Error("couldn't read that picture"));
+        im.src = src;
+      });
+    }
+    // an attached picture -> its stable name ("img-" + a hash of its bytes)
+    async function registerChatImage(dataUrl) {
+      let hsh = 0;
+      for (let i = 0; i < dataUrl.length; i += 61) hsh = (hsh * 131 + dataUrl.charCodeAt(i)) | 0;
+      const name = `img-${(hsh >>> 0).toString(36)}`;
+      if (!chatImages.has(name)) {
+        const { data, small } = await imageDataFrom(dataUrl);
+        chatImages.set(name, data);
+        const store = readImgStore();
+        store[name] = small;
+        const keep = Object.keys(store).slice(-6);
+        try { localStorage.setItem(IMG_STORE, JSON.stringify(Object.fromEntries(keep.map((k) => [k, store[k]])))); } catch { /* full: memory only */ }
+      }
+      getTrace().then((m) => { _traceMod = m; });
+      return name;
+    }
+    // a model that names a picture from an earlier visit: decode it, rebuild
+    function restoreChatImage(name) {
+      const src = readImgStore()[name];
+      if (!src) return false;
+      imageDataFrom(src).then(({ data }) => { chatImages.set(name, data); scheduleBuild(); }).catch(() => {});
+      return true;
+    }
     const getLockbox = () => (_lock ??= import("./lockbox.js"));
     import * as jscadApi from "../src/jscad.js";
     import * as sdfApi from "../src/sdf.js";
@@ -9653,7 +9715,10 @@
     // first build of a given text throws "generating…" and re-runs itself once
     // the module grid is cached. onReady triggers that rebuild.
     let _codes = null, _codesApi = null;
-    const getCodes = () => (_codes ??= import("./codes.js").then((m) => {
+    const getCodes = () => (_codes ??= import("./codes.js").then(async (m) => {
+      // the exact-text font comes with the engine, so the first text() is
+      // already exact; a font that won't load leaves the canvas trace
+      await m.loadTextFont().catch((e) => console.warn("text font:", e.message));
       _codesApi = {
         qrcode: m.makeCodeOp("qrcode", () => scheduleBuild()),
         datamatrix: m.makeCodeOp("datamatrix", () => scheduleBuild()),
@@ -9676,6 +9741,23 @@
       barcode: codeOp("barcode"),
       text: codeOp("text"),
       stencil: codeOp("stencil"),
+      // image("img-…", { size, height, mode: "deboss" }): a picture attached
+      // in the chat, traced to its outline by the app (trace.js), as an exact
+      // solid. The AI places it; it never redraws the picture point by point.
+      image: (name, o = {}) => {
+        const px = chatImages.get(String(name));
+        if (!px) {
+          if (!restoreChatImage(String(name))) {
+            throw new Error(`image("${name}"): that picture isn't in this browser any more. Attach it in the chat again.`);
+          }
+          throw new Error("Loading the picture… it'll appear in a moment.");
+        }
+        if (!_traceMod) {
+          getTrace().then((m) => { _traceMod = m; scheduleBuild(); });
+          throw new Error("Loading the tracer… it'll appear in a moment.");
+        }
+        return _traceMod.imageSolid(dsl, px, o);
+      },
       // Build a mesh from points and faces. It lived only in the JSCAD dialect,
       // which meant anything GENERATED — a coil swept along a path, a spring, a
       // lattice — had no route in BREPcode itself: hull() convexifies, and one
@@ -21429,8 +21511,22 @@ let SIMPLIFY_TARGET = 10000;
     // dangled across a heavy model held behind the Build button and fired on
     // an unrelated slider drag.
     async function applyHelperCode(text, src, show, r = null, said = null) {
+      const volBefore = r?.sizeGuard ? modelVolume() : 0;
       const res = await applyGeneratedCode(src, { show });
       if (res.ok && r?.sizeGuard && code.value === src) {
+        // A round/bevel that changed nothing (every edge refused, the part
+        // handed back as it was) is taken back too, and said plainly: the
+        // reply already claimed rounded edges.
+        const nv = CHAT?.noopVerdict?.(volBefore, modelVolume(), r.sizeGuard);
+        if (nv) {
+          if (!undoBtn.disabled) undoBtn.click();
+          if (said) said.textContent = nv.reply; else addMsg("bot", nv.reply);
+          chatLog.push({ role: "assistant", text: nv.reply });
+          if (nv.chips.length) quickReplies(nv.chips, nv.chips);
+          if (houseAiReady()) offerHouseAI(text, "An AI can pick the edges by hand.");
+          else actionRow(CHAT?.HELP_ACTIONS || []);
+          return { ...res, ok: false, noop: nv };
+        }
         // An all-over round/bevel that changed the part's size (the exact
         // kernel refused it and the fallback grew or collapsed the part) is
         // taken back the way ◀ would, and the reply says why instead.
@@ -22100,13 +22196,28 @@ let SIMPLIFY_TARGET = 10000;
       // to the AI, and "ask the AI instead" sends even a catalog hit on.
       // The probe runs on a copy of the chat state, so a guided flow it might
       // start is not left behind to swallow the next AI-bound message.
+      let withPicture = false;     // a catalog design just went up for a picture to be added to
       if (!house && !forceAI) {
         const probe = { ...botState };
         const local = botRespond(text, probe, code.value, modelDims);
         // ...and a reply that ACTS on its own ("undo" steps the editor back)
         // is never a question for a model.
         const acts = !!local.run?.length;
-        if ((local.fromCatalog && local.code !== undefined) || acts) {
+        // A catalog QUESTION ("which phone?") or "it already has that" is an
+        // answer too: only a request the catalog cannot do goes on to the
+        // AI. Sending those on had the AI redesign the part from scratch.
+        if (local.fromCatalog && local.code !== undefined && !acts && pendingImgs.length) {
+          // A catalog design WITH a picture ("a phone stand with this logo on
+          // the back"): the tested design goes up first, then the AI adds the
+          // picture to it as a quick edit, rather than drawing a stand of its
+          // own or dropping the picture.
+          Object.assign(botState, probe);
+          if (local.clearPending) botState.pending = null;
+          addMsg("bot", `${local.reply}  · from the catalog. Adding your picture to it next…`);
+          chatLog.push({ role: "assistant", text: local.reply });
+          await applyHelperCode(text, local.code, "params", local);
+          withPicture = true;
+        } else if ((local.fromCatalog && (local.code !== undefined || !local.cantDo)) || acts) {
           Object.assign(botState, probe);
           if (local.clearPending) botState.pending = null;
           const said = addMsg("bot", acts ? local.reply : `${local.reply}  · from the catalog`);
@@ -22264,9 +22375,35 @@ let SIMPLIFY_TARGET = 10000;
         // defaults instead. Marked off like this it lands the way it would if
         // it had been pasted straight into a chat: their words, unabridged,
         // outranking the surrounding scaffolding.
+        // A change to the model on screen ("add a hole for the charger"), not a
+        // new design: the AI is told to edit, and to think briefly.
+        const quickEdit = withPicture || (text !== RETRY_TEXT && text !== EXACT_TEXT && !!code.value.trim()
+          && code.value.trim() !== code.defaultValue.trim() && !!CHAT?.isQuickEdit?.(text));
+        if (quickEdit) logLine("quick edit of the model on screen: keep it, change only what was asked");
+        // Attached pictures become geometry the app traced itself: the AI
+        // places image("img-…") instead of redrawing a logo by eye.
+        const imageNames = [];
+        for (const p of pendingImgs) {
+          try { imageNames.push(await registerChatImage(p.dataUrl)); } catch (e) { logLine(`picture not traced: ${e.message}`); }
+        }
+        if (imageNames.length) logLine(`traced ${imageNames.length} picture${imageNames.length > 1 ? "s" : ""}: ${imageNames.join(", ")}`);
+        const imageNote = !imageNames.length ? "" : `\nATTACHED PICTURE${imageNames.length > 1 ? "S" : ""} AS GEOMETRY: `
+          + imageNames.map((n, i) => `picture ${i + 1} is image("${n}")`).join(", ") + `. The app has already traced`
+          + ` ${imageNames.length > 1 ? "each" : "it"} to its outline: image("${imageNames[0]}", { size: 30, height: 1, mode: "deboss" })`
+          + ` is an exact solid, size mm across its longer side, centred on the origin in XY, from z = 0 up to height.`
+          + ` To cut it into a face, rotate() it so its +Z points into the part through that face, translate() it onto the`
+          + ` face and difference() it, with mode: "deboss" (0.2 mm proud on both sides so the cut is clean); height is the`
+          + ` cut depth. To raise it, union() it without mode. Fit size inside the face with a margin. If the picture is`
+          + ` a light mark on a dark background and the wrong part cuts, add invert: true. NEVER redraw the picture with`
+          + ` polygon() or path2d() points yourself: place image() and nothing else.`;
         const verbatim = `THE USER'S REQUEST, VERBATIM — treat this exactly as if they had typed it`
           + ` to you directly. It outranks the general guidance above wherever they disagree:\n`
-          + `"""\n${text}\n"""`;
+          + `"""\n${text}\n"""`
+          + (quickEdit ? `\nThis is an EDIT of the model above, not a new design. Keep its code as it is (every line,`
+            + ` header and const dial) and make only the change asked for, usually one difference() cut or union()`
+            + ` boss wrapped around the existing return. Do not rebuild, restyle or resize anything else. Think briefly:`
+            + ` this is a small change, and the answer is the complete edited code.` : "")
+          + imageNote;
         const context = code.value.trim()
           ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\n${verbatim}`
           : (parts ? `${parts.trim()}\n\n${verbatim}` : verbatim);
@@ -22533,7 +22670,7 @@ let SIMPLIFY_TARGET = 10000;
                 lessons,
                 // Set once the watchdog has fired: same model, reasoning low.
                 capReasoning: capThinking === "applied",
-                lowReasoning: !!house,
+                lowReasoning: !!house || quickEdit,
                 override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
             // One controller per ATTEMPT, so the watchdog can kill a stuck
             // attempt while the loop lives on to retry — a shared controller
