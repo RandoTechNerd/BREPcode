@@ -62,7 +62,9 @@ jobs:
         run: npm ci
 
       - name: Build the app
-        run: npm run ${{ matrix.script }}
+        # -- --publish never: on CI electron-builder otherwise tries to upload
+        # to GitHub itself (the release job does that, from the artifacts)
+        run: npm run ${{ matrix.script }} -- --publish never
         env:
           # NOT inside the checkout: package.json says "type": "module", and
           # electron-builder's icon tool (a CommonJS .js) breaks under it
