@@ -29,8 +29,10 @@ jobs:
     env:
       # unsigned builds: don't go looking for a signing identity
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
-      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+      # NOT inside the checkout: package.json says "type": "module", and
+      # electron-builder's icon tool (a CommonJS .js) breaks under it
+      ELECTRON_CACHE: ${{ runner.temp }}/electron
+      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder
     steps:
       - uses: actions/checkout@v4
 

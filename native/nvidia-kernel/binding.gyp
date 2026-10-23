@@ -57,6 +57,8 @@
             "MACOSX_DEPLOYMENT_TARGET": "11.0",
             "GCC_OPTIMIZATION_LEVEL": "2",
             "OTHER_CPLUSPLUSFLAGS": [
+              "-fexceptions",
+              "-frtti",
               "-w",
               "-Wno-deprecated"
             ]
@@ -81,12 +83,38 @@
               "/LTCG"
             ]
           }
+        },
+        "xcode_settings": {
+          "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
+          "GCC_ENABLE_CPP_RTTI": "YES",
+          "CLANG_CXX_LANGUAGE_STANDARD": "c++17",
+          "MACOSX_DEPLOYMENT_TARGET": "11.0",
+          "GCC_OPTIMIZATION_LEVEL": "2",
+          "OTHER_CPLUSPLUSFLAGS": [
+            "-fexceptions",
+            "-frtti",
+            "-w",
+            "-Wno-deprecated"
+          ]
         }
       }
     },
     "defines!": [
       "_HAS_EXCEPTIONS=0"
-    ]
+    ],
+    "xcode_settings": {
+      "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
+      "GCC_ENABLE_CPP_RTTI": "YES",
+      "CLANG_CXX_LANGUAGE_STANDARD": "c++17",
+      "MACOSX_DEPLOYMENT_TARGET": "11.0",
+      "GCC_OPTIMIZATION_LEVEL": "2",
+      "OTHER_CPLUSPLUSFLAGS": [
+        "-fexceptions",
+        "-frtti",
+        "-w",
+        "-Wno-deprecated"
+      ]
+    }
   },
   "targets": [
     {
