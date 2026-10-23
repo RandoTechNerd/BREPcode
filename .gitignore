@@ -63,3 +63,10 @@ rust/brepcode-native/target/
 *.stackdump
 scratch_gag/
 viewer/__ff_*.png
+scratch_nv/
+
+# NVIDIA kernel source and build output (fetched by fetch-upstream.mjs)
+native/nvidia-kernel/upstream/
+native/nvidia-kernel/build/
+native/nvidia-kernel/build.log
+vendor/brep-kernel-nvidia/

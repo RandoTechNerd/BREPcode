@@ -3,7 +3,7 @@
 import { PartHistory } from "brep-io-kernel";
 import { compile } from "./dsl.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "./engine.js";
-import { loadRustKernel, loadManifoldNode } from "./engine-node.js";
+import { loadRustKernel, loadManifoldNode, loadNvidiaKernel } from "./engine-node.js";
 
 // engine: "auto" runs the split engine (Rust for exact parts, manifold for
 // meshes, see src/engine.js) and falls back to the JS kernel when it refuses;
@@ -12,15 +12,32 @@ export async function build(shape, { tolerance = 6, engine = process.env.BREPSCR
   const ph = new PartHistory();
   await compile(shape, ph);
   let fallback = null;
+  // "nvidia": NVIDIA's kernel first, then the Rust one, then the JS kernel.
+  // "nvidia-split": NVIDIA's kernel or nothing (to see what it refuses).
+  if (engine === "nvidia" || engine === "nvidia-split") {
+    const nk = loadNvidiaKernel();
+    try {
+      if (!nk) throw new EngineRefusal("the NVIDIA kernel isn't built on this machine (native/nvidia-kernel)", "exact");
+      const out = await runEngine(await ph.toJSON(), { rust: nk, manifold: loadManifoldNode });
+      const solids = out.solids.map((s) => ({
+        type: "SOLID", name: s.name, exact: s.exact, faceNames: s.faces.map((f) => f.name),
+        toSTL: (name) => solidsToSTL([{ ...s, name }], tolerance),
+      }));
+      return { partHistory: ph, solids, tolerance, engine: out.lane, kernel: "nvidia", stats: out.stats };
+    } catch (e) {
+      if (engine === "nvidia-split") throw e;
+      fallback = `NVIDIA kernel: ${String(e?.message || e)}`;
+    }
+  }
   if (engine !== "js") {
     try {
       const rust = await loadRustKernel();
       const out = await runEngine(await ph.toJSON(), { rust, manifold: loadManifoldNode });
       const solids = out.solids.map((s) => ({
-        type: "SOLID", name: s.name, exact: s.exact,
+        type: "SOLID", name: s.name, exact: s.exact, faceNames: s.faces.map((f) => f.name),
         toSTL: (name) => solidsToSTL([{ ...s, name }], tolerance),
       }));
-      return { partHistory: ph, solids, tolerance, engine: out.lane, stats: out.stats };
+      return { partHistory: ph, solids, tolerance, engine: out.lane, kernel: "rust", stats: out.stats, fallback };
     } catch (e) {
       // auto means "the JS kernel if the split engine can't": a refusal, a
       // wasm that won't load, a kernel panic, a manifold exception. The

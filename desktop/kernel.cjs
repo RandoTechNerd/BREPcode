@@ -64,7 +64,26 @@ function enabled() {
   return process.env.BREPCODE_NATIVE !== "0";
 }
 
+// The alpha build ships NVIDIA's kernel and defaults to it; the standard
+// build has neither. brepcodeKernelDefault is a BUILD setting in package.json
+// (electron-builder -c.extraMetadata.brepcodeKernelDefault=nvidia), and
+// BREPCODE_KERNEL=nvidia|rust overrides it for a dev run.
+function kernelConfig() {
+  const fs = require("node:fs");
+  const nvidia = [
+    path.join(__dirname, "..", "native", "nvidia-kernel", "build", "Release", "brepcode_nvidia.node"),
+    path.join(__dirname, "..", "vendor", "brep-kernel-nvidia", "brepcode_nvidia.node"),
+    process.resourcesPath && path.join(process.resourcesPath, "app.asar.unpacked", "vendor", "brep-kernel-nvidia", "brepcode_nvidia.node"),
+  ].some((f) => { try { return f && fs.existsSync(f); } catch { return false; } });
+  let def = process.env.BREPCODE_KERNEL;
+  if (def !== "nvidia" && def !== "rust") {
+    try { def = require("../package.json").brepcodeKernelDefault; } catch { def = null; }
+  }
+  return { nvidia, kernelDefault: def === "nvidia" && nvidia ? "nvidia" : "rust" };
+}
+
 function register() {
+  ipcMain.on("kernel:config", (e) => { e.returnValue = kernelConfig(); });
   ipcMain.on("kernel:port", (e) => {
     const wc = e.sender;
     if (!enabled() || (crashes.get(wc.id) || 0) >= CRASH_LIMIT) {
@@ -79,4 +98,4 @@ function register() {
   ipcMain.on("kernel:reset", (e) => kill(e.sender.id));
 }
 
-module.exports = { register, enabled };
+module.exports = { register, enabled, kernelConfig };

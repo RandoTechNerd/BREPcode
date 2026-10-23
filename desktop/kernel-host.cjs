@@ -8,7 +8,7 @@
 // process, and a kernel that hangs or crashes takes down only this process:
 // the worker then builds on its wasm kernel as before.
 //
-// Messages on a port: { id, op: "build", json, tolerance }
+// Messages on a port: { id, op: "build", json, tolerance, kernel? }
 //                     { id, op: "stl2step", stl, options, name }
 //                     { id, op: "info" }
 // Replies:            { id, ok: true, ... } | { id, ok: false, error, refusal?, lane? }
@@ -18,6 +18,15 @@ const { pathToFileURL } = require("node:url");
 const native = require("./native-kernel.cjs");
 
 const kernel = native.load();
+// NVIDIA's SMLib kernel (native/nvidia-kernel). Only the alpha build ships it;
+// elsewhere load() comes back null and every build stays on the Rust kernel.
+const nvidiaLoader = (() => {
+  for (const p of [path.join(__dirname, "..", "native", "nvidia-kernel", "adapter.cjs")]) {
+    try { return require(p); } catch { /* not in this build */ }
+  }
+  return null;
+})();
+const nvidia = nvidiaLoader ? nvidiaLoader.load() : null;
 const SITE = path.join(__dirname, "..", "dist-site");
 // engine.js is the website's own copy, so both builds run one engine
 const engineP = import(pathToFileURL(path.join(SITE, "src", "engine.js")).href);
@@ -38,10 +47,29 @@ const loadManifold = () => {
 // what makes an unchanged feature free to rebuild.
 let queue = Promise.resolve();
 
+// msg.kernel "nvidia": NVIDIA's kernel first; a refusal there goes on to the
+// Rust kernel, and only a Rust refusal goes back to the worker (which then
+// builds on the JS kernel). Anything else: the Rust kernel, as always.
 async function build(msg) {
-  const { runEngine } = await engineP;
+  const { runEngine, EngineRefusal } = await engineP;
   const t0 = performance.now();
-  const out = await runEngine(msg.json, { rust: kernel, manifold: loadManifold, tolerance: msg.tolerance ?? 0.05 });
+  const tolerance = msg.tolerance ?? 0.05;
+  let out = null, used = "rust", nvidiaRefused = null;
+  if (msg.kernel === "nvidia" && nvidia) {
+    try {
+      out = await runEngine(msg.json, { rust: nvidia, manifold: loadManifold, tolerance });
+      used = "nvidia";
+    } catch (e) {
+      if (!(e instanceof EngineRefusal)) console.warn("[kernel] NVIDIA kernel failed:", e);
+      nvidiaRefused = String(e?.message || e).slice(0, 300);
+    }
+  } else if (msg.kernel === "nvidia") {
+    nvidiaRefused = `the NVIDIA kernel isn't in this build (${nvidiaLoader ? nvidiaLoader.load.error : "no adapter"})`;
+  }
+  if (!out) {
+    if (!kernel) throw new Error(`native kernel unavailable: ${native.load.error}`);
+    out = await runEngine(msg.json, { rust: kernel, manifold: loadManifold, tolerance });
+  }
   const ms = performance.now() - t0;
   // Copied, not transferred: Electron's MessagePortMain only transfers ports,
   // and between processes the bytes are copied either way.
@@ -49,7 +77,7 @@ async function build(msg) {
     name: s.name, exact: s.exact,
     faces: s.faces.map((f) => ({ name: f.name, positions: f.positions, normals: f.normals, index: f.index })),
   }));
-  return { ok: true, lane: out.lane, solids, stats: { ...out.stats, native: true, nativeMs: Math.round(ms) } };
+  return { ok: true, lane: out.lane, solids, stats: { ...out.stats, native: true, kernel: used, nvidiaRefused, nativeMs: Math.round(ms) } };
 }
 
 function stl2step(msg) {
@@ -62,11 +90,11 @@ function serve(port) {
     const { id, op } = data || {};
     queue = queue.then(async () => {
       try {
-        if (!kernel) throw new Error(`native kernel unavailable: ${native.load.error}`);
+        if (!kernel && !(op === "build" && nvidia) && op !== "info") throw new Error(`native kernel unavailable: ${native.load.error}`);
         let r;
         if (op === "build") r = await build(data);
         else if (op === "stl2step") r = stl2step(data);
-        else if (op === "info") r = { ok: true, info: kernel.info };
+        else if (op === "info") r = { ok: true, info: kernel?.info, nvidia: nvidia ? nvidia.info : null };
         else throw new Error(`unknown op "${op}"`);
         port.postMessage({ id, ...r });
       } catch (e) {
@@ -82,4 +110,4 @@ function serve(port) {
 process.parentPort.on("message", (e) => {
   for (const port of e.ports || []) serve(port);
 });
-process.parentPort.postMessage({ up: true, native: !!kernel, info: kernel?.info || native.load.error });
+process.parentPort.postMessage({ up: true, native: !!kernel || !!nvidia, nvidia: !!nvidia, info: kernel?.info || native.load.error });

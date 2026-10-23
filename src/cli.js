@@ -22,7 +22,7 @@ function parseArgs(argv) {
     else if (a === "-l" || a === "--lang") out.lang = argv[++i];
     else if (a === "-e" || a === "--engine") {
       out.engine = argv[++i];
-      if (!["auto", "split", "js"].includes(out.engine)) throw new Error(`--engine takes auto, split or js (got "${out.engine}")`);
+      if (!["auto", "split", "js", "nvidia", "nvidia-split"].includes(out.engine)) throw new Error(`--engine takes auto, split, js, nvidia or nvidia-split (got "${out.engine}")`);
     }
     else if (a === "-D" || a === "--define") {
       const [k, ...rest] = String(argv[++i] ?? "").split("=");
@@ -50,7 +50,9 @@ Options:
   -t, --tolerance N     Export decimal precision (default 6)
   -e, --engine NAME     auto (default): Rust kernel for exact parts, manifold for
                         meshes, JS kernel if either refuses. split: no fallback.
-                        js: the JS kernel only.
+                        js: the JS kernel only. nvidia: NVIDIA's SMLib kernel
+                        first (native builds only), then auto. nvidia-split:
+                        NVIDIA's kernel or nothing.
       --info            Print facet counts and bounding boxes, write nothing
   -h, --help            Show this message
 

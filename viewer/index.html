@@ -1739,6 +1739,9 @@
     #brep-example-note .xn-pr { background: #fa6831; color: #fff; }
     #brep-example-note .xn-pr:hover { background: #e2561f; }
     #brep-example-note .xn-ch { color: var(--text, #e8eefc); border-color: var(--border-soft, #2a3654); }
+    #brep-example-note button.xn-btn { cursor: pointer; background: none; font-family: inherit; }
+    #brep-example-note button.xn-go { background: var(--accent, #7fd1ff); color: #06101c; }
+    #brep-example-note button.xn-go:hover { filter: brightness(1.08); }
     #brep-example-note .xn-ch:hover { background: var(--hover, #1a2334); }
     #brep-example-note .xn-btn:focus-visible, #brep-example-note .xn-thumb:focus-visible, #brep-example-note .xn-x:focus-visible { outline: 2px solid var(--accent, #7fd1ff); outline-offset: 2px; }
     #brep-example-note .xn-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; border-radius: 7px; background: none; border: 0;
@@ -3692,6 +3695,14 @@
               <option value="bottom">Bottom corner, opposite the editor</option>
               <option value="dock">In the stack</option>
             </select></label>
+          <!-- Desktop alpha only (hidden elsewhere): which B-rep kernel builds
+               the model. Each one falls back to the next when it refuses. -->
+          <label class="set-row" id="set-kernel-row" hidden><span>Kernel</span>
+            <select id="set-kernel">
+              <option value="nvidia">NVIDIA SMLib (alpha), then Rust</option>
+              <option value="rust">next.BREP.io Rust</option>
+              <option value="js">BREP.io JS (deprecated, slowest)</option>
+            </select></label>
           <label class="set-row set-check"><input type="checkbox" id="set-snap" />
             <span>Snap windows to edges and corners while dragging</span></label>
           <div class="set-btns">
@@ -4479,6 +4490,18 @@
       try { const v = localStorage.getItem("brepcode.engine"); if (ENGINES.includes(v)) return v; } catch { /* private mode */ }
       return "auto";
     }
+    // Which native B-rep kernel the desktop app tries first: "nvidia" (NVIDIA's
+    // SMLib, the alpha build's default) or "rust". The kernel process falls
+    // back nvidia -> Rust -> (this page) JS kernel. The website has neither
+    // native kernel, so there it is always the Rust wasm.
+    const KERNELS = ["nvidia", "rust"];
+    const KERNEL_DEFAULT = window.brepcodeDesktop?.kernelDefault === "nvidia" ? "nvidia" : "rust";
+    function buildKernel() {
+      const q = /[?&]kernel=(\w+)/.exec(location.search)?.[1];
+      if (KERNELS.includes(q)) return q;
+      try { const v = localStorage.getItem("brepcode.kernel"); if (KERNELS.includes(v)) return v; } catch { /* private mode */ }
+      return KERNEL_DEFAULT;
+    }
     let lastEngine = null;
     // " · Exact" (Rust kernel, STEP-able), " · Mesh" (has textures/imports),
     // " · JS kernel (...)" when the split engine refused and the JS kernel built it.
@@ -4489,7 +4512,9 @@
       const n = e.stats?.roundedCurves || 0;
       const rounded = n ? ` (${n} faceted $fn curve${n === 1 ? "" : "s"} made true)` : "";
       // desktop: built by the Rust kernel as native code, not its wasm
-      const native = e.stats?.native ? " (native)" : "";
+      const native = e.stats?.kernel === "nvidia" ? " (NVIDIA)"
+        : e.stats?.nvidiaRefused && buildKernel() === "nvidia" ? " (Rust; NVIDIA refused)"
+        : e.stats?.native ? " (native)" : "";
       if (e.engine === "exact") return " · Exact" + native + rounded;
       if (e.engine === "mesh") return " · Mesh" + native + rounded;
       if (!e.fallback) return "";
@@ -6546,7 +6571,7 @@
         if (!workerOut) { try { json = await ph.toJSON(); } catch { json = null; } }
         if (json && getBuildWorker()) {
           try {
-            const r = await workerCall({ op: "build", key: "cutters", json, engine: buildEngine(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+            const r = await workerCall({ op: "build", key: "cutters", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
             if (mine !== negToken) return;
             solids = r.solids;
             fromWorker = true;
@@ -8465,6 +8490,22 @@
     $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
     $("set-chat-home").addEventListener("change", (e) => { setPref("chatHome", e.target.value); rehomeWindows(); });
     $("set-snap").addEventListener("change", (e) => setPref("snapZones", e.target.checked));
+    // Kernel: shown only where NVIDIA's kernel ships (the desktop alpha).
+    // "js" is the engine switch (JS kernel only); the other two pick the
+    // native kernel the split engine runs on.
+    if (window.brepcodeDesktop?.kernelChoice) {
+      $("set-kernel-row").hidden = false;
+      const shown = () => (buildEngine() === "js" ? "js" : buildKernel());
+      $("set-kernel").value = shown();
+      $("set-kernel").addEventListener("change", (e) => {
+        const v = e.target.value;
+        try {
+          localStorage.setItem("brepcode.engine", v === "js" ? "js" : "auto");
+          if (v !== "js") localStorage.setItem("brepcode.kernel", v);
+        } catch { /* private mode */ }
+        rebuild();
+      });
+    }
     $("set-tidy").addEventListener("click", () => rehomeWindows({ all: true }));
     $("set-lights").addEventListener("click", () => {
       for (const k of ["ambient", "key", "fill", "rim", "exposure", "filmic"]) mat[k] = MAT_DEFAULTS[k];
@@ -10216,7 +10257,7 @@ ${joined}`)(...vs);
         cancelWorkerBuild();
         if (json && getBuildWorker()) {
           try {
-            const r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+            const r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
             if (mine !== token) return;
             solids = r.solids;
             fromWorker = true;
@@ -13146,7 +13187,7 @@ ${joined}`)(...vs);
         await dsl.compile(shape, ph, []);
         const json = await ph.toJSON();
         if (liveDrag !== L || !drag) return;                 // released meanwhile
-        const r = await workerCall({ op: "build", key: "drag", json, engine: buildEngine(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+        const r = await workerCall({ op: "build", key: "drag", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
         if (liveDrag !== L || !drag) return;                 // discard, never paint stale
         for (const c of [...dragGroup.children]) {
           c.geometry?.dispose?.();
@@ -17139,13 +17180,52 @@ let SIMPLIFY_TARGET = 10000;
     // asked for a thing, not for code, and the sliders and the chat are the
     // controls they were promised. Any way of opening the editor still works.
     let quietEditor = false;
+    // After a first visitor's request: once the chat has actually built
+    // something new (the code changed and the kernel finished), let them look
+    // at it, then offer the tour. Never more than once, and it gives up
+    // quietly if nothing gets built within three minutes.
+    async function offerTourAfterBuild(before) {
+      const t0 = Date.now();
+      while (Date.now() - t0 < 180000) {
+        if (code.value !== before && lastSolids.length && !/build/i.test($("status")?.textContent || "")) break;
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (code.value === before || !lastSolids.length) return;
+      await new Promise((r) => setTimeout(r, 2500));   // a moment to see it first
+      if (stopTour) return;                               // they found the tour themselves
+      document.getElementById("brep-example-note")?.remove();
+      const el = document.createElement("div");
+      el.id = "brep-example-note";
+      el.setAttribute("role", "complementary");
+      el.setAttribute("aria-label", "Your first model");
+      el.innerHTML = `
+        <div class="xn-top"><div class="xn-txt">
+          <span class="xn-eyebrow">Your first model</span>
+          <span class="xn-head">There it is. Drag to spin it, and try the sliders.</span>
+          <span class="xn-blurb">Want a 2-minute tour of everything else BREPcode can do?</span>
+        </div></div>
+        <div class="xn-acts">
+          <button type="button" class="xn-btn xn-go">Take the tour</button>
+          <button type="button" class="xn-btn xn-ch xn-later">Not now</button>
+        </div>
+        <button type="button" class="xn-x" title="Close" aria-label="Close">&times;</button>`;
+      el.querySelector(".xn-go").addEventListener("click", () => { el.remove(); $("tour-btn").click(); });
+      for (const b of el.querySelectorAll(".xn-later, .xn-x")) b.addEventListener("click", () => el.remove());
+      document.body.appendChild(el);
+    }
     // W is welcome.js or a promise of it: the door does not wait for it.
-    async function openMakeDoor(W) {
+    // offerTour: the desktop app's first launch, where the door IS the welcome
+    // and the tour is offered once their model is on screen.
+    async function openMakeDoor(W, { offerTour = false } = {}) {
       const Wp = Promise.resolve(W).catch(() => null);
       let M;
       try { M = await import("./make.js"); } catch { $("chat-btn").click(); return; }
       M.showMake({
-        ask: (text) => openChatAndAsk(text),
+        ask: async (text) => {
+          const before = code.value;
+          await openChatAndAsk(text);
+          if (offerTour) offerTourAfterBuild(before);
+        },
         openChat: async () => { quietEditor = true; if (!chatCard.classList.contains("open")) chatBtn.click(); await ensureChat(); },
         // "Open the full editor" means the editor, with the chat alongside
         openEditor: async () => {
@@ -21564,7 +21644,13 @@ let SIMPLIFY_TARGET = 10000;
       try { localStorage.setItem("brepcode.engine", name); } catch { /* private mode */ }
       return name;
     };
-    window.brepscript.engine = () => ({ setting: buildEngine(), last: lastEngine });
+    window.brepscript.engine = () => ({ setting: buildEngine(), kernel: buildKernel(), last: lastEngine });
+    // Desktop: "nvidia" | "rust", the native kernel tried first.
+    window.brepscript.setKernel = (name) => {
+      if (!KERNELS.includes(name)) throw new Error(`kernel is one of ${KERNELS.join(", ")}`);
+      try { localStorage.setItem("brepcode.kernel", name); } catch { /* private mode */ }
+      return name;
+    };
     // What the chat is shown when "see the model" is on — exposed so you can
     // read exactly what it got rather than infer it from the answer.
     window.brepscript.modelDigest = (...a) => modelDigest(...a);
@@ -23554,6 +23640,13 @@ let SIMPLIFY_TARGET = 10000;
       const goTour = () => { if (tourGo) return; tourGo = true; $("tour-btn").click(); };
       requestAnimationFrame(goTour);
       setTimeout(goTour, 600);
+    } else if (!urlCarriesModel() && window.brepcodeDesktop?.isDesktop && (() => {
+      // The desktop app's first launch opens on the quick door: ask for a
+      // thing, see it built, then the tour is offered. Later launches open
+      // as they always have.
+      try { return !localStorage.getItem("brepcode-welcomed"); } catch { return false; }
+    })()) {
+      openMakeDoor(import("./welcome.js"), { offerTour: true });
     } else if (!urlCarriesModel() && makeRequested()) {
       // The quick door: at once, not after the welcome card's 700 ms. It is
       // the first thing this visitor sees, and on brepcode.com/make the host

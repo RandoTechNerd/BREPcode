@@ -285,7 +285,7 @@ self.onmessage = async ({ data, ports }) => {
       let nativeRefused = false;
       if (engine !== "js" && await nativeKernel()) {
         try {
-          const r = await nativeCall({ op: "build", json: data.json });
+          const r = await nativeCall({ op: "build", json: data.json, kernel: data.kernel });
           trace(`native engine: ${r.lane} (${r.stats.exactMs} ms exact, ${r.stats.meshMs} ms mesh)`);
           postSplit({ lane: r.lane, solids: r.solids, stats: r.stats });
           return;

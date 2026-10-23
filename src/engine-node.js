@@ -3,6 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 let rust = null;
 export async function loadRustKernel() {
@@ -23,4 +24,15 @@ export async function loadManifoldNode() {
     return wasm;
   })();
   return manifold;
+}
+
+// NVIDIA's SMLib kernel (native/nvidia-kernel), dressed as the Rust module so
+// runEngine() takes it unchanged. Native only: null when the addon isn't built
+// for this machine (it never is on the website).
+let nvidia;
+export function loadNvidiaKernel() {
+  if (nvidia !== undefined) return nvidia;
+  try { nvidia = createRequire(import.meta.url)("../native/nvidia-kernel/adapter.cjs").load(); }
+  catch { nvidia = null; }
+  return nvidia;
 }

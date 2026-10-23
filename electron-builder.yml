@@ -30,11 +30,20 @@ files:
   # The Rust kernel compiled to native code (rust/brepcode-native), loaded by
   # desktop/kernel-host.cjs. The website never sees it; it keeps the wasm.
   - vendor/brep-kernel-native/brepcode_native.node
+  # NVIDIA's SMLib kernel (native/nvidia-kernel), alpha builds only: the
+  # standard build runs `build-nvidia.mjs --clean` first, so the addon is
+  # absent and the app is exactly the Rust-kernel BREPcode it always was.
+  - native/nvidia-kernel/adapter.cjs
+  - vendor/brep-kernel-nvidia/brepcode_nvidia.node
+  # Apache-2.0: the licence and NVIDIA's notices travel with the binary
+  - native/nvidia-kernel/upstream/LICENSE
+  - native/nvidia-kernel/upstream/THIRD_PARTY_NOTICES.md
 
 # A native addon can't be loaded out of an archive: Windows needs a real file
 # to map. Electron redirects the require() to app.asar.unpacked by itself.
 asarUnpack:
   - vendor/brep-kernel-native/*.node
+  - vendor/brep-kernel-nvidia/*.node
 
 # The MCP server an outside AI runs to drive this window. It must be a real
 # file on disk, not inside the asar: MCP clients spawn it with their own node,
@@ -78,3 +87,19 @@ win:
 portable:
   artifactName: BREPcode.exe
   unicode: true
+
+# Apple Silicon. Unsigned for now (no Apple Developer ID): the first launch is
+# right-click -> Open. The productName in the file name tells the standard
+# build (BREPcode) from the alpha (BREPcode Alpha), which installs alongside
+# it under its own appId.
+mac:
+  icon: desktop/icon.png
+  category: public.app-category.graphics-design
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64]
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+dmg:
+  title: ${productName}

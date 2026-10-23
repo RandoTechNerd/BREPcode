@@ -95,6 +95,15 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   nativeKernelPort: () => ipcRenderer.send("kernel:port"),
   // the page threw its worker away (a cancelled build): stop the native one too
   nativeKernelReset: () => ipcRenderer.send("kernel:reset"),
+
+  // Which native kernel builds first ("nvidia" in the alpha build, else
+  // "rust"), and whether NVIDIA's kernel ships at all (it shows the picker).
+  // Read once, synchronously, so the page knows before its first build.
+  ...(() => {
+    let cfg = {};
+    try { cfg = ipcRenderer.sendSync("kernel:config") || {}; } catch { /* old main */ }
+    return { kernelDefault: cfg.kernelDefault || "rust", kernelChoice: !!cfg.nvidia };
+  })(),
 });
 
 ipcRenderer.on("kernel-port", (e) => window.postMessage({ brepcodeKernel: "port" }, "*", e.ports));
