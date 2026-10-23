@@ -29,10 +29,6 @@ jobs:
     env:
       # unsigned builds: don't go looking for a signing identity
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      # NOT inside the checkout: package.json says "type": "module", and
-      # electron-builder's icon tool (a CommonJS .js) breaks under it
-      ELECTRON_CACHE: ${{ runner.temp }}/electron
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder
     steps:
       - uses: actions/checkout@v4
 
@@ -67,6 +63,11 @@ jobs:
 
       - name: Build the app
         run: npm run ${{ matrix.script }}
+        env:
+          # NOT inside the checkout: package.json says "type": "module", and
+          # electron-builder's icon tool (a CommonJS .js) breaks under it
+          ELECTRON_CACHE: ${{ runner.temp }}/electron
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder
 
       # The alpha's own check: NVIDIA's kernel loads in this build and makes
       # real solids with the right volumes and face names.
