@@ -28,10 +28,11 @@ and takes far longer.
 
 Getting the shape right:
 
-- **Body**: `roundedGrow(r, cube(...))` rounds every edge in one step and is what
-  gives a moulded machine its look. It rounds the BOTTOM too, so trim the result
-  flat — `difference(rounded, slabBelowZero, slabAboveTop)` — or the model rocks
-  on a curve and will not print.
+- **Body**: `fillet({ r, edges: "z" }, cube(...))` rounds the vertical corners,
+  then `fillet({ r: 2, edges: "top" }, ...)` softens the top edge: that is what
+  gives a moulded machine its look, and it leaves the bottom flat so it prints.
+  Both stay exact B-rep solids. `roundedGrow()` looks similar but makes a heavy
+  triangle mesh and rounds the bottom too.
 - **Openings, not outlines.** A front window is a `difference()` all the way
   through, not a shallow recess. The hole is what reads as a machine.
 - **Dark panels beat clear ones.** A tinted door prints inside the colour budget
@@ -75,17 +76,17 @@ badge or a screen goes from the face it is on, not from the pocket behind it.
 Getting this backwards put a logo and a screen 15 mm too low on a 100 mm machine
 and it took a person looking at it to spot.
 
-**A rounded box is a hull of four cylinders, not an offset.**
+**A rounded box is a fillet of its vertical edges, not an offset.**
 
 ```
-const c = (x, y) => translate([x, y, 0], cylinder({ r: 6, h: H, $fn: 16 }));
-hull(c(x0+6, y0+6), c(x1-6, y0+6), c(x0+6, y1-6), c(x1-6, y1-6))
+translate([x0, y0, 0], fillet({ r: 6, edges: "z" }, cube([x1 - x0, y1 - y0, H])))
 ```
 
-Rounded vertical corners, flat top and bottom, one cheap convex solid.
-`roundedGrow()` on the same box rounds all twelve edges and hands the booleans
-that follow a heavy mesh: **44 s versus 5 s**, for a silhouette nobody can tell
-apart from outside.
+Rounded vertical corners, flat top and bottom, one exact solid (310 ms, 272
+triangles for an 80 x 50 x 30 box). `hull()` of four corner cylinders gives the
+same silhouette as a triangle mesh, so nothing after it can be filleted and
+STEP loses the curves; `roundedGrow()` rounds all twelve edges and hands the
+booleans that follow a heavy mesh: **44 s versus 5 s**.
 
 **Line a cavity, do not fill it.** A dark box the size of the chamber makes a
 door look deep — and hides the bed sealed inside it, which is the only thing the

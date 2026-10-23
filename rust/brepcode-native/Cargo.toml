@@ -1,0 +1,43 @@
+# BREPcode's NATIVE build of the Rust BREP kernel, for the desktop app. Same
+# upstream kernel, same pinned commit as ../brepcode-kernel (the wasm build the
+# website uses), compiled to a Node-API addon (brepcode_native.node) that
+# desktop/kernel-host.cjs loads in an Electron utility process. It exposes only
+# what src/engine.js calls; desktop/native-kernel.cjs wraps it in the same shape
+# as the wasm module so the engine runs unchanged on either.
+[package]
+name = "brepcode_native"
+version = "0.9.0-brepcode.1"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[features]
+default = ["parallel"]
+# rayon per-face tessellation inside the kernel (native threads; the wasm
+# build has none)
+parallel = ["kernel/parallel"]
+
+[dependencies]
+kernel = { package = "BREP_kernel", git = "https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL", rev = "75bad91750536b9b4fbac607b14c44b68070de6c" }
+brep_reconstruction = { package = "BREP_reconstruction", git = "https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL", rev = "75bad91750536b9b4fbac607b14c44b68070de6c" }
+napi = { version = "2", default-features = false, features = ["napi6"] }
+napi-derive = "2"
+serde_json = "1"
+# The kernel allocates constantly; the Windows heap is several times slower at
+# that than the dlmalloc the wasm build carries.
+mimalloc = { version = "0.1", default-features = false }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+# unwind, not abort: a kernel panic becomes a refusal the app falls back from,
+# instead of taking the whole kernel process down
+panic = "unwind"
+overflow-checks = false

@@ -28,10 +28,33 @@ text and the editor does the rest.
 
 ## Files
 
-- **`quicksave.js`** — defines `window.__brepPublish`. Load it from the page
-  that hosts the editor, after the app. Configure the endpoint by setting
-  `window.BREPCODE_PUBLISH_ENDPOINT` (or a `<meta name="brepcode-publish">`)
-  before it runs.
+- **`quicksave.js`** — defines `window.__brepPublish` and `window.__brepStashList`.
+  Load it from the page that hosts the editor, after the app. Configure the
+  endpoints by setting `window.BREPCODE_PUBLISH_ENDPOINT` (or a
+  `<meta name="brepcode-publish">`) and `window.BREPCODE_LIST_ENDPOINT` (or
+  `<meta name="brepcode-list">`) before it runs.
+
+### Publishing without a list endpoint does not fill the stash
+
+These are two halves of one feature and it is easy to ship only the first.
+`__brepPublish` POSTs a model to the site; the stash gallery shows what
+`__brepStashList` returns, falling back to the static
+`secret-models/manifest.json` when there is no list endpoint. That fallback file
+ships with an **empty** `models` array, so a host that implements publishing and
+not listing publishes successfully into a gallery that is permanently empty —
+the models are stored and cannot be opened. brepcode.com was in exactly this
+state.
+
+`GET /api/models` (or whatever `BREPCODE_LIST_ENDPOINT` names) should return
+the models the signed-in user has published:
+
+```json
+[{ "name": "Dash goggles", "file": "https://…/goggles.bcode" }]
+```
+
+`{ "models": [...] }` is accepted too. `file` must be a URL the browser can GET;
+relative paths resolve against the manifest location. A 404 here is fine and
+means "this host has no list endpoint" — the gallery quietly uses the manifest.
 - **`published-page.html`** — the template for `brepcode.com/<slug>`. Honours
   the `visitor` flags. Substitute the `__BREPCODE_*__` placeholders server-side.
 

@@ -10,7 +10,8 @@
 //   const { cuboid, cylinder } = primitives;
 
 import * as dsl from "./dsl.js";
-import { isProfile, profileOp, profileToSolid, offsetPolygon } from "./openscad.js";
+import { isProfile, profileOp, profileToSolid, offsetPolygon, fixedAxisRotation, roundedLeaf } from "./openscad.js";
+import { convexOutline } from "./exactshapes.js";
 
 const RAD2DEG = 180 / Math.PI;
 const vec3 = (v, fallback = 0) =>
@@ -78,6 +79,14 @@ export function roundedCylinder({
     return atCenter(dsl.sphere({ r: rr, $fn: segments }), center);
   }
 
+  // Both rims filleted on a plain cylinder: one exact solid with true curves.
+  // (A fillet of the WHOLE cylinder is refused: it picks the seam edge too, so
+  // the rims go one at a time.) A shape with no straight wall or flat core left
+  // keeps the composition below.
+  if (coreR >= 0.2 && bandH >= 0.2) {
+    const can = dsl.cylinder({ r, h, $fn: Math.max(segments, 96), center: true });
+    return atCenter(dsl.fillet({ r: rr, edges: "bottom" }, dsl.fillet({ r: rr, edges: "top" }, can)), center);
+  }
   const core = dsl.cylinder({ r: r - rr, h, $fn: segments, center: true });
   const band = dsl.cylinder({ r, h: h - 2 * rr, $fn: segments, center: true });
   const rim = (z) => dsl.translate([0, 0, z], dsl.torus({ r: r - rr, tube: rr, $fn: segments }));
@@ -99,11 +108,17 @@ export function roundedCuboid({
   if (hx < 1e-3 && hy < 1e-3 && hz < 1e-3) {
     return atCenter(dsl.sphere({ r: rr, $fn: segments }), center);
   }
+  // A box with every edge filleted IS this shape, exactly, with real curves
+  // (the hull of eight corner spheres below is the same shape as a mesh), as
+  // long as each face keeps a flat between its fillets.
+  if (hx >= 0.1 && hy >= 0.1 && hz >= 0.1) {
+    return atCenter(dsl.fillet({ r: rr }, dsl.cube([x, y, z], { center: true })), center);
+  }
   const balls = [];
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
     balls.push(dsl.translate([sx * hx, sy * hy, sz * hz], dsl.sphere({ r: rr, $fn: segments })));
   }
-  return atCenter(dsl.hull(...balls), center);
+  return atCenter(dsl.hull({ exact: true }, ...balls), center);
 }
 
 // ellipsoid({radius:[x,y,z]}) — a sphere scaled per axis.
@@ -223,7 +238,9 @@ export function roundedRectangle({
       pts.push([cx + ox + rr * Math.cos(a), cy + oy + rr * Math.sin(a)]);
     }
   }
-  return polygon({ points: pts });
+  // the rectangle inset by the radius, grown back with round corners: an
+  // extrusion of it can be the exact rounded prism (src/exactshapes.js)
+  return roundedLeaf(pts, [[cx - hx, cy - hy], [cx + hx, cy - hy], [cx + hx, cy + hy], [cx - hx, cy + hy]], rr);
 }
 
 // star({vertices, outerRadius, innerRadius}) — alternating radii, like JSCAD's.
@@ -296,7 +313,9 @@ export const extrusions = { extrudeLinear, extrudeRotate };
 export const hull = (...shapes) => {
   const list = shapes.flat();
   if (list.some(isProfile)) throw new Error("hull() of 2D outlines isn't supported — extrude them first.");
-  return dsl.hull(...list);
+  // exact B-rep where the pieces allow it (corner cylinders, coaxial discs,
+  // corner spheres, flat pieces); otherwise the same mesh hull as before
+  return dsl.hull({ exact: true }, ...list);
 };
 
 // hullChain(a, b, c) hulls each CONSECUTIVE pair and unions the results — the
@@ -305,7 +324,7 @@ export const hullChain = (...shapes) => {
   const list = shapes.flat();
   if (list.length < 2) return hull(...list);
   const links = [];
-  for (let i = 0; i < list.length - 1; i++) links.push(dsl.hull(list[i], list[i + 1]));
+  for (let i = 0; i < list.length - 1; i++) links.push(dsl.hull({ exact: true }, list[i], list[i + 1]));
   return dsl.union(...links);
 };
 
@@ -318,7 +337,13 @@ export const hulls = { hull, hullChain };
 export function offset({ delta = 1, corners = "round", segments = 24 } = {}, geom) {
   if (!isProfile(geom)) throw new Error("offset() takes a 2D geometry — for 3D, scale() or rebuild at the larger size.");
   if (!geom.leaf) throw new Error("offset() needs a single outline, not a 2D boolean result.");
-  return polygon({ points: offsetPolygon(geom.pts, delta, segments, corners !== "edge") });
+  const pts = offsetPolygon(geom.pts, delta, segments, corners !== "edge");
+  // a convex outline grown with round corners stays a rounded outline
+  if (corners !== "edge" && delta > 0) {
+    const base = geom.round ? geom.round.base : convexOutline(geom.pts);
+    if (base) return roundedLeaf(pts, base, (geom.round ? geom.round.r : 0) + delta);
+  }
+  return polygon({ points: pts });
 }
 export const expand = offset;
 export const expansions = { expand, offset };
@@ -369,8 +394,10 @@ export const translateY = (n, ...shapes) => dsl.translate([0, n, 0], shapes.flat
 export const translateZ = (n, ...shapes) => dsl.translate([0, 0, n], shapes.flat());
 
 // radians in, degrees out
+// JSCAD turns about X, then Y, then Z (fixed axes), like OpenSCAD: see
+// fixedAxisRotation for why the angles cannot go to dsl.rotate as they are.
 export const rotate = (angles, ...shapes) =>
-  dsl.rotate(vec3(angles).map((a) => a * RAD2DEG), shapes.flat());
+  dsl.rotate(fixedAxisRotation(vec3(angles).map((a) => a * RAD2DEG)), shapes.flat());
 export const rotateX = (a, ...shapes) => dsl.rotate([a * RAD2DEG, 0, 0], shapes.flat());
 export const rotateY = (a, ...shapes) => dsl.rotate([0, a * RAD2DEG, 0], shapes.flat());
 export const rotateZ = (a, ...shapes) => dsl.rotate([0, 0, a * RAD2DEG], shapes.flat());

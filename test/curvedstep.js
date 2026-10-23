@@ -314,5 +314,25 @@ console.log("\nnon-uniform scale\n");
     vol > 8000 && vol < 8950, vol.toFixed(0));
 }
 
+console.log("\nexact text: real glyph curves in the STEP\n");
+{
+  const ot = require("../node_modules/opentype.js/dist/opentype.js");
+  const { exactText } = await import("../src/textexact.js");
+  const { build } = await import("../index.js");
+  const buf = readFileSync("viewer/fonts/Roboto-Bold.woff");
+  const font = ot.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  const word = exactText(font, "Og8", { size: 10, height: 2 });
+  const lane = await build(word);
+  check("text() from the font builds on the exact kernel", lane.engine === "exact", `${lane.engine} ${lane.fallback || ""}`);
+  const step = await stepOf(word);
+  check("...and its letters are B-spline curves in the STEP, not rows of lines",
+    count(step, /B_SPLINE_CURVE/g) >= 6 && count(step, /SURFACE_OF_LINEAR_EXTRUSION|B_SPLINE_SURFACE/g) >= 6,
+    `${count(step, /B_SPLINE_CURVE/g)} curves, ${count(step, /SURFACE_OF_LINEAR_EXTRUSION|B_SPLINE_SURFACE/g)} curved walls`);
+  // "O", "g" and "8" have 1, 1 and 2 counters: the holes go through
+  const plate = difference(translate([-15, -8, -3], cube([30, 16, 3])), exactText(font, "Og8", { size: 10, height: 1, mode: "deboss" }));
+  const deb = await build(plate);
+  check("...a deboss into a plate stays exact", deb.engine === "exact", `${deb.engine} ${deb.fallback || ""}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

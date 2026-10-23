@@ -95,12 +95,6 @@ part = b.union(a)
 
 console.log("\nerror paths\n");
 try {
-  fromPython(`with BuildPart() as bp:\n    Box(10, 10, 10)`);
-  check("builder mode errors helpfully", false, "no error");
-} catch (e) {
-  check("builder mode errors helpfully", /ALGEBRA mode/.test(e.message), e.message.slice(0, 60));
-}
-try {
   fromPython(`import cadquery as cq\nr = cq.Workplane("XY").box(10,10,10).faces(">Z").workplane().hole(4)`);
   check("cq selectors error helpfully", false, "no error");
 } catch (e) {
@@ -262,38 +256,151 @@ part = extrude(Circle(20) - PolarLocations(12, 6) * Circle(3), amount=3)`);
   check("PolarLocations ring of holes", near(v, expect, expect * 0.02), `${v.toFixed(0)} vs ${expect.toFixed(0)}`);
 }
 try {
-  fromPython(`from build123d import *
-for loc in GridLocations(25, 15, 2, 2):
-    holes += loc * Circle(2.5)`);
-  check("the for-loop form teaches the algebra form", false, "no error");
-} catch (e) {
-  check("the for-loop form teaches the algebra form", /GridLocations\(25, 15, 2, 2\) \* Circle/.test(e.message), e.message.slice(0, 90));
-}
-try {
   fromPython(`from build123d import *\npart = sweep(Circle(3), path=Line((0,0),(10,10)))`);
   check("sweep refuses by name with a way forward", false, "no error");
 } catch (e) {
   check("sweep refuses by name with a way forward", /sweep\(\)/.test(e.message) && /hull/.test(e.message), e.message.slice(0, 80));
 }
-try {
-  // builder mode full of @ operators — the diagnosis must beat the tokenizer
-  fromPython(`from build123d import *
-with BuildLine() as my_1d_wire:
-    l1 = Line((0, 0), (10, 0))
-    a1 = TangentArc(l1 @ 1, (20, 10), tangent=(1, 1))
-with BuildPart() as my_3d_part:
-    extrude(amount=10)`);
-  check("builder mode with @ gets the algebra guide, not 'unexpected @'", false, "no error");
-} catch (e) {
-  check("builder mode with @ gets the algebra guide, not 'unexpected @'",
-    /ALGEBRA mode/.test(e.message) && !/unexpected/i.test(e.message), e.message.slice(0, 80));
+
+console.log("\nbuilder mode and Python blocks\n");
+{
+  const { stl } = await run(`with BuildPart() as bp:\n    Box(10, 10, 10)`);
+  check("with BuildPart() as bp: builds what's inside", near(volumeOf(stl), 1000, 1), volumeOf(stl).toFixed(1));
+}
+{
+  // pocket on the top face, two through holes, rounded vertical corners
+  const { stl } = await run(`from build123d import *
+with BuildPart() as bracket:
+    Box(40, 30, 10)
+    with BuildSketch(bracket.faces().sort_by(Axis.Z)[-1]):
+        Circle(6)
+    extrude(amount=-5, mode=Mode.SUBTRACT)
+    with Locations((-12, -8), (12, 8)):
+        Hole(2)
+    fillet(bracket.edges().filter_by(Axis.Z), radius=3)
+part = bracket.part
+`);
+  const expect = 40 * 30 * 10 - Math.PI * 36 * 5 - 2 * Math.PI * 4 * 10 - 4 * (9 - Math.PI * 9 / 4) * 10;
+  const v = volumeOf(stl), b = boundsOf(stl);
+  check("builder: box, top-face pocket, holes, vertical fillets", near(v, expect, expect * 0.01), `${v.toFixed(0)} vs ${expect.toFixed(0)}`);
+  check("...stays centred like build123d", near(b.x[0], -20, 0.05) && near(b.z[1], 5, 0.05), JSON.stringify(b));
+}
+{
+  const { stl } = await run(`from build123d import *
+with BuildPart() as plate:
+    Box(40, 30, 4)
+    with GridLocations(25, 15, 2, 2):
+        Hole(2.5)
+`);
+  const expect = 40 * 30 * 4 - 4 * Math.PI * 6.25 * 4;
+  check("with GridLocations: Hole() drills every spot", near(volumeOf(stl), expect, expect * 0.01), volumeOf(stl).toFixed(0));
+}
+{
+  // functions, loops, if/else, %, and += / -= on a solid
+  const { stl } = await run(`from build123d import *
+import math
+
+def peg(r, h=6):
+    return Cylinder(r, h)
+
+part = Box(60, 20, 5)
+for i in range(4):
+    x = -22.5 + 15 * i
+    if i % 2 == 0:
+        part += Pos(x, 0, 5) * peg(2)
+    else:
+        part -= Pos(x, 0, 0) * Cylinder(2, 10)
+`);
+  const expect = 60 * 20 * 5 + 2 * Math.PI * 4 * 5.5 - 2 * Math.PI * 4 * 5;
+  check("def + for + if/else build the right solid", near(volumeOf(stl), expect, expect * 0.01), `${volumeOf(stl).toFixed(1)} vs ${expect.toFixed(1)}`);
+}
+{
+  const { stl } = await run(`from build123d import *
+with BuildPart() as p:
+    with BuildSketch():
+        with BuildLine():
+            l1 = Line((0, 0), (20, 0))
+            l2 = Line(l1 @ 1, (20, 10))
+            l3 = Line(l2 @ 1, (0, 10))
+            Line(l3 @ 1, (0, 0))
+        make_face()
+    extrude(amount=5)
+`);
+  check("BuildLine with @ + make_face() + extrude()", near(volumeOf(stl), 1000, 1), volumeOf(stl).toFixed(1));
+}
+{
+  const { stl } = await run(`from build123d import *
+with BuildPart() as p:
+    with BuildSketch(Plane.XZ):
+        Rectangle(10, 20)
+    extrude(amount=5)
+`);
+  const b = boundsOf(stl);
+  check("BuildSketch(Plane.XZ) extrudes along -Y", near(b.y[0], -5, 0.05) && near(b.y[1], 0, 0.05) && near(b.z[1] - b.z[0], 20, 0.05), JSON.stringify(b));
+}
+{
+  const { stl } = await run(`from build123d import *
+import math
+radii = [math.sqrt(x) * 2 for x in range(1, 5) if x != 3]
+part = sum((Pos(10 * i, 0, 0) * Sphere(r) for i, r in enumerate(radii)), Box(1, 1, 1))
+`);
+  const expect = 1 + [1, 2, 4].map((x) => Math.sqrt(x) * 2).reduce((a, r) => a + (4 / 3) * Math.PI * r ** 3, 0);
+  check("comprehension + enumerate + sum() of solids", near(volumeOf(stl), expect, expect * 0.03), `${volumeOf(stl).toFixed(0)} vs ${expect.toFixed(0)}`);
+}
+{
+  const { stl } = await run(`from build123d import *
+with BuildPart() as p:
+    with BuildSketch():
+        with BuildLine():
+            l1 = Line((0, 0), (20, 0))
+            a1 = TangentArc(l1 @ 1, (20, 20), tangent=l1 % 1)
+            Line(a1 @ 1, (0, 20))
+            Line((0, 20), (0, 0))
+        make_face()
+    extrude(amount=2)
+`);
+  const b = boundsOf(stl);
+  check("TangentArc bulges out past the corner", b.x[1] > 29 && b.x[1] < 31, JSON.stringify(b.x));
+}
+{
+  const { stl } = await run(`from build123d import *
+with BuildPart() as p:
+    Box(20, 20, 20)
+    Sphere(14, mode=Mode.INTERSECT)
+    Cylinder(3, 40, mode=Mode.SUBTRACT)
+    Box(5, 5, 5, mode=Mode.PRIVATE)
+`);
+  check("modes: INTERSECT, SUBTRACT, PRIVATE", volumeOf(stl) < 8000 && volumeOf(stl) > 4000, volumeOf(stl).toFixed(0));
+}
+{
+  const { stl } = await run(`from build123d import *\npart = Pos((Line((0, 0), (10, 0)) @ 1)[0], 0, 0) * Box(2, 2, 2)`);
+  const b = boundsOf(stl);
+  check("a flat @ reads the point along the line", near((b.x[0] + b.x[1]) / 2, 10, 0.01), JSON.stringify(b.x));
 }
 try {
-  fromPython(`from build123d import *\np = Line((0,0),(10,0)) @ 1`);
-  check("a flat @ explains the position operator", false, "no error");
+  fromPython(`from build123d import *\nwith BuildPart() as p:\n    Rectangle(10, 10)\n`);
+  check("a sketch object straight in a BuildPart explains itself", false, "no error");
 } catch (e) {
-  check("a flat @ explains the position operator", /position operator/.test(e.message), e.message.slice(0, 80));
+  check("a sketch object straight in a BuildPart explains itself", /BuildSketch/.test(e.message) && /line 3/.test(e.message), e.message.slice(0, 90));
 }
+{
+  // The finished part is NOT called part/result here, and the uncut block is
+  // called `body`: show_object() says which one is the model. (A rewrite once
+  // preferred the name "body" and built the uncut block.)
+  const src = `from build123d import *
+body = Box(40, 40, 20)
+hole = Cylinder(5, 30)
+stand = body - hole
+show_object(stand)
+`;
+  const { stl } = await run(src);
+  const expect = 40 * 40 * 20 - Math.PI * 25 * 20;
+  check("show_object() picks the model, not the variable named body", near(volumeOf(stl), expect, expect * 0.01), volumeOf(stl).toFixed(0));
+  const { stl: s2 } = await run(src.replace("show_object(stand)\n", ""));
+  check("...and without show(), the last solid made wins over `body`", near(volumeOf(s2), expect, expect * 0.01), volumeOf(s2).toFixed(0));
+}
+check("builder code detected as python", looksLikePython("with BuildPart() as p:\n    Box(1, 1, 1)"));
+check("python loop around build123d detected", looksLikePython("part = Box(1,1,1)\nfor i in range(3):\n    part += Pos(i,0,0) * Box(1,1,1)"));
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

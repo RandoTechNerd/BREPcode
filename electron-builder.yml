@@ -27,6 +27,22 @@ files:
   # dependency the main process actually loads. It has no dependencies of its
   # own, so this pulls in ~670KB and nothing else.
   - node_modules/nodemailer/**/*
+  # The Rust kernel compiled to native code (rust/brepcode-native), loaded by
+  # desktop/kernel-host.cjs. The website never sees it; it keeps the wasm.
+  - vendor/brep-kernel-native/brepcode_native.node
+
+# A native addon can't be loaded out of an archive: Windows needs a real file
+# to map. Electron redirects the require() to app.asar.unpacked by itself.
+asarUnpack:
+  - vendor/brep-kernel-native/*.node
+
+# The MCP server an outside AI runs to drive this window. It must be a real
+# file on disk, not inside the asar: MCP clients spawn it with their own node,
+# which cannot read an archive. Lands in resources/agent/mcp-server.mjs.
+extraResources:
+  - from: agent
+    to: agent
+    filter: ["**/*.mjs"]
 
 extraMetadata:
   main: desktop/main.cjs

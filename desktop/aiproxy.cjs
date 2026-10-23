@@ -36,8 +36,15 @@ const ALLOWED_HOSTS = new Set([
 
 // Azure OpenAI gives every customer their own subdomain, so it cannot be a
 // fixed string — but it is still pinned to Microsoft's domain rather than
-// "any host with the right shape".
-const ALLOWED_SUFFIXES = [".openai.azure.com", ".services.ai.azure.com"];
+// "any host with the right shape". Cloudflare Workers are where the house
+// AI's proxy lives (docs/house-ai.md), so that domain is allowed too; a
+// proxy on a custom domain has to be added here by name.
+const ALLOWED_SUFFIXES = [".openai.azure.com", ".services.ai.azure.com", ".workers.dev"];
+
+// A local model server (LM Studio, Ollama, Lemonade, llama.cpp) is plain
+// http on this machine. It is the one place http is allowed: loopback only,
+// so the relay still cannot be pointed at anything on the network.
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\]|::1)$/i;
 
 const ALLOWED_HEADERS = new Set([
   "content-type", "authorization", "x-api-key", "anthropic-version",
@@ -47,8 +54,9 @@ const ALLOWED_HEADERS = new Set([
 function checkUrl(raw) {
   let u;
   try { u = new URL(String(raw)); } catch { throw new Error("not a URL"); }
-  if (u.protocol !== "https:") throw new Error("HTTPS only");
   const host = u.hostname.toLowerCase();
+  if (u.protocol === "http:" && LOOPBACK.test(host)) return u;     // a local model server
+  if (u.protocol !== "https:") throw new Error("HTTPS only (except a local server on localhost)");
   const ok = ALLOWED_HOSTS.has(host) || ALLOWED_SUFFIXES.some((s) => host.endsWith(s));
   if (!ok) throw new Error(`host not allowed: ${host}`);
   return u;

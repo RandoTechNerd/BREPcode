@@ -87,4 +87,15 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   // operation and a name, and main builds the address from its own constant,
   // so this cannot be turned into a relay to somewhere else.
   shortLink: (req) => ipcRenderer.invoke("shortlink:call", req),
+
+  // The native Rust kernel (kernel.cjs, kernel-host.cjs). Asking delivers a
+  // MessagePort to the page as a window message { brepcodeKernel: "port" },
+  // which the page passes to its build worker; { brepcodeKernel: "down" }
+  // means use the wasm kernel. The port speaks only build / stl2step / info.
+  nativeKernelPort: () => ipcRenderer.send("kernel:port"),
+  // the page threw its worker away (a cancelled build): stop the native one too
+  nativeKernelReset: () => ipcRenderer.send("kernel:reset"),
 });
+
+ipcRenderer.on("kernel-port", (e) => window.postMessage({ brepcodeKernel: "port" }, "*", e.ports));
+ipcRenderer.on("kernel-down", (_e, reason) => window.postMessage({ brepcodeKernel: "down", reason: String(reason || "") }, "*"));

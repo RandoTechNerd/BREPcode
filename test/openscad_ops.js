@@ -104,11 +104,17 @@ console.log("\nminkowski() is the word people arrive with\n");
     short.kind === grow.kind && short.amount === grow.amount,
     JSON.stringify({ kind: short.kind, amount: short.amount }));
 
-  // What someone hand-translating OpenSCAD types.
+  // What someone hand-translating OpenSCAD types. A box and a ball is the
+  // exact twin (the box grown by r, filleted all round); a part with no exact
+  // twin is still roundedGrow by the ball's radius.
   const openscadStyle = dsl.minkowski(dsl.cube([20, 20, 20]), dsl.sphere({ r: 3 }));
-  check("minkowski(part, sphere({r})) reads the radius off the ball",
-    openscadStyle.kind === "roundify" && openscadStyle.amount === 3,
+  check("minkowski(box, sphere({r})) is the exact filleted box",
+    openscadStyle.kind === "edgeop" && openscadStyle.code === "F" && openscadStyle.amount === 3,
     JSON.stringify({ kind: openscadStyle.kind, amount: openscadStyle.amount }));
+  const lumpy = dsl.minkowski(dsl.union(dsl.cube([20, 20, 20]), dsl.sphere({ r: 12 })), dsl.sphere({ r: 3 }));
+  check("minkowski(part, sphere({r})) reads the radius off the ball",
+    lumpy.kind === "roundify" && lumpy.amount === 3,
+    JSON.stringify({ kind: lumpy.kind, amount: lumpy.amount }));
 
   // Rolling one part around another shape is a different, much larger
   // operation. Guessing a radius from a cube would silently build the wrong
@@ -124,6 +130,45 @@ console.log("\nminkowski() is the word people arrive with\n");
   check("a radius with no shape is refused", /needs a shape/.test(bare), bare.slice(0, 80));
 }
 
+
+// rotate([x, y, z]) turns about X, then Y, then Z (fixed axes): Rz*Ry*Rx. The
+// DSL's own order is the reverse, and pasted files once came out turned wrong.
+{
+  const bbox = async (src) => {
+    const v = [...toSTL(await build(fromOpenSCAD(src)), "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    return [0, 1, 2].map((k) => [Math.min(...v.map((p) => p[k])), Math.max(...v.map((p) => p[k]))]);
+  };
+  const near = (a, b) => a.every((r, k) => Math.abs(r[0] - b[k][0]) < 0.02 && Math.abs(r[1] - b[k][1]) < 0.02);
+  const got = await bbox("rotate([90,0,90]) cube([10,20,30]);");
+  check("rotate([90,0,90]) cube([10,20,30]) lands where OpenSCAD puts it",
+    near(got, [[0, 30], [0, 10], [0, 20]]), JSON.stringify(got));
+  // three angles, none a right angle, against OpenSCAD's matrix worked by hand
+  const d = Math.PI / 180, [x, y, z] = [30 * d, 45 * d, 60 * d];
+  const Rx = [[1, 0, 0], [0, Math.cos(x), -Math.sin(x)], [0, Math.sin(x), Math.cos(x)]];
+  const Ry = [[Math.cos(y), 0, Math.sin(y)], [0, 1, 0], [-Math.sin(y), 0, Math.cos(y)]];
+  const Rz = [[Math.cos(z), -Math.sin(z), 0], [Math.sin(z), Math.cos(z), 0], [0, 0, 1]];
+  const mul = (A, B) => A.map((row, i) => B[0].map((_, j) => row.reduce((s, _, k) => s + A[i][k] * B[k][j], 0)));
+  const M = mul(Rz, mul(Ry, Rx));
+  const pts = [];
+  for (const a of [0, 10]) for (const b of [0, 20]) for (const c of [0, 30]) pts.push(M.map((r) => r[0] * a + r[1] * b + r[2] * c));
+  const want = [0, 1, 2].map((k) => [Math.min(...pts.map((p) => p[k])), Math.max(...pts.map((p) => p[k]))]);
+  const got3 = await bbox("rotate([30,45,60]) cube([10,20,30]);");
+  check("rotate([30,45,60]) matches OpenSCAD's Rz*Ry*Rx", near(got3, want), JSON.stringify(got3));
+}
+
+// rotate_extrude of a 2D difference is a hollow lathe, not a solid one
+{
+  const r = await build(fromOpenSCAD("rotate_extrude($fn=64) difference(){ square([10,20]); square([8,30]); }"));
+  const v = [...toSTL(r, "t").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  let vol = 0;
+  for (let i = 0; i < v.length; i += 3) {
+    const [a, b, c] = v.slice(i, i + 3);
+    vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+  }
+  const tube = Math.PI * (10 * 10 - 8 * 8) * 20;
+  check("rotate_extrude of a difference comes out hollow", Math.abs(vol - tube) / tube < 0.02,
+    `${vol.toFixed(0)} mm3, a tube is ${tube.toFixed(0)}, solid would be ${(Math.PI * 100 * 20).toFixed(0)}`);
+}
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

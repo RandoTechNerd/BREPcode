@@ -24,6 +24,8 @@ const slicer = require("./slicer.cjs");
 const claude = require("./claude.cjs");
 const aiproxy = require("./aiproxy.cjs");
 const shortlink = require("./shortlink.cjs");
+const bridge = require("./bridge.cjs");
+const kernel = require("./kernel.cjs");
 
 const ROOT = path.join(__dirname, "..", "dist-site");
 
@@ -201,6 +203,8 @@ if (!EMBEDDED) app.whenReady().then(() => {
   claude.register();        // chat via the user's own Claude Code login
   aiproxy.register();       // OpenAI refuses browser chat; a desktop app has no origin
   shortlink.register();     // same reason: CORS does not cover app://, the main process has no origin
+  bridge.register();        // lets an outside AI drive this window — off unless asked for
+  kernel.register();        // the Rust kernel as native code, beside the wasm one
   serveBundle();
 
   // A stock menu on Windows just adds noise; keep the accelerators that matter.

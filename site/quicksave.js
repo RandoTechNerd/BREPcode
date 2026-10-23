@@ -83,3 +83,36 @@ if (window.BREPCODE_MANIFEST_URL) {
     localStorage.setItem("brepcode-secret-url", window.BREPCODE_MANIFEST_URL);
   } catch { /* private mode: the gallery just stays on its default */ }
 }
+
+// WHAT HAS ACTUALLY BEEN PUBLISHED.
+//
+// Publishing POSTs here; the gallery read a static file. Nothing joined the
+// two, so a model could publish successfully and still never appear in the
+// stash — which is exactly what happened on brepcode.com, where the served
+// manifest is still the shipped stub with an empty `models` array.
+//
+// The app calls this when it exists and falls back to the manifest when it
+// does not, so a host without the endpoint keeps working as before and the
+// offline exe is untouched.
+//
+// Expected response: `[{ name, file }]` or `{ models: [...] }`, where `file`
+// is a URL the browser can GET — the gallery resolves it against the manifest
+// path and opens .bcode in the editor. Same-origin cookies, no credential
+// here, same as publishing.
+const listEndpoint = () =>
+  window.BREPCODE_LIST_ENDPOINT
+  || document.querySelector('meta[name="brepcode-list"]')?.content
+  || "/api/models";
+
+window.__brepStashList = async () => {
+  const res = await fetch(listEndpoint(), {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { accept: "application/json" },
+    cache: "no-store",
+  });
+  // A 404 means this host has no list endpoint. Throwing sends the gallery to
+  // the manifest, which is the correct answer, not an error worth showing.
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};

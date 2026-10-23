@@ -30,8 +30,8 @@ thickness. Half is the whole trick: sink it fully and there is nothing to grip.
 ```js
 const L = 182, W = 27, T = 22;              // from the photo, via #measuring
 const bin = gridfinityBin({ x: 3, y: 1, u: 3 });
-const pocket = translate([0, 0, 21 - T / 2],
-  roundedGrow(2, cube([L - 4, W - 4, T])));  // outline + clearance, half-sunk
+const pocket = translate([0, 0, 21 - T / 2],  // outline + clearance, half-sunk:
+  fillet(2, translate([-2, -2, -2], cube([L, W, T + 4]))));  // exact, unlike roundedGrow
 const scoop = translate([L / 2, 0, 18], rotate([0, 90, 0],
   cylinder({ r: 11, h: 40, $fn: 32 })));     // so it can be picked up
 return difference(bin, translate([-(L - 4) / 2, -(W - 4) / 2, 0], pocket), scoop);

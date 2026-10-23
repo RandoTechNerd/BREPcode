@@ -253,7 +253,7 @@ export function shell(opts = {}) {
     if (rad <= 0.05) return translate([-w / 2, -d / 2, zOff], cube([w, d, h]));
     const c = (sx, sy) => translate([sx * (w / 2 - rad), sy * (d / 2 - rad), zOff],
       cylinder({ r: rad, h, $fn }));
-    return hull(c(-1, -1), c(1, -1), c(1, 1), c(-1, 1));
+    return hull({ exact: true }, c(-1, -1), c(1, -1), c(1, 1), c(-1, 1));
   };
   const outer = box(x, y, z, r, 0);
   if (opts.solid) return outer;
@@ -277,7 +277,7 @@ export function lidLip(opts = {}) {
     if (rad <= 0.05) return translate([-w / 2, -d / 2, 0], cube([w, d, depth + 0.01]));
     const c = (sx, sy) => translate([sx * (w / 2 - rad), sy * (d / 2 - rad), 0],
       cylinder({ r: rad, h: depth + 0.01, $fn }));
-    return hull(c(-1, -1), c(1, -1), c(1, 1), c(-1, 1));
+    return hull({ exact: true }, c(-1, -1), c(1, -1), c(1, 1), c(-1, 1));
   };
   return translate([0, 0, -depth], difference(
     box(x, y, r),
@@ -300,7 +300,7 @@ export function vent(opts = {}) {
   const pitch = slot + gap;
   const n = Math.max(1, Math.floor((w + gap) / pitch));
   const span = n * pitch - gap;
-  const one = (x) => translate([x, 0, -0.01], hull(
+  const one = (x) => translate([x, 0, -0.01], hull({ exact: true },
     translate([0, -(h - slot) / 2, 0], cylinder({ d: slot, h: t + 0.02, $fn })),
     translate([0, (h - slot) / 2, 0], cylinder({ d: slot, h: t + 0.02, $fn })),
   ));
@@ -374,7 +374,7 @@ export function handle(opts = {}) {
   const leg = (x) => translate([x, 0, 0], cylinder({ d: foot, h: rise - r, $fn }));
   const top = (x) => translate([x, 0, rise - r], sphere({ r, $fn }));
   return union(leg(-span / 2), leg(span / 2),
-    hull(top(-span / 2), top(span / 2)));
+    hull({ exact: true }, top(-span / 2), top(span / 2)));
 }
 
 // A wall hook: a plate, an arm, and a lip so things do not slide off.
@@ -409,7 +409,7 @@ export function labelPlate(opts = {}) {
   if (r <= 0.05) return translate([-w / 2, -h / 2, 0], cube([w, h, t]));
   const c = (sx, sy) => translate([sx * (w / 2 - r), sy * (h / 2 - r), 0],
     cylinder({ r, h: t, $fn }));
-  return hull(c(-1, -1), c(1, -1), c(1, 1), c(-1, 1));
+  return hull({ exact: true }, c(-1, -1), c(1, -1), c(1, 1), c(-1, 1));
 }
 
 // --------------------------------------------------------------- motion
@@ -509,7 +509,7 @@ export function pcbPlate(id = "pi4", opts = {}) {
   const $fn = opts.$fn ?? SIDES;
   const W = b.w + margin * 2, D = b.d + margin * 2;
   const c = (sx, sy) => translate([sx * (W / 2 - r), sy * (D / 2 - r), 0], cylinder({ r, h: t, $fn }));
-  return union(hull(c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)),
+  return union(hull({ exact: true }, c(-1, -1), c(1, -1), c(1, 1), c(-1, 1)),
     translate([0, 0, t], pcbStandoffs(id, { h, ...opts })));
 }
 
@@ -814,7 +814,7 @@ export function slot(opts = {}) {
   const depth = pos(opts.depth ?? 6, "depth");
   const $fn = opts.$fn ?? SIDES;
   const end = (x) => translate([x, 0, -0.01], cylinder({ d, h: depth + 0.02, $fn }));
-  return hull(end(-len / 2), end(len / 2));
+  return hull({ exact: true }, end(-len / 2), end(len / 2));
 }
 
 // A spring clip that snaps round a cable or a rod.

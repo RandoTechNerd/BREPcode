@@ -214,7 +214,11 @@ async function ask({ system, prompt, model, effort, resume, imagePath, imagePath
     };
 
     const child = spawn(r.file, r.args, { windowsHide: true, env });
-    const killer = setTimeout(() => { try { child.kill(); } catch { /* already gone */ } }, 300000);
+    // Five minutes, then it is stopped: and SAID to be stopped. A kill with no
+    // result event used to come out as "Claude Code returned nothing", which
+    // reads as a broken install rather than a reply that ran out of time.
+    let timedOut = false;
+    const killer = setTimeout(() => { timedOut = true; try { child.kill(); } catch { /* already gone */ } }, 300000);
 
     let result = null, stderr = "", lineBuf = "", chars = 0, lastNote = 0;
     const note = (text) => {
@@ -262,6 +266,10 @@ async function ask({ system, prompt, model, effort, resume, imagePath, imagePath
         return;
       }
       if (result && result.is_error) { resolve({ ok: false, error: friendly(result.result || stderr) }); return; }
+      if (timedOut) {
+        resolve({ ok: false, error: `Claude Code was still working after 5 minutes, so I stopped it${chars ? ` (${chars.toLocaleString()} characters in)` : ""}. Try Effort: Low, a faster model, or ask for less in one go.` });
+        return;
+      }
       resolve({ ok: false, error: friendly(stderr || "Claude Code returned nothing.") });
     });
     child.stdin.on("error", () => { /* EPIPE if it died instantly — close reports it */ });

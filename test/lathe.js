@@ -97,13 +97,19 @@ console.log("\na profile touching the axis is a real lathe\n");
 
 console.log("\nwhat it refuses, and why\n");
 {
-  // A detached SQUARE would sweep a ring of square section. The kernel has no
-  // such primitive, and quietly rounding it off would be a lie about the part.
+  // A detached SQUARE sweeps a ring of square section: a full turn of it is the
+  // outer cylinder minus the inner, which is exact (src/exactshapes.js). A
+  // 6 x 6 section from r 30 to 36 is pi * (36^2 - 30^2) * 6 = 7464 mm3.
+  const ring = await measure("rotate_extrude() translate([30, 0, 0]) square([6, 6]);");
+  check("a detached square, full turn, is a ring of the right volume", ring.vol > 7300 && ring.vol < 7500, `${ring.vol.toFixed(0)} mm3 vs 7464 exact`);
+  // Any other detached outline (a triangle here) would sweep a section the
+  // kernel has no primitive for, and quietly rounding it off would be a lie
+  // about the part.
   let threw = "";
-  try { fromOpenSCAD("rotate_extrude() translate([30, 0, 0]) square([6, 6]);"); }
+  try { fromOpenSCAD("rotate_extrude() polygon([[30, 0], [36, 0], [33, 6]]);"); }
   catch (e) { threw = e.message; }
-  check("a detached non-circular profile is refused", /does not touch the axis/.test(threw), threw);
-  check("...and says both ways out", /x = 0/.test(threw) && /tube\(\)/.test(threw), threw);
+  check("a detached outline it cannot sweep is refused", /does not touch the axis/.test(threw), threw);
+  check("...and says the ways out", /x = 0/.test(threw) && /tube\(\)/.test(threw), threw);
 
   threw = "";
   try { fromOpenSCAD("rotate_extrude() translate([-30, 0, 0]) circle(r = 5);"); }

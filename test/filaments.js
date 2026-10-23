@@ -469,14 +469,27 @@ console.log("\nthe glint is a real specular test against the real lights\n");
   // Flakes lie nearly flat in the plastic. Random directions over the whole
   // sphere put half of them facing INTO the part, where they can never catch
   // anything — half the glitter simply missing.
+  // (in WORLD space now, fixed to the part: tied to the camera, a flake kept
+  // its tilt relative to the eye and orbiting barely changed it)
   check("a facet is the surface normal jittered, not a random direction",
-    /normalize\(nrm \+ jitter \* [\d.]+\)/.test(HTML));
-  // No floor: a speck is flashing or it is invisible. A constant baseline is
-  // what makes glitter read as a pale coat of paint.
-  check("there is no always-on baseline glow",
-    !/0\.25 \+ 0\.75 \* flash/.test(HTML));
-  check("two scales of flake, so it is not one lonely size",
-    (HTML.match(/fxFlakeLayer\(N, V,/g) || []).length === 2);
+    /normalize\(Nw \+ jitter \* [\d.]+\)/.test(HTML));
+  check("...fixed to the part, so turning it makes flakes blaze and go dark",
+    /normalize\(\(viewMatrix \* vec4\(facetW, 0\.0\)\)\.xyz\)/.test(HTML));
+  // A constant baseline as bright as 0.25 is what made glitter read as a pale
+  // coat of paint. With small flakes and clear plastic between them a FAINT
+  // floor (under 0.1) is what keeps off-angle flake reading as flake.
+  check("there is no strong always-on baseline glow",
+    !/0\.25 \+ 0\.75 \* flash/.test(HTML) && /tint \* 0\.0\d \+ flash/.test(HTML));
+  // Glitter is suspended IN the plastic: several depths, sampled along the
+  // refracted view ray, so deeper flakes slide against the surface as you orbit.
+  check("flake at three depths, not one layer painted on the surface",
+    (HTML.match(/fxFlakeLayer\(Nw, Vw, Rw, body,/g) || []).length === 3);
+  check("...sampled along the refracted view ray (parallax)",
+    /refract\(-Vw, Nw, 1\.0 \/ 1\.5\)/.test(HTML) && /vFxWorld \+ Rw \* t/.test(HTML));
+  check("...deeper flake dimmer and tinted by the plastic it shines through",
+    /vec3 through = mix\(vec3\(1\.0\), body,/.test(HTML));
+  check("flakes are hexagons of mixed size, not filled grid cells",
+    /float fxHex\(vec2 p\)/.test(HTML) && /float size = mix\(0\.\d+, 0\.\d+, pow\(tHash/.test(HTML));
   check("grazing angles show more flake", /float fres = pow\(1\.0 - clamp\(dot\(N, V\)/.test(HTML));
 
   // The dial.
@@ -491,7 +504,7 @@ console.log("\nthe glint is a real specular test against the real lights\n");
   // turning it UP produce a sparser, dimmer surface, because a tighter lobe
   // catches fewer flakes than the extra gain adds back.
   check("sparkle scales gain, and the exponents are constants",
-    /fxFlakeLayer\(N, V, uFxFlakeD, uFxFlakeS, 70\.0, 1\.0\)/.test(HTML)
+    /fxFlakeLayer\(Nw, Vw, Rw, body, [\d.]+,\s+uFxFlakeD, uFxFlakeS,\s+[\d.]+, [\d.]+,\s+[\d.]+\)/.test(HTML)
       && /\* s \* s \*/.test(HTML),
     "an exponent that moves with sparkle makes the dial work backwards");
 }

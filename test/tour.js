@@ -37,6 +37,18 @@ console.log("\nevery step points at something that still exists\n");
     if (!step.open) continue;
     check(`opens #${step.open}`, HTML.includes(`id="${step.open}"`));
   }
+  // ...and the same for the short coaches that follow an example
+  const { COACHES } = await import("../viewer/tour.js");
+  for (const [name, steps] of Object.entries(COACHES)) {
+    for (const step of steps) {
+      if (step.sel) check(`coach ${name}: ${step.sel} is in index.html`, HTML.includes(`id="${step.sel.replace(/^#/, "")}"`));
+      if (step.open) check(`coach ${name}: opens #${step.open}`, HTML.includes(`id="${step.open}"`));
+    }
+  }
+  const { EXAMPLES } = await import("../viewer/welcome.js");
+  for (const [k, ex] of Object.entries(EXAMPLES)) {
+    if (ex.coach) check(`example ${k} names a coach that exists`, !!COACHES[ex.coach]);
+  }
 }
 
 console.log("\nthe steps say something, and the run has a shape\n");
@@ -84,10 +96,15 @@ console.log("\nthe opening card makes a case, and /tour is a real address\n");
   check("the app auto-starts on ?tour=1", /tour=1/.test(HTML) && /tour-btn"\)\.click\(\)/.test(HTML));
   check("...and on #tour", /\^#tour\$/i.test(HTML) || /#tour/i.test(HTML));
   const build = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
-  check("the build emits a /tour folder", /join\(OUT, "tour"\)/.test(build));
-  check("...that redirects into the app with the flag", /\.\.\/index\.html\?tour=1/.test(build));
+  // the bounce pages come from one helper: bounce(folder, query, ...)
+  check("the build emits a /tour folder", /bounce\("tour", "tour=1"/.test(build));
+  check("...that redirects into the app with the flag", /\.\.\/index\.html\?\$\{query\}/.test(build) && /join\(OUT, dir\)/.test(build));
   check("...by meta refresh AND script, so one failing is survivable",
     /http-equiv="refresh"/.test(build) && /location\.replace/.test(build));
+  // /welcome: the entry card every visit, not just the first
+  check("the build emits a /welcome folder that bounces with ?welcome=1", /bounce\("welcome", "welcome=1"/.test(build));
+  check("...and the app forgets the card was seen when it arrives",
+    /welcome=1/.test(HTML) && /localStorage\.removeItem\("brepcode-welcomed"\)/.test(HTML) && /replaceState/.test(HTML));
 }
 
 console.log("\nthe popup stays on screen — including on a phone\n");

@@ -34,7 +34,7 @@ export const TOUR_STEPS = [
     body: "Real solid modelling - no install, no account, no server. Two minutes and you will know where all of it is.",
     brag: [
       ["Four languages, one kernel", "Write BREPcode, or paste OpenSCAD, JSCAD or build123d. They all compile to the same BREP solids."],
-      ["An AI that hands you code", "Describe a part and it writes readable, editable BREPcode with named sizes - not a mesh you can never change again."],
+      ["Ask for a thing, get a tested part", "Say “a hook for my yoga mat” and a printable design appears, sized to the real object, every number a slider. No AI and no key; connect one later for anything the catalog does not know."],
       ["Code and mouse, same model", "Drag a face handle and the number in the source changes. Edit the number and the model moves."],
       ["Straight to the printer", "STL, OBJ, 3MF, GLB and STEP - with a layer preview and supports built in, so you catch a bad part before you slice it."],
       ["Nothing leaves this machine", "Every model, every key, every byte stays local. MIT licensed, and the whole thing fits in a URL you can share."],
@@ -59,9 +59,21 @@ export const TOUR_STEPS = [
   },
   {
     sel: "#chat-btn",
-    title: "Describe it instead",
-    body: "Ask for a part in plain words and it writes BREPcode you can read and edit - not a mesh. Change one const afterwards and it is still your part. Needs an AI key, set in the gear.",
+    title: "Just say what you want to print",
+    body: "Type “a phone stand for my iPhone 16” or “a hook for my yoga mat” and the built-in helper hands you a tested, printable design: no AI, no key. Then change it in words: “wider”, “for a Pixel 9”, “round the edges”, “make it blue”. The gear connects a real AI for anything else.",
     open: "chat",
+  },
+  {
+    sel: "#params-btn",
+    open: "panel",
+    title: "Every size is a slider",
+    body: "Anything the chat makes has its numbers here. Drag a slider and the model rebuilds; the line of code it belongs to changes with it, so you can always see what moved.",
+  },
+  {
+    sel: "#undo-btn",
+    open: "panel",
+    title: "Nothing is final",
+    body: "This steps back through every change, yours or the chat's, and the arrow next to it goes forward again. Typing “undo” in the chat does the same.",
   },
   {
     sel: "#cheat-btn",
@@ -78,6 +90,17 @@ export const TOUR_STEPS = [
     sel: "#import-btn",
     title: "Bring in a model",
     body: "Drop in an STL, 3MF, OBJ, STEP or SVG - or drag it anywhere on the page. Imported meshes are not dead ends: drill them, stretch them, add support fins.",
+  },
+  {
+    sel: null,
+    title: "Drop any STL on the page",
+    body: "A menu asks what you came to do: FizzCore bubble infill, support fins for a tilted print, surface texture, a photo emboss or QR code, drill, stretch, thicken, scale. Every tool, one drop.",
+  },
+  {
+    sel: "#tools-btn",
+    open: "panel",
+    title: "The toolbox",
+    body: "The same tools for whatever is in the editor: FizzCore bubbles, support fins, real knurl and fuzzy-skin textures, embossing, QR codes, Gridfinity, cookie cutters and a shelf of ready parts.",
   },
   {
     sel: "#export-btn",
@@ -141,7 +164,7 @@ module.exports = { main }`,
   {
     lang: "build123d",
     title: "Paste build123d",
-    body: "Python, in ALGEBRA mode - shapes combined with + and -. CadQuery-style scripts are understood too.",
+    body: "Python: algebra mode (shapes combined with + and -) or builder mode (with BuildPart():), loops and functions included. CadQuery-style scripts are understood too.",
     code: `from build123d import *
 
 part = Box(60, 40, 10) - Cylinder(radius=6, height=12)`,
@@ -199,6 +222,52 @@ export function placePopup(anchor, pop, view, prefer = "auto") {
   // A viewport smaller than the popup would push it negative; the floor wins.
   return { place, left: Math.max(0, left), top: Math.max(0, top) };
 }
+
+// Short walks that follow an example rather than the whole tour: the first
+// thing someone who just opened the name tag wants is "where do I change it?".
+// Same driver, same rules (data here, selectors checked by test/tour.js).
+export const COACHES = {
+  nametag: [
+    {
+      sel: "#params-btn",
+      open: "panel",
+      title: "Your controls are here",
+      body: "This sliders button opens Parameters. It lights up whenever a model has settings, like this tag's name, font, colours and sizes.",
+    },
+    {
+      sel: "#params",
+      open: "params",
+      title: "Make it yours",
+      body: "Type a new name, pick a font, choose the tag and letter colours, and drag the sizes: rounded corners, edge fillet, thickness, keyring hole. It rebuilds as you go.",
+    },
+    {
+      sel: "#code",
+      open: "panel",
+      title: "Same numbers, in the code",
+      body: "Every control is one line at the top of the code. Change it in either place and the other follows. Export when it looks right: a 3MF keeps the two colours.",
+    },
+  ],
+  tpubox: [
+    {
+      sel: "#params-btn",
+      open: "panel",
+      title: "Size it here",
+      body: "This sliders button opens Parameters: the box's inside size, walls, the lid's snap seal and the soap riser.",
+    },
+    {
+      sel: "#params",
+      open: "params",
+      title: "A box that snaps shut",
+      body: "Set the inside size and the lid follows. The bead and groove line up on their own; Lid gap is the fit, tighter for a firmer snap. Pick holes, slits, hearts or solid for the riser, and Show to export one part at a time.",
+    },
+    {
+      sel: "#code",
+      open: "panel",
+      title: "Print it in TPU",
+      body: "The snap relies on TPU flexing over the bead: in a stiff filament like PLA the lid may not go on. The lid is laid out top-down, the way it prints best. Every control is a line at the top of this code.",
+    },
+  ],
+};
 
 // The whole run, in order, so the driver and the tests agree on the length.
 export function tourPlan() {
@@ -422,9 +491,13 @@ export function startTour({
   doc = document, setCode, openCard, onFinish,
   cubeHTML,                       // the app's build-cube factory, for the bullets
   brandMark = "favicon.svg",      // the product mark, next to the wordmark
+  steps = null,                   // a COACHES walk instead of the full tour
 } = {}) {
   styles(doc);
-  const plan = tourPlan();
+  const plan = steps || tourPlan();
+  // a coach is not the tour: finishing it neither celebrates nor marks the
+  // tour as done
+  const coach = !!steps;
   let i = 0;
 
   // The bullet sequence. CUBE_CYCLE must match the animation-duration the CSS
@@ -447,7 +520,7 @@ export function startTour({
     spot.remove(); pop.remove();
     removeEventListener("resize", place);
     doc.removeEventListener("keydown", onKey, true);
-    if (done) {
+    if (done && !coach) {
       try { localStorage.setItem(TOUR_DONE_KEY, new Date().toISOString()); } catch { /* private window */ }
       celebrate({ doc, onClose: onFinish });
     } else onFinish?.();
@@ -563,7 +636,7 @@ export function startTour({
       pop.querySelector("p").after(ul);
     }
     pop.querySelector(".bc-tour-count").textContent = `${i + 1} / ${plan.length}`;
-    pop.querySelector(".bc-tour-next").textContent = i === plan.length - 1 ? "Finish" : "Next";
+    pop.querySelector(".bc-tour-next").textContent = i === plan.length - 1 ? (coach ? "Got it" : "Finish") : "Next";
     pop.querySelector(".bc-tour-back").disabled = i === 0;
     pop.querySelector(".bc-tour-next").onclick = () => go(1);
     pop.querySelector(".bc-tour-back").onclick = () => go(-1);

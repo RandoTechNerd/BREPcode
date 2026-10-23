@@ -23,7 +23,14 @@ let replicadReady = null;
 // it loads the copy shipped beside the app, so offline and desktop keep working.
 // NB build-site.mjs rewrites the default path for the static site.
 const WASM_URL = "/node_modules/replicad-opencascadejs/src/replicad_single.wasm";
-const wasmUrl = () => (typeof window !== "undefined" && window.__BREP_REPLICAD_WASM_URL) || WASM_URL;
+// The last resort: a pinned public copy of the very same bytes, for a host
+// that cannot serve a file this size at all (brepcode.com's /brep/ folder
+// 404s it). build-site.mjs fails the build if this version stops matching the
+// one in node_modules, so it can never hand the loader a mismatched wasm.
+const WASM_CDN = "https://cdn.jsdelivr.net/npm/replicad-opencascadejs@0.23.0/src/replicad_single.wasm";
+const wasmUrls = () => [...new Set([
+  typeof window !== "undefined" && window.__BREP_REPLICAD_WASM_URL, WASM_URL, WASM_CDN,
+].filter(Boolean))];
 
 export function loadReplicad() {
   replicadReady ??= (async () => {
@@ -31,12 +38,21 @@ export function loadReplicad() {
       import("/node_modules/replicad/dist/replicad.js"),
       import("/node_modules/replicad-opencascadejs/src/replicad_single.js"),
     ]);
-    const OC = await loader.default({
-      locateFile: () => wasmUrl(),
-    });
-    r.setOC(OC);
-    return r;
+    // Each place in turn: a 404 (or an HTML error page where the wasm should
+    // be) fails that instance, and the next URL gets a fresh one.
+    let lastErr;
+    for (const url of wasmUrls()) {
+      try {
+        const OC = await loader.default({ locateFile: () => url });
+        r.setOC(OC);
+        return r;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
   })();
+  // A failed load is not remembered: the next curved export tries again
+  // rather than repeating the old rejection for the rest of the session.
+  replicadReady.catch(() => { replicadReady = null; });
   return replicadReady;
 }
 
@@ -156,6 +172,13 @@ export async function buildCurved(root) {
     if (n.kind !== "import" || importShapes.has(n)) return;
     const text = getImport(n.name);
     if (!text) throw new Error(`importedMesh("${n.name}"): no imported file by that name — use the Import button first`);
+    // importedSolid(): the registry holds STEP text (an STL rebuilt exact on
+    // drop). OCCT reads it as the real planes and cylinders, which is the
+    // whole point of the curved STEP export; the STL reader would choke on it.
+    if (/^\s*ISO-10303-21/.test(text)) {
+      importShapes.set(n, await r.importSTEP(new Blob([text], { type: "model/step" })));
+      return;
+    }
     const facets = (text.match(/endfacet/g) || []).length;
     if (facets > 20000) {
       throw new Error(`importedMesh("${n.name}") is ~${(facets / 1000).toFixed(0)}k triangles — too dense for a drawing or curved STEP (hidden-line removal would take minutes). Decimate to under 20k triangles and re-import, or use the mesh exports (STL/3MF).`);
@@ -252,6 +275,27 @@ export async function buildCurved(root) {
     return out;
   };
 
+  // A profile with curves (path2d, and the letters of exact text) is drawn
+  // segment by segment: a bezierTo() goes into the STEP as a true cubic,
+  // where the sampled points would have written a row of short lines.
+  const drawProfile = (n, what) => {
+    if (!n.segs?.some((sg) => sg.t === "bezier")) {
+      const pts = cleanProfile(n.pts, what);
+      let d = r.draw(pts[0]);
+      for (let i = 1; i < pts.length; i++) d = d.lineTo(pts[i]);
+      return d.close();
+    }
+    const same = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+    let d = r.draw(n.segs[0].p[0]);
+    n.segs.forEach((sg, i) => {
+      const end = sg.p[sg.p.length - 1];
+      const last = i === n.segs.length - 1 && same(end, n.segs[0].p[0]);
+      if (sg.t === "bezier") d = d.cubicBezierCurveTo(end, sg.p[1], sg.p[2]);
+      else if (!last && !same(sg.p[0], end)) d = d.lineTo(end);
+    });
+    return d.close();
+  };
+
   const build = (n, matrix) => {
     if (n.kind === "xform") {
       // a stretched subtree was baked to a mesh in the pre-pass — its own
@@ -308,10 +352,7 @@ export async function buildCurved(root) {
     }
     if (n.kind === "prim") return applyMatrix(buildPrim(r, n), matrix);
     if (n.kind === "prism") {
-      const pts = cleanProfile(n.pts, "linearExtrude() profile");
-      let d = r.draw(pts[0]);
-      for (let i = 1; i < pts.length; i++) d = d.lineTo(pts[i]);
-      return applyMatrix(d.close().sketchOnPlane("XY").extrude(n.h), matrix);
+      return applyMatrix(drawProfile(n, "linearExtrude() profile").sketchOnPlane("XY").extrude(n.h), matrix);
     }
     if (n.kind === "edgeop") {
       // OCCT rounds/bevels analytically — a curved fillet, not faceted
@@ -324,11 +365,8 @@ export async function buildCurved(root) {
       return shape;
     }
     if (n.kind === "revolve") {
-      const pts = cleanProfile(n.pts, "revolve() profile");
-      let d = r.draw(pts[0]);
-      for (let i = 1; i < pts.length; i++) d = d.lineTo(pts[i]);
       // revolve the profile about its x=0 edge (the Z axis of the XZ sketch)
-      const rev = d.close().sketchOnPlane("XZ").revolve([0, 0, 1], { angleDegrees: n.angle ?? 360 });
+      const rev = drawProfile(n, "revolve() profile").sketchOnPlane("XZ").revolve([0, 0, 1], { angleDegrees: n.angle ?? 360 });
       return applyMatrix(rev, matrix);
     }
     if (n.kind === "hull") {

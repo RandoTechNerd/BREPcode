@@ -9,7 +9,11 @@ import { Matrix4, Euler, Vector3, Quaternion, MathUtils } from "three";
 import { smin, solidNets } from "./sdf.js";
 import { MAX_FACES } from "./offset3d.js";
 import { meshFieldGrid } from "./fieldgrid.js";
-import { repairMesh } from "./meshrepair.js";
+import { repairMesh, cutPinches } from "./meshrepair.js";
+import { remeshForTexture } from "./texmesh.js";
+// exact twins of hull()/minkowski() habits; calls back into this module only
+// when a model runs, so the import cycle is safe (as with parts.js)
+import { exactHull, exactMinkowski } from "./exactshapes.js";
 
 const DEG = Math.PI / 180;
 
@@ -119,8 +123,19 @@ export function feature(code, params = {}) {
 // references files by name so the model stays readable.
 const IMPORTS = new Map();
 let hullSeq = 0;          // unique names for hull() result meshes
+// The exact hull's cost grows with its face count, the mesh hull's barely
+// does (measured on the split engine, exact vs mesh): 10 faces 0.2 s vs
+// 0.2 s, a rounded box's 54 faces 0.19 s vs 0.09 s, 106 faces 1.2 s vs
+// 0.1 s, a hull of two spheres' 328 faces 4.7 s vs 0.09 s. Flat-sided hulls
+// (boxes, polygons, low-$fn cylinders) stay exact; round ones stay fast.
+export const HULL_EXACT_MAX_FACES = 64;
 let texSeq = 0;           // unique names for texture()/heightmap() result meshes
-export function registerImport(name, contents) {
+// For an exact import (STEP text), the mesh it was rebuilt from: the JS
+// kernel can't read STEP, so when it has to build the model (the split engine
+// refused, or ?engine=js) the part comes in as that mesh instead.
+const EXACT_MESH = new Map();
+export function registerImport(name, contents, { mesh } = {}) {
+  if (typeof mesh === "string") EXACT_MESH.set(name, mesh); else EXACT_MESH.delete(name);
   // The viewer converts binary STL to ASCII through the kernel before it gets
   // here, but the CLI has no such step — and a binary STL is what every slicer
   // exports. Decode it directly so `registerImport(name, readFileSync(path))`
@@ -162,6 +177,10 @@ function decodeStlBytes(bytes) {
 export function listImports() { return [...IMPORTS.keys()]; }
 // curved.js hands imported meshes to OCCT (importSTL) for blueprints/STEP
 export const getImport = (name) => IMPORTS.get(name) ?? null;
+// The mesh an exact import was rebuilt from (see registerImport's { mesh }).
+// Saved projects and links carry it beside the STEP so the JS-kernel fallback
+// still has geometry after a reopen.
+export const getExactMesh = (name) => EXACT_MESH.get(name) ?? null;
 
 // ------------------------------------------------------------ build estimate
 //
@@ -204,7 +223,9 @@ export function estimateBuild(root) {
       tris += text ? Math.max(50, Math.round(text.length / 220)) : 5000;   // ~220 chars per ascii facet
       return;
     }
-    if (n.kind === "texture") tris += n.opts?.maxTris ?? 6000;   // + the scratch build below
+    // + the scratch build below. A texture import groups its faces coarsely,
+    // so its triangles cost about a fifth of a kernel solid's (16k: 0.8 s).
+    if (n.kind === "texture") tris += (n.opts?.maxTris ?? 16000) / 5;
     if (n.kind === "sdfblend") tris += 9000;   // surface nets at the default res
     if (n.kind === "edgeop") tris += 600;                        // fillet bands aren't free
     if (n.kind === "op") booleans += Math.max(0, (n.children?.length || 1) - 1);
@@ -323,6 +344,20 @@ export function importedMesh(name, opts = {}) {
   return node({ kind: "import", name, opts, fix: IDENTITY });
 }
 
+// An imported part rebuilt as an EXACT solid: real planes and cylinders
+// reconstructed from the mesh (the drop menu's "Open as an exact solid"), held
+// in the registry as STEP text. Same call shape as importedMesh; the
+// difference is that it cuts exactly and exports as true curved STEP
+// (fillet() on it still falls back to the mesh: see BREPcodeRustKernel/README).
+export function importedSolid(name, opts = {}) {
+  if (typeof name !== "string" || !name) {
+    throw new TypeError('importedSolid() needs the converted file name, e.g. importedSolid("part.step")');
+  }
+  return node({ kind: "import", name, opts, fix: IDENTITY });
+}
+
+const isStepText = (data) => typeof data === "string" && /^\s*ISO-10303-21/.test(data);
+
 // ------------------------------------------------------------- 2D + extrude
 
 // A 2D profile in the XY plane. Not a solid by itself — feed it to linearExtrude.
@@ -338,6 +373,99 @@ export function polygon(points) {
     return [x, y];
   });
   return { __brepscript2d: true, pts };
+}
+
+// path2d(p0, p1, bezierTo(c1, c2, p2), p3, ...): a closed 2D profile made of
+// straight lines and cubic Bezier curves. The curves stay curves: extrude and
+// revolve hand them to the kernel as exact B-splines, so a smooth profile makes
+// a smooth solid, faceted only when it is exported. `pts` is a sampled copy
+// for everything that just needs an outline (bounds, previews).
+export function bezierTo(c1, c2, p) {
+  const pt = (q, what) => {
+    const x = Number(q?.[0]), y = Number(q?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`bezierTo(): ${what} isn't an [x, y] pair`);
+    return [x, y];
+  };
+  return { __bezierTo: [pt(c1, "the first control point"), pt(c2, "the second control point"), pt(p, "the end point")] };
+}
+export function path2d(...items) {
+  const list = items.length === 1 && Array.isArray(items[0]) && items[0].length
+    && (Array.isArray(items[0][0]) || items[0][0]?.__bezierTo) ? items[0] : items;
+  const asPt = (q, i) => {
+    const x = Number(q?.[0]), y = Number(q?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`path2d() item ${i} isn't an [x, y] point or a bezierTo(...)`);
+    return [x, y];
+  };
+  if (!list.length || list[0]?.__bezierTo) throw new TypeError("path2d() starts with an [x, y] point");
+  const start = asPt(list[0], 0);
+  const same = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+  const segs = [];
+  let cur = start;
+  list.slice(1).forEach((it, i) => {
+    if (it?.__bezierTo) {
+      const [c1, c2, p] = it.__bezierTo;
+      segs.push({ t: "bezier", p: [cur, c1, c2, p] });
+      cur = p;
+    } else {
+      const p = asPt(it, i + 1);
+      if (!same(cur, p)) segs.push({ t: "line", p: [cur, p] });
+      cur = p;
+    }
+  });
+  if (!same(cur, start)) segs.push({ t: "line", p: [cur, start] });
+  if (segs.length < 2) throw new TypeError("path2d() needs at least a closed outline of 2 segments");
+  return { __brepscript2d: true, pts: sampleSegs(segs), segs };
+}
+function sampleSegs(segs, n = 16) {
+  const out = [];
+  for (const sg of segs) {
+    out.push(sg.p[0]);
+    if (sg.t === "bezier") {
+      const [a, b, c, d] = sg.p;
+      for (let k = 1; k < n; k++) {
+        const t = k / n, u = 1 - t;
+        out.push([0, 1].map((j) => u * u * u * a[j] + 3 * u * u * t * b[j] + 3 * u * t * t * c[j] + t * t * t * d[j]));
+      }
+    }
+  }
+  return out;
+}
+const reverseSegs = (segs) => segs.slice().reverse().map((sg) => ({ t: sg.t, p: sg.p.slice().reverse() }));
+// The profile mirrored across x = 0 and joined to itself: the full outline a
+// half-profile (x >= 0, touching the axis) sweeps out in any plane through the
+// axis. revolve({ stretch }) extrudes it for the straight middle.
+function mirrorAcrossAxis(profile) {
+  const onAxis = (sg) => sg.t === "line" && Math.abs(sg.p[0][0]) < 1e-9 && Math.abs(sg.p[1][0]) < 1e-9;
+  const segs = profile.segs ?? profile.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] }));
+  // rotate the list so it starts right after the axis edge
+  const k = segs.findIndex(onAxis);
+  if (k < 0) throw new Error("revolve({ stretch }): the profile needs an edge on x = 0 (its spin axis)");
+  const chain = [...segs.slice(k + 1), ...segs.slice(0, k)].filter((sg) => !onAxis(sg));
+  const mirrored = reverseSegs(chain).map((sg) => ({ t: sg.t, p: sg.p.map(([x, y]) => [-x, y]) }));
+  const all = [...chain, ...mirrored];
+  return { __brepscript2d: true, pts: sampleSegs(all), segs: all };
+}
+// Sketch points + geometries for a profile: lines, and Beziers as the kernel's
+// own "bezier" geometry (one exact cubic B-spline span each).
+function sketchOf(profile) {
+  const points = [], geometries = [], ids = new Map();
+  const endpoint = ([x, y]) => {
+    const key = `${x.toFixed(9)},${y.toFixed(9)}`;
+    if (!ids.has(key)) { ids.set(key, points.length); points.push({ id: points.length, x, y, fixed: points.length === 0 }); }
+    return ids.get(key);
+  };
+  const control = ([x, y]) => { points.push({ id: points.length, x, y, fixed: false }); return points.length - 1; };
+  const segs = profile.segs ?? profile.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] }));
+  const geomIds = [];
+  segs.forEach((sg, i) => {
+    const gid = 100 + i;
+    const pts = sg.t === "bezier"
+      ? [endpoint(sg.p[0]), control(sg.p[1]), control(sg.p[2]), endpoint(sg.p[3])]
+      : [endpoint(sg.p[0]), endpoint(sg.p[1])];
+    geometries.push({ id: gid, type: sg.t === "bezier" ? "bezier" : "line", points: pts, construction: false });
+    geomIds.push({ gid, sg });
+  });
+  return { sketch: { points, geometries, constraints: [{ id: 0, type: "⏚", points: [0] }] }, geomIds };
 }
 
 // linearExtrude({ h, center }, polygon([...])) — extrudes along +Z from z=0,
@@ -356,7 +484,8 @@ export function linearExtrude(opts, profile) {
     area += x1 * y2 - x2 * y1;
   }
   const ordered = area < 0 ? [...pts].reverse() : pts;
-  const n = node({ kind: "prism", pts: ordered, h, fix: IDENTITY });
+  const segs = profile.segs ? (area < 0 ? reverseSegs(profile.segs) : profile.segs) : null;
+  const n = node({ kind: "prism", pts: ordered, segs, h, fix: IDENTITY });
   return (typeof opts === "object" && opts?.center) ? translate([0, 0, -h / 2], n) : n;
 }
 
@@ -403,7 +532,75 @@ export function mirror(v, ...children) {
     -2 * n.z * n.x, -2 * n.z * n.y, 1 - 2 * n.z * n.z, 0,
     0, 0, 0, 1,
   );
-  return wrap(m, children, "mirror");
+  const shape = wrap(m, children, "mirror");
+  return reflectDown(shape.child, m) ?? shape;
+}
+
+// A reflection reaching the exact kernel is refused ("reflection requires
+// orientation reversal") and the whole model falls back to the slow kernel,
+// and mirror() is what an AI reaches for on anything symmetric. But a box, a
+// round cylinder or cone, a sphere and a flat extrusion are each their own
+// mirror image: reflected, each is the same primitive moved and turned. So
+// the reflection is pushed down the tree to those pieces and each takes a
+// proper rigid placement instead (reflection x its own symmetry). Booleans
+// and transforms distribute over it. Anything else (a mesh, an import, a
+// partial revolve, a polygon-sided cylinder) returns null and mirror() keeps
+// the plain reflection, as before.
+const flipX = new Matrix4().makeScale(-1, 1, 1);
+const flipY = new Matrix4().makeScale(1, -1, 1);
+function reflectDown(n, M) {
+  const place = (sym, leaf) => node({ kind: "xform", matrix: new Matrix4().multiplyMatrices(M, sym), child: leaf });
+  if (n.kind === "xform") return reflectDown(n.child, new Matrix4().multiplyMatrices(M, n.matrix));
+  if (n.kind === "group" || n.kind === "op") {
+    const kids = n.children.map((c) => reflectDown(c, M));
+    return kids.every(Boolean) ? { ...n, children: kids } : null;
+  }
+  if (n.kind === "prim" && n.code === "P.CU") {
+    // x -> sizeX - x maps the box onto itself
+    return place(new Matrix4().makeTranslation(n.params.sizeX, 0, 0).multiply(flipX), n);
+  }
+  if (n.kind === "hull") {
+    // the hull of mirrored pieces is the mirrored hull
+    const kids = n.children.map((c) => reflectDown(c, M) ?? node({ kind: "xform", matrix: M, child: c }));
+    return { ...n, children: kids };
+  }
+  if (n.kind === "edgeop") {
+    // A fillet or chamfer survives the flip when the flip is rigid (no
+    // scale, so the radius means the same) and its edge pick still names the
+    // same edges afterwards: "all" always; an axis pick when that axis lands
+    // on itself; "top"/"bottom" swap when Z turns over.
+    const e = M.elements;
+    const col = (i) => [e[4 * i], e[4 * i + 1], e[4 * i + 2]];
+    const rigid = [0, 1, 2].every((i) => Math.abs(Math.hypot(...col(i)) - 1) < 1e-9)
+      && Math.abs(col(0)[0] * col(1)[0] + col(0)[1] * col(1)[1] + col(0)[2] * col(1)[2]) < 1e-9;
+    if (!rigid || (n.faces && n.faces !== "all")) return null;
+    let edges = n.edges;
+    const axis = { x: 0, y: 1, z: 2 }[edges];
+    if (axis != null && Math.abs(Math.abs(col(axis)[axis]) - 1) > 1e-9) return null;
+    if (edges === "top" || edges === "bottom") {
+      const zz = col(2)[2];
+      if (Math.abs(Math.abs(zz) - 1) > 1e-9) return null;
+      if (zz < 0) edges = edges === "top" ? "bottom" : "top";
+    }
+    const child = reflectDown(n.child, M);
+    return child ? { ...n, edges, child } : null;
+  }
+  if (n.kind === "revolve" && n.angle === 360) return place(flipX, n);
+  if (n.kind === "prim" && (n.code === "P.S" || n.code === "P.T")) return place(flipX, n);
+  if (n.kind === "prim" && (n.code === "P.CY" || n.code === "P.CO")) {
+    // round only: $fn 3-8 is a polygon prism, whose corners may not sit
+    // symmetrically about the plane this would flip across
+    const res = n.params.resolution;
+    return res != null && res <= 8 ? null : place(flipX, n);
+  }
+  if (n.kind === "prism") {
+    // flipped across its own x axis and wound back to CCW; a curved profile
+    // (path2d, exact text) flips segment by segment
+    const pts = n.pts.map(([x, y]) => [x, -y]).reverse();
+    const segs = n.segs ? reverseSegs(n.segs).map((sg) => ({ t: sg.t, p: sg.p.map(([x, y]) => [x, -y]) })) : n.segs;
+    return place(flipY, { ...n, pts, segs });
+  }
+  return null;
 }
 
 // ----------------------------------------------------------------- booleans
@@ -449,10 +646,29 @@ export const intersection = op("INTERSECT");
 // children in a scratch history, take every surface vertex, compute the 3D
 // convex hull (three's ConvexGeometry), and import the resulting mesh as a
 // solid. Great for smooth swept connectors and sloped lips.
+// hull({ exact: true }, ...shapes) stays on the exact lane where it can, in
+// this order:
+//   1. a shape it recognises (src/exactshapes.js) becomes its exact twin with
+//      true curves: equal upright cylinders are a rounded prism or stadium (the
+//      rounded box everyone hulls), coaxial cylinders and cones a cone or a
+//      lathe, two equal spheres a capsule, eight equal spheres on a box a box
+//      filleted all round;
+//   2. a hull of flat-sided pieces goes to the kernel as an exact polyhedron
+//      (src/hullstep.js) when it has 64 faces or fewer;
+//   3. anything else is the mesh it always was.
+// Opt-in, because step 2 is not free: a few hulls of flat-sided pieces build in
+// 0.1-0.4 s, but a part made of many stacked, touching hulls (gridfinityBin)
+// took 70 s on the exact kernel and was then refused, against 0.5 s as meshes.
 export function hull(...children) {
+  const first = children[0];
+  const opts = first && typeof first === "object" && !Array.isArray(first) && !first.__brepscript && !first.kind ? children.shift() : {};
   const kids = collect(children);
   if (!kids.length) throw new Error("hull() needs at least one shape");
-  return node({ kind: "hull", children: kids, fix: IDENTITY });
+  if (opts.exact) {
+    const twin = exactHull(kids);
+    if (twin) return twin;
+  }
+  return node({ kind: "hull", children: kids, exact: !!opts.exact, fix: IDENTITY });
 }
 
 // --------------------------------------------------- rounded grow / shrink
@@ -635,6 +851,13 @@ export function circlePath({ r = 10, radius, steps = 48, z = 0 } = {}) {
 export function minkowski(a, b, ...rest) {
   if (typeof a === "number") return roundedGrow(a, b, ...rest);
 
+  // A box or an upright cylinder with a ball, or a box with an upright
+  // cylinder, is an exact filleted solid: the same shape on the exact lane,
+  // with real curves (src/exactshapes.js).
+  if (isNode(a) && isNode(b) && !rest.length) {
+    const twin = exactMinkowski(a, b);
+    if (twin) return twin;
+  }
   // The OpenSCAD shape-and-a-ball form. Only a sphere has a meaning we can
   // honour; anything else is a different and much larger operation, and
   // guessing a radius from it would silently build the wrong part.
@@ -894,18 +1117,21 @@ export function look(opts, ...children) {
 // ------------------------------------------------------------- textures
 //
 // REAL surface texture — displaced geometry, not a shader. The child is built,
-// tessellated by the kernel, subdivided until the triangles are finer than the
-// pattern, and every vertex is pushed OUTWARD along its (welded, averaged)
-// normal by depth × pattern(point). Because the offset is a pure function of
-// the welded world position, shared vertices move identically and the mesh
-// stays watertight. The result is a mesh solid — it exports, booleans, prints.
+// tessellated by the kernel, the textured faces are remeshed into
+// near-equilateral triangles at the pattern's spacing (src/texmesh.js), and
+// every vertex is pushed OUTWARD along its (welded, averaged) normal by
+// depth × pattern(point). Because the offset is a pure function of the welded
+// world position, shared vertices move identically and the mesh stays
+// watertight. The result is a mesh solid — it exports, booleans, prints.
 //
 //   texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, shape)
 //
 // patterns: "knurl" (diamond grip), "fuzzy" (fuzzy-skin noise), "layers"
-// (proud layer-lines), "bumps" (round grip dots), "waffle" (square grid).
+// (proud layer-lines), "bumps" (round grip dots), "waffle" (square grid),
+// "studs" (raised diamonds on a flat ground). knurl, studs, bumps and waffle
+// are laid out on the surface: around a round wall, across a flat one.
 // faces: "sides" (default — walls only), "top", "bottom", "all".
-export const TEXTURE_PATTERNS = ["knurl", "fuzzy", "layers", "bumps", "waffle"];
+export const TEXTURE_PATTERNS = ["knurl", "fuzzy", "layers", "bumps", "waffle", "studs"];
 export function texture(opts, ...children) {
   const o = opts || {};
   const kids = collect(children);
@@ -921,11 +1147,13 @@ export function texture(opts, ...children) {
       depth: Number(o.depth) || 0.6,
       scale: Math.max(0.2, Number(o.scale) || 3),
       faces: ["all", "top", "bottom", "sides"].includes(o.faces) ? o.faces : "sides",
-      // The kernel's mesh import goes SUPERLINEAR with triangle count —
-      // measured: 768 tris ≈ 0.15s, 3k ≈ 2s, 12k ≈ half a minute of frozen
-      // UI. 6k keeps the build interactive; raise maxTris for a finer
-      // pattern when you're about to export and can wait.
-      maxTris: Number(o.maxTris) || 6000,
+      // Triangle budget. The mesh is laid out at the pattern's own spacing
+      // (scale / 2); only a part too big for the budget gets a coarser one.
+      // The import used to cost per triangle (a 12k knurl took minutes) until
+      // texture imports grouped faces at 89 degrees (see compile): measured
+      // since then, a 35 mm knurled knob is ~4k tris in under 0.5 s and 16k
+      // tris build in under a second, in node and in the viewer alike.
+      maxTris: Number(o.maxTris) || 16000,
     },
   });
 }
@@ -969,9 +1197,9 @@ export function heightmap(opts, ...children) {
       // wrap-only: how far round the label reaches, and where it starts
       arc: Math.max(5, Math.min(360, Number(o.arc) || 360)),
       start: Number(o.start) || 0,
-      // relief wants more resolution than a repeating pattern; ~12k tris is
-      // roughly half a minute of build — a one-off bake, not a typing loop
-      maxTris: Number(o.maxTris) || 12000,
+      // relief wants more resolution than a repeating pattern: one pixel per
+      // lattice edge, up to this many triangles
+      maxTris: Number(o.maxTris) || 24000,
     },
   });
 }
@@ -1072,32 +1300,81 @@ function vnoise(x, y, z) {
 // pattern value in [0,1] at a world point. Everything is a function of the
 // welded position (+ smoothed normal for knurl's tangent frame), which is what
 // keeps shared vertices in lockstep and the shell closed.
-function texAmp(o, px, py, pz, nx, ny, nz) {
+// Patterns laid out ON the surface rather than in world X/Y/Z.
+const SURFACE_PATTERNS = new Set(["knurl", "studs", "bumps", "waffle"]);
+const BUMP_R = 0.35;          // a bumps dot's radius, in periods (texLattice rings it)
+
+// (u, w) of a surface point, in pattern periods.
+// SIDE faces: "around" is the ANGLE about the part's own vertical axis, with
+// a whole number of periods per turn so the pattern closes with no seam. (It
+// used to be position . tangent, which is ZERO everywhere on a cylinder
+// centred on its axis: the knurl collapsed into horizontal rings. bumps and
+// waffle used world X/Y, so a round knob only got dots where the wall happened
+// to face an axis.) Up is plain height.
+// Flat walls facing straight along X or Y keep the plain tangent frame: there
+// the angle about the centre would stretch the pattern. A vertex the remesher
+// found on a vertical cylinder wall always uses the angle, so the pattern
+// can't change frames partway round the knob.
+//
+// The layout is CENTRED on the part, half a period off: the middle of the part
+// falls between rows, so the margins at both ends match. (Plain z / s put dot
+// rows exactly on the rims of an 18 mm knob at scale 3, and every dot there
+// was cut in half.)
+function surfaceUW(o, px, py, pz, nx, ny, nz, frame) {
   const s = o.scale;
+  const cx = o.knurlCx || 0, cy = o.knurlCy || 0, cz = o.knurlCz || 0;
+  if (o.knurlN && ((frame & 1) || (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97))) {
+    const th = Math.atan2(py - cy, px - cx);
+    return [(th / (2 * Math.PI)) * o.knurlN, (pz - cz) / s + 0.5];
+  }
+  // flat faces: tangent frame from the smoothed normal (level t, b up the face)
+  let tx = -ny, ty = nx;
+  const tl = Math.hypot(tx, ty);
+  if (tl < 1e-6) { tx = 1; ty = 0; } else { tx /= tl; ty /= tl; }
+  const bx = -nz * ty, by = nz * tx, bz = nx * ty - ny * tx;
+  const qx = px - cx, qy = py - cy, qz = pz - cz;
+  return [(qx * tx + qy * ty) / s + 0.5, (qx * bx + qy * by + qz * bz) / s + 0.5];
+}
+
+// frame: the remesher's per-vertex flags (bit 1: vertical cylinder wall,
+// bit 2: on a plane or cylinder, bit 4: on an untextured face, bit 8: on a
+// textured one), or 0 when it didn't run.
+function texAmp(o, px, py, pz, nx, ny, nz, frame) {
+  const s = o.scale;
+  if (o.pattern === "fuzzy") return vnoise(px / s, py / s, pz / s);
+  if (o.pattern === "layers") return triWave(pz / s);
+  // Off planes and cylinders (a sphere, a fillet corner) there is no flat
+  // layout to follow and the tangent frame swings with the normal, which
+  // scrambles a dot or grid pattern: those keep their world-axis form there.
+  if (!(frame & 2) && o.pattern === "bumps") {
+    const c = (t) => 0.5 + 0.5 * Math.cos(2 * Math.PI * t);
+    return Math.max(0, c(px / s) * c(py / s) * c(pz / s) * 2 - 1);
+  }
+  if (!(frame & 2) && o.pattern === "waffle") {
+    return Math.max(Math.max(0, triWave(px / s) * 2 - 1), Math.max(0, triWave(py / s) * 2 - 1));
+  }
+  const [u, w] = surfaceUW(o, px, py, pz, nx, ny, nz, frame);
   switch (o.pattern) {
-    case "fuzzy": return vnoise(px / s, py / s, pz / s);
-    case "layers": return triWave(pz / s);
+    case "knurl":
+      // Classic diamond knurl: two sets of V-grooves crossing at +-45 degrees,
+      // and the surface is whichever groove profile is LOWER, so the whole
+      // face tiles with sharp four-sided pyramids. (It used to be
+      // max(0, T(a) + T(b) - 1), which leaves flat valleys over half the
+      // area: that look lives on as "studs".)
+      return Math.min(triWave(u + w), triWave(u - w));
+    case "studs":
+      return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
     case "bumps": {
-      const c = (t) => 0.5 + 0.5 * Math.cos(2 * Math.PI * t);
-      // product of three lobes -> isolated round dots rather than ridges
-      return Math.max(0, c(px / s) * c(py / s) * c(pz / s) * 2 - 1);
+      // a round dome on every lattice point, 0.7 of a period across: a grip
+      // dot on flat ground. (A product of cosines made dots ~0.4 across, too
+      // small for the mesh to show as anything rounder than a pyramid.)
+      const r = Math.hypot(u - Math.round(u), w - Math.round(w)) / BUMP_R;
+      return r < 1 ? Math.sqrt(1 - r * r) : 0;
     }
     case "waffle": {
-      const rx = Math.max(0, triWave(px / s) * 2 - 1);
-      const ry = Math.max(0, triWave(py / s) * 2 - 1);
-      return Math.max(rx, ry);
-    }
-    case "knurl": {
-      // tangent frame from the smoothed normal: t1 runs horizontally around
-      // the surface (arc length on a cylinder, straight on a wall), t2 is its
-      // uphill partner. Diamonds are two triangle waves at ±45° in that frame.
-      let tx = -ny, ty = nx;
-      const tl = Math.hypot(tx, ty);
-      if (tl < 1e-6) { tx = 1; ty = 0; } else { tx /= tl; ty /= tl; }
-      const bx = -nz * ty, by = nz * tx, bz = nx * ty - ny * tx;
-      const u = (px * tx + py * ty) / s;
-      const w = (px * bx + py * by + pz * bz) / s;
-      return Math.max(0, triWave(u + w) + triWave(u - w) - 1);
+      const ru = Math.max(0, triWave(u) * 2 - 1);
+      const rw = Math.max(0, triWave(w) * 2 - 1);
+      return Math.max(ru, rw);
     }
     default: return 0;
   }
@@ -1129,44 +1406,152 @@ function subdivideSoup(soup) {
   return out;
 }
 
+// Does a facet with this normal get the texture? (The remesher only spends
+// triangles where this says yes.)
+function texWants(o, n) {
+  if (o.map) {
+    if (o.side === "wrap") return Math.abs(n[2]) < 0.99;
+    return n[SIDE_AXIS[o.side[1]]] * (o.side[0] === "+" ? 1 : -1) > 0.02;
+  }
+  if (o.faces === "all") return true;
+  if (o.faces === "top") return n[2] > 0.02;
+  if (o.faces === "bottom") return n[2] < -0.02;
+  return Math.abs(n[2]) < 0.99;                       // "sides"
+}
+
+// A lattice that follows the pattern's own creases, where the pattern is
+// piecewise linear in the region's parameter space: then a lattice on those
+// lines reproduces it EXACTLY instead of sampling it. Layers are linear
+// between rows z in (s/2)Z. null = plain equilateral lattice.
+function texLattice(o, reg, L) {
+  if (o.map) return null;
+  const s = o.scale;
+  if (SURFACE_PATTERNS.has(o.pattern)) {
+    // the affine map param -> (u, w) where surfaceUW is linear in the region
+    const uw = surfaceAffine(o, reg, s);
+    if (!uw) return null;
+    // knurl: creases on u, w in Z/2 and u +- w in Z/2. studs: u, w in
+    // 1/4 + Z/2 and u +- w in Z/2. waffle: u, w in Z/4 plus the diagonals
+    // through integer points. bumps: rings round every dot centre, the outer
+    // one on the dot's edge (s/2 spacing used to catch one corner of a dot).
+    if (o.pattern === "knurl") return { kind: "crossed", ...uw };
+    if (o.pattern === "studs") return { kind: "crossed", quarter: true, ...uw };
+    if (o.pattern === "bumps") return { kind: "rosette", r: BUMP_R, ...uw };
+    return { kind: "grid", ...uw };
+  }
+  if (o.pattern === "layers") {
+    const k = Math.max(1, Math.round((s / 2) / ((L * Math.sqrt(3)) / 2)));
+    const pz = s / 2 / k;                               // row pitch in z
+    if (reg.kind === "cyl") {
+      if (Math.abs(reg.axis[2]) < 0.999) return null;
+      return { kind: "equi", L, dir: [1, 0], pitch: pz, phase: 0 };   // y = +-z
+    }
+    // e1 is level, so on this plane z = d*nz + y*tl: rows of constant y are level
+    const tl = reg.e2[2];
+    if (tl < 0.3) return null;
+    return { kind: "equi", L, dir: [1, 0], pitch: pz / tl, phase: (-reg.d * reg.n[2]) / tl };
+  }
+  return null;
+}
+
+function surfaceAffine(o, reg, s) {
+  if (reg.kind === "cyl") {
+    if (Math.abs(reg.axis[2]) < 0.999) return null;
+    // surfaceUW measures its angle about the part's centre: only a wall
+    // centred there has u linear in arc length
+    if (Math.hypot(reg.c[0] - o.knurlCx, reg.c[1] - o.knurlCy) > 1e-3 * reg.R + 1e-4) return null;
+    const sg = Math.sign(reg.axis[2]);
+    const alpha = Math.atan2(reg.e1[1], reg.e1[0]);
+    const k = o.knurlN / (2 * Math.PI);
+    // theta_z = alpha + sg * (cut + x / R); z = sg * y (+ the axis offset, which
+    // is zero: reg.c has no component along the axis)
+    return { A: [[(sg * k) / reg.R, 0], [0, sg / s]], off: [(alpha + sg * reg.cut) * k, 0.5 - o.knurlCz / s] };
+  }
+  const [nx, ny, nz] = reg.n;
+  // walls that surfaceUW maps by angle about the centre aren't linear in the plane
+  if (Math.abs(nz) < 0.7 && Math.max(Math.abs(nx), Math.abs(ny)) < 0.97) return null;
+  // otherwise surfaceUW's tangent frame IS the plane's (e1, e2):
+  // u = (x - C.e1) / s + 1/2, w = (y - C.e2) / s + 1/2, C the part's centre
+  const C = [o.knurlCx, o.knurlCy, o.knurlCz];
+  const ce1 = C[0] * reg.e1[0] + C[1] * reg.e1[1] + C[2] * reg.e1[2];
+  const ce2 = C[0] * reg.e2[0] + C[1] * reg.e2[1] + C[2] * reg.e2[2];
+  return { A: [[1 / s, 0], [0, 1 / s]], off: [0.5 - ce1 / s, 0.5 - ce2 / s] };
+}
+
 // The whole displacement pipeline on a flat triangle soup. Exported for tests.
+//
+// First the faces being textured are REMESHED (src/texmesh.js) into
+// near-equilateral triangles at the pattern's own spacing, crease-aligned
+// where the pattern allows. The kernel's tessellation is shaped for geometry
+// (a knob wall is 1 x 18 mm slivers), and subdividing slivers only makes
+// smaller slivers. If the remesher declines (odd input), the old uniform
+// subdivision runs instead.
 export function displacedPositions(soupIn, o) {
   let soup = Float64Array.from(soupIn);
   const triCount = soup.length / 9;
   if (!triCount) return soup;
 
-  // subdivision level: fine enough for the pattern, capped by a triangle
-  // budget the kernel can actually rebuild in reasonable time
-  let maxEdge = 0;
-  for (let i = 0; i < soup.length; i += 9) {
-    for (let e = 0; e < 3; e++) {
-      const a = i + e * 3, b = i + ((e + 1) % 3) * 3;
-      const d = Math.hypot(soup[a] - soup[b], soup[a + 1] - soup[b + 1], soup[a + 2] - soup[b + 2]);
-      if (d > maxEdge) maxEdge = d;
-    }
-  }
   const spacing = o.map
     ? Math.max(0.4, mapSpacing(soup, o))
     : Math.max(0.4, o.scale / 2);
-  let levels = Math.ceil(Math.log2(Math.max(1, maxEdge / spacing)));
-  const budgetLevels = Math.floor(Math.log(Math.max(1, (o.maxTris || 24000) / triCount)) / Math.log(4));
-  levels = Math.max(0, Math.min(levels, budgetLevels, 6));
-  for (let l = 0; l < levels; l++) soup = subdivideSoup(soup);
 
-  // weld by rounded position -> indexed mesh
-  const key2idx = new Map();
-  const verts = [];
-  const faces = new Uint32Array(soup.length / 3);
+  // bounding box (heightmap uv space, knurl axis)
+  const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   for (let i = 0; i < soup.length; i += 3) {
-    const x = soup[i], y = soup[i + 1], z = soup[i + 2];
-    const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
-    let idx = key2idx.get(k);
-    if (idx === undefined) {
-      idx = verts.length / 3;
-      key2idx.set(k, idx);
-      verts.push(x, y, z);
+    for (let a = 0; a < 3; a++) {
+      if (soup[i + a] < bb.min[a]) bb.min[a] = soup[i + a];
+      if (soup[i + a] > bb.max[a]) bb.max[a] = soup[i + a];
     }
-    faces[i / 3] = idx;
+  }
+  // surface patterns round the sides: how many periods fit round the part, and its axis
+  if (SURFACE_PATTERNS.has(o.pattern)) {
+    const R = ((bb.max[0] - bb.min[0]) + (bb.max[1] - bb.min[1])) / 4;
+    o = { ...o, knurlCx: (bb.min[0] + bb.max[0]) / 2, knurlCy: (bb.min[1] + bb.max[1]) / 2,
+      knurlCz: (bb.min[2] + bb.max[2]) / 2,
+      knurlN: Math.max(4, Math.round((2 * Math.PI * R) / o.scale)) };
+  }
+
+  let verts, faces, frame = null;
+  const re = o.remesh === false ? null : remeshForTexture(soup, {
+    L: spacing,
+    wants: (n) => texWants(o, n),
+    lattice: (reg, L) => texLattice(o, reg, L),
+    maxTris: o.maxTris || 24000,
+  });
+  if (re) {
+    verts = re.verts; faces = re.faces; frame = re.frame;
+  } else {
+    // fallback: uniform subdivision, fine enough for the pattern, capped by a
+    // triangle budget the kernel can actually rebuild in reasonable time
+    let maxEdge = 0;
+    for (let i = 0; i < soup.length; i += 9) {
+      for (let e = 0; e < 3; e++) {
+        const a = i + e * 3, b = i + ((e + 1) % 3) * 3;
+        const d = Math.hypot(soup[a] - soup[b], soup[a + 1] - soup[b + 1], soup[a + 2] - soup[b + 2]);
+        if (d > maxEdge) maxEdge = d;
+      }
+    }
+    let levels = Math.ceil(Math.log2(Math.max(1, maxEdge / spacing)));
+    const budgetLevels = Math.floor(Math.log(Math.max(1, (o.maxTris || 24000) / triCount)) / Math.log(4));
+    levels = Math.max(0, Math.min(levels, budgetLevels, 6));
+    for (let l = 0; l < levels; l++) soup = subdivideSoup(soup);
+
+    // weld by rounded position -> indexed mesh
+    const key2idx = new Map();
+    const vl = [];
+    faces = new Uint32Array(soup.length / 3);
+    for (let i = 0; i < soup.length; i += 3) {
+      const x = soup[i], y = soup[i + 1], z = soup[i + 2];
+      const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+      let idx = key2idx.get(k);
+      if (idx === undefined) {
+        idx = vl.length / 3;
+        key2idx.set(k, idx);
+        vl.push(x, y, z);
+      }
+      faces[i / 3] = idx;
+    }
+    verts = vl;
   }
 
   // area-weighted vertex normals (the raw cross product IS area-weighted)
@@ -1183,15 +1568,6 @@ export function displacedPositions(soupIn, o) {
     nrm[i] /= l; nrm[i + 1] /= l; nrm[i + 2] /= l;
   }
 
-  // bounding box (heightmap uv space + nothing else)
-  const bb = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-  for (let i = 0; i < verts.length; i += 3) {
-    for (let a = 0; a < 3; a++) {
-      if (verts[i + a] < bb.min[a]) bb.min[a] = verts[i + a];
-      if (verts[i + a] > bb.max[a]) bb.max[a] = verts[i + a];
-    }
-  }
-
   // displace every welded vertex outward. Patterns push along the vertex
   // normal; a heightmap pushes along the FACE AXIS — a corner vertex's
   // averaged normal points diagonally, and relief that smears sideways off
@@ -1200,6 +1576,11 @@ export function displacedPositions(soupIn, o) {
   // different direction at every point around it.
   const wrap = o.map && o.side === "wrap";
   const cx = (bb.min[0] + bb.max[0]) / 2, cy = (bb.min[1] + bb.max[1]) / 2;
+  // Where a textured wall meets a plain face (a knob's rim, a box's top edge)
+  // the pattern fades to nothing over half a period, so the edge stays crisp
+  // and a dot or pyramid cut by it slopes away instead of standing up as a
+  // tent off the border (the shared vertices used to move half a pattern).
+  const fade = frame && !o.map ? texFade(verts, frame, Math.max(0.4, o.scale / 2)) : null;
   const axisVec = [0, 0, 0];
   if (o.map && !wrap) axisVec[SIDE_AXIS[o.side[1]]] = o.side[0] === "+" ? 1 : -1;
   const out = new Float64Array(verts.length);
@@ -1223,8 +1604,9 @@ export function displacedPositions(soupIn, o) {
         : o.faces === "top" ? Math.max(0, nz)
         : o.faces === "bottom" ? Math.max(0, -nz)
         : Math.min(1, Math.max(0, (1 - Math.abs(nz)) * 2));    // "sides"
-      amp = w ? texAmp(o, px, py, pz, nx, ny, nz) * w : 0;
+      amp = w ? texAmp(o, px, py, pz, nx, ny, nz, frame ? frame[i / 3] : 0) * w : 0;
     }
+    if (fade) amp *= fade[i / 3];
     const d = o.depth * amp;
     out[i] = px + dx * d; out[i + 1] = py + dy * d; out[i + 2] = pz + dz * d;
   }
@@ -1239,6 +1621,38 @@ export function displacedPositions(soupIn, o) {
 }
 
 const SIDE_AXIS = { x: 0, y: 1, z: 2 };
+
+// 0 on the border between textured and plain faces, rising to 1 at distance
+// `width` from it (straight-line distance to the nearest border vertex).
+function texFade(verts, frame, width) {
+  const n = verts.length / 3;
+  const cell = width;
+  const grid = new Map();
+  const key = (i, j, k) => `${i},${j},${k}`;
+  let any = false;
+  for (let v = 0; v < n; v++) {
+    if ((frame[v] & 12) !== 12) continue;
+    any = true;
+    const k = key(Math.floor(verts[3 * v] / cell), Math.floor(verts[3 * v + 1] / cell), Math.floor(verts[3 * v + 2] / cell));
+    const l = grid.get(k); if (l) l.push(v); else grid.set(k, [v]);
+  }
+  const out = new Float64Array(n).fill(1);
+  if (!any) return out;
+  for (let v = 0; v < n; v++) {
+    if (!(frame[v] & 8)) continue;
+    const x = verts[3 * v], y = verts[3 * v + 1], z = verts[3 * v + 2];
+    const ci = Math.floor(x / cell), cj = Math.floor(y / cell), ck = Math.floor(z / cell);
+    let best = width;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+      const l = grid.get(key(ci + a, cj + b, ck + c));
+      if (!l) continue;
+      for (const u of l) best = Math.min(best, Math.hypot(verts[3 * u] - x, verts[3 * u + 1] - y, verts[3 * u + 2] - z));
+    }
+    const t = best / width;
+    out[v] = t * t * (3 - 2 * t);
+  }
+  return out;
+}
 // pixel pitch of the map on the model face — the subdivision target
 function mapSpacing(soup, o) {
   if (o.side === "wrap") {
@@ -1641,6 +2055,119 @@ export function fins(opts, ...children) {
 // the selected faces to their shared edges.
 const SIDE_ALIASES = { top: "_PZ", bottom: "_NZ", front: "_NY", back: "_PY", left: "_NX", right: "_PX" };
 
+// The thinnest a straight-sided profile gets: its shortest side, or the
+// closest any corner comes to a side it is not on (a wall's thickness).
+function profileThinnest(pts) {
+  const n = pts.length;
+  let t = Infinity;
+  for (let j = 0; j < n; j++) {
+    const a = pts[j], b = pts[(j + 1) % n];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len2 = dx * dx + dy * dy;
+    if (len2 > 1e-12) t = Math.min(t, Math.sqrt(len2));
+    for (let i = 0; i < n; i++) {
+      if (i === j || i === (j + 1) % n || len2 <= 1e-12) continue;
+      const p = pts[i];
+      const s = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
+      t = Math.min(t, Math.hypot(p[0] - a[0] - s * dx, p[1] - a[1] - s * dy));
+    }
+  }
+  return t;
+}
+
+// edges: "convex" = only the OUTSIDE edges, where the solid's material meets
+// at less than 180 degrees. An inside corner (a lip meeting a seat, a wall
+// meeting a floor) and a smooth seam between tangent faces are left out: the
+// exact kernel refuses a selection that mixes convex and concave edges at one
+// corner, and a seam has nothing to round. Decided per edge from the two
+// faces' own triangles beside it: the direction INTO face A, against face B's
+// outward normal, is negative on a convex edge.
+function convexEdgeNames(solid, edges) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((v) => v / l) : null; };
+  const faces = new Map();
+  let vol = 0;
+  solid.updateMatrixWorld?.(true);
+  solid.traverse((f) => {
+    const pos = f.type === "FACE" && f.name ? f.geometry?.getAttribute?.("position") : null;
+    if (!pos) return;
+    const m = f.matrixWorld?.elements || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const P = (i) => {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      return [m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]];
+    };
+    const idx = f.geometry.getIndex?.();
+    const n = idx ? idx.count : pos.count;
+    const tris = faces.get(f.name) || [];
+    for (let k = 0; k + 2 < n; k += 3) {
+      const t = [P(idx ? idx.getX(k) : k), P(idx ? idx.getX(k + 1) : k + 1), P(idx ? idx.getX(k + 2) : k + 2)];
+      tris.push(t);
+      vol += dot(t[0], cross(t[1], t[2]));
+    }
+    faces.set(f.name, tris);
+  });
+  const sgn = vol < 0 ? -1 : 1;           // whichever way the tessellator winds
+  // the triangle of a face lying along segment p-q: its outward normal and
+  // the direction from the edge into the face
+  const beside = (tris, p, q) => {
+    const d = sub(q, p), len2 = dot(d, d);
+    if (!tris?.length || len2 < 1e-18) return null;
+    const off = (v) => {
+      const s = Math.max(0, Math.min(1, dot(sub(v, p), d) / len2));
+      const foot = [p[0] + d[0] * s, p[1] + d[1] * s, p[2] + d[2] * s];
+      return sub(v, foot);
+    };
+    let best = null, bestScore = Infinity;
+    for (const t of tris) {
+      const o = t.map(off), dist = o.map((v) => Math.hypot(...v));
+      const order = [0, 1, 2].sort((a, b) => dist[a] - dist[b]);
+      const score = dist[order[0]] + dist[order[1]];
+      if (score < bestScore && dist[order[2]] > 1e-6) { bestScore = score; best = { t, inward: o[order[2]] }; }
+    }
+    if (!best) return null;
+    const nrm = unit(cross(sub(best.t[1], best.t[0]), sub(best.t[2], best.t[0])));
+    const inward = unit(best.inward);
+    return nrm && inward ? { n: nrm.map((v) => v * sgn), inward } : null;
+  };
+  // the exact blend takes straight and circular edges; anything else sends it
+  // to a general blend that refused on every catalog part tried, slowly
+  // (57 s on the picture hook's swept hook)
+  const simple = (pts) => {
+    const a = pts[0], b = pts[pts.length - 1], len = Math.hypot(...sub(b, a));
+    const tol = 1e-3 * Math.max(1, len);
+    const d = len > 1e-9 ? sub(b, a).map((v) => v / len) : null;
+    if (d && pts.every((p) => Math.hypot(...cross(sub(p, a), d)) < tol)) return true;
+    if (pts.length < 3) return true;
+    // circle through first, middle, last sample; every sample on it and in its plane
+    const m = pts[Math.floor(pts.length / 2)] === a ? pts[1] : pts[Math.floor(pts.length / 2)];
+    const q = pts.find((p) => p !== a && p !== m && Math.hypot(...sub(p, a)) > tol && Math.hypot(...sub(p, m)) > tol);
+    if (!q) return true;
+    const u = sub(m, a), v = sub(q, a), w = cross(u, v), w2 = dot(w, w);
+    if (w2 < 1e-12) return false;
+    const c0 = cross(w, u).map((x) => x * dot(v, v)), c1 = cross(v, w).map((x) => x * dot(u, u));
+    const ctr = [0, 1, 2].map((k) => a[k] + (c0[k] + c1[k]) / (2 * w2));
+    const R = Math.hypot(...sub(a, ctr)), nrm = unit(w);
+    const ctol = 2e-3 * Math.max(1, R);
+    return pts.every((p) => Math.abs(Math.hypot(...sub(p, ctr)) - R) < ctol && Math.abs(dot(sub(p, ctr), nrm)) < ctol);
+  };
+  const out = [];
+  for (const e of edges) {
+    if (!simple(e.pts)) continue;
+    const [fa, fbRaw] = String(e.name).split("|");
+    const fb = String(fbRaw || "").replace(/\[\d+\]$/, "");
+    if (!fa || !fb || fa === fb) continue;
+    const k = Math.max(0, Math.floor((e.pts.length - 2) / 2));
+    const p = e.pts[k], q = e.pts[k + 1];
+    const A = beside(faces.get(fa), p, q), B = beside(faces.get(fb), p, q);
+    if (!A || !B) continue;
+    // both faces vote; tangent seams sit near zero and are left out
+    const c = (dot(A.inward, B.n) + dot(B.inward, A.n)) / 2;
+    if (c < -0.03) out.push(e.name);
+  }
+  return out;
+}
+
 function edgeOp(code, opts, children, amountKey, verb) {
   const o = typeof opts === "number" ? {} : (opts || {});
   const amount = typeof opts === "number" ? opts
@@ -1652,7 +2179,68 @@ function edgeOp(code, opts, children, amountKey, verb) {
   if (!kids.length) throw new Error(`${verb}() needs a shape to work on`);
   const child = kids.length === 1 ? kids[0] : union(kids);
   const faces = o.faces ?? o.sides ?? o.only ?? "all";
-  return node({ kind: "edgeop", code, amount, faces, child });
+  // edges: pick EDGES instead of faces. "x" | "y" | "z" = the straight edges
+  // running along that axis (a box's vertical corners for "z"); "top" /
+  // "bottom" = every edge lying at the solid's highest / lowest Z; "all".
+  // build123d's part.edges().filter_by(Axis.Z) and .group_by(Axis.Z)[-1]
+  // arrive here.
+  const edges = o.edges ?? null;
+  if (edges != null && !["x", "y", "z", "top", "bottom", "convex", "all"].includes(edges)) {
+    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom", "convex" or "all" (got ${JSON.stringify(edges)})`);
+  }
+  // pieces: true = round each box the part is built from, then union them and
+  // cut the holes. The chat's "round the edges" uses it on finished designs.
+  // An all-over fillet of the finished part also tries every hole rim and
+  // countersink lip, and every inside corner where a gusset meets a plate:
+  // the exact kernel refuses those (convex meets concave) and the JS fallback
+  // mangles the holes and grows the part by the radius. A box rounds exactly
+  // in a few hundred ms, its radius held under half its thinnest side, and
+  // the inside corners stay sharp, which is stronger anyway. A part with no
+  // boxes in it keeps the plain all-over op: pushing it under the
+  // difference() measured worse on hull-built bins (the fallback grew a
+  // stackable bin 17 mm).
+  if (o.pieces) {
+    let boxes = 0;
+    // boxes first; extruded profiles only in a part with no boxes, because a
+    // profile is often a gusset or web joining boxes, and rounded webs meeting
+    // rounded plates measured as unions the exact kernel refuses (wall shelf)
+    let profiles = false;
+    const each = (n) => {
+      if (n.kind === "xform") return { ...n, child: each(n.child) };
+      if (n.kind === "group" || (n.kind === "op" && n.operation === "UNION")) return { ...n, children: n.children.map(each) };
+      if (n.kind === "op" && n.operation === "SUBTRACT") {
+        const [base, ...cutters] = n.children;
+        return { ...n, children: [each(base), ...cutters] };
+      }
+      if (n.kind === "prim" && n.code === "P.CU") {
+        const r = Math.min(amount, 0.45 * Math.min(n.params.sizeX, n.params.sizeY, n.params.sizeZ));
+        if (r < 0.3) return n;
+        boxes++;
+        return node({ kind: "edgeop", code, amount: Math.round(r * 100) / 100, faces: "all", edges: null, shrink: true, child: n });
+      }
+      // an extruded straight-sided profile (a phone stand's side, a bracket's
+      // L): its outside edges only, the radius held under half its thinnest
+      // wall and its shortest side, so the inside corners stay sharp and no
+      // two blends meet head on
+      if (profiles && n.kind === "prism" && !n.segs && n.pts.length >= 3) {
+        const r = Math.min(amount, 0.45 * Math.min(n.h, profileThinnest(n.pts)));
+        if (r < 0.3) return n;
+        boxes++;
+        return node({ kind: "edgeop", code, amount: Math.round(r * 100) / 100, faces: "all", edges: "convex", shrink: true, child: n });
+      }
+      return n;
+    };
+    let out = each(child);
+    if (boxes) return out;
+    profiles = true;
+    out = each(child);
+    if (boxes) return out;
+    // nothing box- or profile-shaped to round piece by piece: the whole part,
+    // outside edges only (an all-edges selection mixes in the inside corners,
+    // which the exact kernel refuses outright)
+    return node({ kind: "edgeop", code, amount, faces, edges: "convex", shrink: true, child });
+  }
+  return node({ kind: "edgeop", code, amount, faces, edges, child });
 }
 
 export function fillet(opts, ...children) { return edgeOp("F", opts, children, "radius", "fillet"); }
@@ -1670,7 +2258,18 @@ export function revolve(opts, profile) {
     throw new TypeError("revolve() takes a 2D profile — make one with polygon([[x, y], ...]) in the x >= 0 half-plane, touching x = 0");
   }
   const res = o.$fn ?? o.resolution;
-  return node({ kind: "revolve", pts: profile.pts, angle, resolution: res, fix: AXIS_FIX });
+  // stretch: L pulls the round shape apart into a racetrack (a stadium, like a
+  // shaver or a phone's edge): two half-revolves for the round ends, and the
+  // profile's full outline extruded L long for the straight sides between them.
+  // Every surface stays exact and they meet tangentially, so no seam shows.
+  const L = Number(o.stretch ?? 0);
+  if (L > 0) {
+    if (angle !== 360) throw new TypeError("revolve({ stretch }) makes a full racetrack: leave angle at 360");
+    const half = (sign) => translate([sign * L / 2, 0, 0], rotate([0, 0, sign * 90], revolve({ angle: 180, $fn: res }, profile)));
+    const middle = translate([-L / 2, 0, 0], rotate([0, 0, 90], rotate([90, 0, 0], linearExtrude({ h: L }, mirrorAcrossAxis(profile)))));
+    return union(half(1), half(-1), middle);
+  }
+  return node({ kind: "revolve", pts: profile.pts, segs: profile.segs ?? null, angle, resolution: res, fix: AXIS_FIX });
 }
 
 // ------------------------------------------------------------------ compile
@@ -1693,6 +2292,43 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // read its real face names. runHistory rebuilds from scratch each call
   // (idempotent), so an intermediate run here is safe; the caller's final run
   // just rebuilds the same graph plus whatever comes after.
+  // The same, for EDGES picked by direction or height. Edge names are
+  // "FACEA|FACEB[i]" in both kernels; helper edges such as a cylinder's
+  // "_AXIS" have no "|" and are never real edges of the solid.
+  async function childEdgeNames(childId, spec) {
+    await partHistory.runHistory({ throwOnFeatureError: true });
+    const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
+    const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
+    if (!solid) return [];
+    const edges = [];
+    solid.traverse((o) => {
+      if (o.type !== "EDGE" || !String(o.name || "").includes("|") || typeof o.points !== "function") return;
+      let pts;
+      try { pts = o.points().map((p) => (Array.isArray(p) ? p : [p.x, p.y, p.z])); } catch { return; }
+      if (pts.length >= 2) edges.push({ name: o.name, pts });
+    });
+    if (spec === "all") return edges.map((e) => e.name);
+    if (spec === "convex") return convexEdgeNames(solid, edges);
+    if (spec === "top" || spec === "bottom") {
+      let lo = Infinity, hi = -Infinity;
+      for (const e of edges) for (const p of e.pts) { lo = Math.min(lo, p[2]); hi = Math.max(hi, p[2]); }
+      const at = spec === "top" ? hi : lo, tol = Math.max(1e-4, (hi - lo) * 1e-4);
+      return edges.filter((e) => e.pts.every((p) => Math.abs(p[2] - at) <= tol)).map((e) => e.name);
+    }
+    const k = { x: 0, y: 1, z: 2 }[spec];
+    return edges.filter(({ pts }) => {
+      const a = pts[0], b = pts[pts.length - 1];
+      const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], len = Math.hypot(...d);
+      if (len < 1e-9 || Math.abs(d[k]) / len < 0.9998) return false;      // not along the axis
+      // straight: every sample on the chord
+      return pts.every((p) => {
+        const v = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+        const c = [v[1] * d[2] - v[2] * d[1], v[2] * d[0] - v[0] * d[2], v[0] * d[1] - v[1] * d[0]];
+        return Math.hypot(...c) / len < 1e-4 * Math.max(1, len);
+      });
+    }).map((e) => e.name);
+  }
+
   async function childFaceNames(childId, filter) {
     await partHistory.runHistory({ throwOnFeatureError: true });
     const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
@@ -1755,7 +2391,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
       const sk = await partHistory.newFeature("S");
       sk.inputParams.sketchPlane = plane.inputParams.id;
-      sk.persistentData.sketch = {
+      sk.persistentData.sketch = n.segs ? sketchOf(n).sketch : {
         points: n.pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
         geometries: n.pts.map((_, i) => ({
           id: 100 + i, type: "line", points: [i, (i + 1) % n.pts.length], construction: false,
@@ -1790,6 +2426,33 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       if (data == null) {
         throw new Error(`importedMesh("${n.name}"): no imported file by that name — use the Import button first`);
       }
+      // Imported solids must be clone-safe to act as boolean tools on the JS
+      // kernel; that includes an exact import's fallback mesh.
+      if (isStepText(data) && EXACT_MESH.has(n.name)) await ensureImportClonePatch(partHistory);
+      // An exact import (STEP text): one IMPORT3D carrying the STEP, which
+      // the Rust kernel reads exactly (`stepText`), and the source mesh in
+      // `fileToImport` for the JS kernel, which has no STEP reader. Placement is a Transform feature, not baked
+      // vertices: there are no vertices to bake.
+      if (isStepText(data)) {
+        const f = await partHistory.newFeature("IMPORT3D");
+        const mesh = EXACT_MESH.get(n.name);
+        if (mesh) f.inputParams.fileToImport = mesh;
+        f.inputParams.stepText = data;
+        f.inputParams.centerMesh = false;
+        const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+        if (!world.equals(IDENTITY)) {
+          const pos = new Vector3(), quat = new Quaternion(), scl = new Vector3();
+          world.decompose(pos, quat, scl);
+          const e = new Euler().setFromQuaternion(quat, "XYZ");
+          const xf = await partHistory.newFeature("XFORM");
+          xf.inputParams.solids = [f.inputParams.id];
+          xf.inputParams.translate = [pos.x, pos.y, pos.z];
+          xf.inputParams.rotateEulerDeg = [MathUtils.radToDeg(e.x), MathUtils.radToDeg(e.y), MathUtils.radToDeg(e.z)];
+          xf.inputParams.scale = [scl.x, scl.y, scl.z];
+        }
+        trace?.push({ id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+        return f.inputParams.id;
+      }
       // Make imported solids safe to clone so they can act as boolean tools.
       await ensureImportClonePatch(partHistory);
       // The import feature has no transform block, and the kernel's Transform
@@ -1818,13 +2481,15 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
     if (n.kind === "edgeop") {
       const childId = await emit(n.child, matrix, st);
-      const faces = await childFaceNames(childId, n.faces);
+      const faces = n.edges ? await childEdgeNames(childId, n.edges) : await childFaceNames(childId, n.faces);
       if (!faces.length) {
         throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): couldn't find any edges to work on for this shape`);
       }
       const f = await partHistory.newFeature(n.code);
       f.inputParams.edges = faces;
       f.inputParams.direction = "AUTO";
+      // the chat's own rounding: the engine may try it smaller if refused
+      if (n.shrink) f.inputParams.shrink = true;
       if (n.code === "F") f.inputParams.radius = n.amount;
       else f.inputParams.distance = n.amount;
       // the fillet/chamfer modifies the target in place, keeping its id — so
@@ -1839,18 +2504,26 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const sk = await partHistory.newFeature("S");
       sk.inputParams.sketchPlane = plane.inputParams.id;
       const pts = n.pts;
-      sk.persistentData.sketch = {
-        points: pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
-        geometries: pts.map((_, i) => ({
-          id: 100 + i, type: "line", points: [i, (i + 1) % pts.length], construction: false,
-        })),
-        constraints: [{ id: 0, type: "⏚", points: [0] }],
-      };
       // the spin axis is the profile edge lying on x = 0
       let axisIdx = -1;
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i], b = pts[(i + 1) % pts.length];
-        if (Math.abs(a[0]) < 1e-6 && Math.abs(b[0]) < 1e-6) { axisIdx = i; break; }
+      if (n.segs) {
+        // curved profile (path2d): lines + exact Beziers; the axis is a line seg
+        const { sketch, geomIds } = sketchOf(n);
+        sk.persistentData.sketch = sketch;
+        const ax = geomIds.find(({ sg }) => sg.t === "line" && Math.abs(sg.p[0][0]) < 1e-6 && Math.abs(sg.p[1][0]) < 1e-6);
+        if (ax) axisIdx = ax.gid - 100;
+      } else {
+        sk.persistentData.sketch = {
+          points: pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
+          geometries: pts.map((_, i) => ({
+            id: 100 + i, type: "line", points: [i, (i + 1) % pts.length], construction: false,
+          })),
+          constraints: [{ id: 0, type: "⏚", points: [0] }],
+        };
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          if (Math.abs(a[0]) < 1e-6 && Math.abs(b[0]) < 1e-6) { axisIdx = i; break; }
+        }
       }
       if (axisIdx < 0) {
         throw new Error("revolve(): the profile needs an edge on the x = 0 axis (two consecutive points with x = 0) — that edge is the spin axis. Keep every point at x >= 0.");
@@ -1876,7 +2549,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ];
         xf.inputParams.scale = [scl.x, scl.y, scl.z];
       }
-      trace?.push({ id: rev.inputParams.id, code: "R" });
+      trace?.push({ id: rev.inputParams.id, code: "R", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return rev.inputParams.id;
     }
 
@@ -2195,6 +2868,47 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         });
       }
       if (pts.length < 4) throw new Error("hull(): the shapes have too little geometry to hull");
+      const name = `__hull${hullSeq++}`;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+
+      // EXACT on request (hull({ exact: true }, ...)): a convex hull is a polyhedron, so it goes to the kernel
+      // as flat faces in STEP (src/hullstep.js) on the exact-import path, with
+      // the triangles alongside for the JS kernel, which reads no STEP. Built
+      // in world space, so no transform follows it. A hull that fails the
+      // closed-solid check, or has more faces than HULL_EXACT_MAX_FACES (a
+      // hull of round things), falls through to the mesh import below.
+      if (n.exact) {
+        const wpos = new ConvexGeometry(pts.map((p) => p.clone().applyMatrix4(world))).attributes.position;
+        const tris = [];
+        let wstl = "solid hull\n";
+        for (let i = 0; i < wpos.count; i += 3) {
+          const t = [0, 1, 2].map((k) => [wpos.getX(i + k), wpos.getY(i + k), wpos.getZ(i + k)]);
+          const u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+          const v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+          const c = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+          const l = Math.hypot(...c);
+          if (l > 1e-12) tris.push({ normal: [c[0] / l, c[1] / l, c[2] / l], pts: t });
+          wstl += "facet normal 0 0 0\nouter loop\n";
+          for (const q of t) wstl += `vertex ${q[0]} ${q[1]} ${q[2]}\n`;
+          wstl += "endloop\nendfacet\n";
+        }
+        wstl += "endsolid hull\n";
+        const { polyhedronStep } = await import("./hullstep.js");
+        const exact = polyhedronStep(tris, name);
+        if (exact && exact.faces <= HULL_EXACT_MAX_FACES) {
+          await ensureImportClonePatch(partHistory);
+          IMPORTS.set(name, wstl);
+          const f = await partHistory.newFeature("IMPORT3D");
+          f.inputParams.fileToImport = wstl;
+          f.inputParams.stepText = exact.step;
+          f.inputParams.exactHull = true;   // engine.js retries it as a mesh if refused
+          f.inputParams.meshRepairLevel = "NONE";
+          f.inputParams.centerMesh = false;
+          trace?.push({ id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+          return f.inputParams.id;
+        }
+      }
+
       const pos = new ConvexGeometry(pts).attributes.position;
       let stl = "solid hull\n";
       for (let i = 0; i < pos.count; i += 3) {
@@ -2206,9 +2920,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
       // import the hull mesh, baking the accumulated transform into the STL
       await ensureImportClonePatch(partHistory);
-      const name = `__hull${hullSeq++}`;
       let data = stl;
-      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
       if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
       IMPORTS.set(name, data);
       const f = await partHistory.newFeature("IMPORT3D");
@@ -2257,6 +2969,14 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const f = await partHistory.newFeature("IMPORT3D");
       f.inputParams.fileToImport = data;
       f.inputParams.meshRepairLevel = "NONE";
+      // The import groups triangles into B-rep faces wherever neighbouring
+      // normals turn by less than deflectionAngle (default 8 degrees), and its
+      // cost goes with the number of FACES, not triangles. A crisp knurl turns
+      // ~76 degrees between facets, so at 8 every facet became a face: a 4k
+      // triangle knob took 8 s, a 16k one never finished. At 89 the textured
+      // wall is a handful of faces (16k triangles: 0.8 s) and real 90-degree
+      // part edges still split. Nobody selects individual knurl facets.
+      f.inputParams.deflectionAngle = globalThis.__TEXDEFL || 89;
       // like hull(): the STL already sits at its real position — never re-centre
       f.inputParams.centerMesh = false;
       trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
@@ -2354,7 +3074,25 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // one field folded from all of them: soft minimum with the blend width
       const f = fields.length === 1 ? fields[0]
         : (p) => fields.reduce((acc, g) => (acc === null ? g(p) : smin(acc, g(p), k)), null);
-      const out = solidNets(f, bounds, res, { repair: repairMesh });
+      // Manifold's levelSet first: manifold by construction, so a blend can
+      // never pinch into the "Not manifold" mesh that surface nets makes when
+      // two sheets share grid cells — see src/organicmesh.js for the measured
+      // story. Surface nets + cutPinches stays as the fallback for a host
+      // where the WASM cannot load: worse, but never nothing.
+      let blendMesh = null;
+      try {
+        const { blendLevelSet } = await import("./organicmesh.js");
+        blendMesh = await blendLevelSet(f, bounds, span / res);
+      } catch { /* wasm unavailable here — the nets road below still works */ }
+      if (!blendMesh) {
+        const nets = solidNets(f, bounds, res, { repair: repairMesh });
+        blendMesh = nets.mesh;
+        if (nets.overusedEdges > 0 || nets.openEdges > 0) {
+          const cut = cutPinches(blendMesh);
+          blendMesh = { points: cut.points, faces: cut.faces };
+        }
+      }
+      const out = { mesh: blendMesh };
       if (!out.mesh.faces.length) throw new Error("smoothUnion(): the blend produced nothing — are the shapes hundreds of mm apart?");
 
       let stl = "solid blend\n";
@@ -2378,7 +3116,10 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       f2.inputParams.fileToImport = data;
       f2.inputParams.meshRepairLevel = "NONE";
       f2.inputParams.centerMesh = false;
-      trace?.push({ id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      // `organic: true` tells the viewer this mesh is a blend — thousands of
+      // near-coplanar triangles, not a CAD solid — so the outline pass skips
+      // it (edge display on a blend is chicken wire, not edges).
+      trace?.push({ id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin, organic: true });
       return f2.inputParams.id;
     }
 
@@ -2395,6 +3136,36 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 // without a second registration step. See src/parts.js for why the circular
 // import between the two is safe.
 export * from "./parts.js";
+
+// Baseline silhouettes for organic models — hand-tuned ball skeletons whose
+// outline already reads as the animal, so a generator ADJUSTS a correct shape
+// instead of inventing anatomy from numbers. creature() is the blob() of one
+// of those skeletons; creatureAnchors() gives real coordinates on the finished
+// form for the parts that must not be blended (eyes, nose, ear decorations).
+// See src/creatures.js for the plans and the proportions they bake in.
+export { creatureBalls, creatureAnchors, creatureDecor, CREATURE_NAMES } from "./creatures.js";
+import { creatureBalls as creatureBallsFn, creatureDecor as creatureDecorFn } from "./creatures.js";
+export function creature(name, opts = {}) {
+  const flesh = blob(creatureBallsFn(name, opts), { k: opts.k ?? 4 * ((opts.h ?? 100) / 100) });
+  // Decorated BY DEFAULT — the first bird built from the bare plan had no
+  // beak and no eyes. `plain: true` is for reshaping the flesh alone. The
+  // flesh itself is left uncoloured so colorize(tint, creature(...)) tints
+  // the body while the face keeps its own colours (a child's colorize wins
+  // over an inherited one).
+  if (opts.plain) return flesh;
+  const parts = [flesh];
+  for (const d of creatureDecorFn(name, opts)) {
+    let shape;
+    if (d.kind === "beak") {
+      // a stubby cone pointing forward (+X): cone stands on Z, so lay it over
+      shape = translate(d.at, rotate([0, 90, 0], cone({ r1: d.r, r2: Math.max(0.6, d.r * 0.15), h: d.len, $fn: 24 })));
+    } else {
+      shape = translate(d.at, sphere({ r: d.r, $fn: 24 }));
+    }
+    parts.push(colorize(d.color, shape));
+  }
+  return group(...parts);
+}
 
 // Common printed parts — standoffs, snap fits, hinges, shells, vents. Same
 // reasoning as parts.js above: re-exported here so the viewer vocabulary and

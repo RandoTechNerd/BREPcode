@@ -73,5 +73,41 @@ console.log("\nthe sentence says what the page will do\n");
     !visitorSummary(null).startsWith("Preview only"));
 }
 
+// PUBLISHING AND THE STASH ARE TWO HALVES, AND ONLY ONE WAS WIRED.
+//
+// __brepPublish POSTs a model to the site. The gallery listed a STATIC file.
+// Nothing joined them, so on brepcode.com you could publish successfully into
+// a gallery that stayed empty for ever — measured against the live site: the
+// served manifest is still the shipped stub with `"models": []`, which is why
+// published models could not be opened.
+{
+  console.log("\nthe stash shows what was actually published\n");
+  const { readFileSync } = await import("node:fs");
+  const Q = readFileSync(new URL("../site/quicksave.js", import.meta.url), "utf8");
+  const V = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+
+  check("the site half can list what it holds", Q.includes("window.__brepStashList"));
+  check("...at a configurable endpoint",
+    Q.includes("window.BREPCODE_LIST_ENDPOINT") && Q.includes('"/api/models"'));
+  check("...with the same same-origin auth publishing uses",
+    /__brepStashList[\s\S]{0,400}credentials: "same-origin"/.test(Q),
+    "no credential belongs in a file the site serves publicly");
+  check("...and no secret crept into it",
+    !/sk-|api[_-]?key\s*[:=]\s*["'][A-Za-z0-9]/i.test(Q),
+    "this file is served publicly; a token here would be a leak");
+
+  check("the gallery asks the site before reading the file",
+    V.includes("const lister = window.__brepStashList"));
+  check("...and falls back to the manifest when there is no endpoint",
+    /if \(!models\) \{[\s\S]{0,200}secretSource\(\)|if \(!models\) \{[\s\S]{0,300}manifest\?\.models/.test(V)
+      || V.includes("if (!models) {"),
+    "a host without the endpoint, and the offline exe, must keep working");
+  check("a failed list is not shown as an error",
+    /catch \{ \/\* the file below is the fallback/.test(V));
+  check("an empty gallery says WHY it is empty",
+    V.includes("this site can publish but has no list endpoint"),
+    "'the stash is empty' is true and useless when nothing ever fills it");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

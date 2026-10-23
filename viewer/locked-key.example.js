@@ -26,7 +26,11 @@
 export const LOCKED = {
   open: "sk-or-v1-PUT-YOUR-OPENROUTER-KEY-HERE",
   provider: "openai",                          // OpenRouter speaks the OpenAI wire format
-  model: "stealth/ox-alpha",
+  // GLM-5.3 Flash is what "stealth/ox-alpha" turned out to be all along — the
+  // stealth id 404s now, and the app maps it here automatically (see
+  // MODEL_SUCCESSORS in the viewer) so even a stale copy of this file works.
+  // ~$0.001 per generation on OpenRouter, no shared-pool rate limits.
+  model: "z-ai/glm-5.3-flash",
   baseUrl: "https://openrouter.ai/api/v1",
 };
 
@@ -39,17 +43,52 @@ export const LOCKED = {
 // lives. In BREPcode's console:
 //
 //     brepscript.lockKey("sk-or-v1-…", "the-password", "openai",
-//                        "stealth/ox-alpha", "https://openrouter.ai/api/v1")
+//                        "z-ai/glm-5.3-flash", "https://openrouter.ai/api/v1")
 //
 // It prints a block in exactly this shape — replace the export above with it:
 //
 // export const LOCKED = {
 //   blob: "…encrypted…",
 //   provider: "openai",
-//   model: "stealth/ox-alpha",
+//   model: "z-ai/glm-5.3-flash",
 //   baseUrl: "https://openrouter.ai/api/v1",
 // };
 //
 // On a PUBLIC host the blob is downloadable by anyone and PBKDF2 only buys
 // time against offline guessing — so this suits a private hand-off, not a
 // website.
+
+// ---------------------------------------------------------------------------
+// FORM 3 — ASSIST MODE, the "AI hops in when the helper is stuck" demo.
+//
+// The built-in helper (rule engine + model catalog) stays the chat. Only when
+// it says it can't do something, or what it made fails to build, does the
+// chat offer a "✨ Let the AI try" button, and that one request goes to the
+// house AI. Prefer `proxy`: an OpenAI-compatible endpoint you run (see
+// docs/house-ai.md for a 30-line Cloudflare Worker) that holds the OpenRouter
+// key server-side, so nothing secret ships in the bundle. `open` works too,
+// for a quick demo, with the same plain-text caveats as FORM 1.
+//
+// export const LOCKED = {
+//   mode: "assist",
+//   proxy: "https://brepcode-ai.<you>.workers.dev/v1",   // or: open: "sk-or-v1-…",
+//   model: "z-ai/glm-5.3-flash",
+//   baseUrl: "https://openrouter.ai/api/v1",             // only used with `open`
+//   label: "BREPcode AI (demo)",
+// };
+
+// ---------------------------------------------------------------------------
+// FORM 3 — PREMIUM: the house AI for one door only. brepcode.com/rtn2026 (or
+// ?rtn2026 on the app's address) gets the AI as the chat's AI, with the model
+// picker under the chat; plain brepcode.com gets the built-in helper and the
+// "connect your own AI / download the .exe / tutorials" offers. The key is
+// still plain text in the bundle (the door is a link, not a lock): use a
+// dedicated OpenRouter key with a credit limit, or `proxy` instead of `open`
+// (docs/house-ai.md).
+//
+// export const LOCKED = {
+//   mode: "premium",
+//   open: "sk-or-v1-PUT-A-CAPPED-OPENROUTER-KEY-HERE",
+//   model: "google/gemini-3.8-flash",
+//   label: "BREPcode AI",
+// };

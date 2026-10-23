@@ -15,6 +15,7 @@
 
 import * as dsl from "./dsl.js";
 import { Euler, Quaternion, Vector3, MathUtils } from "three";
+import { exactMinkowski, exactRing, roundedPrism, convexOutline } from "./exactshapes.js";
 
 // ------------------------------------------------------------------ tokenizer
 
@@ -410,9 +411,37 @@ export const MODULES = [
 export const isProfile = (v) => !!(v && v.__profile2d);
 // exported: py123d.js builds BuildSketch/BuildLine on the same profile species
 export const profileLeaf = (pts) => ({ __profile2d: true, leaf: true, pts });
+// A leaf that is a convex outline grown by r with ROUND corners (offset(r=),
+// a rounded rectangle) remembers that, so a straight extrusion of it can be the
+// exact rounded prism (src/exactshapes.js) instead of a prism of arc facets.
+export const roundedLeaf = (pts, base, r) => ({ ...profileLeaf(pts), round: { base, r } });
 export const profileOp = (op, children) => ({ __profile2d: true, op, children });
 
+// OpenSCAD's rotate([x, y, z]), and JSCAD's, turn about X, then Y, then Z, all
+// fixed axes: the matrix Rz*Ry*Rx. dsl.rotate takes three.js's "XYZ" order,
+// Rx*Ry*Rz, so a vector with two or more angles has to be re-expressed for it
+// or the part comes out turned the wrong way (rotate([90, 0, 90]) is in half
+// the files on Thingiverse). One angle means the same in either order, so it
+// passes through untouched rather than picking up float noise.
+export function fixedAxisRotation([x = 0, y = 0, z = 0]) {
+  if ([x, y, z].filter((a) => a).length < 2) return [x, y, z];
+  const q = new Quaternion().setFromEuler(
+    new Euler(MathUtils.degToRad(x), MathUtils.degToRad(y), MathUtils.degToRad(z), "ZYX"));
+  const e = new Euler().setFromQuaternion(q, "XYZ");
+  return [e.x, e.y, e.z].map((r) => Math.round(MathUtils.radToDeg(r) * 1e9) / 1e9);
+}
+
 export function mapProfile(p, fn) {
+  if (p.leaf && p.round) {
+    // a move, turn, mirror or even scale keeps a rounded outline rounded; a
+    // stretch does not, and then it is only its points
+    const base = p.round.base.map(fn);
+    const len = (q, i) => Math.hypot(q[(i + 1) % q.length][0] - q[i][0], q[(i + 1) % q.length][1] - q[i][1]);
+    const k = base.length > 1 ? len(base, 0) / (len(p.round.base, 0) || 1) : null;
+    const uniform = k > 0 && p.round.base.every((_, i) => Math.abs(len(base, i) - k * len(p.round.base, i)) < 1e-6 * (1 + len(base, i)));
+    const out = p.pts.map(fn);
+    return uniform ? roundedLeaf(out, base, p.round.r * k) : profileLeaf(out);
+  }
   if (p.leaf) return profileLeaf(p.pts.map(fn));
   return profileOp(p.op, p.children.map((c) => mapProfile(c, fn)));
 }
@@ -455,9 +484,12 @@ export function profileToRevolved(p, angle, fn) {
     // A boolean of 2D shapes: revolve each leaf and redo the boolean in 3D.
     // Sound for a revolve about a shared axis, the same way profileToSolid
     // treats a straight extrusion.
+    // profileOp() tags these UNION / SUBTRACT / INTERSECT, as profileToSolid
+    // reads them. Comparing against "difference" here once sent every one to
+    // the union below, so hollow lathes (cups, tubes, bushings) came out solid.
     const kids = p.children.map((c) => profileToRevolved(c, angle, fn));
-    if (p.op === "difference") return dsl.difference(...kids);
-    if (p.op === "intersection") return dsl.intersection(...kids);
+    if (p.op === "SUBTRACT") return dsl.difference(...kids);
+    if (p.op === "INTERSECT") return dsl.intersection(...kids);
     return dsl.union(...kids);
   }
   const pts = p.pts;
@@ -472,6 +504,12 @@ export function profileToRevolved(p, angle, fn) {
   }
   // Detached: revolve() has no axis edge to spin and refuses. A circle here is
   // a torus — major radius = how far out the centre sits, tube = its radius.
+  // A four-sided outline with a flat top and bottom (a washer, a band, a
+  // tapered collar) is the outer wall minus the inner, as cones.
+  if (angle >= 360 - 1e-9) {
+    const ring = exactRing(pts);
+    if (ring) return ring;
+  }
   const c = circleOf(pts);
   if (c) {
     const t = dsl.torus({
@@ -483,16 +521,30 @@ export function profileToRevolved(p, angle, fn) {
     return Math.abs(c.cy) > 1e-6 ? dsl.translate([0, 0, c.cy], t) : t;
   }
   throw new Error("rotate_extrude(): this profile does not touch the axis and is not a "
-    + "circle, so it would sweep a ring with a non-round section — the kernel has no "
-    + "such primitive. Either extend the profile to x = 0 (a true lathe), or use a "
-    + "circle (a torus), or sweep it yourself with tube().");
+    + "circle or a full-turn four-sided ring (flat top and bottom), so it would sweep a "
+    + "section the kernel has no primitive for. Either extend the profile to x = 0 (a "
+    + "true lathe), use a circle (a torus) or a rectangle/trapezoid (a ring), or sweep "
+    + "it yourself with tube().");
 }
 
 // Cutting/intersecting tools are extruded 2mm long and dropped 1mm so the
 // caps never sit coincident with the kept solid's faces.
 export function profileToSolid(p, h, overshoot = false) {
   if (p.leaf) {
-    const solid = dsl.linearExtrude({ h: overshoot ? h + 2 : h }, dsl.polygon(p.pts));
+    const H = overshoot ? h + 2 : h;
+    // a convex outline offset with round corners: the exact rounded prism, true
+    // arcs instead of a fan of flat facets (null when it cannot prove it)
+    const round = p.round && roundedPrism(convexOutline(p.round.base) || p.round.base, p.round.r, H);
+    if (round) return overshoot ? dsl.translate([0, 0, -1], round) : round;
+    // A sampled full circle (circle(), build123d's Circle) extrudes as a real
+    // cylinder: the exact kernel then has one round wall instead of 64 flat
+    // ones, which matters to everything after it (a fillet next to a
+    // 64-facet pocket took 8 s on the Rust kernel, 0.1 s next to a cylinder).
+    // Small $fn polygons (a hexagon) stay polygons, as the engine keeps them.
+    const circ = sampledCircle(p.pts);
+    const solid = circ
+      ? dsl.translate([circ.cx, circ.cy, 0], dsl.cylinder({ r: circ.r, h: H, $fn: p.pts.length }))
+      : dsl.linearExtrude({ h: H }, dsl.polygon(p.pts));
     return overshoot ? dsl.translate([0, 0, -1], solid) : solid;
   }
   const kids = p.children.map((c, i) =>
@@ -500,6 +552,23 @@ export function profileToSolid(p, h, overshoot = false) {
   if (p.op === "UNION") return dsl.union(kids);
   if (p.op === "SUBTRACT") return dsl.difference(kids);
   return dsl.intersection(kids);
+}
+
+// { cx, cy, r } when the points are a regular polygon of more than 16 sides
+// (equal radius, equal spacing): a circle as far as anyone meant it.
+function sampledCircle(pts) {
+  const n = pts.length;
+  if (n <= 16) return null;
+  const cx = pts.reduce((a, q) => a + q[0], 0) / n, cy = pts.reduce((a, q) => a + q[1], 0) / n;
+  const r = Math.hypot(pts[0][0] - cx, pts[0][1] - cy);
+  if (!(r > 1e-9)) return null;
+  const chord = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
+  for (let i = 0; i < n; i++) {
+    const q = pts[i], nx = pts[(i + 1) % n];
+    if (Math.abs(Math.hypot(q[0] - cx, q[1] - cy) - r) > r * 1e-6) return null;
+    if (Math.abs(Math.hypot(nx[0] - q[0], nx[1] - q[1]) - chord) > r * 1e-6) return null;
+  }
+  return { cx, cy, r };
 }
 
 const circlePts = (r, n) => Array.from({ length: n }, (_, i) => {
@@ -956,7 +1025,10 @@ function evalCall(stmt, scope) {
       if (kids.some(isProfile)) {
         throw new Error("hull() of 2D shapes isn't supported yet — wrap each shape in linear_extrude() to hull them in 3D.");
       }
-      return dsl.hull(...kids);
+      // exact where it can be: a hull of corner cylinders (the rounded box),
+      // coaxial discs (a taper), corner spheres or flat pieces all stay exact
+      // B-rep (src/exactshapes.js, dsl.js hull); anything else is the mesh hull
+      return dsl.hull({ exact: true }, ...kids);
     }
 
     // minkowski() { shape(); sphere(r); } — rounding every outside edge of a
@@ -975,12 +1047,17 @@ function evalCall(stmt, scope) {
       if (kids.length > 2) {
         throw new Error(`minkowski() with ${kids.length} shapes isn't supported — BREPcode handles the common form, a shape and a sphere.`);
       }
+      // A box or an upright cylinder rounded by a sphere, or a box rounded by an
+      // upright cylinder, is an exact filleted solid: the same shape, on the
+      // exact lane, with real curves (src/exactshapes.js).
+      const twin = exactMinkowski(kids[0], kids[1]);
+      if (twin) return twin;
       const ball = kids[1];
       const r = (ball?.kind === "prim" && ball.code === "P.S")
         ? (ball.params?.radius ?? ball.params?.r)
         : null;
       if (!(r > 0)) {
-        throw new Error("minkowski() is supported when the second shape is a sphere — minkowski() { part(); sphere(r=2); } rounds every outside edge by 2.");
+        throw new Error("minkowski() is supported with a sphere (minkowski() { part(); sphere(r=2); } rounds every outside edge by 2) and as a box with an upright cylinder (rounded vertical edges).");
       }
       return dsl.roundedGrow(r, kids[0]);
     }
@@ -997,7 +1074,14 @@ function evalCall(stmt, scope) {
       if (!amount) return child;
       // offset(r=) rounds convex corners; offset(delta=) is a straight/miter offset
       const rounded = r !== undefined && !chamfer;
-      return profileLeaf(offsetPolygon(child.pts, amount, fnOf(args, scope) || 24, rounded));
+      const pts = offsetPolygon(child.pts, amount, fnOf(args, scope) || 24, rounded);
+      // growing a convex outline with round corners: remember it, so the
+      // extrusion can be the exact rounded prism
+      if (rounded && amount > 0) {
+        const base = child.round ? child.round.base : convexOutline(child.pts);
+        if (base) return roundedLeaf(pts, base, (child.round ? child.round.r : 0) + amount);
+      }
+      return profileLeaf(pts);
     }
 
     case "translate": {
@@ -1056,7 +1140,7 @@ function evalCall(stmt, scope) {
         return dsl.rotate(
           [MathUtils.radToDeg(e.x), MathUtils.radToDeg(e.y), MathUtils.radToDeg(e.z)], child);
       }
-      return dsl.rotate(Array.isArray(a) ? asVec3(a) : [0, 0, a ?? 0], child);
+      return dsl.rotate(Array.isArray(a) ? fixedAxisRotation(asVec3(a)) : [0, 0, a ?? 0], child);
     }
 
     // ----- 2D primitives -------------------------------------------------

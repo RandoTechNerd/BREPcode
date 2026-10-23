@@ -1,0 +1,29 @@
+{
+  "name": "BREP_kernel",
+  "type": "module",
+  "description": "A boundary representation (BREP) geometry kernel for building CAD applications.",
+  "version": "0.9.0",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL"
+  },
+  "files": [
+    "brep_kernel_bg.wasm",
+    "brep_kernel.js",
+    "brep_kernel.d.ts"
+  ],
+  "main": "brep_kernel.js",
+  "homepage": "https://v2.brep.io",
+  "types": "brep_kernel.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "cad",
+    "brep",
+    "geometry",
+    "nurbs",
+    "kernel"
+  ]
+}

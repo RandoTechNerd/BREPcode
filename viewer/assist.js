@@ -51,6 +51,16 @@ export const SPECS = [
     hint: "Spins a 2D profile around the x=0 axis — vases, knobs, turned parts. Keep all points at x ≥ 0, touching x = 0.",
   },
   {
+    name: "path2d", group: "Smooth & lathe", sig: "path2d([x, y], ..., bezierTo(c1, c2, p), ...)",
+    snippet: "revolve(360, path2d([0, 0], [10, 0], bezierTo([14, 0], [6, 12], [8, 20]), [0, 20]))", argStart: 13,
+    hint: "A 2D outline of lines and smooth Bezier curves (bezierTo(control1, control2, end)). The curves stay EXACT through linearExtrude and revolve, so the solid is smooth, not faceted.",
+  },
+  {
+    name: "revolve stretch", group: "Smooth & lathe", sig: "revolve({ stretch: L }, profile)",
+    snippet: "revolve({ stretch: 10 }, path2d([0, 0], [12, 0], bezierTo([14, 6], [10, 14], [9, 20]), [0, 20]))", argStart: 18,
+    hint: "A revolve pulled apart into a racetrack (stadium) L long: two half-revolves for the round ends, the same profile extruded for the straight sides. Shaver docks, pill shapes, phone stands, all exact.",
+  },
+  {
     name: "blend", group: "Smooth & lathe", sig: "blend({ k }, shapeA, shapeB)",
     snippet: "blend({ k: 6 },\n  sphere3d({ r: 20 }),\n  move3d([26, 0, 0], sphere3d({ r: 14 })))", argStart: 6,
     hint: "Melts shapes together with a soft join instead of a seam. k = the blend"
@@ -169,6 +179,11 @@ export const SPECS = [
     name: "importedMesh", group: "Edit a part", sig: 'importedMesh("file.stl", { split })',
     snippet: 'importedMesh("mount.stl", { split: true })', argStart: 13,
     hint: "Brings in an STL/OBJ/3MF mesh you imported (use the Import button first). { split: true } splits a multi-body file into separate solids. Wrap it in difference() to drill, union() to add, or stretch() to lengthen. Note: mesh geometry, not editable CAD parameters.",
+  },
+  {
+    name: "importedSolid", group: "Edit a part", sig: 'importedSolid("file.step")',
+    snippet: 'importedSolid("mount.step")', argStart: 14,
+    hint: "An imported part rebuilt as an EXACT solid: real planes and cylinders recovered from the mesh (drop an STL and pick \"Open as an exact solid\"). Cut it exactly, and export STEP with true curved surfaces. fillet() on it is not supported yet (it falls back to the mesh). Best on parts that came from CAD; organic models stay meshes.",
   },
 
   // --- combining ----------------------------------------------------------
@@ -377,7 +392,7 @@ module.exports = { main };`,
   {
     id: "py",
     label: "build123d",
-    blurb: "Paste build123d or CadQuery Python — ALGEBRA MODE only (flat assignments, no with-blocks). Watch the origin difference: build123d primitives are CENTRED, while BREPcode's cube() sits corner-at-origin — the translation accounts for it, but keep it in mind when reading numbers.",
+    blurb: "Paste build123d or CadQuery Python: algebra mode (part = Box(…) - Hole(…)) or builder mode (with BuildPart() as part:), with ordinary Python around it (def, for, if, while, list comprehensions, math). Watch the origin difference: build123d primitives are CENTRED, while BREPcode's cube() sits corner-at-origin — the translation accounts for it, but keep it in mind when reading numbers.",
     works: [
       "from build123d import *  (the import line is ignored, not required)",
       "3D: Box · Cylinder · Cone · Sphere · Torus · Wedge · ConvexPolyhedron · Hole / CounterBoreHole / CounterSinkHole — all centred",
@@ -388,11 +403,15 @@ module.exports = { main };`,
       "part = A - B, A + B, A & B and part -= / += / &= compound assignment",
       "plain math on variables and tuple unpacking (l, w, t = 40, 60, 10)",
       "CadQuery basics: cq.Workplane(\"XY\").box(…).union(…).cut(…).translate(…)",
+      "builder mode: with BuildPart() / BuildSketch() / BuildLine(), mode=Mode.SUBTRACT / INTERSECT / PRIVATE, extrude(amount=…), make_face(), add(), mirror(about=Plane.YZ)",
+      "with Locations(…) / GridLocations(…) / PolarLocations(…) as blocks · workplanes: Plane.XY / XZ / YZ (.offset(h)) and faces: part.faces().sort_by(Axis.Z)[-1]",
+      "fillet / chamfer on solid edges: part.edges() · .filter_by(Axis.Z) (vertical) · .group_by(Axis.Z)[-1] (top) / [0] (bottom)",
+      "Python: def / return / lambda, for / while / break, if / elif / else, comprehensions, range / len / min / max / sum / enumerate / zip, import math",
+      "TangentArc and the @ / % operators on lines (l1 @ 1 = its end point, l1 % 1 = its direction there)",
     ],
     limits: [
-      "builder mode — with BuildPart() as …: (rewrite in algebra mode, it is usually shorter)",
-      "indented blocks — if / for / def / with",
-      "exotic curves — Airfoil, BSpline, TangentArc, Helix, conic arcs (the supported arc set covers most outlines)",
+      "face and edge picking beyond the outermost face along an axis (no GeomType / Select.LAST filters, no faces().filter_by)",
+      "classes and try/except · exotic curves — Airfoil, BSpline, Helix, conic arcs (the supported arc set covers most outlines)",
       "Text (use BREPcode's text() instead) · drawing annotations (use the SVG blueprint export) · revolve/sweep/loft",
       "CadQuery selectors & sketching — .faces(\">Z\"), .edges(), .workplane(), .fillet(), .extrude()",
     ],
@@ -754,17 +773,19 @@ export const NAMES = SPECS.map((s) => s.name);
 export const specOf = (name) => SPECS.find((s) => s.name === name) || null;
 
 // Things people reach for out of habit that BrepScript genuinely doesn't have.
+// Kept honest against src/dsl.js: fillet, chamfer, revolve, text and colour
+// all exist now, so the advice points at the real call rather than saying
+// "not yet" about something that works.
 const NOT_HERE = {
-  linear_extrude: "here it's linearExtrude({ h: 10 }, polygon([[x, y], ...])) — or paste OpenSCAD and it translates",
-  rotate_extrude: "not supported yet — only linear extrusion is",
+  linear_extrude: "here it's linearExtrude({ h: 10 }, polygon([[x, y], ...])), or paste the OpenSCAD and it translates",
+  rotate_extrude: "here it's revolve(360, polygon([...])) with the profile touching x = 0, or paste the OpenSCAD and it translates",
   circle: "use cylinder({ r, h }) for a round solid, or polygon(...) + linearExtrude",
   square: "use cube([X, Y, Z]), or polygon(...) + linearExtrude",
-  fillet: "not wired up yet — it needs edge selection",
-  chamfer: "not wired up yet — it needs edge selection",
-  extrude: "not wired up yet",
-  revolve: "not wired up yet",
-  color: "the viewer shades everything the same way",
-  text: "not wired up in the DSL yet",
+  extrude: "use linearExtrude({ h }, polygon([...])) for a flat outline, or revolve(360, polygon([...])) for a lathe shape",
+  color: "use colorize(\"#ff8800\", shape) (a name, hex or [r, g, b]); the viewer keeps each part's colour and a 3MF prints them",
+  colour: "use colorize(\"#ff8800\", shape) (a name, hex or [r, g, b])",
+  roundover: "use fillet(r, shape), or fillet({ r, faces: 'top' }, shape) for one side",
+  bevel: "use chamfer(d, shape)",
 };
 
 function editDistance(a, b) {
@@ -929,7 +950,7 @@ const KIND_CODES = {
   sphere: ["P.S"], spheroid: ["P.S"],
   cylinder: ["P.CY", "P.CO"], cyl: ["P.CY", "P.CO"],
   cone: ["P.CO"], torus: ["P.T"],
-  importedMesh: ["IMPORT3D"],
+  importedMesh: ["IMPORT3D"], importedSolid: ["IMPORT3D"],
   // drill() is a cylinder under an xform, so it reaches the trace as one P.CY
   // and nothing else. Leaving it out did not merely make drilled holes
   // unclickable: the trace then held a P.CY the source could not account for,
@@ -1337,8 +1358,72 @@ export function addImplicitReturn(src) {
     else if (")]}".includes(c)) depth--;
     else if ((c === ";" || c === "}") && depth === 0) bounds.push(i + 1);
   }
+  // Statements separated by NOTHING BUT A NEWLINE. Code with no semicolons at
+  // all — which is how people type when an editor builds as they type — has no
+  // `;` and no top-level `}`, so the scan above saw one giant statement and the
+  // repair put `return` at the very top. ASI then ended the return at the first
+  // line break: the FIRST shape came back, everything after it became dead
+  // code, and the status bar claimed the "final shape" had been returned.
+  // Measured: two shapes in the editor, one silently gone, and the user
+  // concluded chamfer() could not take a difference() — the tool's lie became
+  // the feature's reputation.
+  //
+  // Emulate ASI conservatively: a depth-0 newline is a boundary only when the
+  // text before it ends like an expression (a closer or a word character) and
+  // the next non-blank line starts with an identifier. `.bar()` continuations,
+  // operators, and open brackets all keep the statement together, exactly as
+  // the parser would.
+  {
+    const nl = /\n/g;
+    let m;
+    while ((m = nl.exec(masked))) {
+      const at = m.index;
+      const before = masked.slice(0, at).replace(/\s+$/, "");
+      const after = masked.slice(at + 1).replace(/^\s+/, "");
+      if (!before || !after) continue;
+      if (!/[)\]\w$"'`]$/.test(before)) continue;
+      if (!/^[A-Za-z_$]/.test(after)) continue;
+      // depth at this newline: count openers/closers up to it (cheap, and the
+      // masked text has no brackets hiding in strings or comments)
+      let d = 0;
+      for (let i = 0; i < at; i++) {
+        if ("([{".includes(masked[i])) d++;
+        else if (")]}".includes(masked[i])) d--;
+      }
+      if (d === 0) bounds.push(at + 1);
+    }
+    bounds.sort((a, b) => a - b);
+  }
   // A real `return` in code (not in a comment or string) means it already returns.
   if (/\breturn\b/.test(masked)) return null;
+
+  // SEVERAL bare shapes at the end, not one. Returning any single one of them
+  // silently deletes the rest from the screen — the failure above in a
+  // different coat. OpenSCAD taught everyone that two shapes typed one after
+  // the other both appear, so honour that: hand back a group() of the trailing
+  // run. The hint in the viewer tells the user their shapes were grouped, and
+  // combining them properly (nesting one inside the other) is then their call.
+  {
+    const KEYWORD = /^(?:const\b|let\b|var\b|function\b|class\b|if\b|for\b|while\b|switch\b|try\b|do\b|export\b|import\b)/;
+    const segs = [];
+    for (let b = 0; b < bounds.length; b++) {
+      const from = bounds[b], to = b + 1 < bounds.length ? bounds[b + 1] : src.length;
+      if (masked.slice(from, to).trim()) segs.push({ from, to });
+    }
+    let run = 0;
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const lead = masked.slice(segs[i].from, segs[i].to).replace(/^[\s;]+/, "");
+      if (KEYWORD.test(lead)) break;
+      run++;
+    }
+    if (run >= 2) {
+      const tailSegs = segs.slice(-run);
+      const head = src.slice(0, tailSegs[0].from);
+      const parts = tailSegs.map((s) =>
+        `(${src.slice(s.from, s.to).trim().replace(/;+\s*$/, "")})`);
+      return `${head}return group(\n  ${parts.join(",\n  ")},\n);`;
+    }
+  }
 
   // Walk boundaries from the end for the last one with real content after it.
   // With a trailing `;` the final boundary is at end-of-string, so this steps

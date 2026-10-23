@@ -89,6 +89,33 @@ console.log("\nthe performance road stays paved\n");
   check("the nets output is repaired where it is created",
     /solidNets\(f, bounds, res, \{ repair: repairMesh \}\)/.test(DSL),
     "surface nets is not edge-manifold; unrepaired it poisons later booleans");
+
+  // THE GIRAFFE. Blended legs 2.8mm apart with a 2.5mm blend force surface
+  // nets to run two sheets through the same grid cells: 17 edges owned by
+  // four faces, a kernel that refuses the mesh ("Not manifold"), and a viewer
+  // that renders the refusal as ragged see-through holes. Manifold's
+  // levelSet() meshes the same field with manifoldness guaranteed by
+  // construction — so it goes first, and nets stays only as the road for a
+  // host where the WASM cannot load.
+  check("the blend meshes through Manifold's levelSet first",
+    /blendLevelSet\(f, bounds, span \/ res\)/.test(DSL),
+    "manifold by construction — a blend can no longer pinch");
+  check("...and the nets fallback cuts pinches instead of patching them",
+    /cutPinches\(blendMesh\)/.test(DSL) || /cutPinches\(nets\.mesh\)/.test(DSL) || /cutPinches\(/.test(DSL),
+    "repairMesh deletes junction faces and welds the sheets — the false joint, made permanent");
+  const OM = readFileSync(new URL("../src/organicmesh.js", import.meta.url), "utf8");
+  check("levelSet gets the NEGATED field",
+    /Manifold\.levelSet\(\s*\(p\) => -f\(p\)/.test(OM),
+    "measured: levelSet treats positive as inside; our SDFs are negative inside — un-negated, every blend is an inside-out box with the animal as a cavity");
+  check("the wasm loads lazily and once",
+    /wasmPromise \?\?=/.test(OM),
+    "organic models are rare; a plain cube must never pay for the WASM");
+  check("the viewer skips outlines on organic meshes",
+    /codeOrganic\.has\(m\.userData\.featureId\)\) continue;/.test(
+      readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8")),
+    "EdgesGeometry on a blend is chicken wire over the whole animal");
+  check("...told apart by a trace flag, not guessed from triangle counts",
+    /organic: true/.test(DSL));
   const FG = readFileSync(new URL("../src/fieldgrid.js", import.meta.url), "utf8");
   check("the lattice seeds exact distances near the surface",
     /exactDistanceNear\(at3\(i, j, k\), tris, g, seedR\)/.test(FG));

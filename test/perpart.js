@@ -230,5 +230,114 @@ console.log("\nthe viewer is wired to all of it\n");
   has("window.__brepMatReport", "and there is a hook to prove which piece got what");
 }
 
+// ONE PIECE AT A TIME, SEE-THROUGH.
+//
+// glass() could already make a single piece clear from code. What there was no
+// way to do was reach for a piece on screen and turn it down — so the answer to
+// "let me see inside THAT one" was the global slider, which fades the whole
+// model and hides the very thing you were trying to look past.
+//
+// The disappearing-parts bug lived here too, and the two are the same story:
+// transparency is not one setting but three. Turn `transparent` on without
+// `side = DoubleSide` and the piece loses its back faces — you look through its
+// near wall and straight out of the model, and what should have been the inside
+// of the part is simply not drawn. Every other path already paired them. The
+// glass path set opacity and depthWrite and left `side` inherited from the
+// panel, which is FrontSide whenever the global opacity is 100 — which is
+// exactly when someone reaches for a clear piece.
+console.log("\none piece can be see-through on its own\n");
+{
+  const { readFileSync: rf } = await import("node:fs");
+  const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has("const featureClear = {}", "the per-piece opacity map is declared");
+  has("featureClear[fid] ?? codeClear[fid]",
+    "a hand-set opacity beats glass() in the code",
+    "same precedence colour and finish already use");
+  has('id="sm-clear"', "the shape menu has an opacity slider");
+  has('$("sm-clear").addEventListener("input"',
+    "...that updates while dragging, not on release",
+    "transparency is judged by eye against the piece behind it");
+  has("delete featureClear[shapeMenuFid]",
+    "...and 100% removes the override rather than pinning the piece opaque");
+  has("for (const k of Object.keys(featureClear)) delete featureClear[k]",
+    "the global 'clear my overrides' clears these too");
+
+  // The regression itself.
+  const glassBlock = V.slice(V.indexOf("if (m.userData.codeClear != null) {"));
+  const untilNext = glassBlock.slice(0, glassBlock.indexOf("if (m.userData.codeGlow)"));
+  check("a see-through piece is drawn DOUBLE-SIDED",
+    /m\.side = THREE\.DoubleSide/.test(untilNext),
+    "without this its back faces are culled and parts of the model vanish");
+  check("...and the report exposes enough to prove it",
+    V.includes("doubleSided: m.side === THREE.DoubleSide") && V.includes("opacity: +(m.opacity ?? 1)"),
+    "measured: doubleSided was false before the fix and true after, same model");
+}
+
+// ORBIT AROUND THE PART.
+console.log("\nthe view turns around the model\n");
+{
+  const { readFileSync: rf } = await import("node:fs");
+  const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has("const recentrePivot", "there is a pivot correction");
+  // The correction must be INVISIBLE. The first version translated the camera
+  // so the model slid to screen centre, and one bug report carried all three
+  // consequences at once: it fought keepModelClear's deliberate offset every
+  // time a panel opened, the jump-at-grab moved an imported STL out from
+  // under the cursor, and the grab that then landed on empty space started an
+  // orbit — which the user's hand reads as inverted mouse directions.
+  check("the camera NEVER moves — only the target, along the view ray",
+    (() => {
+      const start = V.indexOf("const recentrePivot");
+      const body = V.slice(start, V.indexOf("};", start));
+      return start > 0
+        && !/camera\.position\.(add|copy|set|sub)/.test(body)
+        && body.includes("controls.target.copy(camera.position).addScaledVector(view, depth)");
+    })(),
+    "the view ray unchanged means not one pixel shifts at the instant of grab");
+  has("Math.max(centre.clone().sub(camera.position).dot(view), 1)",
+    "...to the model's depth on that ray, clamped in front of the camera");
+  has("if (Math.abs(depth - len) < Math.max(1, len * 0.02)) return;",
+    "...and a pivot already at depth is left alone");
+  has('if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return',
+    "a deliberate pan is never re-centred");
+  check("it runs on the rotate button only",
+    /e\.pointerType === "mouse" && e\.button !== 0\) return/.test(V),
+    "right-drag is pan; re-centring it would undo the pan every time");
+
+  // THE CAMERA THAT CHASED THE MODEL. Every rebuild ran frameModel(), which
+  // copied the model's new centre into the camera — so committing a drag
+  // translated the camera by exactly the drag delta: the user dragged the
+  // part 80px and watched it stay put on screen while the world slid
+  // underneath. Measured fixed: camera byte-identical through drag + commit
+  // + rebuild, model 66px along on screen.
+  check("a user-held camera is never re-framed by a rebuild",
+    /if \(!autoPlaced\) \{[\s\S]{0,700}?windowsChanged\(\);[\s\S]{0,40}?return;/.test(V),
+    "near/far still track the size, and the clearance safety net still runs");
+  has("autoPlaced = false;\n          controls.enabled = false;",
+    "...and dragging the model claims the camera for the user",
+    "arranging the scene is the user's composition; the commit must not glide it away");
+
+  // TRANSLUCENCY IS OPT-IN. Most glitter spools are modelled as clear resin —
+  // Gold Dust is literally "clear with gold flake", t 0.58 — and a
+  // look({ filament }) written by the assistant turned a whole animal
+  // see-through: legs visible inside the body, reported as broken
+  // transparency, because nobody chose it. Measured after the gate: the same
+  // look() gives transmission 0 / opacity 1; picking the spool by hand in the
+  // panel gives the full 0.58 / 0.86 resin.
+  has("const t = mat.filamentChosen ? f.t : 0;",
+    "a spool's glassiness applies only when picked by hand");
+  has('if (k === "opacity" && !mat.filamentChosen && look[k] < 100) continue;',
+    "...and its preset cannot fade an un-chosen model either",
+    "funfetti's lighting preset ships opacity 88");
+  has("mat.filamentChosen = true;", "the panel picker is the one hand-picked path");
+  check("every code path marks the spool as merely named",
+    (V.match(/mat\.filamentChosen = false;/g) || []).length >= 3,
+    "look({filament}), filament(), and the // filament: directive are all the generator's voice");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

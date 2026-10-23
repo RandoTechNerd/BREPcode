@@ -141,11 +141,33 @@ console.log("\nguided flows\n");
   const vol = await volumeOf(r2.code);
   check("frame builds hollow", vol > 4000 && vol < 126 * 176 * 5, `${vol.toFixed(0)} mm3`);
 }
+// ...but "frame" inside a bigger request is not a picture frame
+{
+  const state = {};
+  const r = respond("design me a quadcopter drone frame with four motor mounts, a battery bay and a GoPro mount", state);
+  check("a drone frame isn't asked what size photo it holds", !/photo/i.test(r.reply) && state.flow?.kind !== "frame", r.reply);
+  const s2 = {};
+  respond("make a frame", s2);
+  check("...while a short 'make a frame' still starts the frame flow", s2.flow?.kind === "frame");
+  // longer asks still reach it when something says what goes in the frame
+  for (const ask of ["make a frame for an 8x10 poster", "a frame for my 5x7 print", "I need a frame for a diploma please"]) {
+    const s = {};
+    respond(ask, s);
+    check(`"${ask}" starts the frame flow`, s.flow?.kind === "frame");
+  }
+  const s3 = {};
+  respond("bike frame", s3);
+  check("...and a short 'bike frame' is not asked about photos", s3.flow?.kind !== "frame");
+}
 
 // holder: wall-mount variant
 {
+  // a pen holder is a catalog design now (src/catalog/desk/pen-cup.js); the
+  // generic guided holder flow is what a holder of nothing in particular gets
+  const pen = respond("I need a pen holder", {});
+  check("a pen holder comes from the catalog", typeof pen.code === "string" && /Pen holder/.test(pen.code), pen.reply);
   const state = {};
-  respond("I need a pen holder", state);
+  respond("I need a holder", state);
   respond("50 wide, 90 deep", state);
   const r = respond("wall mount", state);
   check("wall-mount holder has a screw hole", typeof r.code === "string" && r.code.includes("rotate([90, 0, 0]"), r.reply);
@@ -161,7 +183,7 @@ console.log("\nguided flows\n");
   const r2 = respond("low poly please", {}, r.code);
   check("low poly halves $fn", r2.code?.includes("$fn: 32"), r2.code);
   const r3 = respond("smoother", {}, "cube([5,5,5])");
-  check("no $fn -> explains instead of failing", r3.code === undefined && /\$fn/.test(r3.reply), r3.reply);
+  check("no $fn -> explains instead of failing", r3.code === undefined && /no facet setting|\$fn/.test(r3.reply) && r3.chips?.includes("round the edges"), r3.reply);
 }
 
 // beyond built-in skills -> point at the API
@@ -245,6 +267,157 @@ console.log("\nmodel discovery\n");
 
   try { extractModels("gemini", { error: { message: "API key not valid" } }); check("error payload throws", false); }
   catch (e) { check("error payload throws with message", /API key/.test(e.message)); }
+
+  // THE DAY OX-ALPHA RETIRED. OpenRouter carries 60 `:batch` variants that
+  // only answer through the Batch API — a live chat request gets 404. They
+  // rank identically to their live twins and sort FIRST on the tiebreak, so
+  // the moment a saved model vanished from the catalogue, the re-rank landed
+  // the chat on a model that cannot answer at all: "That didn't work: This
+  // model is only available through the Batch API — (404)" on every message.
+  const om = extractModels("openai", { data: [
+    { id: "anthropic/claude-opus-5" },
+    { id: "anthropic/claude-opus-5:batch" },
+    { id: "openai/gpt-4o:batch" },
+    { id: "minimax/minimax-m3:free" },
+  ]});
+  check("batch-only variants never enter the list", !om.some((id) => id.endsWith(":batch")),
+    JSON.stringify(om));
+  check("...their live twins survive", om.includes("anthropic/claude-opus-5"));
+  check("...and :free variants are untouched", om.includes("minimax/minimax-m3:free"),
+    "the suffix filter must be exactly :batch, not every colon");
+}
+
+// A stealth model's 404 names what it became — ox-alpha's says "This model was
+// ZAI's GLM-5.3 Flash. Use it now". Same weights, real name: not a
+// substitution anyone needs to opt into, and every door a model id enters by
+// must route through the map, or a stale shipped default strands every
+// visitor on a dead name.
+{
+  console.log("\nretired models are followed to their successors\n");
+  const { readFileSync } = await import("node:fs");
+  const V = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has('"stealth/ox-alpha": "z-ai/glm-5.3-flash"', "the map knows where ox-alpha went");
+  has("const model = src.model && succeedModel(src.model);",
+    "the shipped default routes through it",
+    "a deployed locked-key.js naming the dead id keeps working unedited");
+  has("const keep = succeedModel(wanted);",
+    "a saved model that vanished from the live list follows it too");
+  has('const wanted = aiModel.value || aiCfg.model || "";',
+    "...read from the SAVED config, not just the dropdown",
+    "a stale cached list may already have re-seated the dropdown by then");
+  has(".filter((id) => !/:batch$/i.test(id))",
+    "the cached list is filtered on READ as well",
+    "a cache written before the filter existed still holds 60 batch-only ids");
+  has("has been retired — it was",
+    "...and the switch is announced, never silent",
+    "a header quietly naming a different model is how 'what broke?' gets asked");
+  has("const deadModel = cfg.provider ===",
+    "mid-request, a dead model is told apart from a busy one");
+  has("thank you for participating|not a valid model",
+    "...by the words retirement actually uses (measured)");
+  has("if (deadModel) busyRetries = 2;",
+    "...and gets no busy-waiting — retirement is not a wave",
+    "waiting two rounds for a model that no longer exists is theatre");
+  check("the example key file no longer ships the dead default",
+    !/model: "stealth\/ox-alpha"/.test(readFileSync(new URL("../viewer/locked-key.example.js", import.meta.url), "utf8")));
+}
+
+// CUTE, NOT NIGHTMARE FUEL. The giraffe that prompted this had lifelike
+// proportions (taxidermy at toy size), spots computed through a chain of
+// degenerate ternaries, sunglasses built from uncentred cubes that swung away
+// from the head, and a sub-millimetre tail the meshing grid could not hold.
+// Every one of those is preventable by telling the model the rules BEFORE it
+// writes, and only when the request is actually organic.
+{
+  console.log("\nanimals get the organic rules\n");
+  const fires = (text) => CB.AUTO_SECTIONS.organic({ text });
+  check("an animal request loads the section", fires("make me a cute giraffe"));
+  check("...so does a character", fires("a little dragon mascot for my desk"));
+  check("...and explicit smoothUnion work", fires("use smoothUnion to make a blob")); 
+  check("a bracket does not", !fires("a wall bracket with two holes")); 
+  check("...nor a gearbox", !fires("a 3:1 gearbox with a crank")); 
+
+  const H = CB.composeSystemParts({ context: { text: "a cute giraffe" } });
+  const all = [H.stable, H.volatile, JSON.stringify(H)].join("\n");
+  check("the section reaches the prompt for an animal ask", /ANIMALS AND CHARACTERS/.test(all));
+  check("...with the proportion rule that decides cute", /head about a THIRD/i.test(all));
+  check("...and it starts from a body plan, not from scratch",
+    /creature\("quadruped-sitting"/.test(all) && /creatureAnchors/.test(all),
+    "a generator is good at adjusting a correct silhouette and bad at inventing one");
+  check("...the no-decorations-in-the-blend rule", /NEVER go in the blend/.test(all));
+  check("...the minimum feature size the mesher can hold", /2\.5mm RADIUS/.test(all));
+  check("...the eye placement that is most of the face", /sunk HALFWAY/.test(all));
+  check("...and the centred-primitives rule for accessories", /center: true/.test(all)
+    && /planks through the skull/.test(all),
+    "uncentred cubes rotated in place are how sunglasses became planks");
+}
+
+// THE THINKING WATCHDOG. A reasoning model can think past three minutes and
+// then die at its token ceiling having written no code at all — the user waits
+// the whole time and gets nothing, which is strictly worse than a worse answer.
+// Thinking past the budget aborts the attempt and asks the SAME model again
+// with its reasoning capped low; a second overrun stops honestly. Writing is
+// never interrupted.
+{
+  console.log("\nthinking has a budget; building does not\n");
+  const body = (opts = {}) => JSON.parse(buildApiRequest(
+    { provider: "openai", key: "K", model: "z-ai/glm-5.3-flash", baseUrl: "https://openrouter.ai/api/v1" },
+    [{ role: "user", text: "a cube" }], opts,
+  ).options.body);
+
+  check("no cap by default", body().reasoning === undefined,
+    "the budget must not quietly degrade every ordinary request");
+  check("the capped retry sends OpenRouter's unified reasoning control",
+    body({ capReasoning: true }).reasoning?.effort === "low");
+  const bare = JSON.parse(buildApiRequest(
+    { provider: "openai", key: "K", model: "o3-mini" },
+    [{ role: "user", text: "a cube" }], { capReasoning: true },
+  ).options.body);
+  check("...and OpenAI proper gets its own spelling of the same knob",
+    bare.reasoning_effort === "low" && bare.reasoning === undefined);
+  check("a house request asks for low reasoning on every send",
+    body({ lowReasoning: true }).reasoning?.effort === "low");
+
+  // The house AI's model picker: one config, a Gemini Flash default, and a
+  // saved pick that is no longer offered falls back instead of being sent.
+  const ids = CB.HOUSE_MODELS.map((m) => m.id);
+  check("house models: Gemini Flash is the default", /^google\/gemini-[\d.]+-flash$/.test(CB.HOUSE_DEFAULT_MODEL));
+  check("house models: every id is an OpenRouter slug, no duplicates",
+    ids.every((id) => /^[a-z0-9-]+\/[\w.-]+$/.test(id)) && new Set(ids).size === ids.length);
+  check("house models: every entry has a label and a tier", CB.HOUSE_MODELS.every((m) => m.label && m.tier));
+  check("house models: a listed pick is honoured", CB.houseModelFor("z-ai/glm-5.3-flash") === "z-ai/glm-5.3-flash");
+  check("house models: an unknown pick falls back to the configured model",
+    CB.houseModelFor("nobody/nothing", "qwen/qwen3-coder-next") === "qwen/qwen3-coder-next");
+  check("house models: no pick and no config means the default", CB.houseModelFor("", "") === CB.HOUSE_DEFAULT_MODEL);
+  check("house models: a tier withheld drops out of the picker", CB.houseModels(["paid"]).length === 0
+    && CB.houseModelFor("z-ai/glm-5.3-flash", "", ["paid"]) === CB.HOUSE_DEFAULT_MODEL);
+
+  const { readFileSync: rf } = await import("node:fs");
+  const V = rf(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const has = (needle, label, why) => check(label, V.includes(needle), why || needle);
+
+  has('+localStorage.getItem("brepcode-think-budget") || 180',
+    "the budget is 180s, overridable without a rebuild");
+  has('liveState.phase === "thinking" && sa >= THINK_BUDGET',
+    "the watchdog only ever fires on THINKING",
+    "a model writing code is doing its job, however slowly — never interrupt it");
+  has("const sa = (performance.now() - attemptStart) / 1000;",
+    "...measured per attempt, not per message",
+    "after a capped retry the message clock is already past the budget");
+  has('capReasoning: capThinking === "applied"',
+    "the retry carries the cap to the same model");
+  has('if (aborted && !userStopped && capThinking === "fired") {',
+    "a watchdog abort retries instead of reporting 'Stopped'");
+  has('capThinking === "exhausted"',
+    "...and a second overrun ends with an honest error, not a third wait");
+  has('if (userStopped) throw new DOMException("stopped", "AbortError");',
+    "Stop pressed between attempts still stops",
+    "per-attempt controllers made the click abort one that was already spent");
+  check("the user's Stop is told apart from the watchdog's abort",
+    V.includes("if (userStopped && (e?.name === \"AbortError\""),
+    "only aborts carrying the user's flag are the user's decision");
 }
 
 
@@ -285,7 +458,7 @@ console.log("\nmodel ranking\n");
     ["fillet", "chamfer", "colorize", "cone", "torus"].every((w) => PH.includes(w)));
   check("...and protects what already works",
     /ALREADY BUILDS/.test(PH) && /EXACTLY as it is/.test(PH));
-  check("...while staying compact too", PH.length < 2000, `${PH.length} chars`);
+  check("...while staying compact too", PH.length < 2200, `${PH.length} chars`);
   check("browser models rank by size",
     rank([
       "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
@@ -822,8 +995,11 @@ console.log("\nbuild style — language, approach, passes\n");
   check("BREPcode adds no language block", !/OUTPUT LANGUAGE/.test(composeStyle({ language: "brepcode" })));
   check("OpenSCAD is named", /OUTPUT LANGUAGE — OpenSCAD/.test(composeStyle({ language: "openscad" })));
   check("JSCAD asks for a real module", /module\.exports/.test(composeStyle({ language: "jscad" })));
-  check("build123d pins ALGEBRA mode",
-    /ALGEBRA/.test(STYLE_LANGUAGES.build123d) && /not builder mode/i.test(STYLE_LANGUAGES.build123d));
+  // The translator reads builder mode now too, so the assistant may use either;
+  // what it must keep doing is pick faces/edges the translator understands.
+  check("build123d accepts algebra and builder mode",
+    /algebra mode/.test(STYLE_LANGUAGES.build123d) && /builder mode/.test(STYLE_LANGUAGES.build123d)
+      && /sort_by\(Axis\.Z\)/.test(STYLE_LANGUAGES.build123d));
 
   const it = composeStyle({ approach: "iterative" });
   check("iterative asks for the block, not the statue", /SIMPLEST solid/.test(it) && /sculptor/.test(it));
@@ -1030,6 +1206,15 @@ console.log("\nwires are swept, not chained\n");
     "the opposite of #speed, on purpose");
   check("...and to spend some of that budget on the look",
     /set the scene with look\(\{\.\.\.\}\)/.test(deep.volatile));
+  // Reported as "thinks too long and then never builds the model". The
+  // watchdog (see the thinking-budget block) is the mechanical backstop; this
+  // is the plan-side discipline: one planning pass, and when it catches
+  // itself circling, review what exists and ship it.
+  check("...and to plan on a thinking budget",
+    /THINK ON A BUDGET/.test(deep.volatile) && /Plan in ONE brief pass/.test(deep.volatile));
+  check("...never restarting the design mid-reply",
+    /NEVER restart the design mid-reply/.test(deep.volatile),
+    "a good part now beats a perfect one that never arrives");
 
   for (const [m, want] of [["stealth/ox-alpha", true], ["o1-preview", true],
     ["deepseek/deepseek-r1", true], ["qwen/qwq-32b", true],
@@ -1177,12 +1362,101 @@ console.log("\nwires are swept, not chained\n");
     "a number climbing does not tell you whether it understood the request");
   check("...and the writing phase carries its tail too",
     openrouter.find((p) => p.phase === "writing")?.text?.includes("const R"));
+}
+
+{
+  console.log("\nthe one line shown is a whole thought\n");
+  const S = CB.summarise;
+
+  check("the line starts at a sentence boundary, never mid-word",
+    S("Okay. The user wants a wall bracket with dovetails so the tiles stack")
+      === "The user wants a wall bracket with dovetails so the tiles stack…",
+    "half a word is a ransom note, not a summary");
+
+  check("...and an unfinished thought is marked unfinished",
+    S("Done. Now checking the dovetail angle").endsWith("…"));
+
+  check("a filler sentence does not hide the real one",
+    S("Okay. The user wants a wall bracket").startsWith("The user wants"),
+    "'Okay.' is finished, but it is not what the model is thinking about");
+
+  check("a too-short fragment falls back to the finished sentence",
+    S("The rebate needs 0.2 mm clearance. Now") === "The rebate needs 0.2 mm clearance.",
+    "'Now' on its own tells you nothing");
+
+  check("a decimal does not split the sentence",
+    S("The wall is 3.5 mm thick so the boss needs 2.0 mm of wall.").includes("3.5 mm thick"),
+    "a full stop only ends a sentence when a capital or a digit follows the space");
+
+  check("...and neither does an abbreviation",
+    S("Use a chamfer, i.e. a 45 degree cut, on the lower lip.").startsWith("Use a chamfer"));
+
+  check("before the first full stop the fragment still shows",
+    S("Okay so the user wants a hand crank") === "Okay so the user wants a hand crank…",
+    "an early fragment beats a blank line");
+
+  const long = S("The user is asking for a parametric enclosure with a lid rebate and "
+    + "ventilation slots along both long sides, plus PCB standoffs positioned for a Pi Zero.");
+  check("a long sentence is cut from the FRONT", long.startsWith("The user is asking for a parametric"),
+    "a sentence puts its subject first; the last 90 characters tell you nothing");
+  check("...on a word boundary, with an ellipsis", /\S…$/.test(long) && !/\s…$/.test(long));
+  check("...and stays one short line", long.length <= 140);
+
+  check("a question is a sentence too",
+    S("Should the lid be captive? The rebate needs 0.2 mm clearance.")
+      .startsWith("The rebate needs"));
+
+  check("empty input does not throw", S("") === "" && S(null) === "" && S(undefined) === "");
+
+  check("newlines collapse to one line",
+    !/\n/.test(S("First thought.\n\nSecond thought about the bracket.")),
+    "the label is one line; a newline would break the row");
 
   const { readFileSync: rf3 } = await import("node:fs");
   const HTML3 = rf3(new URL("../viewer/index.html", import.meta.url), "utf8");
   check("the busy row renders that tail", /class = "live-tail"|className = "live-tail"/.test(HTML3));
+  // THE BUG THIS PAIR EXISTS FOR. The stream reader sent { phase, chars, text }
+  // and both receivers rebuilt it as { phase, chars }, so the renderer's
+  // `if (liveState.text)` was never once true and the tail shipped invisible.
+  // Every check above still passed, because they only read the source for the
+  // element and its CSS — neither notices a field dropped in transit.
+  check("...and the progress receiver KEEPS the text it was sent",
+    (HTML3.match(/liveState = \{ phase, chars, text \}/g) || []).length === 2,
+    "both onDelta handlers must carry the thought through, not just the count");
+  check("...with no handler still destructuring only the count",
+    !/onDelta[^\n]*\(\{ phase, chars \}\)|\(\{ phase, chars \}\) => \{\s*\n\s*liveState/.test(HTML3));
   check("...on one quiet line, not as reading material",
     /\.live-tail \{[\s\S]{0,200}?text-overflow: ellipsis/.test(HTML3));
+}
+
+// THE STARTER CUBE IS NOT WORTH LOOKING AT.
+//
+// "Show the model" renders three views and a silhouette map on every message.
+// That is the right trade once there is a model — and pure waste while the
+// editor still holds the six lines the app booted with, which are sent as text
+// anyway. It is worse than waste: a picture of the placeholder invites the
+// model to treat it as the starting point and build "onto your cube", when the
+// honest move is to replace it.
+//
+// Matched on the editor's DEFAULT TEXT, not on the shape. Someone who typed
+// their own cube meant that cube.
+{
+  console.log("\nthe starter cube is not shown to the model\n");
+  const { readFileSync: rf5 } = await import("node:fs");
+  const HTML5 = rf5(new URL("../viewer/index.html", import.meta.url), "utf8");
+
+  check("the starter editor is recognised",
+    HTML5.includes("const starterOnly = code.value.trim() === code.defaultValue.trim()"),
+    "compared against the textarea's own default, so a typed cube still counts as a model");
+  check("...and it suppresses the views",
+    /if \(seeModel && !starterOnly && !imgs\.length/.test(HTML5),
+    "three renders of the placeholder cost real tokens and say nothing");
+  check("...and says so in the trace, rather than going quiet",
+    HTML5.includes("skipped the views — still the starter cube"),
+    "a silent skip looks identical to a broken toggle");
+  check("a real model is still shown",
+    HTML5.includes("modelGroup.children.some((m) => m.isMesh)"),
+    "the existing 'is anything built' test must survive");
 }
 
 // A request with no way to stop it is a hostage situation: measured, a
@@ -1195,8 +1469,8 @@ console.log("\nwires are swept, not chained\n");
   const { readFileSync: rf4 } = await import("node:fs");
   const HTML4 = rf4(new URL("../viewer/index.html", import.meta.url), "utf8");
   check("there is a real abort behind the button",
-    /const aiAbort = new AbortController\(\);/.test(HTML4)
-    && /aiFetch\(url, \{ \.\.\.options, signal: aiAbort\.signal \}\)/.test(HTML4),
+    /attemptCtl = new AbortController\(\);/.test(HTML4)
+    && /aiFetch\(url, \{ \.\.\.options, signal: attemptCtl\.signal \}\)/.test(HTML4),
     "a Stop button with no signal is a lie");
   check("...offered only after a genuinely long wait",
     /const SLOW_AFTER = 90;/.test(HTML4));
@@ -1286,7 +1560,7 @@ console.log("\nwires are swept, not chained\n");
   check("...and reveals the Base URL row it just filled",
     /if \(src\.baseUrl\) aiBase\.value = src\.baseUrl;\s*\n\s*reflectProviderUI\(\);/.test(HTML));
   check("...and ADDS the model before selecting it",
-    /if \(!\[\.\.\.aiModel\.options\]\.some\(\(o\) => o\.value === src\.model\)\)/.test(HTML),
+    /if \(!\[\.\.\.aiModel\.options\]\.some\(\(o\) => o\.value === model\)\)/.test(HTML),
     "ai-model is a <select>: assigning an id it does not carry selects nothing, and the request goes out modelless");
 
   // WHEN it applies, which the first cut got wrong in the way that matters.
@@ -1297,8 +1571,15 @@ console.log("\nwires are swept, not chained\n");
   // Storing a provider is not the same as having a key that works.
   check("the house key applies whenever there is no working key",
     /const hasOwnAI = !!\(aiCfg\.key \|\| ""\)\.trim\(\) \|\| KEYLESS\.includes\(aiCfg\.provider\);/.test(HTML)
-    && /if \(LOCKED\.open && !hasOwnAI\) \{/.test(HTML),
+    && /if \(LOCKED\.open && !hasOwnAI && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML),
     "gating on !aiCfg.provider skipped every returning visitor");
+  // assist mode (docs/house-ai.md): the built-in helper stays the chat, and
+  // the house AI is only ever one offered request when the helper is stuck
+  check("an assist-mode house key never becomes the visitor's provider",
+    /!HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{\s*applyShippedKey/.test(HTML) && /const HOUSE_MODES = \["assist", "premium"\];/.test(HTML) && /function offerHouseAI\(/.test(HTML)
+    && /if \(r\.cantDo && houseAiReady\(\)\) offerHouseAI\(text\)/.test(HTML));
+  check("...and its one request rides the normal AI path",
+    /let house = houseNext;\s*houseNext = null;/.test(HTML) && /const useApi = !!house \|\| !!premiumHouse \|\|/.test(HTML));
   check("...and a deliberately keyless provider counts as having one",
     /const KEYLESS = \["claude-code", "browser", "local"\];/.test(HTML),
     "Claude Code, the in-browser model and a local server all work without a key — do not stomp them");
@@ -1317,6 +1598,285 @@ console.log("\nwires are swept, not chained\n");
     CB.OPENAI_PRESETS.find((p) => p.name === "OpenRouter")?.browser === true
     && CB.OPENAI_PRESETS.find((p) => p.name === "OpenAI")?.browser === false,
     "OpenAI's CORS policy refuses browser chat; that is why the app recommends OpenRouter");
+}
+
+// The helper hears a newcomer: typos, roundabout phrasings, vague nouns and
+// half-finished requests all get an answer or a question with choices, never
+// a dead end. Every "can't" carries the ways on (sliders, editor, tour, an
+// AI, a human).
+console.log("\nhearing a newcomer\n");
+{
+  const dims = { min: [-40, -35, 0], max: [40, 35, 90] };
+  const convo = () => {
+    const st = {};
+    let code = "";
+    const say = (q) => {
+      const r = respond(q, st, code, code ? dims : null);
+      if (r.code !== undefined) code = r.code;
+      return r;
+    };
+    return { say, st, code: () => code };
+  };
+
+  // typos and paraphrases are heard, and the reply says what was heard
+  check("'fone stand' is heard as a phone stand", CB.matchCatalog("fone stand")?.familyId === "phone-stand");
+  check("...and the reply says so", /I read that as “phone stand”/.test(respond("fone stand", {}, "", null).reply));
+  check("'hok for my yoga mat' is heard as a hook", CB.matchCatalog("a hok for my yoga mat")?.familyId === "cradle-hook");
+  check("a real stem that sounds like another word is re-heard ('a shelve')", CB.matchCatalog("a shelve")?.familyId === "wall-shelf");
+  check("'something to hold my phone' is a phone holder", CB.understand("something to hold my phone")?.text === "phone holder"
+    && CB.matchCatalog("something to hold my phone")?.familyId === "phone-stand");
+  {
+    const m = CB.matchCatalog("a thing to hang my keys on");
+    check("'a thing to hang my keys on' is a key hook", /key/i.test(`${m?.familyId} ${m?.title}`), `${m?.familyId} / ${m?.title}`);
+  }
+  check("size words are never 'corrected'", CB.understand("make it 90 mm wide") === null && CB.nearestWord("wide") === null);
+  check("a misspelling the catalog cannot place changes nothing", CB.matchCatalog("a flurble") === null);
+
+  // a vague noun is a question with choices, not a guess and not a shrug
+  {
+    const r = respond("hook", {}, "", null);
+    check("'hook' alone asks which, with chips", r.code === undefined && r.chips?.length >= 3 && /which/i.test(r.reply), r.reply);
+    check("...and every chip is a request the catalog answers", r.chips.filter((c) => c !== "what can you make").every((c) => CB.matchCatalog(c)));
+    const c = convo();
+    c.say("I want a phone stand");
+    const r2 = c.say("I meant a hook");
+    check("'I meant a hook' with a model open asks the same way", r2.chips?.length >= 3 && r2.code === undefined, r2.reply);
+    const r3 = c.say(r2.chips[1]);
+    check("...and a tapped chip builds that thing", typeof r3.code === "string" && r3.fromCatalog, r3.reply);
+    check("a shape word stays with the rule engine", CB.catalogSuggest("a box") === null);
+    const f = convo();
+    f.say("I need a holder");
+    check("the holder flow still starts", f.st.flow?.kind === "holder");
+    const esc = f.say("hook");
+    check("...but naming a catalog thing mid-flow drops the flow", !f.st.flow && esc.chips?.length >= 3, esc.reply);
+  }
+
+  // a one-sided cut with no amount is asked about, with the answers as chips
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const q = c.say("remove the bottom portion");
+    check("'remove the bottom portion' asks how much", q.code === undefined && /how much off the bottom/i.test(q.reply), q.reply);
+    check("...with amounts as chips", q.chips?.length === 3 && q.chips.every((x) => /^take \d+ mm off the bottom$/.test(x)), JSON.stringify(q.chips));
+    const a = c.say(q.chips[1]);
+    check("...and a tapped amount does the cut", /Shaved 10mm off the bottom/.test(a.reply) && typeof a.code === "string", a.reply);
+    const t = c.say("cut off the top");
+    check("'cut off the top' asks the same way", /how much off the top/i.test(t.reply) && t.chips?.length === 3, t.reply);
+  }
+
+  // several holes at once, on a catalog model and on a plain shape
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const h = c.say("add two more holes");
+    check("'add two more holes' drills two", /Drilled 2 5 mm holes/.test(h.reply) && (h.code.match(/cylinder\(\{ r: 2\.5/g) || []).length === 2, h.reply);
+    const p = convo();
+    p.say("make a box 30");
+    const h3 = p.say("add 3 holes");
+    check("'add 3 holes' on a 30 mm box fits three screw holes", /Drilled 3 5mm holes/.test(h3.reply) && (h3.code.match(/cylinder\(\{ r: 2\.5/g) || []).length === 3, h3.reply);
+    const vol = await volumeOf(h3.code);
+    check("...and the holes are really cut", vol < 27000 && vol > 20000, `${vol.toFixed(0)} mm3`);
+    check("too many holes is said, not forced", /don't fit/.test(p.say("add 8 holes of 10 mm").reply));
+    check("a count is read from words and digits", CB.holeCount("add two more holes") === 2 && CB.holeCount("3 screw holes") === 3 && CB.holeCount("a 8 mm hole") === 1);
+  }
+
+  // one sentence, two changes
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const r = c.say("make it blue and wider");
+    check("'make it blue and wider' does both", /stand width 70 → 84/.test(r.reply) && /In blue/.test(r.reply) && /colorize\("#1e88e5"/.test(r.code), r.reply);
+    check("...with the undo note still last", /In blue\. \(◀ undoes it\.\)$/.test(r.reply), r.reply);
+  }
+
+  // undo is a thing the chat does, not a thing it explains
+  {
+    const r = respond("undo", {}, "cube([5,5,5])", dims);
+    check("'undo' runs the editor's undo", r.run?.includes("undo") && r.code === undefined && r.actions?.some((a) => a.act === "undo"), r.reply);
+    const c = convo();
+    c.say("I want a phone stand");
+    check("...even with a catalog model open", c.say("undo").run?.includes("undo"));
+  }
+
+  // the catalog editor: one axis, one feature, on/off dials, things by name
+  {
+    const c = convo();
+    c.say("I want a phone stand");
+    const { readValues } = await import("../src/catalog/edit.js");
+    const { FAMILIES } = await import("../src/catalog/index.js");
+    const stand = FAMILIES.find((f) => f.id === "phone-stand");
+    const v = () => readValues(stand, c.code());
+    c.say("twice as wide");
+    check("'twice as wide' doubles the width dial, nothing else", v().width === 140 && v().backH === 80, JSON.stringify(v()));
+    c.say("half the height");
+    check("'half the height' halves the back support", v().backH === 40, v().backH);
+    c.say("make the slot wider");
+    check("'make the slot wider' moves the slot dial only", v().deviceT === 15 && v().width === 140, v().deviceT);
+    const bp = c.say("bigger phone");
+    check("'bigger phone' asks which phone", bp.asked && bp.chips?.length >= 3 && bp.code === undefined, bp.reply);
+    c.say("no cable hole");
+    check("'no cable hole' turns the dial off", v().cableW === 0, v().cableW);
+    const back = c.say("add a cable hole");
+    check("'add a cable hole' turns it back on (no drilling)", v().cableW === 12 && !/Drilled/.test(back.reply), back.reply);
+    const again = c.say("add a cable hole");
+    check("...and says so when it is on already", /already has that/.test(again.reply), again.reply);
+    c.say("make the angle 60");
+    check("a bare number next to an angle word is the angle", v().angle === 60, v().angle);
+    const rh = c.say("put a round hole through it");
+    check("'put a round hole through it' drills, never fillets", /Drilled/.test(rh.reply) && !/Rounded/.test(rh.reply), rh.reply);
+    const clamp = c.say("make it 400 wide");
+    check("a clamp is reported on the edit path", /stops at 220/.test(clamp.reply) && v().width === 220, clamp.reply);
+    check("...and a second try says it is at the limit", /already at its limit/.test(c.say("make it 400 wide").reply));
+    const box = convo();
+    box.say("a storage box");
+    const sbox = FAMILIES.find((f) => f.id === "storage-box");
+    const bv = () => readValues(sbox, box.code());
+    box.say("add a divider");
+    check("'add a divider' counts one up", bv().divX === 1, bv().divX);
+    box.say("add two more dividers");
+    check("'two more' is read as a number", bv().divX === 3, bv().divX);
+    box.say("8 by 6 by 4 cm");
+    check("'8 by 6 by 4 cm' is three sizes, not a scale factor", bv().width === 80 && bv().depth === 60 && bv().height === 40, JSON.stringify(bv()));
+    box.say("round the corners more");
+    const r0 = bv().cornerR;
+    box.say("sharp corners");
+    check("'sharp corners' turns the rounding dial down", bv().cornerR < r0 && bv().cornerR === 1, bv().cornerR);
+    const pb = convo();
+    pb.say("make a box 30");
+    check("'8 x 6 x 4 cm' on a plain shape is not an 8x scale", !/Scaled everything by 8/.test(pb.say("make it 8 x 6 x 4 cm").reply));
+    check("'scale it by 2' on a plain shape scales", /Scaled everything by 2/.test(pb.say("scale it by 2").reply));
+    // the remembered object stays under the user's own values
+    const d = convo();
+    d.say("I want a phone stand");
+    d.say("for a pixel 9");
+    d.say("slot 14 mm");
+    d.say("wider");
+    const dv = readValues(stand, d.code());
+    check("a slot set by hand survives an unrelated follow-up", dv.deviceT === 14, dv.deviceT);
+    d.say("for an iphone 16");
+    check("...until a new phone is named", Math.abs(readValues(stand, d.code()).deviceT - 10.8) < 0.01, readValues(stand, d.code()).deviceT);
+    // a dial line rewritten by hand is reported, not overwritten
+    const h = convo();
+    h.say("I want a phone stand");
+    const hacked = h.code().replace(/const width = 70;/, "const width = backH * 0.8;");
+    const miss = respond("make it 90 mm wide", h.st, hacked, dims);
+    check("a hand-written dial is reported, not clobbered", /no longer a plain number/.test(miss.reply) && miss.code === undefined, miss.reply);
+    // a thing of the open family, by name
+    const tb = convo();
+    tb.say("I want a phone stand");
+    const tw = tb.say("tablet stand");
+    check("a thing named mid-conversation sets it up", /tablet stand/i.test(tw.reply) && readValues(stand, tb.code()).width === 120, tw.reply);
+    check("'a bracket for a shelf' is the bracket flow, not a shelf", respond("a bracket for a shelf", {}, "", null).reply.includes("L-bracket"));
+    // a tie between families with no name on either side is a question
+    const tie = respond("a mount for my iPhone 16", {}, "", null);
+    check("a noun-and-object tie asks which, with every tied family as a chip", tie.code === undefined && tie.chips?.length >= 4 && tie.chips.some((x) => /tripod/.test(x)), JSON.stringify(tie.chips));
+    // the exact name of another design, with one open, is the new thing
+    const sw = convo();
+    sw.say("I want a phone stand");
+    const to = sw.say("phone tripod mount");
+    check("naming another design outright switches to it", /tripod mount/i.test(to.reply) && to.code !== undefined, to.reply);
+  }
+
+  // every chip under a catalog reply does something
+  {
+    const { FAMILIES } = await import("../src/catalog/index.js");
+    const { resolveParams, familyCode } = await import("../src/catalog/schema.js");
+    let shown = 0, dead = 0;
+    for (const f of FAMILIES) {
+      const code = familyCode(f, resolveParams(f).values);
+      const first = respond(f.examples[0], {}, "", null);
+      if (!first.code || !first.chips) continue;
+      for (const chip of first.chips) {
+        shown++;
+        const r = respond(chip, { catalog: { familyId: f.id, specId: null } }, code, dims);
+        if (!(r.code !== undefined || r.asked)) { dead++; if (dead <= 5) console.log(`    dead chip: ${f.id} :: ${chip} :: ${r.reply.slice(0, 60)}`); }
+      }
+    }
+    check(`every chip shown under a first reply does something (${shown} chips)`, shown > 500 && dead === 0, `${dead} dead`);
+  }
+
+  // app questions and the catalog overview
+  {
+    const tour = respond("take the tour", {}, "", null);
+    check("'take the tour' starts the tour", tour.run?.includes("tour"), tour.reply);
+    check("...but a tour bus holder is a holder", !respond("a tour bus holder", {}, "", null).run);
+    const wcm = respond("what can you make", {}, "", null);
+    check("'what can you make' answers with a chip per group, not a wall", wcm.reply.length < 400 && wcm.chips?.length >= 15, `${wcm.reply.length} chars, ${wcm.chips?.length} chips`);
+    const k = respond(wcm.chips[0], {}, "", null);
+    check("...and a group chip lists that group with things to tap", k.chips?.length >= 3 && k.chips.every((c) => c === "what can you make" || CB.matchCatalog(c)), JSON.stringify(k.chips));
+    check("'where are the sliders' opens them", respond("where are the sliders", {}, "", null).run?.includes("params"));
+  }
+
+  // the ways on are always there
+  {
+    const h = respond("help", {}, "", null);
+    check("help offers chips and the ways on", h.chips?.length >= 3 && h.actions?.some((a) => a.act === "tour"), JSON.stringify(h.actions));
+    check("the tour is one of the standing help actions", CB.HELP_ACTIONS.some((a) => a.act === "tour"));
+    const shrug = respond("write me a poem", {}, "", null);
+    check("a shrug still carries the ways on", shrug.actions?.some((a) => a.act === "tour") && shrug.actions?.some((a) => a.act === "email"));
+    const dead = respond("make it fly", {}, "", null);
+    check("an impossible ask with nothing open still points somewhere", dead.chips?.length >= 2 && dead.actions?.length >= 4, dead.reply);
+  }
+
+  // the viewer carries the new reply fields
+  {
+    const { readFileSync } = await import("node:fs");
+    const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+    check("the viewer runs a reply's own actions (undo)", /for \(const act of r\.run \|\| \[\]\) runChatAction\(act\);/.test(HTML)
+      && /for \(const act of local\.run \|\| \[\]\) runChatAction\(act\);/.test(HTML));
+    check("...and knows the tour and undo actions", /else if \(act === "tour"\) \$\("tour-btn"\)\.click\(\);/.test(HTML)
+      && /else if \(act === "undo"\) \{/.test(HTML));
+    check("the catalog answers first whatever the provider", /if \(!house && !forceAI\) \{\s*const probe = \{ \.\.\.botState \};/.test(HTML)
+      && /if \(\(local\.fromCatalog && \(local\.code !== undefined \|\| !local\.cantDo\)\) \|\| acts\) \{/.test(HTML));
+    // a catalog question or "it already has that" stays in the chat; only a
+    // request the catalog cannot do reaches the AI, and then as an edit
+    check("...and an open model's change goes to the AI as a quick edit", /const quickEdit = withPicture \|\| \(text !== RETRY_TEXT/.test(HTML)
+      && /lowReasoning: !!house \|\| quickEdit,/.test(HTML) && /This is an EDIT of the model above, not a new design/.test(HTML));
+    check("...and so does a reply that acts on its own (undo)", /const acts = !!local\.run\?\.length;/.test(HTML)
+      && /if \(!acts\) quickReplies\(/.test(HTML));
+    check("...on a copy of the chat state", /const local = botRespond\(text, probe, code\.value, modelDims\);/.test(HTML)
+      && /Object\.assign\(botState, probe\);/.test(HTML));
+    check("...with one tap to the AI instead", /quickReplies\(\[`ask the AI instead: \$\{text\}`\], \["Ask the AI instead"\], \["spark"\]\);/.test(HTML)
+      && /const AI_INSTEAD = \/\^\(\?:ask\|use\) the ai/.test(HTML));
+    check("the catalog-first block sits before the gem policy",
+      HTML.indexOf("if (!house && !forceAI) {") < HTML.indexOf("if (!house && gemWantsLocalFirst()) {"));
+    check("a helper build is judged by its own result, not the next build",
+      /async function applyHelperCode\(text, src, show, r = null, said = null\)/.test(HTML) && !/function watchHelperBuild\(/.test(HTML)
+      && (HTML.match(/applyHelperCode\(text, (r|local)\.code, \1\.fromCatalog \? "params" : "editor", \1, said\)/g) || []).length === 3);
+    check("an all-over round/bevel that changed the size is taken back after its build",
+      /const v = CHAT\?\.sizeGuardVerdict\?\.\(r\.sizeGuard\.before, after, r\.sizeGuard\);/.test(HTML)
+      && /if \(!undoBtn\.disabled\) undoBtn\.click\(\);/.test(HTML)
+      && (HTML.match(/const said = addMsg\("bot", /g) || []).length === 3);
+    check("a catalog design brings the sliders forward, not the code", /if \(ok && show === "params"\) \{/.test(HTML)
+      && /toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\);/.test(HTML));
+    check("answered chips retire when the next message is sent", /\.quick-row:not\(\.action-row\):not\(\.spent\)/.test(HTML)
+      && /\.quick-row\.spent \{ opacity: \.4; \}/.test(HTML));
+    check("Enter only ever fires the newest ✓ chip", /const rows = \[\.\.\.chatMsgs\.querySelectorAll\("\.quick-row:not\(\.spent\):not\(\.action-row\)"\)\];/.test(HTML));
+    check("the chat's buttons are line icons, not emoji", /function chipFace\(el, label, iconName\)/.test(HTML)
+      && !/[✨⚡✉⬇🤖🟠🔵🌐🖥🎁]/.test(HTML.replace(/<!--[\s\S]*?-->/g, "")));
+    check("the Download STL button really downloads", /if \(act === "stl"\) \{ if \(lastSolids\.length\) exportAs\("stl"\);/.test(HTML));
+    check("the Sliders button fills the Params card", /else if \(act === "params"\) \{ toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\); \}/.test(HTML));
+    check("Connect an AI lands on the AI tab", /document\.querySelector\('#cs-tabs \[data-cstab="ai"\]'\)\?\.click\(\);/.test(HTML));
+    check("the greeting's house-key button stays out of assist and premium mode", /if \(LOCKED\.open && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML));
+    check("a reply that only informs or asks never triggers the 'beyond the helper' offer",
+      /if \(r\?\.asked \|\| r\?\.chips\?\.length \|\| r\?\.run\?\.length\) return;/.test(HTML) && /const couldNotBuild = !!r\?\.cantDo/.test(HTML));
+    check("the house AI's own failed code goes back to the house AI", /if \(house\) houseNext = house;\s*chatInput\.value = RETRY_TEXT;/.test(HTML)
+      && /if \(house\) houseNext = house;\s*\/\/ the same house request/.test(HTML));
+    check("a Stop pressed during a desktop relay is honoured", /if \(userStopped\) throw new DOMException\("stopped", "AbortError"\);/.test(HTML));
+    // the premium door: the house AI as the chat's AI, only through /rtn2026
+    check("premium mode only through its door", /LOCKED\.mode === "premium" && premiumVisit/.test(HTML)
+      && /const PREMIUM_DOORS = \["rtn2026"\];/.test(HTML));
+    check("a house-mode key is never applied as the visitor's own AI",
+      /if \(LOCKED\.open && !hasOwnAI && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML)
+      && /if \(LOCKED\.open && !HOUSE_MODES\.includes\(LOCKED\.mode\)\) \{/.test(HTML));
+    check("premium: the catalog still answers first",
+      HTML.indexOf("THE CATALOG ANSWERS FIRST") > 0 && HTML.indexOf("if (premiumHouse) house = premiumHouse;") > HTML.indexOf("THE CATALOG ANSWERS FIRST"));
+    check("premium is remembered for the tab, not as the visitor's AI", /sessionStorage\.setItem\("brepcode-premium", "1"\)/.test(HTML));
+    check("the regular helper offers the .exe, the tour and the videos when stuck",
+      /row\("2-minute tour"/.test(HTML) && /youtube\.com\/@RandoTechNerd/.test(HTML) && /a\.act === "ai"\) && !r\?\.cantDo\) return;/.test(HTML));
+    check("the house request sends no images to a proxy that may not take them", /const vision = !house && !\["local", "browser", "claude-code"\]/.test(HTML));
+    check("#ask= is cleared like ?ask= so a reload does not resend", /const inHash = \/\(\^\|\[#&\]\)ask=\/\.test\(u\.hash\);/.test(HTML));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

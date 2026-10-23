@@ -29,9 +29,9 @@ divided by SCALE so the proportions stay honest.
 Shape, front to back:
 
 - **Body**: an upright rectangular box, wider than it is deep, with a clearly
-  rounded vertical edge on each corner. `roundedGrow(4, cube([...]))` gives the
-  whole thing its soft-cornered look in one step — that is exactly what it is
-  for. Round the body BEFORE cutting the window and door.
+  rounded vertical edge on each corner. `fillet({ r: 4, edges: "z" }, cube([...]))`
+  gives it the soft-cornered look and stays an exact solid (`roundedGrow()` would
+  make it a mesh). Round the body BEFORE cutting the window and door.
 - **Front**: a large flat door taking up most of the front face, inset a few
   mm, with a slim handle edge down one side. Cut it with a shallow
   `difference()` rather than modelling a hinge.

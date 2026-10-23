@@ -132,6 +132,52 @@ function pointInPoly(pt, poly) {
   return inside;
 }
 
+export { rdp, signedArea, pointInPoly };
+
+// ---- rings -> one extruded solid ---------------------------------------
+//
+// Outer rings plus hole rings (millimetres, any winding) extruded straight up
+// from z=0 to z=height, as ONE watertight ASCII STL. Each hole is cut from the
+// smallest outer that holds it, and each face is triangulated with three's
+// earcut. A single mesh means a single import: the letters of a name tag are
+// one solid, not a union of one extrusion per letter minus one per counter.
+//
+// Walls take their winding from the ring (outer CCW, hole CW), so every
+// normal points out of the material and the top, bottom and walls share their
+// vertices exactly: the shell is closed with no welding needed.
+export function ringsToPrismStl(outers, holes, height, triangulate) {
+  const ccw = (r) => (signedArea(r) >= 0 ? r : [...r].reverse());
+  const cw = (r) => (signedArea(r) <= 0 ? r : [...r].reverse());
+  const shapes = outers.map((o) => ({ outer: ccw(o), holes: [], area: Math.abs(signedArea(o)) }));
+  for (const h of holes) {
+    let best = null;
+    for (const s of shapes) if (pointInPoly(h[0], s.outer) && (!best || s.area < best.area)) best = s;
+    if (best) best.holes.push(cw(h));
+  }
+  const F = [];
+  const v = (p, z) => `vertex ${p[0]} ${p[1]} ${z}`;
+  const tri = (a, b, c) => F.push(`facet normal 0 0 0\nouter loop\n${a}\n${b}\n${c}\nendloop\nendfacet`);
+  for (const s of shapes) {
+    const pts = [s.outer, ...s.holes].flat();
+    for (let [a, b, c] of triangulate(s.outer, s.holes)) {
+      const A = pts[a], B = pts[b], C = pts[c];
+      // earcut's winding is not promised: make every top triangle CCW
+      if ((B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]) < 0) [b, c] = [c, b];
+      tri(v(pts[a], height), v(pts[b], height), v(pts[c], height));
+      tri(v(pts[a], 0), v(pts[c], 0), v(pts[b], 0));
+    }
+    for (const ring of [s.outer, ...s.holes]) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        tri(v(a, 0), v(b, 0), v(b, height));
+        tri(v(a, 0), v(b, height), v(a, height));
+      }
+    }
+  }
+  if (!F.length) throw new Error("nothing to extrude");
+  return `solid rings\n${F.join("\n")}\nendsolid rings\n`;
+}
+
 // ---- top level ---------------------------------------------------------
 //
 // Returns { outers: [[ [x,y], ... ] ], holes: [...] } in millimetres, Y-up,
@@ -185,4 +231,86 @@ export function contoursToCode({ outers, holes }, height = 4) {
   // or a thin membrane is left capping the hole
   const cut = holes.map((hh) => `  translate([0, 0, -1], linearExtrude({ h: ${height + 2} }, ${fmtRing(hh)}))`).join(",\n");
   return `difference(\n  ${solid.replace(/\n/g, "\n  ")},\n${cut}\n)`;
+}
+
+// ---- a picture as exact geometry (the chat's image()) -------------------
+//
+// A picture attached in the chat used to reach the AI as pixels only, and
+// the AI redrew it with polygon() points by eye: a logo cut into the back of
+// a phone stand came out jumbled. Now the app traces it here and the AI gets
+// image("img-…"), a finished solid, and only has to place it.
+
+// Otsu's threshold over the opaque pixels' brightness, and which side is the
+// ink: the smaller of the two (a dark logo on white, or a white mark on a
+// dark photo), unless the picture has a transparent background, where the
+// opaque pixels are the ink whatever their colour.
+export function autoMask(imageData) {
+  const { width: w, height: h, data } = imageData;
+  const hist = new Array(256).fill(0);
+  let opaque = 0, clear = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] <= 24) { clear++; continue; }
+    opaque++;
+    hist[Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2])]++;
+  }
+  if (!opaque) return { threshold: 128, invert: false, alpha: false };
+  // a cut-out logo on a transparent background: the shape IS the opaque part
+  if (clear > 0.15 * w * h) return { threshold: 256, invert: false, alpha: true };
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, best = 0, threshold = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = opaque - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best) { best = between; threshold = t + 0.5; }
+  }
+  let dark = 0;
+  for (let t = 0; t < threshold; t++) dark += hist[t];
+  return { threshold, invert: dark > opaque / 2, alpha: false };
+}
+
+// contours -> one solid: every loop nested inside an even number of others
+// is ink, an odd number is a hole cut through the ink around it. Built from
+// polygon() + linearExtrude(), so it stays on the exact kernel.
+export function contoursToSolid(dsl, { outers, holes }, { height = 1, mode } = {}) {
+  const deboss = mode === "deboss";
+  const H = height + (deboss ? 0.4 : 0);
+  const loops = [...outers, ...holes].map((pts) => ({ pts, depth: 0 }));
+  for (const a of loops) for (const b of loops) if (a !== b && pointInPoly(a.pts[0], b.pts)) a.depth++;
+  const solids = loops.filter((l) => l.depth % 2 === 0).map((outer) => {
+    const body = dsl.linearExtrude({ h: H }, dsl.polygon(outer.pts));
+    const cuts = loops.filter((h) => h.depth === outer.depth + 1 && pointInPoly(h.pts[0], outer.pts));
+    if (!cuts.length) return body;
+    return dsl.difference(body, ...cuts.map((h) => dsl.translate([0, 0, -0.1], dsl.linearExtrude({ h: H + 0.2 }, dsl.polygon(h.pts)))));
+  });
+  if (!solids.length) throw new Error("image(): nothing to trace in that picture (try invert: true)");
+  const shape = solids.length === 1 ? solids[0] : dsl.union(...solids);
+  return deboss ? dsl.translate([0, 0, -0.2], shape) : shape;
+}
+
+// image(): the traced picture as a solid, `size` mm across its longer side,
+// centred on the origin in XY, from z = 0 up to `height`. threshold/invert
+// override the automatic reading; detail (0.5-4) trades points for fidelity.
+export function imageSolid(dsl, imageData, o = {}) {
+  const auto = autoMask(imageData);
+  const threshold = o.threshold ?? auto.threshold;
+  const invert = o.invert ?? auto.invert;
+  const c = auto.alpha && o.threshold == null && o.invert == null
+    ? traceImage(alphaOnly(imageData), { threshold: 128, invert: false, size: o.size ?? 30, simplify: o.detail ?? 0.8, minArea: o.minArea ?? 12 })
+    : traceImage(imageData, { threshold, invert, size: o.size ?? 30, simplify: o.detail ?? 0.8, minArea: o.minArea ?? 12 });
+  return contoursToSolid(dsl, c, { height: o.height ?? o.depth ?? 1, mode: o.mode });
+}
+// opaque pixels black, clear ones white: what toMask reads as ink
+function alphaOnly({ width, height, data }) {
+  const out = new Uint8ClampedArray(data.length);
+  for (let i = 0; i < data.length; i += 4) {
+    const v = data[i + 3] > 24 ? 0 : 255;
+    out[i] = out[i + 1] = out[i + 2] = v; out[i + 3] = 255;
+  }
+  return { width, height, data: out };
 }

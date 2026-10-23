@@ -62,11 +62,20 @@ const rewrites = [
   ["/node_modules/replicad-opencascadejs/src/", "./vendor/replicad/"],
   // scannable codes (lazy-loaded by viewer/codes.js)
   ["/node_modules/bwip-js/dist/bwip-js.mjs", "./vendor/bwip/bwip-js.mjs"],
+  // glyph outlines for exact text (lazy-loaded by viewer/codes.js)
+  ["/node_modules/opentype.js/dist/opentype.module.js", "./vendor/opentype/opentype.module.js"],
   // in-browser LLM engine (lazy-loaded by viewer/webllm.js, weights from HF)
   ["/node_modules/@mlc-ai/web-llm/lib/index.js", "./vendor/webllm/index.js"],
   // mesh decimation (lazy-loaded by viewer/simplify.js on the Simplify button)
   ["/node_modules/meshoptimizer/meshopt_simplifier.js", "./vendor/meshopt/meshopt_simplifier.js"],
   ["/node_modules/clipper-lib/clipper.js", "./vendor/clipper/clipper.js"],
+  // guaranteed-manifold mesher for smoothUnion()/blob() (lazy, src/organicmesh.js)
+  ['"manifold-3d": "/node_modules/manifold-3d/manifold.js"',
+   '"manifold-3d": "./vendor/manifold/manifold.js"'],
+  // the split engine's two wasm modules, loaded BY PATH in kernel-worker.js
+  // (a module worker has no import map). After the import-map pair above.
+  ["/node_modules/manifold-3d/manifold.js", "./vendor/manifold/manifold.js"],
+  ["/vendor/brep-kernel-rust/", "./vendor/brep-kernel-rust/"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -105,6 +114,14 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "params.js",
   // click-a-strand shaving, loaded when the tool is first used
   "shave.js", "stagefit.js", "logbook.js",
+  // FizzCore bubble infill + the drop menu, loaded on first drop / toolbox use
+  "fizz.js",
+  // the first-visit welcome and the ?tool= link cards
+  "welcome.js",
+  // the quick door (/make): one question over the loading cube
+  "make.js",
+  // the line icons those cards and the drop menu share
+  "icons.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -137,25 +154,53 @@ writeFileSync(join(OUT, "version.json"), JSON.stringify({ build: BUILD }) + "\n"
 // Belt and braces: the meta refresh covers a browser with JS disabled, the
 // script covers a host that strips meta refresh, and the link covers both
 // failing — nobody should ever land on a blank page.
-mkdirSync(join(OUT, "tour"), { recursive: true });
-writeFileSync(join(OUT, "tour", "index.html"),
+function bounce(dir, query, title, desc, line) {
+  mkdirSync(join(OUT, dir), { recursive: true });
+  writeFileSync(join(OUT, dir, "index.html"),
 `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BREPcode — guided tour</title>
-<meta name="description" content="A two-minute guided tour of BREPcode: browser CAD where the model is code. OpenSCAD, JSCAD and build123d all run in the same tab." />
+<title>${title}</title>
+<meta name="description" content="${desc}" />
 <link rel="canonical" href="https://brepcode.com/" />
-<meta http-equiv="refresh" content="0; url=../index.html?tour=1" />
-<script>location.replace("../index.html?tour=1");</script>
+<meta http-equiv="refresh" content="0; url=../index.html?${query}" />
+<script>location.replace("../index.html?${query}");</script>
 <style>body{background:#0b0f16;color:#dbe6f2;font:15px/1.6 system-ui,sans-serif;
   display:grid;place-items:center;height:100vh;margin:0;text-align:center}
 a{color:#7fd4ff}</style>
 </head>
-<body><p>Starting the tour&hellip;<br /><a href="../index.html?tour=1">Open BREPcode</a></p></body>
+<body><p>${line}&hellip;<br /><a href="../index.html?${query}">Open BREPcode</a></p></body>
 </html>
 `);
+}
+bounce("tour", "tour=1", "BREPcode — guided tour",
+  "A two-minute guided tour of BREPcode: browser CAD where the model is code. OpenSCAD, JSCAD and build123d all run in the same tab.",
+  "Starting the tour");
+// ---- /welcome : the entry card, every time ------------------------------
+// The welcome card normally shows once per browser. ?welcome=1 forgets that,
+// so this is the link to hand out when the first thing someone should see is
+// the start screen (examples, describe a part, bring an STL).
+// ---- /make : the quick door for newcomers --------------------------------
+// One question ("What do you want to 3D print?") over the loading cube, then
+// the app with the chat open and the answer in it. It lives INSIDE the app
+// (viewer/make.js, started by ?make=1) so the kernel downloads while the
+// visitor types and nothing reloads between the question and the model; this
+// folder only bounces there, the way /tour does.
+bounce("make", "make=1", "BREPcode: what do you want to 3D print?",
+  "Say what you want to 3D print, in plain words. BREPcode makes a tested, printable model you can resize with sliders and download as an STL. Free, no account, no AI key.",
+  "Opening BREPcode");
+// ---- /rtn2026 : the premium door -----------------------------------------
+// The app with the house AI as the chat's AI, when locked-key.js says
+// mode: "premium" (see docs/house-ai.md). Without that file in the build it
+// is simply the app: the door unlocks nothing that is not there.
+bounce("rtn2026", "rtn2026=1", "BREPcode, AI included",
+  "BREPcode with an AI included: say what you want to 3D print and get a printable model you can resize and download as an STL.",
+  "Opening BREPcode");
+bounce("welcome", "welcome=1", "BREPcode — free CAD in your browser",
+  "BREPcode: type it, describe it, or drop in an STL and upgrade it. Real solid modelling in a browser tab, no install, no account.",
+  "Opening BREPcode");
 for (const f of VIEWER_JS) {
   if (!existsSync(`viewer/${f}`)) continue;      // locked-key.js is optional by design
   writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));
@@ -203,12 +248,38 @@ cpSync("node_modules/meshoptimizer/LICENSE.md", join(OUT, "vendor/meshopt/LICENS
 mkdirSync(join(OUT, "vendor", "clipper"), { recursive: true });
 cpSync("node_modules/clipper-lib/clipper.js", join(OUT, "vendor/clipper/clipper.js"));
 
+// manifold-3d: the guaranteed-manifold mesher behind smoothUnion()/blob()
+// (lazy-loaded by src/organicmesh.js the first time an organic model builds).
+// The .wasm must sit BESIDE the .js — Emscripten fetches it relative to the
+// script's own URL, so separating them breaks the load with no clear error.
+cpSync("node_modules/manifold-3d/manifold.js", join(OUT, "vendor/manifold/manifold.js"));
+cpSync("node_modules/manifold-3d/manifold.wasm", join(OUT, "vendor/manifold/manifold.wasm"));
+cpSync("node_modules/manifold-3d/LICENSE", join(OUT, "vendor/manifold/LICENSE"));
+
+// ---- vendor: the Rust BREP kernel (the split engine's exact lane) ----
+// Built from github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL with
+// wasm-pack; see BREPcodeRustKernel/README.md one folder up. The wasm is
+// 13 MB: on a host that won't serve that from the app folder (Lovable, as
+// with replicad), set window.__BREP_RUST_WASM_URL in index.html.
+mkdirSync(join(OUT, "vendor", "brep-kernel-rust"), { recursive: true });
+for (const f of ["brep_kernel.js", "brep_kernel_bg.wasm", "LICENSE.md"]) {
+  cpSync(`vendor/brep-kernel-rust/${f}`, join(OUT, "vendor/brep-kernel-rust", f));
+}
+
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });
 cpSync("node_modules/bwip-js/dist/bwip-js.mjs", join(OUT, "vendor/bwip/bwip-js.mjs"));
 // bwip-js.mjs imports its symbology tables from a sibling bwipp.mjs — ship both
 cpSync("node_modules/bwip-js/dist/bwipp.mjs", join(OUT, "vendor/bwip/bwipp.mjs"));
 cpSync("node_modules/bwip-js/LICENSE", join(OUT, "vendor/bwip/LICENSE"));
+
+// ---- vendor: opentype.js + the text fonts (exact text, lazy-loaded) ----
+// codes.js reads the letters' real outlines from viewer/fonts (Roboto,
+// Apache-2.0) and src/textexact.js extrudes them on the exact kernel.
+mkdirSync(join(OUT, "vendor", "opentype"), { recursive: true });
+cpSync("node_modules/opentype.js/dist/opentype.module.js", join(OUT, "vendor/opentype/opentype.module.js"));
+cpSync("node_modules/opentype.js/LICENSE", join(OUT, "vendor/opentype/LICENSE"));
+cpSync("viewer/fonts", join(OUT, "fonts"), { recursive: true });
 for (const f of ["favicon.svg", "favicon.png", "apple-touch-icon.png"]) {
   cpSync(`viewer/${f}`, join(OUT, f));
 }
@@ -224,6 +295,11 @@ for (const f of ["favicon.svg", "favicon.png", "apple-touch-icon.png"]) {
 for (const f of readdirSync("src").filter((n) => n.endsWith(".js") && n !== "cli.js")) {
   cpSync(`src/${f}`, join(OUT, "src", f));
 }
+// The model catalog is a folder tree (one folder per category, one file per
+// family), so it is copied whole. The import check below walks the bundle
+// recursively, so a family registered in an index but missing on disk still
+// fails the build.
+cpSync("src/catalog", join(OUT, "src", "catalog"), { recursive: true });
 
 // ---- vendor: replicad + OCCT wasm (curved STEP export, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "replicad"), { recursive: true });
@@ -233,6 +309,14 @@ cpSync("node_modules/replicad-opencascadejs/src/replicad_single.js",
 cpSync("node_modules/replicad-opencascadejs/src/replicad_single.wasm",
   join(OUT, "vendor/replicad/replicad_single.wasm"));
 cpSync("node_modules/replicad/LICENSE", join(OUT, "vendor/replicad/LICENSE"));
+// curved.js falls back to a pinned public copy of this wasm when the host
+// cannot serve it. A loader handed a wasm from another version fails in ways
+// that look nothing like a version problem, so the pin must match exactly.
+{
+  const v = JSON.parse(readFileSync("node_modules/replicad-opencascadejs/package.json", "utf8")).version;
+  const pin = /replicad-opencascadejs@([\d.]+)\//.exec(readFileSync("viewer/curved.js", "utf8"))?.[1];
+  if (pin !== v) throw new Error(`viewer/curved.js pins replicad-opencascadejs@${pin} but node_modules has ${v}: update WASM_CDN`);
+}
 
 // ---- vendor: three ----------------------------------------------------
 // three >= r0.180 splits its build: three.module.js imports ./three.core.js.
@@ -285,7 +369,30 @@ cpSync("node_modules/brep-io-kernel/LICENSE.md", join(OUT, "vendor/kernel/LICENS
 // to a 404 and the kernel fails to load at all, so this is not optional.
 cpSync("viewer/vendor/kernel/node-module-shim.js", join(OUT, "vendor/kernel/node-module-shim.js"));
 
+// ---- sw.js : the vendor cache (see viewer/sw.js) ----------------------
+// Named for a hash of every file under vendor/, so a build that changes any
+// of them ships a new worker and a fresh cache, and one that changes none
+// keeps returning visitors' cached copies.
+{
+  const { createHash } = await import("node:crypto");
+  const h = createHash("sha256");
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir).sort()) {
+      const p = join(dir, entry);
+      if (statSync(p).isDirectory()) walk(p);
+      else h.update(relative(OUT, p).split(sep).join("/")).update(readFileSync(p));
+    }
+  };
+  walk(join(OUT, "vendor"));
+  const vendorHash = h.digest("hex").slice(0, 12);
+  writeFileSync(join(OUT, "sw.js"), readFileSync("viewer/sw.js", "utf8").split("__VENDOR_HASH__").join(vendorHash));
+  console.log(`  sw.js: vendor cache brep-vendor-${vendorHash}`);
+}
+
 // ---- zip --------------------------------------------------------------
+// --no-zip: the desktop build only needs dist-site, and must not overwrite the
+// website's zip with whatever happens to be in the tree.
+const NO_ZIP = process.argv.includes("--no-zip");
 const zip = new JSZip();
 const addDir = (dir, zdir) => {
   for (const entry of readdirSync(dir)) {
@@ -294,11 +401,11 @@ const addDir = (dir, zdir) => {
     else zip.file(`${zdir}${entry}`, readFileSync(p));
   }
 };
-addDir(OUT, "");
-const bytes = await zip.generateAsync({
+if (!NO_ZIP) addDir(OUT, "");
+const bytes = NO_ZIP ? null : await zip.generateAsync({
   type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 },
 });
-writeFileSync("BREPcode-site.zip", bytes);
+if (!NO_ZIP) writeFileSync("BREPcode-site.zip", bytes);
 
 const totalRaw = (() => {
   let n = 0;
@@ -311,7 +418,7 @@ const totalRaw = (() => {
 })();
 
 console.log(`dist-site: ${(totalRaw / 1e6).toFixed(1)} MB raw, ${kernelFiles.length} kernel files`);
-console.log(`BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
+console.log(NO_ZIP ? "BREPcode-site.zip: not written (--no-zip)" : `BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
 
 // ---- every relative import in the bundle must resolve to a file in it ----
 //
@@ -358,4 +465,14 @@ console.log(`BREPcode-site.zip: ${(bytes.length / 1e6).toFixed(1)} MB`);
     throw new Error(`${bad.length} unresolved import(s) — this build would come up blank`);
   }
   console.log(`imports: every relative import in the bundle resolves`);
+  // modulepreload hints name hashed kernel chunks; a kernel update renames
+  // them, and a stale hint is a silent wasted download. Fail loudly instead.
+  const pageHtml = readFileSync(join(OUT, "index.html"), "utf8");
+  // the kernel's hints are added by script (after the service worker), so
+  // its quoted chunk paths count as hints too
+  const missingPreload = [...pageHtml.matchAll(/<link rel="modulepreload" href="([^"]+)"/g),
+    ...pageHtml.matchAll(/"(\.\/vendor\/kernel\/[\w.-]+\.js)"/g)]
+    .map((m) => m[1]).filter((h) => !existsSync(join(OUT, h)));
+  if (missingPreload.length) throw new Error(`modulepreload names files the bundle does not have: ${missingPreload.join(", ")}`);
+  console.log(`preloads: every modulepreload hint names a real file`);
 }

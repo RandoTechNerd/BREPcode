@@ -137,6 +137,10 @@ app.whenReady().then(async () => {
     // storage rather than a second loadURL avoids racing the first navigation,
     // which aborted the load outright often enough to look like a hang.
     await run(`localStorage.setItem("brepcode-worker-debug", "1")`);
+    // Which build engine to check (src/engine.js): BREPCODE_ENGINE=js runs the
+    // same checks on the JS kernel alone. Set every run, because the profile's
+    // storage outlives it and a leftover "js" would hide the default path.
+    await run(`localStorage.setItem("brepcode.engine", ${JSON.stringify(process.env.BREPCODE_ENGINE || "auto")})`);
     win.webContents.reload();
     for (let i = 0; i < 90; i++) {
       booted = await runOrNull("!!(window.brepscript && document.getElementById('code'))");
@@ -519,6 +523,10 @@ app.whenReady().then(async () => {
     check("...and the worker survives it", afterBad.live && !afterBad.out, JSON.stringify(afterBad));
 
     // ---- 5. cancellation: a superseded build is dropped, not queued ------
+    // On the JS kernel, deliberately: the Rust kernel finishes HEAVY in well
+    // under the 3 s this waits, leaving nothing to cancel. Slow builds still
+    // happen (a JS fallback, a big mesh), so the cancel path still matters.
+    await run(`localStorage.setItem("brepcode.engine", "js")`);
     await setCode(HEAVY);
     // Well into the build: a run that has only just started is deliberately
     // left to finish (respawning a worker costs more than letting it end), so
@@ -532,6 +540,7 @@ app.whenReady().then(async () => {
       after.epoch > before, `epoch ${before} -> ${after.epoch}`);
     check("...and the newer model is what ends up on screen", /1 solid/.test(quick), quick);
     check("...with the worker healthy afterwards", after.live && after.holdsModel, JSON.stringify(after));
+    await run(`localStorage.setItem("brepcode.engine", ${JSON.stringify(process.env.BREPCODE_ENGINE || "auto")})`);
 
     // ---- 6. the fallback path still builds ------------------------------
     await run("window.brepscript.disableWorker()");

@@ -241,6 +241,35 @@
       ]
     },
     {
+      "tag": "exact",
+      "title": "Staying on the exact B-rep kernel",
+      "file": "exact.md",
+      "match": [
+        "rounded box",
+        "rounded corners",
+        "round corners",
+        "rounded edges",
+        "soft corners",
+        "taper",
+        "tapered",
+        "frustum",
+        "hull",
+        "minkowski",
+        "revolve",
+        "lathe",
+        "turned",
+        "cone",
+        "b-rep",
+        "brep",
+        "exact",
+        "step file",
+        "step export",
+        "rounded rectangle",
+        "rounded cylinder",
+        "stadium"
+      ]
+    },
+    {
       "tag": "extrusion",
       "title": "Aluminium T-slot / V-slot extrusion",
       "file": "extrusion.md",
@@ -979,6 +1008,32 @@
         "pocket for"
       ],
       "ask": "Should it lie FLAT in a scooped pocket, or STAND UPRIGHT in a hole? And is a simple slot fine, or does the pocket need to follow the tool's real outline?"
+    },
+    {
+      "tag": "vessel",
+      "title": "Pots, planters, cups, bowls and drip trays",
+      "file": "vessel.md",
+      "match": [
+        "planter",
+        "plant pot",
+        "flower pot",
+        "pot",
+        "saucer",
+        "drip tray",
+        "drainage",
+        "drain hole",
+        "drip hole",
+        "vase",
+        "cup",
+        "mug",
+        "bowl",
+        "tub",
+        "bin",
+        "bucket",
+        "container",
+        "vessel"
+      ],
+      "ask": "How big across and how tall, and should it have drain holes and a drip tray?"
     },
     {
       "tag": "wires",

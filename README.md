@@ -12,8 +12,14 @@ now four ways into the same model, and you can move between them mid-build:
 
 - **✍️ Write it.** An OpenSCAD-style language that rebuilds as you type. Or paste
   OpenSCAD, JSCAD, build123d or CadQuery and it translates on the way in.
-- **💬 Describe it.** Tell the built-in chat what you want in plain English and it
-  writes the code. Bring your own Claude or Gemini key, stored in your browser.
+- **💬 Describe it.** Say “a phone stand for my iPhone 16” or “a hook for my yoga
+  mat” and the built-in helper hands you one of 200+ tested, printable designs
+  with every size a slider, no AI and no key. Then change it in words: “wider”,
+  “for a Pixel 9”, “round the edges”, “add two holes”, “make it blue”. For
+  anything the catalog does not know, connect an AI: a free one that runs in
+  your browser, your own Claude, Gemini or OpenRouter key, or (desktop) your
+  Claude Code login. The quick door for newcomers is
+  [brepcode.com/make](https://brepcode.com/make).
 - **🖱 Grab it.** Click a shape to select its code, then drag the handles to
   resize it. Alt+arrows nudge any number. The edit lands back in the source.
 - **🧰 Import and edit it.** Bring in an STL, 3MF, OBJ or SVG, then drill it,
@@ -41,6 +47,17 @@ every build. That license requires any modification to the kernel be contributed
 Autodrop3d via pull request, so this project deliberately never patches it. If the kernel needs
 to change, the change belongs upstream. If BREPcode is useful to you, the kernel is the part worth
 starring.
+
+### ...and now on the next.BREP.io Rust kernel
+
+Since v0.6.0, exact parts build on the **[next.BREP.io](https://next.brep.io) Rust BREP kernel**,
+also by [@mmiscool](https://github.com/mmiscool) / Autodrop3d
+([source](https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL)): true curved surfaces and
+1.4 to 4x faster builds on real models. Meshes (imports, textures) go to
+[manifold-3d](https://github.com/elalish/manifold), and the JS BREP.io kernel above builds anything
+either one refuses. Dropping an STL can rebuild it as an exact solid with the same project's
+`stl2step` reconstruction. The Rust kernel is used unmodified too, pinned to an upstream commit;
+`rust/brepcode-kernel` is the small wrapper that builds it to wasm (see its README).
 
 ```js
 // bracket.js
@@ -154,6 +171,26 @@ Notes:
 - `npm run test:desktop` launches the real shell and checks the bridge, the
   sandbox, the encryption and an IPC round-trip. It never contacts a mail server.
 
+### ...and your own Claude can drive it
+
+The other direction, and the more useful one. An MCP server ships alongside the
+app, so Claude Code (or Claude Desktop) can read your editor, rewrite it, turn
+the dials, look at the result and save an STL — while you watch the window
+change.
+
+You type "make the wall 3 mm thicker" in your own chat; the model in front of
+you changes. Everything goes through the same `rebuild()` your own typing does,
+so **Ctrl+Z undoes anything Claude does** and there is no second code path.
+
+In a dev build the bridge is on by default, on `127.0.0.1:5757`; the **public
+release download ships with it off** (start it with `BREPcode.exe --agent`).
+The default is a build setting, `brepcodeAgentDefault` in package.json, and
+`npm run desktop:build:public` packages it off. Turn it off for a run with
+`BREPcode.exe --no-agent`. It is loopback-only and grants no
+more than a local user typing in the editor already has, but it *is* a listening
+socket: [docs/AGENT.md](docs/AGENT.md) has the security note, the full tool list,
+and the troubleshooting ladder.
+
 ## Toolbox and panels
 
 Everything lives in the header bar. Nothing here needs the terminal.
@@ -165,6 +202,7 @@ Everything lives in the header bar. Nothing here needs the terminal.
 | **Drill** | Click a face, bore a hole along its normal |
 | **Fin supports** | Removable 45° buttress fins with probed teeth and a bed skirt |
 | **Fin supports, no skirt** | The same without the foot |
+| **FizzCore bubble infill** | Fill the model with graded, printable bubbles (see below) |
 
 **📦 Import** brings in STL / 3MF / OBJ / SVG and unlocks the mesh-editing tools:
 
@@ -180,13 +218,56 @@ Everything lives in the header bar. Nothing here needs the terminal.
 
 | Panel | What it does |
 |---|---|
-| **💬 Chat** | Describe a part in plain English and get code. Bring your own API key (Claude or Gemini), stored locally in your browser, never sent anywhere but the provider. Optionally password-locked so you can publish a build with a key baked in |
+| **💬 Chat** | Say what you want to print and the built-in helper answers from a catalog of 200+ tested parametric designs (`src/catalog`), no AI needed; follow-ups edit the dials in place. Simple shapes, holes, fillets, resizes and colours are built in too. Connect an AI for the rest: free in-browser (WebGPU), a local server, or your own Claude / Gemini / OpenRouter key, stored locally and sent only to that provider. A site can ship an assist-mode house AI (`docs/house-ai.md`) that steps in only when the helper is stuck |
 | **📖 Cheat sheet** | Every word in the language, grouped and tabbed by dialect, click to insert working code |
 | **🎨 Material and lighting** | Colour, metalness, roughness, opacity, textures, presets, CAD outline mode, lighting rig, background |
 | **🖼 Trace image** | PNG or JPG to an extrudable outline |
 | **📐 Dimensions** | Live width / depth / height overlay |
 | **💾 Export** | STL, OBJ, 3MF (multi-colour), GLB, curved-surface STEP, and a 3-view SVG blueprint |
 | **📁 Inventory** | Your saved models, with thumbnails |
+
+## Drop a mesh anywhere: FizzCore and support fins
+
+Drop an STL / 3MF / OBJ anywhere on the page and BREPcode asks what you came to
+do: open it, fill it with **FizzCore** bubbles, add **support fins**, or open it
+and jump straight to a tool. ("Always just open" brings back the old behaviour.)
+
+**FizzCore** fills a part with graded bubbles instead of a slicer's grid: big
+ones in the core, small dense ones under the skin, small ones packed into the
+gaps, and a 45° teardrop top on every bubble so no ceiling needs support. Pick
+your nozzle and it sizes the skin, webs and smallest bubble in whole extrusion
+lines. *Solid webs* make the bubbles the infill (strong, dense); *Hybrid* leaves
+wide webs for the slicer's gyroid (lighter). The dialog reports the plastic
+saved and an "equivalent slicer infill %" so you can compare honestly: equal
+spheres can never fill more than 74% of a space, so this is a strong infill,
+not a featherweight one. Or pick *Diamond* cells: rhombic dodecahedra stood on
+a point, which stack with no gaps, so the walls between them are flat and one
+even thickness, and every roof rises to a 50° peak. On the test parts they
+hollow out a little more than teardrops with a third to an eighth of the
+triangles.
+
+**Support fins** tilt a part (45° by default) and stand snap-off fins beside
+it, in a live low-poly preview you can adjust before the full run:
+
+- the fin's contact edge is a straight line laid against the part's bulges, and
+  the whole fin is grown up from the bed a 0.2 mm layer at a time with every
+  layer within 45° of the one below, so nothing floats and nothing overhangs;
+- tiny 45° pokes reach in and stop 0.2 mm short (a slicer's support gap), so
+  they catch a part that teeters but never fuse;
+- the fins only go a little past the part's centre of mass by default, because
+  fins stop *tipping*; a face that already prints (a box at 45°) gets nothing
+  taller. Overhangs on the part itself are painted red with their area, and
+  *Find the tilt with the least overhang* searches every angle and side;
+- *Auto* picks the lean direction (least overhang) and the fin side (where it
+  would tip, from its centre of mass: a tall part tips toward the lean, a wide
+  one the other way). Spin, flip, or click a face to lay it flat, and the fins
+  stay put and re-fit.
+
+Basics sit in the panel; fin size, thickness, spacing, distance from the model,
+poke gap and foot size are under **Advanced**. Output is STL or 3MF. It all runs
+on triangles with manifold-3d, never touching the CAD kernel, so it works on
+meshes too heavy to open in the editor. Engine: `src/fizzcore.js`; UI:
+`viewer/fizz.js`; tests: `test/fizzcore.js`.
 
 ## Live viewer
 

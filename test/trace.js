@@ -1,7 +1,8 @@
 // Image autotrace: threshold -> contours -> mm polygons -> BREPcode, plus a
 // round-trip that actually extrudes the traced code through the kernel.
 
-import { traceImage, contoursToCode } from "../viewer/trace.js";
+import { traceImage, contoursToCode, imageSolid, autoMask } from "../viewer/trace.js";
+import * as dsl from "../src/dsl.js";
 import { polygon, linearExtrude, difference, union, translate, build, toSTL } from "../index.js";
 
 function volOf(stl) {
@@ -111,6 +112,65 @@ console.log("\ncode generation + kernel round-trip\n");
   const removed = vSolid - vRing;
   check("hole is a true through-hole (full-depth cut)", removed > holeArea * 4 * 0.9,
     `removed ${removed.toFixed(0)}, through-hole ~${(holeArea * 4).toFixed(0)}`);
+}
+
+// ---- rings -> one extruded solid (what smooth text() is built from) -------
+{
+  const { ringsToPrismStl } = await import("../viewer/trace.js");
+  const { ShapeUtils, Vector2 } = await import("three");
+  const tri = (o, hs) => ShapeUtils.triangulateShape(o.map(([x, y]) => new Vector2(x, y)), hs.map((h) => h.map(([x, y]) => new Vector2(x, y))));
+  const ring = (cx, cy, r, n, cw = false) => Array.from({ length: n }, (_, i) => {
+    const a = ((cw ? -i : i) / n) * 2 * Math.PI;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+  // an "O" (disc with a hole) and a separate square "I", windings deliberately wrong
+  const outers = [ring(0, 0, 10, 64, true), [[20, -10], [20, 10], [24, 10], [24, -10]]];
+  const holes = [ring(0, 0, 6, 64)];
+  const stl = ringsToPrismStl(outers, holes, 2, tri);
+  const P = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => `${(+m[1]).toFixed(5)},${(+m[2]).toFixed(5)},${(+m[3]).toFixed(5)}`);
+  const edges = new Map();
+  for (let i = 0; i < P.length; i += 3) for (let e = 0; e < 3; e++) {
+    const k = `${P[i + e]}>${P[i + (e + 1) % 3]}`;
+    edges.set(k, (edges.get(k) || 0) + 1);
+  }
+  // closed AND consistently wound: every directed edge once, its reverse once
+  const closed = [...edges.keys()].every((k) => { const [a, b] = k.split(">"); return edges.get(k) === 1 && edges.get(`${b}>${a}`) === 1; });
+  check("rings extrude into one closed, consistently wound shell", closed);
+  const want = (Math.PI * (100 - 36)) * 2 + 4 * 20 * 2;      // smooth-circle volume; the 64-gon is ~0.5% less
+  let signed = 0;
+  const V = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+  for (let i = 0; i < V.length; i += 3) {
+    const [a, b, c] = V.slice(i, i + 3);
+    signed += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+  }
+  check("...with the hole cut and normals pointing out (positive volume)", signed > 0 && near(signed, want, want * 0.01), `${signed.toFixed(1)} vs ${want.toFixed(1)}`);
+  // and the kernel takes it as a solid (this is the road text() uses)
+  const { registerImport, importedMesh } = await import("../src/dsl.js");
+  registerImport("__rings_test.stl", stl);
+  const got = volOf(toSTL(await build(importedMesh("__rings_test.stl")), "t"));
+  check("...and imports through the kernel as one solid", near(got, signed, signed * 0.01), `${got.toFixed(1)}`);
+}
+
+console.log("\nimage(): a chat picture as an exact solid\n");
+{
+  // a dark ring with a dark disc inside it, on white: two islands, one hole
+  const W = 200, H = 200, data = new Uint8ClampedArray(W * H * 4).fill(255);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const r = Math.hypot(x - 100, y - 100);
+    if ((r > 80 && r < 95) || r < 40) { const i = (y * W + x) * 4; data[i] = data[i + 1] = data[i + 2] = 15; }
+  }
+  const img = { width: W, height: H, data };
+  const a = autoMask(img);
+  check("the automatic threshold reads the dark mark as ink", !a.invert && a.threshold > 15 && a.threshold < 255, JSON.stringify(a));
+  const r = await build(imageSolid(dsl, img, { size: 30, height: 2 }));
+  const vol = volOf(toSTL(r, "t"));
+  // ring (95-80 px) and disc (40 px), at 30 mm across the ring's 190 px
+  const k = 30 / 190, want = Math.PI * ((95 * k) ** 2 - (80 * k) ** 2 + (40 * k) ** 2) * 2;
+  check("image() builds exact, the ring's hole cut through and the disc kept", r.engine === "exact" && Math.abs(vol - want) / want < 0.06,
+    `${r.engine} ${vol.toFixed(1)} vs ${want.toFixed(1)}`);
+  // a light mark on a dark photo flips by itself
+  const inv = { width: W, height: H, data: data.map((v, i) => (i % 4 === 3 ? v : 255 - v)) };
+  check("...and a light mark on dark is read the right way round", autoMask(inv).invert === true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
