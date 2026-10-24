@@ -220,9 +220,9 @@ function wrap(nk) {
     const target = live.get(tName);
     if (!target) throw new Error(`boolean ${p.id}: no solid "${tName}"`);
     const tools = (p.boolean.targets || []).map((n) => {
-      const h = live.get(n);
-      if (!h) throw new Error(`boolean ${p.id}: no solid "${n}"`);
-      return { n, h };
+      const s = live.get(n);
+      if (!s) throw new Error(`boolean ${p.id}: no solid "${n}"`);
+      return { n, h: s.h };
     });
     // the inputs as they were, to name the result's faces after
     const sources = [target.h, ...tools.map((t) => t.h)].map((h) => ({ h: nk.copy(h), names: names.get(h) }));
@@ -354,7 +354,8 @@ function wrap(nk) {
     info: nk.info(),
     execute_history_json: execute,
     tessellate_handle(handle, tol) {
-      const m = nk.tessellate(handle, Math.max(+tol || 0.05, 1e-4), 15);
+      // 8 degrees: at 15 a cylinder came out 0.65% light (24 facets round)
+      const m = nk.tessellate(handle, Math.max(+tol || 0.05, 1e-4), 8);
       return {
         take_positions: () => m.positions,
         take_normals: () => m.normals,

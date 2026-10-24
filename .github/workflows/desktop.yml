@@ -71,6 +71,13 @@ jobs:
           ELECTRON_CACHE: ${{ runner.temp }}/electron
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: ${{ matrix.out }}
+          if-no-files-found: error
+          retention-days: 30
+
       # The alpha's own check: NVIDIA's kernel loads in this build and makes
       # real solids with the right volumes and face names.
       - name: NVIDIA kernel check
@@ -78,13 +85,6 @@ jobs:
         run: node test/nvidia.js
         env:
           BREPCODE_REQUIRE_NVIDIA: "1"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.label }}
-          path: ${{ matrix.out }}
-          if-no-files-found: error
-          retention-days: 30
 
   release:
     name: Draft release

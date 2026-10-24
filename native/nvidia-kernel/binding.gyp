@@ -72,10 +72,12 @@
           "VCCLCompilerTool": {
             "WholeProgramOptimization": "false",
             "RuntimeTypeInfo": "true",
-            "ExceptionHandling": 1
+            "ExceptionHandling": 1,
+            "DebugInformationFormat": "0"
           },
           "VCLinkerTool": {
-            "LinkTimeCodeGeneration": 0
+            "LinkTimeCodeGeneration": 0,
+            "GenerateDebugInformation": "false"
           },
           "VCLibrarianTool": {
             "AdditionalOptions!": [
