@@ -88,14 +88,18 @@ portable:
   artifactName: BREPcode.exe
   unicode: true
 
-# Apple Silicon. Unsigned for now (no Apple Developer ID): the first launch is
-# right-click -> Open. The productName in the file name tells the standard
-# build (BREPcode) from the alpha (BREPcode Alpha), which installs alongside
-# it under its own appId.
+# Apple Silicon. Ad-hoc signed ("-"), not Developer ID signed: Apple Silicon
+# refuses to run code with NO signature, and a downloaded unsigned app is
+# reported as "damaged and can't be opened". Ad-hoc needs no Apple account;
+# the first launch is still right-click -> Open (Gatekeeper doesn't know the
+# signer). Hardened runtime off: it needs entitlements (JIT) to run Electron.
+# The productName in the file name tells the standard build (BREPcode) from
+# the alpha (BREPcode Alpha), which installs alongside it under its own appId.
 mac:
   icon: desktop/icon.png
   category: public.app-category.graphics-design
-  identity: null
+  identity: "-"
+  hardenedRuntime: false
   target:
     - target: dmg
       arch: [arm64]
