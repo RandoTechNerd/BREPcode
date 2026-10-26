@@ -7831,29 +7831,45 @@
     }, true);
     // A right-DRAG pans the view: the menu is for a still right-click only, so
     // a pan never ends in a menu (or a pin) at wherever the drag let go.
-    let rightDown = null;
-    stage.addEventListener("pointerdown", (e) => { if (e.button === 2) rightDown = [e.clientX, e.clientY]; }, true);
+    // Windows sends contextmenu when the button comes up; macOS and Linux send
+    // it as it goes DOWN, before any drag, so there the menu waits for the
+    // release and opens only if the pointer stayed put.
+    let rightDown = null, rightHeld = false, menuOnRelease = false;
+    stage.addEventListener("pointerdown", (e) => { if (e.button === 2) { rightDown = [e.clientX, e.clientY]; rightHeld = true; menuOnRelease = false; } }, true);
+    addEventListener("pointerup", (e) => {
+      if (e.button !== 2 || !rightHeld) return;
+      rightHeld = false;
+      if (!menuOnRelease) return;
+      menuOnRelease = false;
+      const still = rightDown && Math.hypot(e.clientX - rightDown[0], e.clientY - rightDown[1]) <= 6;
+      rightDown = null;
+      if (still) openShapeMenuAt(e.clientX, e.clientY);
+    }, true);
     stage.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      if (rightHeld) { menuOnRelease = true; return; }
       if (rightDown && Math.hypot(e.clientX - rightDown[0], e.clientY - rightDown[1]) > 6) { rightDown = null; return; }
       rightDown = null;
+      openShapeMenuAt(e.clientX, e.clientY);
+    });
+    function openShapeMenuAt(clientX, clientY) {
       const rect = renderer.domElement.getBoundingClientRect();
       raycaster.setFromCamera(new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1), camera);
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1), camera);
       const hit = pickModel(raycaster)[0];
       if (!hit?.object.userData.featureId) { shapeMenu.classList.remove("open"); return; }
       askHit = { hit, ray: raycaster.ray.direction.clone() };
       shapeMenuFid = hit.object.userData.featureId;
       buildSwapChips(shapeMenuFid);
-      shapeMenu.style.left = `${Math.min(e.clientX, innerWidth - 240)}px`;
-      shapeMenu.style.top = `${Math.min(e.clientY, innerHeight - 200)}px`;
+      shapeMenu.style.left = `${Math.min(clientX, innerWidth - 240)}px`;
+      shapeMenu.style.top = `${Math.min(clientY, innerHeight - 200)}px`;
       shapeMenu.classList.add("open");
       // The material block stays open between right-clicks — somebody assigning
       // a material to six pieces should not re-open it six times.
       if (!$("sm-matblock").hidden) { fillShapeMaterials(); syncShapeMatUI(shapeMenuFid); }
       fitShapeMenu();
-    });
+    }
 
     // ------------------------------------------------- "Ask about this…"
     // Right-click → Ask about this… pins a marker at the clicked point and

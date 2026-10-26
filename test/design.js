@@ -635,6 +635,11 @@ console.log("\nPhase 2: wiring\n");
   check("fix (c): no plane squares or centre block on the move gizmo", /translate: \["XY", "YZ", "XZ", "XYZ"\]/.test(gizmo));
   check("Ask about this: re-pinning a spot keeps one pin-tracking loop", /if \(!pinTracking\) \{ pinTracking = true; requestAnimationFrame\(trackPin\); \}/.test(html)
     && /askPin\.hidden = true; pinTracking = false; return;/.test(html));
+  // macOS and Linux fire contextmenu on the press, before any drag: the menu
+  // must wait for the release there, or every right-drag pan opens it
+  check("right-click menu: a contextmenu during the press waits for the release, and opens only if the pointer stayed put",
+    /if \(rightHeld\) \{ menuOnRelease = true; return; \}/.test(html)
+    && /const still = rightDown && Math\.hypot\(e\.clientX - rightDown\[0\], e\.clientY - rightDown\[1\]\) <= 6;[\s\S]{0,80}if \(still\) openShapeMenuAt\(e\.clientX, e\.clientY\);/.test(html));
   check("rotate and scale are gizmo modes", /rotate: "rotate", scale: "scale"/.test(shell));
   check("a failed build reaches Design mode with the kernel's reason", /designUI\?\.buildResult\?\.\(ok, ok \? null : lastBuildFailure\)/.test(html)
     && /reason: String\(e\?\.message \|\| e\), stage: attempt/.test(html));
