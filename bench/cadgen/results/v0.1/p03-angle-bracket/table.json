@@ -1,0 +1,17 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 100 width (right), Y from the front face of the upright wall (y=0) back to the far edge of the base (y=70), Z up",
+  "overall": { "x": 100, "y": 70, "z": 80 },
+  "body": [
+    "base plate 100 x 70 x 10 at x 0..100, y 0..70, z 0..10",
+    "upright wall 100 x 10 x 80 at x 0..100, y 0..10, z 0..80",
+    "2X gusset 8 THK, right triangle in the YZ plane with legs 31 (y) x 41 (z), right-angle corner at (y=8, z=8) so it is embedded 2 mm into the wall and base; visible portion ends at y~39 and z~49; gussets at x 10..18 and x 82..90"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 2, "positions": [[30, 45, 10], [70, 45, 10]], "axis": "+z", "dia": 9, "depth": "thru", "source": "2X SLOT 9 WIDE 16 CTR-CTR THRU; slot runs along Y, centres at y=37 and y=53" },
+    { "id": "B", "type": "csk", "count": 2, "positions": [[30, 0, 55], [70, 0, 55]], "axis": "-y", "dia": 6.6, "depth": "thru", "csk": { "d": 13, "angle": 90 }, "source": "2X Ø6.6 THRU, CSK Ø13 X 90°" }
+  ],
+  "uncertain": [
+    "gusset x positions (10..18 and 82..90) are scaled from the drawing",
+    "gusset triangle origin at (y=8, z=8) is inferred from the scaled hypotenuse end points"
+  ]
+}

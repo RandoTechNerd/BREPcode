@@ -1,0 +1,26 @@
+{
+ "id": "p01-plate",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    120,
+    80,
+    12
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 27,
+    "volume": 99350.42486251047,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1324154,
+ "ok": true,
+ "seconds": 43
+}

@@ -1,0 +1,15 @@
+{
+  "frame": "origin at the min corner of the flange bounding box; X right, Y up the sheet in TOP view, Z up; flange bottom at z=0",
+  "overall": { "x": 100, "y": 100, "z": 42 },
+  "body": [
+    "square flange 100 x 100 x 12, at x 0..100, y 0..100, z 0..12, vertical corners R10",
+    "round boss Ø76 centred at (50,50), from z 11.5 (0.5 overlap into the flange) up to z 42"
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 1, "positions": [[50, 50, 42]], "axis": "+z",
+      "dia": 40, "depth": "thru", "cbore": { "d": 52, "depth": 15 }, "source": "Ø40 THRU ⌴ Ø52 ↧ 15" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[12, 12, 12], [88, 12, 12], [12, 88, 12], [88, 88, 12]], "axis": "+z",
+      "dia": 9, "depth": "thru", "source": "4X Ø9 THRU, 12 / 88 from the left and bottom edges" }
+  ],
+  "uncertain": [ "the boss top-to-flange-top height is 30, derived from the 42 overall and 12 flange dimensions" ]
+}

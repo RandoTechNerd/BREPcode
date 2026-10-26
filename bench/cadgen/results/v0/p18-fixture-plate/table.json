@@ -1,0 +1,22 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 160 length, Y along the 100 width, Z up; top face at z=15",
+  "overall": { "x": 160, "y": 100, "z": 15 },
+  "body": [ "rectangular plate 160 x 100 x 15 at [0,0,0]" ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 4,
+      "positions": [[10, 10, 15], [150, 10, 15], [10, 90, 15], [150, 90, 15]],
+      "axis": "+z", "dia": 9, "depth": "thru", "cbore": { "d": 15, "depth": 9 },
+      "source": "4X Ø9 THRU ⌴ Ø15 ↧ 9; 10 / 150 from left, 10 / 90 from bottom" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[10, 50, 15], [150, 50, 15]],
+      "axis": "+z", "dia": 8, "depth": 10,
+      "source": "2X Ø8 ↧ 10; at 50 from bottom" },
+    { "id": "C", "type": "hole", "count": 15,
+      "positions": [[30, 25, 15], [55, 25, 15], [80, 25, 15], [105, 25, 15], [130, 25, 15],
+                    [30, 50, 15], [55, 50, 15], [80, 50, 15], [105, 50, 15], [130, 50, 15],
+                    [30, 75, 15], [55, 75, 15], [80, 75, 15], [105, 75, 15], [130, 75, 15]],
+      "axis": "+z", "dia": 6.8, "depth": 12,
+      "source": "15X Ø6.8 ↧ 12; 15X GRID 25 PITCH FIRST AT (30, 25)" }
+  ],
+  "uncertain": [ "The grid is taken as 5 columns by 3 rows, which matches the top view and the 15X count." ]
+}

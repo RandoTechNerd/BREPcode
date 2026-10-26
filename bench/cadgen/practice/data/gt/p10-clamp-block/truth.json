@@ -1,0 +1,85 @@
+{
+ "id": "p10-clamp-block",
+ "title": "CLAMP BLOCK",
+ "size": [
+  50,
+  40,
+  60
+ ],
+ "center": [
+  25,
+  20,
+  30
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    0,
+    0
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ],
+   "d": 25,
+   "depth": 50,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    -20,
+    20
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 5.5,
+   "depth": 40,
+   "through": true,
+   "cbore": {
+    "d": 10,
+    "depth": 6
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -13,
+    0,
+    -30
+   ],
+   "dir": [
+    0,
+    0,
+    -1
+   ],
+   "d": 5,
+   "depth": 12,
+   "ctx": 3
+  },
+  {
+   "kind": "hole",
+   "at": [
+    13,
+    0,
+    -30
+   ],
+   "dir": [
+    0,
+    0,
+    -1
+   ],
+   "d": 5,
+   "depth": 12,
+   "ctx": 3
+  }
+ ]
+}

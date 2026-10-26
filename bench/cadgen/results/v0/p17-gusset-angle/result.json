@@ -1,0 +1,84 @@
+{
+  "alignment": {
+    "rmse": 0.9559
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 16,
+    "volume": 129546.35,
+    "bbox": {
+      "x": 90.0,
+      "y": 70.0,
+      "z": 70.0
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.9884499149172946,
+    "shape_volume_iou": 0.9996416241980259,
+    "shape_similarity_score": 0.9940457695576603
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 133.79088250215943,
+    "surface_distance_f1": 0.9884499149172946,
+    "surface_distance_precision": 0.98816,
+    "surface_distance_recall": 0.98874,
+    "surface_distance_threshold": 0.6689544125107972,
+    "surface_distance_mean_chamfer": 0.0016410662557291788,
+    "surface_distance_mean_normal_dot": 0.9953328437518415,
+    "volume_intersection": 129623.39340524172,
+    "volume_union": 129669.8639467255,
+    "volume_symmetric_difference": 46.470541483780835
+  },
+  "interface_metrics": {
+    "score": 1.0,
+    "contexts": {
+      "1": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0,
+          "2__KOR": 1.0
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 3,
+      "b2": 0,
+      "chi_surface": -4,
+      "n_components": 1,
+      "n_triangles": 708,
+      "n_vertices": 350,
+      "linear_deflection_mm": 0.13379088250215943
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 3,
+      "b2": 0,
+      "chi_surface": -4,
+      "n_components": 1,
+      "n_triangles": 600,
+      "n_vertices": 296,
+      "linear_deflection_mm": 0.13379088250215943
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9976183078230643
+}

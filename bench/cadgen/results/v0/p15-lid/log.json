@@ -1,0 +1,26 @@
+{
+ "id": "p15-lid",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    120,
+    80,
+    25
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 34,
+    "volume": 59247.5971719099,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.14166020000000001,
+ "ok": true,
+ "seconds": 44
+}

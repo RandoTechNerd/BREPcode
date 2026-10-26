@@ -1,0 +1,15 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 130 length, Y along the 40 depth, Z up from the base underside",
+  "overall": { "x": 130, "y": 40, "z": 64 },
+  "body": [
+    "base plate 130 x 40 x 14 at [0,0,0]",
+    "pedestal 60 wide (x 35..95) x 40 deep x 64 tall, top corners R10 (edges along Y), centred on x=65"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[65, 0, 38]], "axis": "-y", "dia": 32, "depth": "thru", "source": "Ø32 THRU, centre 65 from the left end, 38 up" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[65, 20, 64]], "axis": "+z", "dia": 6, "depth": 12, "source": "Ø6 ↧ 12, at 65 from the left end, mid depth" },
+    { "id": "C", "type": "slot", "count": 2, "positions": [[15, 20, 14], [115, 20, 14]], "axis": "+z", "dia": 11, "depth": "thru", "source": "2X SLOT 11 WIDE 10 CTR-CTR THRU, slot long axis along X" },
+    { "id": "D", "type": "fillet", "count": 2, "positions": [[35, 0, 64], [95, 0, 64]], "axis": "+z", "dia": 20, "depth": 40, "source": "R10 TYP" }
+  ],
+  "uncertain": [ "Slot centre-to-centre spacing taken along X, about each listed centre: x 10..20 and 110..120" ]
+}

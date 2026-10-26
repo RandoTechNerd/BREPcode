@@ -1,0 +1,90 @@
+{
+  "alignment": {
+    "rmse": 3.5641
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 26,
+    "volume": 179691.68,
+    "bbox": {
+      "x": 130.0,
+      "y": 40.0,
+      "z": 64.0
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.7688513382846627,
+    "shape_volume_iou": 0.8513480325295094,
+    "shape_similarity_score": 0.8100996854070861
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 152.1478246644649,
+    "surface_distance_f1": 0.7688513382846627,
+    "surface_distance_precision": 0.72622,
+    "surface_distance_recall": 0.8168,
+    "surface_distance_threshold": 0.7607391233223245,
+    "surface_distance_mean_chamfer": 0.690510619239652,
+    "surface_distance_mean_normal_dot": 0.8997008892818232,
+    "volume_intersection": 152974.30279913655,
+    "volume_union": 179684.80216559867,
+    "volume_symmetric_difference": 26710.499366462114
+  },
+  "interface_metrics": {
+    "score": 1.0,
+    "contexts": {
+      "1": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0,
+          "2__KOR": 1.0
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      },
+      "3": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 4,
+      "b2": 0,
+      "chi_surface": -6,
+      "n_components": 1,
+      "n_triangles": 2416,
+      "n_vertices": 1202,
+      "linear_deflection_mm": 0.15214782466446491
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 4,
+      "b2": 0,
+      "chi_surface": -6,
+      "n_components": 1,
+      "n_triangles": 620,
+      "n_vertices": 304,
+      "linear_deflection_mm": 0.15214782466446491
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9240398741628344
+}

@@ -1,0 +1,194 @@
+{
+ "id": "p05-cover-plate",
+ "title": "COVER PLATE",
+ "size": [
+  110,
+  110,
+  8
+ ],
+ "center": [
+  55,
+  55,
+  4
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -45,
+    -45,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    -45,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    45,
+    -45,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -45,
+    0,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    45,
+    0,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -45,
+    45,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    45,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    45,
+    45,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 8,
+   "through": true,
+   "csk": {
+    "d": 11,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "pocket",
+   "at": [
+    0,
+    0,
+    4
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "l": 70,
+   "w": 70,
+   "depth": 3,
+   "r": 6,
+   "ctx": 2
+  }
+ ]
+}

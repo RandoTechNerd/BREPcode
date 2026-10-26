@@ -1,0 +1,24 @@
+{
+  "frame": "origin on the ring axis at the bottom face, Z up (z = 0 to 25), X right in the TOP view, Y up the sheet in the TOP view",
+  "overall": { "x": 80, "y": 80, "z": 25 },
+  "body": [
+    "ring: OD 80, height 25, centred on the Z axis",
+    "outer edges chamfered C1.5 at top and bottom: the chamfer is the intersection of the cylinder with two 45° cones",
+    "central bore: Ø40 THRU along Z"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 25]], "axis": "+z", "dia": 40, "depth": "thru", "source": "BORE Ø40 THRU" },
+    { "id": "B", "type": "csk", "count": 3,
+      "positions": [[0, 30, 25], [-25.981, -15, 25], [25.981, -15, 25]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "csk": { "d": 10, "angle": 90 },
+      "source": "3X Ø5.5 THRU, ⌵ Ø10 X 90°, 3X EQ SP ON Ø60 PCD" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[40, 0, 12.5]], "axis": "+x", "dia": 5, "depth": "thru",
+      "source": "Ø5 THRU (RIGHT view, 40 from the edge = centred in Y, 12.5 up from the bottom)" },
+    { "id": "D", "type": "chamfer", "count": 2, "positions": [[40, 0, 25], [40, 0, 0]], "axis": "+z", "dia": 80, "depth": 1.5,
+      "source": "C1.5 TOP & BOTTOM" }
+  ],
+  "uncertain": [
+    "The radial Ø5 hole is taken as passing through one wall only (from the outside face into the bore, +X side), because the dashed lines in the TOP view run only from the bore to the outer edge",
+    "The chamfer is taken as being on the outer edges only; the bore shows no chamfer"
+  ]
+}

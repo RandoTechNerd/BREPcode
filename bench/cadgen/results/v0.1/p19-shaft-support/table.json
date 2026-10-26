@@ -1,0 +1,20 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 84 length (left to right in FRONT), Y along the 20 depth, Z up",
+  "overall": { "x": 84, "y": 20, "z": 60 },
+  "body": [
+    "base plate 84 x 20 x 10 at x 0..84, y 0..20, z 0..10",
+    "upright block 42 wide at x 21..63, y 0..20, z 10..60, with R6 rounds on both top edges that run along Y",
+    "split slot 2 wide at x 41..43, through Y, from z 60 down into the bore"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[10, 10, 10], [74, 10, 10]], "axis": "+z", "dia": 6.6, "depth": "thru", "source": "2X Ø6.6 THRU, 10 / 74 from left, 10 from front" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[42, 20, 35]], "axis": "+y", "dia": 20, "depth": "thru", "source": "Ø20 THRU at height 35, 42 from left" },
+    { "id": "C", "type": "slot", "count": 1, "positions": [[42, 10, 60]], "axis": "+z", "dia": 2, "depth": 15, "source": "SLOT 2 WIDE, from the top into the bore" },
+    { "id": "D", "type": "cbore", "count": 1, "positions": [[63, 10, 52]], "axis": "+x", "dia": 5.5, "depth": "thru", "cbore": { "d": 9.5, "depth": 6 }, "source": "Ø5.5 THRU, CBORE Ø9.5 ↧ 6, at height 52" },
+    { "id": "E", "type": "fillet", "count": 2, "positions": [[21, 10, 60], [63, 10, 60]], "axis": "+z", "dia": 12, "depth": 0, "source": "R6 TYP" }
+  ],
+  "uncertain": [
+    "The counterbore is placed on the right face (x = 63), because the front view shows the dashed counterbore on the right.",
+    "The clamp hole runs through both halves of the upright."
+  ]
+}

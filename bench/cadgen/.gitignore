@@ -1,0 +1,5 @@
+.venv
+results/*/*/aligned/
+results/*/*/renders/
+results/*/*/*.png
+results/gt-self/

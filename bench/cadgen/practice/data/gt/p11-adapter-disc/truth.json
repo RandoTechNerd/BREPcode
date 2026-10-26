@@ -1,0 +1,249 @@
+{
+ "id": "p11-adapter-disc",
+ "title": "ADAPTER DISC",
+ "size": [
+  120,
+  120,
+  18
+ ],
+ "center": [
+  0,
+  0,
+  9
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    50,
+    0,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 9
+  },
+  {
+   "kind": "hole",
+   "at": [
+    3.061616997868383e-15,
+    50,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 9
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -50,
+    6.123233995736766e-15,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 9
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -9.184850993605149e-15,
+    -50,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 9
+  },
+  {
+   "kind": "hole",
+   "at": [
+    30.310889132455355,
+    17.499999999999996,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 6.6,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    2.1431318985078682e-15,
+    35,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 6.6,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -30.310889132455355,
+    17.499999999999996,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 6.6,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -30.31088913245535,
+    -17.500000000000004,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 6.6,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -6.429395695523604e-15,
+    -35,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 6.6,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    30.310889132455344,
+    -17.500000000000014,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "depth": 12,
+   "through": true,
+   "noPos": true,
+   "d": 6.6,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "boss",
+   "at": [
+    0,
+    0,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 50,
+   "h": 6,
+   "ctx": 3
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    0,
+    9
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 30,
+   "depth": 18,
+   "through": true,
+   "ctx": 4
+  }
+ ]
+}

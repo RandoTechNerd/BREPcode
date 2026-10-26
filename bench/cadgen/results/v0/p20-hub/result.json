@@ -1,0 +1,99 @@
+{
+  "alignment": {
+    "rmse": 0.8403
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 15,
+    "volume": 88447.77,
+    "bbox": {
+      "x": 90.0,
+      "y": 90.0,
+      "z": 40.0
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.9790299990807227,
+    "shape_volume_iou": 0.9989406894168708,
+    "shape_similarity_score": 0.9889853442487968
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 133.4166409710573,
+    "surface_distance_f1": 0.9790299990807227,
+    "surface_distance_precision": 0.97906,
+    "surface_distance_recall": 0.979,
+    "surface_distance_threshold": 0.6670832048552865,
+    "surface_distance_mean_chamfer": 0.004055041454206273,
+    "surface_distance_mean_normal_dot": 0.9941752766332683,
+    "volume_intersection": 88569.76155476266,
+    "volume_union": 88663.68393349263,
+    "volume_symmetric_difference": 93.92237872997066
+  },
+  "interface_metrics": {
+    "score": 1.0,
+    "contexts": {
+      "1": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0,
+          "2__KOR": 1.0
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      },
+      "3": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      },
+      "4": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0,
+          "2__KOR": 1.0,
+          "3__KOR": 1.0,
+          "4__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 7,
+      "b2": 0,
+      "chi_surface": -12,
+      "n_components": 1,
+      "n_triangles": 1268,
+      "n_vertices": 622,
+      "linear_deflection_mm": 0.1334166409710573
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 7,
+      "b2": 0,
+      "chi_surface": -12,
+      "n_components": 1,
+      "n_triangles": 1262,
+      "n_vertices": 619,
+      "linear_deflection_mm": 0.1334166409710573
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9955941376995188
+}

@@ -1,0 +1,26 @@
+{
+ "id": "p19-shaft-support",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 25,
+    "volume": 49961.76021812476,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1629882,
+ "ok": true,
+ "seconds": 44
+}

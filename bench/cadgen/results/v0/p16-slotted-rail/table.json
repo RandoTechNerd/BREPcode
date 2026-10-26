@@ -1,0 +1,22 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 200 length (left end at x=0), Y across the 30 width, Z up (bottom face z=0)",
+  "overall": { "x": 200, "y": 30, "z": 12 },
+  "body": [
+    "rectangular bar 200 x 30 x 12, min corner at origin",
+    "C1 chamfer on all four top edges (note 3), built as an exact hull of a 200x30x11 block and a 198x28 top face at z=12"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 4,
+      "positions": [[30, 15, 12], [80, 15, 12], [130, 15, 12], [170, 15, 12]],
+      "axis": "+z", "dia": 6.6, "depth": "thru",
+      "source": "4X SLOT 6.6 WIDE 14 CTR-CTR THRU; slot centres at 30/80/130/170 from the left end, 15 from the edge; slots run along X with arc centres at x±7" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[0, 15, 6], [200, 15, 6]],
+      "axis": "-x (left end), +x (right end)", "dia": 4.2, "depth": 15,
+      "source": "2X Ø4.2 ↧ 15, at 15 across the width and 6 up from the bottom (RIGHT view)" }
+  ],
+  "uncertain": [
+    "The slot length axis is taken as X (along the rail), with arc centres 14 apart, as the top view shows.",
+    "The 6 mm hole height is measured from the bottom face (mid-height of the 12 mm bar)."
+  ]
+}

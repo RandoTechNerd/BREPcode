@@ -1,0 +1,26 @@
+{
+ "id": "p17-gusset-angle",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 16,
+    "volume": 129546.35184610178,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1368042,
+ "ok": true,
+ "seconds": 38
+}

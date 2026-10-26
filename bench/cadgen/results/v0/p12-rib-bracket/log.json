@@ -1,0 +1,26 @@
+{
+ "id": "p12-rib-bracket",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    119,
+    80,
+    90
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 22,
+    "volume": 113686.20898152384,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1448642,
+ "ok": true,
+ "seconds": 41
+}

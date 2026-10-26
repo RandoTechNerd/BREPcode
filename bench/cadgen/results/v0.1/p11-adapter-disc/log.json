@@ -1,0 +1,26 @@
+{
+ "id": "p11-adapter-disc",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    120,
+    120,
+    18
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 28,
+    "volume": 126885.40869471965,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1364394,
+ "ok": true,
+ "seconds": 58
+}

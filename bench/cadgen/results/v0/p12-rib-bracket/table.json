@@ -1,0 +1,21 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 80 width (left to right in FRONT), Y = depth from the front face of the vertical plate toward the back end of the base (0..70), Z up (0..90)",
+  "overall": { "x": 80, "y": 70, "z": 90 },
+  "body": [
+    "vertical plate: x 0..80, y 0..8, z 0..90",
+    "base plate: x 0..80, y 0..70, z 0..8",
+    "triangular rib 10 THK: x 35..45; in YZ the triangle is (8,8), (~59.2,8), (8,~74)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4,
+      "positions": [[15, 0, 30], [65, 0, 30], [15, 0, 70], [65, 0, 70]],
+      "axis": "-y", "dia": 8.5, "depth": "thru", "source": "4X Ø8.5 THRU" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[15, 50, 8], [65, 50, 8]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "source": "2X Ø6.6 THRU" }
+  ],
+  "uncertain": [
+    "Rib apex (z about 74) and rib foot (y about 59.2) are scaled from the drawing; neither is dimensioned",
+    "Rib centred on the width (x 35..45) because the 10 dimension sits on the centre line"
+  ]
+}

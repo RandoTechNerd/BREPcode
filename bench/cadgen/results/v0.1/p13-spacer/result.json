@@ -1,0 +1,85 @@
+{
+  "alignment": {
+    "rmse": 0.7488
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 13,
+    "volume": 91630.86,
+    "bbox": {
+      "x": 80.0,
+      "y": 80.0,
+      "z": 25.0
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.9859098757493077,
+    "shape_volume_iou": 0.9985755914902888,
+    "shape_similarity_score": 0.9922427336197983
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 115.86630445408449,
+    "surface_distance_f1": 0.9859098757493077,
+    "surface_distance_precision": 0.98556,
+    "surface_distance_recall": 0.98626,
+    "surface_distance_threshold": 0.5793315222704224,
+    "surface_distance_mean_chamfer": 0.007331258560640189,
+    "surface_distance_mean_normal_dot": 0.9958713786742808,
+    "volume_intersection": 91221.94711848926,
+    "volume_union": 91352.06978406942,
+    "volume_symmetric_difference": 130.12266558015835
+  },
+  "interface_metrics": {
+    "score": 0.9936,
+    "contexts": {
+      "1": {
+        "score": 0.9872,
+        "sub_volumes": {
+          "1__KOR": 0.9872,
+          "2__KOR": 0.9882,
+          "3__KOR": 0.9879
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 5,
+      "b2": 0,
+      "chi_surface": -8,
+      "n_components": 1,
+      "n_triangles": 1380,
+      "n_vertices": 682,
+      "linear_deflection_mm": 0.11586630445408448
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 5,
+      "b2": 0,
+      "chi_surface": -8,
+      "n_components": 1,
+      "n_triangles": 1386,
+      "n_vertices": 685,
+      "linear_deflection_mm": 0.11586630445408448
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9943370934479194
+}

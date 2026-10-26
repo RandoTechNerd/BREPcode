@@ -1,0 +1,25 @@
+{
+  "frame": "origin at the min corner of the bounding box (lower-left of TOP view, bottom face), X right, Y up the sheet, Z up; top face at z=12",
+  "overall": { "x": 120, "y": 80, "z": 12 },
+  "body": [
+    "rectangular plate 120 x 80 x 12, vertical corners R8 (note 3)"
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 4,
+      "positions": [[12, 12, 12], [108, 12, 12], [12, 68, 12], [108, 68, 12]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "cbore": { "d": 11, "depth": 6.5 },
+      "source": "4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions from 12 / 108 and 12 / 68" },
+    { "id": "B", "type": "hole", "count": 1,
+      "positions": [[60, 40, 12]],
+      "axis": "+z", "dia": 30, "depth": "thru",
+      "source": "Ø30 THRU at 60 / 40" },
+    { "id": "C", "type": "slot", "count": 1,
+      "positions": [[60, 15, 12]],
+      "axis": "+z", "dia": 8, "depth": "thru",
+      "source": "SLOT 8 WIDE, 30 CTR-CTR THRU; centreline y=15; end centres at x=45 and x=75" }
+  ],
+  "uncertain": [
+    "slot centred at x=60, taken from the scaled view because there is no explicit X dimension",
+    "the 12 dim next to 15 read as the hole-row Y position"
+  ]
+}

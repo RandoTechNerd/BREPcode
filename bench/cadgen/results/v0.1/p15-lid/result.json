@@ -1,0 +1,86 @@
+{
+  "alignment": {
+    "rmse": 1.1146
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 30,
+    "volume": 59443.02,
+    "bbox": {
+      "x": 120.0,
+      "y": 80.0,
+      "z": 29.0
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.9682042961754165,
+    "shape_volume_iou": 0.9890165633128715,
+    "shape_similarity_score": 0.978610429744144
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 147.27669830282625,
+    "surface_distance_f1": 0.9682042961754165,
+    "surface_distance_precision": 0.96586,
+    "surface_distance_recall": 0.97056,
+    "surface_distance_threshold": 0.7363834915141313,
+    "surface_distance_mean_chamfer": 0.016501950481649007,
+    "surface_distance_mean_normal_dot": 0.9899622991151688,
+    "volume_intersection": 59053.18144909163,
+    "volume_union": 59708.991375516925,
+    "volume_symmetric_difference": 655.809926425296
+  },
+  "interface_metrics": {
+    "score": 0.9921,
+    "contexts": {
+      "1": {
+        "score": 0.9841,
+        "sub_volumes": {
+          "1__KOR": 0.9841,
+          "2__KOR": 0.9841,
+          "3__KOR": 0.9841,
+          "4__KOR": 0.9841
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 5,
+      "b2": 0,
+      "chi_surface": -8,
+      "n_components": 1,
+      "n_triangles": 1268,
+      "n_vertices": 626,
+      "linear_deflection_mm": 0.14727669830282625
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 5,
+      "b2": 0,
+      "chi_surface": -8,
+      "n_components": 1,
+      "n_triangles": 1396,
+      "n_vertices": 690,
+      "linear_deflection_mm": 0.14727669830282625
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9882841718976576
+}

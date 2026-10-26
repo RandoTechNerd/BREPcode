@@ -1,0 +1,17 @@
+{
+  "frame": "origin at the min corner of the bounding box; disc axis at (60,60); Z up; plate bottom at z=0",
+  "overall": { "x": 120, "y": 120, "z": 18 },
+  "body": [
+    "disc Ø120 x 12 thick, z 0..12, centred at (60,60)",
+    "boss Ø50 x 6 high, z 12..18, centred at (60,60)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[60, 60, 18]], "axis": "+z", "dia": 30, "depth": "thru", "source": "Ø30 THRU" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[110, 60, 12], [60, 110, 12], [10, 60, 12], [60, 10, 12]], "axis": "+z", "dia": 9, "depth": "thru", "source": "4X Ø9 THRU, 4X ON Ø100 PCD" },
+    { "id": "C", "type": "cbore", "count": 6, "positions": [[90.31, 77.5, 12], [60, 95, 12], [29.69, 77.5, 12], [29.69, 42.5, 12], [60, 25, 12], [90.31, 42.5, 12]], "axis": "+z", "dia": 6.6, "depth": "thru", "cbore": { "d": 11, "depth": 6.5 }, "source": "6X Ø6.6 THRU ⌴ Ø11 ↧ 6.5, 6X ON Ø70 PCD, 30° OFFSET" }
+  ],
+  "uncertain": [
+    "The plate thickness of 12 is derived as 18 overall minus the 6 mm boss.",
+    "The counterbores are taken to enter from the plate top face at z=12, as the front view shows them there."
+  ]
+}

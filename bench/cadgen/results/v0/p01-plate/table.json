@@ -1,0 +1,23 @@
+{
+  "frame": "origin at the min corner of the bounding box, X along the 120 length, Y along the 80 width, Z up, top face at z=12",
+  "overall": { "x": 120, "y": 80, "z": 12 },
+  "body": [ "rectangular plate 120 x 80 x 12, vertical corner edges rounded R8 (note 3)" ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 4,
+      "positions": [[12, 12, 12], [108, 12, 12], [12, 68, 12], [108, 68, 12]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "cbore": { "d": 11, "depth": 6.5 },
+      "source": "4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y" },
+    { "id": "B", "type": "hole", "count": 1,
+      "positions": [[60, 40, 12]],
+      "axis": "+z", "dia": 30, "depth": "thru",
+      "source": "Ø30 THRU; 60 in X, 40 in Y" },
+    { "id": "C", "type": "slot", "count": 1,
+      "positions": [[60, 15, 12]],
+      "axis": "+z", "dia": 8, "depth": "thru",
+      "source": "SLOT 8 WIDE, 30 CTR-CTR THRU; centre at 60 in X, 15 in Y; end centres at x=45 and x=75" }
+  ],
+  "uncertain": [
+    "The slot's centre at X=60 and its run along X are read from the centre line shared with the Ø30 hole",
+    "The 15 dimension is taken to locate the slot centre line"
+  ]
+}

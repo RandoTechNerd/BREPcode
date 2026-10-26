@@ -1,0 +1,19 @@
+{
+  "frame": "origin at the min corner of the bounding box; X right, Y up the sheet (TOP view), Z up; top face at z=8",
+  "overall": { "x": 110, "y": 110, "z": 8 },
+  "body": [
+    "plate 110 x 110 x 8, vertical corners R5 (note 3)",
+    "square pocket 70 x 70 x 3 deep, corners R6, centred at (55,55), so from x 20..90 and y 20..90, floor at z=5"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 8,
+      "positions": [[10,10,8],[55,10,8],[100,10,8],[10,55,8],[100,55,8],[10,100,8],[55,100,8],[100,100,8]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "csk": { "d": 11, "angle": 90 },
+      "source": "8X Ø5.5 THRU, ⌵ Ø11 X 90°" },
+    { "id": "B", "type": "pocket", "count": 1, "positions": [[55,55,8]], "axis": "+z",
+      "dia": null, "depth": 3, "source": "POCKET 70 X 70 ↧ 3 R6" }
+  ],
+  "uncertain": [
+    "The pocket position is not dimensioned. I centred it on the plate, which matches the top view."
+  ]
+}

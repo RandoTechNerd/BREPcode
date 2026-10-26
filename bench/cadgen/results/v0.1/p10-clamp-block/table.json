@@ -1,0 +1,19 @@
+{
+  "frame": "origin at min corner of bounding box; X along the 50 width (right), Y along the 40 depth (front face y=0, back y=40), Z up (bottom z=0, top z=60)",
+  "overall": { "x": 50, "y": 40, "z": 60 },
+  "body": [
+    "rectangular block 50 x 40 x 60 at [0,0,0]",
+    "Ø25 bore through along X at y=20, z=30",
+    "clamp slot 3 wide (x 23.5..26.5), through all Y, from the top z=60 down into the bore (cut to z=30)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 20, 30]], "axis": "-x", "dia": 25, "depth": "thru", "source": "Ø25 THRU" },
+    { "id": "B", "type": "slot", "count": 1, "positions": [[25, 20, 60]], "axis": "+z", "dia": 3, "depth": "to bore", "source": "SLOT 3 WIDE TO BORE" },
+    { "id": "C", "type": "cbore", "count": 1, "positions": [[25, 0, 50]], "axis": "-y", "dia": 5.5, "depth": "thru", "cbore": { "d": 10, "depth": 6 }, "source": "Ø5.5 THRU ⌴ Ø10 ↧ 6" },
+    { "id": "D", "type": "hole", "count": 2, "positions": [[12, 20, 0], [38, 20, 0]], "axis": "-z", "dia": 5, "depth": 12, "source": "2X Ø5 ↧ 12" }
+  ],
+  "uncertain": [
+    "the clamp screw height z=50 comes from the 50 dimension in the front view",
+    "the counterbore enters from the front face (y=0), as the right view and the top view's hidden lines show"
+  ]
+}

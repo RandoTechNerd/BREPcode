@@ -1,0 +1,18 @@
+{
+  "frame": "origin at the min corner of the plate's bounding box; X right and Y up the TOP view; Z up, with the counterbored face at z = 6",
+  "overall": { "x": 70, "y": 70, "z": 6 },
+  "body": [ "square plate 70 x 70 x 6 from (0,0,0) to (70,70,6)" ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4,
+      "positions": [[6, 6, 6], [64, 6, 6], [6, 64, 6], [64, 64, 6]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "source": "4X Ø5.5 THRU" },
+    { "id": "B", "type": "cbore", "count": 4,
+      "positions": [[19.5, 19.5, 6], [50.5, 19.5, 6], [19.5, 50.5, 6], [50.5, 50.5, 6]],
+      "axis": "+z", "dia": 3.4, "depth": "thru", "cbore": { "d": 6.5, "depth": 3.5 },
+      "source": "4X Ø3.4 THRU, ⌴ Ø6.5 ↧ 3.5" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[35, 35, 6]],
+      "axis": "+z", "dia": 22.5, "depth": "thru", "source": "Ø22.5 THRU" }
+  ],
+  "uncertain": [ "the counterbores are placed on the top face, as the hidden lines in the front view and the isometric view show" ]
+}

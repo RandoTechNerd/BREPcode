@@ -1,0 +1,60 @@
+{
+ "model": "claude-opus-5-5",
+ "samples": 2,
+ "stepOk": 2,
+ "cost": 0.2865468,
+ "logs": [
+  {
+   "id": "p04-pillow-block",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 22,
+      "volume": 150674.09992893835,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1403234,
+   "ok": true,
+   "seconds": 36
+  },
+  {
+   "id": "p19-shaft-support",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 23,
+      "volume": 49856.94684046681,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1462234,
+   "ok": true,
+   "seconds": 37
+  }
+ ]
+}

@@ -10,14 +10,16 @@ import { pathToFileURL } from "node:url";
 import { resolve, basename, extname } from "node:path";
 import { build, toSTL, stats } from "./render.js";
 import { fromOpenSCAD, looksLikeOpenSCAD } from "./openscad.js";
+import { exactSTEP } from "./stepexport.js";
 
 function parseArgs(argv) {
-  const out = { input: null, output: null, defines: {}, info: false, help: false, tolerance: 6, lang: null, engine: "auto" };
+  const out = { input: null, output: null, step: null, defines: {}, info: false, help: false, tolerance: 6, lang: null, engine: "auto" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
     else if (a === "--info") out.info = true;
     else if (a === "-o" || a === "--output") out.output = argv[++i];
+    else if (a === "--step") out.step = argv[++i];
     else if (a === "-t" || a === "--tolerance") out.tolerance = Number(argv[++i]);
     else if (a === "-l" || a === "--lang") out.lang = argv[++i];
     else if (a === "-e" || a === "--engine") {
@@ -45,6 +47,8 @@ Usage:
 
 Options:
   -o, --output FILE     Write STL here (default: <model>.stl)
+      --step FILE       Write the EXACT B-rep as STEP (AP242, mm) instead of STL.
+                        Refuses (exit 2) if the model left the exact lane.
   -D, --define K=V      Inject a parameter, readable as params.K in the model
   -l, --lang NAME       Force "openscad" or "brepscript" (default: by extension)
   -t, --tolerance N     Export decimal precision (default 6)
@@ -137,6 +141,16 @@ async function main() {
   if (args.info) {
     console.error(`built in ${ms}ms (no file written)`);
     return;
+  }
+
+  if (args.step) {
+    const stepPath = resolve(process.cwd(), args.step);
+    let text;
+    try { text = await exactSTEP(result, name); }
+    catch (e) { console.error(`STEP refused: ${e.message}`); process.exit(2); }
+    writeFileSync(stepPath, text);
+    console.error(`wrote ${stepPath} in ${ms}ms`);
+    if (!args.output) return;
   }
 
   const outPath = resolve(process.cwd(), args.output ?? `${name}.stl`);

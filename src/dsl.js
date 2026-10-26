@@ -2346,6 +2346,7 @@ export function stretch(opts, ...children) {
 //   difference(importedMesh("bracket.stl"), drill([12, 0, 8], [0, 0, 1], { d: 4 }))
 //
 // Options: d / dia (diameter, default 4), depth (how deep, default 12),
+// cbore / counterbore { d, depth }, csink / countersink / csk { d, angle },
 // through (bore all the way, ~1000mm), proud (overshoot past the face, 0.6).
 // It's a plain xform over cylinder(), so booleans/exports/imports all just work.
 export function drill(point, dir, opts = {}) {
@@ -2363,7 +2364,7 @@ export function drill(point, dir, opts = {}) {
   // Counterbore { d, depth } / countersink { d, angle } (angle: the included
   // angle, 90 by default): the whole hole is ONE turned cutter, a lathe
   // profile of bore, step and mouth, so it stays exact and cuts as one tool.
-  const cb = opts.cbore ?? opts.counterbore, cs = opts.csink ?? opts.countersink;
+  const cb = opts.cbore ?? opts.counterbore, cs = opts.csink ?? opts.countersink ?? opts.csk;
   if (cb || cs) {
     const r = d / 2;
     const prof = [[0, -depth], [r, -depth]];

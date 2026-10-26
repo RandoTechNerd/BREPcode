@@ -1,0 +1,16 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 120 length (left to right in FRONT), Y along the 60 depth (up the sheet in TOP), Z up",
+  "overall": { "x": 120, "y": 60, "z": 45 },
+  "body": [
+    "block 120 x 60 x 45 with two steps cut down from the top, running through in Y",
+    "step 1: x 0..40 cut down to z = 15",
+    "step 2: x 40..80 cut down to z = 30",
+    "x 80..120 stays at full height z = 45"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[20, 15, 15], [20, 45, 15]], "axis": "+z", "dia": 6.8, "depth": 12, "source": "2X Ø6.8 ↧ 12" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[60, 15, 30], [60, 45, 30]], "axis": "+z", "dia": 6.8, "depth": 15, "source": "2X Ø6.8 ↧ 15" },
+    { "id": "C", "type": "hole", "count": 2, "positions": [[100, 15, 45], [100, 45, 45]], "axis": "+z", "dia": 8, "depth": 20, "source": "2X Ø8 ↧ 20" }
+  ],
+  "uncertain": [ "Each hole's Y positions (15 and 45) are dimensioned only on the left column; the other columns are taken to share them by alignment in TOP" ]
+}

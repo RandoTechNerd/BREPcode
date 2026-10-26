@@ -1,0 +1,114 @@
+{
+ "id": "p12-rib-bracket",
+ "title": "RIBBED BRACKET",
+ "size": [
+  80,
+  70,
+  90
+ ],
+ "center": [
+  40,
+  35,
+  45
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    -35,
+    25
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 8.5,
+   "depth": 8,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    -35,
+    25
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 8.5,
+   "depth": 8,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    -35,
+    -15
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 8.5,
+   "depth": 8,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    -35,
+    -15
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 8.5,
+   "depth": 8,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    15,
+    -37
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 8,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    15,
+    -37
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 8,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}

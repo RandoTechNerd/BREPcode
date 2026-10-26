@@ -1,0 +1,30 @@
+{
+  "frame": "origin at the min corner of the bounding box, Z up; hub axis at (45,45); flange bottom at z=0; X right, Y up in the TOP view; FRONT view looks along +Y, so its visible face is the -Y side",
+  "overall": { "x": 90, "y": 90, "z": 40 },
+  "body": [
+    "flange disc Ø90 x 10 thick, z 0..10, centred at (45,45)",
+    "hub cylinder Ø45, z 0..40 (40 high overall from the flange bottom), centred at (45,45)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1,
+      "positions": [[45, 45, 40]], "axis": "+z", "dia": 25, "depth": "thru",
+      "source": "Ø25 THRU" },
+    { "id": "B", "type": "keyway", "count": 1,
+      "positions": [[45, 57.5, 40]], "axis": "+z", "dia": null, "depth": 40,
+      "source": "POCKET 8 X 7 ↧ 40; 57.5 to pocket centre. Width 8 in X, 7 radial in Y, spanning y 54..61 (9..16 from the axis)" },
+    { "id": "C", "type": "hole", "count": 4,
+      "positions": [[70.456, 70.456, 10], [19.544, 70.456, 10], [19.544, 19.544, 10], [70.456, 19.544, 10]],
+      "axis": "+z", "dia": 6.6, "depth": "thru",
+      "source": "4X Ø6.6 THRU, 4X ON Ø72 PCD, 45° OFFSET" },
+    { "id": "D", "type": "hole", "count": 1,
+      "positions": [[45, 22.5, 28]], "axis": "-y", "dia": 5, "depth": 12,
+      "source": "Ø5 ↧ 12 at z=28 (FRONT view)" },
+    { "id": "E", "type": "hole", "count": 1,
+      "positions": [[67.5, 45, 28]], "axis": "+x", "dia": 5, "depth": 12,
+      "source": "Ø5 ↧ 12 at z=28 (RIGHT view)" }
+  ],
+  "uncertain": [
+    "Keyway placement: 57.5 is read as the pocket centre, giving y 54..61. This matches the drawn position at sheet scale.",
+    "Radial holes: two of them, entering on the -Y and +X sides, taken from the hidden lines in the TOP view and the isometric view."
+  ]
+}

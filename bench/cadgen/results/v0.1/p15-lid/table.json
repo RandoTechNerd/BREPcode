@@ -1,0 +1,27 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 120 length, Y along the 80 width, Z up; open underside at z=0, closed top at z=25",
+  "overall": { "x": 120, "y": 80, "z": 25 },
+  "body": [
+    "outer block 120x80x25 at (0,0,0), vertical corners R8",
+    "underside pocket 114x74 at (3,3), from z=0 up to z=22 (wall 3, top 3 thick), inner vertical corners R5",
+    "4 posts Ø11 at (8,8),(112,8),(8,72),(112,72), z=0 to z=22, left standing by removing them from the pocket cutter (no union needed)"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 4,
+      "positions": [[8,8,25],[112,8,25],[8,72,25],[112,72,25]],
+      "axis": "+z", "dia": 3.4, "depth": "thru", "csk": { "d": 7, "angle": 90 },
+      "source": "4X Ø3.4 THRU, ⌵ Ø7 X 90°" },
+    { "id": "B", "type": "boss", "count": 4,
+      "positions": [[8,8,0],[112,8,0],[8,72,0],[112,72,0]],
+      "axis": "-z", "dia": 11, "depth": 22,
+      "source": "4X POST Ø11 INSIDE" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[120,40,12]],
+      "axis": "+x", "dia": 16, "depth": "thru (right wall)",
+      "source": "Ø16 THRU, 40 from edge, 12 up (RIGHT view)" }
+  ],
+  "uncertain": [
+    "posts run the full height from the top down to z=0",
+    "the Ø16 hole passes through the right (+X) wall only, as the isometric shows"
+  ]
+}

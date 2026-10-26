@@ -1,0 +1,21 @@
+{
+  "frame": "origin at the min corner of the bounding box; X right (along the 80 width), Y back (front face of the upright at y=0, base runs back to y=70), Z up (base underside at z=0)",
+  "overall": { "x": 80, "y": 70, "z": 90 },
+  "body": [
+    "base plate: x 0..80, y 0..70, z 0..8",
+    "upright plate: x 0..80, y 0..8, z 0..90",
+    "rib: 10 thick at x 35..45, a triangle in YZ with corners (y=8, z=8), (y=8, z~74), (y~59, z=8)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4,
+      "positions": [[15, 0, 30], [65, 0, 30], [15, 0, 70], [65, 0, 70]],
+      "axis": "-y", "dia": 8.5, "depth": "thru", "source": "4X Ø8.5 THRU" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[15, 50, 8], [65, 50, 8]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "source": "2X Ø6.6 THRU" }
+  ],
+  "uncertain": [
+    "The rib's top height (z~74) and its reach along the base (y~59) are scaled from the drawing, not dimensioned.",
+    "The rib is centred on X (x 35..45), taken from the 10 width shown in the top view."
+  ]
+}
