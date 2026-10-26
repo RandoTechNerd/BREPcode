@@ -79,7 +79,8 @@ function wrap(nk) {
     const s = t.scale || [1, 1, 1];
     const r = t.rotationEuler || [0, 0, 0];
     const p = t.position || [0, 0, 0];
-    if (s.some((v) => !(v > 0))) throw new Error("a mirrored or zero scale isn't supported on the NVIDIA kernel yet");
+    // a negative factor mirrors (the addon turns the faces over); zero flattens
+    if (s.some((v) => !(Math.abs(v) > 0))) throw new Error("a zero scale flattens the solid");
     const moved = pivot.some((v) => v !== 0);
     if (moved) nk.translate(h, -pivot[0], -pivot[1], -pivot[2]);
     if (s[0] !== 1 || s[1] !== 1 || s[2] !== 1) nk.scale(h, s[0], s[1], s[2]);
@@ -95,9 +96,6 @@ function wrap(nk) {
 
   function primitive(f) {
     const p = f.inputParams;
-    if (p.boolean?.operation && p.boolean.operation !== "NONE" && p.boolean.targets?.length) {
-      throw new Error(`${f.type} with its own boolean isn't supported on the NVIDIA kernel yet`);
-    }
     const id = p.id;
     let h, label;
     if (f.type === "P.CU") {
@@ -113,10 +111,24 @@ function wrap(nk) {
       h = nk.sphere(+p.radius);
       label = () => id;
     } else if (f.type === "P.T") {
-      if (p.arc != null && Math.abs(+p.arc - 360) > 1e-9) throw new Error("a partial torus isn't supported on the NVIDIA kernel yet");
-      h = nk.torus(+p.majorRadius, +p.tubeRadius);
-      label = () => `${id}_Side`;
-    }
+      const arc = p.arc == null ? 360 : +p.arc;
+      if (Math.abs(arc - 360) < 1e-9) {
+        h = nk.torus(+p.majorRadius, +p.tubeRadius);
+        label = () => `${id}_Side`;
+      } else {
+        if (!(arc > 0 && arc < 360)) throw new Error(`torus arc ${arc} isn't between 0 and 360 degrees`);
+        // swept from +X toward +Y as the Rust kernel does: Cap0 at the start
+        // (the XZ plane, x > 0), Cap1 at the end, and the tube Side[k]
+        h = nk.torusArc(+p.majorRadius, +p.tubeRadius, arc);
+        const a = arc * DEG, end = [-Math.sin(a), Math.cos(a), 0];
+        let side = 0;
+        label = ({ p: q, n }) => {
+          if (Math.abs(q[1]) < 1e-6 && q[0] > 0 && Math.abs(n[1]) > 0.99) return `${id}_Cap0`;
+          if (Math.abs(q[0] * end[0] + q[1] * end[1]) < 1e-6 && Math.abs(n[0] * end[0] + n[1] * end[1]) > 0.99) return `${id}_Cap1`;
+          return `${id}_Side[${side++}]`;
+        };
+      }
+    } else throw new Error(`primitive ${f.type} isn't supported on the NVIDIA kernel yet`);
     const faceNames = faceInfo(h).map(label);
     if (f.type !== "P.CU" && f.type !== "P.S") standOnY(h);
     own(h, faceNames);
@@ -151,15 +163,18 @@ function wrap(nk) {
   function nearestGeom(geoms, [x, y]) {
     let best = null, bd = Infinity;
     for (const g of geoms) {
-      const samples = g.kind === 0 ? 8 : 24;
+      if (g.kind === 0) {
+        // a line: the exact distance (samples tie where two lines meet)
+        const [[x0, y0], [x1, y1]] = g.ps, dx = x1 - x0, dy = y1 - y0;
+        const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy || 1)));
+        const d = Math.hypot(x0 + dx * t - x, y0 + dy * t - y);
+        if (d < bd) { bd = d; best = g; }
+        continue;
+      }
+      const samples = 24;
       for (let i = 0; i <= samples; i++) {
-        const t = i / samples;
-        let q;
-        if (g.kind === 0) q = [g.ps[0][0] + (g.ps[1][0] - g.ps[0][0]) * t, g.ps[0][1] + (g.ps[1][1] - g.ps[0][1]) * t];
-        else {
-          const u = 1 - t, b = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
-          q = [0, 1].map((k) => b.reduce((s, w, j) => s + w * g.ps[j][k], 0));
-        }
+        const t = i / samples, u = 1 - t, b = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+        const q = [0, 1].map((k) => b.reduce((s, w, j) => s + w * g.ps[j][k], 0));
         const d = Math.hypot(q[0] - x, q[1] - y);
         if (d < bd) { bd = d; best = g; }
       }
@@ -169,9 +184,6 @@ function wrap(nk) {
 
   function extrude(f) {
     const p = f.inputParams;
-    if (p.boolean?.operation && p.boolean.operation !== "NONE" && p.boolean.targets?.length) {
-      throw new Error("an extrude with its own boolean isn't supported on the NVIDIA kernel yet");
-    }
     const sk = sketches.get(p.profile);
     if (!sk) throw new Error(`extrude ${p.id}: no sketch "${p.profile}"`);
     const fwd = +(p.distance || 0), back = +(p.distanceBack || 0);
@@ -187,9 +199,6 @@ function wrap(nk) {
 
   function revolve(f) {
     const p = f.inputParams;
-    if (p.boolean?.operation && p.boolean.operation !== "NONE" && p.boolean.targets?.length) {
-      throw new Error("a revolve with its own boolean isn't supported on the NVIDIA kernel yet");
-    }
     const sk = sketches.get(p.profile);
     if (!sk) throw new Error(`revolve ${p.id}: no sketch "${p.profile}"`);
     const m = /:G(\d+)$/.exec(String(p.axis || ""));
@@ -199,20 +208,31 @@ function wrap(nk) {
     const dir = [b[0] - a[0], b[1] - a[1], 0];
     const angle = +(p.angle ?? 360);
     const profile = sk.geoms.filter((g) => g !== axis);
-    const h = nk.revolve(profile.map((g) => seg3(g)), a[0], a[1], 0, dir[0], dir[1], 0, angle);
+    // SMLib sweeps a full turn from the open profile, but a part turn only
+    // from the closed one (axis edge included); without it, status 1001
+    const part = Math.abs(angle) < 360;
+    const h = nk.revolve((part ? sk.geoms : profile).map((g) => seg3(g)), a[0], a[1], 0, dir[0], dir[1], 0, angle);
+    const len = Math.hypot(dir[0], dir[1]), u = [dir[0] / len, dir[1] / len];
+    // which side of the axis the profile lies on, in the sketch plane
+    const side = Math.sign(profile.flatMap((g) => g.ps).reduce((t, [x, y]) => t + (x - a[0]) * u[1] - (y - a[1]) * u[0], 0)) || 1;
     const faceNames = faceInfo(h).map(({ p: q, n }) => {
-      // a part revolve has two flat caps, at the start and end angle
-      if (Math.abs(angle) < 360 && Math.abs(n[2]) > 0.99 && Math.abs(q[2]) < 1e-6) return `${p.id}:${p.profile}:CAP_START`;
+      // a part revolve has two flat caps, each a plane through the axis: the
+      // start one in the sketch plane on the profile's side, the end one swung
+      if (part && Math.abs(n[0] * u[0] + n[1] * u[1]) < 1e-6
+        && Math.abs((q[0] - a[0]) * n[0] + (q[1] - a[1]) * n[1] + q[2] * n[2]) < 1e-6) {
+        const start = Math.abs(q[2]) < 1e-6 && Math.sign((q[0] - a[0]) * u[1] - (q[1] - a[1]) * u[0]) === side;
+        return `${p.id}:L${sk.geoms[0].id}_${start ? "START" : "END"}`;
+      }
       // a point on a wall, swung back into the sketch plane, sits on its curve
       const r = Math.hypot(q[0] - a[0], q[2]);
       const g = nearestGeom(profile, [a[0] + Math.sign(q[0] - a[0] || 1) * r, q[1]]);
-      return g ? `${p.profile}:G${g.id}_RV` : `${p.id}:${p.profile}:CAP_END`;
+      return `${p.profile}:G${g.id}_RV`;
     });
     return own(h, faceNames);
   }
 
   // ------------------------------------------------------------ booleans
-  function boolean(f, live) {
+  function boolean(f, live, { keepTarget = false } = {}) {
     const p = f.inputParams;
     const tName = Array.isArray(p.targetSolid) ? p.targetSolid[0] : p.targetSolid;
     const op = { UNION: 1, INTERSECT: 2, SUBTRACT: 3 }[p.boolean?.operation];
@@ -240,8 +260,20 @@ function wrap(nk) {
     }
     for (const t of tools) owned = owned.filter((h) => h !== t.h);
     // Rust dialect: UNION and INTERSECT hand the result the FIRST TOOL's name
-    const resultName = op === 3 || !tools.length ? tName : tools[0].n;
+    const resultName = op === 3 || !tools.length || keepTarget ? tName : tools[0].n;
     return { handle: target.h, resultName, removed: [tName, ...tools.map((t) => t.n)] };
+  }
+
+  // A primitive, extrude or revolve can carry its own boolean: the Rust
+  // kernel combines it into the target, which keeps the target's name (for
+  // SUBTRACT the new solid is the cutter). One target only; with more the
+  // Rust kernel's results don't follow one rule, so those stay refused.
+  function ownBoolean(f, h, live) {
+    const b = f.inputParams.boolean;
+    if (!b?.operation || b.operation === "NONE" || !b.targets?.length) return null;
+    if (b.targets.length > 1) throw new Error(`${f.type} ${f.inputParams.id}: its own boolean has ${b.targets.length} targets; one is supported`);
+    return boolean({ inputParams: { id: f.inputParams.id, targetSolid: b.targets[0], boolean: { operation: b.operation, targets: [f.inputParams.id] } } },
+      new Map([...live, [f.inputParams.id, { h }]]), { keepTarget: true });
   }
 
   // ------------------------------------------------------------- fillets
@@ -305,11 +337,8 @@ function wrap(nk) {
       if (p.copy) { h = own(nk.copy(src.h), [...names.get(src.h)]); }
       let pivot = [0, 0, 0];
       if (String(p.pivot || "").toUpperCase() === "BBOX_CENTER") {
-        const fi = faceInfo(h).map((x) => x.p);
-        const lo = [0, 1, 2].map((k) => Math.min(...fi.map((q) => q[k])));
-        const hi = [0, 1, 2].map((k) => Math.max(...fi.map((q) => q[k])));
-        pivot = lo.map((v, k) => (v + hi[k]) / 2);
-        throw new Error("XFORM about the bounding-box centre isn't supported on the NVIDIA kernel yet");
+        const b = nk.bbox(h);
+        pivot = [0, 1, 2].map((k) => (b[k] + b[k + 3]) / 2);
       }
       place(h, p.transform || { position: p.translate, rotationEuler: p.rotateEulerDeg, scale: p.scale }, pivot);
       out.push({ handle: h, resultName: p.copy ? `${s}_${p.id}` : s, removed: p.copy ? [] : [s] });
@@ -334,9 +363,12 @@ function wrap(nk) {
       try {
         if (f.type === "P") planes.set(p.id, p);
         else if (f.type === "S") sketch(f, planes);
-        else if (f.type.startsWith("P.")) add(p.id, primitive(f));
-        else if (f.type === "E") add(p.id, extrude(f));
-        else if (f.type === "R") add(p.id, revolve(f));
+        else if (f.type.startsWith("P.") || f.type === "E" || f.type === "R") {
+          const h = f.type === "E" ? extrude(f) : f.type === "R" ? revolve(f) : primitive(f);
+          const o = ownBoolean(f, h, live);
+          if (o) { drop(o.removed.filter((n) => n !== p.id)); add(o.resultName, o.handle); }
+          else add(p.id, h);
+        }
         else if (f.type === "B") { const o = boolean(f, live); drop(o.removed); add(o.resultName, o.handle); }
         else if (f.type === "F" || f.type === "CH") { const o = blend(f, live); drop(o.removed); add(o.resultName, o.handle); }
         else if (f.type === "XFORM") for (const o of xform(f, live)) { drop(o.removed); add(o.resultName, o.handle); }

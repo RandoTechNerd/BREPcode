@@ -124,6 +124,20 @@ console.log("\nfillet / chamfer\n");
   const ellR = await build(fillet({ r: 1.5, edges: "convex" }, ell()));
   check("fillet edges:'convex' rounds an L exact", ellR.engine === "exact" && volumeOf(ellR) < volumeOf(await build(ell())) - 10,
     `${ellR.engine} ${volumeOf(ellR).toFixed(0)}`);
+  // edges: "y" (and "top") are the shape's own axes where the fillet is
+  // written: a rotate() around it used to leave no edge along WORLD y, and
+  // the build threw "couldn't find any edges"
+  const slab = () => difference(fillet({ r: 10, edges: "y" }, cube([60, 40, 30])), translate([30, 20, -1], cylinder({ r: 5, h: 32 })));
+  const flatV = volumeOf(await build(slab()));
+  for (const [label, shape] of [["tilted", dsl.rotate([-15, 0, 0], slab())], ["turned on its side", dsl.rotate([0, 90, 30], slab())]]) {
+    let got;
+    try { got = await build(shape); } catch (e) { check(`fillet edges:'y' ${label}: builds`, false, e.message.slice(0, 80)); continue; }
+    check(`fillet edges:'y' ${label}: the same four rounds`, near(volumeOf(got), flatV, flatV * 0.002) && volumeOf(got) < 72000 - 3000,
+      `${volumeOf(got).toFixed(0)} vs ${flatV.toFixed(0)}`);
+  }
+  const topV = volumeOf(await build(chamfer({ d: 2, edges: "top" }, cube([20, 20, 40]))));
+  const tippedTop = volumeOf(await build(dsl.rotate([90, 0, 0], chamfer({ d: 2, edges: "top" }, cube([20, 20, 40])))));
+  check("chamfer edges:'top' follows the shape when rotated", near(tippedTop, topV, 1), `${tippedTop.toFixed(1)} vs ${topV.toFixed(1)}`);
   // the phone stand is an extruded side profile with 4 mm walls: the chat's
   // wrap used to be refused at every radius and come back unrounded from the
   // fallback; now its profile rounds on its outside edges, radius held under
