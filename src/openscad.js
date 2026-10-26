@@ -17,6 +17,8 @@ import * as dsl from "./dsl.js";
 import { Euler, Quaternion, Vector3, MathUtils } from "three";
 import { exactMinkowski, exactRing, roundedPrism, convexOutline } from "./exactshapes.js";
 
+const SCAD_MEANS_ELSE = new Set(["thread"]);
+
 // ------------------------------------------------------------------ tokenizer
 
 const PUNCT2 = ["<=", ">=", "==", "!=", "&&", "||"];
@@ -1242,7 +1244,12 @@ function evalCall(stmt, scope) {
   // SHAPE as its name/gap — finish() got "[object Object]" and clearance() got
   // a gap of NaN. Positional-args-present is the tell, and it is exact: a
   // leading value is the whole reason those functions have one.
-  const dslFn = dsl[name];
+  //
+  // A few BREPcode words are also the names of OpenSCAD library modules that
+  // mean something else: threadlib's thread("M12x1.75", turns = 5) is not
+  // BREPcode's thread({ d, pitch, length }), so it takes the unknown-library
+  // path below (a warning) instead of a confusing argument error.
+  const dslFn = SCAD_MEANS_ELSE.has(name) ? null : dsl[name];
   if (typeof dslFn === "function") {
     const opts = {};
     for (const [k, v] of Object.entries(args.named)) opts[k] = evalExpr(v, scope);
