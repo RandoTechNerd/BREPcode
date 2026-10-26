@@ -441,6 +441,10 @@ you're never boxed in by the DSL. Available codes include `P.CU P.CY P.S P.CO P.
 `TU` (tube), `H` (hole), `M` (mirror), `PATTERN`, `THK` (thicken), `XFORM`, `S` (sketch),
 `TEXT`, `HX` (helix), `SM.*` (sheet metal).
 
+**Screw threads**, `thread({ d, pitch, length })` is an exact threaded rod and `internal: true` its
+tap (subtract it from a nut or a lid); `tube(helix(...))` is an exact coil. See
+[docs/threads.md](docs/threads.md).
+
 **Programmatic use**, `build(shape)` → `{ partHistory, solids }`, plus `toSTL(result)` and
 `stats(result)`.
 

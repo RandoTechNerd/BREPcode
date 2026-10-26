@@ -248,7 +248,13 @@ export const SPECS = [
   {
     name: "helix", group: "Combine", sig: "helix({ r, turns, pitch })",
     snippet: "tube(helix({ r: 12, turns: 4, pitch: 5 }), { r: 1.6 })", argStart: 0,
-    hint: "A coil as a list of points — feed it to tube(). This is how you print a wire coiled up flat. r is the coil radius, pitch is the rise per turn (use pitch 0 for a flat spiral), r2 tapers it to a cone.",
+    hint: "A coil as a list of points: feed it to tube(). Passed straight in, the coil is an exact solid with flat ends (a spring, a coiled cable). r is the coil radius, pitch is the rise per turn (use pitch 0 for a flat spiral), r2 tapers it to a cone; those two, round caps or sides: build a mesh. For a SCREW THREAD use thread(), not a coil.",
+  },
+  {
+    // The exact replacement for tube(helix()) as a thread: see src/thread.js.
+    name: "thread", group: "Combine", sig: "thread({ d, pitch, length })",
+    snippet: "thread({ d: 8, pitch: 1.25, length: 20 })", argStart: 7,
+    hint: "A screw thread as an exact solid: the rod (bolt, jar neck) on +Z from 0 to length, chamfered, the tooth stopping short of both ends. pitch defaults to ISO coarse; profile \"iso\" (60 degree), \"round\" (jar) or \"square\"; starts, leftHand; chamfer \"both\" | \"top\" | \"bottom\" | \"none\". internal: true gives the TAP to difference() from a nut or lid, grown by clearance (on diameter, default 0.4); blind: true for a lid. Joining the tooth to its core is the slow step: a few seconds per thread.",
   },
   {
     name: "circlePath", group: "Combine", sig: "circlePath({ r })",
@@ -944,7 +950,7 @@ const round3 = (n) => Math.round(n * 1000) / 1000;
 // the whole call. Textual order equals emission order for straight-line code —
 // the viewer verifies the kind sequence against the compile trace before
 // trusting the mapping.
-const PRIM_WORDS = /\b(freeform|hull|roundedGrow|roundedShrink|minkowski|tube|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh|drill)\s*\(/g;
+const PRIM_WORDS = /\b(freeform|hull|roundedGrow|roundedShrink|minkowski|tube|thread|cube|cuboid|sphere|spheroid|cylinder|cyl|cone|torus|importedMesh|drill)\s*\(/g;
 const KIND_CODES = {
   cube: ["P.CU"], cuboid: ["P.CU"],
   sphere: ["P.S"], spheroid: ["P.S"],
@@ -972,6 +978,9 @@ const KIND_CODES = {
   // helix() and circlePath() return plain point lists and never reach the
   // trace at all, which is why they are absent from PRIM_WORDS.
   tube: ["IMPORT3D"],
+  // thread() is one import too (its exact recipe rides inside it, see
+  // src/thread.js), and so is tube() of a helix, which builds the same way.
+  thread: ["IMPORT3D"],
 };
 
 export function primitiveSites(text) {

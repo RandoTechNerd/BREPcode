@@ -403,19 +403,42 @@ const SHRINK_MIN = 0.4;
 const SHRINK_BUDGET_MS = 8000;
 const SHRINK_WHY = /too large|setbacks consume|could not co-blend|of the \d+ selected edges|no edge within tolerance/;
 
+// A helical sweep (thread(), a coil from tube(helix())) is the same bargain:
+// an IMPORT3D whose triangles stand in for the exact recipe it carries
+// (src/thread.js). The recipe's features replace the import on the exact
+// lane; the result solid keeps the import's id, so the model around it reads
+// it unchanged. If the kernel refuses, the retry builds the triangles.
+// On the NVIDIA kernel (which has no screw sweep yet, see
+// native/nvidia-kernel/adapter.cjs) a refusal is passed on instead, so the
+// caller tries the Rust kernel before settling for the mesh.
+export function expandSweeps(doc) {
+  const features = [];
+  let n = 0;
+  for (const f of doc.features || []) {
+    const sw = f.type === "IMPORT3D" && f.inputParams?.exactSweep;
+    if (sw?.features?.length) { features.push(...structuredClone(sw.features)); n++; }
+    else features.push(f);
+  }
+  return { doc: { ...doc, features }, sweeps: n };
+}
+
 async function runEngineHulls(src, opts) {
   const hulls = (src.features || []).filter((f) => f.type === "IMPORT3D" && f.inputParams?.exactHull
     && typeof f.inputParams.stepText === "string" && typeof f.inputParams.fileToImport === "string");
+  const { doc, sweeps } = expandSweeps(src);
+  const meshSweeps = sweeps && !opts.rust?.nvidia;
   try {
-    return await runEngineOnce(src, opts);
+    const out = await runEngineOnce(doc, opts);
+    if (sweeps) out.stats = { ...out.stats, exactSweeps: sweeps };
+    return out;
   } catch (e) {
-    if (!(e instanceof EngineRefusal) || !hulls.length) throw e;
+    if (!(e instanceof EngineRefusal) || !(hulls.length || meshSweeps)) throw e;
     const asMesh = structuredClone(src);
     for (const f of asMesh.features) {
       if (f.type === "IMPORT3D" && f.inputParams?.exactHull) delete f.inputParams.stepText;
     }
-    const out = await runEngineOnce(asMesh, opts);
-    out.stats = { ...out.stats, hullsAsMesh: hulls.length, exactRefusal: String(e.message || e).slice(0, 200) };
+    const out = await runEngineOnce(meshSweeps ? asMesh : expandSweeps(asMesh).doc, opts);
+    out.stats = { ...out.stats, hullsAsMesh: hulls.length, sweepsAsMesh: meshSweeps ? sweeps : 0, exactRefusal: String(e.message || e).slice(0, 200) };
     return out;
   }
 }

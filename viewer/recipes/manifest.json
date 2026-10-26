@@ -983,6 +983,30 @@
       ]
     },
     {
+      "tag": "thread",
+      "title": "Screw threads, jars and lids",
+      "file": "thread.md",
+      "match": [
+        "thread",
+        "threads",
+        "threaded",
+        "screw thread",
+        "screw-on",
+        "screw on",
+        "screw top",
+        "screw cap",
+        "jar",
+        "bottle",
+        "threaded rod",
+        "leadscrew",
+        "lead screw",
+        "helix",
+        "coil",
+        "spring"
+      ],
+      "ask": "What diameter and pitch, how long, and how much play between the parts?"
+    },
+    {
       "tag": "toolholder",
       "title": "Holders and trays for real tools",
       "file": "toolholder.md",

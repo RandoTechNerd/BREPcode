@@ -38,7 +38,7 @@
 //   fillet() after hull()                          JS fallback (a mesh has no edges)
 
 // Always on: the one paragraph every request pays for.
-export const EXACT_CORE = `EXACT B-REP FIRST. Mesh verbs (plain hull, roundedGrow/minkowski(mm), tube, texture, blob/blend, importedMesh) turn the model to triangles (no fillet after); a refused step falls back to a slow kernel. Mesh only when needed, and last. hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres, or flat pieces. Rounded box: fillet({ r, edges: "z" }, cube(...)). Taper: cylinder({ r1, r2 }). No hole down a revolve() axis. Overlapping cutters: one difference() each. Fillet pieces before union, r < half the thinnest wall. #exact has the rest.`;
+export const EXACT_CORE = `EXACT B-REP FIRST. Mesh verbs (plain hull, roundedGrow/minkowski(mm), tube, texture, blob/blend, importedMesh) turn the model to triangles (no fillet after); a refused step falls to a slow kernel. Mesh last. hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres, or flat pieces. Rounded box: fillet({ r, edges: "z" }, cube(...)). Taper: cylinder({ r1, r2 }). No hole down a revolve() axis. Overlapping cutters: one difference() each. Fillet pieces before union, r < half the thinnest wall. Threads: thread({d,pitch,length}). #exact has the rest.`;
 
 export const EXACT_RULES = `EXACT B-REP FIRST — the app builds on an exact B-rep kernel: true planes, cylinders and cones, fast booleans, and STEP export with real curved surfaces. A model stays on it only while EVERY step is exact; one mesh step turns the rest of that branch into triangles (no fillet after it, faceted STEP), and a step the kernel refuses drops the whole model to the slow fallback kernel. So build from exact pieces and reach for a mesh verb only when the design truly needs it:
 · EXACT: cube, cylinder, cone / cylinder({r1, r2}), sphere, torus, polygon + linearExtrude, revolve, path2d, text() (true letter outlines), union / difference / intersection, fillet, chamfer, drill, the hardware parts, and the shelf parts except gridfinityBin and gridfinityBase (meshes).
@@ -52,6 +52,7 @@ export const EXACT_RULES = `EXACT B-REP FIRST — the app builds on an exact B-r
 · OVERLAPPING CUTTERS GO ONE AT A TIME: difference(a, t1, t2, t3) unions t1..t3 first, and tilted or crossing tools that overlap each other are where that slows down or is refused. Nest them, difference(difference(a, t1), t2), or loop. Disjoint tools (a row of holes) are fine in one call.
 · NO GRAZING CONTACT: two solids that only touch along an edge or a line (a flare that starts exactly at another solid's top edge) are refused. Run one 0.5-1 mm into the other, on the same surface line, so the faces truly cross.
 · FILLET PIECES, NOT JOINS: one fillet over a part where a rib, gusset or post meets a plate is refused (inside and outside corners meet), and so is a radius bigger than a face it touches. Fillet each box on its own, r under half its thinnest side, then union them; inside corners stay sharp, which is stronger anyway.
+· SCREW THREADS ARE thread({ d, pitch, length }): an exact rod (ISO 60 degree tooth by default; profile: "round" for a jar, "square"), chamfered, the thread stopping short of both ends so whatever it joins meets a plain core. thread({ ..., internal: true, clearance: 0.4 }) is the TAP: difference() it from a nut or lid (blind: true for a lid) and it fits the matching thread() with that much play on diameter. Overlap the rod 0.5 mm into what it stands on. Up to 4 turns it is exact (seconds); a longer one builds as triangles unless exact: true (half a minute and more), so keep threads short: a jar needs 1.5-2 turns of a 3-4 mm pitch. NOT tube(helix()) for a thread (a bead, not a tooth). tube(helix({ r, turns, pitch }), { r }) is itself an exact coil while the helix goes in untouched (no sides:, no caps: "round", no taper).
 · mirror() IS EXACT for boxes, round cylinders and cones, spheres, tori, polygon extrusions, rounded boxes and full revolves: use it freely for symmetric parts. For a $fn 3-8 cylinder or a curved path2d profile, mirror the points yourself.
 · $fn: a cylinder with $fn 3-8 is a real polygon prism (cylinder({r, h, $fn: 6}) is a hex nut); above 8 it is a true circle whatever the number. A cone with $fn 3-8 is refused: make a tapered polygon as above.`;
 
@@ -78,6 +79,8 @@ const AVOIDABLE = {
   roundedGrow: "roundedGrow() (a triangle mesh): round the edges with fillet() or chamfer() instead, and size the part to its finished dimensions",
   minkowski: "minkowski() (a triangle mesh unless it is a box or an upright cylinder with a sphere, or a box with an upright cylinder): round the edges with fillet() or chamfer() instead",
   roundedShrink: "roundedShrink() (a triangle mesh): build the smaller part directly, then fillet() it",
+  // only when a helix goes into it (see helixTube below): a bent wire is a tube on purpose
+  "tube(helix": "tube(helix()) that could not stay exact (a coil is exact only with the helix passed straight in, no sides:, no caps: \"round\", no taper): for a SCREW THREAD write thread({ d, pitch, length }) (internal: true for the tap a nut or lid subtracts), for a coil pass helix() untouched",
 };
 const AVOIDABLE_SCAD = {
   hull: "hull() over pieces the translator cannot make exact: keep its children to equal upright cylinders spanning the same heights at the corners (a rounded box or slot), cylinders on one axis (a taper), two equal spheres, eight equal spheres on a box's corners, or a few flat cubes and extrusions; a taper on its own is cylinder(h, r1, r2)",
@@ -87,7 +90,7 @@ const AVOIDABLE_JSCAD = {
   hull: "hull() over pieces the translator cannot make exact: keep them to equal upright cylinders spanning the same heights (a rounded box or slot), cylinders on one axis, two equal spheres, eight equal spheres on a box's corners, or a few flat cuboids; a rounded box is roundedCuboid() or extrudeLinear of roundedRectangle()",
   hullChain: "hullChain() over pieces the translator cannot make exact: the same rules as hull() for every consecutive pair",
 };
-const INHERENT = ["tube", "texture", "heightmap", "blob", "smoothUnion", "blend", "text", "stencil",
+const INHERENT = ["tube", "thread", "texture", "heightmap", "blob", "smoothUnion", "blend", "text", "stencil",
   "qrcode", "datamatrix", "barcode", "importedMesh", "creature", "freeform", "gridfinityBin", "gridfinityBase"];
 
 // Which language the code is in, from its shape alone (the translators' own
@@ -126,7 +129,11 @@ function codeOnly(src) {
   }
   return out;
 }
-const calls = (src, words) => words.filter((w) => new RegExp(`\\b${w}\\s*\\(`).test(src));
+const calls = (src, words) => words.filter((w) => (w === "tube(helix"
+  ? /\btube\s*\(/.test(src) && /\bhelix\s*\(/.test(src)
+  : new RegExp(`\\b${w}\\s*\\(`).test(src)));
+
+const callName = (w) => (w === "tube(helix" ? "tube(helix())" : `${w}()`);
 
 // What the fallback's message says, translated into the rule that avoids it.
 function refusalHints(msg, src, lang) {
@@ -202,8 +209,8 @@ export function exactAdvice(engine, code = "", request = "") {
     const inherent = calls(src, INHERENT);
     return {
       lane: "mesh", lang,
-      why: avoidable.map((w) => `${w}()`).join(", "),
-      note: `It built, but ${avoidable.map((w) => `${w}()`).join(" and ")} made it a triangle mesh instead of an exact solid.`,
+      why: avoidable.map(callName).join(", "),
+      note: `It built, but ${avoidable.map(callName).join(" and ")} made it a triangle mesh instead of an exact solid.`,
       ask: `That built, but as a triangle MESH, not an exact B-rep solid, because of ${avoidable.map((w) => table[w]).join("; ")}.\n`
         + (inherent.length ? `Keep ${inherent.map((w) => `${w}()`).join(", ")} if the design needs it, but apply it last.\n` : "")
         + "Rewrite the construction with exact pieces. " + keep + rules,

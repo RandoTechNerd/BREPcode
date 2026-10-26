@@ -469,6 +469,22 @@ function wrap(nk) {
         else if (f.type === "B") { const o = boolean(f, live); drop(o.removed); add(o.resultName, o.handle); }
         else if (f.type === "F" || f.type === "CH") { const o = blend(f, live); drop(o.removed); add(o.resultName, o.handle); }
         else if (f.type === "XFORM") for (const o of xform(f, live)) { drop(o.removed); add(o.resultName, o.handle); }
+        // TODO(threads): HX + SW (orientationMode "pathAlign"), which thread()
+        // and tube(helix()) send (src/thread.js), are refused here, so those
+        // models build on the Rust kernel. SM_API has the pieces: the HX edge
+        // is SmApiCreateHelix(origin, pitch * turns, r, r, turns, rightHanded,
+        // 1e-4, path) and the ridge SmApiCreateCurveSweep(profile, path, NULL,
+        // NULL, &opts, brep, ...) with opts.bCapEndsArg and opts.bMoveToProfile
+        // (without it the profile's first point is moved onto the path). The
+        // sketch is on the XZ plane in the Rust kernel's convention: sketch x
+        // is world -Z, sketch y world +X. Measured 2026-10-26 on an M8 x 1.25
+        // ridge: the sweep takes ~0.1 s and its union with the core 0.1-0.2 s
+        // (the Rust kernel: 4-25 s), BUT the profile ROLLS along the helix
+        // instead of screwing up it (the crest reaches 4.15 mm at 3 turns and
+        // 4.42 mm at 12 on a 4.00 mm thread, volume 6.6% light), so it is not
+        // wired in. It needs a frame that follows the screw: sweep each
+        // profile edge with SmApiCreateSkin through screw-placed copies (or a
+        // Frenet-framed SmBSplineSurface::CreateSweepSurface) and sew.
         else throw new Error(`feature ${f.type} isn't supported on the NVIDIA kernel yet`);
       } catch (e) {
         r.error = `NVIDIA kernel: ${e?.message || e}`;

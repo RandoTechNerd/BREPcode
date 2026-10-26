@@ -154,7 +154,9 @@ return group(
 
 ```
 tube(path, { r })              // sweep a round profile along a point list — ONE solid, real arcs
-helix({ r, turns, pitch })     circlePath({ r })     // point lists for tube()
+helix({ r, turns, pitch })     circlePath({ r })     // point lists for tube(); tube(helix(...)) is an exact coil
+thread({ d, pitch, length })   // EXACT screw thread: rod on +Z, chamfered; profile "iso" | "round" | "square", starts, leftHand
+thread({ d, pitch, length, internal: true, clearance: 0.4 })  // the TAP: difference() it from a nut (blind: true for a lid)
 drill([x,y,z], [nx,ny,nz], { d, depth, through })    // bore along a face normal
 drill(p, n, { d, through, cbore: { d, depth } })     // counterbored; csink: { d, angle } countersunk
 shelled({ wall, open: "top" }, shape)                 // shell a box, cylinder or extrusion; open faces optional

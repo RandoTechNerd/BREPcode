@@ -14,6 +14,7 @@ import { remeshForTexture } from "./texmesh.js";
 // exact twins of hull()/minkowski() habits; calls back into this module only
 // when a model runs, so the import cycle is safe (as with parts.js)
 import { exactHull, exactMinkowski } from "./exactshapes.js";
+import { threadSpec, coilSpec } from "./thread.js";
 
 const DEG = Math.PI / 180;
 
@@ -312,6 +313,7 @@ export function estimateBuild(root) {
     // + the scratch build below. A texture import groups its faces coarsely,
     // so its triangles cost about a fifth of a kernel solid's (16k: 0.8 s).
     if (n.kind === "texture") tris += (n.opts?.maxTris ?? 16000) / 5;
+    if (n.kind === "helixsweep") tris += 20000;   // the slow part is the one union with the core
     if (n.kind === "sdfblend") tris += 9000;   // surface nets at the default res
     if (n.kind === "edgeop") tris += 600;                        // fillet bands aren't free
     if (n.kind === "op") booleans += Math.max(0, (n.children?.length || 1) - 1);
@@ -1285,6 +1287,18 @@ export function tube(path, opts = {}) {
   const radius = (o.d ?? o.diameter) !== undefined
     ? (Array.isArray(r) ? r.map((v) => v / 2) : r / 2)
     : r;
+  // A coil straight from helix() is a helical sweep the exact kernel builds
+  // itself (src/thread.js): one exact solid with flat ends, instead of
+  // triangles. Anything it can't take (a taper, a flat spiral, round end caps
+  // asked for by name, coils that touch) stays the mesh sweep below.
+  const hx = path.helix;
+  if (hx && typeof radius === "number" && o.exact !== false && !o.closed && !o.loop && o.caps !== "round"
+      && (o.sides ?? o.$fn ?? o.fn) === undefined) {
+    const spec = coilSpec({ R: hx.r, pitch: hx.pitch, turns: hx.turns, wire: radius, start: hx.start, leftHand: hx.left });
+    if (spec && hx.r2 === hx.r) {
+      return node({ kind: "helixsweep", spec, tube: { path, opts: { r: radius, sides: "auto", caps: "flat", closed: false, bend: null, bendSegments: 6 } }, fix: IDENTITY });
+    }
+  }
   return node({
     kind: "tube",
     path,
@@ -1322,7 +1336,35 @@ export function helix({
     const rad = R0 + (R1 - R0) * t;
     pts.push([rad * Math.cos(a), rad * Math.sin(a), rise * i]);
   }
+  // what tube() needs to build this coil exactly; a plain array otherwise
+  // (copies, slices and maps drop it, and get the mesh sweep)
+  const p = height !== undefined ? height / turns : pitch;
+  if (Math.abs(turns) > 0 && p > 0) {
+    Object.defineProperty(pts, "helix", { value: { r: R0, r2: R1, turns: Math.abs(turns), left: turns < 0, pitch: p, start } });
+  }
   return pts;
+}
+
+// thread({ d, pitch, length }): a screw thread as an EXACT solid: the bolt (or
+// jar neck) as one rod, axis +Z from z = 0 to z = length, chamfered at the
+// ends with the thread stopping short of them. internal: true gives the TAP
+// instead: subtract it from a nut or a lid, and the thread it cuts fits the
+// matching thread() with `clearance` mm of play (on diameter, default 0.4).
+//
+//   thread({ d: 8, length: 20 })                          // M8 coarse (1.25)
+//   difference(nutBody, thread({ d: 8, length: 6, internal: true }))
+//   thread({ d: 40, pitch: 3, length: 9, profile: "round", chamfer: "top" })   // jar neck
+//
+// Options: pitch (default ISO coarse for d), profile "iso" | "round" |
+// "square", starts (multi-start: lead = starts x pitch), leftHand, chamfer
+// "both" | "top" | "bottom" | "none" (a rod; a joined end is better plain),
+// clearance (internal), blind: true (internal, a lid: the tap stops at length
+// instead of running out through it), exact: up to 4 turns a thread is exact
+// by default and longer ones are triangles (the exact join gets slow);
+// exact: true or false decides. See src/thread.js.
+export function thread(opts = {}) {
+  const spec = threadSpec(opts);
+  return node({ kind: "helixsweep", spec, fix: IDENTITY });
 }
 
 // A circle as a point list, for a hoop: tube(circlePath({ r: 30 }), { r: 3, closed: true })
@@ -3611,6 +3653,50 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // move the offset away from the thing it was offset from.
       f.inputParams.centerMesh = false;
       trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      return f.inputParams.id;
+    }
+
+    if (n.kind === "helixsweep") {
+      // An exact helical sweep (thread(), or tube() of a helix()) is ONE
+      // import: its triangles for the JS kernel and the mesh lane, and the
+      // exact recipe beside them, which src/engine.js builds instead on the
+      // exact lane (and falls back from to the triangles if refused).
+      const { exactRecipe, threadMesh } = await import("./thread.js");
+      let stl;
+      if (n.spec.kind === "coil") {
+        const { sweepTube } = await import("./sweep.js");
+        const out = sweepTube(n.tube.path, n.tube.opts);
+        stl = "solid coil\n";
+        for (const f of out.faces) {
+          stl += "facet normal 0 0 0\nouter loop\n";
+          for (const i of f) { const p = out.points[i]; stl += `vertex ${p[0]} ${p[1]} ${p[2]}\n`; }
+          stl += "endloop\nendfacet\n";
+        }
+        stl += "endsolid coil\n";
+      } else stl = threadMesh(n.spec);
+      await ensureImportClonePatch(partHistory);
+      const name = `__helix${hullSeq++}`;
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+      let data = stl;
+      let place = null;
+      if (!world.equals(IDENTITY)) {
+        data = transformedImport(name, data, world);
+        const pos = new Vector3(), quat = new Quaternion(), scl = new Vector3();
+        world.decompose(pos, quat, scl);
+        const e = new Euler().setFromQuaternion(quat, "XYZ");
+        place = { translate: [pos.x, pos.y, pos.z], rotateEulerDeg: [e.x, e.y, e.z].map(MathUtils.radToDeg), scale: [scl.x, scl.y, scl.z] };
+      }
+      IMPORTS.set(name, data);
+      const f = await partHistory.newFeature("IMPORT3D");
+      f.inputParams.fileToImport = data;
+      f.inputParams.meshRepairLevel = "NONE";
+      f.inputParams.centerMesh = false;
+      // a mirror turns the hand of a thread: the exact recipe only places
+      // rigidly, so a mirrored one stays the (correctly mirrored) mesh
+      if (n.spec.exact && world.determinant() > 0) {
+        f.inputParams.exactSweep = await exactRecipe(n.spec, partHistory.constructor, f.inputParams.id, place, { cylinder, translate, union, compile });
+      }
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", exact: !!f.inputParams.exactSweep, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
