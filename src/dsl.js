@@ -24,6 +24,91 @@ const IDENTITY = new Matrix4();
 const node = (o) => ({ __brepscript: true, ...o });
 const isNode = (v) => !!(v && v.__brepscript);
 
+// CALL SITES AND STABLE NAMES.
+//
+// While a model's code runs, every shape a vocabulary word returns remembers
+// where in that code it was called: the nearest stack frame from the evaluated
+// text (given a `//# sourceURL=` so its frames can be told apart). compile()
+// copies the site onto the trace, and the viewer resolves it to an exact source
+// range (src/codemap.js) instead of pairing the Nth traced shape with the Nth
+// call it can see in the text. Shapes made by one call in a loop, a helper or a
+// reused variable share that call's site, which is exactly what a pattern is.
+//
+// Captured in the wrapper (tagCall), once per call the USER makes, not in
+// node(): a 5000-shape loop measured 130 ms capturing per node, against a few
+// ms this way. Nodes made inside a word (the translate a centred cube hides)
+// inherit the site of the call that made them, in compile().
+//
+// Stable names: feature ids come from emission order (P.CU1, P.CU2, ...), so
+// inserting a shape renames every one after it. A call can claim a name that
+// survives edits, cube({ size: 10, id: "base" }), or for calls with no options
+// object a trailing { id: "lid" } argument, and the trace carries it as `name`.
+//
+// Both are off unless the caller turns them on (the viewer wraps its own
+// vocabulary), so the CLI and library paths are unchanged.
+let SITE_URL = null;
+// A capture is a few microseconds; a budget per run keeps a 100k-shape loop
+// from paying for sites it would only map as one pattern anyway. Shapes past
+// it simply have no site and map the old way.
+let siteBudget = 0;
+export function captureSites(url, { budget = 20000 } = {}) { SITE_URL = url || null; siteBudget = budget; }
+const v8Frames = typeof Error.captureStackTrace === "function";
+const pickFrame = (_, frames) => {
+  for (const f of frames) {
+    if (f.getScriptNameOrSourceURL?.() === SITE_URL) return { line: f.getLineNumber(), col: f.getColumnNumber() };
+  }
+  return null;
+};
+function callSite(above) {
+  const lim = Error.stackTraceLimit;
+  // The caller is normally the very next frame; a few more cover a native
+  // in between (`[1, 2].map(cube)` is called by Array.prototype.map).
+  Error.stackTraceLimit = 4;
+  try {
+    if (v8Frames) {
+      const prep = Error.prepareStackTrace;
+      Error.prepareStackTrace = pickFrame;
+      const holder = {};
+      try { Error.captureStackTrace(holder, above); return holder.stack ?? null; }
+      finally { Error.prepareStackTrace = prep; }
+    }
+    const st = String(new Error().stack || "");
+    const i = st.indexOf(SITE_URL + ":");
+    if (i < 0) return null;
+    const m = /^:(\d+):(\d+)/.exec(st.slice(i + SITE_URL.length));
+    return m ? { line: Number(m[1]), col: Number(m[2]) } : null;
+  } catch {
+    return null;
+  } finally {
+    Error.stackTraceLimit = lim;
+  }
+}
+const idOnly = (a) => !!a && typeof a === "object" && !Array.isArray(a) && !isNode(a)
+  && typeof a.id === "string" && Object.keys(a).length === 1;
+export function nameOf(args) {
+  for (const a of args) {
+    if (a && typeof a === "object" && !Array.isArray(a) && !isNode(a) && typeof a.id === "string" && a.id) return a.id;
+  }
+  return null;
+}
+export function tagCall(fn) {
+  if (typeof fn !== "function" || fn.__tagged) return fn;
+  const w = function (...args) {
+    const id = nameOf(args);
+    const out = fn.apply(this, id ? args.filter((a) => !idOnly(a)) : args);
+    if (!isNode(out)) return out;        // a helper (helix points, a number): no capture cost
+    const site = SITE_URL && siteBudget-- > 0 && !out.site ? callSite(w) : null;
+    // A word that hands back a shape it was given (union(p) of one) keeps that
+    // shape's own site. `userId`, not `name`: an import node's name is its file.
+    const addSite = !!site;
+    return addSite || id ? { ...out, ...(addSite ? { site } : null), ...(id ? { userId: id } : null) } : out;
+  };
+  Object.assign(w, fn);
+  try { Object.defineProperty(w, "name", { value: fn.name }); } catch { /* cosmetic */ }
+  w.__tagged = true;
+  return w;
+}
+
 function collect(args) {
   const out = [];
   for (const a of args.flat(Infinity)) {
@@ -32,6 +117,7 @@ function collect(args) {
   }
   return out;
 }
+
 
 // ---------------------------------------------------------------- primitives
 
@@ -2356,7 +2442,16 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     // Inherited the same way colour is: a finish on a group applies to every
     // piece inside it, and a piece can override it with its own.
     const fin = n.finish ?? style?.finish ?? null;
-    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr, finish: fin };
+    // Where in the code this feature came from: the innermost node that knows
+    // its call site (a cube's own site beats the union it sits in), the
+    // nearest claimed name, and the chain of sites above it.
+    const site = n.site ?? style?.site ?? null;
+    const name = n.userId ?? style?.name ?? null;
+    const path = n.site && n.site !== style?.site ? [...(style?.path || []), n.site] : (style?.path || []);
+    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr, finish: fin, site, name, path };
+    const tag = {};
+    if (site) { tag.site = site; tag.path = path; }
+    if (name) tag.name = name;
     if (n.kind === "xform") {
       return emit(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix), st);
     }
@@ -2379,7 +2474,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ],
         scale: [scl.x, scl.y, scl.z],
       };
-      trace?.push({ id: f.inputParams.id, code: n.code, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: f.inputParams.id, code: n.code, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -2417,7 +2512,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ];
         xf.inputParams.scale = [scl.x, scl.y, scl.z];
       }
-      trace?.push({ id: ex.inputParams.id, code: "E", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: ex.inputParams.id, code: "E", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return ex.inputParams.id;
     }
 
@@ -2450,7 +2545,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
           xf.inputParams.rotateEulerDeg = [MathUtils.radToDeg(e.x), MathUtils.radToDeg(e.y), MathUtils.radToDeg(e.z)];
           xf.inputParams.scale = [scl.x, scl.y, scl.z];
         }
-        trace?.push({ id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+        trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
         return f.inputParams.id;
       }
       // Make imported solids safe to clone so they can act as boolean tools.
@@ -2475,7 +2570,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // (an assembly) comes in as individually selectable/movable bodies. Harmless
       // on a single connected part (still one solid).
       if (n.opts.split ?? n.opts.separate) f.inputParams.extractMultipleSolids = true;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -2549,7 +2644,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         ];
         xf.inputParams.scale = [scl.x, scl.y, scl.z];
       }
-      trace?.push({ id: rev.inputParams.id, code: "R", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: rev.inputParams.id, code: "R", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return rev.inputParams.id;
     }
 
@@ -2807,7 +2902,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // The STL already carries the shape's real position, so centring it would
       // move the offset away from the thing it was offset from.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -2842,7 +2937,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // The points are already where the caller put them; centring would slide
       // the wire off the thing it was routed around.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -2904,7 +2999,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
           f.inputParams.exactHull = true;   // engine.js retries it as a mesh if refused
           f.inputParams.meshRepairLevel = "NONE";
           f.inputParams.centerMesh = false;
-          trace?.push({ id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+          trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", exact: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
           return f.inputParams.id;
         }
       }
@@ -2931,7 +3026,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // so hull(a, b) rendered somewhere other than where a and b were. It also
       // put freeform()'s corner handles nowhere near the solid they belong to.
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -2979,7 +3074,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       f.inputParams.deflectionAngle = globalThis.__TEXDEFL || 89;
       // like hull(): the STL already sits at its real position — never re-centre
       f.inputParams.centerMesh = false;
-      trace?.push({ id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 
@@ -3119,7 +3214,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // `organic: true` tells the viewer this mesh is a blend — thousands of
       // near-coplanar triangles, not a CAD solid — so the outline pass skips
       // it (edge display on a blend is chicken wire, not edges).
-      trace?.push({ id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin, organic: true });
+      trace?.push({ ...tag, id: f2.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin, organic: true });
       return f2.inputParams.id;
     }
 

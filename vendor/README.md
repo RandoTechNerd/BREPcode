@@ -31,3 +31,11 @@ of the kernel rather than inside it.
 **Updating.** Install the new version from npm into a scratch directory, copy
 the same file set across, and run the suite. The version here is recorded in
 `vendor/brep-io-kernel/package.json`.
+
+## acorn
+
+`acorn/acorn.mjs` is acorn 8.15.0's ES module build (MIT, `acorn/LICENSE`),
+copied unmodified from the npm package. `src/codemap.js` parses the editor code
+with it to find every DSL call and `const` parameter with its exact source
+range. Vendored rather than installed because the browser, the site build and
+the desktop app all import it straight from the source tree.

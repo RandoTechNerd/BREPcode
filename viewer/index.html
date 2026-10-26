@@ -4396,6 +4396,9 @@
     import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
     import { LineMaterial } from "three/addons/lines/LineMaterial.js";
     import * as dsl from "../src/dsl.js";
+    import * as codemap from "../src/codemap.js";
+    import { faceEdges } from "./faceedges.js";
+    import { initModeSwitch } from "./design.js";
     import * as mgeom from "../src/measuregeom.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
@@ -6465,6 +6468,12 @@
         g.computeBoundingSphere();
         const mesh = new THREE.Mesh(g, matForFeature(featureId));
         mesh.userData.featureId = featureId;
+        // The kernel's full name for this face ("P.CU1_PX", "F4:BLEND:A|B[0]")
+        // and the solid it belongs to: what an edge pick, a face-based fillet
+        // or a Design-mode selection needs, where featureId only says which
+        // call made it.
+        mesh.userData.faceName = nm || null;
+        mesh.userData.solidName = solidName || null;
         out.push(mesh);
       }
       paintCutFaces(out);
@@ -7444,6 +7453,70 @@
       if (hex) featureColors[fid] = hex; else delete featureColors[fid];
       recolorMeshes();
       noteColourOverride();
+      queueColourToCode(fid, hex);
+    }
+
+    // COLOUR INTO CODE. The pick above is instant and in memory; this writes the
+    // same colour into the text as colorize("#hex", <the shape's call>) at its
+    // exact range, so it survives a reload, a share, an export and the next AI
+    // edit, the code being the one source of truth. Debounced because the
+    // custom picker fires on every step of a drag. Only for plain BREPcode with
+    // a fresh map: colorize() is not OpenSCAD, and a stale range would wrap the
+    // wrong text. A shape that cannot be placed keeps the in-memory colour only.
+    const colourPending = new Map();          // fid -> "#hex" | null (clear)
+    let colourTimer = null, colourTries = 0;
+    function queueColourToCode(fid, hex) {
+      colourPending.set(fid, hex);
+      colourTries = 0;
+      clearTimeout(colourTimer);
+      colourTimer = setTimeout(colourToCode, 350);
+    }
+    function colourToCode() {
+      colourTimer = null;
+      if (!colourPending.size) return false;
+      if (lastLang !== "brepscript") { colourPending.clear(); return false; }
+      // A build is still catching up with the text (an earlier write, typing):
+      // wait for its map rather than writing through a stale one.
+      if (!featureMap || mapText !== code.value) {
+        if (++colourTries < 25) colourTimer = setTimeout(colourToCode, 400);
+        else colourPending.clear();
+        return false;
+      }
+      // Every pending pick against the same text, last call first so the
+      // earlier ranges are still where the map says they are.
+      const edits = [];
+      for (const [fid, hex] of colourPending) {
+        const site = featureMap[fid];
+        if (!site || code.value.slice(site.start, site.start + String(site.kind).length) !== site.kind) continue;
+        if (hex && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) continue;
+        if (edits.some((e) => e.site.start < site.end && site.start < e.site.end)) continue;   // same call (a pattern) or nested
+        edits.push({ fid, hex: hex ? hex.toLowerCase() : null, site });
+      }
+      colourPending.clear();
+      edits.sort((a, b) => b.site.start - a.site.start);
+      let next = code.value;
+      const done = [];
+      for (const e of edits) {
+        const t = e.hex ? codemap.colorizeAt(next, e.site.start, e.site.end, e.hex)
+          : codemap.uncolorizeAt(next, e.site.start, e.site.end);
+        if (t && t !== next) { next = t; done.push(e); }
+      }
+      if (!done.length) return false;
+      pushHistory(code.value);
+      code.value = next;
+      // The code holds it now; an override left behind would hide the next
+      // edit of that colour in the text. Every instance of a pattern shares
+      // the call, so they all take it.
+      for (const e of done) {
+        for (const id of patternIds(e.fid)) {
+          delete featureColors[id];
+          if (e.hex) codeColors[id] = e.hex; else delete codeColors[id];
+        }
+      }
+      recolorMeshes();
+      noteColourOverride();
+      rebuild();
+      return true;
     }
     // Auto-colour within a SHADE, not across the whole colour space.
     //
@@ -9625,8 +9698,10 @@
     }
 
     // ------------------------------------------------------------- evaluate
+    // dsl.js exports that are machinery, not words a model is written in.
+    const DSL_PLUMBING = new Set(["compile", "captureSites", "tagCall", "nameOf"]);
     const vocab = Object.fromEntries(
-      Object.entries(dsl).filter(([k, v]) => typeof v === "function" && k !== "compile"),
+      Object.entries(dsl).filter(([k, v]) => typeof v === "function" && !DSL_PLUMBING.has(k)),
     );
       // A kernel primitive as a distance field, or null if it is not one.
     // translate() is followed because "a sphere over there" is the commonest
@@ -9889,7 +9964,17 @@
           [s.bounds[1][0] + off[0], s.bounds[1][1] + off[1], s.bounds[1][2] + off[2]]]),
     });
 
-    const names = Object.keys(vocab), values = names.map((n) => vocab[n]);
+    // Every word is wrapped so the shape it returns remembers where in the code
+    // it was called (and any `id:` name it was given), see tagCall in dsl.js.
+    // That is what lets a click on the model find its exact call in the text.
+    const names = Object.keys(vocab), values = names.map((n) => dsl.tagCall(vocab[n]));
+    const vocabWords = new Set(names);
+    // The text the last plain-BREPcode evaluation actually ran (after trim,
+    // fences and autoFix), which the trace's call sites are positions in. Null
+    // for OpenSCAD / JSCAD / Python and module pastes, whose text was rewritten
+    // before it ran; those keep the old count-based mapping.
+    let lastRunText = null;
+    const SITE_TAIL = `\n//# sourceURL=${codemap.SITE_URL}`;
 
     let lastLang = "brepscript";
     let autoReturned = false;   // set when evaluate() had to insert a missing `return`
@@ -9898,6 +9983,7 @@
     function evaluate(src) {
       autoReturned = false;
       autoGrouped = false;
+      lastRunText = null;
       // Python first: build123d / CadQuery pastes would otherwise be fed to
       // the JS evaluator and die on "from build123d import *".
       if (looksLikePython(src)) {
@@ -9939,13 +10025,20 @@
         ? [names.filter((n) => !shadowed.includes(n)), values.filter((_, i) => !shadowed.includes(names[i]))]
         : [names, values];
       let fn, statementForm = false;
+      // Every form below puts the user's first line on body line 2, which is
+      // what codemap.runLineOffset() assumes when it reads a call site back.
       try {
-        fn = new Function(...ns, `"use strict"; return (\n${src}\n);`);  // expression form
+        fn = new Function(...ns, `"use strict"; return (\n${src}\n);${SITE_TAIL}`);  // expression form
       } catch {
-        fn = new Function(...ns, `"use strict";\n${src}`);                // statement form
+        fn = new Function(...ns, `"use strict";\n${src}${SITE_TAIL}`);                // statement form
         statementForm = true;
       }
-      const out = fn(...vs);
+      const run = (f, text) => {
+        dsl.captureSites(codemap.SITE_URL);
+        try { const r = f(...vs); lastRunText = text; return r; }
+        finally { dsl.captureSites(null); }
+      };
+      const out = run(fn, src);
       // Statement code that just forgot `return` on its final shape: retry with
       // one inserted rather than making the user fix an AI's punctuation.
       if (out === undefined && statementForm) {
@@ -9955,15 +10048,15 @@
         const joined = fixDanglingReturn(src);
         if (joined) {
           try {
-            const retry = new Function(...ns, `"use strict";
-${joined}`)(...vs);
+            const retry = run(new Function(...ns, `"use strict";
+${joined}${SITE_TAIL}`), joined);
             if (retry !== undefined) { autoReturned = true; return retry; }
           } catch { /* the join didn't parse — fall through */ }
         }
         const withReturn = addImplicitReturn(src);
         if (withReturn) {
           try {
-            const retry = new Function(...ns, `"use strict";\n${withReturn}`)(...vs);
+            const retry = run(new Function(...ns, `"use strict";\n${withReturn}${SITE_TAIL}`), withReturn);
             // The repair's own group() wrapper, recognised by the exact shape
             // it emits — the hint must say "your shapes were grouped", not
             // claim a single "final shape" was returned while the screen shows
@@ -10093,6 +10186,7 @@ ${joined}`)(...vs);
     const exact = $("exact"), fixnote = $("fixnote");
 
     let featureMap = null;   // featureId -> {kind, start, end} in the editor text
+    let lastTrace = [];      // the compile trace featureMap was built from
     let mapText = null;      // the exact editor text featureMap was computed against
     let lastSolids = [];     // last successful build: kernel solids, or the worker's face records
     let workerHasModel = false;  // …and if the exportable solids are in the worker
@@ -10101,6 +10195,37 @@ ${joined}`)(...vs);
       workerHasModel && !!kernelWorker && modelEpoch === workerEpoch;
     let modelIsImport = false;   // imported meshes: drag orbits instead of manipulating
     let lastFeatures = [];   // the kernel feature history from that build
+
+    // featureId -> { kind, start, end, codes, exact?, pattern?, name? }.
+    //
+    // EXACT: each trace entry carries the line:col its shape was called from
+    // (dsl.tagCall), which codemap resolves to that call's range in the editor
+    // text. Loops, helpers and a variable used twice are fine: every feature
+    // from one call maps to that call, as a pattern group.
+    //
+    // FALLBACK: the old pairing of the Nth traced primitive with the Nth call
+    // in the text (assist.js mapTraceToSites), used for whatever the exact map
+    // could not place: OpenSCAD / JSCAD / Python (their text was rewritten
+    // before it ran), words called through a namespace, a parse failure.
+    function buildFeatureMap(trace, text) {
+      let exact = null;
+      if (lastRunText != null) {
+        try {
+          exact = codemap.mapTraceSites(trace, lastRunText, text, { words: vocabWords });
+        } catch (e) {
+          console.warn("[codemap] exact mapping failed, using the old one:", e);
+        }
+      }
+      const placed = exact ? Object.keys(exact.byId).length : 0;
+      if (!placed) return mapTraceToSites(trace, text);
+      if (exact.unresolved.length) {
+        const old = mapTraceToSites(trace, text);
+        if (old) for (const id of exact.unresolved) if (old[id]) exact.byId[id] = old[id];
+      }
+      return exact.byId;
+    }
+    // The feature ids that came from the same call as fid (itself included).
+    const patternIds = (fid) => featureMap?.[fid]?.pattern?.ids ?? [fid];
 
     let token = 0;
     async function rebuild() {
@@ -10346,12 +10471,12 @@ ${joined}`)(...vs);
         lastShape = shape;
         refreshNegatives();                   // async, best-effort — never blocks the build
 
-        // Click-to-select mapping: only trusted when the trace's primitive
-        // sequence matches the source text exactly (no loops/helpers/reuse) —
-        // and only against this exact text (drags against stale maps write
-        // translate() into the wrong offsets).
-        featureMap = mapTraceToSites(trace, code.value);
+        // Click-to-select mapping, only against this exact text (drags against
+        // stale maps write translate() into the wrong offsets). Exact call
+        // sites first; the count-based pairing covers whatever they cannot.
+        featureMap = buildFeatureMap(trace, code.value);
         mapText = featureMap ? code.value : null;
+        lastTrace = trace;
         updateDims();
         // keep the selection's handles alive across rebuilds (ids are stable)
         if (selected) spawnHandles(selected.fid);
@@ -10652,8 +10777,9 @@ ${joined}`)(...vs);
         m.linewidth = width;
         if (w && h) m.resolution.set(w, h);
       }
+      const ids = new Set(patternIds(fid));
       for (const m of modelGroup.children) {
-        if (m.userData.featureId !== fid || !m.geometry) continue;
+        if (!ids.has(m.userData.featureId) || !m.geometry) continue;
         const edges = new THREE.EdgesGeometry(m.geometry, 20);
         const geo = new LineSegmentsGeometry().fromEdgesGeometry(edges);
         edges.dispose();
@@ -12833,7 +12959,9 @@ ${joined}`)(...vs);
         const memberFids = span.whole
           ? Object.keys(featureMap).filter((id) =>
               featureMap[id].start >= span.start && featureMap[id].end <= span.end)
-          : [fid];
+          // one call in a loop is every instance: the translate() the drag
+          // writes moves them all, so the preview must too
+          : patternIds(fid);
         // A CUTTER's "faces" are the inside of the hole it made, so sliding them
         // tore the wall out of the solid and left a gap: it read as the solid
         // moving. Leave the model alone and drag a translucent ghost of the
@@ -21638,6 +21766,61 @@ let SIMPLIFY_TARGET = 10000;
     // Dev helper (console only): brepscript.lockKey(key, password, provider, model)
     // prints the encrypted blob to paste into viewer/locked-key.js.
     window.brepscript = window.brepscript || {};
+
+    // ---- Design mode, phase 0: the switch, and the links it will stand on ----
+    //
+    // The Code | Design switch (viewer/design.js). Design mode adds nothing yet
+    // beyond its body class and a note; Code mode is untouched.
+    const modeSwitch = initModeSwitch();
+    window.brepscript.mode = () => modeSwitch.mode;
+    window.brepscript.setMode = (m) => modeSwitch.setMode(m);
+
+    // The edges around a picked face, by the names fillet()/chamfer() take
+    // ("A|B[0]"). A build on this thread still has the kernel's own EDGE
+    // objects, so those names are read directly; a worker build (the usual
+    // case) ships faces only, and the edges come from which faces meet.
+    function edgesOfPickedFace(mesh) {
+      const face = mesh?.userData?.faceName;
+      if (!face) return [];
+      const solidName = mesh.userData.solidName;
+      if (!workerHasModel) {
+        const solid = lastSolids.find((s) => s?.name === solidName);
+        if (solid?.traverse) {
+          const names = [];
+          solid.traverse((o) => { if (o.type === "EDGE" && String(o.name || "").includes("|")) names.push(o.name); });
+          const hit = codemap.edgesOfFace(face, names);
+          // not split("|"): a blend face's own name can hold one ("F4:BLEND:A|B[0]")
+          const other = (name) => {
+            const pair = name.replace(/\[\d+\]$/, "");
+            return pair.startsWith(face + "|") ? pair.slice(face.length + 1) : pair.slice(0, pair.length - face.length - 1);
+          };
+          if (hit.length) return hit.map((name) => ({ name, faces: [face, other(name)].sort() }));
+        }
+      }
+      const faces = modelGroup.children
+        .filter((m) => m.userData.solidName === solidName && m.userData.faceName && m.geometry?.attributes?.position)
+        .map((m) => ({ name: m.userData.faceName, positions: m.geometry.attributes.position.array, index: m.geometry.index?.array ?? null }));
+      return faceEdges(faces, face);
+    }
+    window.brepscript.edgesOfFace = (faceName) => {
+      const m = modelGroup.children.find((x) => x.userData.faceName === faceName);
+      return m ? edgesOfPickedFace(m).map((e) => e.name) : [];
+    };
+    window.brepscript.faceNames = () => modelGroup.children.map((m) => m.userData.faceName).filter(Boolean);
+    // The click-map as it stands: which call each feature came from, and
+    // whether the exact (call-site) mapping placed it. For tests and Design
+    // mode's model browser.
+    window.brepscript.featureSites = () => {
+      if (!featureMap || mapText !== code.value) return null;
+      const out = {};
+      for (const [id, s] of Object.entries(featureMap)) {
+        out[id] = { kind: s.kind, start: s.start, end: s.end, exact: !!s.exact, name: s.name ?? null,
+          pattern: s.pattern ? { ids: s.pattern.ids, index: s.pattern.index, count: s.pattern.count } : null,
+          text: code.value.slice(s.start, s.end) };
+      }
+      return out;
+    };
+    window.brepscript.setShapeColor = (fid, hex) => setShapeColor(fid, hex);
     // Pick the build engine and rebuild: "auto" | "split" | "js" (see buildEngine()).
     window.brepscript.setEngine = (name) => {
       if (!ENGINES.includes(name)) throw new Error(`engine is one of ${ENGINES.join(", ")}`);

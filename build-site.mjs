@@ -122,6 +122,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "make.js",
   // the line icons those cards and the drop menu share
   "icons.js",
+  // Design mode: the Code | Design switch, and edge names for a picked face
+  "design.js", "faceedges.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -300,6 +302,12 @@ for (const f of readdirSync("src").filter((n) => n.endsWith(".js") && n !== "cli
 // recursively, so a family registered in an index but missing on disk still
 // fails the build.
 cpSync("src/catalog", join(OUT, "src", "catalog"), { recursive: true });
+
+// ---- vendor: acorn (the JS parser behind src/codemap.js: exact source ranges
+// for every DSL call, so Design mode and colour write-back edit the right text) ----
+mkdirSync(join(OUT, "vendor", "acorn"), { recursive: true });
+cpSync("vendor/acorn/acorn.mjs", join(OUT, "vendor/acorn/acorn.mjs"));
+cpSync("vendor/acorn/LICENSE", join(OUT, "vendor/acorn/LICENSE"));
 
 // ---- vendor: replicad + OCCT wasm (curved STEP export, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "replicad"), { recursive: true });

@@ -24,6 +24,8 @@
 // applying a change rewrites exactly those characters and nothing else: the
 // comments, the formatting and the rest of the line survive untouched.
 
+import { paramNamed } from "../src/codemap.js";
+
 // ---------------------------------------------------------------- scanning
 //
 // Depth, strings and comments in one pass. The masked copy has every comment
@@ -359,8 +361,9 @@ function findParamsUncached(src) {
 // earlier scan go stale the moment any edit shifts the text, and a stale offset
 // does not fail — it writes a number into the middle of something else.
 export function applyParam(src, name, value, index = null) {
-  const p = findParams(src).find((x) => x.name === name);
-  if (!p) return src;
+  const found = findParams(src).find((x) => x.name === name);
+  if (!found) return src;
+  const p = exactRanges(src, found);
   let text, start, end;
   if (p.kind === "vector") {
     const part = p.parts[index ?? 0];
@@ -380,6 +383,27 @@ export function applyParam(src, name, value, index = null) {
     start = p.start; end = p.end;
   }
   return src.slice(0, start) + text + src.slice(end);
+}
+
+// The scanner above reads three languages and half-typed code, which is why it
+// stays. For JavaScript that parses, the parser's ranges for the same
+// declaration are exact, so the write goes there; when the two disagree on
+// what the value is, the parser wins, and when it cannot vouch (OpenSCAD,
+// Python, a syntax error mid-typing) the scanner's ranges stand.
+function exactRanges(src, p) {
+  if (p.py) return p;
+  let d;
+  try { d = paramNamed(src, p.name); } catch { return p; }
+  const lit = d?.literal;
+  if (!lit) return p;
+  if (p.kind === "vector") {
+    if (lit.kind !== "vector" || lit.parts.length !== p.parts.length) return p;
+    return { ...p, start: d.valueStart, end: d.valueEnd, parts: lit.parts.map((x) => ({ ...x })) };
+  }
+  const want = p.kind === "choice" ? (typeof p.value === "number" ? "number" : "text")
+    : p.kind === "color" ? "text" : p.kind;
+  if (lit.kind !== want) return p;
+  return { ...p, start: d.valueStart, end: d.valueEnd };
 }
 
 // 2.5000000000000004 is what arithmetic on a slider gives you, and writing that
