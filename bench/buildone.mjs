@@ -51,13 +51,14 @@ for (const chunk of stl.split(/^solid /m).filter((s) => s.trim())) {
   } catch { watertight = false; continue; }
   for (const part of m.decompose()) bodies.push(part);
 }
-let vol = 0, overhangArea = 0, downArea = 0, totalArea = 0, floating = 0;
+let vol = 0, overhangArea = 0, downArea = 0, totalArea = 0, floating = 0, belowBed = 0;
 const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
 for (const b of bodies) {
   vol += b.volume();
   const bb = b.boundingBox();
   for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], bb.min[k]); hi[k] = Math.max(hi[k], bb.max[k]); }
   if (bb.min[2] > 0.05) floating++;                       // not resting on the bed
+  if (bb.min[2] < -0.05) belowBed++;                      // poking through it
   const mesh = b.getMesh(), P = mesh.vertProperties, T = mesh.triVerts, np = mesh.numProp;
   for (let i = 0; i < T.length; i += 3) {
     const a = [0, 1, 2].map((j) => [P[T[i + j] * np], P[T[i + j] * np + 1], P[T[i + j] * np + 2]]);
@@ -79,6 +80,6 @@ say({
   solids: res.solids.length, bodies: bodies.length, triangles, watertight,
   volume: Math.round(vol), size: size.map((x) => +x.toFixed(1)),
   fitsBed: size[0] <= BED && size[1] <= BED && size[2] <= BED,
-  floating, onBed: bodies.length > 0 && floating === 0,
+  floating, belowBed, minZ: +lo[2].toFixed(2), onBed: bodies.length > 0 && floating === 0 && belowBed === 0,
   overhangPct: totalArea ? +(100 * overhangArea / totalArea).toFixed(1) : 0,
 });

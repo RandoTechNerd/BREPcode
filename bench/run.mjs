@@ -34,7 +34,7 @@ mkdirSync(OUT, { recursive: true });
 
 const prompts = JSON.parse(readFileSync(path.join(HERE, "prompts.json"), "utf8")).filter((p) => !ONLY || ONLY.includes(p.id));
 const DOC = readFileSync(path.join(ROOT, "LLM_PROMPT.md"), "utf8");
-const PRINT_RULES = `This will be 3D printed (FDM, 0.4 mm nozzle). Every part rests flat on z = 0; separate parts sit side by side on the bed with 5 mm gaps, never floating or overlapping; avoid overhangs steeper than 45 degrees unless they bridge; moving clearances 0.3 to 0.4 mm; walls at least 1.2 mm; the whole layout fits a 256 x 256 mm bed. Put every important size in a named const at the top.`;
+const PRINT_RULES = `This will be 3D printed (FDM, 0.4 mm nozzle). Every part rests flat on z = 0; separate parts sit side by side on the bed with 5 mm gaps, never floating or overlapping; avoid overhangs steeper than 45 degrees unless they bridge; moving clearances 0.3 to 0.4 mm; walls at least 1.2 mm; the whole layout fits a 256 x 256 mm bed. Put every important size in a named const at the top. rotate([a, b, c]) turns about Z first, then Y, then X (three.js order), the reverse of OpenSCAD; check every rotated piece lands where you meant.`;
 
 const log = (s) => { process.stdout.write(s + "\n"); };
 
@@ -93,6 +93,7 @@ function printIssues(b) {
   const out = [];
   if (!b.watertight) out.push("the mesh is not watertight (open edges or self-intersections)");
   if (!b.onBed) out.push(`${b.floating} separate bod${b.floating === 1 ? "y floats" : "ies float"} above z = 0; every part must rest on the bed`);
+  if (b.belowBed) out.push(`${b.belowBed} bod${b.belowBed === 1 ? "y reaches" : "ies reach"} below z = 0 (lowest point z = ${b.minZ}); the part must start at z = 0`);
   if (b.overhangPct > 5) out.push(`${b.overhangPct}% of the surface faces down steeper than 45 degrees; chamfer those undersides to 45 degrees, reorient the part, or make them short bridges`);
   if (!b.fitsBed) out.push(`the layout is ${b.size.join(" x ")} mm; it must fit 256 x 256 x 256 mm`);
   return out;
