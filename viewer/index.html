@@ -2455,6 +2455,13 @@
         padding-top: 10px; padding-bottom: 10px;
       }
     }
+    /* Design mode keeps its own panels in front and clear of the window
+       column on the right (--dz-rcol is its width while a window sits there):
+       the feature and sketch dialogs and the timeline step left of it. */
+    body.design-mode #dz-bar, body.design-mode #dz-side, body.design-mode #dz-time,
+    body.design-mode #dz-dlg, body.design-mode #dz-sk, body.design-mode #dz-num { z-index: 100000 !important; }
+    body.design-mode #dz-dlg, body.design-mode #dz-sk { right: calc(12px + var(--dz-rcol, 0px)) !important; }
+    body.design-mode #dz-time { right: max(340px, calc(var(--dz-rcol, 0px) + 12px)) !important; }
   </style>
 </head>
 <body>
@@ -8178,8 +8185,38 @@
         case "home-bottom-left": return R(ZM, Math.round(H * 0.44), ZM + corner, botL);
         case "home-top-right": return R(W - ZM - corner, ZM, W - ZM, Math.round(H * 0.56));
         case "home-bottom-right": return R(W - ZM - corner, Math.round(H * 0.44), W - ZM, botR);
+        // Design mode: one column on the right, below the toolbar and clear
+        // of the timeline, the editor on top and everything else under it
+        case "dz-right-full": case "dz-right-top": case "dz-right-bottom": {
+          const f = designFrame();
+          const l = W - ZM - f.col, top = f.top, bot = Math.min(botR, f.bottom);
+          const split = Math.round(top + (bot - top) * 0.58);
+          if (z === "dz-right-top") return R(l, top, W - ZM, split - ZM / 2);
+          if (z === "dz-right-bottom") return R(l, split + ZM / 2, W - ZM, bot);
+          return R(l, top, W - ZM, bot);
+        }
       }
       return null;
+    }
+    // The space Design mode's own panels leave: below its toolbar, above its
+    // timeline, and the width of the right-hand window column. Measured, so it
+    // follows the thin bar / full ribbon and a folded browser.
+    function designFrame() {
+      const W = innerWidth, H = innerHeight;
+      const vis = (id) => { const e = document.getElementById(id); if (!e || e.hidden || getComputedStyle(e).display === "none") return null; const r = e.getBoundingClientRect(); return r.width && r.height ? r : null; };
+      const bar = vis("dz-bar");
+      const col = Math.round(Math.min(Math.max(W * 0.32, 380), 560));
+      // the timeline steps left of the column (CSS below), so the column can
+      // run down to the dock buttons
+      return { top: Math.round((bar ? bar.bottom : 56) + ZM), bottom: H - ZM, col };
+    }
+    const inDesign = () => document.body.classList.contains("design-mode");
+    // Which right-column cards are open, so the editor can give the bottom
+    // half to the assistant (or info, params, ...) and the Design dialogs can
+    // step left of the column instead of sliding under it.
+    function layoutDesignColumn() {
+      const occupied = [...document.querySelectorAll(".card.open")].some((c) => c.dataset.placed?.startsWith("dz-"));
+      document.documentElement.style.setProperty("--dz-rcol", occupied && inDesign() ? `${designFrame().col + ZM}px` : "0px");
     }
     // Where a window opens when nobody has put it anywhere yet. The editor
     // takes a side, the assistant the top or bottom corner on the OTHER side,
@@ -8187,6 +8224,14 @@
     const roomForHomes = () => innerWidth >= 900 && innerHeight >= 560;
     function homeZone(card) {
       if (!roomForHomes()) return null;
+      if (inDesign()) {
+        // the editor on top, the rest (assistant, info, params, ...) below it;
+        // whichever is alone takes the whole column
+        const editorOpen = $("panel")?.classList.contains("open");
+        const othersOpen = [...document.querySelectorAll(".card.open")].some((c) => c.id !== "panel" && !c.classList.contains("expanded"));
+        if (card.id === "panel") return othersOpen ? "dz-right-top" : "dz-right-full";
+        return editorOpen ? "dz-right-bottom" : "dz-right-full";
+      }
       const edSide = prefs.editorHome === "left" ? "left" : "right";
       if (card.id === "panel") return prefs.editorHome === "dock" ? null : `home-${edSide}`;
       if (card.id === "chat") {
@@ -8289,6 +8334,7 @@
         && !card.dataset.placed) {
         placeCardClear(card);
       }
+      if (inDesign()) relayoutForDesign();
       if (next) requestAnimationFrame(unstackDocked);
       // After placement, and measured — so it rescues a card however it ended
       // up out of reach, not only the cases anyone thought of.
@@ -8691,6 +8737,27 @@
       $("set-snap").checked = !!prefs.snapZones;
     }
     // Re-place every window the APP put somewhere; ones you moved stay put.
+    // Design mode on or off: every open window moves to where that mode puts
+    // it (Design: the right column, never over Design's own panels; Code: its
+    // usual homes). Windows you dragged somewhere keep their spot unless they
+    // now sit on a Design panel.
+    function relayoutForDesign() {
+      const chrome = ["dz-bar", "dz-side", "dz-time", "dz-dlg", "dz-sk"].map((id) => document.getElementById(id))
+        .filter((e) => e && !e.hidden).map((e) => e.getBoundingClientRect()).filter((r) => r.width && r.height);
+      for (const c of document.querySelectorAll(".card.open")) {
+        if (c.classList.contains("expanded") || c.classList.contains("maxed")) continue;
+        const r = c.getBoundingClientRect();
+        const onChrome = inDesign() && chrome.some((d) => overlaps(r, d));
+        const appPlaced = !!c.dataset.placed;
+        if (!appPlaced && !onChrome && c.classList.contains("floating")) continue;   // the user's own spot
+        if (homeZone(c)) { c._preSnap = null; placeHome(c); }
+        else if (appPlaced) redockCard(c);
+      }
+      layoutDesignColumn();
+      markDockShared();
+      requestAnimationFrame(unstackDocked);
+      windowsChanged();
+    }
     function rehomeWindows({ all = false } = {}) {
       for (const c of document.querySelectorAll(".card.open")) {
         if (c.classList.contains("expanded") || c.classList.contains("maxed")) continue;
@@ -22124,7 +22191,11 @@ let SIMPLIFY_TARGET = 10000;
       clearSelection: () => clearHandles(),
       featureId: (mesh) => mesh?.userData?.featureId ?? null,
     });
-    const modeSwitch = initModeSwitch({ onChange: (m) => designUI.setActive(m === "design") });
+    const modeSwitch = initModeSwitch({ onChange: (m) => {
+      designUI.setActive(m === "design");
+      // after the Design panels have appeared (or gone), so they can be measured
+      requestAnimationFrame(() => requestAnimationFrame(relayoutForDesign));
+    } });
     window.brepscript.mode = () => modeSwitch.mode;
     window.brepscript.setMode = (m) => modeSwitch.setMode(m);
     // Design mode's state: tree rows, timeline steps and what they link to,
