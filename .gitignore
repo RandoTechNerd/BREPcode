@@ -70,3 +70,6 @@ native/nvidia-kernel/upstream/
 native/nvidia-kernel/build/
 native/nvidia-kernel/build.log
 vendor/brep-kernel-nvidia/
+
+# prompt benchmark runs (screenshots, STLs)
+bench/results/
