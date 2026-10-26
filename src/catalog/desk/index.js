@@ -16,9 +16,10 @@ import monitorShelf from "./monitor-shelf.js";
 import bookend from "./bookend.js";
 import underDeskTray from "./under-desk-tray.js";
 import tapeDispenser from "./tape-dispenser.js";
+import miniMonitorEasel from "./mini-monitor-easel.js";
 
 export const FAMILIES = [phoneStand, headphoneHanger, penCup, verticalOrganizer, riserLeg, laptopStand, cableGrommet,
-  wristRest, noteTray, monitorShelf, bookend, underDeskTray, tapeDispenser];
+  wristRest, noteTray, monitorShelf, bookend, underDeskTray, tapeDispenser, miniMonitorEasel];
 
 // Laptops: w x d x t in mm (closed), from the makers' spec sheets.
 const laptop = (id, names, w, d, t, note) => ({ id, kind: "laptop", names, dims: { w, d, t }, label: names[0], note });
@@ -36,6 +37,8 @@ const hole = (id, names, d, note) => ({ id, kind: "grommet", names, dims: { d },
 const tape = (id, names, core, w, d, note) => ({ id, kind: "tape", names, dims: { core, w, d }, label: names[0], note });
 // Boxy things held under a desk: w x h cross-section, len along it.
 const strip = (id, names, w, h, len, note) => ({ id, kind: "strip", names, dims: { w, h, len }, label: names[0], note });
+// Small desktop computers a dock holds: w x d x h in mm.
+const minipc = (id, names, w, d, h, note) => ({ id, kind: "minipc", names, dims: { w, d, h }, label: names[0], note });
 
 export const SPECS = [
   // ---- laptops (Apple, Dell, Lenovo, Microsoft spec sheets)
@@ -94,4 +97,11 @@ export const SPECS = [
     "a typical 6-outlet power strip (about 50 x 40 mm across, 280 mm long)"),
   strip("strip-laptop-brick", ["laptop power brick", "power brick", "laptop charger brick"], 65, 30, 140,
     "a typical 90 to 130 W laptop power brick (about 140 x 65 x 30 mm)"),
+
+  // ---- mini computers (Apple spec sheets)
+  minipc("minipc-mac-mini-m4", ["Mac mini M4", "M4 Mac mini", "Mac mini 2024", "Mac mini M4 Pro", "Mac mini"], 127, 127, 50,
+    "a Mac mini M4 / M4 Pro, 2024 (127 x 127 x 50 mm)"),
+  minipc("minipc-mac-mini-2010", ["older Mac mini", "old Mac mini", "Mac mini M1", "Mac mini M2", "M1 Mac mini", "M2 Mac mini",
+    "Intel Mac mini", "Mac mini 2020", "Mac mini 2023"], 197, 197, 36,
+    "a Mac mini from 2010 to 2023, M1, M2 or Intel (197 x 197 x 36 mm)"),
 ];

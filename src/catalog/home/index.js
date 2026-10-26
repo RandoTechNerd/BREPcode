@@ -15,9 +15,10 @@ import rodBracket from "./rod-bracket.js";
 import doorBumper from "./door-bumper.js";
 import spacer from "./spacer.js";
 import holePlug from "./hole-plug.js";
+import barrelHinge from "./barrel-hinge.js";
 
 export const FAMILIES = [furnitureFoot, legCap, bedRiser, cabinetKnob, drawerPull, doorWedge, shelfPin,
-  wallPlate, rodBracket, doorBumper, spacer, holePlug];
+  wallPlate, rodBracket, doorBumper, spacer, holePlug, barrelHinge];
 
 // Real objects the home families are sized for.
 //
