@@ -52,11 +52,14 @@ export function toRustDialect(doc) {
     if (Array.isArray(p.solids)) p.solids = p.solids.map(r);
 
     // 1. Zero-length sketch edges: JS tolerates them, Rust refuses the
-    //    profile ("degenerate profile loop"). Only plain line loops are
-    //    rebuilt; a revolve names its axis by edge index, so its sketch is
+    //    profile ("degenerate profile loop"). Only a single plain ring of
+    //    lines is rebuilt (a sketch with hole loops, arcs or circles is left
+    //    alone); a revolve names its axis by edge index, so its sketch is
     //    left exactly as written.
     const sk = f.type === "S" && f.persistentData?.sketch;
-    if (sk && sk.geometries?.every((g) => g.type === "line")
+    const ring = (s) => s.geometries.length === s.points.length && s.geometries.every((g, i) => g.type === "line"
+      && g.points[0] === s.points[i]?.id && g.points[1] === s.points[(i + 1) % s.points.length]?.id);
+    if (sk && sk.geometries?.length && sk.points?.length && ring(sk)
         && !doc.features.some((g) => g.type === "R" && g.inputParams?.profile === p.id)) {
       const pts = sk.points.filter((q, i, a) => {
         const n = a[(i + 1) % a.length];

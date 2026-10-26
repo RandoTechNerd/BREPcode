@@ -156,6 +156,12 @@ await check("fillet on a texture is refused", fillet({ r: 1 }, texture({ pattern
   await check("Bezier profile revolves", revolve(360, side), { expectLane: "exact", volTol: 0.01 });
   await check("Bezier profile racetrack", revolve({ stretch: 10 }, side), { expectLane: "exact", volTol: 0.01 });
   await check("Bezier profile extrudes", linearExtrude({ h: 5 }, path2d([0, 0], [20, 0], bezierTo([25, 5], [15, 15], [10, 20]), [0, 20])), { expectLane: "exact", volTol: 0.01 });
+  // arcs and round hole loops (test/sketcharcs.js has the analytic volumes)
+  const { arcTo, circle2d, region2d } = d;
+  await check("arc slot with a round hole loop extrudes", linearExtrude({ h: 4 }, region2d(
+    path2d([0, 0], [20, 0], arcTo([20, 10], { center: [20, 5] }), [0, 10], arcTo([0, 0], { center: [0, 5] })),
+    circle2d({ r: 2, center: [10, 5] }))), { expectLane: "exact", volTol: 0.005 });
+  await check("round-over arc revolves", revolve(360, path2d([0, 0], [10, 0], [10, 6], arcTo([6, 10], { center: [6, 6] }), [0, 10])), { expectLane: "exact", volTol: 0.005 });
 }
 
 // union(union(a, b), c) keeps a's name, as the JS kernel does (a nested

@@ -474,15 +474,73 @@ export function bezierTo(c1, c2, p) {
   };
   return { __bezierTo: [pt(c1, "the first control point"), pt(c2, "the second control point"), pt(p, "the end point")] };
 }
-export function path2d(...items) {
-  const list = items.length === 1 && Array.isArray(items[0]) && items[0].length
-    && (Array.isArray(items[0][0]) || items[0][0]?.__bezierTo) ? items[0] : items;
-  const asPt = (q, i) => {
+// arcTo(end, { center }) / arcTo(end, { r, cw, large }) / arcTo(through, end):
+// a circular arc from the current point, as path2d() items. Counter-clockwise
+// unless cw; with r, the short way round unless large (as in SVG). Arcs reach
+// every kernel as the sketch's own "arc" geometry, so they build exact.
+export function arcTo(a, b) {
+  const pt = (q, what) => {
     const x = Number(q?.[0]), y = Number(q?.[1]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`path2d() item ${i} isn't an [x, y] point or a bezierTo(...)`);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`arcTo(): ${what} isn't an [x, y] pair`);
     return [x, y];
   };
-  if (!list.length || list[0]?.__bezierTo) throw new TypeError("path2d() starts with an [x, y] point");
+  if (Array.isArray(b)) return { __arcTo: { via: pt(a, "the point it passes through"), end: pt(b, "the end point") } };
+  const o = b || {};
+  const end = pt(a, "the end point");
+  if (o.center != null) return { __arcTo: { end, center: pt(o.center, "the center"), cw: !!o.cw } };
+  const r = Number(o.r ?? (o.d != null ? o.d / 2 : NaN));
+  if (!(r > 0)) throw new TypeError("arcTo() needs a center, a radius or a point to pass through: arcTo(end, { center: [x, y] }), arcTo(end, { r: 5 }) or arcTo(through, end)");
+  return { __arcTo: { end, r, cw: !!o.cw, large: !!o.large } };
+}
+// an arcTo() spec, starting at `from`, as an arc segment { t, p: [start, end], c, cw }
+function arcSeg(from, spec) {
+  const { end } = spec;
+  const d = Math.hypot(end[0] - from[0], end[1] - from[1]);
+  if (d < 1e-9) throw new TypeError("arcTo(): the arc ends where it starts; a full circle is circle2d({ r, center })");
+  let c, cw;
+  if (spec.via) {
+    const [ax, ay] = from, [bx, by] = spec.via, [ex, ey] = end;
+    const cross = (bx - ax) * (ey - ay) - (by - ay) * (ex - ax);
+    if (Math.abs(cross) < 1e-12 * Math.max(1, d * d)) throw new TypeError("arcTo(through, end): the three points are in a line, so no arc passes through them");
+    const a2 = ax * ax + ay * ay, b2 = bx * bx + by * by, e2 = ex * ex + ey * ey;
+    const k = 2 * (ax * (by - ey) + bx * (ey - ay) + ex * (ay - by));
+    c = [(a2 * (by - ey) + b2 * (ey - ay) + e2 * (ay - by)) / k, (a2 * (ex - bx) + b2 * (ax - ex) + e2 * (bx - ax)) / k];
+    cw = cross < 0;
+  } else if (spec.center) {
+    c = spec.center;
+    cw = spec.cw;
+    const r0 = Math.hypot(from[0] - c[0], from[1] - c[1]), r1 = Math.hypot(end[0] - c[0], end[1] - c[1]);
+    if (Math.abs(r0 - r1) > 1e-6 * Math.max(1, r0)) {
+      throw new TypeError(`arcTo(): the start is ${r0.toFixed(4)} from the center but the end is ${r1.toFixed(4)}; both must be on the same circle`);
+    }
+  } else {
+    const { r } = spec;
+    if (d > 2 * r * (1 + 1e-9)) throw new TypeError(`arcTo(): a radius of ${r} can't span ${d.toFixed(4)} between its ends (the most is ${2 * r})`);
+    const h = Math.sqrt(Math.max(0, r * r - (d / 2) * (d / 2)));
+    const ux = (end[0] - from[0]) / d, uy = (end[1] - from[1]) / d;
+    const side = spec.cw !== spec.large ? -1 : 1;   // a short CCW arc has its center on the chord's left
+    c = [(from[0] + end[0]) / 2 - side * h * uy, (from[1] + end[1]) / 2 + side * h * ux];
+    cw = spec.cw;
+  }
+  return { t: "arc", p: [from, end], c, cw };
+}
+// signed sweep of an arc or circle segment, radians: + counter-clockwise
+function sweepOf(sg) {
+  if (sg.t === "circle") return sg.cw ? -2 * Math.PI : 2 * Math.PI;
+  const [a, b] = sg.p, c = sg.c;
+  const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]), a1 = Math.atan2(b[1] - c[1], b[0] - c[0]);
+  const ccw = (((a1 - a0) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) || 2 * Math.PI;
+  return sg.cw ? ccw - 2 * Math.PI : ccw;
+}
+export function path2d(...items) {
+  const list = items.length === 1 && Array.isArray(items[0]) && items[0].length
+    && (Array.isArray(items[0][0]) || items[0][0]?.__bezierTo || items[0][0]?.__arcTo) ? items[0] : items;
+  const asPt = (q, i) => {
+    const x = Number(q?.[0]), y = Number(q?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`path2d() item ${i} isn't an [x, y] point, a bezierTo(...) or an arcTo(...)`);
+    return [x, y];
+  };
+  if (!list.length || list[0]?.__bezierTo || list[0]?.__arcTo) throw new TypeError("path2d() starts with an [x, y] point");
   const start = asPt(list[0], 0);
   const same = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
   const segs = [];
@@ -492,6 +550,10 @@ export function path2d(...items) {
       const [c1, c2, p] = it.__bezierTo;
       segs.push({ t: "bezier", p: [cur, c1, c2, p] });
       cur = p;
+    } else if (it?.__arcTo) {
+      const sg = arcSeg(cur, it.__arcTo);
+      segs.push(sg);
+      cur = sg.p[1];
     } else {
       const p = asPt(it, i + 1);
       if (!same(cur, p)) segs.push({ t: "line", p: [cur, p] });
@@ -501,6 +563,31 @@ export function path2d(...items) {
   if (!same(cur, start)) segs.push({ t: "line", p: [cur, start] });
   if (segs.length < 2) throw new TypeError("path2d() needs at least a closed outline of 2 segments");
   return { __brepscript2d: true, pts: sampleSegs(segs), segs };
+}
+// circle2d({ r, center }): a full circle as a 2D profile, exact on every kernel
+// (the sketch's own "circle" geometry). On its own it extrudes to a cylinder;
+// in region2d() it is a round hole.
+export function circle2d(opts = 5) {
+  const o = typeof opts === "number" ? { r: opts } : (opts || {});
+  const r = Number(o.r ?? (o.d != null ? o.d / 2 : NaN));
+  if (!(r > 0)) throw new TypeError("circle2d() needs a positive radius, e.g. circle2d({ r: 5, center: [0, 0] })");
+  const cx = Number(o.center?.[0] ?? 0), cy = Number(o.center?.[1] ?? 0);
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) throw new TypeError("circle2d(): center isn't an [x, y] pair");
+  const rim = [cx + r, cy];
+  const segs = [{ t: "circle", p: [rim, rim], c: [cx, cy], cw: false }];
+  return { __brepscript2d: true, pts: sampleSegs(segs), segs };
+}
+// region2d(outer, ...holes): one profile with holes cut through it, every loop
+// in the same sketch (a plate outline with round holes, a washer). Holes are
+// any closed profiles (circle2d, path2d, polygon) lying inside the outer one.
+export function region2d(outer, ...holes) {
+  if (!outer?.__brepscript2d) throw new TypeError("region2d() takes a 2D outline first, then the holes in it: region2d(path2d(...), circle2d({ r: 3, center: [10, 10] }))");
+  const list = holes.flat();
+  for (const h of list) {
+    if (!h?.__brepscript2d) throw new TypeError("region2d(): each hole is a 2D profile (circle2d, path2d or polygon)");
+    if (h.holes?.length) throw new TypeError("region2d(): a hole can't have holes of its own; make that island a separate shape");
+  }
+  return { ...outer, holes: [...(outer.holes || []), ...list.map((h) => ({ pts: h.pts, segs: h.segs ?? null }))] };
 }
 function sampleSegs(segs, n = 16) {
   const out = [];
@@ -512,11 +599,32 @@ function sampleSegs(segs, n = 16) {
         const t = k / n, u = 1 - t;
         out.push([0, 1].map((j) => u * u * u * a[j] + 3 * u * u * t * b[j] + 3 * u * t * t * c[j] + t * t * t * d[j]));
       }
+    } else if (sg.t === "arc" || sg.t === "circle") {
+      const s = sweepOf(sg), c = sg.c, [a] = sg.p;
+      const r = Math.hypot(a[0] - c[0], a[1] - c[1]), a0 = Math.atan2(a[1] - c[1], a[0] - c[0]);
+      const m = Math.max(4, Math.ceil((Math.abs(s) / (2 * Math.PI)) * 48));
+      for (let k = 1; k < m; k++) out.push([c[0] + r * Math.cos(a0 + (s * k) / m), c[1] + r * Math.sin(a0 + (s * k) / m)]);
     }
   }
   return out;
 }
-const reverseSegs = (segs) => segs.slice().reverse().map((sg) => ({ t: sg.t, p: sg.p.slice().reverse() }));
+// The JS kernel facets a sketch circle into its curveResolution (32 by
+// default, 0.6% light on a disc); the exact kernels ignore it. 128 holds an
+// arc's volume to 0.05% there, and a revolve of one gets as many steps.
+const ARC_RESOLUTION = 128;
+const hasArcs = (n) => [n, ...(n.holes || [])].some((l) => l.segs?.some((sg) => sg.t === "arc" || sg.t === "circle"));
+// a segment moved by f (a map of [x, y]); flip when f is a reflection, which
+// turns an arc's direction over
+const mapSeg = (sg, f, flip = false) => (sg.c
+  ? { ...sg, p: sg.p.map(f), c: f(sg.c), cw: flip ? !sg.cw : sg.cw }
+  : { t: sg.t, p: sg.p.map(f) });
+const reverseSegs = (segs) => segs.slice().reverse().map((sg) => (sg.c
+  ? { ...sg, p: sg.p.slice().reverse(), cw: !sg.cw }
+  : { t: sg.t, p: sg.p.slice().reverse() }));
+const loopArea = (pts) => { let a = 0; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * y2 - x2 * y1; } return a / 2; };
+// a region's holes wound clockwise, against the counter-clockwise outline
+const clockwiseHoles = (holes) => holes?.map((h) => (loopArea(h.pts) > 0
+  ? { pts: [...h.pts].reverse(), segs: h.segs ? reverseSegs(h.segs) : null } : h));
 // The profile mirrored across x = 0 and joined to itself: the full outline a
 // half-profile (x >= 0, touching the axis) sweeps out in any plane through the
 // axis. revolve({ stretch }) extrudes it for the straight middle.
@@ -527,12 +635,20 @@ function mirrorAcrossAxis(profile) {
   const k = segs.findIndex(onAxis);
   if (k < 0) throw new Error("revolve({ stretch }): the profile needs an edge on x = 0 (its spin axis)");
   const chain = [...segs.slice(k + 1), ...segs.slice(0, k)].filter((sg) => !onAxis(sg));
-  const mirrored = reverseSegs(chain).map((sg) => ({ t: sg.t, p: sg.p.map(([x, y]) => [-x, y]) }));
+  const flipX = ([x, y]) => [-x, y];
+  const mirrored = reverseSegs(chain).map((sg) => mapSeg(sg, flipX, true));
   const all = [...chain, ...mirrored];
-  return { __brepscript2d: true, pts: sampleSegs(all), segs: all };
+  // each hole, and its mirror image on the other side of the axis
+  const holes = profile.holes?.flatMap((h) => [h, {
+    pts: h.pts.map(flipX).reverse(),
+    segs: h.segs ? reverseSegs(h.segs).map((sg) => mapSeg(sg, flipX, true)) : null,
+  }]);
+  return { __brepscript2d: true, pts: sampleSegs(all), segs: all, ...(holes?.length ? { holes } : {}) };
 }
-// Sketch points + geometries for a profile: lines, and Beziers as the kernel's
-// own "bezier" geometry (one exact cubic B-spline span each).
+// Sketch points + geometries for a profile and its holes: lines, Beziers as the
+// kernel's own "bezier" geometry (one exact cubic B-spline span each), arcs as
+// "arc" ([center, start, end], counter-clockwise, so a clockwise arc is written
+// end to start) and full circles as "circle" ([center, a point on the rim]).
 function sketchOf(profile) {
   const points = [], geometries = [], ids = new Map();
   const endpoint = ([x, y]) => {
@@ -541,14 +657,19 @@ function sketchOf(profile) {
     return ids.get(key);
   };
   const control = ([x, y]) => { points.push({ id: points.length, x, y, fixed: false }); return points.length - 1; };
-  const segs = profile.segs ?? profile.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] }));
+  const segsOf = (l) => l.segs ?? l.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] }));
+  const segs = [profile, ...(profile.holes || [])].flatMap(segsOf);
   const geomIds = [];
   segs.forEach((sg, i) => {
     const gid = 100 + i;
-    const pts = sg.t === "bezier"
-      ? [endpoint(sg.p[0]), control(sg.p[1]), control(sg.p[2]), endpoint(sg.p[3])]
-      : [endpoint(sg.p[0]), endpoint(sg.p[1])];
-    geometries.push({ id: gid, type: sg.t === "bezier" ? "bezier" : "line", points: pts, construction: false });
+    let type = sg.t, pts;
+    if (sg.t === "bezier") pts = [endpoint(sg.p[0]), control(sg.p[1]), control(sg.p[2]), endpoint(sg.p[3])];
+    else if (sg.t === "arc") {
+      const [a, b] = sg.cw ? [sg.p[1], sg.p[0]] : sg.p;
+      pts = [control(sg.c), endpoint(a), endpoint(b)];
+    } else if (sg.t === "circle") pts = [control(sg.c), control(sg.p[0])];
+    else { type = "line"; pts = [endpoint(sg.p[0]), endpoint(sg.p[1])]; }
+    geometries.push({ id: gid, type, points: pts, construction: false });
     geomIds.push({ gid, sg });
   });
   return { sketch: { points, geometries, constraints: [{ id: 0, type: "⏚", points: [0] }] }, geomIds };
@@ -571,7 +692,8 @@ export function linearExtrude(opts, profile) {
   }
   const ordered = area < 0 ? [...pts].reverse() : pts;
   const segs = profile.segs ? (area < 0 ? reverseSegs(profile.segs) : profile.segs) : null;
-  const n = node({ kind: "prism", pts: ordered, segs, h, fix: IDENTITY });
+  const holes = clockwiseHoles(profile.holes);
+  const n = node({ kind: "prism", pts: ordered, segs, ...(holes?.length ? { holes } : {}), h, fix: IDENTITY });
   const o = typeof opts === "object" ? opts : {};
   // Where along its own +Z the prism sits: [0, h] by default, centred on the
   // plane (center), or [-h, 0] under it (reverse: a cut into a face), plus
@@ -741,9 +863,13 @@ function reflectDown(n, M) {
   if (n.kind === "prism") {
     // flipped across its own x axis and wound back to CCW; a curved profile
     // (path2d, exact text) flips segment by segment
-    const pts = n.pts.map(([x, y]) => [x, -y]).reverse();
-    const segs = n.segs ? reverseSegs(n.segs).map((sg) => ({ t: sg.t, p: sg.p.map(([x, y]) => [x, -y]) })) : n.segs;
-    return place(flipY, { ...n, pts, segs });
+    const fy = ([x, y]) => [x, -y];
+    const flipLoop = (l) => ({
+      pts: l.pts.map(fy).reverse(),
+      segs: l.segs ? reverseSegs(l.segs).map((sg) => mapSeg(sg, fy, true)) : l.segs,
+    });
+    const { pts, segs } = flipLoop(n);
+    return place(flipY, { ...n, pts, segs, ...(n.holes ? { holes: n.holes.map(flipLoop) } : {}) });
   }
   return null;
 }
@@ -2619,7 +2745,20 @@ export function revolve(opts, profile) {
     const middle = translate([-L / 2, 0, 0], rotate([0, 0, 90], rotate([90, 0, 0], linearExtrude({ h: L }, mirrorAcrossAxis(profile)))));
     return union(half(1), half(-1), middle);
   }
-  return node({ kind: "revolve", pts: profile.pts, segs: profile.segs ?? null, angle, resolution: res, fix: AXIS_FIX });
+  const body = node({ kind: "revolve", pts: profile.pts, segs: profile.segs ?? null, angle, resolution: res, fix: AXIS_FIX });
+  if (!profile.holes?.length) return body;
+  // a round hole in a straight-sided profile: the body steps as finely as the cutter
+  if (res == null && hasArcs(profile)) body.resolution = ARC_RESOLUTION;
+  // A hole loop sweeps out a void. The JS kernel revolves every loop of a
+  // sketch as a solid of its own (the hole came back ADDED), so each hole is
+  // cut as its own revolve instead: the loop, spun about a short line on the
+  // axis drawn beside it in the same sketch. Exact on every kernel.
+  const cutters = profile.holes.map((h) => {
+    let lo = Infinity, hi = -Infinity;
+    for (const [, y] of h.pts) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+    return node({ kind: "revolve", pts: h.pts, segs: h.segs, axisSpan: [lo, hi], angle, resolution: res, fix: AXIS_FIX });
+  });
+  return difference(body, ...cutters);
 }
 
 // ------------------------------------------------------------------ compile
@@ -2750,7 +2889,8 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
       const sk = await partHistory.newFeature("S");
       sk.inputParams.sketchPlane = plane.inputParams.id;
-      sk.persistentData.sketch = n.segs ? sketchOf(n).sketch : {
+      if (hasArcs(n)) sk.inputParams.curveResolution = ARC_RESOLUTION;
+      sk.persistentData.sketch = n.segs || n.holes ? sketchOf(n).sketch : {
         points: n.pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
         geometries: n.pts.map((_, i) => ({
           id: 100 + i, type: "line", points: [i, (i + 1) % n.pts.length], construction: false,
@@ -2884,12 +3024,21 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const pts = n.pts;
       // the spin axis is the profile edge lying on x = 0
       let axisIdx = -1;
-      if (n.segs) {
-        // curved profile (path2d): lines + exact Beziers; the axis is a line seg
+      if (n.segs || n.axisSpan) {
+        // curved profile (path2d) or one with holes: lines, exact Beziers and
+        // arcs; the axis is a line seg
         const { sketch, geomIds } = sketchOf(n);
         sk.persistentData.sketch = sketch;
         const ax = geomIds.find(({ sg }) => sg.t === "line" && Math.abs(sg.p[0][0]) < 1e-6 && Math.abs(sg.p[1][0]) < 1e-6);
         if (ax) axisIdx = ax.gid - 100;
+        if (n.axisSpan) {
+          // a hole's cutter: the axis is an open line of its own, off the loop
+          const [lo, hi] = n.axisSpan, k = sketch.points.length;
+          sketch.points.push({ id: k, x: 0, y: lo, fixed: false }, { id: k + 1, x: 0, y: hi, fixed: false });
+          axisIdx = sketch.geometries.length;
+          sketch.geometries.push({ id: 100 + axisIdx, type: "line", points: [k, k + 1], construction: false });
+        }
+        if (hasArcs(n)) sk.inputParams.curveResolution = ARC_RESOLUTION;
       } else {
         sk.persistentData.sketch = {
           points: pts.map(([x, y], i) => ({ id: i, x, y, fixed: i === 0 })),
@@ -2911,6 +3060,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       rev.inputParams.axis = `${sk.inputParams.id}:G${100 + axisIdx}`;
       rev.inputParams.angle = n.angle;
       if (n.resolution) rev.inputParams.resolution = n.resolution;
+      else if (hasArcs(n)) rev.inputParams.resolution = ARC_RESOLUTION;
 
       // the kernel spins about the sketch's vertical (world Y); AXIS_FIX stands
       // the result up on Z, then the accumulated transform places it.

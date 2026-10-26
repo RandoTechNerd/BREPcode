@@ -84,6 +84,9 @@ linearExtrude({ h, on: { origin, normal } }, profile)   // …drawn on any plane
 revolve(angle, profile)                  // lathe a polygon about x = 0 (OpenSCAD's rotate_extrude)
 revolve({ stretch: L }, profile)         // ...pulled apart into a stadium shape, L mm of straight sides
 path2d([x,y], ..., bezierTo(c1, c2, p), ...)  // an outline with smooth curves; extruding or revolving keeps them exact
+  arcTo(end, { center })  arcTo(end, { r, cw, large })  arcTo(through, end)  // exact circular arcs in a path2d
+circle2d({ r, center })                  // a full circle profile, exact
+region2d(outline, ...holes)              // an outline with holes through it, e.g. region2d(path2d(...), circle2d({ r: 3, center: [10, 10] }))
 ```
 
 ### Combining and moving

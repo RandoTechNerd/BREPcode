@@ -12,7 +12,9 @@
 // by the names of the two faces they join ("P.CU1_NX|P.CU1_PY[0]"). So every
 // operation here names its result's faces the way the Rust kernel does:
 //   primitives   by where each face points (P.CU1_PX, P.CY2_S/_B/_T, ...)
-//   extrude      by which sketch curve made the wall (E3:S2:G101_SW) and caps
+//   extrude      by which sketch curve made the wall (E3:S2:G101_SW; a full
+//                circle's two halves G101_SW[0] and [1]), a hole's walls by
+//                their loop (E3:HOLE:L104), and caps
 //   revolve      by profile curve (S2:G101_RV)
 //   booleans     each face keeps the name of the input face it lies on
 //                (the addon's matchFaces answers that exactly)
@@ -135,17 +137,93 @@ function wrap(nk) {
       throw new Error("only sketches on the XY plane are supported on the NVIDIA kernel yet");
     }
     const pt = new Map(sk.points.map((q) => [q.id, [+q.x, +q.y]]));
-    const geoms = sk.geometries.filter((g) => !g.construction).map((g) => {
+    const geoms = sk.geometries.filter((g) => !g.construction).flatMap((g) => {
       const ps = g.points.map((i) => pt.get(i));
       if (ps.some((q) => !q)) throw new Error(`sketch ${f.inputParams.id}: a curve names a missing point`);
-      if (g.type === "line" && ps.length === 2) return { id: g.id, kind: 0, ps };
-      if (g.type === "bezier" && ps.length === 4) return { id: g.id, kind: 1, ps };
+      if (g.type === "line" && ps.length === 2) return [{ id: g.id, kind: 0, ps }];
+      if (g.type === "bezier" && ps.length === 4) return [{ id: g.id, kind: 1, ps }];
+      // an arc is [center, start, end], counter-clockwise; start = end is a full turn
+      if (g.type === "arc" && ps.length === 3) {
+        const [c, a, b] = ps;
+        const r = Math.hypot(a[0] - c[0], a[1] - c[1]);
+        const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]) / DEG;
+        const sweep = ((((Math.atan2(b[1] - c[1], b[0] - c[0]) / DEG - a0) % 360) + 360) % 360) || 360;
+        return [arc(g.id, c, r, a0, sweep, [a, b])];
+      }
+      // a circle ([center, rim]) is two half arcs from angle 0, as the Rust
+      // kernel builds it, so its wall comes out as the same two faces
+      if (g.type === "circle" && ps.length === 2) {
+        const [c, rim] = ps;
+        const r = Math.hypot(rim[0] - c[0], rim[1] - c[1]);
+        const east = [c[0] + r, c[1]], west = [c[0] - r, c[1]];
+        return [arc(g.id, c, r, 0, 180, [east, west], 0), arc(g.id, c, r, 180, 180, [west, east], 1)];
+      }
       throw new Error(`sketch curve type "${g.type}" isn't supported on the NVIDIA kernel yet`);
     });
     sketches.set(f.inputParams.id, { geoms });
   }
 
-  const seg3 = (g, z = 0) => [g.kind, ...g.ps.flatMap(([x, y]) => [x, y, z])];
+  // SMLib takes arc angles in [-360, 360], end after start
+  function arc(id, c, r, a0, sweep, ps, half) {
+    if (!(r > 0)) throw new Error(`sketch arc G${id} has no radius`);
+    let a1 = a0 + sweep;
+    if (a1 > 360) { a0 -= 360; a1 -= 360; }
+    return { id, kind: 2, c, r, a0, a1, ps, ...(half != null ? { half } : {}) };
+  }
+
+  const seg3 = (g, z = 0) => (g.kind === 2
+    ? [2, g.c[0], g.c[1], z, g.r, g.a0, g.a1]
+    : [g.kind, ...g.ps.flatMap(([x, y]) => [x, y, z])]);
+  // a wall's name after its curve; a circle's two halves are [0] and [1]
+  const wallOf = (g, tag) => `G${g.id}_${tag}${g.half != null ? `[${g.half}]` : ""}`;
+
+  // a point on a sketch curve at t in [0, 1]
+  function pointOn(g, t) {
+    if (g.kind === 0) return [g.ps[0][0] + (g.ps[1][0] - g.ps[0][0]) * t, g.ps[0][1] + (g.ps[1][1] - g.ps[0][1]) * t];
+    if (g.kind === 2) {
+      const a = (g.a0 + (g.a1 - g.a0) * t) * DEG;
+      return [g.c[0] + g.r * Math.cos(a), g.c[1] + g.r * Math.sin(a)];
+    }
+    const u = 1 - t, b = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+    return [0, 1].map((k) => b.reduce((s, w, j) => s + w * g.ps[j][k], 0));
+  }
+
+  // The closed loops of a sketch's curves, each with its nesting depth (odd is
+  // a hole) and its key: the lowest curve id in it, as the Rust kernel keys a
+  // loop (L<id>) when it names the loop's hole walls.
+  function loopsOf(geoms) {
+    const key = ([x, y]) => `${x.toFixed(6)},${y.toFixed(6)}`;
+    const ends = (g) => [key(g.ps[0]), key(g.ps[g.ps.length - 1])];
+    const left = new Set(geoms);
+    const loops = [];
+    while (left.size) {
+      const first = left.values().next().value;
+      left.delete(first);
+      const members = [first];
+      const [start] = ends(first);
+      let end = ends(first)[1];
+      while (end !== start) {
+        const next = [...left].find((g) => ends(g).includes(end));
+        if (!next) break;
+        left.delete(next);
+        members.push(next);
+        const [a, b] = ends(next);
+        end = a === end ? b : a;
+      }
+      const poly = members.flatMap((g) => Array.from({ length: 16 }, (_, i) => pointOn(g, i / 16)));
+      loops.push({ members, poly, key: Math.min(...members.map((g) => g.id)), depth: 0 });
+    }
+    const inside = ([x, y], poly) => {
+      let hit = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i], [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+      }
+      return hit;
+    };
+    for (const a of loops) for (const b of loops) if (a !== b && inside(pointOn(a.members[0], 0.5), b.poly)) a.depth++;
+    return loops;
+  }
 
   // the sketch curve nearest a point (in the sketch plane), for wall names
   function nearestGeom(geoms, [x, y]) {
@@ -153,13 +231,7 @@ function wrap(nk) {
     for (const g of geoms) {
       const samples = g.kind === 0 ? 8 : 24;
       for (let i = 0; i <= samples; i++) {
-        const t = i / samples;
-        let q;
-        if (g.kind === 0) q = [g.ps[0][0] + (g.ps[1][0] - g.ps[0][0]) * t, g.ps[0][1] + (g.ps[1][1] - g.ps[0][1]) * t];
-        else {
-          const u = 1 - t, b = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
-          q = [0, 1].map((k) => b.reduce((s, w, j) => s + w * g.ps[j][k], 0));
-        }
+        const q = pointOn(g, i / samples);
         const d = Math.hypot(q[0] - x, q[1] - y);
         if (d < bd) { bd = d; best = g; }
       }
@@ -178,9 +250,17 @@ function wrap(nk) {
     if (!(fwd + back > 0)) throw new Error(`extrude ${p.id}: zero height`);
     const h = nk.extrude(sk.geoms.map((g) => seg3(g, -back)), 0, 0, 1, fwd + back);
     const first = sk.geoms[0]?.id;
+    // a hole's walls are named after its loop, repeats numbered (_1, _2), as
+    // the Rust kernel names the walls its hole cutter leaves
+    const holeOf = new Map(loopsOf(sk.geoms).filter((l) => l.depth % 2).flatMap((l) => l.members.map((g) => [g, l.key])));
+    const seen = new Map();
     const faceNames = faceInfo(h).map(({ p: q, n }) => {
       if (Math.abs(n[2]) > 0.99) return `${p.id}:${p.profile}:PROFILE:L${first}_${q[2] < (fwd - back) / 2 ? "START" : "END"}`;
-      return `${p.id}:${p.profile}:G${nearestGeom(sk.geoms, q).id}_SW`;
+      const g = nearestGeom(sk.geoms, q);
+      if (!holeOf.has(g)) return `${p.id}:${p.profile}:${wallOf(g, "SW")}`;
+      const base = `${p.id}:HOLE:L${holeOf.get(g)}`, k = seen.get(base) ?? 0;
+      seen.set(base, k + 1);
+      return k ? `${base}_${k}` : base;
     });
     return own(h, faceNames);
   }
@@ -206,7 +286,7 @@ function wrap(nk) {
       // a point on a wall, swung back into the sketch plane, sits on its curve
       const r = Math.hypot(q[0] - a[0], q[2]);
       const g = nearestGeom(profile, [a[0] + Math.sign(q[0] - a[0] || 1) * r, q[1]]);
-      return g ? `${p.profile}:G${g.id}_RV` : `${p.id}:${p.profile}:CAP_END`;
+      return g ? `${p.profile}:${wallOf(g, "RV")}` : `${p.id}:${p.profile}:CAP_END`;
     });
     return own(h, faceNames);
   }
