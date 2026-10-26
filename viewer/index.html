@@ -5418,6 +5418,7 @@
     // is still in its dead zone at that moment.
     let camGlide = null;
     let sizeHandleDots = null;   // set once the handles exist (handle-dots.js)
+    let followDragPreview = null; // outlines riding the drag preview (below)
     // Did the APP choose where the model is sitting, or did the user? The
     // answer decides how much licence the clearance has: it may rearrange its
     // own work freely, and touches a hand-set view only to get it out from
@@ -5434,6 +5435,7 @@
       fadeAxisLabels();
       measureRescale();       // markers and labels hold their size on screen
       sizeHandleDots?.();     // …and so do the selection's handle dots
+      followDragPreview?.();  // edges and the selection outline track a dragged mesh
       renderer.render(scene, camera);
     })();
 
@@ -10810,6 +10812,7 @@ ${joined}${SITE_TAIL}`), joined);
         // faint see-through pass first, then the crisp depth-tested one
         for (const [material, order] of [[highlightMatBehind, 1], [highlightMat, 2]]) {
           const line = new LineSegments2(geo, material);
+          line.userData.source = m;    // so it follows a drag preview
           line.position.copy(m.position);
           line.quaternion.copy(m.quaternion);
           line.scale.copy(m.scale);
@@ -11051,6 +11054,23 @@ ${joined}${SITE_TAIL}`), joined);
     // of a part — silhouette, hole rims, the seam between a flat top and a
     // fillet — while leaving the tessellation of a smooth curve alone.
     const outlineGroup = new THREE.Group();
+    // A drag previews by moving and stretching the model's meshes. Their CAD
+    // edges and the blue selection outline were drawn once, in place, so they
+    // stayed behind on the old shape and the part looked doubled mid-drag.
+    // Each line knows the mesh it was traced from; it takes that mesh's
+    // transform and visibility every frame (a few dozen objects, no geometry).
+    followDragPreview = () => {
+      for (const g of [outlineGroup, highlightGroup]) {
+        for (const o of g.children) {
+          const m = o.userData.source;
+          if (!m) continue;
+          o.position.copy(m.position);
+          o.quaternion.copy(m.quaternion);
+          o.scale.copy(m.scale);
+          if (g === outlineGroup && o.userData.role !== "depth" && o.userData.role !== "hidden") o.visible = m.visible;
+        }
+      }
+    };
     scene.add(outlineGroup);
     // linewidth is in screen pixels (worldUnits off), so edges keep a constant
     // on-screen weight as you zoom — the way a CAD drawing behaves.
@@ -12595,6 +12615,7 @@ ${joined}${SITE_TAIL}`), joined);
     function abandonDrag() {
       if (!drag) return;
       handleDots.hideLabel();
+      if (drag.dot && drag.dotStart) drag.dot.position.copy(drag.dotStart);
       const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
       controls.enabled = true;
       clearGhosts();
@@ -12810,6 +12831,7 @@ ${joined}${SITE_TAIL}`), joined);
                 start: hHit.object.position.clone(), planeZ: hHit.object.position.z,
                 meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
                 delta: new THREE.Vector3(), amount: 0, moved: false,
+                dot: hHit.object, dotStart: hHit.object.position.clone(),  // rides the face out or in
               };
             }
           } else if ($("freeform").checked
@@ -13222,6 +13244,12 @@ ${joined}${SITE_TAIL}`), joined);
         }
         hint.innerHTML = `<b>${drag.site.kind}</b> ${drag.target.label}: ${drag.target.value} &rarr; <b>${(drag.target.value + drag.amount).toFixed(1)}</b> — release to apply`;
         handleDots.label(e.clientX, e.clientY, drag.amount);
+        if (drag.dot && drag.outDir) {
+          // the dot stays on the pulled face: a centred cube grows half each
+          // way, everything else moves that face by the full amount
+          const k = !drag.radial && anchorCentered ? 0.5 : 1;
+          drag.dot.position.copy(drag.dotStart).addScaledVector(drag.outDir, drag.amount * k);
+        }
         return;
       }
 

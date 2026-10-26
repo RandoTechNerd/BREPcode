@@ -97,6 +97,21 @@ console.log("\nmoveText on a real map: the shape lands where the gizmo put it\n"
     near(posOf(after2.ph, cube[0]), [0, 0, 2]) && near(posOf(after2.ph, cyl[0]), [20, 10, 1]));
 }
 
+console.log("\nresize handles edit the right number when a size is a name\n");
+{
+  const { findResizeTarget } = await import("../viewer/assist.js");
+  const at = (t, ax) => {
+    const site = { kind: "cube", start: t.indexOf("cube("), end: t.lastIndexOf(")") };
+    const r = findResizeTarget(t, site, ax);
+    return r ? t.slice(r.numStart, r.numEnd) : null;
+  };
+  const t = `const w = 60;\nreturn cube([w, 40, 8]);`;
+  check("x of cube([w, 40, 8]) is w's declared 60 (it rewrote the 40)", at(t, 0) === "60" && at(t, 0) !== null);
+  check("y is 40, z is 8 (z rewrote the 40 too)", at(t, 1) === "40" && at(t, 2) === "8", `${at(t, 1)} ${at(t, 2)}`);
+  check("x of cube([w * 2, 10, 5]) has no handle rather than a wrong one", at(`return cube([w * 2, 10, 5]);`, 0) === null);
+  check("plain literals unchanged", [0, 1, 2].map((a) => at(`return cube([ 20,  10 , 5 ]);`, a)).join() === "20,10,5");
+}
+
 console.log("\nwhat rides along: helpers called from inside a moved boolean\n");
 {
   const b = await build(PEGS);

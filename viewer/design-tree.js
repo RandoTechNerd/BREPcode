@@ -154,14 +154,47 @@ export function rowForFid(tree, fid) {
 
 // ------------------------------------------------------------------ the DOM
 
+// Booleans say what they keep: a union fills both circles, a difference fills
+// the first with the second bitten out (the cutter dashed), an intersection
+// fills only the overlap. Circles at (6, 8) and (10, 8), r 3.6, meet at
+// (8, 5.01) and (8, 10.99).
+const FILL = `fill="currentColor" fill-opacity="0.45"`;
+const CUTTER = `<circle cx="10" cy="8" r="3.6" stroke-dasharray="1.6 1.4" stroke-width="1"/>`;
+const BOOL_ICONS = {
+  union: `<path ${FILL} d="M8 5.01A3.6 3.6 0 1 0 8 10.99A3.6 3.6 0 1 0 8 5.01Z"/>`,
+  difference: `<path ${FILL} d="M8 5.01A3.6 3.6 0 1 0 8 10.99A3.6 3.6 0 0 1 8 5.01Z"/>${CUTTER}`,
+  intersection: `<circle cx="6" cy="8" r="3.6" stroke-width="1" stroke-opacity="0.6"/><circle cx="10" cy="8" r="3.6" stroke-width="1" stroke-opacity="0.6"/>`
+    + `<path ${FILL} d="M8 5.01A3.6 3.6 0 0 1 8 10.99A3.6 3.6 0 0 1 8 5.01Z"/>`,
+};
+BOOL_ICONS.add = BOOL_ICONS.union;
+BOOL_ICONS.subtract = BOOL_ICONS.cut = BOOL_ICONS.difference;
+BOOL_ICONS.intersect = BOOL_ICONS.intersection;
+// A shape row is drawn as that shape.
+const BOX = `<path d="M3 5.5 8 3l5 2.5v5L8 13l-5-2.5z"/><path d="M3 5.5 8 8l5-2.5M8 8v5"/>`;
+const SHAPE_ICONS = {
+  cube: BOX, cuboid: BOX, box: BOX, roundedBox: BOX,
+  cylinder: `<ellipse cx="8" cy="4.2" rx="4.5" ry="1.7"/><path d="M3.5 4.2v7.4a4.5 1.7 0 0 0 9 0V4.2"/>`,
+  tube: `<ellipse cx="8" cy="4.2" rx="4.5" ry="1.7"/><ellipse cx="8" cy="4.2" rx="2" ry="0.8"/><path d="M3.5 4.2v7.4a4.5 1.7 0 0 0 9 0V4.2"/>`,
+  cone: `<path d="M8 2.3 3.5 11.6a4.5 1.7 0 0 0 9 0z"/>`,
+  sphere: `<circle cx="8" cy="8" r="5.5"/><ellipse cx="8" cy="8" rx="5.5" ry="2" stroke-opacity="0.6"/>`,
+  torus: `<ellipse cx="8" cy="8" rx="6" ry="3.6"/><ellipse cx="8" cy="7.6" rx="2.4" ry="1.1"/>`,
+  drill: `<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/>`,
+};
+SHAPE_ICONS.spheroid = SHAPE_ICONS.sphere;
+SHAPE_ICONS.ring = SHAPE_ICONS.tube;
 const ICONS = {
-  shape: `<path d="M3 5.5 8 3l5 2.5v5L8 13l-5-2.5z"/><path d="M3 5.5 8 8l5-2.5M8 8v5"/>`,
+  shape: BOX,
   boolean: `<circle cx="6" cy="8" r="3.6"/><circle cx="10" cy="8" r="3.6"/>`,
   transform: `<path d="M8 2v12M2 8h12M8 2 6.3 3.7M8 2l1.7 1.7M14 8l-1.7-1.7M14 8l-1.7 1.7"/>`,
   op: `<path d="M3 13V7a4 4 0 0 1 4-4h6"/><path d="M3 13h10"/>`,
   helper: `<path d="M5 3H4a1 1 0 0 0-1 1v3l-1 1 1 1v3a1 1 0 0 0 1 1h1M11 3h1a1 1 0 0 1 1 1v3l1 1-1 1v3a1 1 0 0 1-1 1h-1"/>`,
 };
-const svgIcon = (cat) => `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${ICONS[cat] ?? ICONS.op}</svg>`;
+export function iconFor(row) {
+  if (row.category === "boolean" && BOOL_ICONS[row.name]) return BOOL_ICONS[row.name];
+  if (row.category === "shape" && SHAPE_ICONS[row.name]) return SHAPE_ICONS[row.name];
+  return ICONS[row.category] ?? ICONS.op;
+}
+const svgIcon = (row) => `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${iconFor(row)}</svg>`;
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 
 // renderTree(el, tree, { selectedFid, stale, onPick(row) })
@@ -198,7 +231,7 @@ export function renderTree(el, tree, { selectedFid = null, stale = false, onPick
       b.title = stale ? "Building… the tree links up when the build lands"
         : r.fids.length ? `Select ${r.name}(…) (${r.fids.length} shape${r.fids.length === 1 ? "" : "s"})`
         : `${r.name}(…) built nothing the map could place`;
-      b.innerHTML = `<span class="dz-ico">${svgIcon(r.category)}</span>`
+      b.innerHTML = `<span class="dz-ico">${svgIcon(r)}</span>`
         + `<span class="dz-name">${esc(r.name)}</span>`
         + (r.userName ? `<span class="dz-id">${esc(r.userName)}</span>` : "")
         + (r.pattern ? `<span class="dz-pat" title="${r.pattern.count} shapes come from this one call">×${r.pattern.count}</span>` : "")

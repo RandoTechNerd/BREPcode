@@ -1145,15 +1145,32 @@ export function findResizeTarget(text, site, axis) {
   if (site.kind === "cube" || site.kind === "cuboid") {
     const vec = /\[([^\]]*)\]/.exec(s);
     if (vec) {
-      const inner = [...vec[1].matchAll(/-?\d+\.?\d*/g)];
-      const target = inner[axis] ?? inner[0];
-      if (!target) return null;
-      return {
-        numStart: site.start + vec.index + 1 + target.index,
-        numEnd: site.start + vec.index + 1 + target.index + target[0].length,
-        value: parseFloat(target[0]),
-        label: ["width (x)", "depth (y)", "height (z)"][axis],
-      };
+      // The vector's own elements, by position. Counting only its NUMBERS
+      // shifted every axis the moment one size was a name: in
+      // cube([w, 40, 8]) the x handle rewrote the 40 and the z handle did too.
+      const label = ["width (x)", "depth (y)", "height (z)"][axis];
+      const parts = [];
+      let from = 0;
+      for (const piece of vec[1].split(",")) { parts.push({ text: piece, at: from }); from += piece.length + 1; }
+      const el = parts.length === 3 ? parts[axis] : parts.length === 1 ? parts[0] : null;
+      if (!el) return null;
+      const base = site.start + vec.index + 1 + el.at;
+      const lit = /^(\s*)(-?\d+\.?\d*)\s*$/.exec(el.text);
+      if (lit) {
+        const at = base + lit[1].length;
+        return { numStart: at, numEnd: at + lit[2].length, value: parseFloat(lit[2]), label };
+      }
+      // a named size declared as a plain number at the top (`const w = 60;`):
+      // that declaration is the number to change, the one its slider edits
+      const name = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(el.text)?.[1];
+      if (name) {
+        const decl = new RegExp(`(^|\\n)\\s*(?:const|let|var)\\s+${name.replace(/\$/g, "\\$")}\\s*=\\s*(-?\\d+\\.?\\d*)\\s*[;\\n]`).exec(text);
+        if (decl) {
+          const at = decl.index + decl[0].lastIndexOf(decl[2]);
+          return { numStart: at, numEnd: at + decl[2].length, value: parseFloat(decl[2]), label: `${["width", "depth", "height"][axis]} (${name})` };
+        }
+      }
+      return null;      // an expression: no handle beats one that edits the wrong number
     }
     return mk(numMatches[0], "size");
   }

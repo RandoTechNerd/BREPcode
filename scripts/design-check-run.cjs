@@ -163,7 +163,8 @@ module.exports = app.whenReady().then(async () => {
       !!dims && [dims[1] !== "60", dims[2] !== "40", dims[3] !== "8"].filter(Boolean).length === 1
       && resized.replace(/-?[\d.]+/g, "#") === before.replace(/-?[\d.]+/g, "#"), resized.split("\n").slice(0, 5).join(" / "));
     // …and inwards shrinks it, with a minus label
-    const grown = /cube\(\[w, ([\d.]+), ([\d.]+)\]/.exec(resized);
+    const sizesOf = (t) => /const w = ([\d.]+);[\s\S]*cube\(\[w, ([\d.]+), ([\d.]+)\]/.exec(t)?.slice(1).map(Number);
+    const grown = sizesOf(resized);
     const fi = (await handles()).filter((h) => h.kind === "face").sort((a, b) => b.x - a.x)[0];
     await mouse("mouseMove", fi.x, fi.y);
     await mouse("mouseDown", fi.x, fi.y);
@@ -172,9 +173,11 @@ module.exports = app.whenReady().then(async () => {
     check("dragging the face in shows a minus label", /^−\d+\.\d mm$/.test(shrink), shrink);
     await mouse("mouseUp", fi.x - 40, fi.y);
     await built(`document.getElementById("code").value !== ${JSON.stringify(resized)}`);
-    const shrunk = /cube\(\[w, ([\d.]+), ([\d.]+)\]/.exec(await run(`document.getElementById("code").value`));
-    check("…and shrinks the shape in the code", !!grown && !!shrunk && (+shrunk[1] < +grown[1] || +shrunk[2] < +grown[2]),
-      `${grown?.slice(1).join("x")} -> ${shrunk?.slice(1).join("x")}`);
+    const shrunk = sizesOf(await run(`document.getElementById("code").value`));
+    check("…and shrinks the shape in the code", !!grown && !!shrunk && shrunk.some((v, i) => v < grown[i]),
+      `${grown?.join("x")} -> ${shrunk?.join("x")}`);
+    // the pull was on the +X face, so it is w (x) that changed, not the 40 (y)
+    check("the +X face dot edits w, the cube's x size", !!grown && grown[0] !== 60 && grown[1] === 40 && grown[2] === 8, grown?.join("x"));
     await setCode(PEGS);
     await built(`brepscript.design().steps.length >= 7 && document.getElementById("code").value.startsWith("const w = 60;")`);
     await wait(600);
