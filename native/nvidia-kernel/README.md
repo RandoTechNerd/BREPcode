@@ -19,11 +19,13 @@ a model on SMLib alone; `--engine nvidia` lets it fall back.
 
 ## What it covers today
 
-Box, cylinder, cone, sphere and full torus primitives, sketches on XY (lines and
-cubic Beziers), extrude, full and partial revolve, union / subtract /
-intersect, fillet and chamfer on named edges, and translate / rotate / scale
-transforms. Anything else is refused and the model builds on the Rust kernel
-instead: part tori, mirrored (negative) scales, transforms about the bounding
+Box, cylinder, cone, sphere and full torus primitives, sketches on XY (lines,
+cubic Beziers, arcs and circles, with hole loops), extrude, full and partial
+revolve, union / subtract / intersect, fillet and chamfer on named edges, and
+translate / rotate / scale transforms. Arcs are SMLib's own exact rational
+quadratics (SmApiCreateArc); a full circle goes in as two half arcs, as the
+Rust kernel builds it, so both name its wall's two faces alike. Anything else
+is refused and the model builds on the Rust kernel instead: part tori, mirrored (negative) scales, transforms about the bounding
 box centre, primitives that carry their own boolean, and exact imports (STEP),
 which SMLib can't read.
 

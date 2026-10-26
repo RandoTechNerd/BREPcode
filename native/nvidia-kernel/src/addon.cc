@@ -167,8 +167,11 @@ Napi::Value Boolean(const Napi::CallbackInfo& info) {
 // ------------------------------------------------------------------ sweeps
 //
 // A profile is a flat array of segments: [0, x0,y0,z0, x1,y1,z1] for a line,
-// [1, then four control points] for a cubic Bezier. Loops are simply listed one
-// after another; the kernel sorts outer boundaries from holes itself.
+// [1, then four control points] for a cubic Bezier, [2, cx,cy,cz, r, start,
+// end] for a counter-clockwise circular arc in a plane of constant z (degrees,
+// within [-360, 360], end > start; an exact rational quadratic). Loops are
+// simply listed one after another; the kernel sorts outer boundaries from
+// holes itself.
 
 void profileCurves(const Napi::CallbackInfo& info, size_t i, SmTArray<SmCurve*>& out) {
   Napi::Array segs = info[i].As<Napi::Array>();
@@ -180,6 +183,10 @@ void profileCurves(const Napi::CallbackInfo& info, size_t i, SmTArray<SmCurve*>&
       SmLine* l = nullptr;
       CHECK(info.Env(), SmApiCreateLineSegment(SmPoint3d(at(1), at(2), at(3)), SmPoint3d(at(4), at(5), at(6)), l), "line segment");
       out.Add(l);
+    } else if (kind == 2) {
+      SmBSplineCurve* c = nullptr;
+      CHECK(info.Env(), SmApiCreateArc(SmPoint3d(at(1), at(2), at(3)), at(4), at(5), at(6), c), "arc");
+      out.Add(c);
     } else {
       SmTArray<SmPoint3d> pts;
       for (int p = 0; p < 4; p++) pts.Add(SmPoint3d(at(1 + 3 * p), at(2 + 3 * p), at(3 + 3 * p)));
