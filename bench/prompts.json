@@ -1,0 +1,52 @@
+[
+  {
+    "id": "articulated-stand",
+    "prompt": "A print-in-place articulated phone stand with three hinged joints and friction detents, so the phone angle can be set without support material.",
+    "stresses": "clearances, moving parts, hinges"
+  },
+  {
+    "id": "planetary-gearbox",
+    "prompt": "A 3:1 planetary gearbox with herringbone gears: a sun, three planets, a ring gear and a carrier, printed as separate parts laid out on the bed.",
+    "stresses": "gear math, meshing, multi-part layout"
+  },
+  {
+    "id": "cable-organizer",
+    "prompt": "A wall-mounted desk cable organizer with 6 snap-fit cable clips, rounded everywhere, with two countersunk screw holes.",
+    "stresses": "snap fits, fillets, hole features"
+  },
+  {
+    "id": "threaded-jar",
+    "prompt": "A threaded jar and lid with an M40 thread, 2 mm pitch and 0.3 mm clearance, with a knurled grip on the lid. Print both parts.",
+    "stresses": "real threads, textures, tolerance"
+  },
+  {
+    "id": "honeycomb-insert",
+    "prompt": "A hex-grid honeycomb drawer insert, 120 by 80 mm and 40 mm tall, with a finger notch in each cell.",
+    "stresses": "patterns, many booleans, kernel speed"
+  },
+  {
+    "id": "pi5-enclosure",
+    "prompt": "An enclosure for a Raspberry Pi 5 with ventilation slots, four M2.5 standoffs, cutouts for the USB-C, two micro HDMI, two USB 3, two USB 2 and Ethernet ports, and a snap-on lid.",
+    "stresses": "real-world dimensions, many cut features"
+  },
+  {
+    "id": "twisted-lampshade",
+    "prompt": "A vase-style lampshade with a twisted lattice pattern and a press-fit ring for an E14 lamp socket.",
+    "stresses": "organic/twisted shapes, mesh vs exact"
+  },
+  {
+    "id": "compliant-gripper",
+    "prompt": "A compliant-mechanism parallel gripper printed flat in one piece, with 0.8 mm thick flexures and a central push rod hole.",
+    "stresses": "thin flexures, printability"
+  },
+  {
+    "id": "gridfinity-bin",
+    "prompt": "A 3 by 2 Gridfinity bin with a label lip, magnet holes in the base and a stacking lip.",
+    "stresses": "standards compliance, catalog vs AI"
+  },
+  {
+    "id": "bayonet-mount",
+    "prompt": "A bicycle phone mount with a quarter-turn bayonet lock for the phone adapter and a slot for a rubber strap around the handlebar.",
+    "stresses": "locking geometry, angles"
+  }
+]
