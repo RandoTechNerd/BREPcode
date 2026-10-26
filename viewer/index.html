@@ -11367,12 +11367,12 @@ ${joined}${SITE_TAIL}`), joined);
         const pos = c.clone();
         pos.setComponent(axis, sign > 0 ? bb.max.getComponent(axis) : bb.min.getComponent(axis));
         // a dot ON the face (handle-dots.js lifts it towards the camera), and
-        // the one way it moves: along the face's normal
+        // the line it moves on, both ways: out grows the shape, in shrinks it
         const out = new THREE.Vector3();
         out.setComponent(axis, sign);
         addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
           h.position.copy(pos);
-        }, { kind: "face", axis, sign, fid }, [out]);
+        }, { kind: "face", axis, sign, fid }, [out, out.clone().negate()]);
       }
       // corner handles — round beads, uniform scale when the shape has scale targets
       // A freeform's balls sit on its REAL corners, carrying the index of the
@@ -12594,6 +12594,7 @@ ${joined}${SITE_TAIL}`), joined);
     // camera is handed back.
     function abandonDrag() {
       if (!drag) return;
+      handleDots.hideLabel();
       const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
       controls.enabled = true;
       clearGhosts();
@@ -13220,6 +13221,7 @@ ${joined}${SITE_TAIL}`), joined);
           liveResizeBuild();
         }
         hint.innerHTML = `<b>${drag.site.kind}</b> ${drag.target.label}: ${drag.target.value} &rarr; <b>${(drag.target.value + drag.amount).toFixed(1)}</b> — release to apply`;
+        handleDots.label(e.clientX, e.clientY, drag.amount);
         return;
       }
 
@@ -13588,6 +13590,7 @@ ${joined}${SITE_TAIL}`), joined);
     renderer.domElement.addEventListener("pointerup", (e) => {
       if (drag) {
         if (dragPointer && e.pointerId !== dragPointer.id) return;   // not the finger that is dragging
+        handleDots.hideLabel();
         dragPointer = null;
         controls.enabled = true;
         const wasDrag = drag.moved;

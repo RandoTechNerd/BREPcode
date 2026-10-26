@@ -9,6 +9,8 @@
 //   a dot (corners ~6 px light, faces ~5 px accent)  what you see
 //   a thin ring (~16 px) while the pointer is on it
 //   thin arrows, after a short dwell, for the directions that handle moves
+//     (a face both ways along its normal: out grows, in shrinks)
+//   a signed distance label by the cursor while it drags
 //
 // The sphere is the handle the viewer has always had (userData.handle, its
 // position is what a drag reads and moves), so every drag path is unchanged;
@@ -60,6 +62,7 @@ export function createHandleDots(THREE) {
   let accent = 0x3b9dff;
 
   let hovered = null, dwellTimer = 0;
+  let labelEl = null;
 
   const kit = {
     hitGeo,
@@ -147,6 +150,28 @@ export function createHandleDots(THREE) {
         h.remove(c);
       }
     },
+
+    // A small live readout beside the cursor while a handle drags, signed so
+    // the direction is obvious: "+3.0 mm" grows, "-2.5 mm" shrinks.
+    label(clientX, clientY, mm) {
+      if (!labelEl) {
+        labelEl = document.createElement("div");
+        labelEl.id = "handle-drag-label";
+        labelEl.setAttribute("aria-live", "polite");
+        labelEl.style.cssText = "position:fixed;z-index:60;pointer-events:none;padding:2px 6px;border-radius:5px;"
+          + "font:600 11.5px/1.3 ui-monospace,'Cascadia Code',Consolas,monospace;color:#fff;"
+          + "background:rgba(10,14,24,0.82);border:1px solid rgba(127,150,200,0.35);white-space:nowrap";
+        document.body.appendChild(labelEl);
+      }
+      const v = Math.round(mm * 10) / 10;
+      labelEl.textContent = `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(1)} mm`;
+      labelEl.style.color = v < 0 ? "#ffb35c" : "#9fd0ff";
+      labelEl.style.left = `${clientX + 14}px`;
+      labelEl.style.top = `${clientY + 12}px`;
+      labelEl.style.display = "block";
+    },
+    hideLabel() { if (labelEl) labelEl.style.display = "none"; },
+    get labelText() { return labelEl && labelEl.style.display !== "none" ? labelEl.textContent : null; },
 
     setColors({ face, corner, ring }) {
       if (face) { mats.face.color.set(face); mats.faceGhost.color.set(face); }

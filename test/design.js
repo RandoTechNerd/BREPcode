@@ -224,11 +224,17 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
   check("sized from view depth every frame", /sizeHandleDots\?\.\(\)/.test(html) && /matrixWorldInverse/.test(dots));
   check("each handle is ONE hit mesh carrying userData.handle (drag paths unchanged)",
     /const h = handleDots\.make\(\{ kind: solidMat === faceHandleMat \? "face" : "corner", dirs \}\);[\s\S]{0,80}h\.userData\.handle = handleData;/.test(html));
-  check("face dots move along their normal; box corners along width and depth",
-    /\{ kind: "face", axis, sign, fid \}, \[out\]\)/.test(html) && /if \(boxy\) return \[new THREE\.Vector3\(Math\.sign\(x - c\.x\)/.test(html));
+  check("face dots move both ways along their normal; box corners along width and depth",
+    /\{ kind: "face", axis, sign, fid \}, \[out, out\.clone\(\)\.negate\(\)\]\)/.test(html) && /if \(boxy\) return \[new THREE\.Vector3\(Math\.sign\(x - c\.x\)/.test(html));
   check("the dwell is a setting (mat.handleDwellMs, default 600)",
     /handleDwellMs: 600/.test(html) && /id="mat-dwell"/.test(html) && /handleDots\.hover\(onHandle\?\.object \?\? null, mat\.handleDwellMs \?\? 600\)/.test(html));
   check("Design mode pre-highlights the face under the pointer", /designUI\.hoverFace\(/.test(html) && /hoverFace\(mesh\) \{ setHoverFace/.test(shell));
+  check("a resize drag shows a signed distance label, gone on release and on abandon",
+    /handleDots\.label\(e\.clientX, e\.clientY, drag\.amount\)/.test(html)
+    && (html.match(/handleDots\.hideLabel\(\)/g) || []).length >= 2 && /v > 0 \? "\+"/.test(dots));
+  const guard = readFileSync(new URL("../scripts/design-check.cjs", import.meta.url), "utf8");
+  check("the Electron check is guarded: failures print and exit, never a main-process dialog",
+    /process\.on\("uncaughtException"/.test(guard) && /require\("\.\/design-check-run\.cjs"\)/.test(guard));
   check("the old model-space beads are gone", !/shapedHandleGeo|SphereGeometry\(1, 28, 20\)/.test(html));
 }
 
