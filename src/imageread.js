@@ -107,12 +107,12 @@ export function normalizeTable(t) {
   const out = { ...t };
   if (t.overall) out.overall = { x: n(t.overall.x), y: n(t.overall.y), z: n(t.overall.z) };
   else warnings.push("no overall size");
-  out.features = (Array.isArray(t.features) ? t.features : []).map((f, i) => {
+  out.features = (Array.isArray(t.features) ? t.features : []).filter((f) => f && typeof f === "object").map((f, i) => {
     const g = { ...f, id: f.id ?? String.fromCharCode(65 + (i % 26)) };
     g.type = String(f.type || "hole").toLowerCase();
-    if (!Array.isArray(g.positions) && Array.isArray(f.position)) g.positions = [f.position];
-    if (Array.isArray(g.positions) && g.positions.length && !Array.isArray(g.positions[0])) g.positions = [g.positions];
-    g.positions = (g.positions || []).filter((p) => Array.isArray(p) && p.length >= 2).map((p) => [n(p[0]) ?? 0, n(p[1]) ?? 0, n(p[2]) ?? 0]);
+    if (!Array.isArray(g.positions)) g.positions = Array.isArray(f.position) ? [f.position] : [];
+    if (g.positions.length && !Array.isArray(g.positions[0])) g.positions = [g.positions];
+    g.positions = g.positions.filter((p) => Array.isArray(p) && p.length >= 2).map((p) => [n(p[0]) ?? 0, n(p[1]) ?? 0, n(p[2]) ?? 0]);
     if (f.dia == null && f.d != null) g.dia = f.d;
     if (typeof g.depth === "string" && /thru|through/i.test(g.depth)) g.depth = "thru";
     if (f.count != null && g.positions.length && +f.count !== g.positions.length) warnings.push(`${g.id}: count ${f.count} but ${g.positions.length} positions`);

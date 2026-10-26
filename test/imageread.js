@@ -60,6 +60,7 @@ console.log("\nthe table\n");
   check("the summary has the overall row and one per feature", rows.length === 3 && rows[0].size === "120 × 80 × 12" && /3× hole/.test(rows[1].what) && /Ø6.6 THRU/.test(rows[1].size));
   check("...and as text, guesses included", /guessed: the slot length/.test(tableText(table)));
 }
+check("odd shapes the AI writes do not crash it", (() => { const r = normalizeTable({ features: [{ positions: { a: [1, 2, 3] } }, "a note", null, { position: [1, 2] }] }); return r.table.features.length === 2 && r.table.features[1].positions[0][2] === 0; })());
 check("no table, no crash", normalizeTable(null).table === null && tableRows(null).length === 0);
 
 console.log("\nthe picture\n");

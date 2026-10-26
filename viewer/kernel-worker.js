@@ -17,6 +17,7 @@
 import { PartHistory } from "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
 import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
+import { stepFromHandles } from "../src/stepwrite.js";
 
 // The split engine (src/engine.js): the Rust kernel for exact parts, manifold
 // for meshes, this file's JS kernel when either refuses. Both wasm modules are
@@ -410,6 +411,18 @@ self.onmessage = async ({ data, ports }) => {
       });
       if (!res?.data) throw new Error("STEP exporter returned no data.");
       self.postMessage({ id, ok: true, text: res.data });
+      return;
+    }
+    // The exact model as the Rust kernel's own STEP (true planes and
+    // cylinders), for the chat's look-compare blueprint. Only a build that
+    // stayed on the exact lane on the wasm Rust kernel has handles to write.
+    if (op === "exactStep") {
+      const b = builds.get(data.key || "model");
+      const out = b?.split;
+      if (!out || out.lane !== "exact" || !rustModule || out.solids.some((s) => !s.exact || s.handle == null)) {
+        throw new Error("no exact Rust-kernel build to write");
+      }
+      self.postMessage({ id, ok: true, text: stepFromHandles(rustModule, out.solids.map((s) => s.handle), data.name || "model") });
       return;
     }
     if (op === "stl2step") {

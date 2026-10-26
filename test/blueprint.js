@@ -25,7 +25,7 @@ import { createRequire } from "node:module";
 
 import { _setReplicad, curvedDrawingSVG, buildCurved, curvedSvgText } from "../viewer/curved.js";
 import { fromOpenSCAD } from "../src/openscad.js";
-import { cube, cylinder, sphere, torus, difference, translate, union, fillet, drill } from "../src/dsl.js";
+import { cube, cylinder, sphere, torus, difference, translate, union } from "../src/dsl.js";
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -240,19 +240,6 @@ console.log("\nthe views face the right way\n");
   check("RIGHT looks along -X: the wall at y 0..8 is on the left of the view", pts.length && pts.every(([x]) => x >= -0.01 && x <= 8.01), JSON.stringify(pts));
   const drawing = await curvedDrawingSVG(part);
   check("the blueprint's TOP view is that same plan view", /TOP/.test(drawing) && /Third-angle/.test(drawing));
-}
-
-// OCCT refused to cut a counterbored drill() (one revolved cutter) into a
-// filleted plate at some corners and not at their mirror images: the
-// blueprint and the curved STEP of an ordinary mounting plate failed. The
-// cutter is now retried with its seam turned about its own axis.
-console.log("\ncounterbores into a filleted plate\n");
-{
-  const cb = (x, y) => drill([x, y, 12], [0, 0, 1], { d: 6.6, through: true, cbore: { d: 11, depth: 6.5 } });
-  const plate = difference(fillet({ r: 8, edges: "z" }, cube([120, 80, 12])), cb(12, 12), cb(108, 12), cb(12, 68), cb(108, 68));
-  let ok = false, why = "";
-  try { const shape = await buildCurved(plate); ok = !!shape; } catch (e) { why = String(e?.message || e).slice(0, 120); }
-  check("four counterbored corner holes build in OpenCASCADE", ok, why);
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

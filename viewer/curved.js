@@ -303,12 +303,6 @@ export async function buildCurved(root) {
     if (n?.kind === "op" && n.operation === "UNION") return n.children.map((c) => [c, m]);
     return null;
   };
-  // the same revolve() (through transforms) turned `deg` about its own axis
-  const seamTurned = (n, deg) => {
-    if (n?.kind === "xform" && !stretchedShapes.get(n)) { const c = seamTurned(n.child, deg); return c && { ...n, child: c }; }
-    if (n?.kind === "revolve" && (n.angle ?? 360) >= 360) return { kind: "xform", matrix: new Matrix4().makeRotationZ((deg * Math.PI) / 180), child: n };
-    return null;
-  };
   const build = (n, matrix) => {
     if (n.kind === "xform") {
       // a stretched subtree was baked to a mesh in the pre-pass — its own
@@ -325,20 +319,11 @@ export async function buildCurved(root) {
         if (n.operation !== "SUBTRACT") { acc = n.operation === "INTERSECT" ? acc.intersect(tool) : acc.fuse(tool); continue; }
         try { acc = acc.cut(tool); }
         catch (e) {
-          // OCCT sometimes refuses a cut that is fine geometrically. Measured:
-          // a counterbored drill() (one revolved cutter) into a filleted plate
-          // failed at one corner and not at the mirror-image one, which took
-          // the blueprint and the curved STEP down with it. A solid of
-          // revolution turned about its own axis is the same solid with its
-          // seam somewhere else, and that cut goes through; a fused tool is
-          // cut one piece at a time.
-          let done = false;
-          for (const deg of seamTurned(child, 0) ? [37, 90, 151, 211] : []) {
-            try { acc = acc.cut(build(seamTurned(child, deg), matrix)); done = true; break; } catch { /* next angle */ }
-          }
-          const pieces = done ? null : unionPieces(child);
-          if (pieces) for (const [p, m] of pieces) acc = acc.cut(build(p, new Matrix4().multiplyMatrices(matrix, m)));
-          else if (!done) throw e;
+          // OCCT sometimes refuses to cut a fused tool whose pieces share a
+          // face; cutting the pieces one at a time is the same solid.
+          const pieces = unionPieces(child);
+          if (!pieces) throw e;
+          for (const [p, m] of pieces) acc = acc.cut(build(p, new Matrix4().multiplyMatrices(matrix, m)));
         }
       }
       return acc;

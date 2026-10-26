@@ -1937,7 +1937,7 @@ return difference(cube([60, 40, 8]),
   check("...caps the extra candidates (0 turns them off) and keeps the best-checking one",
     /brepcode-image-candidates/.test(V) && /Kept the candidate that agrees best/.test(V));
   check("...and sends the app's own blueprint back for the look-compare",
-    /curvedDrawingSVG\(lastShape, \{ title: "as built"/.test(V) && /IR\.lookPrompt\(/.test(V));
+    /workerCall\(\{ op: "exactStep"/.test(V) && /curvedDrawingSVG\(shape \? null : lastShape, \{ title: "as built"/.test(V) && /IR\.lookPrompt\(/.test(V));
   check("its follow-ups do not reset the fix budget like a new request",
     /text !== RETRY_TEXT && text !== EXACT_TEXT && !irInternal\(text\)\) \{/.test(V));
 }

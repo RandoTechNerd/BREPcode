@@ -209,7 +209,7 @@ function consensus(c, all) {
   const m = JSON.parse(readFileSync(c.measure, "utf8"));
   const others = all.filter((o) => o !== c && o.ok && o.table);
   if (!others.length) return null;
-  const s = others.map((o) => { const t = normalizeTable(parseLooseJSON(o.table)).table; return t ? diffTable(t, m).score : 0; });
+  const s = others.map((o) => { try { const t = normalizeTable(parseLooseJSON(o.table)).table; return t ? diffTable(t, m).score : 0; } catch { return 0; } });
   return s.reduce((a, b) => a + b, 0) / s.length;
 }
 

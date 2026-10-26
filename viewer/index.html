@@ -22727,14 +22727,22 @@ let SIMPLIFY_TARGET = 10000;
       return card;
     }
 
-    // The app's own blueprint of the model, as a PNG for the AI.
+    // The app's own blueprint of the model, as a PNG for the AI. Drawn from
+    // the Rust kernel's exact STEP of the model as built when there is one
+    // (what the benchmark does too); otherwise from OpenCASCADE's rebuild of
+    // the code, the Blueprint button's route.
     async function irBlueprintB64() {
       if (!lastShape) return null;
       const curved = await getCurved();
-      await curved.loadReplicad();
+      const r = await curved.loadReplicad();
       const bb = new THREE.Box3().setFromObject(modelGroup);
       const dims = bb.isEmpty() ? null : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
-      const svg = await curved.curvedDrawingSVG(lastShape, { title: "as built", size: dims });
+      let shape = null;
+      try {
+        const st = await workerCall({ op: "exactStep", key: "model", name: "as built" });
+        if (st?.text) shape = await r.importSTEP(new Blob([st.text], { type: "model/step" }));
+      } catch (e) { console.info("[chat] look-compare: no exact STEP, drawing from the code:", e?.message || e); }
+      const svg = await curved.curvedDrawingSVG(shape ? null : lastShape, { title: "as built", size: dims, shape: shape || undefined });
       const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
       try {
         const im = await loadImg(url);
