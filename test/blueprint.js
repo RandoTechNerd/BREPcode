@@ -223,5 +223,73 @@ console.log("\nthe dimensions say the part's real size\n");
   check("...and which projection it is", /Third-angle/.test(svg));
 }
 
+console.log("\nthe layout is a clean grid: no text on text or on geometry\n");
+{
+  // CADGenBench sample 121, an octagonal flange 278.6 x 278.6 x 65, came out
+  // with a postage-stamp isometric whose label sat on its own dimensions, and a
+  // RIGHT view whose name and numbers were stacked on each other. The sheet now
+  // says where it put everything (<metadata id="brepcode-layout">), so these
+  // check the boxes rather than trusting the picture.
+  const layoutOf = (svg) => JSON.parse(/<metadata id="brepcode-layout">([^<]*)<\/metadata>/.exec(svg)[1]);
+  const hit = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  const inside = (b, o, pad) => b[0] >= o[0] + pad && b[1] >= o[1] + pad && b[2] <= o[2] - pad && b[3] <= o[3] - pad;
+  const R8 = 278.6 / 2 / Math.cos(Math.PI / 8);
+  const oct = Array.from({ length: 8 }, (_, i) => {
+    const a = (i + 0.5) * Math.PI / 4;
+    return `[${(R8 * Math.cos(a)).toFixed(3)},${(R8 * Math.sin(a)).toFixed(3)}]`;
+  }).join(",");
+  const SHAPES = [
+    ["an octagonal flange (sample 121)", fromOpenSCAD(`difference() {
+      union() { linear_extrude(height=30) polygon([${oct}]); cylinder(r=80, h=65, $fn=96); }
+      translate([0,0,-1]) cylinder(r=50, h=70, $fn=96);
+      for (i=[0:7]) rotate([0,0,i*45]) translate([110,0,-1]) cylinder(r=9, h=40, $fn=48);
+    }`), [278.6, 278.6, 65]],
+    ["a flat plate", cube([200, 120, 2]), [200, 120, 2]],
+    ["a tall jar", difference(cylinder({ r: 40, h: 185, $fn: 64 }),
+      translate([0, 0, 6], cylinder({ r: 35, h: 200, $fn: 64 }))), [80, 80, 185]],
+    ["a cube", cube([40, 40, 40]), [40, 40, 40]],
+    ["a long needle", cylinder({ r: 1.5, h: 120, $fn: 24 }), [3, 3, 120]],
+    ["a wide flat strip", cube([300, 20, 3]), [300, 20, 3]],
+  ];
+  for (const [name, shape, size] of SHAPES) {
+    const svg = await curvedDrawingSVG(shape, { size, title: name });
+    const L = layoutOf(svg);
+    const texts = L.texts;
+    const clash = [];
+    for (let i = 0; i < texts.length; i++) {
+      for (let j = i + 1; j < texts.length; j++) {
+        if (hit(texts[i].box, texts[j].box)) clash.push(`"${texts[i].str}" on "${texts[j].str}"`);
+      }
+    }
+    check(`${name}: no text overlaps other text`, !clash.length, clash.join(", "));
+    const onGeom = [];
+    for (const t of texts) {
+      for (const [v, box] of Object.entries(L.views)) if (hit(t.box, box)) onGeom.push(`"${t.str}" on ${v}`);
+      for (const d of L.dimLines) if (d.owner !== t.owner && hit(t.box, d.box)) onGeom.push(`"${t.str}" on ${d.owner}`);
+    }
+    check(`${name}: no text overlaps a view or another dimension`, !onGeom.length, onGeom.join(", "));
+    // ...and no dimension's own lines run across a view either
+    const lineOnGeom = L.dimLines.flatMap((d) => Object.entries(L.views)
+      .filter(([, box]) => hit(d.box, box)).map(([v]) => `${d.owner} on ${v}`));
+    check(`${name}: no dimension line crosses a view`, !lineOnGeom.length, lineOnGeom.join(", "));
+    const out = [...texts.map((t) => [t.str, t.box]), ...Object.entries(L.views), ...L.dimLines.map((d) => [d.owner, d.box])]
+      .filter(([, b]) => !inside(b, L.border, 8) || hit(b, L.titleBlock)).map(([n]) => n);
+    check(`${name}: everything sits inside the border with padding, clear of the title block`,
+      !out.length, out.join(", "));
+    for (const v of ["TOP", "FRONT", "ISOMETRIC"]) {
+      check(`${name}: has a ${v} view with its label`, !!L.views[v] && texts.some((t) => t.owner === `${v}-label`));
+    }
+    check(`${name}: the isometric carries no dimensions`, !L.dimLines.some((d) => d.owner.startsWith("ISOMETRIC")));
+    const iv = L.views.ISOMETRIC, ic = L.isoCell;
+    const fill = Math.max((iv[2] - iv[0]) / (ic[2] - ic[0]), (iv[3] - iv[1]) / (ic[3] - ic[1]));
+    check(`${name}: the isometric fills its cell`, fill >= 0.6, `${(fill * 100).toFixed(0)}%`);
+    check(`${name}: ...at its own scale, not the orthographic one`,
+      L.isoScale !== L.scale && svg.includes(`ISOMETRIC (SCALE`));
+    for (const n of size.map((v) => (Math.round(v * 10) / 10).toFixed(1))) {
+      check(`${name}: ${n} is dimensioned`, svg.includes(`>${n}<`), `dropped: ${L.droppedDims.join(", ")}`);
+    }
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -83,8 +83,8 @@ the error back, for up to 3 attempts.
   (`"union"`, `"intersect"`).
 - **replicad's named views:** `"top"` looks *up* from below. The real plan
   view is `"bottom"`, and the third-angle right view is `"left"`. The app's
-  blueprint (`viewer/curved.js`) uses `"top"`, so its TOP view is actually a
-  bottom view.
+  blueprint (`viewer/curved.js`) uses the same views and the same
+  [100,-100,100] isometric as these input drawings.
 - **`rotate([a, b, c])` applies Z first, then Y, then X** on every kernel
   (three.js Euler order), the reverse of OpenSCAD. Gussets written
   OpenSCAD-style land sideways.

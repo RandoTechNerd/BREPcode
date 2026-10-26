@@ -531,10 +531,20 @@ ${pathsOf(hid)}
 </svg>`;
 }
 
-// A full engineering drawing / blueprint: three orthographic views (front, top,
-// right) laid out in third-angle projection with a border and a title block —
-// visible edges solid, hidden edges dashed. Views share scale and align by their
-// common dimensions (front↔top share width, front↔right share height).
+// A full engineering drawing / blueprint: TOP, FRONT and RIGHT hidden-line
+// views in third-angle projection at one shared scale, an isometric in its own
+// cell at its own scale, overall dimensions and a title block. Visible edges
+// solid, hidden edges dashed.
+//
+// The sheet is read by people and, in the image-to-model loop, by the AI
+// comparing it against an input drawing, so the layout is a fixed grid and
+// every piece of text is checked against every other piece and against the
+// geometry before it is drawn (see "COLLISION PASS").
+//
+//            col A                 col B
+//   row 1    TOP                   ISOMETRIC (own scale)
+//   row 2    FRONT                 RIGHT
+//            title block (own row, right-aligned)
 export async function curvedDrawingSVG(root, opts = {}) {
   const r = await loadReplicad();
   const shape = await buildCurved(root);
@@ -560,117 +570,15 @@ export async function curvedDrawingSVG(root, opts = {}) {
     const [x, y, w, h] = (vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 10 10").split(/\s+/).map(Number);
     return { x, y, w: w || 10, h: h || 10, vis: pathsOf(vis), hid: pathsOf(hid) };
   };
-  const front = project("front"), top = project("top"), right = project("right");
-  // an isometric pictorial view from the [1,1,1] corner for the spare corner
-  const isoCam = new r.ProjectionCamera([100, 100, 100]);
+  // replicad's named views, measured (bench/cadgen/README.md): "top" looks UP
+  // from below, so the plan view is "bottom"; the third-angle right view (seen
+  // from +X) is "left". Sheet mapping: TOP (x, -y), FRONT (x, -z), RIGHT (y, -z),
+  // the same as the CADGenBench input drawings the AI compares this against.
+  const top = project("bottom"), front = project("front"), right = project("left");
+  // the isometric from the front-right corner, as in the bench inputs
+  const isoCam = new r.ProjectionCamera([100, -100, 100]);
   isoCam.lookAt([0, 0, 0]);
   const iso = project(isoCam);
-
-  // one scale for all three, sized so the sheet is ~1000 units wide
-  const bodyW = front.w + Math.max(right.w, 1) + 40;   // front + gap + right (in model units)
-  const bodyH = front.h + Math.max(top.h, 1) + 40;
-  const S = 900 / Math.max(bodyW, bodyH * 1.4);
-  const stroke = 1.1 / S;                               // constant on-paper weight
-
-  const M = 60;                                         // sheet margin
-  const G = 55;                                         // fixed paper gap between views
-  // Every view reserves a band under it for its name plus a horizontal
-  // dimension, and a band beside it for the vertical one. Laying these out as
-  // named constants (rather than nudging each view) is what keeps the sheet
-  // aligned when the part's proportions change.
-  const LBL = 56;                                       // view label + dimension band
-  const DIMPAD = 48;                                    // side band for vertical dimensions
-  const fW = front.w * S, fH = front.h * S;
-  const tW = top.w * S, tH = top.h * S, rW = right.w * S, rH = right.h * S;
-  // third-angle: TOP above FRONT (shared width), RIGHT to the right of FRONT (shared height)
-  const LEFT = M + DIMPAD;
-  const topX = LEFT, topY = M;
-  const frontX = LEFT, frontY = topY + tH + LBL + G;
-  const rightX = LEFT + Math.max(fW, tW) + G, rightY = frontY;
-
-  let sheetW = Math.max(rightX + rW + DIMPAD, frontX + fW, topX + tW) + M;
-  const titleH = 90;
-  let sheetH = frontY + fH + LBL + 20 + titleH + M / 2;
-
-  // the isometric drops into the spare corner: right of TOP, above the RIGHT view
-  const isoBoxX = rightX, isoBoxY = topY;
-  const isoBoxW = sheetW - M - isoBoxX;
-  const isoBoxH = frontY - topY - G;
-  const isoS = 0.9 * Math.min(isoBoxW / iso.w, isoBoxH / iso.h);
-  const isoPX = isoBoxX + (isoBoxW - iso.w * isoS) / 2;
-  const isoPY = isoBoxY + (isoBoxH - iso.h * isoS) / 2;
-
-  // WHERE THE INK ACTUALLY LANDS.
-  //
-  // The sheet used to be sized from the three orthographic views alone, and
-  // then everything else was drawn wherever it fell. Three things fall outside:
-  // the isometric's dimension lines (drawn in iso space, offset perpendicular,
-  // so they can point anywhere), a vertical dimension beside a view that sits
-  // near an edge, and the fixed-width title block on a sheet narrower than it
-  // is. Measured: a Ø240x4 disc put its iso dimension 35 units past the right
-  // edge, and a Ø10x200 rod hung the entire title block 58 units off the left.
-  //
-  // So nothing guesses any more. Every placement reports the box it occupies,
-  // the sheet is sized from the union of them, and the drawing is shifted so
-  // the whole thing sits inside its border. Text is estimated at 0.62em per
-  // character, which is right for a monospace face and errs generous.
-  const ink = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-  const note = (x, y) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    if (x < ink.x0) ink.x0 = x;
-    if (y < ink.y0) ink.y0 = y;
-    if (x > ink.x1) ink.x1 = x;
-    if (y > ink.y1) ink.y1 = y;
-  };
-  const noteBox = (x, y, w, h) => { note(x, y); note(x + w, y + h); };
-  // anchor: -1 start, 0 middle, 1 end
-  const noteText = (x, y, str, size, anchor = -1) => {
-    const w = String(str).length * size * 0.62;
-    const left = anchor === 0 ? x - w / 2 : anchor === 1 ? x - w : x;
-    noteBox(left, y - size, w, size * 1.35);
-  };
-
-  // place a view's own-coordinate paths at a sheet position, at scale `sc`
-  const view = (p, px, py, label, sc = S) => {
-    noteBox(px, py, p.w * sc, p.h * sc);
-    noteText(px, py + p.h * sc + 22, label, 15);
-    const sw = 1.1 / sc;                                 // constant on-paper weight
-    const t = `translate(${px} ${py}) scale(${sc}) translate(${-p.x} ${-p.y})`;
-    return `<g transform="${t}">
-    <g fill="none" stroke="#eaf3ff" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${p.vis}</g>
-    <g fill="none" stroke="#7fb0e0" stroke-width="${sw * 0.7}" stroke-dasharray="${sw * 4} ${sw * 3}">${p.hid}</g>
-  </g>
-  <text x="${px}" y="${py + p.h * sc + 22}" fill="#bcd8f5" font-family="monospace" font-size="15">${label}</text>`;
-  };
-
-  // Dimensions, in real model units. `sc` converts model units to paper units,
-  // so the numbers are the part's actual size regardless of sheet scale.
-  const mm = (v) => (Math.round(v * 10) / 10).toFixed(1);
-  const DIM_G = `stroke="#8fb8e6" stroke-width="1" fill="#dbe9fb" font-family="monospace" font-size="12"`;
-  const dimH = (px, py, w, value) => (noteBox(px, py - 7, w, 12),
-    noteText(px + w / 2, py - 7, mm(value), 12, 0), `
-  <g ${DIM_G}>
-    <line x1="${px}" y1="${py - 7}" x2="${px}" y2="${py + 5}"/>
-    <line x1="${px + w}" y1="${py - 7}" x2="${px + w}" y2="${py + 5}"/>
-    <line x1="${px}" y1="${py}" x2="${px + w}" y2="${py}"/>
-    <path d="M${px} ${py} l6 -3 v6 z" stroke="none"/>
-    <path d="M${px + w} ${py} l-6 -3 v6 z" stroke="none"/>
-    <text x="${px + w / 2}" y="${py - 7}" text-anchor="middle" stroke="none">${mm(value)}</text>
-  </g>`);
-  const dimV = (px, py, h, value) => (noteBox(px - 5, py, 12, h),
-    // rotated -90, so the text's LENGTH runs up the page and its height runs
-    // across it — the box is the other way round from a horizontal one.
-    noteBox(px - 9 - 12, py + h / 2 - String(mm(value)).length * 12 * 0.31, 14,
-      String(mm(value)).length * 12 * 0.62), `
-  <g ${DIM_G}>
-    <line x1="${px - 5}" y1="${py}" x2="${px + 7}" y2="${py}"/>
-    <line x1="${px - 5}" y1="${py + h}" x2="${px + 7}" y2="${py + h}"/>
-    <line x1="${px}" y1="${py}" x2="${px}" y2="${py + h}"/>
-    <path d="M${px} ${py} l-3 6 h6 z" stroke="none"/>
-    <path d="M${px} ${py + h} l-3 -6 h6 z" stroke="none"/>
-    <text x="${px - 9}" y="${py + h / 2}" text-anchor="middle" stroke="none"
-          transform="rotate(-90 ${px - 9} ${py + h / 2})">${mm(value)}</text>
-  </g>`);
 
   // Sizes come from the SOLID, not from the projection's viewBox — replicad pads
   // each projection by a unit of drawing margin, so the viewBox reads 2mm over
@@ -693,156 +601,234 @@ export async function curvedDrawingSVG(root, opts = {}) {
     bmax = mid.map((c, i) => c + opts.size[i] / 2);
   }
   const sizeX = bmax[0] - bmin[0], sizeY = bmax[1] - bmin[1], sizeZ = bmax[2] - bmin[2];
-  // p: the projection, len: its true model-unit length along that axis
-  const span = (p, axis, px, len) => {
-    const box = axis === "w" ? p.w : p.h;
-    return { at: px + ((box - len) / 2) * S, size: len * S };
+
+  // ---- scale and grid ----------------------------------------------------
+  // One scale for the three orthographic views, sized so their body is about
+  // 820 x 620 on paper. The isometric does NOT share it: it gets a cell of its
+  // own and is scaled to fill that cell, its scale printed under it.
+  const S = Math.min(820 / Math.max(front.w + right.w, 1), 620 / Math.max(top.h + front.h, 1));
+  const tW = top.w * S, tH = top.h * S, fW = front.w * S, fH = front.h * S;
+  const rW = right.w * S, rH = right.h * S;
+
+  const M = 30;          // sheet edge to border
+  const PAD = 28;        // border to drawing
+  const G = 64;          // gap between grid columns
+  const MINC = 28;       // a cell is never thinner than this, however flat the part
+  const ISO_MIN = 280;   // the isometric cell is never smaller than this
+  const LBL = 15, DIMF = 12;
+  const tw = (s, size) => String(s).length * size * 0.62;   // monospace, errs generous
+  const mm = (v) => (Math.round(v * 10) / 10).toFixed(1);
+  const scaleText = (sc) => (sc >= 1 ? sc.toFixed(2) : "1:" + (1 / sc).toFixed(1));
+
+  // A RIGHT view thinner than a few pixels is a line: both its extents are
+  // already dimensioned on TOP and FRONT, so it adds nothing and is left out,
+  // and the isometric takes the whole right-hand column instead.
+  const showRight = Math.min(rW, rH) >= 4;
+
+  // Left band for the vertical dimensions. A dimension too short to hold its
+  // number along it prints the number level, beside it, so the band widens.
+  const vdimShort = (h, v) => h < tw(mm(v), DIMF) + 14;
+  const leftBand = (h, v) => 26 + (vdimShort(h, v) ? 10 + tw(mm(v), DIMF) : 18);
+  const colAx = Math.max(leftBand(sizeY * S, sizeY), leftBand(sizeZ * S, sizeZ));
+  const colAW = Math.max(tW, fW, MINC);
+  const colBx = colAx + colAW + G;
+  const isoCellW = Math.max(showRight ? rW : 0, ISO_MIN, 0.6 * colAW);
+  const colBW = Math.max(showRight ? rW : 0, isoCellW);
+
+  // row 1: TOP sits on the bottom of the row, close to FRONT, as projected
+  const row1H = Math.max(tH, MINC, showRight ? ISO_MIN : 0);
+  const row1Lbl = row1H + 26;                         // label baseline under row 1
+  const row2Y = row1Lbl + 40;
+  const row2H = Math.max(fH, showRight ? rH : 0, MINC);
+  const row2Lbl = row2Y + row2H + 56;                 // under FRONT's width dimension
+
+  const topX = colAx, topY = row1H - tH;
+  const frontX = colAx, frontY = row2Y;
+  const rightX = colBx, rightY = row2Y;
+  const isoCell = showRight
+    ? { x: colBx, y: 0, w: colBW, h: row1H }
+    : { x: colBx, y: 0, w: colBW, h: row2Y + row2H };
+  const isoS = 0.94 * Math.min(isoCell.w / iso.w, isoCell.h / iso.h);
+  const isoPX = isoCell.x + (isoCell.w - iso.w * isoS) / 2;
+  const isoPY = isoCell.y + (isoCell.h - iso.h * isoS) / 2;
+
+  // ---- what goes on the sheet ---------------------------------------------
+  const views = [
+    { name: "TOP", p: top, x: topX, y: topY, sc: S },
+    { name: "FRONT", p: front, x: frontX, y: frontY, sc: S },
+    ...(showRight ? [{ name: "RIGHT", p: right, x: rightX, y: rightY, sc: S }] : []),
+    { name: "ISOMETRIC", p: iso, x: isoPX, y: isoPY, sc: isoS },
+  ].map((v) => ({ ...v, box: [v.x, v.y, v.x + v.p.w * v.sc, v.y + v.p.h * v.sc] }));
+
+  const labelY = (v) => v.name === "FRONT" || v.name === "RIGHT" ? row2Lbl
+    : v.name === "ISOMETRIC" ? (showRight ? row1Lbl : row2Lbl) : row1Lbl;
+  const labels = views.map((v) => ({
+    owner: v.name, size: LBL, anchor: "middle", fill: "#bcd8f5",
+    str: v.name === "ISOMETRIC" ? `ISOMETRIC (SCALE ${scaleText(isoS)})` : v.name,
+    x: v.name === "ISOMETRIC" ? isoCell.x + isoCell.w / 2 : (v.box[0] + v.box[2]) / 2,
+    y: labelY(v),
+  }));
+
+  // Overall dimensions, each axis once, in real model units, outside the view:
+  // X under FRONT, Z left of FRONT, Y left of TOP. The isometric carries none.
+  // `span` trims replicad's padding so the line covers the silhouette exactly.
+  const span = (box, len, at) => ({ at: at + ((box - len) / 2) * S, size: len * S });
+  const dims = [];
+  const dimH = (owner, x, y, w, value) => {
+    const str = mm(value);
+    dims.push({ owner: `${owner}-dim`, kind: "h", x, y, w, short: w < tw(str, DIMF) + 14,
+      text: { str, size: DIMF, x: x + w / 2, y: y - 7, anchor: "middle" } });
   };
-  const hDim = (p, px, py, len, view) => {
-    const { at, size } = span(p, "w", px, len);
-    return dimH(at, py, size, len);
+  const dimV = (owner, x, y, h, value) => {
+    const str = mm(value), short = vdimShort(h, value);
+    dims.push({ owner: `${owner}-dim`, kind: "v", x, y, h, short,
+      text: short ? { str, size: DIMF, x: x - 10, y: y + h / 2 + 4, anchor: "end" }
+        : { str, size: DIMF, x: x - 9, y: y + h / 2, anchor: "middle", rot: true } });
   };
-  const vDim = (p, px, py, len) => {
-    const { at, size } = span(p, "h", py, len);
-    return dimV(px, at, size, len);
+  { const s = span(front.w, sizeX, frontX); dimH("FRONT", s.at, frontY + fH + 26, s.size, sizeX); }
+  { const s = span(front.h, sizeZ, frontY); dimV("FRONT", frontX - 26, s.at, s.size, sizeZ); }
+  { const s = span(top.h, sizeY, topY); dimV("TOP", topX - 26, s.at, s.size, sizeY); }
+  const dimBox = (d) => {
+    const e = d.short ? 12 : 0;
+    return d.kind === "h" ? [d.x - e, d.y - 7, d.x + d.w + e, d.y + 5]
+      : [d.x - 5, d.y - e, d.x + 7, d.y + d.h + e];
   };
-  // ---- isometric dimensions -------------------------------------------
-  // Dimensions on a pictorial view have to run ALONG the projected axes, not
-  // square to the page, or they read as belonging to nothing. The basis below
-  // was measured out of replicad's own [100,100,100] camera rather than assumed:
-  // project a marker at the origin and at 40mm along each axis, and the offsets
-  // give each axis's screen direction. It is a true isometric (every axis
-  // foreshortened by sqrt(2/3) = 0.8165, at the classic ±30°) but with X and Y
-  // mirrored from the usual textbook layout, which is exactly the sort of thing
-  // guessing gets wrong.
-  const ISO_X = [-0.70711, 0.40825];
-  const ISO_Y = [0.70711, 0.40825];
-  const ISO_Z = [0, -0.81650];
-  // ...and the projector pads its viewBox by ~1 unit a side, so the shape's own
-  // projected origin is not the viewBox origin.
-  const isoProject = ([x, y, z]) => [
-    x * ISO_X[0] + y * ISO_Y[0] + z * ISO_Z[0],
-    x * ISO_X[1] + y * ISO_Y[1] + z * ISO_Z[1],
+
+  // ---- COLLISION PASS -----------------------------------------------------
+  // Every text gets a box (monospace estimate, rotated text the other way
+  // round) and is placed only where it overlaps no other text and no geometry:
+  // the views' outlines and every dimension's own lines. Labels go first and
+  // are nudged if they must be; a dimension whose number cannot be placed
+  // clear is dropped whole rather than printed over something.
+  const textBox = (t, dx = 0, dy = 0) => {
+    const w = tw(t.str, t.size), x = t.x + dx, y = t.y + dy;
+    if (t.rot) return [x - t.size, y - w / 2, x + t.size * 0.3, y + w / 2];
+    const left = t.anchor === "middle" ? x - w / 2 : t.anchor === "end" ? x - w : x;
+    return [left, y - t.size, left + w, y + t.size * 0.3];
+  };
+  const hit = (a, b, pad = 3) => a[0] < b[2] + pad && b[0] < a[2] + pad && a[1] < b[3] + pad && b[1] < a[3] + pad;
+  const obstacles = [
+    ...views.map((v) => ({ owner: v.name, box: v.box })),
+    ...dims.map((d) => ({ owner: d.owner, box: dimBox(d) })),
   ];
-  const isoSheet = (p3) => {
-    const [px, py] = isoProject(p3);
-    return [isoPX + (px - iso.x) * isoS, isoPY + (py - iso.y) * isoS];
+  const placed = [];                                   // { box, str, owner }
+  const place = (t, owner, tries) => {
+    for (const [dx, dy] of tries) {
+      const b = textBox(t, dx, dy);
+      if (placed.some((p) => hit(p.box, b))) continue;
+      if (obstacles.some((o) => o.owner !== owner && hit(o.box, b))) continue;
+      t.x += dx; t.y += dy;
+      placed.push({ box: b, str: t.str, owner });
+      return true;
+    }
+    return false;
   };
+  for (const l of labels) {
+    if (!place(l, l.owner + "-label", [[0, 0], [0, 14], [0, 28], [-40, 0], [40, 0], [0, 42]])) {
+      placed.push({ box: textBox(l), str: l.str, owner: l.owner + "-label" });   // never silently lose a view name
+    }
+  }
+  const dropped = [];
+  const keptDims = dims.filter((d) => {
+    const t = d.text, w = tw(t.str, t.size);
+    const tries = d.kind === "h"
+      ? [[0, 0], [0, 26], [-(d.w / 2 + w / 2 + 16), 7], [d.w / 2 + w / 2 + 16, 7]]
+      : d.short ? [[0, 0], [0, -14], [0, 14]]
+        : [[0, 0], [0, -(d.h / 2 + w / 2 + 16)], [0, d.h / 2 + w / 2 + 16]];
+    if (place(t, d.owner, tries)) return true;
+    dropped.push(t.str);
+    return false;
+  });
 
-  const centre3 = [(bmin[0] + bmax[0]) / 2, (bmin[1] + bmax[1]) / 2, (bmin[2] + bmax[2]) / 2];
-  const centre2 = isoSheet(centre3);
-
-  // One dimension along an edge of the bounding box: projected, then pushed
-  // clear of the shape along the edge's own perpendicular (outward is decided
-  // by which side of it the model's centre falls on, so it works for any
-  // proportions rather than relying on hand-picked offsets).
-  const isoDim = (from3, to3, value, gap = 22) => {
-    const a = isoSheet(from3), b = isoSheet(to3);
-    let dx = b[0] - a[0], dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy);
-    if (len < 1) return "";
-    dx /= len; dy /= len;
-    let nx = -dy, ny = dx;                       // perpendicular
-    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    if ((mid[0] + nx - centre2[0]) ** 2 + (mid[1] + ny - centre2[1]) ** 2
-      < (mid[0] - centre2[0]) ** 2 + (mid[1] - centre2[1]) ** 2) { nx = -nx; ny = -ny; }
-    const A = [a[0] + nx * gap, a[1] + ny * gap];
-    const B = [b[0] + nx * gap, b[1] + ny * gap];
-    // text sits just off the line, and is flipped when it would read upside down
-    let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
-    let flip = 1;
-    if (deg > 90 || deg < -90) { deg += 180; flip = -1; }
-    const tx = (A[0] + B[0]) / 2 + nx * 9 * flip;
-    const ty = (A[1] + B[1]) / 2 + ny * 9 * flip;
-    // These run along the projected axes, so they point in six different
-    // directions depending on the part — which is exactly why they were the
-    // ones falling off the sheet. Both ends, both witness lines and the text.
-    note(a[0] + nx * 6, a[1] + ny * 6); note(b[0] + nx * 6, b[1] + ny * 6);
-    note(A[0], A[1]); note(B[0], B[1]);
-    noteText(tx, ty, mm(value), 12, 0);
-    // the rotated text sweeps a disc of its own half-length about its anchor
-    { const rr = String(mm(value)).length * 12 * 0.34;
-      note(tx - rr, ty - rr); note(tx + rr, ty + rr); }
-    return `
-  <g ${DIM_G}>
-    <line x1="${a[0] + nx * 6}" y1="${a[1] + ny * 6}" x2="${A[0] + nx * 5}" y2="${A[1] + ny * 5}"/>
-    <line x1="${b[0] + nx * 6}" y1="${b[1] + ny * 6}" x2="${B[0] + nx * 5}" y2="${B[1] + ny * 5}"/>
-    <line x1="${A[0]}" y1="${A[1]}" x2="${B[0]}" y2="${B[1]}"/>
-    <path d="M${A[0]} ${A[1]} l${(dx * 6 - ny * 3).toFixed(2)} ${(dy * 6 + nx * 3).toFixed(2)} l${(ny * 6).toFixed(2)} ${(-nx * 6).toFixed(2)} z" stroke="none"/>
-    <path d="M${B[0]} ${B[1]} l${(-dx * 6 - ny * 3).toFixed(2)} ${(-dy * 6 + nx * 3).toFixed(2)} l${(ny * 6).toFixed(2)} ${(-nx * 6).toFixed(2)} z" stroke="none"/>
-    <text x="${tx}" y="${ty}" text-anchor="middle" stroke="none"
-          transform="rotate(${deg.toFixed(1)} ${tx} ${ty})">${mm(value)}</text>
+  // ---- render ---------------------------------------------------------------
+  const viewSVG = (v) => {
+    const sw = 1.1 / v.sc;                               // constant on-paper weight
+    const t = `translate(${v.x} ${v.y}) scale(${v.sc}) translate(${-v.p.x} ${-v.p.y})`;
+    return `<g transform="${t}">
+    <g fill="none" stroke="#eaf3ff" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${v.p.vis}</g>
+    <g fill="none" stroke="#7fb0e0" stroke-width="${sw * 0.7}" stroke-dasharray="${sw * 4} ${sw * 3}">${v.p.hid}</g>
+  </g>`;
+  };
+  const textSVG = (t) => `<text x="${t.x.toFixed(1)}" y="${t.y.toFixed(1)}"${t.anchor !== "start" ? ` text-anchor="${t.anchor}"` : ""}${
+    t.rot ? ` transform="rotate(-90 ${t.x.toFixed(1)} ${t.y.toFixed(1)})"` : ""}${t.fill ? ` fill="${t.fill}"` : ""} stroke="none">${t.str}</text>`;
+  const DIM_G = `stroke="#8fb8e6" stroke-width="1" fill="#dbe9fb" font-family="monospace" font-size="${DIMF}"`;
+  // arrows point outward from inside the extension lines, or, on a dimension
+  // too short for that, inward from outside with the line run past both ends
+  const dimSVG = (d) => {
+    const k = d.short ? -1 : 1, e = d.short ? 12 : 0;
+    if (d.kind === "h") {
+      const { x, y, w } = d;
+      return `<g ${DIM_G}>
+    <line x1="${x}" y1="${y - 7}" x2="${x}" y2="${y + 5}"/>
+    <line x1="${x + w}" y1="${y - 7}" x2="${x + w}" y2="${y + 5}"/>
+    <line x1="${x - e}" y1="${y}" x2="${x + w + e}" y2="${y}"/>
+    <path d="M${x} ${y} l${6 * k} -3 v6 z" stroke="none"/>
+    <path d="M${x + w} ${y} l${-6 * k} -3 v6 z" stroke="none"/>
+    ${textSVG(d.text)}
+  </g>`;
+    }
+    const { x, y, h } = d;
+    return `<g ${DIM_G}>
+    <line x1="${x - 5}" y1="${y}" x2="${x + 7}" y2="${y}"/>
+    <line x1="${x - 5}" y1="${y + h}" x2="${x + 7}" y2="${y + h}"/>
+    <line x1="${x}" y1="${y - e}" x2="${x}" y2="${y + h + e}"/>
+    <path d="M${x} ${y} l-3 ${6 * k} h6 z" stroke="none"/>
+    <path d="M${x} ${y + h} l-3 ${-6 * k} h6 z" stroke="none"/>
+    ${textSVG(d.text)}
   </g>`;
   };
 
-  // Dimension the three silhouette edges that meet at the lowest corner, which
-  // is where a reader expects them on an isometric.
-  const [x0, y0, z0] = bmin, [x1, y1, z1] = bmax;
-  const isoDims = [
-    isoDim([x1, y0, z0], [x1, y1, z0], sizeY),   // bottom-left edge, runs along Y
-    isoDim([x1, y1, z0], [x0, y1, z0], sizeX),   // bottom-right edge, runs along X
-    isoDim([x0, y1, z0], [x0, y1, z1], sizeZ),   // the vertical edge on the right
-  ].join("\n");
+  // ---- the sheet is sized from everything that was drawn --------------------
+  const boxes = [...views.map((v) => v.box), ...keptDims.map(dimBox), ...placed.map((p) => p.box), [
+    isoCell.x, isoCell.y, isoCell.x + isoCell.w, isoCell.y + isoCell.h]];
+  const ink = boxes.reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]),
+    Math.max(a[2], b[2]), Math.max(a[3], b[3])], [Infinity, Infinity, -Infinity, -Infinity]);
+  const shiftX = M + PAD - ink[0], shiftY = M + PAD - ink[1];
+  const inkW = ink[2] - ink[0], inkH = ink[3] - ink[1];
 
-  // Rendered here rather than in the template: calling view() is what reports
-  // each one's box to the tracker, and the sheet cannot be sized until it has.
-  const viewsSVG = [
-    view(front, frontX, frontY, "FRONT"),
-    view(top, topX, topY, "TOP"),
-    view(right, rightX, rightY, "RIGHT"),
-    view(iso, isoPX, isoPY, "ISOMETRIC", isoS),
-  ].join("\n");
-
-  const dimensions = [
-    hDim(top, topX, topY + tH + 44, sizeX),      vDim(top, topX - 24, topY, sizeY),
-    hDim(front, frontX, frontY + fH + 44, sizeX), vDim(front, frontX - 24, frontY, sizeZ),
-    hDim(right, rightX, rightY + rH + 44, sizeY), vDim(right, rightX + rW + 24, rightY, sizeZ),
-    isoDims,
-  ].join("\n");
-
-  // THE SHEET IS SIZED LAST, from everything that was actually drawn.
-  //
-  // `dimensions` above is a string, but building it ran every dim helper, so
-  // `ink` now holds the true extent of the drawing — including the isometric's
-  // dimensions, which is what used to fall off the edge. The page expands to
-  // fit the drawing rather than the drawing being trusted to fit the page.
   const name = (opts.title || "BREPcode model").replace(/[<&>]/g, "");
-  const tbW = 360;
-  // A sheet narrower than the title block cannot hold it — that is how a
-  // Ø10x200 rod ended up with its title block starting at x = -58.
-  const inkW = Math.max(ink.x1 - ink.x0, 1), inkH = Math.max(ink.y1 - ink.y0, 1);
-  const wantW = Math.max(inkW + M * 2, tbW + M * 2, sheetW);
-  const wantH = Math.max(inkH + M * 2 + titleH, sheetH);
-  // Shift so the leftmost/topmost ink sits one margin inside the border.
-  const shiftX = M - ink.x0, shiftY = M - ink.y0;
-  sheetW = wantW; sheetH = wantH;
-  const tbR = sheetW - M / 2, tbB = sheetH - M / 2;      // inner border edges
+  const tbW = 360, titleH = 90;
+  const sheetW = Math.max(inkW, tbW) + 2 * (M + PAD);
+  const sheetH = M + PAD + inkH + PAD + titleH + M;
+  const tbR = sheetW - M, tbB = sheetH - M;              // inner border edges
   const tbx = tbR - tbW, tb = tbB - titleH;
   const titleBlock = `
   <g font-family="monospace" fill="#dbe9fb">
     <rect x="${tbx}" y="${tb}" width="${tbW}" height="${titleH}" fill="none" stroke="#8fb8e6" stroke-width="1.5"/>
     <line x1="${tbx}" y1="${tb + 34}" x2="${tbR}" y2="${tb + 34}" stroke="#8fb8e6" stroke-width="1"/>
     <line x1="${tbR - 140}" y1="${tb + 34}" x2="${tbR - 140}" y2="${tbB}" stroke="#8fb8e6" stroke-width="1"/>
-    <text x="${tbx + 12}" y="${tb + 23}" font-size="18" fill="#ffffff">${name}</text>
+    <text x="${tbx + 12}" y="${tb + 23}" font-size="18" fill="#ffffff">${name.length > 30 ? name.slice(0, 29) + "…" : name}</text>
     <text x="${tbx + 12}" y="${tb + 56}" font-size="12">Units: mm</text>
     <text x="${tbx + 12}" y="${tb + 78}" font-size="12">Third-angle projection</text>
-    <text x="${tbR - 128}" y="${tb + 56}" font-size="12">Scale ${S >= 1 ? S.toFixed(2) : "1:" + (1 / S).toFixed(1)}</text>
+    <text x="${tbR - 128}" y="${tb + 56}" font-size="12">Scale ${scaleText(S)}</text>
     <text x="${tbR - 128}" y="${tb + 78}" font-size="12">BREPcode</text>
   </g>`;
 
-  // The drawing is shifted as one group so nothing has to be re-placed: the
-  // views, their dimensions and the isometric all keep the relationships they
-  // were laid out with, and the whole assembly lands inside the border. The
-  // title block is drawn OUTSIDE that group because it is anchored to the
-  // sheet's own corner, not to the drawing.
+  // Where everything landed, in sheet coordinates, for tests and for any tool
+  // that wants to read the drawing back rather than guess at it.
+  const sh = (b) => [b[0] + shiftX, b[1] + shiftY, b[2] + shiftX, b[3] + shiftY].map((n) => +n.toFixed(1));
+  const layout = {
+    scale: +S.toFixed(4), isoScale: +isoS.toFixed(4),
+    border: [M, M, sheetW - M, sheetH - M], titleBlock: [tbx, tb, tbR, tbB],
+    views: Object.fromEntries(views.map((v) => [v.name, sh(v.box)])),
+    isoCell: sh([isoCell.x, isoCell.y, isoCell.x + isoCell.w, isoCell.y + isoCell.h]),
+    texts: placed.map((p) => ({ str: p.str, owner: p.owner, box: sh(p.box) })),
+    dimLines: keptDims.map((d) => ({ owner: d.owner, box: sh(dimBox(d)) })),
+    omitted: showRight ? [] : ["RIGHT"], droppedDims: dropped,
+  };
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sheetW.toFixed(0)} ${sheetH.toFixed(0)}" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" data-ink="${
-    [ink.x0 + shiftX, ink.y0 + shiftY, ink.x1 + shiftX, ink.y1 + shiftY].map((n) => n.toFixed(1)).join(" ")}">
+    sh(ink).map((n) => n.toFixed(1)).join(" ")}">
+  <metadata id="brepcode-layout">${JSON.stringify(layout).replace(/[<&>]/g, "")}</metadata>
   <rect x="0" y="0" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" fill="#0d2c52"/>
-  <rect x="${M / 2}" y="${M / 2}" width="${sheetW - M}" height="${sheetH - M}" fill="none" stroke="#8fb8e6" stroke-width="2"/>
+  <rect x="${M}" y="${M}" width="${sheetW - 2 * M}" height="${sheetH - 2 * M}" fill="none" stroke="#8fb8e6" stroke-width="2"/>
   <g transform="translate(${shiftX.toFixed(2)} ${shiftY.toFixed(2)})">
-  ${viewsSVG}
-  ${dimensions}
+  ${views.map(viewSVG).join("\n  ")}
+  <g font-family="monospace" font-size="${LBL}">
+  ${labels.map(textSVG).join("\n  ")}
+  </g>
+  ${keptDims.map(dimSVG).join("\n  ")}
   </g>
   ${titleBlock}
 </svg>`;

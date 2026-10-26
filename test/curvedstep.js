@@ -195,30 +195,24 @@ console.log("\nprofiles with duplicate points still export\n");
   check("and is a real Error, not a heap pointer", threw.length > 0);
 }
 
-// The blueprint carries dimensions on all four views. The isometric ones have to
-// run ALONG the projected axes, and that basis was measured out of replicad's
-// camera rather than assumed — so if replicad ever changes its projection, these
-// angles are what catches it.
+// The blueprint dimensions each axis exactly once, outside the orthographic
+// views: X under FRONT, Z beside FRONT, Y beside TOP. The isometric carries
+// none (its dimensions used to run across its own outline and under its label).
 console.log("\nblueprint dimensions\n");
 {
   const { curvedDrawingSVG } = await import("../viewer/curved.js");
   const svg = await curvedDrawingSVG(cube([60, 40, 25]), { title: "dims" });
   const groups = svg.match(/<g stroke="#8fb8e6" stroke-width="1"[\s\S]*?<\/g>/g) || [];
-  check("every view is dimensioned", groups.length === 9, `${groups.length} groups`);
+  check("one dimension per axis", groups.length === 3, `${groups.length} groups`);
 
   const values = groups.map((g) => (g.match(/>([\d.]+)<\/text>/) || [])[1]);
-  const has = (v, n) => values.filter((x) => x === v).length === n;
-  check("60 appears on top, front and isometric", has("60.0", 3), values.join(","));
-  check("40 appears on top, right and isometric", has("40.0", 3), values.join(","));
-  check("25 appears on front, right and isometric", has("25.0", 3), values.join(","));
-
+  for (const v of ["60.0", "40.0", "25.0"]) {
+    check(`${v} appears exactly once`, values.filter((x) => x === v).length === 1, values.join(","));
+  }
   const rots = groups
     .map((g) => (g.match(/rotate\((-?[\d.]+)/) || [])[1])
     .filter(Boolean).map(Number);
-  const near = (a, b) => rots.some((r) => Math.abs(r - a) < 1.5) && b;
-  check("an isometric dimension runs up-right at +30", near(30, true), rots.join(","));
-  check("another runs up-left at -30", near(-30, true), rots.join(","));
-  check("and one runs vertically", near(-90, true), rots.join(","));
+  check("the vertical ones read up the page", rots.length === 2 && rots.every((r) => r === -90), rots.join(","));
 
   // nothing may spill outside the drawn border
   const [, W, H] = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/).map(Number);
