@@ -293,13 +293,22 @@ function wrap(nk) {
     const dir = [b[0] - a[0], b[1] - a[1], 0];
     const angle = +(p.angle ?? 360);
     const profile = sk.geoms.filter((g) => g !== axis);
-    // SMLib sweeps a full turn from the open profile, but a part turn only
-    // from the closed one (axis edge included); without it, status 1001
-    const part = Math.abs(angle) < 360;
-    const h = nk.revolve((part ? sk.geoms : profile).map((g) => seg3(g)), a[0], a[1], 0, dir[0], dir[1], 0, angle);
     const len = Math.hypot(dir[0], dir[1]), u = [dir[0] / len, dir[1] / len];
     // which side of the axis the profile lies on, in the sketch plane
     const side = Math.sign(profile.flatMap((g) => g.ps).reduce((t, [x, y]) => t + (x - a[0]) * u[1] - (y - a[1]) * u[0], 0)) || 1;
+    // SMLib sweeps a full turn from the open profile, but a part turn only
+    // from the closed one (axis edge included); without it, status 1001. A
+    // ring's cross-section, clear of the axis, is closed on its own: the axis
+    // line drawn beside it would only be a stray edge.
+    const part = Math.abs(angle) < 360;
+    const key = ([x, y]) => `${x.toFixed(6)},${y.toFixed(6)}`;
+    const ends = new Set(profile.flatMap((g) => [key(g.ps[0]), key(g.ps[g.ps.length - 1])]));
+    const closed = part && ends.has(key(a)) && ends.has(key(b));
+    // SMLib turns about the axis line as it is drawn; the Rust kernel turns
+    // the same way whichever way the axis edge runs (the profile's side of it
+    // decides), so a part turn of a clockwise profile lands where it does there
+    const turn = [-side * u[0], -side * u[1]];
+    const h = nk.revolve((closed ? sk.geoms : profile).map((g) => seg3(g)), a[0], a[1], 0, turn[0], turn[1], 0, angle);
     const faceNames = faceInfo(h).map(({ p: q, n }) => {
       // a part revolve has two flat caps, each a plane through the axis: the
       // start one in the sketch plane on the profile's side, the end one swung
@@ -308,9 +317,12 @@ function wrap(nk) {
         const start = Math.abs(q[2]) < 1e-6 && Math.sign((q[0] - a[0]) * u[1] - (q[1] - a[1]) * u[0]) === side;
         return `${p.id}:L${sk.geoms[0].id}_${start ? "START" : "END"}`;
       }
-      // a point on a wall, swung back into the sketch plane, sits on its curve
-      const r = Math.hypot(q[0] - a[0], q[2]);
-      const g = nearestGeom(profile, [a[0] + Math.sign(q[0] - a[0] || 1) * r, q[1]]);
+      // a point on a wall, swung back into the sketch plane on the profile's
+      // side (a face's sample point can be anywhere round the turn, and the
+      // mirror image of an outer wall lies nearer an inner one), sits on its curve
+      const v = [q[0] - a[0], q[1] - a[1], q[2]], t = v[0] * u[0] + v[1] * u[1];
+      const r = Math.hypot(v[0] - t * u[0], v[1] - t * u[1], v[2]);
+      const g = nearestGeom(profile, [a[0] + t * u[0] + side * r * u[1], a[1] + t * u[1] - side * r * u[0]]);
       return g ? `${p.profile}:${wallOf(g, "RV")}` : `${p.id}:${p.profile}:CAP_END`;
     });
     return own(h, faceNames);

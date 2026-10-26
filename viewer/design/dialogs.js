@@ -85,17 +85,25 @@ export function nearestEdge(edges, point, meshes) {
     const t = L ? Math.max(0, Math.min(1, (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / L)) : 0;
     return Math.hypot(ap[0] - t * ab[0], ap[1] - t * ab[1], ap[2] - t * ab[2]);
   };
+  // the picked face borders every edge; the one across it tells them apart
+  const picked = edges.length > 1 ? edges[0].faces?.find((f) => edges.every((e) => e.faces?.includes(f))) : null;
   for (const e of edges) {
     let d = Infinity;
     if (e.segments?.length) for (const [a, b] of e.segments) d = Math.min(d, segDist(point, a, b));
     else {
-      const other = e.faces?.find((f) => !e.name.startsWith(f + "|") || true) ?? null;
+      // the nearest triangle side of the face across: its sides along the
+      // shared edge lie right where the click is
+      const across = (e.faces || []).filter((f) => f !== picked);
       for (const m of meshes) {
-        if (!e.faces?.includes(m.userData.faceName)) continue;
-        const pa = m.geometry.attributes.position.array;
-        for (let i = 0; i < pa.length; i += 3) d = Math.min(d, Math.hypot(pa[i] - point[0], pa[i + 1] - point[1], pa[i + 2] - point[2]));
+        if (!across.includes(m.userData.faceName)) continue;
+        const pa = m.geometry.attributes.position.array, ix = m.geometry.index?.array;
+        const n = ix ? ix.length : pa.length / 3;
+        const v = (k) => { const i = (ix ? ix[k] : k) * 3; return [pa[i], pa[i + 1], pa[i + 2]]; };
+        for (let t = 0; t + 2 < n; t += 3) {
+          const [a, b, c] = [v(t), v(t + 1), v(t + 2)];
+          d = Math.min(d, segDist(point, a, b), segDist(point, b, c), segDist(point, c, a));
+        }
       }
-      void other;
     }
     if (d < bestD) { bestD = d; best = e; }
   }
@@ -147,6 +155,7 @@ const SPECS = {
       const call = revolveCall(s.face.outline, ax, s.angle);
       if (call.error) return call;
       const body = env.bodyOf(s.face.fid);
+      if (!body) return { error: "That face has no call in the code to add to." };
       if (s.op === "cut") return F.addTool(base, body, call.text);
       if (s.op === "join") return F.addTool(base, body, call.text, "union");
       return F.newBodyText(base, body, call.text);
@@ -278,6 +287,7 @@ const SPECS = {
       if (!s.fid) return { wait: "Select the target body first." };
       if (!s.bodies.length) return { wait: "Click the bodies to combine with it." };
       const target = env.bodyOf(s.fid);
+      if (!target) return { error: "The target body has no call in the code." };
       const tools = s.bodies.map((b) => env.bodyOf(b.fid));
       if (tools.some((t) => !t || (t.start === target.start && t.end === target.end))) return { error: "Pick bodies other than the target." };
       return F.combineText(base, target, tools, s.op);
@@ -423,8 +433,16 @@ export function openDialog(id, ctx) {
   const pickMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.4, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, side: THREE.DoubleSide });
   const lineMat = new THREE.LineBasicMaterial({ color: 0xff5c8a, depthTest: false, transparent: true });
+  // a face's tint borrows the model's own geometry; lines and points are ours
+  const clearPicks = () => {
+    for (const c of [...overlay.children]) {
+      overlay.remove(c);
+      if (c.isLine || c.isLineSegments || c.isPoints) c.geometry.dispose();
+      if (c.isPoints) c.material.dispose();
+    }
+  };
   const drawPicks = () => {
-    for (const c of [...overlay.children]) { overlay.remove(c); if (c.isLine || c.isLineSegments || c.isPoints) c.geometry.dispose(); }
+    clearPicks();
     const faces = [state.face, ...(state.faces || []), state.at].filter(Boolean);
     for (const f of faces) {
       if (!f.mesh?.geometry) continue;
@@ -568,7 +586,7 @@ export function openDialog(id, ctx) {
   box.addEventListener("keydown", (e) => {
     e.stopPropagation();
     if (e.key === "Escape") { e.preventDefault(); cancel(); }
-    else if (e.key === "Enter" && okReady()) { e.preventDefault(); ok(); }
+    else if (e.key === "Enter" && (okReady() || last)) { e.preventDefault(); ok(); }
   });
   const onKey = (e) => { if (e.key === "Escape" && !closed) cancel(); };
   addEventListener("keydown", onKey);
@@ -578,7 +596,9 @@ export function openDialog(id, ctx) {
     clearTimeout(previewT);
     removeEventListener("keydown", onKey);
     box.remove();
-    for (const c of [...overlay.children]) overlay.remove(c);
+    clearPicks();
+    pickMat.dispose();
+    lineMat.dispose();
     scene.remove(overlay);
     ctx.onClose?.();
   }
@@ -589,7 +609,12 @@ export function openDialog(id, ctx) {
     if (host.text() !== base) await host.preview(base);
   }
   async function ok() {
-    if (!okReady()) return;
+    if (closed) return;
+    // a field typed a moment ago has its preview still pending: build what the
+    // fields say now, so OK never keeps the one before
+    const r = spec.write(base, state, env);
+    if (!r.wait && !r.error && r.next !== last?.text) { clearTimeout(previewT); await runPreview(); }
+    if (closed || !okReady()) return;
     const text = last.text;
     close();
     await host.commit(text, { built: host.text() === text });
@@ -691,7 +716,7 @@ function shortReason(r) {
 }
 
 export const DIALOGS = Object.keys(SPECS);
-export const _test = { revolveAxes, revolveCall, changedLine, diffSpan };
+export const _test = { revolveAxes, revolveCall, changedLine, diffSpan, SPECS };
 
 // The range of `next` that differs from `base`: where a dialog's edit went.
 function diffSpan(base, next) {

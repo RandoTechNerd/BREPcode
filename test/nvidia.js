@@ -160,6 +160,58 @@ const near3 = (a, b, tol = 0.02) => a.every((v, k) => Math.abs(v - b[k]) <= tol)
   check(`jump-rope-handles volume ${v.toFixed(0)} ~ 150027`, Math.abs(v - 150027.5) / 150027.5 < 0.005);
 }
 
+// a revolve's faces carry the names the Rust kernel puts on the SAME faces
+// (not just the same set of names): each named face's r / z span about the
+// spin axis and, for a part turn, which way round it lies. A face's sample
+// point on the far side of the axis once named a ring's outer wall after its
+// inner one; a part turn of a clockwise profile or of a ring once swept the
+// other way round.
+{
+  const { PartHistory } = await import("brep-io-kernel");
+  const { runEngine } = await import("../src/engine.js");
+  const { loadRustKernel, loadManifoldNode } = await import("../src/engine-node.js");
+  const kernels = [["rust", await loadRustKernel()], ["nvidia", loadNvidiaKernel()]];
+  const facesOn = async (k, src) => {
+    const ph = new PartHistory();
+    await dsl.compile(shape(src), ph);
+    const out = await runEngine(await ph.toJSON(), { rust: k, manifold: loadManifoldNode });
+    const by = new Map();
+    for (const s of out.solids) for (const f of s.faces) {
+      const P = f.positions, b = [Infinity, -Infinity, Infinity, -Infinity];
+      let X = 0, Y = 0;
+      for (let i = 0; i < P.length; i += 3) {
+        const r = Math.hypot(P[i], P[i + 1]);
+        b[0] = Math.min(b[0], r); b[1] = Math.max(b[1], r); b[2] = Math.min(b[2], P[i + 2]); b[3] = Math.max(b[3], P[i + 2]);
+        X += P[i]; Y += P[i + 1];
+      }
+      by.set(f.name, { b, a: Math.atan2(Y, X) * 180 / PI });
+    }
+    return by;
+  };
+  const REVOLVES = [
+    ["revolved ring cup", 360, "[[4, 0], [10, 0], [10, 20], [8, 20], [8, 2], [4, 2]]"],
+    ["part-turned ring", 120, "[[4, 0], [10, 0], [10, 20], [4, 20]]"],
+    ["part-turned ring, clockwise", 120, "[[4, 20], [10, 20], [10, 0], [4, 0]]"],
+    ["part-turned block, clockwise", 120, "[[0, 20], [10, 20], [10, 0], [0, 0]]"],
+    ["part-turned block", 270, "[[0, 0], [10, 0], [10, 20], [0, 20]]"],
+  ];
+  for (const [label, angle, pts] of REVOLVES) {
+    const src = `return revolve({ angle: ${angle} }, polygon(${pts}));`;
+    let rust, nv;
+    try { [rust, nv] = [await facesOn(kernels[0][1], src), await facesOn(kernels[1][1], src)]; }
+    catch (e) { check(`${label}: builds on both kernels`, false, String(e.message).slice(0, 160)); continue; }
+    const bad = [];
+    for (const [name, r] of rust) {
+      const n = nv.get(name);
+      if (!n) { bad.push(`${name} missing`); continue; }
+      if (r.b.some((v, i) => Math.abs(v - n.b[i]) > 0.3)) bad.push(`${name} spans ${n.b.map((v) => v.toFixed(1))} not ${r.b.map((v) => v.toFixed(1))}`);
+      const da = Math.abs(((r.a - n.a + 540) % 360) - 180);
+      if (angle < 360 && da > 15) bad.push(`${name} at ${n.a.toFixed(0)} deg not ${r.a.toFixed(0)}`);
+    }
+    check(`${label}: every face named as on the Rust kernel`, !bad.length && nv.size === rust.size, bad.join("; ") || `${nv.size} vs ${rust.size} faces`);
+  }
+}
+
 // a model NVIDIA's kernel refuses (a pyramid, for now) still builds, on the
 // Rust kernel, and says why
 {

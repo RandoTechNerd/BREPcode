@@ -480,6 +480,8 @@ export function initDesignShell(host) {
   async function openFeature(id) {
     dialogsMod ??= await import("./design/dialogs.js");
     if (dialog) await dialog.cancel();
+    // one tool at a time: a dialog over an open sketch could not take its picks
+    if (sketcher?.active || sketcher?.choosing) sketcher.cancel();
     const sel = { fid: selectedFid, face: null };
     if (face?.mesh) {
       const fp = dialogsMod.facePick({ object: face.mesh, point: face.point ?? face.mesh.position }, THREE);
