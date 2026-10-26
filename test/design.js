@@ -520,6 +520,11 @@ console.log("\nPhase 2: press-pull\n");
   check("pull the bottom down: height + 3 and moved down 3 (the top stays put)", rb.next === `return translate([0, 0, -3], cube([40, 30, 13]));`, rb.next);
   const rc = F.pressPullText(`return cube([40, 30, 10], { center: true });`, { ...ctx, siteSpan: { start: 7, end: 43 }, centered: true, target: findResizeTarget(`return cube([40, 30, 10], { center: true });`, { kind: "cube", start: 7, end: 43 }, 2) }, 4);
   check("a centred box grows and moves half way", rc.next === `return translate([0, 0, 2], cube([40, 30, 14], { center: true }));`, rc.next);
+  // the size is a const above the call and gains a digit: the translate still wraps the call
+  const named = `const w = 9;\nreturn union(cube([w, 10, 5]), sphere({ r: 2 }));`;
+  const nsite = { kind: "cube", start: named.indexOf("cube"), end: named.indexOf(")", named.indexOf("cube")) + 1 };
+  const rn = F.pressPullText(named, { body: nsite, outline: null, target: findResizeTarget(named, nsite, 0), sign: -1, axis: 0, siteSpan: nsite }, 2);
+  check("a named size above the call: the const changes and the translate wraps the call", rn.next === `const w = 11;\nreturn union(translate([-2, 0, 0], cube([w, 10, 5])), sphere({ r: 2 }));`, rn.next);
   const pocket = rectFace(10, 10, 10, 30, 20);
   const rp = F.pressPullText(`return union(cube([40, 30, 10]), sphere({ r: 1 }));`, { body: { start: 7, end: 50 }, outline: pocket, target: null, toPlane: planeOf(pocket) }, 3);
   check("a face with no size behind it: joined as its outline", rp.how === "join" && /^return union\(union\(cube/.test(rp.next) === false && /linearExtrude\(\{ h: 3, on:/.test(rp.next), rp.next);
@@ -556,6 +561,16 @@ console.log("\nPhase 2: rotate and scale gizmo writes\n");
   s = F.scaleText(s.next, { start: s.start, end: s.end }, 2, [20, 15, 5]);
   check("…and folds by multiplying", s.next === `return scale(3, { about: [20, 15, 5] }, cube([40, 30, 10]));`, s.next);
   await onEveryKernel("scaled ×3 about its centre", s.next, 12000 * 27);
+  // as the gizmo hands it over: shapeSpan of the cube's own call, which grows
+  // out through the rotate / scale already around it
+  const viaShell = (t, fn) => { const c = t.indexOf("cube("); return fn(t, F.shapeSpan(t, { start: c, end: t.indexOf(")", c) + 1 })); };
+  const once = `return union(rotate([0, 0, 30], { about: [5, 5, 5] }, cube([10, 10, 10])), sphere({ r: 2 }));`;
+  const g1 = viaShell(once, (t, sp) => F.rotateText(t, sp, 2, 30, [5, 5, 5]));
+  check("a second gizmo turn folds into the rotate around the shape", g1.how === "fold" && g1.next === `return union(rotate([0, 0, 60], { about: [5, 5, 5] }, cube([10, 10, 10])), sphere({ r: 2 }));`, g1.next);
+  const g2 = viaShell(once, (t, sp) => F.rotateText(t, sp, 0, 10, [5, 5, 5]));
+  check("…a turn about another axis wraps outside it (it turns after)", g2.how === "wrap" && g2.next.startsWith("return union(rotate([10, 0, 0], { about: [5, 5, 5] }, rotate([0, 0, 30]"), g2.next);
+  const g3 = viaShell(`return scale(2, { about: [5, 5, 5] }, cube([10, 10, 10]));`, (t, sp) => F.scaleText(t, sp, 1.5, [5, 5, 5]));
+  check("a second gizmo scale folds by multiplying", g3.how === "fold" && g3.next === `return scale(3, { about: [5, 5, 5] }, cube([10, 10, 10]));`, g3.next);
 }
 
 console.log("\nPhase 2: a face's outline, and the failed step\n");
@@ -605,6 +620,28 @@ console.log("\nPhase 2: wiring\n");
   const gizmo = readFileSync(new URL("../viewer/design-gizmo.js", import.meta.url), "utf8");
   const build_ = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
   const D = await import("../viewer/design/dialogs.js");
+  {
+    // an in-thread build: edges come without segments, by the faces they join.
+    // A click near the top's +X side picks P|PX, near +Y picks P|PY (the top
+    // face borders all four, so only the face across can tell them apart)
+    const quad = (name, q) => ({ userData: { faceName: name }, geometry: { index: { array: [0, 1, 2, 0, 2, 3] }, attributes: { position: { array: q.flat() } } } });
+    const meshes = [
+      quad("PZ", [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]]), quad("PX", [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]]),
+      quad("NX", [[0, 0, 0], [0, 1, 0], [0, 1, 1], [0, 0, 1]]), quad("PY", [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]]),
+      quad("NY", [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]])];
+    const edges = ["NX", "NY", "PX", "PY"].map((f) => ({ name: `${f}|PZ[0]`, faces: [f, "PZ"].sort() }));
+    const picks = [[0.95, 0.5, 1], [0.5, 0.95, 1], [0.05, 0.4, 1], [0.6, 0.05, 1]].map((p) => D.nearestEdge(edges, p, meshes)?.name);
+    check("an edge pick without segments takes the edge nearest the click", picks.join() === "PX|PZ[0],PY|PZ[0],NX|PZ[0],NY|PZ[0]", picks.join());
+  }
+  {
+    // a face or body whose feature has no call in the code: a message, not a TypeError
+    const env = { bodyOf: () => null };
+    const sq = { fid: "X1", outline: { loops: [[[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]]], normal: [0, 0, 1], point: [5, 5, 0] } };
+    let rv, cb;
+    try { rv = D._test.SPECS.revolve.write("return cube(1);", { face: sq, axis: "0", angle: 360, op: "join" }, env); } catch (e) { rv = { threw: String(e) }; }
+    try { cb = D._test.SPECS.combine.write("return cube(1);", { fid: "X1", bodies: [{ fid: "X2" }], op: "union" }, env); } catch (e) { cb = { threw: String(e) }; }
+    check("revolve / combine on a shape with no call: an error message, no throw", !!rv?.error && !rv.threw && !!cb?.error && !cb.threw, JSON.stringify({ rv, cb }));
+  }
   check("ten feature dialogs", ["extrude", "revolve", "hole", "fillet", "chamfer", "shell", "mirror", "linear", "circular", "combine"].every((d) => D.DIALOGS.includes(d)));
   check("the dialogs load lazily (dynamic import on first use)", /await import\("\.\/design\/dialogs\.js"\)/.test(shell) && !/^import .*design\/dialogs/m.test(shell));
   check("…and press-pull too", /await import\("\.\/design\/presspull\.js"\)/.test(shell));
@@ -613,6 +650,16 @@ console.log("\nPhase 2: wiring\n");
   check("fix (a): in Design mode a pick does not open the code card", /const design = !!designUI\?\.isActive\(\);\s*if \(!design\) \{\s*toggleCard\(panel, openBtn, true\);/.test(html));
   check("fix (b): the hint talks dots, not squares and balls", !/drag a <b>square<\/b>|corner ball<\/b>/.test(html) && /double-click<\/b> a dot to type the numbers/.test(html));
   check("fix (c): no plane squares or centre block on the move gizmo", /translate: \["XY", "YZ", "XZ", "XYZ"\]/.test(gizmo));
+  check("Ask about this: re-pinning a spot keeps one pin-tracking loop", /if \(!pinTracking\) \{ pinTracking = true; requestAnimationFrame\(trackPin\); \}/.test(html)
+    && /askPin\.hidden = true; pinTracking = false; return;/.test(html));
+  // macOS and Linux fire contextmenu on the press, before any drag: the menu
+  // must wait for the release there, or every right-drag pan opens it
+  check("right-click menu: a contextmenu during the press waits for the release, and opens only if the pointer stayed put",
+    /if \(rightHeld\) \{ menuOnRelease = true; return; \}/.test(html)
+    && /const still = rightDown && Math\.hypot\(e\.clientX - rightDown\[0\], e\.clientY - rightDown\[1\]\) <= 6;[\s\S]{0,80}if \(still\) openShapeMenuAt\(e\.clientX, e\.clientY\);/.test(html));
+  const sketcherSrc = readFileSync(new URL("../viewer/design/sketcher.js", import.meta.url), "utf8");
+  check("sketch Finish refuses when the code changed while it was open (it would undo that)", /async function finish\(\) \{[\s\S]{0,400}if \(host\.text\(\) !== S\.orig\) \{ setMsg\(/.test(sketcherSrc));
+  check("a feature dialog closes an open sketch first", /if \(dialog\) await dialog\.cancel\(\);\s*\/\/[^\n]*\n\s*if \(sketcher\?\.active \|\| sketcher\?\.choosing\) sketcher\.cancel\(\);/.test(shell));
   check("rotate and scale are gizmo modes", /rotate: "rotate", scale: "scale"/.test(shell));
   check("a failed build reaches Design mode with the kernel's reason", /designUI\?\.buildResult\?\.\(ok, ok \? null : lastBuildFailure\)/.test(html)
     && /reason: String\(e\?\.message \|\| e\), stage: attempt/.test(html));
@@ -707,6 +754,18 @@ console.log("\nPhase 3: the sketcher's model\n");
   const again = SM.readSketch(named, codemap.parseCode(named).calls.find((c) => c.name === "sketch"));
   check("…and reads back with its name and the param's value", again.dims[0].name === "width" && again.dims[0].value === 42);
   check("a name that is taken is refused", !!SM.promoteDim(named, again, 0, "width").error);
+  {
+    // an existing sketch written with names: its plane, a radius and a point
+    // coordinate go back as written; an edited radius goes back as its number
+    const src2 = `const rr = 4, cx = 2;\nconst P = { origin: [0, 0, 5], normal: [0, 0, 1] };\nconst s1 = sketch({ on: P, points: [[cx, 0]], curves: [["circle", 0, rr]] });\nreturn linearExtrude({ h: 3 }, s1);`;
+    const sk2 = SM.readSketch(src2, codemap.parseCode(src2).calls.find((c) => c.name === "sketch"));
+    const out2 = SM.sketchCode(sk2);
+    check("editing a sketch keeps its named plane, radius and point", /on: P,/.test(out2) && /\["circle", 0, rr\]/.test(out2) && /\[\[cx, 0\]\]/.test(out2), out2);
+    sk2.curves[0].r = 6;
+    sk2.points[0][0] = 3;
+    const out3 = SM.sketchCode(sk2);
+    check("…an edited radius or point is written as its new number", /\["circle", 0, 6\]/.test(out3) && /\[\[3, 0\]\]/.test(out3) && /on: P,/.test(out3), out3);
+  }
   // trim and offset
   const t = SM.emptySketch();
   SM.addLine(t, [0, 0], [20, 0], { auto: false });

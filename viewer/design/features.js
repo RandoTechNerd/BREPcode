@@ -177,13 +177,22 @@ export function combineText(text, target, tools, op = "union") {
 
 // ---------------------------------------------------------- rotate, scale
 // rotateText(text, span, axis 0|1|2, deg, about) -> { next, how, start, end }
+// The span as shapeSpan hands it over is the rotate / scale itself when one is
+// already around the shape: its child is what a second turn folds onto.
+function childOf(text, span, name) {
+  const c = callFor(parseCode(text), span);
+  const child = c?.name === name ? c.args[c.args.length - 1] : null;
+  return child ? { ...span, start: child.start, end: child.end } : span;
+}
+
 // Folds into a rotate([…], { about: <same point> }, …) already around the
 // span when that one turns about the same single axis; otherwise wraps.
 const ROT_HEAD = /rotate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*\{\s*about\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*\}\s*,\s*$/;
 export function rotateText(text, span, axis, deg, about) {
   const d = round(deg, 100);
   if (!d) return { next: text, how: "none", start: span.start, end: span.end };
-  const head = text.slice(0, span.start);
+  const child = childOf(text, span, "rotate");
+  const head = text.slice(0, child.start);
   const w = ROT_HEAD.exec(head);
   if (w) {
     const angles = [+w[1], +w[2], +w[3]], at = [+w[4], +w[5], +w[6]];
@@ -193,9 +202,10 @@ export function rotateText(text, span, axis, deg, about) {
       angles[axis] = round(angles[axis] + d, 100);
       const lead = `rotate(${vec(angles, 100)}, { about: ${vec(at, 100)} }, `;
       const start = w.index + lead.length;
-      return { next: head.slice(0, w.index) + lead + text.slice(span.start), how: "fold", start, end: start + span.end - span.start };
+      return { next: head.slice(0, w.index) + lead + text.slice(child.start), how: "fold", start, end: start + child.end - child.start };
     }
   }
+  // anything else turns after what is already there: outside it
   const a = [0, 0, 0];
   a[axis] = d;
   const r = wrapText(text, span, `rotate(${vec(a, 100)}, { about: ${vec(about, 100)} }, `);
@@ -206,12 +216,13 @@ const SCALE_HEAD = /scale\(\s*(-?[\d.]+)\s*,\s*\{\s*about\s*:\s*\[\s*(-?[\d.]+)\
 export function scaleText(text, span, k, about) {
   const f = round(k, 1000);
   if (!(f > 0) || Math.abs(f - 1) < 1e-9) return { next: text, how: "none", start: span.start, end: span.end };
-  const head = text.slice(0, span.start);
+  const inner = childOf(text, span, "scale");
+  const head = text.slice(0, inner.start);
   const w = SCALE_HEAD.exec(head);
   if (w && [+w[2], +w[3], +w[4]].every((v, i) => Math.abs(v - round(about[i], 100)) < 1e-6)) {
     const lead = `scale(${round(+w[1] * f, 1000)}, { about: ${vec([+w[2], +w[3], +w[4]], 100)} }, `;
     const start = w.index + lead.length;
-    return { next: head.slice(0, w.index) + lead + text.slice(span.start), how: "fold", start, end: start + span.end - span.start };
+    return { next: head.slice(0, w.index) + lead + text.slice(inner.start), how: "fold", start, end: start + inner.end - inner.start };
   }
   const lead = `scale(${f}, { about: ${vec(about, 100)} }, `;
   const r = wrapText(text, span, lead);
@@ -400,8 +411,10 @@ export function pressPullText(text, { body, outline, target = null, sign = 1, ax
     // the pulled side); a corner-anchored one grows from its min side
     const comp = centered ? (sign * step) / 2 : sign < 0 ? -step : 0;
     if (comp) {
+      // the number can sit in the call or in a declaration above it (const w = 9)
       const dLen = String(value).length - (target.numEnd - target.numStart);
-      const span = { start: siteSpan.start, end: siteSpan.end + dLen };
+      const at = (i) => (i >= target.numEnd ? i + dLen : i);
+      const span = { start: at(siteSpan.start), end: at(siteSpan.end) };
       const v = [0, 0, 0];
       v[axis] = round(comp, 100);
       const head = next.slice(0, span.start);
