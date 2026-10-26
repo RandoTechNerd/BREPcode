@@ -1,0 +1,19 @@
+{
+  "frame": "origin at the centre of the flange's bottom face, Z up along the bore axis, X right, Y up the sheet in the TOP view",
+  "overall": { "x": 140, "y": 140, "z": 36 },
+  "body": [
+    "flange disc Ø140, z 0..14, with a C2 x 45° chamfer on the top outer edge (radius 70 at z=12, radius 68 at z=14)",
+    "hub cylinder Ø70, z 14..36, coaxial with the flange (built from z=13.5 so it overlaps the disc)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 36]], "axis": "+z", "dia": 40, "depth": "thru", "source": "Ø40 THRU" },
+    { "id": "B", "type": "hole", "count": 6,
+      "positions": [[55, 0, 14], [27.5, 47.63, 14], [-27.5, 47.63, 14], [-55, 0, 14], [-27.5, -47.63, 14], [27.5, -47.63, 14]],
+      "axis": "+z", "dia": 13.5, "depth": "thru", "source": "6X Ø13.5 THRU, 6X EQ SP ON Ø110 PCD" },
+    { "id": "C", "type": "chamfer", "count": 1, "positions": [[70, 0, 14]], "axis": "+z", "dia": 140, "depth": 2, "source": "C2 X 45°" }
+  ],
+  "uncertain": [
+    "the flange thickness of 14 and the hub height of 22 (36 - 14) are read from the stacked 14 / 36 dimensions in the FRONT view",
+    "the hole angular phase (holes on the ±X axis) is taken from the TOP view"
+  ]
+}

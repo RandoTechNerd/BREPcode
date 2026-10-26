@@ -1,0 +1,528 @@
+{
+ "model": "claude-opus-5-5",
+ "samples": 20,
+ "stepOk": 20,
+ "cost": 2.7814400000000004,
+ "logs": [
+  {
+   "id": "p01-plate",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      120,
+      80,
+      12
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 27,
+      "volume": 99350.42486251047,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1315002,
+   "ok": true,
+   "seconds": 31
+  },
+  {
+   "id": "p02-flange",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      140,
+      140,
+      36
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 13,
+      "volume": 242045.3149927646,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1430602,
+   "ok": true,
+   "seconds": 47
+  },
+  {
+   "id": "p03-angle-bracket",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      139,
+      78,
+      80
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 29,
+      "volume": 145339.85264224303,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1569642,
+   "ok": true,
+   "seconds": 53
+  },
+  {
+   "id": "p04-pillow-block",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 26,
+      "volume": 179691.67801958084,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1527682,
+   "ok": true,
+   "seconds": 55
+  },
+  {
+   "id": "p05-cover-plate",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      110,
+      110,
+      8
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 27,
+      "volume": 80500.49567915128,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1264082,
+   "ok": true,
+   "seconds": 38
+  },
+  {
+   "id": "p06-motor-plate",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      70,
+      70,
+      6
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 23,
+      "volume": 25888.83282250624,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.12624819999999998,
+   "ok": true,
+   "seconds": 31
+  },
+  {
+   "id": "p07-bearing-housing",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      100,
+      100,
+      42
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 19,
+      "volume": 186225.12671025703,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.12736419999999998,
+   "ok": true,
+   "seconds": 32
+  },
+  {
+   "id": "p08-channel",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      140,
+      60,
+      45
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 15,
+      "volume": 114488.04636053056,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1283602,
+   "ok": true,
+   "seconds": 33
+  },
+  {
+   "id": "p09-standoff-plate",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      120,
+      90,
+      18
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 30,
+      "volume": 63087.84394421624,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1392842,
+   "ok": true,
+   "seconds": 40
+  },
+  {
+   "id": "p10-clamp-block",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 27,
+      "volume": 91697.42158123445,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.14476819999999999,
+   "ok": true,
+   "seconds": 42
+  },
+  {
+   "id": "p11-adapter-disc",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      120,
+      120,
+      18
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 28,
+      "volume": 126885.40869471966,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1361642,
+   "ok": true,
+   "seconds": 39
+  },
+  {
+   "id": "p12-rib-bracket",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      119,
+      80,
+      90
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 22,
+      "volume": 113686.20898152384,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1448642,
+   "ok": true,
+   "seconds": 41
+  },
+  {
+   "id": "p13-spacer",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      80,
+      80,
+      25
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 12,
+      "volume": 91557.29957010323,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1409562,
+   "ok": true,
+   "seconds": 40
+  },
+  {
+   "id": "p14-stepped-block",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      120,
+      60,
+      45
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 22,
+      "volume": 212028.27290362568,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1276082,
+   "ok": true,
+   "seconds": 34
+  },
+  {
+   "id": "p16-slotted-rail",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 30,
+      "volume": 65278.40125726282,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1343842,
+   "ok": true,
+   "seconds": 40
+  },
+  {
+   "id": "p15-lid",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 34,
+      "volume": 59247.5971719099,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.14166020000000001,
+   "ok": true,
+   "seconds": 44
+  },
+  {
+   "id": "p17-gusset-angle",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      90,
+      70,
+      70
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 16,
+      "volume": 129546.35184610178,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1368042,
+   "ok": true,
+   "seconds": 38
+  },
+  {
+   "id": "p18-fixture-plate",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      160,
+      100,
+      15
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 52,
+      "volume": 224570.08519816695,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1339442,
+   "ok": true,
+   "seconds": 33
+  },
+  {
+   "id": "p20-hub",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 15,
+      "volume": 88447.77464392615,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1453402,
+   "ok": true,
+   "seconds": 42
+  },
+  {
+   "id": "p19-shaft-support",
+   "attempts": [
+    {
+     "attempt": 1,
+     "ok": true,
+     "lane": "exact",
+     "solids": 1,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "validity": {
+      "valid": true,
+      "solids": 1,
+      "faces": 25,
+      "volume": 49961.76021812476,
+      "errors": []
+     }
+    }
+   ],
+   "cost": 0.1629882,
+   "ok": true,
+   "seconds": 44
+  }
+ ]
+}

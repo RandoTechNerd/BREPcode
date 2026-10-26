@@ -1,0 +1,26 @@
+{
+ "id": "p09-standoff-plate",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    120,
+    90,
+    18
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 30,
+    "volume": 63087.84394421624,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1392842,
+ "ok": true,
+ "seconds": 40
+}

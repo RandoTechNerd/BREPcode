@@ -1,0 +1,26 @@
+{
+ "id": "p18-fixture-plate",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    160,
+    100,
+    15
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 52,
+    "volume": 224570.08519816695,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1339442,
+ "ok": true,
+ "seconds": 33
+}

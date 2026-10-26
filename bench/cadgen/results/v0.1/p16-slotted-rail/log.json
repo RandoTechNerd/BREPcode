@@ -1,0 +1,26 @@
+{
+ "id": "p16-slotted-rail",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 30,
+    "volume": 65273.36104334002,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1466194,
+ "ok": true,
+ "seconds": 48
+}

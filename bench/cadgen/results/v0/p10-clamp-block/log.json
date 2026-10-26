@@ -1,0 +1,26 @@
+{
+ "id": "p10-clamp-block",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 27,
+    "volume": 91697.42158123445,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.14476819999999999,
+ "ok": true,
+ "seconds": 42
+}

@@ -1,0 +1,22 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 200 length, Y across the 30 width, Z up the 12 thickness",
+  "overall": { "x": 200, "y": 30, "z": 12 },
+  "body": [
+    "rectangular bar 200 x 30 x 12, from [0,0,0] to [200,30,12]",
+    "C1 chamfer on all four top edges: the two long edges along X and the two end edges along Y"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 4,
+      "positions": [[30, 15, 12], [80, 15, 12], [130, 15, 12], [170, 15, 12]],
+      "axis": "+z", "dia": 6.6, "depth": "thru",
+      "source": "4X SLOT 6.6 WIDE 14 CTR-CTR THRU, centres at 30/80/130/170 from the left end, y 15; long axis along X" },
+    { "id": "B", "type": "tapped", "count": 2,
+      "positions": [[0, 15, 6], [200, 15, 6]],
+      "axis": "-x / +x", "dia": 4.2, "depth": 15,
+      "source": "2X Ø4.2 ↧ 15, one in each end face, at 15 from the side and 6 from the bottom" }
+  ],
+  "uncertain": [
+    "Slot length taken as 14 between arc centres along X, which gives 20.6 overall per slot",
+    "Each end hole is assumed to sit on the centreline of its own end face"
+  ]
+}

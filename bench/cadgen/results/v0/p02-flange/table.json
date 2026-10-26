@@ -1,0 +1,22 @@
+{
+  "frame": "origin at the centre of the flange bottom face, Z up along the bore axis, X right, Y up the sheet in TOP view",
+  "overall": { "x": 140, "y": 140, "z": 36 },
+  "body": [
+    "flange disc Ø140, z 0..14, C2x45° chamfer on the top outer edge",
+    "hub Ø70, z 14..36 (modelled from z 13.5 for overlap), coaxial with the disc"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 36]], "axis": "+z",
+      "dia": 40, "depth": "thru", "source": "Ø40 THRU" },
+    { "id": "B", "type": "hole", "count": 6,
+      "positions": [[55, 0, 14], [27.5, 47.63, 14], [-27.5, 47.63, 14], [-55, 0, 14], [-27.5, -47.63, 14], [27.5, -47.63, 14]],
+      "axis": "+z", "dia": 13.5, "depth": "thru", "source": "6X Ø13.5 THRU, 6X EQ SP ON Ø110 PCD" },
+    { "id": "C", "type": "chamfer", "count": 1, "positions": [[70, 0, 14]], "axis": "+z",
+      "dia": 140, "depth": 2, "source": "C2 X 45°" }
+  ],
+  "uncertain": [
+    "Flange thickness 14 and total height 36 read from the stacked dimensions, so the hub is 22 tall",
+    "Bolt holes taken as lying on the X axis at 0° and 180°, as drawn in TOP view",
+    "Chamfer taken as on the top outer edge only, as the FRONT view shows"
+  ]
+}

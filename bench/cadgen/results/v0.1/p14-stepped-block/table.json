@@ -1,0 +1,17 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 120 length, Y along the 60 depth, Z up",
+  "overall": { "x": 120, "y": 60, "z": 45 },
+  "body": [
+    "low step: x 0..40, y 0..60, z 0..15",
+    "mid step: x 40..80, y 0..60, z 0..30",
+    "high step: x 80..120, y 0..60, z 0..45"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[20, 15, 15], [20, 45, 15]], "axis": "+z", "dia": 6.8, "depth": 12, "source": "2X Ø6.8 ↧ 12" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[60, 15, 30], [60, 45, 30]], "axis": "+z", "dia": 6.8, "depth": 15, "source": "2X Ø6.8 ↧ 15" },
+    { "id": "C", "type": "hole", "count": 2, "positions": [[100, 15, 45], [100, 45, 45]], "axis": "+z", "dia": 8, "depth": 20, "source": "2X Ø8 ↧ 20" }
+  ],
+  "uncertain": [
+    "Upper hole row at y=45 is read from the 45 dimension measured from the front edge."
+  ]
+}

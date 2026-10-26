@@ -1,0 +1,26 @@
+{
+ "id": "p20-hub",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 15,
+    "volume": 88447.77464392615,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1453402,
+ "ok": true,
+ "seconds": 42
+}

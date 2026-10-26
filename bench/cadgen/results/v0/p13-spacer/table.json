@@ -1,0 +1,32 @@
+{
+  "frame": "origin at the centre of the bottom face, Z up along the ring axis, X right (toward the radial hole), Y up the sheet in the TOP view",
+  "overall": { "x": 80, "y": 80, "z": 25 },
+  "body": [
+    "ring: OD 80, height 25, from z=0 to z=25",
+    "outer chamfer C1.5 on the top and bottom outer edges: cones r 38.5->40 over z 0-1.5 and r 40->38.5 over z 23.5-25",
+    "central bore Ø40 THRU along Z"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 3,
+      "positions": [[0, 30, 25], [-25.981, -15, 25], [25.981, -15, 25]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "csk": { "d": 10, "angle": 90 },
+      "source": "3X Ø5.5 THRU, ⌵ Ø10 X 90°, 3X EQ SP ON Ø60 PCD" },
+    { "id": "B", "type": "hole", "count": 1,
+      "positions": [[40, 0, 12.5]],
+      "axis": "+x", "dia": 5, "depth": "thru (OD wall into bore)",
+      "source": "Ø5 THRU, 40 / 12.5 in RIGHT view" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[0, 0, 25]],
+      "axis": "+z", "dia": 40, "depth": "thru",
+      "source": "BORE Ø40 THRU" },
+    { "id": "D", "type": "chamfer", "count": 2,
+      "positions": [[40, 0, 25], [40, 0, 0]],
+      "axis": "+z", "dia": 80, "depth": 1.5,
+      "source": "C1.5 TOP & BOTTOM" }
+  ],
+  "uncertain": [
+    "Chamfer taken as applying to the outer edges only: the top view shows a double circle at the OD only.",
+    "Radial hole taken to go through one wall only, on the +X side, from the OD into the bore, as the hidden lines show.",
+    "The top countersunk hole is placed at +Y (90°); the other two are at 210° and 330°."
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 100 width (left to right in FRONT), Y = depth from the outer (front) face of the upright plate (y=0) back to the end of the base (y=70), Z up from the bottom of the base",
+  "overall": { "x": 100, "y": 70, "z": 80 },
+  "body": [
+    "base plate: 100 x 70 x 10, x 0..100, y 0..70, z 0..10",
+    "upright plate: 100 x 10 x 80, x 0..100, y 0..10, z 0..80",
+    "2X gusset, 8 thick: right triangle in the YZ plane with corners (y8,z8), (y39,z8), (y8,z49) (31 x 41 legs, sunk 2 mm into both plates); x 10..18 and x 82..90"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 2,
+      "positions": [[30, 0, 55], [70, 0, 55]],
+      "axis": "-y", "dia": 6.6, "depth": "thru", "csk": { "d": 13, "angle": 90 },
+      "source": "2X Ø6.6 THRU, ⌵ Ø13 X 90°" },
+    { "id": "B", "type": "slot", "count": 2,
+      "positions": [[30, 45, 10], [70, 45, 10]],
+      "axis": "+z", "dia": 9, "depth": "thru",
+      "source": "2X SLOT 9 WIDE 16 CTR-CTR THRU, running along Y with end centres at y 37 and 53" }
+  ],
+  "uncertain": [
+    "Gusset placement: I assumed the 31 x 41 legs start 2 mm inside the plates (at y=8, z=8). This matches the visible hypotenuse ends measured at about y 39 and z 49.",
+    "The countersinks are on the outer face (y=0), per the hidden lines in TOP and RIGHT."
+  ]
+}

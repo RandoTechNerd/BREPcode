@@ -1,0 +1,26 @@
+{
+ "id": "p04-pillow-block",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 22,
+    "volume": 150674.09992893835,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1403234,
+ "ok": true,
+ "seconds": 36
+}

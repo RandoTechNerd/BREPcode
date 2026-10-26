@@ -1,0 +1,26 @@
+{
+ "id": "p03-angle-bracket",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    100,
+    70,
+    80
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 28,
+    "volume": 142886.4406152927,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.24822,
+ "ok": true,
+ "seconds": 54
+}

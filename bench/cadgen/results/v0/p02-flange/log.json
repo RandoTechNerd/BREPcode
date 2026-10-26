@@ -1,0 +1,26 @@
+{
+ "id": "p02-flange",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    140,
+    140,
+    36
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 13,
+    "volume": 242045.3149927646,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1430602,
+ "ok": true,
+ "seconds": 47
+}

@@ -1,0 +1,19 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 50 width (right), Y along the 40 depth (front face y=0 to back), Z up along the 60 height",
+  "overall": { "x": 50, "y": 40, "z": 60 },
+  "body": [
+    "rectangular block 50 x 40 x 60 at [0,0,0]",
+    "Ø25 bore through along X, axis at y=20, z=30",
+    "saw slot 3 wide centred on x=25 (x 23.5..26.5), full Y depth, from top z=60 down to z=35 (into the bore)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 20, 30]], "axis": "-x", "dia": 25, "depth": "thru", "source": "Ø25 THRU (right view, 20 / 30)" },
+    { "id": "B", "type": "cbore", "count": 1, "positions": [[25, 0, 50]], "axis": "-y", "dia": 5.5, "depth": "thru", "cbore": { "d": 10, "depth": 6 }, "source": "Ø5.5 THRU, ⌴ Ø10 ↧ 6 (front view, 25 / 50)" },
+    { "id": "C", "type": "hole", "count": 2, "positions": [[12, 20, 0], [38, 20, 0]], "axis": "-z", "dia": 5, "depth": 12, "source": "2X Ø5 ↧ 12 (top view 12 / 38 / 20, dashed from bottom)" },
+    { "id": "D", "type": "slot", "count": 1, "positions": [[25, 20, 60]], "axis": "+z", "dia": 3, "depth": 25, "source": "SLOT 3 WIDE TO BORE" }
+  ],
+  "uncertain": [
+    "slot bottom at z=35 was scaled from the front view; no dimension is given for it",
+    "the Ø5 holes are taken as entering from the bottom face, read from the dashed lines in the front view"
+  ]
+}

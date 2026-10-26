@@ -1,0 +1,90 @@
+{
+  "alignment": {
+    "rmse": 0.9507
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 35,
+    "volume": 79803.59,
+    "bbox": {
+      "x": 110.0,
+      "y": 110.0,
+      "z": 9.96
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.999029963864949,
+    "shape_volume_iou": 0.9996874927874437,
+    "shape_similarity_score": 0.9993587283261964
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 155.8820128037319,
+    "surface_distance_f1": 0.999029963864949,
+    "surface_distance_precision": 0.99922,
+    "surface_distance_recall": 0.99884,
+    "surface_distance_threshold": 0.7794100640186595,
+    "surface_distance_mean_chamfer": 0.000926688367552335,
+    "surface_distance_mean_normal_dot": 0.9995243616864384,
+    "volume_intersection": 79819.89519838929,
+    "volume_union": 79844.84728905257,
+    "volume_symmetric_difference": 24.952090663282434
+  },
+  "interface_metrics": {
+    "score": 0.9943,
+    "contexts": {
+      "1": {
+        "score": 0.9887,
+        "sub_volumes": {
+          "1__KOR": 0.9887,
+          "2__KOR": 0.9887,
+          "3__KOR": 0.9887,
+          "4__KOR": 0.9887,
+          "5__KOR": 0.9887,
+          "6__KOR": 0.9887,
+          "7__KOR": 0.9887,
+          "8__KOR": 0.9887
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 8,
+      "b2": 0,
+      "chi_surface": -14,
+      "n_components": 1,
+      "n_triangles": 1756,
+      "n_vertices": 864,
+      "linear_deflection_mm": 0.1558820128037319
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 8,
+      "b2": 0,
+      "chi_surface": -14,
+      "n_components": 1,
+      "n_triangles": 1756,
+      "n_vertices": 864,
+      "linear_deflection_mm": 0.1558820128037319
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9974634913304785
+}

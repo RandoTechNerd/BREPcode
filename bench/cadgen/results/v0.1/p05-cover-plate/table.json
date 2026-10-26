@@ -1,0 +1,17 @@
+{
+  "frame": "origin at min corner of bounding box, X right, Y up the sheet in TOP view, Z up; top face at z=8",
+  "overall": { "x": 110, "y": 110, "z": 8 },
+  "body": [
+    "plate 110 x 110 x 8, vertical corner radii R5 (note 3)",
+    "pocket 70 x 70 centred at (55,55), 3 deep from top (floor z=5), corner R6"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 8,
+      "positions": [[10,10,8],[55,10,8],[100,10,8],[10,55,8],[100,55,8],[10,100,8],[55,100,8],[100,100,8]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "csk": { "d": 11, "angle": 90 },
+      "source": "8X Ø5.5 THRU ⌵ Ø11 X 90°" },
+    { "id": "B", "type": "pocket", "count": 1, "positions": [[55,55,8]], "axis": "+z",
+      "dia": 70, "depth": 3, "source": "POCKET 70 X 70 ↧ 3 R6" }
+  ],
+  "uncertain": [ "countersinks taken as entering the top face, as the front view and isometric show" ]
+}

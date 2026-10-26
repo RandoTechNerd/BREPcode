@@ -1,0 +1,23 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 140 length (left to right in TOP/FRONT), Y across the 60 width (Y=0 is the front wall), Z up (Z=0 is the underside of the base)",
+  "overall": { "x": 140, "y": 60, "z": 45 },
+  "body": [
+    "base web: 140 x 60 x 6 at [0,0,0]",
+    "front wall: 140 x 6 x 45 at [0,0,0]",
+    "back wall: 140 x 6 x 45 at [0,54,0]",
+    "channel opening: inner 48 wide (y 6..54), from z=6 to the top, open at both ends"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 3,
+      "positions": [[25, 30, 0], [70, 30, 0], [115, 30, 0]],
+      "axis": "-z", "dia": 8.5, "depth": "thru",
+      "source": "3X Ø8.5 THRU (TOP view, x 25/70/115, y 30)" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[35, 0, 28], [105, 0, 28]],
+      "axis": "-y", "dia": 6.6, "depth": "thru",
+      "source": "2X Ø6.6 THRU (FRONT view, x 35/105, z 28); through the front wall only" }
+  ],
+  "uncertain": [
+    "The Ø6.6 holes are taken to go through the front wall (Y=0) only. The hidden lines in the TOP and RIGHT views appear only on that side."
+  ]
+}

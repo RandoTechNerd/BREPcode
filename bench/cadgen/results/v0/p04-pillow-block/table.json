@@ -1,0 +1,19 @@
+{
+  "frame": "origin at the min corner of the bounding box; X along the 130 length (left to right in FRONT), Y along the 40 depth (front face at y=0), Z up from the base bottom",
+  "overall": { "x": 130, "y": 40, "z": 64 },
+  "body": [
+    "base plate 130 x 40 x 14, x 0..130, y 0..40, z 0..14",
+    "upright block 60 wide (x 35..95) x 40 deep, rising from the base to z=64; its top two corners (edges along Y) are R10",
+    "concave R10 fillets join the upright to the base top at x=35 and x=95 (fillet centres at (25,24) and (105,24) in XZ)",
+    "everything is built as one front (XZ) profile extruded 40 along Y"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[65, 0, 38]], "axis": "-y", "dia": 32, "depth": "thru", "source": "Ø32 THRU, centre 65 from left, 38 high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[65, 20, 64]], "axis": "+z", "dia": 6, "depth": 12, "source": "Ø6 ↧ 12, at x=65 on the top face" },
+    { "id": "C", "type": "slot", "count": 2, "positions": [[15, 20, 14], [115, 20, 14]], "axis": "+z", "dia": 11, "depth": "thru", "source": "2X SLOT 11 WIDE 10 CTR-CTR THRU, centres at x 15 and 115, y 20, running along X" }
+  ],
+  "uncertain": [
+    "The slot's long axis runs along X (from the top view). The end-arc centres are at x = c±5.",
+    "The R10 TYP callout is applied to both the top corners and the base junction fillets."
+  ]
+}

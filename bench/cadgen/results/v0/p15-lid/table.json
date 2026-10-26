@@ -1,0 +1,27 @@
+{
+  "frame": "origin at the min corner of the bounding box, X along the 120 length, Y along the 80 width, Z up; top face at z=25, open underside at z=0",
+  "overall": { "x": 120, "y": 80, "z": 25 },
+  "body": [
+    "outer shell: 120x80x25 box, vertical corners R8",
+    "cavity: 114x74 pocket from z=0 to z=22, at (3..117, 3..77), inner vertical corners R5 (3 mm walls, 3 mm top, open underside)",
+    "4 corner posts Ø11 at (8,8), (112,8), (8,72), (112,72), hanging from the underside of the top (z=22) down to z=2, merged into the walls"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 4,
+      "positions": [[8, 8, 25], [112, 8, 25], [8, 72, 25], [112, 72, 25]],
+      "axis": "+z", "dia": 3.4, "depth": "thru", "csk": { "d": 7, "angle": 90 },
+      "source": "4X Ø3.4 THRU ⌵ Ø7 X 90°" },
+    { "id": "B", "type": "boss", "count": 4,
+      "positions": [[8, 8, 22], [112, 8, 22], [8, 72, 22], [112, 72, 22]],
+      "axis": "-z", "dia": 11, "depth": 20,
+      "source": "4X POST Ø11 INSIDE" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[120, 40, 12]],
+      "axis": "+x", "dia": 16, "depth": "thru",
+      "source": "Ø16 THRU (RIGHT view), 40 from edge, 12 up" }
+  ],
+  "uncertain": [
+    "Post bottom height read as about 2 mm above the open underside from the hidden lines.",
+    "Ø16 THRU taken as through the +X side wall only, since the side hole appears on one face in the iso view."
+  ]
+}

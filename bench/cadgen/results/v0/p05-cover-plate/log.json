@@ -1,0 +1,26 @@
+{
+ "id": "p05-cover-plate",
+ "attempts": [
+  {
+   "attempt": 1,
+   "ok": true,
+   "lane": "exact",
+   "solids": 1,
+   "size": [
+    110,
+    110,
+    8
+   ],
+   "validity": {
+    "valid": true,
+    "solids": 1,
+    "faces": 27,
+    "volume": 80500.49567915128,
+    "errors": []
+   }
+  }
+ ],
+ "cost": 0.1264082,
+ "ok": true,
+ "seconds": 38
+}

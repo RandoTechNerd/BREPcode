@@ -90,3 +90,23 @@ the error back, for up to 3 attempts.
   OpenSCAD-style land sideways.
 - The evaluator needs OCP 7.9 (OCP 8 breaks its `Bnd_Box.Get()`), plus
   OpenGL and an X server for its renders.
+
+## Results on the practice set (claude-opus-5-5, 2026-10-26)
+
+All scores come from cadgenbench's own `evaluate` against `practice/data/gt`.
+Every run produced 20/20 valid exact STEPs on the first attempt, at about $0.15
+and 40 s per sample.
+
+| run | CAD | shape | interface | topology | what changed |
+|---|---|---|---|---|---|
+| GT vs itself | 0.998 | 1.000 | 0.996 | 1.000 | the ceiling: p11's symmetric disc aligns to 0.964 |
+| `v0` | 0.969 | 0.954 | 0.976 | 0.987 | first run |
+| `v0.1` | 0.994 | 0.991 | 0.995 | 1.000 | rules say `csink:` (and `drill()` takes `csk:`), the rotate order is stated |
+
+The per-sample tables are in `results/<run>/scores.json`. The AI's dimension
+table, code and attempt log for each sample are next to its `output.step`.
+
+These drawings are cleaner than CADGenBench's: every feature has a baseline
+dimension, there are no sections or detail views, and callouts are
+machine-placed. Treat these scores as an upper bound on what the leaderboard
+will show. What matters is the gap between runs.
