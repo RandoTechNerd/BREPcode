@@ -1,0 +1,76 @@
+{
+ "id": "244",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.24943160000000003,
+   "s": 522,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.4535796,
+   "s": 629,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.1950956,
+   "s": 484,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.22395160000000003,
+   "s": 414,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape; Face: BRepCheck_UnorientableShape",
+   "size": [
+    184.926,
+    100,
+    68
+   ]
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.19912760000000002,
+   "s": 126,
+   "ok": true,
+   "size": [
+    190.671,
+    102.383,
+    68.017
+   ]
+  }
+ ],
+ "cost": 1.3211860000000002,
+ "candidates": [
+  {
+   "tag": "e1.2",
+   "ok": true,
+   "size": [
+    190.671,
+    102.383,
+    68.017
+   ]
+  }
+ ],
+ "ok": true,
+ "kept": "e1.2",
+ "fallback": false,
+ "attempts": 5,
+ "seconds": 2180
+}

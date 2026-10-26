@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "mm dimensions on sheet 1; plan view scale checked against 97, 60, 17, 110.4, 30.4" },
+  "frame": "origin at centre of base footprint, X along the long direction (right in the plan view), Y up the sheet in the plan view, Z up from the open underside (z=0) of the base",
+  "overall": { "x": 200, "y": 148, "z": 45 },
+  "bbox": { "min": [-100, -74, 0], "max": [100, 74, 45] },
+  "body": [
+    "base: outline is circle R100 (Ø200) intersected with band |y|<=60, the 4 corners blended with R18 fillets centred at (±70.4, ±42), z 0..30",
+    "base cavity open at bottom: circle R94 (Ø188) intersected with |y|<=54, R12 corners, z 0..24 (6 wall, 6 roof); the cavity stops at the corner bosses",
+    "4 corner bosses Ø28 at (±57, ±60), z 0..35",
+    "top lobe plate z 30..45: Ø82 lobe at (40,0) plus Ø60 lobe at (-20,15), waists blended with R10",
+    "under-roof bosses hanging into the cavity, z 19..24: Ø50 under (40,0) and Ø38 under (-20,15)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[40, 0, 45]], "axis": "+z", "dia": 40, "depth": "thru", "source": "Ø40 THRU", "confidence": "high" },
+    { "id": "B", "type": "cbore", "count": 1, "positions": [[-20, 15, 45]], "axis": "+z", "dia": 28, "depth": "thru", "cbore": { "d": 35, "depth": 5 }, "source": "Ø28 THRU CBORE Ø35 5 DEEP", "confidence": "high" },
+    { "id": "C", "type": "tapped", "count": 6, "positions": [[66.4, 15.25, 45], [40, 30.5, 45], [13.6, 15.25, 45], [13.6, -15.25, 45], [40, -30.5, 45], [66.4, -15.25, 45]], "axis": "+z", "dia": 10.2, "depth": 15, "csk": { "d": 12, "angle": 90 }, "source": "6X M12x1.75-6H 15 DEEP, CSINK Ø12x90°, PCD Ø61", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 4, "positions": [[-57, -60, 35], [57, -60, 35], [-57, 60, 35], [57, 60, 35]], "axis": "+z", "dia": 12, "depth": "thru", "csk": { "d": 15, "angle": 90 }, "source": "4X Ø12 THRU, 8X 1.5x45° chamfers top and bottom", "confidence": "medium" }
+  ],
+  "guessed": [
+    "corner boss diameter 28 (scaled from the views)",
+    "corner boss y position ±60, base taken as symmetric",
+    "under-roof bosses Ø50 and Ø38 hanging from 24 down to 19",
+    "small R2, R2.5, R3, R4 and R10 edge blends omitted"
+  ]
+}

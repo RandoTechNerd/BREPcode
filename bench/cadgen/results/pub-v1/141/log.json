@@ -1,0 +1,113 @@
+{
+ "id": "141",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.189612,
+   "s": 48,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B3: boolean SUBTRACT failed: boolean assembly: operation produced no boundary faces"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.169328,
+   "s": 27,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B27: boolean Union on 'P.CU5' failed: boolean assembly produced invalid topology (S=1 genus=1): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 31 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 33 used 1 times (ex"
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.18058,
+   "s": 66,
+   "ok": true,
+   "size": [
+    366.32,
+    346.31,
+    124
+   ],
+   "check": {
+    "score": 0.892,
+    "checked": 37,
+    "issues": [
+     "overall X is 366.32 mm, the table says 403",
+     "overall Y is 346.31 mm, the table says 383",
+     "tapped E#1 at (-148, 0, 57) (\"M30 (2X) at 57 high; angle 30° from vertical\"): no Ø26.5 hole along Z there; the nearest is Ø20 50.73 mm away, axis through (-160.66, 49.12, 15)",
+     "tapped E#2 at (74, 128.17, 57) (\"M30 (2X) at 57 high; angle 30° from vertical\"): no Ø26.5 hole along Z there; the nearest is Ø20 50.72 mm away, axis through (122.87, 114.58, 15)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.177404,
+   "s": 66,
+   "ok": true,
+   "size": [
+    366.32,
+    346.31,
+    124
+   ],
+   "check": {
+    "score": 1,
+    "checked": 46,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.17618,
+   "s": 21,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.893104,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.3",
+   "ok": true,
+   "size": [
+    366.32,
+    346.31,
+    124
+   ],
+   "check": {
+    "score": 0.892,
+    "checked": 37,
+    "issues": [
+     "overall X is 366.32 mm, the table says 403",
+     "overall Y is 346.31 mm, the table says 383",
+     "tapped E#1 at (-148, 0, 57) (\"M30 (2X) at 57 high; angle 30° from vertical\"): no Ø26.5 hole along Z there; the nearest is Ø20 50.73 mm away, axis through (-160.66, 49.12, 15)",
+     "tapped E#2 at (74, 128.17, 57) (\"M30 (2X) at 57 high; angle 30° from vertical\"): no Ø26.5 hole along Z there; the nearest is Ø20 50.72 mm away, axis through (122.87, 114.58, 15)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    366.32,
+    346.31,
+    124
+   ],
+   "check": {
+    "score": 1,
+    "checked": 46,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 5,
+ "seconds": 243
+}

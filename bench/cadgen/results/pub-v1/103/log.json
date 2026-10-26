@@ -1,0 +1,63 @@
+{
+ "id": "103",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.281492,
+   "s": 109,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B5: boolean Union on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=1): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 3 of face 3 is open between coedges 11 and 12\" }, ValidationIssue { severity: \"error\", kind: Other, message: \"loop 4 of face"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.251332,
+   "s": 93,
+   "ok": true,
+   "size": [
+    421.6,
+    400.5,
+    111.9
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.18030800000000002,
+   "s": 26,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.713132,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    421.6,
+    400.5,
+    111.9
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.2",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 238
+}

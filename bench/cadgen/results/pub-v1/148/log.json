@@ -1,0 +1,114 @@
+{
+ "id": "148",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.620432,
+   "s": 451,
+   "ok": true,
+   "size": [
+    202.2,
+    216,
+    100
+   ],
+   "check": {
+    "score": 0.854,
+    "checked": 48,
+    "issues": [
+     "cbore D#1 at (0, 0, 30) (\"Section B-B Ø60 both sides of hub\"): no Ø60 hole along Z there; the nearest is Ø50 0 mm away, axis through (0, 0, 50)",
+     "cbore D#2 at (0, 0, 70) (\"Section B-B Ø60 both sides of hub\"): no Ø60 hole along Z there; the nearest is Ø50 0 mm away, axis through (0, 0, 50)",
+     "hole E at (0, 118, 50) (\"top view Ø65 boss bore, opens into the pockets\"): diameter is 27, the table says 65",
+     "hole E at (0, 118, 50) (\"top view Ø65 boss bore, opens into the pockets\"): should be 43 deep but goes through",
+     "hole G at (0, 60, 50) (\"Ø27 channel from the boss cavity into the hub bore\"): no Ø27 hole along Y there; the nearest is Ø27 0 mm away, axis through (0, 69.52, 50)",
+     "hole J#1 at (101.1, 0, 66) (\"2X Ø10, 34 from back, 11 deep\"): no Ø10 hole along Z there; the nearest is Ø27.5 44.12 mm away, axis through (61.82, -20.09, 50)",
+     "hole J#2 at (-101.1, 0, 66) (\"2X Ø10, 34 from back, 11 deep\"): no Ø10 hole along Z there; the nearest is Ø27.5 44.12 mm away, axis through (-61.82, 20.09, 50)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.337988,
+   "s": 248,
+   "ok": true,
+   "size": [
+    202.2,
+    216,
+    100
+   ],
+   "check": {
+    "score": 0.855,
+    "checked": 117,
+    "issues": [
+     "cbore C at (0, 0, 29.7) (\"Section B-B: Ø60 front counterbore, Ø50 through\"): counterbore Ø170, the table says Ø60",
+     "cbore C at (0, 0, 29.7) (\"Section B-B: Ø60 front counterbore, Ø50 through\"): counterbore 100 deep, the table says 16.7",
+     "cbore D at (0, 0, 66) (\"Section B-B: Ø60 back counterbore (34 from the back face)\"): no Ø50 hole along Z there; the nearest is Ø50 0 mm away, axis through (0, 0, 50)",
+     "cbore E at (0, 118, 50) (\"Ø65 boss bore, then a Ø27 channel into the hub bore\"): should be 93 deep but goes through",
+     "cbore E at (0, 118, 50) (\"Ø65 boss bore, then a Ø27 channel into the hub bore\"): counterbore 39.46 deep, the table says 43",
+     "hole H#1 at (63.28, 80.96, 30) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (48.75, 84.44, 50)",
+     "hole H#2 at (63.28, 80.96, 70) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (48.75, 84.44, 50)",
+     "hole H#3 at (80.96, 63.28, 30) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (84.44, 48.75, 50)",
+     "hole H#4 at (80.96, 63.28, 70) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (84.44, 48.75, 50)",
+     "hole H#5 at (-63.28, 80.96, 30) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (-48.75, 84.44, 50)",
+     "hole H#6 at (-63.28, 80.96, 70) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (-48.75, 84.44, 50)",
+     "hole H#7 at (-80.96, 63.28, 30) (\"4X Ø10 UNTIL NEXT, 60 x 25 per flat\"): no Ø10 hole along Z there; the nearest is Ø10 14.94 mm away, axis through (-84.44, 48.75, 50)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.367988,
+   "s": 237,
+   "ok": true,
+   "size": [
+    202,
+    215,
+    102
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "hole H#1 at (101, 0, 34) (\"2X Ø10 in B-B, 34\"): no Ø10 hole along Z there; the nearest is Ø27.5 44.03 mm away, axis through (61.82, 20.09, 51.8)",
+     "hole H#2 at (-101, 0, 34) (\"2X Ø10 in B-B, 34\"): no Ø10 hole along Z there; the nearest is Ø27.5 44.03 mm away, axis through (-61.82, -20.09, 51.8)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.457212,
+   "s": 249,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B47: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=1 genus=19): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 25 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 163 used 1 times (expected"
+  },
+  {
+   "tag": "c2.2",
+   "attempt": 2,
+   "cost": 0.22699599999999998,
+   "s": 111,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B89: boolean SUBTRACT failed: boolean assembly: non-integral genus (V=181 E=267 F=103 H=66 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 4"
+  },
+  {
+   "tag": "c2.3",
+   "attempt": 3,
+   "cost": 0.238136,
+   "s": 109,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B91: boolean SUBTRACT failed: boolean assembly: non-integral genus (V=183 E=271 F=105 H=66 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 4"
+  }
+ ],
+ "cost": 2.2487519999999996,
+ "error": "TypeError: (g.positions || []).filter is not a function\n    at file:///home/user/BREPcode/src/imageread.js:115:39\n    at Array.map (<anonymous>)\n    at normalizeTable (file:///home/user/BREPcode/src/imageread.js:110:64)\n    at file:///home/user/BREPcode/bench/cadgen/run.mjs:212:43\n    at Array.map (<anonymous>)\n    at consensus (file:///home/user/BREPcode/bench/cadgen/run.mjs:212:20)\n    at runGeneration (file:///home/user/BREPcode/bench/cadgen/run.mjs:255:42)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async runSample (file:///home/user/BREPcode/bench/cadgen/run.mjs:316:51)\n    at async file:///home/user/BREPcode/bench/cadgen/run.mjs:341:34",
+ "ok": false,
+ "fallback": false,
+ "attempts": 6,
+ "seconds": 1169
+}

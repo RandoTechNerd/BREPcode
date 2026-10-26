@@ -1,0 +1,31 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "327 x 250 flange, 300 body width, 175 overall height, 45 deg chamfers, hole callouts" },
+  "frame": "X along the 327/300 width, Y along the 250 depth, origin at plan centre on the bottom face, Z up, open top with flange at z 167.5..175",
+  "overall": { "x": 327, "y": 250, "z": 175 },
+  "bbox": { "min": [-163.5, -125, 0], "max": [163.5, 125, 175] },
+  "body": [
+    "Pan body: 300 wide (X) x 223 deep (Y) x 167.6 high, 45 deg chamfers of 45 mm on both long bottom edges",
+    "Top flange: 327 x 250 x 7.5 at z 167.5..175, R15 corners",
+    "Interior: 4 mm walls, 5 mm floor, open through the flange",
+    "8 floor bosses, Ø14, standing 9 mm above the floor"
+  ],
+  "features": [
+    { "id": "A", "type": "tapped", "count": 12,
+      "positions": [[-88,117,175],[0,117,175],[88,117,175],[-88,-117,175],[0,-117,175],[88,-117,175],
+                    [-156.5,88,175],[-156.5,0,175],[-156.5,-88,175],[156.5,88,175],[156.5,0,175],[156.5,-88,175]],
+      "axis": "+z", "dia": 5, "depth": "thru",
+      "source": "M6 flange holes, (3x)117 / (3x)156.5 / 88", "confidence": "medium" },
+    { "id": "B", "type": "tapped", "count": 8,
+      "positions": [[-86,79.5,14],[1,79.5,14],[79,79.5,14],[-86,-9.5,14],[-6,-9.5,14],[-86,-84.5,14],[4,-84.5,14],[79,-84.5,14]],
+      "axis": "+z", "dia": 3.3, "depth": 8,
+      "source": "M4 floor boss holes, (3x)86 / (2x)79 / 79.5 / 9.5 / 84.5", "confidence": "medium" }
+  ],
+  "guessed": [
+    "body depth in Y taken as 223 (flange width 13.5 all round, matching X)",
+    "chamfer size 45 mm, measured off section B-B",
+    "wall 4 mm and floor 5 mm thickness",
+    "boss diameter 14 and height",
+    "the 2 mm decorative rib pockets and the side windows are omitted"
+  ]
+}

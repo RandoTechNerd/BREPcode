@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned plan, side view and section A-A, mm" },
+  "frame": "origin at the left end of the part on the plate mid-line; X along the 55 length, Y across (the plan centreline is y=0), Z is the thickness with the plate from z=0 to z=6 (mid-plane z=3)",
+  "overall": { "x": 55, "y": 39.5, "z": 10 },
+  "bbox": { "min": [0, -23, -2], "max": [55, 16.5, 8] },
+  "body": [
+    "Tapered plate outline: y = ±16.5 at x=0 and ±14.5 at x=55 (each edge tapers 2.1°, 29 across at the right end). 6 thick (z 0..6)",
+    "Notch in each end for |y|<8.5 (17 wide): the left notch runs from x=0 to 10.5, the right one from x=44.5 to 55. This leaves four lugs.",
+    "Each lug is rounded R5 in the side view: a cylinder of r5 along Y, at x=5 and x=50 (45 apart), z=3, spanning z -2..8",
+    "Two pockets on each face, either side of a 2-wide centre rib (|y|>1), x 13..42, outer edge 2 in from the tapered edge, 2.1 deep from each face, leaving a 1.8 web",
+    "Boss on the -Y edge at x=36 (31 from the left lug), z=3, along -Y: Ø9 from y=-14.5 to -19, then Ø6 from -19 to -23"
+  ],
+  "features": [
+    { "id": "A", "type": "tapped", "count": 2, "positions": [[5, 16.3, 3], [50, 14.7, 3]], "axis": "+y", "dia": 1.6, "depth": "thru", "source": "2X M2 TAPPING THROUGH, 45 between centres, entry on the tapered lug edge", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[36, -23, 3]], "axis": "-y", "dia": 3, "depth": 7.8, "source": "Section A-A Ø3, 7.8", "confidence": "medium" },
+    { "id": "C", "type": "boss", "count": 1, "positions": [[36, -14.5, 3]], "axis": "-y", "dia": 9, "height": 4.5, "source": "Ø9, 19 from the centreline", "confidence": "medium" },
+    { "id": "D", "type": "boss", "count": 1, "positions": [[36, -19, 3]], "axis": "-y", "dia": 6, "height": 4, "source": "Ø6, 23 from the centreline", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 4, "positions": [[27.5, 7, 6], [27.5, -7, 6], [27.5, 7, 0], [27.5, -7, 0]], "axis": "+z", "depth": 2.1, "source": "plan view windows, section A-A web 1.8", "confidence": "low" }
+  ],
+  "guessed": [
+    "Pocket depth 2.1 per side, from (6 - 1.8 web) / 2",
+    "Pocket wall 2 mm and x extent 13..42, read approximately from the plan",
+    "Notch depths 10.5 and 44.5, read from the plan view",
+    "Boss start at y=-14.5, chosen so it overlaps the plate edge",
+    "Ø3 hole depth 7.8",
+    "Small fillets, the R1.5 keyhole notches, the R3 notch corners and the 0.5 chamfers are omitted"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Top view 32.00 x 29.50, hole pitch 2x13.00 / 2x11.75; Section A-A 12.75 body, 18.75 to pin top (6.00 pin), pocket depth 10.00" },
+  "frame": "origin at block centre in XY, z=0 on bottom face, Z up, X right in top view, Y up the sheet",
+  "overall": { "x": 32, "y": 29.5, "z": 18.75 },
+  "bbox": { "min": [-16, -14.75, 0], "max": [16, 14.75, 18.75] },
+  "body": [
+    "base block 32 x 29.5 x 12.75, rounded vertical corners R1",
+    "central pocket 22 x 19 from top, depth 10 (floor at z=2.75), R2 corners",
+    "two locating pins Ø2.75 x 6 standing on top at (13,11.75) and (-13,-11.75)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[-13, 11.75, 12.75], [13, -11.75, 12.75]], "axis": "+z", "dia": 4.2, "depth": "thru", "source": "(4x) R2.1, 13.00/13.00, 11.75/11.75", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[0, 0, 2.75]], "axis": "+z", "dia": 12, "depth": 1.25, "source": "Ø12.0 centre recess in pocket floor; bottom iso shows no centre hole", "confidence": "medium" },
+    { "id": "C", "type": "slot", "count": 2, "positions": [[-13, 0, 12.75], [13, 0, 12.75]], "axis": "+z", "width": 4.2, "length": 7.2, "along": "y", "depth": "thru", "source": "kidney slots, 13.00 from centre, 7.20, visible on bottom iso", "confidence": "low" },
+    { "id": "D", "type": "boss", "count": 2, "positions": [[13, 11.75, 12.75], [-13, -11.75, 12.75]], "axis": "+z", "dia": 2.75, "height": 6, "source": "Ø2.75 pin, 6.00, 18.75", "confidence": "medium" }
+  ],
+  "guessed": [
+    "pocket size 22 x 19 (from 24.04 / 19.00 dims, reduced to clear corner holes)",
+    "slot width 4.2 and length 7.2",
+    "corner radius R1 on the block",
+    "centre recess bottom at z=1.5"
+  ]
+}

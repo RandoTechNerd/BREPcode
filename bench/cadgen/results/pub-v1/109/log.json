@@ -1,0 +1,122 @@
+{
+ "id": "109",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.166132,
+   "s": 61,
+   "ok": true,
+   "size": [
+    130.94,
+    130.94,
+    420
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "cbore C at (0, 0, 420) (\"ID Ø103.13, with the bore step as drawn in Section A-A\"): no Ø103.13 hole along Z there; the nearest is Ø94 0 mm away, axis through (0, 0, 210)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.160584,
+   "s": 48,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B26: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 3, expected 4 (0 coincident parallel edge pair(s) credited)\" }]; open edges [7:Some(Vec3 { x: 0.0, y: 5"
+  },
+  {
+   "tag": "c0fix.2",
+   "attempt": 2,
+   "cost": 0.186876,
+   "s": 86,
+   "ok": true,
+   "size": [
+    130.921,
+    130.921,
+    420
+   ],
+   "check": {
+    "score": 1,
+    "checked": 10,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.18900399999999998,
+   "s": 90,
+   "ok": true,
+   "size": [
+    130.921,
+    130.921,
+    420
+   ],
+   "check": {
+    "score": 1,
+    "checked": 10,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.702596,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    130.94,
+    130.94,
+    420
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "cbore C at (0, 0, 420) (\"ID Ø103.13, with the bore step as drawn in Section A-A\"): no Ø103.13 hole along Z there; the nearest is Ø94 0 mm away, axis through (0, 0, 210)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.2",
+   "ok": true,
+   "size": [
+    130.921,
+    130.921,
+    420
+   ],
+   "check": {
+    "score": 1,
+    "checked": 10,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    130.921,
+    130.921,
+    420
+   ],
+   "check": {
+    "score": 1,
+    "checked": 10,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 4,
+ "seconds": 312
+}

@@ -1,0 +1,57 @@
+{
+ "id": "133",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.304732,
+   "s": 144,
+   "ok": true,
+   "size": [
+    176.914,
+    107.84,
+    40
+   ],
+   "check": {}
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.303888,
+   "s": 152,
+   "ok": true,
+   "size": [
+    181.547,
+    107.812,
+    40
+   ],
+   "check": {}
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.32041200000000003,
+   "s": 155,
+   "ok": true,
+   "size": [
+    181.544,
+    113.018,
+    40
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "overall Y is 113.02 mm, the table says 108.96"
+    ]
+   }
+  }
+ ],
+ "cost": 0.929032,
+ "error": "TypeError: (g.positions || []).filter is not a function\n    at file:///home/user/BREPcode/src/imageread.js:115:39\n    at Array.map (<anonymous>)\n    at normalizeTable (file:///home/user/BREPcode/src/imageread.js:110:64)\n    at file:///home/user/BREPcode/bench/cadgen/run.mjs:212:43\n    at Array.map (<anonymous>)\n    at consensus (file:///home/user/BREPcode/bench/cadgen/run.mjs:212:20)\n    at runGeneration (file:///home/user/BREPcode/bench/cadgen/run.mjs:255:42)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async runSample (file:///home/user/BREPcode/bench/cadgen/run.mjs:316:51)\n    at async file:///home/user/BREPcode/bench/cadgen/run.mjs:341:34",
+ "ok": false,
+ "fallback": false,
+ "attempts": 3,
+ "seconds": 301
+}

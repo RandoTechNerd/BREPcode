@@ -1,0 +1,54 @@
+{
+ "id": "p05-cover-plate",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.130672,
+   "s": 43,
+   "ok": true,
+   "size": [
+    110,
+    110,
+    8
+   ],
+   "check": {
+    "score": 1,
+    "checked": 51,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.13769199999999998,
+   "s": 9,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.268364,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    110,
+    110,
+    8
+   ],
+   "check": {
+    "score": 1,
+    "checked": 51,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 58
+}

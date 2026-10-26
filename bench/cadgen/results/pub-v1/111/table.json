@@ -1,0 +1,36 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "plan view chains 281.7 / 275.7 / 316.7, side view 80 x 325.4, section A-A" },
+  "frame": "X right with x=0 at the plan's left datum (lug B hole axis). Y up with y=0 on the top bolt-hole row, so the part runs to negative Y. Z up, base at z=0, thickness 80.",
+  "overall": { "x": 316.7, "y": 325.4, "z": 80 },
+  "bbox": { "min": [-16, -303.4, 0], "max": [300.7, 22, 80] },
+  "body": [
+    "Outer oval flange: epitrochoid-like, 264 wide x 316 tall, centred (147,-137.85), z 0..80",
+    "Lower skirt with flat bottom at y=-303.4 (flat x 37..257) and 45 deg corner chamfers",
+    "Right block with a flat face at x=281.7, y -55..-200",
+    "Left pad with a flat face at x=15, y -90..-240",
+    "Lug B: Ø32 boss at (0,6) on a web into the flange, full height",
+    "Lug C: plate out to x=300.7 at the top right, with an obround slot",
+    "Ø38 port boss standing 2.5 off the right face at y=-198.5, z=40",
+    "Inner rotor bore: epitrochoid 184 wide x 230 tall, through"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 15, "axis": "+z", "dia": 13, "depth": "thru",
+      "positions": [[125.1,0,80],[182.7,-4.8,80],[230.8,-36.8,80],[258.6,-110.5,80],[258.6,-166.2,80],[230.8,-240,80],[182.7,-272,80],[125.1,-275.7,80],[89,-261.6,80],[59.9,-236,80],[41.3,-202,80],[35.4,-138.4,80],[41.3,-74.8,80],[59.9,-40.8,80],[89,-15.2,80]],
+      "source": "15x Ø13.0 Thru, plan view dims", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[0,6,80]], "axis": "+z", "dia": 22, "depth": "thru", "source": "Ø22 / Ø32 lug", "confidence": "medium" },
+    { "id": "C", "type": "slot", "count": 1, "positions": [[268,-5,80]], "axis": "+z", "width": 14, "length": 30, "along": "x", "depth": "thru", "source": "detail C", "confidence": "low" },
+    { "id": "D", "type": "cbore", "count": 1, "positions": [[281.7,-78.5,40]], "axis": "+x", "dia": 36, "depth": "thru", "cbore": { "d": 46, "depth": 10 }, "source": "Ø36 / Ø46, 78.5; intake port breaking into the rotor bore", "confidence": "medium" },
+    { "id": "E", "type": "cbore", "count": 1, "positions": [[284.2,-198.5,40]], "axis": "+x", "dia": 19, "depth": "thru", "cbore": { "d": 29, "depth": 10 }, "source": "Ø19 / Ø29 / Ø38, 198.5 and 220.5; port breaking into the rotor bore", "confidence": "medium" },
+    { "id": "F", "type": "cbore", "count": 1, "positions": [[15,-110.5,40]], "axis": "-x", "dia": 11, "depth": 34.7, "cbore": { "d": 26, "depth": 11.8 }, "source": "Ø26 / Ø15.5 / Ø11 / Ø8 at 110.5", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 1, "positions": [[15,-166.3,40]], "axis": "-x", "dia": 4, "depth": 30, "source": "Ø4 at 110.5 + 55.8", "confidence": "medium" },
+    { "id": "H", "type": "slot", "count": 15, "axis": "+z", "width": 8, "depth": "thru", "source": "coolant slots between the bolt holes", "confidence": "low" }
+  ],
+  "guessed": [
+    "Thickness 80 is taken from the side view, applied everywhere",
+    "Bore and flange are epitrochoid approximations: bore R92 typ / Ø184, flange about Ø259.4",
+    "Lug and web outlines, slot sizes and the coolant slot width are estimated",
+    "Side ports D and E run into the rotor bore (drilled 60 / 70 from the right face)",
+    "Bottom serrations, the V groove and the R9 slot are omitted"
+  ]
+}

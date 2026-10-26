@@ -1,0 +1,25 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Flat-pattern dimensions; sheet 3 mm, bend R3 (R1 for the upright tab), K 0.33, all bends 90 deg" },
+  "frame": "X = flat-pattern X (left edge of the lower tab at x=0). Main wall stands in the XZ plane at y 0..3. The high tab (Ø6.8) extends toward -Y at the top, z 33.9..36.9. The low flange (2x Ø7) extends toward +Y at the bottom, z 0..3. Z is up.",
+  "overall": { "x": 70, "y": 73.04, "z": 36.9 },
+  "bbox": { "min": [0, -19.97, 0], "max": [70, 53.07, 36.9] },
+  "body": [
+    "High tab: x 0..18, y -19.97..3, z 33.9..36.9 (bend down at flat y=16.6)",
+    "Vertical S-wall: y 0..3. Its flat outline between the bend lines (flat y 16.6..47.8) maps to z 36.9..0. It has an R15 outer corner on the left and an R22 sweep on the right.",
+    "Low flange: z 0..3, x 47..70, y 0..53.07. The right edge steps from 65 to 70 and the left edge from 47 to 52 (R25 blends).",
+    "Upright tab: x 49..52, y 40.07..53.07, z 0..30.2 (bend up R1 at flat x~51.7)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[9, -11.17, 36.9]], "axis": "+z", "dia": 6.8, "depth": "thru", "source": "Ø6.8 THRU, flat (9, 5.3)", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[61.2, 40.07, 3]], "axis": "+z", "dia": 7, "depth": "thru", "source": "Ø7 THRU, flat (61.2, 85)", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[54.5, 21.07, 3]], "axis": "+z", "dia": 7, "depth": "thru", "source": "Ø7 THRU, flat (54.5, 66)", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[52, 46.57, 24.7]], "axis": "+x", "dia": 4.5, "depth": "thru", "source": "Ø4.5 THRU on the bent-up tab, flat (29.4, 91.5)", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Bend allowance 6.27 for R3 and 3.13 for R1 (from K 0.33), applied with sharp corners. Bend radii are not modelled.",
+    "The lower tab end is taken at flat y=-3.5, read from pixels.",
+    "The R25 flange edge transitions are approximated by straight segments.",
+    "The upright tab sits at x 49..52 (outer face at the bend line)."
+  ]
+}

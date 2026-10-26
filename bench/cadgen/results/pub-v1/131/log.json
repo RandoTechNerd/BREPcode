@@ -1,0 +1,115 @@
+{
+ "id": "131",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.23599199999999998,
+   "s": 98,
+   "ok": true,
+   "size": [
+    140.508,
+    194.994,
+    50
+   ],
+   "check": {
+    "score": 0.913,
+    "checked": 23,
+    "issues": [
+     "overall X is 140.51 mm, the table says 145.32",
+     "overall Y is 194.99 mm, the table says 198.85"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.188492,
+   "s": 56,
+   "ok": true,
+   "size": [
+    145.3,
+    198.839,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.23398399999999997,
+   "s": 63,
+   "ok": true,
+   "size": [
+    145.3,
+    198.839,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.6584679999999999,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    140.508,
+    194.994,
+    50
+   ],
+   "check": {
+    "score": 0.913,
+    "checked": 23,
+    "issues": [
+     "overall X is 140.51 mm, the table says 145.32",
+     "overall Y is 194.99 mm, the table says 198.85"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    145.3,
+    198.839,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    145.3,
+    198.839,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 222
+}

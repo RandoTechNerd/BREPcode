@@ -1,0 +1,39 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Section C-C axial dimensions plus the diameter callouts on the two plan views" },
+  "frame": "Part axis is +Z. The flange base face is at z=0 with its centre at the origin. The small top face is at z=370.02.",
+  "overall": { "x": 730, "y": 730, "z": 370.02 },
+  "bbox": { "min": [-365, -365, 0], "max": [365, 365, 370.02] },
+  "body": [
+    "One revolved profile (exact lathe, the profile stays off the axis):",
+    "flange Ø730, z 0-60",
+    "step Ø610, z 60-90",
+    "step Ø574, z 90-111.01",
+    "cone Ø574 -> Ø500, z 111.01-164.99",
+    "cone Ø500 -> Ø450, z 164.99-200",
+    "cylinder Ø450, z 200-300",
+    "cone Ø450 -> Ø250, z 300-370.02",
+    "bore Ø368 from the base, z 0-200",
+    "bore Ø240, z 200-320.02",
+    "hole Ø100 through the top wall, z 320.02-370.02"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 8, "positions": [[323.5,0,0]], "axis": "-z", "width": 24, "length": 198.2, "depth": "thru",
+      "along": "y",
+      "source": "Ø670 (x8), R12.00, 30.14° (x8), 14.86° (x8); arc slots on PCD 670, end centres at ±15.07°, i.e. (323.5, ±87.1); pitch 45°", "confidence": "medium" },
+    { "id": "B", "type": "pocket", "count": 2, "positions": [[339.1,134.4,0],[-339.1,-134.4,0]], "axis": "-z",
+      "width": 19.56, "length": 12, "depth": "thru",
+      "source": "19.56 (x2), 21.66°, notches on the Ø730 rim", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[0,0,370.02]], "axis": "+z", "dia": 100, "depth": "thru",
+      "source": "Ø100", "confidence": "high" },
+    { "id": "D", "type": "pocket", "count": 1, "positions": [[0,0,0]], "axis": "-z", "dia": 368, "depth": 200,
+      "source": "Ø368, 200.00", "confidence": "high" },
+    { "id": "E", "type": "pocket", "count": 1, "positions": [[0,0,200]], "axis": "-z", "dia": 240, "depth": 120.02,
+      "source": "Ø240, 320.02", "confidence": "high" }
+  ],
+  "guessed": [
+    "The Ø574 step and the intermediate cone radii (Ø500, Ø450) are inferred from the 35° callouts.",
+    "The notch radial depth is taken as 12 mm.",
+    "The slot phase is set so that one slot centres on +X."
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned third-angle views, mm" },
+  "frame": "origin at min corner; X along channel length (140), Y across width (60, y=0 is the front wall face), Z up (45), base on z=0",
+  "overall": { "x": 140, "y": 60, "z": 45 },
+  "bbox": { "min": [0, 0, 0], "max": [140, 60, 45] },
+  "body": [
+    "base plate 140 x 60 x 6 at z 0..6",
+    "front wall 140 x 6 x 45 at y 0..6",
+    "back wall 140 x 6 x 45 at y 54..60"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 3,
+      "positions": [[25, 30, 6], [70, 30, 6], [115, 30, 6]],
+      "axis": "+z", "dia": 8.5, "depth": "thru",
+      "source": "TOP view: 3X Ø8.5 THRU, x 25/70/115, y 30", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[35, 0, 28], [105, 0, 28]],
+      "axis": "-y", "dia": 6.6, "depth": "thru",
+      "source": "FRONT view: 2X Ø6.6 THRU, x 35/105, z 28; hidden lines in front wall only (RIGHT view)", "confidence": "high" }
+  ],
+  "guessed": []
+}

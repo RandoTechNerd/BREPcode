@@ -1,0 +1,25 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Flat-pattern dimensions, sheet thickness 2 and the bend notes. The folded shape is interpreted from the isometric view." },
+  "frame": "Origin at the base plate's min corner. X runs along the slots toward bend 10, Y runs across the slots, Z is up. The base plate occupies Z 0..2.",
+  "overall": { "x": 87.6, "y": 110, "z": 38 },
+  "bbox": { "min": [0, 0, -20], "max": [87.6, 110, 18] },
+  "body": [
+    "base plate 87.6 x 110 x 2",
+    "front wall at X=85.6..87.6, Y 38.4..110, Z -20..2 (bend 10, 90 deg)",
+    "left clip walls at X=0..2, Z 0..14, one between each pair of finger slots (bends 1-9 simplified)",
+    "back wall at Y=0..2, X 5..85, Z 0..18 (bends 11-16 simplified)"
+  ],
+  "features": [
+    { "id": "S1", "type": "pocket", "count": 1, "positions": [[17.8, 84.7, 2]], "axis": "+z", "width": 10, "length": 35.6, "along": "x", "depth": "thru", "source": "open finger slot between 121.9 and 111.9, open at x=0, rounded inner end at x=35.6", "confidence": "medium" },
+    { "id": "S2", "type": "pocket", "count": 1, "positions": [[17.8, 47.3, 2]], "axis": "+z", "width": 14, "length": 35.6, "along": "x", "depth": "thru", "source": "open finger slot between 86.5 and 72.5, rounded inner end at x=35.6", "confidence": "medium" },
+    { "id": "S3", "type": "pocket", "count": 1, "positions": [[17.8, 18, 2]], "axis": "+z", "width": 10, "length": 35.6, "along": "x", "depth": "thru", "source": "open finger slot between 55.2 and 45.2, rounded inner end at x=35.6", "confidence": "medium" },
+    { "id": "H1", "type": "hole", "count": 1, "positions": [[87.6, 87.8, -10.8]], "axis": "+x", "dia": 4.8, "depth": "thru", "source": "Ø4.8 on the bend-10 tab", "confidence": "medium" },
+    { "id": "S4", "type": "slot", "count": 1, "positions": [[87.6, 62.8, -10.8]], "axis": "+x", "width": 4.8, "length": 14, "along": "y", "depth": "thru", "source": "R2.4 slot ends on the bend-10 tab", "confidence": "medium" }
+  ],
+  "guessed": [
+    "The folded clips (bends 1-9 and 11-16) are simplified to flat upright flanges, with estimated heights of 14 and 18.",
+    "The front wall depth of 20 below the plate is estimated from 9.8 + 13.1 less the bend allowance.",
+    "Positions were measured from the flat pattern where no chain dimension applies."
+  ]
+}

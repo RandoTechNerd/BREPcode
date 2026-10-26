@@ -1,0 +1,35 @@
+{
+ "id": "212",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.22455960000000003,
+   "s": 286,
+   "ok": true,
+   "size": [
+    251.521,
+    240.323,
+    160.323
+   ]
+  }
+ ],
+ "cost": 0.22455960000000003,
+ "candidates": [
+  {
+   "tag": "e0.1",
+   "ok": true,
+   "size": [
+    251.521,
+    240.323,
+    160.323
+   ]
+  }
+ ],
+ "ok": true,
+ "kept": "e0.1",
+ "fallback": false,
+ "attempts": 1,
+ "seconds": 294
+}

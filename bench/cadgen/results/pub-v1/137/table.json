@@ -1,0 +1,30 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "sheet-metal bracket, t = 0.81; front view 80.81 x 60, side view depth 26.31, top view depth 25" },
+  "frame": "X right and Y up as in the upper-left (front) view. Z is the depth toward the viewer. Origin is the lower-left corner of the main plate. The main plate occupies z 0..0.81.",
+  "overall": { "x": 80.81, "y": 60, "z": 26.31 },
+  "bbox": { "min": [0, 0, 0], "max": [80.81, 60, 26.31] },
+  "body": [
+    "main plate, t 0.81: x 0..80.81 for y 0..45, plus an upper tab x 31.4..80.81 for y 45..60",
+    "notch at the top edge: x 59.6..68.62, from y 56.38 to 60",
+    "left side wall: x 0..0.81, y 0..45, z 0..26.31",
+    "box top wall: y 44.19..45, x 0..54.4, z 0..25",
+    "top hook flange: y 59.19..60, z 0..13, return z 12.19..13 down to y 51, spanning x 31.4..80.81 except the notch",
+    "bottom flange: x 50.4..80.81, y 0..0.81, z 0..19.73, with a 3.94 lip at z 19.73",
+    "curved gusset at x 63..63.81: R35-style profile from y 23.04 on the plate down to the flange at z 19.73"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4, "positions": [[38.2, 8, 0.81], [74.2, 8, 0.81], [38.2, 54, 0.81], [74.2, 54, 0.81]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6.00 (4X), 36 / 46 / 8", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[0, 30, 8]], "axis": "-x", "dia": 6, "depth": "thru", "source": "side view: hole at 30 height, 8 depth", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[14, 45, 13]], "axis": "+y", "dia": 6, "depth": "thru", "source": "top view 54.40 - 40.40, 13", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 2, "positions": [[59.6, 4.81, 0.81], [2.5, 2.5, 0.81]], "axis": "+z", "dia": 2, "depth": "thru", "source": "Ø2.00 (2X), 4.81, on section line A-A", "confidence": "low" },
+    { "id": "E", "type": "hole", "count": 1, "positions": [[54.4, 0.81, 17]], "axis": "+y", "dia": 3, "depth": "thru", "source": "Ø3.00 at the end of the 54.40 dimension", "confidence": "low" }
+  ],
+  "guessed": [
+    "Upper tab left edge at x 31.4 and the gusset location at x 63: scaled from the drawing",
+    "Notch x 59.6..68.62: from the 30.41 / 9.00 / 12.19 chain",
+    "Ø3 hole depth z 17 and the second Ø2 hole position: approximate",
+    "Gusset arc approximated by a polyline",
+    "Angled flange (62°, 33.65) omitted"
+  ]
+}

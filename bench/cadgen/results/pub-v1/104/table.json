@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views, section A-A, detail B, section C-C" },
+  "frame": "Origin at the bottom of the body. X runs from the left edge of the square flange (x=0) to the outer face of the side flange (x=107.9). Y is centred on the bore. Z is up, with the top-flange face at z=94.8.",
+  "overall": { "x": 107.9, "y": 116.5, "z": 111.9 },
+  "bbox": { "min": [0, -66.6, 0], "max": [107.9, 49.9, 111.9] },
+  "body": [
+    "square top flange 78.6 x 67.8 x 10, z 84.8..94.8, vertical corners R10, bore centre at x=39.3, y=0",
+    "elbow body: section A-A profile in XZ extruded over y +/-22; left face slopes from (0,85) to (45,0); bottom flat 32.9 wide (x 45..77.9); right face rises at 52.1 deg to the side flange",
+    "side flange plate 13.2 thick, x 94.7..107.9: disc R37.5 about the side-bore axis (y=0, z=61.5) plus four R7.2 lugs joined to it by arms",
+    "Ø34 bore: vertical from the top face down to z=61.5, joined by a sphere to a horizontal bore that exits through the side flange"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[39.3, 0, 94.8]], "axis": "+z", "dia": 34, "depth": "to elbow", "source": "Ø34.0 and section A-A", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[9.9, 25.4, 94.8], [68.7, 25.4, 94.8], [9.9, -25.4, 94.8], [68.7, -25.4, 94.8]], "axis": "+z", "dia": 9.2, "depth": "thru", "source": "4X Ø9.2 THROUGH, 29.4 / 25.4", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[107.9, 0, 61.5]], "axis": "+x", "dia": 34, "depth": "to elbow", "source": "section A-A", "confidence": "medium" },
+    { "id": "D", "type": "csk", "count": 4, "positions": [[107.9, 39.7, 58.3], [107.9, -3.2, 104.7], [107.9, -26.3, 44.2], [107.9, -62.4, 55.7]], "axis": "+x", "dia": 4.8, "depth": "thru", "csk": { "d": 9, "angle": 90 }, "source": "4X Ø4.8 THROUGH / Ø9 C'SHINK", "confidence": "medium" }
+  ],
+  "guessed": [
+    "side-flange view axes: its vertical is Y (39.7 + 62.4 + 2 x 7.2 = 116.5), its horizontal is Z",
+    "side-bore centre z=61.5, so that the top lug (43.2 + R7.2) reaches z=111.9",
+    "lug radius 7.2 from the 116.5 overall",
+    "body width +/-22 in Y",
+    "detail B recess pocket omitted: its position and depth cannot be read reliably",
+    "side-flange blended contour simplified to a disc plus arms"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "flat-pattern hole pitch 20 mm and folded-view chain dimensions; sheet thickness 1" },
+  "frame": "origin at the min corner of the base plate, X along the hole rows, Y across, Z up; base top at z=1",
+  "overall": { "x": 102, "y": 97, "z": 21 },
+  "bbox": { "min": [0, 0, -6], "max": [102, 97, 15] },
+  "body": [
+    "base plate 98 x 97 x 1",
+    "front flange bent up 90 deg: x 0..100, y 0..1, z 0..15",
+    "rear flange bent up 90 deg: x 0..100, y 96..97, z 0..15",
+    "formed square pocket under the base: 25 x 25 outside, 1 mm wall, 6 mm deep, centred at (25, 20)",
+    "two closed hems on the +X edge, modelled as rolled tubes r2 along Y: y 4..25 and y 70..95"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 10, "positions": [[10,0,8],[30,0,8],[50,0,8],[70,0,8],[90,0,8],[10,97,8],[30,97,8],[50,97,8],[70,97,8],[90,97,8]], "axis": "-y", "dia": 4, "depth": "thru", "source": "Ø4 THRU TYP, pitch 20, first at 10", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[10,45.5,1],[90,45.5,1]], "axis": "+z", "dia": 10, "depth": "thru", "source": "Ø10 THRU, 45.5 from the edge, 40 from the centre hole", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[50,45.5,1]], "axis": "+z", "dia": 20, "depth": "thru", "source": "Ø20 THRU", "confidence": "high" },
+    { "id": "D", "type": "slot", "count": 3, "positions": [[63.3,21,1],[73.3,21,1],[83.3,21,1]], "axis": "+z", "width": 5, "length": 29.5, "along": "y", "depth": "thru", "source": "Ø5 slots at 10 pitch", "confidence": "medium" },
+    { "id": "E", "type": "slot", "count": 5, "positions": [[17.5,72,1],[32.5,72,1],[47.5,72,1],[62.5,72,1],[77.5,72,1]], "axis": "+z", "width": 4.1, "length": 24, "along": "y", "depth": "thru", "source": "4.1 wide at 15 pitch (louvres)", "confidence": "medium" },
+    { "id": "F", "type": "pocket", "count": 1, "positions": [[25,20,1]], "axis": "+z", "width": 22, "length": 22, "depth": "thru", "source": "formed pocket with a 22 cutout, R2 corners", "confidence": "medium" }
+  ],
+  "guessed": [
+    "flange height 15 and hole height z=8, scaled from the flat pattern",
+    "the +X hems are modelled as tubes",
+    "the 45 deg left tabs and the Ø6.6 formed bead are omitted",
+    "the pocket wall geometry is simplified"
+  ]
+}

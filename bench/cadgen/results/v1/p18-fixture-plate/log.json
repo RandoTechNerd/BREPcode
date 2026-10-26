@@ -1,0 +1,54 @@
+{
+ "id": "p18-fixture-plate",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.137688,
+   "s": 43,
+   "ok": true,
+   "size": [
+    160,
+    100,
+    15
+   ],
+   "check": {
+    "score": 1,
+    "checked": 99,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.13966800000000001,
+   "s": 7,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.27735600000000005,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    160,
+    100,
+    15
+   ],
+   "check": {
+    "score": 1,
+    "checked": 99,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 57
+}

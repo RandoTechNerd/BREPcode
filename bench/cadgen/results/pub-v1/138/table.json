@@ -1,0 +1,32 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Flat-pattern views give 120 x 95.4. Hole chains come from the main view and Details A/B. Sheet thickness is not given; 1 mm is assumed." },
+  "frame": "Web plate in XY with Z up and the plate occupying z 0..1. X=0 is the left edge. Y=0 is the line through the bottom corner hole centres (the drawing's datum), so the top corner holes sit at y=75.4. Flanges bend up (+Z) at bend lines y=3.9 and y=70.8. The centre tabs bend down (-Z).",
+  "overall": { "x": 120, "y": 79.5, "z": 28.8 },
+  "bbox": { "min": [0, -2.1, -14.4], "max": [120, 77.4, 14.4] },
+  "body": [
+    "web plate 120 x 66.9 x 1 spanning y 3.9..70.8",
+    "flat corner wings x 0..18 and x 108.5..120 spanning y -2.1..77.4, t=1",
+    "bottom flanges at y 3.9..4.9: x 18..65.1 and x 76..108, height 14.4 (+Z)",
+    "top flanges at y 69.8..70.8: same x ranges, height 14.4 (+Z)",
+    "centre tabs x 66.4..74.7 at the bottom and top bend lines, 14.4 deep (-Z)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4, "positions": [[6,0,1],[114,0,1],[6,75.4,1],[114,75.4,1]], "axis": "+z", "dia": 3.2, "depth": "thru", "source": "6/114 and 75.4 dims", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[18,37.7,1],[40,37.7,1]], "axis": "+z", "dia": 16, "depth": "thru", "source": "Detail B 22, 37.7", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 2, "positions": [[27.7,46.7,1],[27.7,28.7,1]], "axis": "+z", "dia": 5, "depth": "thru", "source": "Detail B 9.7, 9, 9", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[100,20.7,1]], "axis": "+z", "dia": 16, "depth": "thru", "source": "100, 20.7, Detail A", "confidence": "medium" },
+    { "id": "E", "type": "hole", "count": 3, "positions": [[88,21.1,1],[112,17.0,1],[102.5,32.7,1]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Detail A 12, 14.5, 24, 3.7, 4.1, 15.7", "confidence": "medium" },
+    { "id": "F", "type": "hole", "count": 1, "positions": [[91,36.6,1]], "axis": "+z", "dia": 8, "depth": "thru", "source": "Detail A 3, 19.6", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 4, "positions": [[5,17.7,1],[56,53.7,1],[66.5,37.7,1],[70.5,14.7,1]], "axis": "+z", "dia": 5, "depth": "thru", "source": "5/56/66.5/70.5 with 17.7/53.7/37.7/14.7", "confidence": "medium" },
+    { "id": "H", "type": "hole", "count": 8, "positions": [[23,3.9,10.4],[60,3.9,10.4],[80.9,3.9,10.4],[103,3.9,10.4],[23,70.8,10.4],[60,70.8,10.4],[80.9,70.8,10.4],[103,70.8,10.4]], "axis": "+y", "dia": 3.2, "depth": "thru", "source": "flat pattern 23/60/80.9/103, 10.4 from bend", "confidence": "medium" },
+    { "id": "I", "type": "hole", "count": 2, "positions": [[70.5,3.9,-10.4],[70.5,70.8,-10.4]], "axis": "+y", "dia": 3.2, "depth": "thru", "source": "70.5 tab hole", "confidence": "low" }
+  ],
+  "guessed": [
+    "Sheet thickness 1 mm (not dimensioned).",
+    "Hole diameters were scaled from the views.",
+    "Bend line positions (3.9, 70.8) and the corner-wing extent were scaled from the flat view.",
+    "Tab bend direction (-Z) was read from the iso view.",
+    "R2 corner radii and relief slits are omitted."
+  ]
+}

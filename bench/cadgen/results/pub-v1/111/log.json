@@ -1,0 +1,93 @@
+{
+ "id": "111",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.409912,
+   "s": 216,
+   "ok": true,
+   "size": [
+    316.7,
+    325.4,
+    80
+   ],
+   "check": {
+    "score": 0.968,
+    "checked": 93,
+    "issues": [
+     "slot C at (268, -5, 80) (\"detail C\"): no Ø14 round ends at (276, -5, 80) and (260, -5, 80) (width 14, 16 centre to centre)",
+     "cbore D at (281.7, -78.5, 40) (\"Ø36 / Ø46, 78.5\"): should be 60 deep but goes through",
+     "cbore E at (284.2, -198.5, 40) (\"Ø19 / Ø29 / Ø38, 198.5 and 220.5\"): should be 70 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.21105600000000002,
+   "s": 81,
+   "ok": true,
+   "size": [
+    316.7,
+    325.4,
+    80
+   ],
+   "check": {
+    "score": 1,
+    "checked": 93,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.175088,
+   "s": 18,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.796056,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    316.7,
+    325.4,
+    80
+   ],
+   "check": {
+    "score": 0.968,
+    "checked": 93,
+    "issues": [
+     "slot C at (268, -5, 80) (\"detail C\"): no Ø14 round ends at (276, -5, 80) and (260, -5, 80) (width 14, 16 centre to centre)",
+     "cbore D at (281.7, -78.5, 40) (\"Ø36 / Ø46, 78.5\"): should be 60 deep but goes through",
+     "cbore E at (284.2, -198.5, 40) (\"Ø19 / Ø29 / Ø38, 198.5 and 220.5\"): should be 70 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    316.7,
+    325.4,
+    80
+   ],
+   "check": {
+    "score": 1,
+    "checked": 93,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 326
+}

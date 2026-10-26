@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from dimensions and callouts on the drawing" },
+  "frame": "min-corner origin: flange spans X 0..90, Y 0..90, Z up from flange bottom; part axis at (45,45); top view looks down -Z, front view looks along +Y",
+  "overall": { "x": 90, "y": 90, "z": 40 },
+  "bbox": { "min": [0, 0, 0], "max": [90, 90, 40] },
+  "body": [
+    "flange disc Ø90 x 10 thick, centre (45,45), z 0..10",
+    "hub cylinder Ø45, centre (45,45), z 10..40 (40 overall height)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[45, 45, 40]], "axis": "+z", "dia": 25, "depth": "thru",
+      "source": "Ø25 THRU", "confidence": "high" },
+    { "id": "B", "type": "pocket", "count": 1, "positions": [[45, 57.5, 40]], "axis": "+z", "width": 8, "length": 7, "along": "y", "depth": 40,
+      "source": "POCKET 8 X 7 ↧ 40, centre at 57.5 from the bottom edge (keyway reaching to radius 16)", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 4,
+      "positions": [[70.456, 70.456, 10], [19.544, 70.456, 10], [19.544, 19.544, 10], [70.456, 19.544, 10]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "source": "4X Ø6.6 THRU, 4X ON Ø72 PCD, 45° OFFSET", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[67.5, 45, 28]], "axis": "+x", "dia": 5, "depth": 12,
+      "source": "Ø5 ↧ 12 at 28 high, seen face-on in the RIGHT view and hidden in the TOP and FRONT views", "confidence": "high" },
+    { "id": "E", "type": "hole", "count": 1, "positions": [[45, 22.5, 28]], "axis": "-y", "dia": 5, "depth": 12,
+      "source": "Ø5 ↧ 12 at 28 high, seen face-on in the FRONT view and hidden in the TOP view", "confidence": "high" }
+  ],
+  "guessed": [
+    "The pocket is taken as an 8 (X) x 7 (Y) rectangle centred at Y=57.5 and running the full 40 height. This matches the keyway top drawn at about radius 16."
+  ]
+}

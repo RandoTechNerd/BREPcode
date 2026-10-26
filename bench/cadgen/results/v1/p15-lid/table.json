@@ -1,0 +1,30 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned third-angle drawing, mm" },
+  "frame": "origin at the min corner; X along the 120 length, Y along the 80 width, Z up; closed top face at z=25, open underside at z=0",
+  "overall": { "x": 120, "y": 80, "z": 25 },
+  "bbox": { "min": [0, 0, 0], "max": [120, 80, 25] },
+  "body": [
+    "outer block 120x80x25 with vertical corners R8",
+    "cavity open to the underside: 114x74 (3 mm wall) with vertical corners R5, from z=0 up to z=22 (3 mm top)",
+    "4 posts Ø11 at (8,8), (112,8), (8,72), (112,72), hanging from the underside of the top (z=22) down to z=2, merged into the corner walls"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 4,
+      "positions": [[8, 8, 25], [112, 8, 25], [8, 72, 25], [112, 72, 25]],
+      "axis": "+z", "dia": 3.4, "depth": "thru", "csk": { "d": 7, "angle": 90 },
+      "source": "4X Ø3.4 THRU, ⌵ Ø7 X 90°; 8 / 112 / 8 / 72", "confidence": "high" },
+    { "id": "B", "type": "boss", "count": 4,
+      "positions": [[8, 8, 2], [112, 8, 2], [8, 72, 2], [112, 72, 2]],
+      "axis": "-z", "dia": 11, "height": 20,
+      "source": "4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[120, 40, 12]],
+      "axis": "+x", "dia": 16, "depth": "thru",
+      "source": "RIGHT view Ø16 THRU, 40 from edge, 12 up from the bottom", "confidence": "high" }
+  ],
+  "guessed": [
+    "the posts end 2 mm above the open underside, measured off the front view's scale (~5.6 px/mm)",
+    "THRU for the Ø16 hole is read as through the +X wall only (3 mm wall)"
+  ]
+}

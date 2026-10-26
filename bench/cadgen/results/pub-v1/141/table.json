@@ -1,0 +1,32 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from the dimensioned views and sections A-A and B-B" },
+  "frame": "origin on the bore axis at the flange's bottom face; Z up along the tube axis; X/Y as in the top view (X right, Y up the sheet)",
+  "overall": { "x": 366.32, "y": 346.31, "z": 124 },
+  "bbox": { "min": [-183.16, -160.12, 0], "max": [183.16, 186.19, 124] },
+  "body": [
+    "flange disc Ø300, z 0..11",
+    "conical transition from R149.5 at z=10.5 to R132 at z=29.5",
+    "tube OD Ø262, ID Ø230, z 0..124",
+    "6 lugs: Ø45 bosses, 30 tall, with 45-wide tabs running out from r=125",
+    "1 lug: Ø55 boss at (-139.71, 125.80), 30 tall, with a 55-wide tab",
+    "2 radial bosses Ø49.13 for the M30 ports at z=57, from r=110 to r=148, at 180° and 60°"
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 230, "depth": "thru", "cbore": { "d": 268, "depth": 3 }, "source": "Ø230 bore; Ø268 recess 3.00 deep in section B-B", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 6,
+      "positions": [[-37.79, 163.69, 30], [122.87, 114.58, 30], [-160.66, 49.12, 30], [-145.49, -84, 30], [96.36, -137.62, 30], [160.66, -49.12, 30]],
+      "axis": "+z", "dia": 20, "depth": "thru", "source": "Ø20 (6X), Ø45 bosses (6X)", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[-139.71, 125.8, 30]], "axis": "+z", "dia": 22, "depth": "thru", "source": "Ø22 (1X) in a Ø55 boss", "confidence": "high" },
+    { "id": "E1", "type": "tapped", "count": 1, "positions": [[-148, 0, 57]], "axis": "-x", "dia": 26.5, "depth": "thru", "source": "M30 (2X) at 57 high, through the wall into the bore", "confidence": "medium" },
+    { "id": "E2", "type": "tapped", "count": 1, "positions": [[74, 128.17, 57]], "axis": [0.5, 0.866, 0], "dia": 26.5, "depth": "thru", "source": "M30 (2X), 30° from vertical, at 57 high", "confidence": "medium" }
+  ],
+  "guessed": [
+    "The flange web thickness of 11 comes from 124 - 113.",
+    "The cone radii are nudged by 0.5-1 mm so that no faces touch exactly.",
+    "The R170/R158 outline arcs are simplified to a Ø300 disc plus lug tabs.",
+    "The M30 tap drill is 26.5, and the radial bosses end at r=148.",
+    "Fillets are omitted.",
+    "The overall size is taken from the lug extents, because no overall dimension is given on the drawing."
+  ]
+}

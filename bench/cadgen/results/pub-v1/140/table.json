@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views: front, section A-A, top, side, details C and D" },
+  "frame": "origin at the centre of the open bottom face, Z up along the housing axis, side pipes along ±X, front pad facing -Y",
+  "overall": { "x": 240, "y": 205, "z": 130 },
+  "bbox": { "min": [-120, -105, 0], "max": [120, 100, 130] },
+  "body": [
+    "axisymmetric shell revolved from one annular wall profile: bottom spigot lip Ø195 (z 0-5), drum Ø200 (z 5-88), inner cavity Ø190 open at the bottom (the Ø190 bore under the top hole is this cavity), shoulder to a frustum Ø185 -> Ø171 (z 92-130, 20° included), top plate 3 thick",
+    "central inlet tube Ø66 OD / Ø60 bore hanging 25 down from the top (z 105-130), part of the same revolved profile",
+    "two side pipes Ø60 OD / Ø50 bore on the X axis at z 45, reaching x = ±120, both open into the cavity, so together they read as one Ø50 bore along X",
+    "four lugs beside the pipes at y = ±45, z 45, with their faces at x = ±100",
+    "front mounting pad 80 wide x 36 high, face at y = -105, z 22-58, trimmed at r 96 inside the wall"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 130]], "axis": "+z", "dia": 60, "depth": "thru", "source": "Ø60.00 section A-A; opens into the Ø190 cavity", "confidence": "high" },
+    { "id": "B1", "type": "hole", "count": 1, "positions": [[120, 0, 45]], "axis": "+x", "dia": 50, "depth": "thru", "source": "Ø50.00, 45.00, 240.00", "confidence": "high" },
+    { "id": "B2", "type": "hole", "count": 1, "positions": [[-120, 0, 45]], "axis": "-x", "dia": 50, "depth": "thru", "source": "Ø50.00, 45.00, 240.00", "confidence": "high" },
+    { "id": "C1", "type": "tapped", "count": 2, "positions": [[100, 45, 45], [100, -45, 45]], "axis": "+x", "dia": 5, "depth": 10, "source": "M6(6X), 90.00, detail D", "confidence": "medium" },
+    { "id": "C2", "type": "tapped", "count": 2, "positions": [[-100, 45, 45], [-100, -45, 45]], "axis": "-x", "dia": 5, "depth": 10, "source": "M6(6X), 90.00, detail D", "confidence": "medium" },
+    { "id": "D", "type": "tapped", "count": 2, "positions": [[-30, -105, 40], [30, -105, 40]], "axis": "-y", "dia": 5, "depth": 10, "source": "M6(6X), 70.00/100.00 in the front view, detail C", "confidence": "medium" }
+  ],
+  "guessed": [
+    "The wall thickness is taken as 2.5-5 mm, from Ø190/Ø195/Ø200.",
+    "The shoulder is simplified to a straight chamfer from z 88 to z 92, with the frustum diameters taken from the 20° taper.",
+    "The lug and pad sizes are estimated from details C and D.",
+    "The tap depths are guessed at 10 mm (the M6 tap drill is Ø5)."
+  ]
+}

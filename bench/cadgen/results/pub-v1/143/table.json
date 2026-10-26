@@ -1,0 +1,31 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "58.00 overall height, hole diameters and 232.35 / 168.85 / 131.05 plan dimensions; plan positions taken from the dimensioned plan views (~0.94 px/mm)" },
+  "frame": "origin at the left end of the part in plan, X along the part length, Y across the plan (top-view up), Z up; the part sits on z=0 and is 58 tall",
+  "overall": { "x": 595, "y": 245, "z": 58 },
+  "bbox": { "min": [0, -27, 0], "max": [595, 218, 58] },
+  "body": [
+    "zig-zag plan outline (left triangular arm, middle beam with flat 168.85 bottom edge, right triangular arm to the Ø26.47 boss) extruded 58",
+    "top pockets 44 deep leaving a 14 floor (SECTION G-G): left triangle, H1, H2 (kept above the Ø5.36 / Ø11.57 hole bosses, as in DETAIL H), J, K and the long L slot along the right arm"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[99, 175.5, 58]], "axis": "+z", "dia": 23.35, "depth": "thru", "source": "Ø23,35 THRU ALL", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[194.7, 58.5, 58]], "axis": "+z", "dia": 21.06, "depth": "thru", "source": "Ø21,06 THRU ALL", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[202, 133, 58]], "axis": "+z", "dia": 22.78, "depth": "thru", "source": "Ø22,78 THRU ALL", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[210.6, 95.7, 58]], "axis": "+z", "dia": 12.48, "depth": "thru", "source": "Ø12,48 THRU ALL", "confidence": "medium" },
+    { "id": "E", "type": "hole", "count": 1, "positions": [[308.5, 92.6, 58]], "axis": "+z", "dia": 5.36, "depth": "thru", "source": "Ø5,36 THRU ALL", "confidence": "low" },
+    { "id": "F", "type": "hole", "count": 1, "positions": [[327.7, 101, 58]], "axis": "+z", "dia": 11.57, "depth": "thru", "source": "Ø11,57 THRU ALL", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 1, "positions": [[388.3, 189.4, 58]], "axis": "+z", "dia": 29.01, "depth": "thru", "source": "Ø29,01 THRU ALL", "confidence": "medium" },
+    { "id": "H", "type": "hole", "count": 1, "positions": [[563.8, 37.2, 58]], "axis": "+z", "dia": 26.47, "depth": "thru", "source": "Ø26,47 THRU ALL", "confidence": "medium" },
+    { "id": "I", "type": "hole", "count": 1, "positions": [[479.8, 111.7, 58]], "axis": "+z", "dia": 21.06, "depth": "thru", "source": "Ø21,06 THRU ALL (right)", "confidence": "medium" },
+    { "id": "J", "type": "hole", "count": 2, "positions": [[31.9, 24.5, 58], [81.9, 18.1, 58]], "axis": "+z", "dia": 11.33, "depth": "thru", "source": "2x Ø11,33 THRU ALL", "confidence": "medium" },
+    { "id": "K", "type": "hole", "count": 2, "positions": [[404, 117, 58], [420, 112, 58]], "axis": "+z", "dia": 4.0, "depth": "thru", "source": "2x Ø4,00 THRU ALL", "confidence": "low" },
+    { "id": "P", "type": "pocket", "count": 6, "positions": [[100, 76, 58], [245, 121, 58], [300, 131.5, 58], [365, 122, 58], [427, 142, 58], [485, 65, 58]], "axis": "+z", "depth": 44, "source": "SECTION G-G floor 14.00, details H/I/J/K/L", "confidence": "low" }
+  ],
+  "guessed": [
+    "plan outline vertices and hole positions scaled from the plan views (~0.94 px/mm) because the chained dimensions are rotated and incomplete",
+    "pocket shapes simplified to rounded rectangles, a triangle and a slot; depth 44 from the 14 floor in SECTION G-G",
+    "pocket H2 moved up to y 110-153 so the Ø5.36 and Ø11.57 holes pass through solid full-height material (DETAIL H shows them in bosses outside the pocket)",
+    "small horizontal side holes (Ø5, Ø7, Ø8 in views A/B/D/E/F) omitted: their wall positions cannot be placed reliably"
+  ]
+}

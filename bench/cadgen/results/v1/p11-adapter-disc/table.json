@@ -1,0 +1,24 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned 3-view drawing in mm, third-angle projection" },
+  "frame": "origin at the disc centre on the bottom face, Z up, X right in the TOP view, Y up the sheet",
+  "overall": { "x": 120, "y": 120, "z": 18 },
+  "bbox": { "min": [-60, -60, 0], "max": [60, 60, 18] },
+  "body": [
+    "flange disc Ø120, z 0..12 (18 overall minus the 6 mm boss)",
+    "boss Ø50, z 12..18, on the same axis as the disc"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 18]], "axis": "+z", "dia": 30, "depth": "thru",
+      "source": "Ø30 THRU", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 4,
+      "positions": [[50, 0, 12], [0, 50, 12], [-50, 0, 12], [0, -50, 12]],
+      "axis": "+z", "dia": 9, "depth": "thru",
+      "source": "4X Ø9 THRU, 4X ON Ø100 PCD at 0/90/180/270°", "confidence": "high" },
+    { "id": "C", "type": "cbore", "count": 6,
+      "positions": [[30.311, 17.5, 12], [0, 35, 12], [-30.311, 17.5, 12], [-30.311, -17.5, 12], [0, -35, 12], [30.311, -17.5, 12]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "cbore": { "d": 11, "depth": 6.5 },
+      "source": "6X Ø6.6 THRU, CBORE Ø11 ↧6.5, 6X ON Ø70 PCD, 30° OFFSET", "confidence": "high" }
+  ],
+  "guessed": [ "flange thickness 12, derived from 18 overall minus the 6 mm boss height" ]
+}

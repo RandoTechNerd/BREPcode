@@ -1,0 +1,103 @@
+{
+ "id": "150",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.337152,
+   "s": 177,
+   "ok": true,
+   "size": [
+    650,
+    201.5,
+    40
+   ],
+   "check": {
+    "score": 0.968,
+    "checked": 249,
+    "issues": [
+     "tapped 32-40#1 at (481.8, 84.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#2 at (529.8, 84.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#3 at (577.8, 84.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#5 at (433.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#6 at (481.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#7 at (529.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#8 at (577.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "hole 47 at (207.5, 157.15, 40) (\"table\"): no Ø15 hole along Z there; the nearest is Ø5 15.05 mm away, axis through (199.12, 169.65, 35.5)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.27150799999999997,
+   "s": 103,
+   "ok": true,
+   "size": [
+    650,
+    201.5,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 248,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.176044,
+   "s": 14,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.784704,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    650,
+    201.5,
+    40
+   ],
+   "check": {
+    "score": 0.968,
+    "checked": 249,
+    "issues": [
+     "tapped 32-40#1 at (481.8, 84.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#2 at (529.8, 84.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#3 at (577.8, 84.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#5 at (433.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#6 at (481.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#7 at (529.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "tapped 32-40#8 at (577.8, 29.9, 14.75) (\"M10 L15\"): should be 14.7 deep but goes through",
+     "hole 47 at (207.5, 157.15, 40) (\"table\"): no Ø15 hole along Z there; the nearest is Ø5 15.05 mm away, axis through (199.12, 169.65, 35.5)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    650,
+    201.5,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 248,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 304
+}

@@ -1,0 +1,35 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views on sheets 1 and 2 (mm)" },
+  "frame": "origin on the main axis at the underside of the base flange; Z up; handle toward +Y; Ø40 port toward +X; square M30 port toward -Y",
+  "overall": { "x": 218, "y": 268, "z": 338 },
+  "bbox": { "min": [-98, -130, 0], "max": [120, 138, 338] },
+  "body": [
+    "base flange: Ø196 disc, z 0..8, plus 4 R8 lugs on the Ø210 PCD at 45/135/225/315 deg",
+    "main tube: Ø156 outer, z 7.5..313",
+    "head: Ø176 disc, z 308..338",
+    "handle frame: annular sector R75..R138 spanning 76 deg about +Y, z 308..338, with a window R90..R126 spanning 60 deg",
+    "6 head lugs: R8 on r=95 at 25, 52, 128, 155, 247.3 and 292.7 deg, z 308..338",
+    "-Y port block: 52 x 60 x 34, x -26..26, y -130..-70, z 304..338",
+    "+X port boss: Ø40 along X, x 70..120, axis at z=318",
+    "vertical Ø22 pipe: centre (86, 0), z 7.5..308.5",
+    "bore: Ø134 from z=-1 up to the head floor at z=318",
+    "head pocket: Ø150 from z=326 to the top; floor is z 318..326"
+  ],
+  "features": [
+    { "id": "A", "type": "tapped", "count": 4, "positions": [[74.25, 74.25, 8], [-74.25, 74.25, 8], [-74.25, -74.25, 8], [74.25, -74.25, 8]], "axis": "+z", "dia": 6.8, "depth": "thru", "source": "4x M8x0.75 Thru on Ø210 PCD", "confidence": "medium" },
+    { "id": "B", "type": "tapped", "count": 6, "positions": "r=95 at 25, 52, 128, 155, 247.3 and 292.7 deg, z=338", "axis": "+z", "dia": 6.8, "depth": "thru", "source": "6x M8x0.75", "confidence": "low" },
+    { "id": "C", "type": "tapped", "count": 6, "positions": [[-58.02, -33.5, 326], [-27.55, -16.82, 326], [0, 31.82, 326], [0, 67, 326], [28.34, -16.36, 326], [58.02, -33.5, 326]], "axis": "+z", "dia": 4.2, "depth": "thru", "source": "sheet 2 hole table, M5x0.4 Thru", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[0, 0, 326]], "axis": "+z", "dia": 30, "depth": "thru", "source": "centre hole", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 3, "positions": "sectors r 40..64 at 30, 150 and 270 deg, 84 deg wide", "axis": "+z", "depth": "thru floor", "source": "spoke cut-outs", "confidence": "low" },
+    { "id": "F", "type": "tapped", "count": 1, "positions": [[0, -130, 321]], "axis": "-y", "dia": 29.3, "depth": 60, "source": "M30x0.7", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 1, "positions": [[120, 0, 318]], "axis": "+x", "dia": 22, "depth": 50, "source": "Ø40 boss with Ø22 bore", "confidence": "low" }
+  ],
+  "guessed": [
+    "head floor at z 318..326",
+    "head lug radius and angles",
+    "spoke cut-outs simplified to annular sectors",
+    "port heights and lengths; +X boss axis at z=318 so it stays within 338",
+    "M5 holes cut through the floor only; those on r=67 run into the tube wall below"
+  ]
+}

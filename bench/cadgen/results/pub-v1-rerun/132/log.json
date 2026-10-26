@@ -1,0 +1,125 @@
+{
+ "id": "132",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.195816,
+   "s": 80,
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 0.865,
+    "checked": 52,
+    "issues": [
+     "hole B#1 at (0, 55, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (0, 55, 56.5)",
+     "hole B#2 at (27.5, 47.63, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (27.5, 47.63, 56.5)",
+     "hole B#3 at (47.63, 27.5, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (47.63, 27.5, 56.5)",
+     "hole B#4 at (55, 0, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (55, 0, 56.5)",
+     "hole D at (0, 0, 140) (\"Ø70 in the section view, at the star flange\"): diameter is 62, the table says 70",
+     "hole D at (0, 0, 140) (\"Ø70 in the section view, at the star flange\"): should be 12 deep but goes through",
+     "hole E at (0, 0, 140) (\"tube wall thickness scaled from the section view\"): no Ø62 hole along Z there; the nearest is Ø62 0 mm away, axis through (0, 0, 70)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.192704,
+   "s": 77,
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 1,
+    "checked": 82,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.244888,
+   "s": 88,
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 1,
+    "checked": 82,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.633408,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 0.865,
+    "checked": 52,
+    "issues": [
+     "hole B#1 at (0, 55, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (0, 55, 56.5)",
+     "hole B#2 at (27.5, 47.63, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (27.5, 47.63, 56.5)",
+     "hole B#3 at (47.63, 27.5, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (47.63, 27.5, 56.5)",
+     "hole B#4 at (55, 0, 5) (\"same 12-hole pattern on the bottom flange (iso view)\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (55, 0, 56.5)",
+     "hole D at (0, 0, 140) (\"Ø70 in the section view, at the star flange\"): diameter is 62, the table says 70",
+     "hole D at (0, 0, 140) (\"Ø70 in the section view, at the star flange\"): should be 12 deep but goes through",
+     "hole E at (0, 0, 140) (\"tube wall thickness scaled from the section view\"): no Ø62 hole along Z there; the nearest is Ø62 0 mm away, axis through (0, 0, 70)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 1,
+    "checked": 82,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 1,
+    "checked": 82,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 252
+}

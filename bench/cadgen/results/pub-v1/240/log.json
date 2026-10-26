@@ -1,0 +1,95 @@
+{
+ "id": "240",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.13204359999999998,
+   "s": 63,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    126.945,
+    122.136,
+    54.975
+   ]
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1376236,
+   "s": 49,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #20958: step_import: open parameter loop (uv gap (0.9143966007058154, 0.9626449940138488)->(0.7909791632588885, 0.9471543586479501) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: This obj"
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.1274076,
+   "s": 57,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    126.945,
+    122.136,
+    54.975
+   ]
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.1294436,
+   "s": 48,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #20958: step_import: open parameter loop (uv gap (0.9143966007058154, 0.9626449940138488)->(0.7909791632588885, 0.9471543586479501) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: This obj"
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.14251160000000002,
+   "s": 68,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    126.945,
+    122.136,
+    54.975
+   ]
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.15563159999999998,
+   "s": 63,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #20958: step_import: open parameter loop (uv gap (0.9143966007058154, 0.9626449940138488)->(0.7909791632588885, 0.9471543586479501) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: This obj"
+  }
+ ],
+ "cost": 0.8246616,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    126.945,
+    122.136,
+    54.975
+   ]
+  }
+ ],
+ "editError": "invalid: the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 364
+}

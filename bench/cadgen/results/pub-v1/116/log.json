@@ -1,0 +1,115 @@
+{
+ "id": "116",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.265912,
+   "s": 115,
+   "ok": true,
+   "size": [
+    234.55,
+    151,
+    75
+   ],
+   "check": {
+    "score": 0.969,
+    "checked": 64,
+    "issues": [
+     "tapped E at (50, 69.5, 65) (\"M8 TAP THROUGH\"): no Ø6.8 hole along Z there; the nearest is Ø5 38.5 mm away, axis through (11.5, 69.5, 67.5)",
+     "tapped G at (37.5, 10, 65) (\"M3 TAP-DEPTH-7MM\"): no Ø2.5 hole along Z there; the nearest is Ø15.5 7.65 mm away, axis through (45, 8.5, 37.5)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.21700399999999997,
+   "s": 51,
+   "ok": true,
+   "size": [
+    234.55,
+    151,
+    75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 70,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.271668,
+   "s": 81,
+   "ok": true,
+   "size": [
+    234.55,
+    151,
+    75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 70,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.7545839999999999,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    234.55,
+    151,
+    75
+   ],
+   "check": {
+    "score": 0.969,
+    "checked": 64,
+    "issues": [
+     "tapped E at (50, 69.5, 65) (\"M8 TAP THROUGH\"): no Ø6.8 hole along Z there; the nearest is Ø5 38.5 mm away, axis through (11.5, 69.5, 67.5)",
+     "tapped G at (37.5, 10, 65) (\"M3 TAP-DEPTH-7MM\"): no Ø2.5 hole along Z there; the nearest is Ø15.5 7.65 mm away, axis through (45, 8.5, 37.5)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    234.55,
+    151,
+    75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 70,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    234.55,
+    151,
+    75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 70,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 251
+}

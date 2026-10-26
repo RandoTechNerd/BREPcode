@@ -1,0 +1,197 @@
+{
+ "id": "p19-shaft-support",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.154092,
+   "s": 50,
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 10, 60) (\"SLOT 2 WIDE from top down into the Ø20 bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.17258800000000002,
+   "s": 51,
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 0, 52.5) (\"SLOT 2 WIDE: saw cut through the full 20 depth, from the top face (z 60) down into the Ø20 bore (top at z 45); end centres z 45 and z 60\"): no Ø2 round ends at (42, 0, 60) and (42, 0, 45) (width 2, 15 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.151628,
+   "s": 51,
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 10, 60) (\"SLOT 2 WIDE, from the top of the upright down into the bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.16523200000000002,
+   "s": 57,
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 0, 47.5) (\"SLOT 2 WIDE from bore to top, centred x=42\"): no Ø2 round ends at (42, 0, 59) and (42, 0, 36) (width 2, 23 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.144428,
+   "s": 9,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.7879680000000001,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.957,
+   "consensus": 0.957,
+   "rank": 0.957
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.957,
+   "consensus": 0.957,
+   "rank": 0.957
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.957,
+   "consensus": 0.957,
+   "rank": 0.957
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.957,
+   "consensus": 0.957,
+   "rank": 0.957
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 10, 60) (\"SLOT 2 WIDE from top down into the Ø20 bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+    ]
+   },
+   "consensus": 0.957
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 0, 52.5) (\"SLOT 2 WIDE: saw cut through the full 20 depth, from the top face (z 60) down into the Ø20 bore (top at z 45); end centres z 45 and z 60\"): no Ø2 round ends at (42, 0, 60) and (42, 0, 45) (width 2, 15 centre to centre)"
+    ]
+   },
+   "consensus": 0.957
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 10, 60) (\"SLOT 2 WIDE, from the top of the upright down into the bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+    ]
+   },
+   "consensus": 0.957
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    84,
+    20,
+    60
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "issues": [
+     "slot C at (42, 0, 47.5) (\"SLOT 2 WIDE from bore to top, centred x=42\"): no Ø2 round ends at (42, 0, 59) and (42, 0, 36) (width 2, 23 centre to centre)"
+    ]
+   },
+   "consensus": 0.957
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 0.957,
+ "attempts": 5,
+ "seconds": 173
+}

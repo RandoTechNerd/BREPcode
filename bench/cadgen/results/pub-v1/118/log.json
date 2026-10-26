@@ -1,0 +1,105 @@
+{
+ "id": "118",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.31819200000000003,
+   "s": 125,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B25: boolean Union on 'P.CY23' failed: boolean assembly: non-integral genus (V=134 E=201 F=72 H=4 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.187696,
+   "s": 38,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B47: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=1 genus=8): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 25 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 50 used 1 times (expected 2"
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.18346,
+   "s": 43,
+   "ok": true,
+   "size": [
+    145,
+    68,
+    10
+   ],
+   "check": {
+    "score": 1,
+    "checked": 44,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.249924,
+   "s": 79,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B56: boolean SUBTRACT failed: boolean: the section of faces 0:1 and 1:105 is truncated at (-55.000000, 17.500000, 3.000000), 1.732e0 short of the crossing at (-56.414214, 18.500000, 3.000000), and the chord that would bridge it stands 1.559e-14 off face 1's carrier and 2.753e-1 off fa"
+  },
+  {
+   "tag": "look.2",
+   "attempt": 2,
+   "cost": 0.21827600000000003,
+   "s": 49,
+   "ok": true,
+   "size": [
+    145,
+    68,
+    10
+   ],
+   "check": {
+    "score": 1,
+    "checked": 44,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 1.1575480000000002,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.3",
+   "ok": true,
+   "size": [
+    145,
+    68,
+    10
+   ],
+   "check": {
+    "score": 1,
+    "checked": 44,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.2",
+   "ok": true,
+   "size": [
+    145,
+    68,
+    10
+   ],
+   "check": {
+    "score": 1,
+    "checked": 44,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.2",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 5,
+ "seconds": 339
+}

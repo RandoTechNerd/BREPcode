@@ -1,0 +1,22 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned orthographic views plus section A-A; sheet-metal part with 2 mm walls throughout" },
+  "frame": "Origin at the min corner. X runs along the 254 length, Y across the 114 width, Z up the 19 channel height. The rail lies along y=0. Both ends are mirror images about x=127.",
+  "overall": { "x": 254, "y": 114, "z": 40 },
+  "bbox": { "min": [0, 0, 0], "max": [254, 114, 40] },
+  "body": [
+    "Side rail: a 2 mm web at y=0..2, z=0..19, running x=17..237 (220), with 2 mm top and bottom lips 4 deep in Y",
+    "4X quarter-ring arms, R15 to R35 about the end corners (2,0) and (2,114): a rectangular tube 19 high with 2 mm walls and open ends",
+    "End C-channel at each end: web x=0..2, y=15..99, z=0..19, with 2 mm flanges at z=0..2 and z=17..19 reaching to x=6",
+    "End tab at each end: plate x=4..6, y=36.77..77.23 (40.46 wide), rising from z=17 to z=40 with an R17 rounded top"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 2, "positions": [[6, 57, 28.5], [248, 57, 28.5]], "axis": "+x", "width": 5, "length": 17, "along": "y", "depth": "thru", "source": "end view: slot 5 wide (Z), 17 long (Y), centred on the tab", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Rail lip depth of 4 mm",
+    "Tab joggle offset to x=4..6",
+    "Slot centre at z=28.5, scaled from the end view",
+    "Arm cross-section taken as a closed rectangular tube"
+  ]
+}

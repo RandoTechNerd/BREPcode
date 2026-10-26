@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "plan-view chain dims from the upper-left boss axis (47, 181, 240, 287, 312, 325, 408, 488), heights from Section B-B (115, 54.1, 10), Section C-C overall 275" },
+  "frame": "origin at the upper-left boss axis on the underside, X right, Y up the plan view, Z up from the base",
+  "overall": { "x": 488, "y": 275, "z": 115 },
+  "bbox": { "min": [-40, -174, 0], "max": [448, 101, 115] },
+  "body": [
+    "plate: outline polygon extruded 54.1",
+    "boss A Ø80 at (0,0), height 115",
+    "boss B Ø80 at (0,-134), height 54.1",
+    "boss Ø70 at (181,56), height 54.1",
+    "boss R40 at (408,61), height 54.1",
+    "boss R40 at (325,-83), height 54.1",
+    "gusset 10 thick on y=0 from boss A (x 35, z 105) down to the plate top at x 88",
+    "4 pockets cut from the top down to a 10 mm floor"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 6, "positions": [[0,0,115],[0,-134,54.1],[181,56,54.1],[287,12,54.1],[408,61,54.1],[325,-83,54.1]], "axis": "+z", "dia": 40, "depth": "thru", "source": "Ø40 TYP", "confidence": "medium" },
+    { "id": "P", "type": "pocket", "count": 4, "positions": [[95,40,54.1],[100,-80,54.1],[275,20,54.1],[355,20,54.1]], "axis": "+z", "depth": 44.1, "source": "Section B-B floor 10", "confidence": "low" }
+  ],
+  "guessed": [
+    "pocket outlines approximated as polygons",
+    "Ø70 for the boss at (181,56)",
+    "gusset profile estimated from the 148° angle and the 116.5 dimension",
+    "the 64.5 rib top, small fillets and the steps under the left boss are omitted"
+  ]
+}

@@ -1,0 +1,117 @@
+{
+ "id": "105",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.24437200000000003,
+   "s": 103,
+   "ok": true,
+   "size": [
+    100,
+    87,
+    50
+   ],
+   "check": {
+    "score": 0.912,
+    "checked": 34,
+    "issues": [
+     "cbore C at (0, 43.5, 25) (\"Section A-A: Ø30 x 2 spot face, Ø20 x 12, Ø15 into the bore\"): counterbore Ø30, the table says Ø20",
+     "cbore C at (0, 43.5, 25) (\"Section A-A: Ø30 x 2 spot face, Ø20 x 12, Ø15 into the bore\"): counterbore 87 deep, the table says 12",
+     "cbore D at (0, -43.5, 25) (\"Section A-A lower port, same callouts\"): no Ø15 hole along Y there; the nearest is Ø15 0 mm away, axis through (0, 0, 25)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.210568,
+   "s": 78,
+   "ok": true,
+   "size": [
+    100,
+    87,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.22847599999999998,
+   "s": 70,
+   "ok": true,
+   "size": [
+    100,
+    87,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.683416,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    100,
+    87,
+    50
+   ],
+   "check": {
+    "score": 0.912,
+    "checked": 34,
+    "issues": [
+     "cbore C at (0, 43.5, 25) (\"Section A-A: Ø30 x 2 spot face, Ø20 x 12, Ø15 into the bore\"): counterbore Ø30, the table says Ø20",
+     "cbore C at (0, 43.5, 25) (\"Section A-A: Ø30 x 2 spot face, Ø20 x 12, Ø15 into the bore\"): counterbore 87 deep, the table says 12",
+     "cbore D at (0, -43.5, 25) (\"Section A-A lower port, same callouts\"): no Ø15 hole along Y there; the nearest is Ø15 0 mm away, axis through (0, 0, 25)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    100,
+    87,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    100,
+    87,
+    50
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 262
+}

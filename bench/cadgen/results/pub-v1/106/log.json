@@ -1,0 +1,265 @@
+{
+ "id": "106",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.24869200000000002,
+   "s": 111,
+   "ok": true,
+   "size": [
+    144,
+    253.1,
+    60
+   ],
+   "check": {
+    "score": 0.909,
+    "checked": 44,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 18) (\"Ø13 THRU TYP\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 18)",
+     "hole B#2 at (121.3, -35, 15) (\"Ø9 THRU TYP\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15)",
+     "hole F#3 at (156.3, 7.2, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11)",
+     "hole F#4 at (156.3, 99, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.189936,
+   "s": 54,
+   "ok": true,
+   "size": [
+    144,
+    253.1,
+    60
+   ],
+   "check": {
+    "score": 0.909,
+    "checked": 44,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 18) (\"Ø13 THRU TYP, one per top lug\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 18)",
+     "hole B#2 at (121.3, -35, 15) (\"Ø9 THRU TYP, one per lower lug\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15)",
+     "hole F#3 at (156.3, 7.2, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11)",
+     "hole F#4 at (156.3, 99, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.30637200000000003,
+   "s": 139,
+   "ok": true,
+   "size": [
+    144,
+    226,
+    57
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 36,
+    "issues": [
+     "hole A#1 at (12.3, 95.2, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 51 mm away, axis through (63.3, 95.5, 1.5)",
+     "hole A#2 at (12.3, 187, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 104.75 mm away, axis through (63.3, 95.5, 1.5)",
+     "hole A#3 at (156.3, 95.2, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 51 mm away, axis through (105.3, 95.5, 1.5)",
+     "hole A#4 at (156.3, 187, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 104.75 mm away, axis through (105.3, 95.5, 1.5)",
+     "hole B#1 at (50.3, 53, 14) (\"Ø9 THRU TYP, 53\"): no Ø9 hole along Z there; the nearest is Ø6 30.42 mm away, axis through (63.3, 80.5, 1.5)",
+     "hole B#2 at (118.3, 53, 14) (\"Ø9 THRU TYP, 53\"): no Ø9 hole along Z there; the nearest is Ø6 30.42 mm away, axis through (105.3, 80.5, 1.5)",
+     "hole C#1 at (50.8, 208, 41.1) (\"Ø13 THRU TYP, 35.9, 41.1\"): no Ø13 hole along Z there; the nearest is Ø6 113.19 mm away, axis through (63.3, 95.5, 1.5)",
+     "hole C#2 at (117.8, 208, 41.1) (\"Ø13 THRU TYP, 35.9, 41.1\"): no Ø13 hole along Z there; the nearest is Ø6 113.19 mm away, axis through (105.3, 95.5, 1.5)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.408048,
+   "s": 193,
+   "ok": true,
+   "size": [
+    150,
+    253,
+    48
+   ],
+   "check": {
+    "score": 0.889,
+    "checked": 45,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 17.9) (\"Ø13 THRU TYP, 35.9 / 18.9\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 17.9)",
+     "hole B at (84.3, 102, 22.1) (\"keyhole at 84.3, 53.8 above slot\"): no Ø13 hole along Y there",
+     "hole D#3 at (159.3, 7.2, 11.4) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11.4)",
+     "hole D#4 at (159.3, 99, 11.4) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11.4)",
+     "hole F#2 at (121.3, -35, 15.1) (\"Ø9 THRU TYP, 38.2 / 53\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15.1)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.213604,
+   "s": 63,
+   "ok": true,
+   "size": [
+    144,
+    253.1,
+    60
+   ],
+   "check": {
+    "score": 0.909,
+    "checked": 44,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 18) (\"Ø13 THRU TYP\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 18)",
+     "hole B#2 at (121.3, -35, 15) (\"Ø9 THRU TYP\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15)",
+     "hole F#3 at (156.3, 7.2, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11)",
+     "hole F#4 at (156.3, 99, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.366652,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.909,
+   "consensus": 0.7743333333333333,
+   "rank": 0.855
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.909,
+   "consensus": 0.7743333333333333,
+   "rank": 0.855
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.889,
+   "consensus": 0.5606666666666666,
+   "rank": 0.758
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.778,
+   "consensus": 0.6763333333333333,
+   "rank": 0.737
+  }
+ ],
+ "look": "kept (self-check 0.909 -> 0.909)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    144,
+    253.1,
+    60
+   ],
+   "check": {
+    "score": 0.909,
+    "checked": 44,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 18) (\"Ø13 THRU TYP\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 18)",
+     "hole B#2 at (121.3, -35, 15) (\"Ø9 THRU TYP\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15)",
+     "hole F#3 at (156.3, 7.2, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11)",
+     "hole F#4 at (156.3, 99, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11)"
+    ]
+   },
+   "consensus": 0.7743333333333333
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    144,
+    253.1,
+    60
+   ],
+   "check": {
+    "score": 0.909,
+    "checked": 44,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 18) (\"Ø13 THRU TYP, one per top lug\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 18)",
+     "hole B#2 at (121.3, -35, 15) (\"Ø9 THRU TYP, one per lower lug\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15)",
+     "hole F#3 at (156.3, 7.2, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11)",
+     "hole F#4 at (156.3, 99, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11)"
+    ]
+   },
+   "consensus": 0.7743333333333333
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    150,
+    253,
+    48
+   ],
+   "check": {
+    "score": 0.889,
+    "checked": 45,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 17.9) (\"Ø13 THRU TYP, 35.9 / 18.9\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 17.9)",
+     "hole B at (84.3, 102, 22.1) (\"keyhole at 84.3, 53.8 above slot\"): no Ø13 hole along Y there",
+     "hole D#3 at (159.3, 7.2, 11.4) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11.4)",
+     "hole D#4 at (159.3, 99, 11.4) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11.4)",
+     "hole F#2 at (121.3, -35, 15.1) (\"Ø9 THRU TYP, 38.2 / 53\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15.1)"
+    ]
+   },
+   "consensus": 0.5606666666666666
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    144,
+    226,
+    57
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 36,
+    "issues": [
+     "hole A#1 at (12.3, 95.2, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 51 mm away, axis through (63.3, 95.5, 1.5)",
+     "hole A#2 at (12.3, 187, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 104.75 mm away, axis through (63.3, 95.5, 1.5)",
+     "hole A#3 at (156.3, 95.2, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 51 mm away, axis through (105.3, 95.5, 1.5)",
+     "hole A#4 at (156.3, 187, 11) (\"Ø3, 7.2 / 99, 3.9\"): no Ø3 hole along Z there; the nearest is Ø6 104.75 mm away, axis through (105.3, 95.5, 1.5)",
+     "hole B#1 at (50.3, 53, 14) (\"Ø9 THRU TYP, 53\"): no Ø9 hole along Z there; the nearest is Ø6 30.42 mm away, axis through (63.3, 80.5, 1.5)",
+     "hole B#2 at (118.3, 53, 14) (\"Ø9 THRU TYP, 53\"): no Ø9 hole along Z there; the nearest is Ø6 30.42 mm away, axis through (105.3, 80.5, 1.5)",
+     "hole C#1 at (50.8, 208, 41.1) (\"Ø13 THRU TYP, 35.9, 41.1\"): no Ø13 hole along Z there; the nearest is Ø6 113.19 mm away, axis through (63.3, 95.5, 1.5)",
+     "hole C#2 at (117.8, 208, 41.1) (\"Ø13 THRU TYP, 35.9, 41.1\"): no Ø13 hole along Z there; the nearest is Ø6 113.19 mm away, axis through (105.3, 95.5, 1.5)"
+    ]
+   },
+   "consensus": 0.6763333333333333
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    144,
+    253.1,
+    60
+   ],
+   "check": {
+    "score": 0.909,
+    "checked": 44,
+    "issues": [
+     "hole A#2 at (120.8, 146.1, 18) (\"Ø13 THRU TYP\"): no Ø13 hole along X there; the nearest is Ø13 0 mm away, axis through (84.3, 146.1, 18)",
+     "hole B#2 at (121.3, -35, 15) (\"Ø9 THRU TYP\"): no Ø9 hole along X there; the nearest is Ø9 0 mm away, axis through (84.3, -35, 15)",
+     "hole F#3 at (156.3, 7.2, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 7.2, 11)",
+     "hole F#4 at (156.3, 99, 11) (\"Ø3 in side flanges, 7.2 / 99\"): no Ø3 hole along X there; the nearest is Ø3 0 mm away, axis through (84.3, 99, 11)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 0.909,
+ "attempts": 5,
+ "seconds": 427
+}

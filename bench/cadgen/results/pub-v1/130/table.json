@@ -1,0 +1,25 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned top, front and side views; about 3.94 px/mm, checked against 138.5, 123.7, 150 and 64" },
+  "frame": "origin at the min corner: X = 0 at the outer tip of the side walls, Y = 0 at the lower plate edge in the top view, Z = 0 under the base plate, Z up",
+  "overall": { "x": 138.5, "y": 150, "z": 64 },
+  "bbox": { "min": [0, 0, 0], "max": [138.5, 150, 64] },
+  "body": [
+    "base plate, 5 thick, x 29.5..138.5, y 0..150, R5 corners on the left side",
+    "top edge: R5 corner, flat to x 47.3, convex R19.4 arc (centre 47.3,130.6), concave R11.1 fillet (centre 77.4,134.8), flat notch floor y 123.7 from x 77.4 to 88.6, concave R11.1 fillet (centre 88.6,134.8), R20.1 arc around the right hole (centre 118.8,129.9), right edge x 138.5",
+    "bottom edge: mirror of the top edge about y 75",
+    "central rounded-rectangle window x ~45.4..119, y 48.9..101.1, corner R ~6.5, through",
+    "two upright side walls, 5 thick, at y 33..38 and y 112..117, profile in XZ with the forked left end, an R7.7 U-notch, a sloped top edge and a flat at z 24.8"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[40.2, 131.2, 5], [40.2, 18.7, 5]], "axis": "+z", "dia": 6.3, "depth": "thru", "source": "Ø6.3 2X THRU", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[118.8, 131.2, 5], [118.8, 18.7, 5]], "axis": "+z", "dia": 5, "depth": "thru", "source": "Ø5 2X THRU", "confidence": "medium" },
+    { "id": "C", "type": "pocket", "count": 1, "positions": [[82.2, 75, 5]], "axis": "+z", "width": 52.2, "length": 73.6, "along": "x", "depth": "thru", "source": "48.9 / 101.1, R6.9 / R6", "confidence": "medium" }
+  ],
+  "guessed": [
+    "plate and wall thickness 5",
+    "R19.4 centre at (47.3, 130.6), inferred from the 47.3 dimension and tangency to the R11.1 fillets",
+    "R10 corner simplified to a chamfer",
+    "Ø7.3 and Ø6 outer circles left out"
+  ]
+}

@@ -1,0 +1,117 @@
+{
+ "id": "129",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.255052,
+   "s": 99,
+   "ok": true,
+   "size": [
+    332,
+    188.8,
+    3
+   ],
+   "check": {
+    "score": 0.933,
+    "checked": 45,
+    "issues": [
+     "overall Y is 188.8 mm, the table says 179.8",
+     "slot F at (93.4, 84.2, 3) (\"R17.5 / R28.7 arc slot, simplified to a straight slot between its end centres\"): no Ø6 round ends at (106.3, 84.2, 3) and (80.5, 84.2, 3) (width 6, 25.8 centre to centre)",
+     "hole G#2 at (9, 13.5, 3) (\"Ø6 / Ø5 at 13.7 / 27.5 and 8.9 / 13.5\"): diameter is 5, the table says 6"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.198832,
+   "s": 57,
+   "ok": true,
+   "size": [
+    332,
+    188.8,
+    3
+   ],
+   "check": {
+    "score": 1,
+    "checked": 45,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.21072399999999997,
+   "s": 47,
+   "ok": true,
+   "size": [
+    332,
+    188.8,
+    3
+   ],
+   "check": {
+    "score": 1,
+    "checked": 45,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.664608,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    332,
+    188.8,
+    3
+   ],
+   "check": {
+    "score": 0.933,
+    "checked": 45,
+    "issues": [
+     "overall Y is 188.8 mm, the table says 179.8",
+     "slot F at (93.4, 84.2, 3) (\"R17.5 / R28.7 arc slot, simplified to a straight slot between its end centres\"): no Ø6 round ends at (106.3, 84.2, 3) and (80.5, 84.2, 3) (width 6, 25.8 centre to centre)",
+     "hole G#2 at (9, 13.5, 3) (\"Ø6 / Ø5 at 13.7 / 27.5 and 8.9 / 13.5\"): diameter is 5, the table says 6"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    332,
+    188.8,
+    3
+   ],
+   "check": {
+    "score": 1,
+    "checked": 45,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    332,
+    188.8,
+    3
+   ],
+   "check": {
+    "score": 1,
+    "checked": 45,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 207
+}

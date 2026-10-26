@@ -1,0 +1,89 @@
+{
+ "id": "147",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.171132,
+   "s": 93,
+   "ok": true,
+   "size": [
+    200,
+    199.998,
+    31
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "boss V at (25.5, 51.3, 0) (\"R56.2 / R63.8, true centre arc R60, 6x equally spaced; the inner end is near (46.6, -7) and the outer end is at x=85.5 on Ø200\"): no Ø120 boss along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.174372,
+   "s": 71,
+   "ok": true,
+   "size": [
+    200,
+    199.996,
+    31
+   ],
+   "check": {
+    "score": 1,
+    "checked": 7,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.162716,
+   "s": 19,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.50822,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    200,
+    199.998,
+    31
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "boss V at (25.5, 51.3, 0) (\"R56.2 / R63.8, true centre arc R60, 6x equally spaced; the inner end is near (46.6, -7) and the outer end is at x=85.5 on Ø200\"): no Ø120 boss along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    200,
+    199.996,
+    31
+   ],
+   "check": {
+    "score": 1,
+    "checked": 7,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 191
+}

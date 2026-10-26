@@ -1,0 +1,31 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Dimensions come from the callouts. The 100 axial length and the octagon flats are scaled from section B-B and the front view against the 170 cavity dimension." },
+  "frame": "The main bore axis is Z. The rear face is z=0 and the front face is z=100. X is horizontal in the front view and Y points up toward the top boss. The origin is on the bore axis.",
+  "overall": { "x": 188, "y": 214.5, "z": 100 },
+  "bbox": { "min": [-94, -97, 0], "max": [94, 117.5, 100] },
+  "body": [
+    "Octagonal housing extruded along Z over 0..100: X half-width 94, Y half-width 97, diagonal flats 107.6 from the axis",
+    "Front cavity Ø170 from z=100 down to z=55. A conical floor rises from Ø170 at z=55 to Ø84.3 at z=66",
+    "Rear cavity Ø170 from z=0 up to z=46. A conical roof runs from Ø84 at z=30 to Ø170 at z=46",
+    "Hub: Ø50 through. A Ø60 recess runs from z=54 to 66 at the front and from z=30 to 46.6 at the rear",
+    "Top boss Ø75 along +Y from y=89.5 to 117.5, centred at x=0, z=50, with six R7.5 lobes on a 37.5 radius"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 8, "positions": [[84.4,48.75,100],[48.75,84.4,100],[-48.75,84.4,100],[-84.4,48.75,100],[-84.4,-48.75,100],[-48.75,-84.4,100],[48.75,-84.4,100],[84.4,-48.75,100]], "axis": "+z", "dia": 10, "depth": "thru", "source": "8X Ø10 THRU on Ø195", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 7, "positions": [[0,-65,66],[-38.2,-52.6,66],[-61.8,-20.1,66],[-61.8,20.1,66],[38.2,-52.6,66],[61.8,-20.1,66],[61.8,20.1,66]], "axis": "+z", "dia": 27.5, "depth": "thru", "source": "7X Ø27.5 THRU on Ø130 at 36 deg pitch", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[0,0,100]], "axis": "+z", "dia": 50, "depth": "thru", "source": "Ø50 in section B-B", "confidence": "high" },
+    { "id": "D1", "type": "hole", "count": 1, "positions": [[0,0,66]], "axis": "+z", "dia": 60, "depth": 12, "source": "Ø60 front recess in section B-B", "confidence": "medium" },
+    { "id": "D2", "type": "hole", "count": 1, "positions": [[0,0,30]], "axis": "-z", "dia": 60, "depth": 16.6, "source": "Ø60 rear recess in section B-B", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 1, "positions": [[0,117.5,50]], "axis": "+y", "dia": 65, "depth": 29.5, "source": "Ø65", "confidence": "medium" },
+    { "id": "F", "type": "hole", "count": 1, "positions": [[0,88,50]], "axis": "+y", "dia": 27, "depth": "thru", "source": "Ø27 into the hub", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 6, "positions": [[37.5,117.5,50],[18.75,117.5,82.48],[-18.75,117.5,82.48],[-37.5,117.5,50],[-18.75,117.5,17.52],[18.75,117.5,17.52]], "axis": "+y", "dia": 7, "depth": 28.5, "source": "6X Ø7 UNTIL NEXT", "confidence": "medium" },
+    { "id": "H", "type": "hole", "count": 8, "positions": [[94,12.5,80],[94,-12.5,80],[94,12.5,20],[94,-12.5,20],[-94,12.5,80],[-94,-12.5,80],[-94,12.5,20],[-94,-12.5,20]], "axis": "+x", "dia": 10, "depth": "thru", "source": "4X Ø10 UNTIL NEXT, 60 x 25 pattern, both sides", "confidence": "medium" },
+    { "id": "I", "type": "slot", "count": 2, "positions": [[94,2.5,50],[-94,2.5,50]], "axis": "+x", "width": 25, "length": 45, "along": "z", "depth": 10, "source": "R12.5 slot, 20 centre-to-centre, 2.5 offset", "confidence": "medium" }
+  ],
+  "guessed": [
+    "The octagon flats and the 100 axial length are scaled from the views.",
+    "The depth of the Ø65 boss bore and the 10 slot depth are estimated.",
+    "The 2X Ø10 tab holes, the flange lobes, the side tabs and the small fillets are omitted."
+  ]
+}

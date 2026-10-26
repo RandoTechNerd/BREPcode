@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Drawing dimensions in mm. Plate thickness 10.0 comes from the side view and section A-A. The side view gives an overall length of 136.5." },
+  "frame": "Back side view. X runs to the right and Y runs up the sheet. The origin is at the leftmost hub point (x=0) and on the line 15.3 below the hub centre (y=0). Z is the plate thickness, 0..10.",
+  "overall": { "x": 100, "y": 136.4, "z": 10 },
+  "bbox": { "min": [0, 2.8, 0], "max": [100, 139.2, 10] },
+  "body": [
+    "U-shaped plate, 10 thick. Left arm spans x 5.7..22.1 (16.4 wide). Right arm spans x 86.3..100 (13.7 wide). Both arms run up to y=139.2.",
+    "Ø25 hub (R12.5) centred at (12.5, 15.3). Its bottom is the lowest point, y=2.8.",
+    "Bottom edge slopes up from below the hub to the right arm, with an R30 outer corner.",
+    "Main cut-out: a Ø74.8 circle centred at (48.9, 59.5), joined to the 64.2-wide gap between the arms, with an R30.3 inner corner."
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 1, "positions": [[12.5, 15.3, 10]], "axis": "+z", "dia": 15, "depth": "thru", "cbore": { "d": 19, "depth": 2 }, "source": "Ø15.0 Through; Ø19.0 ↧2 Both side (top face)", "confidence": "high" },
+    { "id": "B", "type": "cbore", "count": 1, "positions": [[12.5, 15.3, 0]], "axis": "-z", "dia": 15, "depth": "thru", "cbore": { "d": 19, "depth": 2 }, "source": "Ø15.0 Through; Ø19.0 ↧2 Both side (bottom face)", "confidence": "high" },
+    { "id": "C", "type": "slot", "count": 1, "positions": [[13.9, 101.65, 10]], "axis": "+z", "width": 9, "length": 21.5, "along": "y", "depth": "thru", "source": "Slot from y 75.6 to 97.1 above the hub line, R4.5 ends", "confidence": "medium" },
+    { "id": "D", "type": "pocket", "count": 2, "positions": [[6, 59, 10], [6, 59, 0]], "axis": "+z", "depth": 4, "source": "Trapezoid pocket, y 36.5..50.6 above the hub line", "confidence": "low" },
+    { "id": "E", "type": "pocket", "count": 2, "positions": [[10, 37, 10], [10, 37, 0]], "axis": "+z", "depth": 4, "source": "Triangular pocket, y 11.7..33.4 above the hub line", "confidence": "low" },
+    { "id": "F", "type": "pocket", "count": 2, "positions": [[30, 25, 10], [30, 25, 0]], "axis": "+z", "depth": 4, "source": "Triangular pocket right of the hub, y 4.9..15.8 above the hub line", "confidence": "low" }
+  ],
+  "guessed": [
+    "Pocket depth of 4 per side, leaving a 2 mm web.",
+    "Outline of the left bulge and the bottom slope, approximated as polylines.",
+    "Pocket outlines.",
+    "Slot x centre placed at the middle of the left arm (13.9).",
+    "Slot taken as through-cut."
+  ]
+}

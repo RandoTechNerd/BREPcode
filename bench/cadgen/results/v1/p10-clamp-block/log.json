@@ -1,0 +1,260 @@
+{
+ "id": "p10-clamp-block",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.151912,
+   "s": 35,
+   "ok": true,
+   "size": [
+    5,
+    5,
+    12.6
+   ],
+   "check": {
+    "score": 0,
+    "checked": 8,
+    "issues": [
+     "overall X is 5 mm, the table says 50",
+     "overall Y is 5 mm, the table says 40",
+     "overall Z is 12.6 mm, the table says 60",
+     "hole A at (0, 20, 30) (\"Ø25 THRU, right view, centre 20 from front, 30 up\"): no Ø25 hole along X there",
+     "slot B at (25, 20, 60) (\"SLOT 3 WIDE TO BORE, centred at X=25, full depth in Y, bottom at Z=35 per the front view\"): no Ø3 round ends at (25, 38.5, 60) and (25, 1.5, 60) (width 3, 37 centre to centre)",
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; the counterbore is on the front face per the right view\"): no Ø5.5 hole along Y there",
+     "hole D#1 at (12, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there",
+     "hole D#2 at (38, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.17508,
+   "s": 49,
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 20,
+    "issues": [
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): diameter is 10, the table says 5.5",
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): the Ø10 counterbore is missing"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.150988,
+   "s": 50,
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.857,
+    "checked": 21,
+    "issues": [
+     "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): diameter is 10, the table says 5.5",
+     "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): the Ø10 counterbore is missing",
+     "slot C at (25, 0, 35) (\"SLOT 3 WIDE TO BORE, centred x=25, runs full depth in TOP view, from top face down to z≈35 (into bore)\"): no Ø3 round ends at (25, 18.5, 35) and (25, -18.5, 35) (width 3, 37 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.157732,
+   "s": 51,
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.857,
+    "checked": 21,
+    "issues": [
+     "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): diameter is 10, the table says 5.5",
+     "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): the Ø10 counterbore is missing",
+     "slot C at (25, 0, 60) (\"SLOT 3 WIDE TO BORE, centred x=25, full depth in TOP, slot bottom at z=35 in FRONT\"): no Ø3 round ends at (25, 18.5, 60) and (25, -18.5, 60) (width 3, 37 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.175092,
+   "s": 24,
+   "ok": false,
+   "kind": "syntax",
+   "error": "drill(...) is not a function"
+  },
+  {
+   "tag": "look.2",
+   "attempt": 2,
+   "cost": 0.186928,
+   "s": 40,
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 20,
+    "issues": [
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): diameter is 10, the table says 5.5",
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): the Ø10 counterbore is missing"
+    ]
+   }
+  }
+ ],
+ "cost": 0.9977320000000001,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0,
+   "consensus": 0,
+   "rank": 0
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.9,
+   "consensus": 0.8569999999999999,
+   "rank": 0.883
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.857,
+   "consensus": 0.8713333333333333,
+   "rank": 0.863
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.857,
+   "consensus": 0.8713333333333333,
+   "rank": 0.863
+  }
+ ],
+ "look": "kept (self-check 0.9 -> 0.9)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    5,
+    5,
+    12.6
+   ],
+   "check": {
+    "score": 0,
+    "checked": 8,
+    "issues": [
+     "overall X is 5 mm, the table says 50",
+     "overall Y is 5 mm, the table says 40",
+     "overall Z is 12.6 mm, the table says 60",
+     "hole A at (0, 20, 30) (\"Ø25 THRU, right view, centre 20 from front, 30 up\"): no Ø25 hole along X there",
+     "slot B at (25, 20, 60) (\"SLOT 3 WIDE TO BORE, centred at X=25, full depth in Y, bottom at Z=35 per the front view\"): no Ø3 round ends at (25, 38.5, 60) and (25, 1.5, 60) (width 3, 37 centre to centre)",
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; the counterbore is on the front face per the right view\"): no Ø5.5 hole along Y there",
+     "hole D#1 at (12, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there",
+     "hole D#2 at (38, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there"
+    ]
+   },
+   "consensus": 0
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 20,
+    "issues": [
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): diameter is 10, the table says 5.5",
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): the Ø10 counterbore is missing"
+    ]
+   },
+   "consensus": 0.8569999999999999
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.857,
+    "checked": 21,
+    "issues": [
+     "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): diameter is 10, the table says 5.5",
+     "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): the Ø10 counterbore is missing",
+     "slot C at (25, 0, 35) (\"SLOT 3 WIDE TO BORE, centred x=25, runs full depth in TOP view, from top face down to z≈35 (into bore)\"): no Ø3 round ends at (25, 18.5, 35) and (25, -18.5, 35) (width 3, 37 centre to centre)"
+    ]
+   },
+   "consensus": 0.8713333333333333
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.857,
+    "checked": 21,
+    "issues": [
+     "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): diameter is 10, the table says 5.5",
+     "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): the Ø10 counterbore is missing",
+     "slot C at (25, 0, 60) (\"SLOT 3 WIDE TO BORE, centred x=25, full depth in TOP, slot bottom at z=35 in FRONT\"): no Ø3 round ends at (25, 18.5, 60) and (25, -18.5, 60) (width 3, 37 centre to centre)"
+    ]
+   },
+   "consensus": 0.8713333333333333
+  },
+  {
+   "tag": "look.2",
+   "ok": true,
+   "size": [
+    50,
+    40,
+    60
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 20,
+    "issues": [
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): diameter is 10, the table says 5.5",
+     "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): the Ø10 counterbore is missing"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.2",
+ "fallback": false,
+ "selfCheck": 0.9,
+ "attempts": 6,
+ "seconds": 204
+}

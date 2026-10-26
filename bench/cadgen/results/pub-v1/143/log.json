@@ -1,0 +1,89 @@
+{
+ "id": "143",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.315392,
+   "s": 135,
+   "ok": true,
+   "size": [
+    592.6,
+    244.7,
+    58
+   ],
+   "check": {
+    "score": 0.982,
+    "checked": 55,
+    "issues": [
+     "hole E at (308.5, 92.6, 58) (\"Ø5,36 THRU ALL\"): the table puts the entry 44 mm beyond the end of the hole the model has"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.19948,
+   "s": 81,
+   "ok": true,
+   "size": [
+    592.6,
+    244.7,
+    58
+   ],
+   "check": {
+    "score": 1,
+    "checked": 55,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.158336,
+   "s": 12,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.673208,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    592.6,
+    244.7,
+    58
+   ],
+   "check": {
+    "score": 0.982,
+    "checked": 55,
+    "issues": [
+     "hole E at (308.5, 92.6, 58) (\"Ø5,36 THRU ALL\"): the table puts the entry 44 mm beyond the end of the hole the model has"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    592.6,
+    244.7,
+    58
+   ],
+   "check": {
+    "score": 1,
+    "checked": 55,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 236
+}

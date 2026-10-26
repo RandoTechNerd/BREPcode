@@ -1,0 +1,113 @@
+{
+ "id": "136",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.19701200000000002,
+   "s": 67,
+   "ok": true,
+   "size": [
+    789,
+    658.6,
+    105
+   ],
+   "check": {
+    "score": 0.986,
+    "checked": 72,
+    "issues": [
+     "hole C#4 at (-188.61, 276.64, 10) (\"Ø8.00 (14X) plus the plan view chain dimensions\"): no Ø8 hole along Z there; the nearest is Ø8 49.83 mm away, axis through (-195.42, 326, 5)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.177136,
+   "s": 52,
+   "ok": true,
+   "size": [
+    789,
+    658.6,
+    105
+   ],
+   "check": {
+    "score": 1,
+    "checked": 75,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.207724,
+   "s": 45,
+   "ok": true,
+   "size": [
+    789,
+    658.6,
+    105
+   ],
+   "check": {
+    "score": 1,
+    "checked": 75,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.5818720000000001,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    789,
+    658.6,
+    105
+   ],
+   "check": {
+    "score": 0.986,
+    "checked": 72,
+    "issues": [
+     "hole C#4 at (-188.61, 276.64, 10) (\"Ø8.00 (14X) plus the plan view chain dimensions\"): no Ø8 hole along Z there; the nearest is Ø8 49.83 mm away, axis through (-195.42, 326, 5)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    789,
+    658.6,
+    105
+   ],
+   "check": {
+    "score": 1,
+    "checked": 75,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    789,
+    658.6,
+    105
+   ],
+   "check": {
+    "score": 1,
+    "checked": 75,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 168
+}

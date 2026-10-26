@@ -1,0 +1,23 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Ø200 disc, vanes on an R60 true-centre arc (faces R56.2 and R63.8), vane ends at 85.5 / 46.6 / 7, heights 31 and 30, Ø60.3 hub top, rim thickness 3, M12x1.25 24 deep" },
+  "frame": "origin at the disc centre on the flat bottom face, Z up toward the vane tops, X to the right in the top view",
+  "overall": { "x": 200, "y": 200, "z": 31 },
+  "bbox": { "min": [-100, -100, 0], "max": [100, 100, 31] },
+  "body": [
+    "base disc Ø200, 3 thick at the rim, z 0..3",
+    "top face rising as a shallow cone (stands in for R800) from z=3 at r=100 to z=11 at r=33",
+    "central hub: a frustum from r=31 at z=10 to Ø60.3 at z=30 (2° draft)",
+    "6 curved vanes (thin walls, not bosses), z 0..31, 7.6 thick: faces R56.2 / R63.8 about a true centre (25.6, 49.2) on an R60 arc. Each runs from its inner end at (46.6, -7) to the Ø200 rim at x=85.5. They are 6x equally spaced by rotation about the disc centre and clipped to Ø200"
+  ],
+  "features": [
+    { "id": "A", "type": "tapped", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 10.2, "depth": 24, "source": "M12x1.25-6H - 24 DEEP, drilled from the flat bottom (tap drill 10.2)", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Vane arc centre (25.6, 49.2) was computed from an R60 arc through the inner end (46.6, -7) and the rim point (85.5, 51.9)",
+    "Plate thickness of 11 at the hub was measured from the section scale",
+    "Hub base radius of 31 was estimated from the 2° draft",
+    "The R800 surface is approximated as a cone",
+    "The R4 and 2 mm fillets and the 30° vane-tip draft are omitted"
+  ]
+}

@@ -1,0 +1,219 @@
+{
+ "id": "p16-slotted-rail",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.148088,
+   "s": 42,
+   "ok": true,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "check": {
+    "score": 0.833,
+    "checked": 12,
+    "issues": [
+     "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom\"): should be 15 deep but goes through",
+     "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.158036,
+   "s": 29,
+   "ok": true,
+   "size": [
+    12.88,
+    4.92,
+    4.364
+   ],
+   "check": {
+    "score": 0,
+    "checked": 9,
+    "issues": [
+     "overall X is 12.88 mm, the table says 200",
+     "overall Y is 4.92 mm, the table says 30",
+     "overall Z is 4.36 mm, the table says 12",
+     "slot A#1 at (30, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (37, 15, 12) and (23, 15, 12) (width 6.6, 14 centre to centre)",
+     "slot A#2 at (80, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (87, 15, 12) and (73, 15, 12) (width 6.6, 14 centre to centre)",
+     "slot A#3 at (130, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (137, 15, 12) and (123, 15, 12) (width 6.6, 14 centre to centre)",
+     "slot A#4 at (170, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (177, 15, 12) and (163, 15, 12) (width 6.6, 14 centre to centre)",
+     "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom; hidden lines ~15 long at left end\"): no Ø4.2 hole along X there",
+     "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines ~15 long at right end in TOP/FRONT\"): no Ø4.2 hole along X there"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.141088,
+   "s": 38,
+   "ok": true,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "check": {
+    "score": 0.833,
+    "checked": 12,
+    "issues": [
+     "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15; RIGHT view gives 15 across and 6 up; hidden lines in TOP and FRONT views show one hole in each end\"): should be 15 deep but goes through",
+     "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15 (second hole, right end)\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.163684,
+   "s": 53,
+   "ok": true,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "hole B#1 at (0, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there",
+     "hole B#2 at (200, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.143944,
+   "s": 11,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.75484,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.833,
+   "consensus": 0.8146666666666667,
+   "rank": 0.826
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0,
+   "consensus": 0,
+   "rank": 0
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.778,
+   "consensus": 0.8329999999999999,
+   "rank": 0.8
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.833,
+   "consensus": 0.8146666666666667,
+   "rank": 0.826
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "check": {
+    "score": 0.833,
+    "checked": 12,
+    "issues": [
+     "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom\"): should be 15 deep but goes through",
+     "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+    ]
+   },
+   "consensus": 0.8146666666666667
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    12.88,
+    4.92,
+    4.364
+   ],
+   "check": {
+    "score": 0,
+    "checked": 9,
+    "issues": [
+     "overall X is 12.88 mm, the table says 200",
+     "overall Y is 4.92 mm, the table says 30",
+     "overall Z is 4.36 mm, the table says 12",
+     "slot A#1 at (30, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (37, 15, 12) and (23, 15, 12) (width 6.6, 14 centre to centre)",
+     "slot A#2 at (80, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (87, 15, 12) and (73, 15, 12) (width 6.6, 14 centre to centre)",
+     "slot A#3 at (130, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (137, 15, 12) and (123, 15, 12) (width 6.6, 14 centre to centre)",
+     "slot A#4 at (170, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (177, 15, 12) and (163, 15, 12) (width 6.6, 14 centre to centre)",
+     "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom; hidden lines ~15 long at left end\"): no Ø4.2 hole along X there",
+     "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines ~15 long at right end in TOP/FRONT\"): no Ø4.2 hole along X there"
+    ]
+   },
+   "consensus": 0
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "hole B#1 at (0, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there",
+     "hole B#2 at (200, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there"
+    ]
+   },
+   "consensus": 0.8329999999999999
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    200,
+    30,
+    12
+   ],
+   "check": {
+    "score": 0.833,
+    "checked": 12,
+    "issues": [
+     "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15; RIGHT view gives 15 across and 6 up; hidden lines in TOP and FRONT views show one hole in each end\"): should be 15 deep but goes through",
+     "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15 (second hole, right end)\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+    ]
+   },
+   "consensus": 0.8146666666666667
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 0.833,
+ "attempts": 5,
+ "seconds": 143
+}

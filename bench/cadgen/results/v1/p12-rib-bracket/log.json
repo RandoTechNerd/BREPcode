@@ -1,0 +1,54 @@
+{
+ "id": "p12-rib-bracket",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.150188,
+   "s": 42,
+   "ok": true,
+   "size": [
+    80,
+    70,
+    90
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.140284,
+   "s": 10,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.29047199999999995,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    80,
+    70,
+    90
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 57
+}

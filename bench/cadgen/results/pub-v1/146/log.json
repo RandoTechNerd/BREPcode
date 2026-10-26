@@ -1,0 +1,273 @@
+{
+ "id": "146",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.292032,
+   "s": 166,
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.892,
+    "checked": 37,
+    "issues": [
+     "hole B#1 at (15, 85, 115) (\"Ø6.00 (2X), 85 from the front face\"): should be 25 deep but goes through",
+     "hole B#2 at (195, 85, 115) (\"Ø6.00 (2X), 85 from the front face\"): should be 25 deep but goes through",
+     "hole F#1 at (-3, 110.5, 88.55) (\"Ø5.00 positioned 8.55 / 9.51 in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.21 mm away, axis through (15, 85, 107.39)",
+     "hole F#2 at (213, 110.5, 88.55) (\"Ø5.00 positioned 8.55 / 9.51 in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.21 mm away, axis through (195, 85, 107.39)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.221144,
+   "s": 93,
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.95,
+    "checked": 40,
+    "issues": [
+     "hole F1 at (-3, 110.49, 88.55) (\"side view Ø5.00: 8.55 from the bore centre in Z, 9.51 below the back face; seen as a circle looking along X\"): should be 10 deep but goes through",
+     "hole F2 at (213, 110.49, 88.55) (\"mirror of F1 on the other leg (iso shows small holes on both outer ring faces)\"): no Ø5 hole along X there; the nearest is Ø5 0 mm away, axis through (105, 110.49, 88.55)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.263712,
+   "s": 98,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B9: boolean Intersect on 'E7' failed: boolean assembly produced invalid topology (S=1 genus=1): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 11 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 17 used 1 times (ex"
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.319788,
+   "s": 122,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B11: boolean Intersect on 'P.CY6' failed: boolean: unsupported tangent-curve surface intersection between faces 0/6 and 1/1085: the carriers touch along a tangent curve from (113.704578,120.000000,80.000000) to (13.544706,120.000000,80.000000) (length 100.159872, 7 stations) which the"
+  },
+  {
+   "tag": "c2.2",
+   "attempt": 2,
+   "cost": 0.281472,
+   "s": 113,
+   "ok": true,
+   "size": [
+    216,
+    120,
+    114.996
+   ],
+   "check": {
+    "score": 0.892,
+    "checked": 37,
+    "issues": [
+     "hole B#1 at (18, 85, 115) (\"Ø6 (2X), 15 from the ends at Y 85\"): should be 22 deep but goes through",
+     "hole B#2 at (198, 85, 115) (\"Ø6 (2X), 15 from the ends at Y 85\"): should be 22 deep but goes through",
+     "hole C#1 at (0, 110.49, 88.55) (\"Ø5 hole placed by the 8.55 and 9.51 offsets in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (18, 85, 107.39)",
+     "hole C#2 at (216, 110.49, 88.55) (\"Ø5 hole placed by the 8.55 and 9.51 offsets in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (198, 85, 107.39)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.2",
+   "attempt": 2,
+   "cost": 0.256884,
+   "s": 128,
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.829,
+    "checked": 35,
+    "issues": [
+     "hole A#1 at (-108, 85, 80) (\"Ø40 bore\"): no Ø40 hole along Z there; the nearest is Ø6 18 mm away, axis through (-90, 85, 107.39)",
+     "hole A#2 at (108, 85, 80) (\"Ø40 bore\"): no Ø40 hole along Z there; the nearest is Ø6 18 mm away, axis through (90, 85, 107.39)",
+     "hole C#1 at (-90, 85, 115) (\"Ø6 (2X): 85 from the front, 15 in from the 210 edges\"): should be 16 deep but goes through",
+     "hole C#2 at (90, 85, 115) (\"Ø6 (2X): 85 from the front, 15 in from the 210 edges\"): should be 16 deep but goes through",
+     "hole F#1 at (-108, 110.49, 88.55) (\"Ø5 in the side view, placed from the 8.55 and 9.51 dimensions\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (-90, 85, 107.39)",
+     "hole F#2 at (108, 110.49, 88.55) (\"Ø5 in the side view, placed from the 8.55 and 9.51 dimensions\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (90, 85, 107.39)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.245512,
+   "s": 92,
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 40,
+    "issues": [
+     "hole B#1 at (15, 85, 115) (\"Ø6.00 (2X), 85 from the front face; breaks into the bore\"): should be 25 deep but goes through",
+     "hole B#2 at (195, 85, 115) (\"Ø6.00 (2X), 85 from the front face; breaks into the bore\"): should be 25 deep but goes through",
+     "hole F1 at (-3, 110.49, 88.55) (\"side view Ø5.00: 8.55 / 9.51\"): should be 10 deep but goes through",
+     "hole F2 at (213, 110.49, 88.55) (\"mirror of F1 on the other leg\"): no Ø5 hole along X there; the nearest is Ø5 0 mm away, axis through (105, 110.49, 88.55)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.8805439999999998,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.892,
+   "consensus": 0.8613333333333332,
+   "rank": 0.88
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.95,
+   "consensus": 0.842,
+   "rank": 0.907
+  },
+  {
+   "tag": "c1.2",
+   "ok": true,
+   "own": 0.829,
+   "consensus": 0.888,
+   "rank": 0.853
+  },
+  {
+   "tag": "c2.2",
+   "ok": true,
+   "own": 0.892,
+   "consensus": 0.867,
+   "rank": 0.882
+  }
+ ],
+ "look": "kept (self-check 0.95 -> 0.9)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.892,
+    "checked": 37,
+    "issues": [
+     "hole B#1 at (15, 85, 115) (\"Ø6.00 (2X), 85 from the front face\"): should be 25 deep but goes through",
+     "hole B#2 at (195, 85, 115) (\"Ø6.00 (2X), 85 from the front face\"): should be 25 deep but goes through",
+     "hole F#1 at (-3, 110.5, 88.55) (\"Ø5.00 positioned 8.55 / 9.51 in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.21 mm away, axis through (15, 85, 107.39)",
+     "hole F#2 at (213, 110.5, 88.55) (\"Ø5.00 positioned 8.55 / 9.51 in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.21 mm away, axis through (195, 85, 107.39)"
+    ]
+   },
+   "consensus": 0.8613333333333332
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.95,
+    "checked": 40,
+    "issues": [
+     "hole F1 at (-3, 110.49, 88.55) (\"side view Ø5.00: 8.55 from the bore centre in Z, 9.51 below the back face; seen as a circle looking along X\"): should be 10 deep but goes through",
+     "hole F2 at (213, 110.49, 88.55) (\"mirror of F1 on the other leg (iso shows small holes on both outer ring faces)\"): no Ø5 hole along X there; the nearest is Ø5 0 mm away, axis through (105, 110.49, 88.55)"
+    ]
+   },
+   "consensus": 0.842
+  },
+  {
+   "tag": "c1.2",
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.829,
+    "checked": 35,
+    "issues": [
+     "hole A#1 at (-108, 85, 80) (\"Ø40 bore\"): no Ø40 hole along Z there; the nearest is Ø6 18 mm away, axis through (-90, 85, 107.39)",
+     "hole A#2 at (108, 85, 80) (\"Ø40 bore\"): no Ø40 hole along Z there; the nearest is Ø6 18 mm away, axis through (90, 85, 107.39)",
+     "hole C#1 at (-90, 85, 115) (\"Ø6 (2X): 85 from the front, 15 in from the 210 edges\"): should be 16 deep but goes through",
+     "hole C#2 at (90, 85, 115) (\"Ø6 (2X): 85 from the front, 15 in from the 210 edges\"): should be 16 deep but goes through",
+     "hole F#1 at (-108, 110.49, 88.55) (\"Ø5 in the side view, placed from the 8.55 and 9.51 dimensions\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (-90, 85, 107.39)",
+     "hole F#2 at (108, 110.49, 88.55) (\"Ø5 in the side view, placed from the 8.55 and 9.51 dimensions\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (90, 85, 107.39)"
+    ]
+   },
+   "consensus": 0.888
+  },
+  {
+   "tag": "c2.2",
+   "ok": true,
+   "size": [
+    216,
+    120,
+    114.996
+   ],
+   "check": {
+    "score": 0.892,
+    "checked": 37,
+    "issues": [
+     "hole B#1 at (18, 85, 115) (\"Ø6 (2X), 15 from the ends at Y 85\"): should be 22 deep but goes through",
+     "hole B#2 at (198, 85, 115) (\"Ø6 (2X), 15 from the ends at Y 85\"): should be 22 deep but goes through",
+     "hole C#1 at (0, 110.49, 88.55) (\"Ø5 hole placed by the 8.55 and 9.51 offsets in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (18, 85, 107.39)",
+     "hole C#2 at (216, 110.49, 88.55) (\"Ø5 hole placed by the 8.55 and 9.51 offsets in the side view\"): no Ø5 hole along Z there; the nearest is Ø6 31.2 mm away, axis through (198, 85, 107.39)"
+    ]
+   },
+   "consensus": 0.867
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    216,
+    120,
+    115
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 40,
+    "issues": [
+     "hole B#1 at (15, 85, 115) (\"Ø6.00 (2X), 85 from the front face; breaks into the bore\"): should be 25 deep but goes through",
+     "hole B#2 at (195, 85, 115) (\"Ø6.00 (2X), 85 from the front face; breaks into the bore\"): should be 25 deep but goes through",
+     "hole F1 at (-3, 110.49, 88.55) (\"side view Ø5.00: 8.55 / 9.51\"): should be 10 deep but goes through",
+     "hole F2 at (213, 110.49, 88.55) (\"mirror of F1 on the other leg\"): no Ø5 hole along X there; the nearest is Ø5 0 mm away, axis through (105, 110.49, 88.55)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 0.9,
+ "attempts": 7,
+ "seconds": 617
+}

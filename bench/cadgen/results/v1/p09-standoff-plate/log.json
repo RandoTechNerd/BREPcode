@@ -1,0 +1,54 @@
+{
+ "id": "p09-standoff-plate",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.137488,
+   "s": 59,
+   "ok": true,
+   "size": [
+    120,
+    90,
+    18
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.141216,
+   "s": 7,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.278704,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    120,
+    90,
+    18
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 74
+}

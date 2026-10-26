@@ -1,0 +1,21 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned top, front and right views, mm, third-angle" },
+  "frame": "origin at the min corner; X along the 120 length, Y along the 60 depth (front face at y=0), Z up from the bottom face",
+  "overall": { "x": 120, "y": 60, "z": 45 },
+  "bbox": { "min": [0, 0, 0], "max": [120, 60, 45] },
+  "body": [
+    "low step: x 0-40, full depth 60, top at z=15",
+    "middle step: x 40-80, full depth 60, top at z=30",
+    "high step: x 80-120, full depth 60, top at z=45"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[20, 15, 15], [20, 45, 15]], "axis": "+z",
+      "dia": 6.8, "depth": 12, "source": "2X Ø6.8 ↧ 12, on the low step", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[60, 15, 30], [60, 45, 30]], "axis": "+z",
+      "dia": 6.8, "depth": 15, "source": "2X Ø6.8 ↧ 15, on the middle step", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 2, "positions": [[100, 15, 45], [100, 45, 45]], "axis": "+z",
+      "dia": 8, "depth": 20, "source": "2X Ø8 ↧ 20, on the high step", "confidence": "high" }
+  ],
+  "guessed": []
+}

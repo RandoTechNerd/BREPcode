@@ -1,0 +1,24 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from the drawing callouts (mm, third-angle)" },
+  "frame": "origin at the flange axis on the bottom face; X right and Y up in the TOP view; Z up (hub side)",
+  "overall": { "x": 140, "y": 140, "z": 36 },
+  "bbox": { "min": [-70, -70, 0], "max": [70, 70, 36] },
+  "body": [
+    "flange disc Ø140, z 0..14, with a C2 x 45° chamfer on its top outer edge (r 70 -> 68 over z 12..14)",
+    "hub Ø70, z 14..36 (36 overall), coaxial with the flange"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 36]], "axis": "+z",
+      "dia": 40, "depth": "thru", "source": "Ø40 THRU", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 6,
+      "positions": [[55, 0, 14], [27.5, 47.631, 14], [-27.5, 47.631, 14], [-55, 0, 14], [-27.5, -47.631, 14], [27.5, -47.631, 14]],
+      "axis": "+z", "dia": 13.5, "depth": "thru",
+      "source": "6X Ø13.5 THRU, 6X EQ SP ON Ø110 PCD; top view shows holes on the ±X axis", "confidence": "high" },
+    { "id": "C", "type": "chamfer", "count": 1, "positions": [[70, 0, 14]], "axis": "+z",
+      "width": 2, "source": "C2 X 45° on the flange top outer edge", "confidence": "high" }
+  ],
+  "guessed": [
+    "14 is read as the flange thickness and 36 as the overall height, so the hub stands 22 above the flange; this matches the proportions in the FRONT view"
+  ]
+}

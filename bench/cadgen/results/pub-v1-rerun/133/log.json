@@ -1,0 +1,237 @@
+{
+ "id": "133",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.24135600000000001,
+   "s": 115,
+   "ok": true,
+   "size": [
+    179.673,
+    112.761,
+    40
+   ],
+   "check": {
+    "score": 0.84,
+    "checked": 25,
+    "issues": [
+     "overall X is 179.67 mm, the table says 181.47",
+     "overall Y is 112.76 mm, the table says 108.96",
+     "slot C#1 at (60.2, 16.5, 12) (\"section A-A 8.00, top view 62.43 / 61.41\"): no Ø8 round ends at (90.91, 16.5, 12) and (29.5, 16.5, 12) (width 8, 61.41 centre to centre)",
+     "slot C#2 at (-60.2, 16.5, 12) (\"section A-A 8.00, top view 62.43 / 61.41\"): no Ø8 round ends at (-29.5, 16.5, 12) and (-90.9, 16.5, 12) (width 8, 61.41 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.278176,
+   "s": 116,
+   "ok": true,
+   "size": [
+    181.529,
+    109.386,
+    40
+   ],
+   "check": {
+    "score": 0.965,
+    "checked": 57,
+    "issues": [
+     "slot C#1 at (61.12, 13.18, 40) (\"8.00 slot in the 12 top plate, 62.43 along the arm, ends 61.41 apart centre to centre\"): no Ø8 round ends at (91.82, 13.18, 40) and (30.42, 13.18, 40) (width 8, 61.41 centre to centre)",
+     "slot C#2 at (-61.12, 13.18, 40) (\"8.00 slot in the 12 top plate, 62.43 along the arm, ends 61.41 apart centre to centre\"): no Ø8 round ends at (-30.41, 13.18, 40) and (-91.82, 13.18, 40) (width 8, 61.41 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.21477200000000002,
+   "s": 85,
+   "ok": true,
+   "size": [
+    179.673,
+    112.761,
+    40
+   ],
+   "check": {
+    "score": 0.84,
+    "checked": 25,
+    "issues": [
+     "overall X is 179.67 mm, the table says 181.47",
+     "overall Y is 112.76 mm, the table says 108.96",
+     "tapped C at (0, 0, 40) (\"M6X10-8X on wall tops, 6 from outer wall face\"): no Ø5 hole along Z there; the nearest is Ø76 0 mm away, axis through (0, 0, 20)",
+     "slot D at (0, 0, 8) (\"section A-A R4, 8 from end, 4 from bottom\"): no Ø8 round ends at (38.71, 0, 8) and (-38.7, 0, 8) (width 8, 77.41 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.591056,
+   "s": 310,
+   "ok": true,
+   "size": [
+    181.656,
+    109.155,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.20495999999999998,
+   "s": 71,
+   "ok": true,
+   "size": [
+    181.529,
+    109.386,
+    40
+   ],
+   "check": {
+    "score": 0.965,
+    "checked": 57,
+    "issues": [
+     "slot C1 at (61.12, 13.18, 40) (\"slot across the right arm, 62.43 along the arm\"): no Ø8 round ends at (91.82, 13.18, 40) and (30.42, 13.18, 40) (width 8, 61.41 centre to centre)",
+     "slot C2 at (-61.12, 13.18, 40) (\"slot across the left arm, mirror of C1\"): no Ø8 round ends at (-30.41, 13.18, 40) and (-91.82, 13.18, 40) (width 8, 61.41 centre to centre)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.5303200000000001,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.84,
+   "consensus": 0.7903333333333333,
+   "rank": 0.82
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.965,
+   "consensus": 0.9466666666666667,
+   "rank": 0.958
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.84,
+   "consensus": 0.6263333333333333,
+   "rank": 0.755
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 1,
+   "consensus": 0.8456666666666667,
+   "rank": 0.938
+  }
+ ],
+ "look": "kept (self-check 0.965 -> 0.965)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    179.673,
+    112.761,
+    40
+   ],
+   "check": {
+    "score": 0.84,
+    "checked": 25,
+    "issues": [
+     "overall X is 179.67 mm, the table says 181.47",
+     "overall Y is 112.76 mm, the table says 108.96",
+     "slot C#1 at (60.2, 16.5, 12) (\"section A-A 8.00, top view 62.43 / 61.41\"): no Ø8 round ends at (90.91, 16.5, 12) and (29.5, 16.5, 12) (width 8, 61.41 centre to centre)",
+     "slot C#2 at (-60.2, 16.5, 12) (\"section A-A 8.00, top view 62.43 / 61.41\"): no Ø8 round ends at (-29.5, 16.5, 12) and (-90.9, 16.5, 12) (width 8, 61.41 centre to centre)"
+    ]
+   },
+   "consensus": 0.7903333333333333
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    181.529,
+    109.386,
+    40
+   ],
+   "check": {
+    "score": 0.965,
+    "checked": 57,
+    "issues": [
+     "slot C#1 at (61.12, 13.18, 40) (\"8.00 slot in the 12 top plate, 62.43 along the arm, ends 61.41 apart centre to centre\"): no Ø8 round ends at (91.82, 13.18, 40) and (30.42, 13.18, 40) (width 8, 61.41 centre to centre)",
+     "slot C#2 at (-61.12, 13.18, 40) (\"8.00 slot in the 12 top plate, 62.43 along the arm, ends 61.41 apart centre to centre\"): no Ø8 round ends at (-30.41, 13.18, 40) and (-91.82, 13.18, 40) (width 8, 61.41 centre to centre)"
+    ]
+   },
+   "consensus": 0.9466666666666667
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    179.673,
+    112.761,
+    40
+   ],
+   "check": {
+    "score": 0.84,
+    "checked": 25,
+    "issues": [
+     "overall X is 179.67 mm, the table says 181.47",
+     "overall Y is 112.76 mm, the table says 108.96",
+     "tapped C at (0, 0, 40) (\"M6X10-8X on wall tops, 6 from outer wall face\"): no Ø5 hole along Z there; the nearest is Ø76 0 mm away, axis through (0, 0, 20)",
+     "slot D at (0, 0, 8) (\"section A-A R4, 8 from end, 4 from bottom\"): no Ø8 round ends at (38.71, 0, 8) and (-38.7, 0, 8) (width 8, 77.41 centre to centre)"
+    ]
+   },
+   "consensus": 0.6263333333333333
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    181.656,
+    109.155,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   },
+   "consensus": 0.8456666666666667
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    181.529,
+    109.386,
+    40
+   ],
+   "check": {
+    "score": 0.965,
+    "checked": 57,
+    "issues": [
+     "slot C1 at (61.12, 13.18, 40) (\"slot across the right arm, 62.43 along the arm\"): no Ø8 round ends at (91.82, 13.18, 40) and (30.42, 13.18, 40) (width 8, 61.41 centre to centre)",
+     "slot C2 at (-61.12, 13.18, 40) (\"slot across the left arm, mirror of C1\"): no Ø8 round ends at (-30.41, 13.18, 40) and (-91.82, 13.18, 40) (width 8, 61.41 centre to centre)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 0.965,
+ "attempts": 5,
+ "seconds": 619
+}

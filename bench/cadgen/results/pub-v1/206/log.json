@@ -1,0 +1,75 @@
+{
+ "id": "206",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.1151596,
+   "s": 438,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1357916,
+   "s": 450,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.11761160000000001,
+   "s": 439,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.11209960000000001,
+   "s": 437,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.1278516,
+   "s": 444,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.1230516,
+   "s": 441,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  }
+ ],
+ "cost": 0.7315656000000001,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  }
+ ],
+ "editError": "build: \n[timeout after 420s]",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 2661
+}

@@ -1,0 +1,18 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from the dimensioned drawing (mm, third-angle)" },
+  "frame": "origin at the min corner of the base: X along the 84 length (left to right in FRONT), Y along the 20 depth, Z up from the bottom of the base",
+  "overall": { "x": 84, "y": 20, "z": 60 },
+  "bbox": { "min": [0, 0, 0], "max": [84, 20, 60] },
+  "body": [
+    "base plate 84 x 20 x 10, x 0..84, y 0..20, z 0..10",
+    "upright block 42 wide (x 21..63), full depth y 0..20, z 0..60, top two edges (parallel to Y) rounded R6 TYP"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[10, 10, 10], [74, 10, 10]], "axis": "+z", "dia": 6.6, "depth": "thru", "source": "2X Ø6.6 THRU, 10 / 74 from left, 10 from front", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[42, 0, 35]], "axis": "-y", "dia": 20, "depth": "thru", "source": "Ø20 THRU, centre 42 from left, 35 up", "confidence": "high" },
+    { "id": "C", "type": "slot", "count": 1, "positions": [[42, 10, 60]], "axis": "+z", "width": 2, "length": 20, "along": "y", "depth": 25, "source": "SLOT 2 WIDE from top down into the Ø20 bore", "confidence": "high" },
+    { "id": "D", "type": "cbore", "count": 1, "positions": [[63, 10, 52]], "axis": "+x", "dia": 5.5, "depth": "thru", "cbore": { "d": 9.5, "depth": 6 }, "source": "Ø5.5 THRU, ⌴ Ø9.5 ↧ 6, 52 up, 10 from front, counterbore on the right face", "confidence": "high" }
+  ],
+  "guessed": [ "the clamp screw hole runs through both halves of the upright (x 21..63), as the hidden lines in FRONT show" ]
+}

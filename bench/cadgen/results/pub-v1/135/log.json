@@ -1,0 +1,115 @@
+{
+ "id": "135",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.24225200000000002,
+   "s": 116,
+   "ok": true,
+   "size": [
+    254,
+    114,
+    40
+   ],
+   "check": {
+    "score": 0.6,
+    "checked": 5,
+    "issues": [
+     "slot A#1 at (4, 57, 27.75) (\"end view: slot 5 wide, 17 long, in the tab\"): no Ø5 round ends at (4, 57, 33.75) and (4, 57, 21.75) (width 5, 12 centre to centre)",
+     "slot A#2 at (250, 57, 27.75) (\"end view: slot 5 wide, 17 long, in the tab\"): no Ø5 round ends at (250, 57, 33.75) and (250, 57, 21.75) (width 5, 12 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.17207999999999998,
+   "s": 52,
+   "ok": true,
+   "size": [
+    254,
+    114,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 5,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.20128800000000002,
+   "s": 61,
+   "ok": true,
+   "size": [
+    254,
+    114,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 5,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.6156200000000001,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    254,
+    114,
+    40
+   ],
+   "check": {
+    "score": 0.6,
+    "checked": 5,
+    "issues": [
+     "slot A#1 at (4, 57, 27.75) (\"end view: slot 5 wide, 17 long, in the tab\"): no Ø5 round ends at (4, 57, 33.75) and (4, 57, 21.75) (width 5, 12 centre to centre)",
+     "slot A#2 at (250, 57, 27.75) (\"end view: slot 5 wide, 17 long, in the tab\"): no Ø5 round ends at (250, 57, 33.75) and (250, 57, 21.75) (width 5, 12 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    254,
+    114,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 5,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    254,
+    114,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 5,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 235
+}

@@ -73,3 +73,8 @@ vendor/brep-kernel-nvidia/
 
 # prompt benchmark runs (screenshots, STLs)
 bench/results/
+
+# bench/cadgen public-set outputs: the editing samples' STEPs are copies of
+# multi-MB public inputs; the logs, tables, code and blueprints are kept
+bench/cadgen/results/pub-*/2*/output.step
+bench/cadgen/results/pub-*/*/code.*.*.js

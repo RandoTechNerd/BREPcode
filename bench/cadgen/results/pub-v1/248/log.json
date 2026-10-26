@@ -1,0 +1,44 @@
+{
+ "id": "248",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.13871160000000002,
+   "s": 57,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #44820: makeRevolution: generatrix control point 3 sits 4.999488260007757e0 from the axis, neither on it nor clear of it against the generatrix's 8.461916305778e4 radial extent (a fuzzy pole); OpenCASCADE: "
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1264076,
+   "s": 83,
+   "ok": true,
+   "size": [
+    306255.951,
+    128297.417,
+    104249.941
+   ]
+  }
+ ],
+ "cost": 0.2651192,
+ "candidates": [
+  {
+   "tag": "e0.2",
+   "ok": true,
+   "size": [
+    306255.951,
+    128297.417,
+    104249.941
+   ]
+  }
+ ],
+ "ok": true,
+ "kept": "e0.2",
+ "fallback": false,
+ "attempts": 2,
+ "seconds": 165
+}

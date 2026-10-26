@@ -1,0 +1,20 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned third-angle views: 50 x 40 x 60 block" },
+  "frame": "min-corner origin; X along the 50 width (front view left to right), Y along the 40 depth (Y=0 front face), Z up the 60 height",
+  "overall": { "x": 50, "y": 40, "z": 60 },
+  "bbox": { "min": [0, 0, 0], "max": [50, 40, 60] },
+  "body": [ "rectangular block 50 x 40 x 60 at the origin" ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 20, 30]], "axis": "-x", "dia": 25, "depth": "thru",
+      "source": "Ø25 THRU, right view, centre 20 from front, 30 up", "confidence": "high" },
+    { "id": "B", "type": "pocket", "count": 1, "positions": [[25, 20, 60]], "axis": "+z", "width": 3, "length": 40, "along": "y", "depth": 25,
+      "source": "SLOT 3 WIDE TO BORE, centred X=25, full Y, bottom at Z=35", "confidence": "medium" },
+    { "id": "C", "type": "cbore", "count": 1, "positions": [[25, 0, 50]], "axis": "-y", "dia": 5.5, "depth": "thru", "cbore": { "d": 10, "depth": 6 },
+      "source": "Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 2, "positions": [[12, 20, 0], [38, 20, 0]], "axis": "-z", "dia": 5, "depth": 12,
+      "source": "2X Ø5 ↧12, top view X=12 and 38, Y=20", "confidence": "high" }
+  ],
+  "guessed": [ "slot bottom Z=35, scaled from the front view and confirmed by the bore-intersection lines in the top view" ],
+  "zoom": []
+}

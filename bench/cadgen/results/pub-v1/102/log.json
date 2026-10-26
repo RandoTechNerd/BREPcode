@@ -1,0 +1,91 @@
+{
+ "id": "102",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.258992,
+   "s": 125,
+   "ok": true,
+   "size": [
+    343.649,
+    260.42,
+    32.5
+   ],
+   "check": {
+    "score": 0.944,
+    "checked": 36,
+    "issues": [
+     "overall Y is 260.42 mm, the table says 300",
+     "slot F at (-164.3, 68.4, 14.5) (\"R3 slot in the arm\"): no Ø6 round ends at (-146.3, 68.4, 14.5) and (-182.3, 68.4, 14.5) (width 6, 36 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.190708,
+   "s": 58,
+   "ok": true,
+   "size": [
+    343.649,
+    260.42,
+    32.5
+   ],
+   "check": {
+    "score": 1,
+    "checked": 39,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.16089599999999998,
+   "s": 17,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.6105959999999999,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    343.649,
+    260.42,
+    32.5
+   ],
+   "check": {
+    "score": 0.944,
+    "checked": 36,
+    "issues": [
+     "overall Y is 260.42 mm, the table says 300",
+     "slot F at (-164.3, 68.4, 14.5) (\"R3 slot in the arm\"): no Ø6 round ends at (-146.3, 68.4, 14.5) and (-182.3, 68.4, 14.5) (width 6, 36 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    343.649,
+    260.42,
+    32.5
+   ],
+   "check": {
+    "score": 1,
+    "checked": 39,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 209
+}

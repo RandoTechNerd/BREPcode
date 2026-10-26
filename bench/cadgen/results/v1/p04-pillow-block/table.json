@@ -1,0 +1,18 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from the dimensioned TOP, FRONT and RIGHT views (mm, third-angle)" },
+  "frame": "origin at the base's min corner; X along the 130 length (left to right in FRONT), Y along the 40 depth (bottom to top in TOP), Z up",
+  "overall": { "x": 130, "y": 40, "z": 64 },
+  "bbox": { "min": [0, 0, 0], "max": [130, 40, 64] },
+  "body": [
+    "base plate 130 x 40 x 14 at x 0..130, y 0..40, z 0..14",
+    "pedestal 60 wide (x 35..95) through the full depth y 0..40, from the base up to z 64; its two top edges run along Y and carry R10 rounds (tangent lines at x 45 and x 85 in TOP)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[65, 0, 38]], "axis": "-y", "dia": 32, "depth": "thru", "source": "Ø32 THRU, centre 65 from the left end and 38 up", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[65, 20, 64]], "axis": "+z", "dia": 6, "depth": 12, "source": "Ø6 ↧ 12 at 65 along X and 20 in Y (top view); it breaks into the bore", "confidence": "high" },
+    { "id": "C", "type": "slot", "count": 2, "positions": [[15, 20, 14], [115, 20, 14]], "axis": "+z", "width": 11, "length": 21, "along": "x", "depth": "thru", "source": "2X SLOT 11 WIDE 10 CTR-CTR THRU, centres at 15 and 115, Y 20", "confidence": "high" },
+    { "id": "D", "type": "fillet", "count": 2, "positions": [[35, 0, 64], [95, 0, 64]], "axis": "+z", "dia": 20, "source": "R10 TYP on the pedestal's top corners", "confidence": "high" }
+  ],
+  "guessed": []
+}

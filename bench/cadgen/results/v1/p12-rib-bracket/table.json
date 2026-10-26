@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned third-angle views; rib apex positions measured against the 70 and 90 dimensions" },
+  "frame": "origin at the front-left-bottom corner; X along the 80 width, Y back from the front face of the upright (0..70), Z up (0..90)",
+  "overall": { "x": 80, "y": 70, "z": 90 },
+  "bbox": { "min": [0, 0, 0], "max": [80, 70, 90] },
+  "body": [
+    "base plate 80 x 70 x 8: x 0..80, y 0..70, z 0..8",
+    "upright plate 80 x 8 x 90: x 0..80, y 0..8, z 0..90",
+    "triangular rib 10 thick, centred: x 35..45; in YZ it runs from (8,8) to the foot at (59,8) and the apex at (8,74)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4,
+      "positions": [[15, 0, 30], [65, 0, 30], [15, 0, 70], [65, 0, 70]],
+      "axis": "-y", "dia": 8.5, "depth": "thru",
+      "source": "4X Ø8.5 THRU, positions 15 / 65 in X and 30 / 70 in Z", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[15, 50, 8], [65, 50, 8]],
+      "axis": "+z", "dia": 6.6, "depth": "thru",
+      "source": "2X Ø6.6 THRU, positions 15 / 65 in X and 50 in Y", "confidence": "high" }
+  ],
+  "guessed": [
+    "rib apex height z=74 is measured from the views (the rib top lines up at about 74 in both the front and right views)",
+    "rib foot y=59 is measured from the top and right views (about 59.2 mm)"
+  ]
+}

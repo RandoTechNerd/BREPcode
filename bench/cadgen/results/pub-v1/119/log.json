@@ -1,0 +1,78 @@
+{
+ "id": "119",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.174592,
+   "s": 55,
+   "ok": true,
+   "size": [
+    32,
+    29.5,
+    18.75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.186112,
+   "s": 42,
+   "ok": true,
+   "size": [
+    32,
+    29.5,
+    18.75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.360704,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    32,
+    29.5,
+    18.75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    32,
+    29.5,
+    18.75
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 101
+}

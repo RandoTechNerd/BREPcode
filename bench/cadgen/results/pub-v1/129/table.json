@@ -1,0 +1,35 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Top-view dimension chains (146.1, 83.3, 91.1, 157.4, 28.4 mm). A pixel scale of about 2.12 px/mm was used only to place features." },
+  "frame": "Origin at the left datum (x = 0) and the lower datum line (y = 0) of the bottom view. X right, Y up the sheet, Z out of the sheet. The part is simplified to a single 3 mm sheet lying at z = 0..3.",
+  "overall": { "x": 332, "y": 188.8, "z": 3 },
+  "bbox": { "min": [0, -28.4, 0], "max": [332, 160.4, 3] },
+  "body": [
+    "left tab x 0..35, y 5..38.8",
+    "lower strip x 34.5..175, y 0..38.8",
+    "right base plate x 174.4..332, y -28.4..43.5",
+    "right extension x 174..300, y 43..60.6",
+    "middle web x 56..175, y 38..99",
+    "upper-left plate x 27..128, y 98.5..146.1, with an R15 lobe around the hole at (41.5, 131.1)",
+    "ear x 128..170, y 86..151.4, with an R9 lobe around its hole at (162, 151.4)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[41.5, 131.1, 3]], "axis": "+z", "dia": 8, "depth": "thru", "source": "Ø8, 41.5 / 131.1", "confidence": "medium" },
+    { "id": "B", "type": "slot", "count": 1, "positions": [[73, 131.1, 3]], "axis": "+z", "width": 4.4, "length": 10.4, "along": "x", "depth": "thru", "source": "Ø4.4 slot, 6 between centres", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[111.8, 134, 3]], "axis": "+z", "dia": 8, "depth": "thru", "source": "Ø8", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[162, 151.4, 3]], "axis": "+z", "dia": 6, "depth": "thru", "source": "ear hole, R9 lobe", "confidence": "low" },
+    { "id": "E", "type": "hole", "count": 1, "positions": [[154.2, 118.4, 3]], "axis": "+z", "dia": 17, "depth": "thru", "source": "Ø17", "confidence": "medium" },
+    { "id": "F", "type": "slot", "count": 1, "positions": [[93.4, 84.2, 3]], "axis": "+z", "width": 6, "length": 31.7, "along": 45.6, "depth": "thru", "source": "arc slot simplified", "confidence": "low" },
+    { "id": "G1", "type": "hole", "count": 1, "positions": [[13.7, 27.5, 3]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6", "confidence": "medium" },
+    { "id": "G2", "type": "hole", "count": 1, "positions": [[8.9, 13.5, 3]], "axis": "+z", "dia": 5, "depth": "thru", "source": "Ø5", "confidence": "medium" },
+    { "id": "H", "type": "hole", "count": 1, "positions": [[83.5, 14.2, 3]], "axis": "+z", "dia": 6, "depth": "thru", "source": "middle hole", "confidence": "low" },
+    { "id": "I", "type": "hole", "count": 2, "positions": [[232.6, 33, 3], [320.4, 33, 3]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6 with R6 lobes", "confidence": "medium" },
+    { "id": "J", "type": "hole", "count": 1, "positions": [[245.8, -18.9, 3]], "axis": "+z", "dia": 8, "depth": "thru", "source": "Ø8, 71.1 from the 174.4 datum", "confidence": "low" }
+  ],
+  "guessed": [
+    "The bends are not modelled. The flange heights cannot be read reliably, so the part is built flat at its top-view outline, 3 mm thick.",
+    "The arc slot is approximated as a straight slot between its end centres.",
+    "The outline is simplified to overlapping rectangles. Most corner radii are omitted.",
+    "Hole D diameter is assumed to be 6 mm."
+  ]
+}

@@ -1,0 +1,71 @@
+{
+ "id": "204",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0",
+   "attempt": 1,
+   "error": "claude failed: \n[timeout after 600s]"
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1248116,
+   "s": 52,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: This objec"
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.1143476,
+   "s": 51,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: the CAD ke"
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.12759959999999998,
+   "s": 56,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: This objec"
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.1049236,
+   "s": 43,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: the CAD ke"
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.1322036,
+   "s": 53,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: This objec"
+  }
+ ],
+ "cost": 0.6038859999999999,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: the CAD ke"
+  }
+ ],
+ "editError": "build: Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: face #18182: step_import: open parameter loop (uv gap (51.71949978092349, 2.4667312351974995)->(51.71946333510349, 2.4628333238534994) is not a collapsed pole; unsupported non-pole seam); OpenCASCADE: the CAD ke",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 1460
+}

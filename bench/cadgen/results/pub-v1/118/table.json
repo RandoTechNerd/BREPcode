@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "145.0 x 50.0 plate, 68.0 overall with tabs, 2.0 wall, depths 2/3/5/7/10 from DETAIL-D and SECTION C-C (10.0)" },
+  "frame": "Origin at the plate centre in XY. Z up; the deepest pocket bottom is at z=0 and the flange top at z=10. +Y is the side with the tabs at x=±40.5.",
+  "overall": { "x": 145, "y": 68, "z": 10 },
+  "bbox": { "min": [-72.5, -33, 0], "max": [72.5, 35, 10] },
+  "body": [
+    "Flange plate 145 x 50 x 2 with R5 corners, z 8..10",
+    "Tabs 14 wide: two at x=±40.5 reaching y=+35, two at x=±23 reaching y=-33",
+    "Tray shell with a 2 mm wall: outer x±70.5, y±18.5, z 3..8.5; cavity x±68.5, y±16.5, floor top at z=5",
+    "Wall bosses 7 wide around the six plate holes at y=±19, filling the cavity from y=±13 to the wall, z 3.5..10",
+    "Deep left pocket: inner x -65..-14, y±10.5 plus x -14..3, y -8..6, floor top at z=2; outer z 0..3.5"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 10,
+      "positions": [[-55,19,10],[-55,-19,10],[53.5,19,10],[53.5,-19,10],[19,19,10],[-4,-19,10],[-40.5,26.3,10],[40.5,26.3,10],[-23,-29,10],[23,-29,10]],
+      "axis": "+z", "dia": 3, "depth": "thru", "source": "Ø3.0 THRU-9X, 55/53.5/19/23/40.5/4, 19.0-3X, 29.0-2X, 26.3-2X", "confidence": "medium" },
+    { "id": "B", "type": "pocket", "count": 1, "positions": [[43.5,-4,5]], "axis": "+z", "width": 10, "length": 10, "depth": "thru", "source": "10.0 x 10.0 square", "confidence": "medium" },
+    { "id": "C", "type": "pocket", "count": 1, "positions": [[27.5,14.25,5]], "axis": "+z", "width": 3.5, "length": 5, "depth": "thru", "source": "small square near the upper wall", "confidence": "low" },
+    { "id": "D", "type": "slot", "count": 1, "positions": [[-30,14.5,5]], "axis": "+z", "width": 3.6, "length": 24.6, "along": "x", "depth": "thru", "source": "25.0 slot", "confidence": "low" }
+  ],
+  "guessed": [
+    "Depth levels of 2, 5 and 10 were read from DETAIL-D.",
+    "The tray width was measured off the plan view.",
+    "The hole bosses are modelled as rectangular blocks rather than round notches, so the boolean stays robust.",
+    "The narrow part of the deep pocket is assumed to be narrowed on both sides.",
+    "10 holes appear in the views, so all 10 are modelled even though the callout says 9X."
+  ]
+}

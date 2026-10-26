@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Top view: arm widths 85.41 and 61.41, distances 81.43 and 62.43 along each arm. Overall size 181.47 x 108.96 (bottom view). Front view: 40 high, centre 30. Section A-A: 12 and 28. Ø100 boss, Ø76 bore, 4x Ø5 holes, M6X10 8X, 6.00 TYP." },
+  "frame": "Origin at the ring centre on the bottom plane, Z up, part spans Z 0..40. X runs across the 181.47 width and Y along the 108.96 depth. Each arm axis is at ±15.37° from X, rising outward, and is offset 3.5 mm toward -Y (perpendicular to the axis).",
+  "overall": { "x": 181.47, "y": 108.96, "z": 40 },
+  "bbox": { "min": [-90.75, -49.8, 0], "max": [90.75, 59.2, 40] },
+  "body": [
+    "Central ring boss Ø100, Z 10..40",
+    "Two arms shaped like an upside-down U (open at the bottom). Each is 85.41 wide, runs from the centre to 81.43 along its axis, Z 0..40. A 61.41-wide channel runs from Z 0 to Z 28, leaving a 12-thick top plate and two 12-thick walls.",
+    "Underside relief Ø100 from Z 0..10 under the centre, so the centre is 30 thick",
+    "4 ears R5.5 around the Ø5 holes, Z 10..40"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 40]], "axis": "+z", "dia": 76, "depth": "thru", "source": "Ø76.00", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[20.09, 52.59, 40], [-20.09, 52.59, 40], [34.89, -44.19, 40], [-34.89, -44.19, 40]], "axis": "+z", "dia": 5, "depth": "thru", "source": "Ø5.00 4X at 20.91° / 38.29° from vertical", "confidence": "medium" },
+    { "id": "C1", "type": "slot", "count": 1, "positions": [[61.12, 13.18, 40]], "axis": "+z", "width": 8, "length": 69.41, "along": "105.37", "depth": "thru", "source": "slot across the right arm, 62.43 along the arm", "confidence": "medium" },
+    { "id": "C2", "type": "slot", "count": 1, "positions": [[-61.12, 13.18, 40]], "axis": "+z", "width": 8, "length": 69.41, "along": "74.63", "depth": "thru", "source": "slot across the left arm, mirror of C1", "confidence": "medium" },
+    { "id": "D", "type": "tapped", "count": 8, "positions": [[63.93, 52.0, 0], [83.39, -18.76, 0], [31.7, 43.14, 0], [51.16, -27.63, 0], [-63.93, 52.0, 0], [-83.39, -18.76, 0], [-31.7, 43.14, 0], [-51.16, -27.63, 0]], "axis": "-z", "dia": 5, "depth": 10, "source": "M6X10-8X on the bottoms of the arm walls, 6.00 TYP in from the wall faces", "confidence": "low" }
+  ],
+  "guessed": [
+    "Arm angle 15.37°, taken as 90 - 74.63",
+    "Arm axis offset of -3.5 mm, fitted to the overall 181.47 x 108.96",
+    "Distance of the inner M6 holes along the arm (42)",
+    "Ear height"
+  ]
+}

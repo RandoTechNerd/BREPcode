@@ -1,0 +1,75 @@
+{
+ "id": "209",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.0686956,
+   "s": 84,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B3: boolean Intersect on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=15): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 17 of face 3 is open between coedges 78 and 79\" }, ValidationIssue { severity: \"error\", kind: OverUsedEdge"
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1273316,
+   "s": 75,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B6: boolean Union on 'P.CU4' failed: boolean assembly: missing boundary edge 369; OpenCASCADE: the CAD kernel rejected this model. This is usually a profile with a zero-length or self-crossing edge, or a boolean between shapes that only touch along a face. The mesh export"
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.0740956,
+   "s": 87,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B3: boolean Intersect on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=15): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 17 of face 3 is open between coedges 78 and 79\" }, ValidationIssue { severity: \"error\", kind: OverUsedEdge"
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.0710156,
+   "s": 89,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B3: boolean Intersect on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=15): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 17 of face 3 is open between coedges 78 and 79\" }, ValidationIssue { severity: \"error\", kind: OverUsedEdge"
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.12117159999999999,
+   "s": 82,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B6: boolean Union on 'P.CU4' failed: boolean assembly: missing boundary edge 369; OpenCASCADE: the CAD kernel rejected this model. This is usually a profile with a zero-length or self-crossing edge, or a boolean between shapes that only touch along a face. The mesh export"
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.0756556,
+   "s": 95,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B3: boolean Intersect on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=15): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 17 of face 3 is open between coedges 78 and 79\" }, ValidationIssue { severity: \"error\", kind: OverUsedEdge"
+  }
+ ],
+ "cost": 0.5379656,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, B B3: boolean Intersect on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=15): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 17 of face 3 is open between coedges 78 and 79\" }, ValidationIssue { severity: \"error\", kind: OverUsedEdge"
+  }
+ ],
+ "editError": "build: Rust kernel: Rust kernel, B B3: boolean Intersect on 'P.CU2' failed: boolean assembly produced invalid topology (S=1 genus=15): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 17 of face 3 is open between coedges 78 and 79\" }, ValidationIssue { severity: \"error\", kind: OverUsedEdge",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 514
+}

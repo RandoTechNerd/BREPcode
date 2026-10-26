@@ -1,0 +1,117 @@
+{
+ "id": "104",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.259292,
+   "s": 121,
+   "ok": true,
+   "size": [
+    107.9,
+    87.2,
+    115.1
+   ],
+   "check": {
+    "score": 0.939,
+    "checked": 49,
+    "issues": [
+     "overall Y is 87.2 mm, the table says 116.5",
+     "overall Z is 115.1 mm, the table says 111.9",
+     "csk D#3 at (107.9, -17.3, 41.6) (\"4X Ø4.8 THROUGH / Ø9 C'SHINK, 39.7 / 62.4 / 43.2 / 17.3 / 5.8\"): should go THRU but is blind (14.2 deep)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.228356,
+   "s": 113,
+   "ok": true,
+   "size": [
+    107.9,
+    116.5,
+    111.9
+   ],
+   "check": {
+    "score": 1,
+    "checked": 49,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.269424,
+   "s": 122,
+   "ok": true,
+   "size": [
+    107.9,
+    116.5,
+    111.9
+   ],
+   "check": {
+    "score": 1,
+    "checked": 49,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.757072,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    107.9,
+    87.2,
+    115.1
+   ],
+   "check": {
+    "score": 0.939,
+    "checked": 49,
+    "issues": [
+     "overall Y is 87.2 mm, the table says 116.5",
+     "overall Z is 115.1 mm, the table says 111.9",
+     "csk D#3 at (107.9, -17.3, 41.6) (\"4X Ø4.8 THROUGH / Ø9 C'SHINK, 39.7 / 62.4 / 43.2 / 17.3 / 5.8\"): should go THRU but is blind (14.2 deep)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    107.9,
+    116.5,
+    111.9
+   ],
+   "check": {
+    "score": 1,
+    "checked": 49,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    107.9,
+    116.5,
+    111.9
+   ],
+   "check": {
+    "score": 1,
+    "checked": 49,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 362
+}

@@ -1,0 +1,54 @@
+{
+ "id": "124",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.239452,
+   "s": 89,
+   "ok": true,
+   "size": [
+    198.8,
+    74.4,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.17418,
+   "s": 22,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.413632,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    198.8,
+    74.4,
+    40
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 116
+}

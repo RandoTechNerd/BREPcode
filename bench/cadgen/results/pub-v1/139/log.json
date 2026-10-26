@@ -1,0 +1,103 @@
+{
+ "id": "139",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.194772,
+   "s": 97,
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.652,
+    "checked": 23,
+    "issues": [
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole B#1 at (120, 120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole B#2 at (-120, 120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+     "hole B#3 at (120, -120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+     "hole B#4 at (-120, -120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.173204,
+   "s": 60,
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 1,
+    "checked": 35,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.165036,
+   "s": 19,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.5330119999999999,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.652,
+    "checked": 23,
+    "issues": [
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole B#1 at (120, 120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole B#2 at (-120, 120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+     "hole B#3 at (120, -120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+     "hole B#4 at (-120, -120, 0) (\"4X Ø25 THRU on Ø339.4 PCD at 45°\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 1,
+    "checked": 35,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 184
+}

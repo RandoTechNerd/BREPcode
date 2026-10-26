@@ -1,0 +1,43 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Top view, section B-B and the front/flange view dimensions in mm" },
+  "frame": "X along the 235 overall width (centre line at x=0), Y up the top view (arm-hole datum line at y=0, +74.5 top edge, -76.5 bottom of the stem), Z up from the base (0..75)",
+  "overall": { "x": 235, "y": 151, "z": 75 },
+  "bbox": { "min": [-117.5, -76.5, 0], "max": [117.5, 74.5, 75] },
+  "body": [
+    "upper body box x -42.5..57.5, y 0..74.5, z 0..65",
+    "raised top pad x -42.5..37.5, y 0..74.5, z 64.5..75",
+    "lower stem x -25.5..40.5, y -76.5..0.5, z 0..65",
+    "flange pad on the stem front x -16..31, y -76.5..-70, z 13..62",
+    "left arm x -102..-42, y -6.5..23.5, z 0..65, R15 end at (-102.05, 8.5)",
+    "right arm x 49..102.5, y -6.5..23.5, z 0..18, R15 end at (102.5, 8.5)",
+    "R25 concave blend under the right arm, from the body wall x=57.5 (z 43) down to the lug top (x 82.5, z 18)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[-102.05, 8.5, 65]], "axis": "+z", "dia": 14, "depth": 45, "source": "section B-B Ø14, 45 deep", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[102.5, 8.5, 18]], "axis": "+z", "dia": 14, "depth": "thru", "source": "section B-B Ø14 lug 18", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[45, 8.5, 65]], "axis": "+z", "dia": 15.5, "depth": "thru", "source": "section B-B Ø15.5", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 2, "positions": [[-14, 8.5, 75], [0.5, 8.5, 75]], "axis": "+z", "dia": 5, "depth": 15, "source": "Ø5.00 -2X, 15 deep", "confidence": "medium" },
+    { "id": "E", "type": "tapped", "count": 1, "positions": [[50, 69.5, 65]], "axis": "+z", "dia": 6.8, "depth": "thru", "source": "M8 TAP THROUGH", "confidence": "medium" },
+    { "id": "F", "type": "tapped", "count": 2, "positions": [[11.5, 69.5, 75], [-26, 1.5, 65]], "axis": "+z", "dia": 5, "depth": 15, "source": "M6 TAP 15MM DEEP", "confidence": "low" },
+    { "id": "G", "type": "tapped", "count": 1, "positions": [[37.5, 14.5, 65]], "axis": "+z", "dia": 2.5, "depth": 7, "source": "M3 TAP-DEPTH-7MM", "confidence": "medium" },
+    { "id": "H", "type": "hole", "count": 2, "positions": [[-30.5, 62.5, 75], [-30.5, 43.5, 75]], "axis": "+z", "dia": 12, "depth": "thru", "source": "30.50 -2X circles", "confidence": "low" },
+    { "id": "I", "type": "cbore", "count": 1, "positions": [[7.5, -76.5, 37.5]], "axis": "-y", "dia": 40, "depth": 55, "cbore": { "d": 44, "depth": 3 }, "source": "Ø40 / Ø44", "confidence": "low" },
+    { "id": "J", "type": "tapped", "count": 2, "positions": [[-15.5, -76.5, 59], [30.5, -76.5, 59]], "axis": "-y", "dia": 6.8, "depth": 20, "source": "M8 TAP-DEPTH 20MM", "confidence": "low" },
+    { "id": "K", "type": "tapped", "count": 2, "positions": [[-15.5, -76.5, 16], [30.5, -76.5, 16]], "axis": "-y", "dia": 8.5, "depth": 20, "source": "M10 TAP-DEPTH 20MM", "confidence": "low" },
+    { "id": "L", "type": "pocket", "count": 2, "positions": [[-5.25, 52, 75], [31.25, 52, 75]], "axis": "+z", "width": 28, "length": 26, "depth": 10, "source": "26.00 / 34.00 pockets", "confidence": "low" },
+    { "id": "M", "type": "pocket", "count": 1, "positions": [[7.5, -35, 65]], "axis": "+z", "width": 40, "length": 40, "depth": 3, "source": "rounded square on the stem", "confidence": "low" },
+    { "id": "N", "type": "pocket", "count": 1, "positions": [[7.5, -35, 65]], "axis": "+z", "width": 18, "length": 18, "depth": 12, "source": "inner rounded square", "confidence": "low" },
+    { "id": "O", "type": "pocket", "count": 1, "positions": [[-65, 9, 65]], "axis": "+z", "length": 40, "depth": 10, "source": "tapered slot 39.50, 5° sides", "confidence": "low" }
+  ],
+  "guessed": [
+    "arm hole centre y=8.5 for both arms",
+    "upper body right edge x=57.5",
+    "stem z extent and bore centre z=37.5",
+    "flange hole offsets",
+    "pocket depths",
+    "tapered-slot outline",
+    "R25 blend start height z=43",
+    "R35/R15 plan blends omitted"
+  ]
+}

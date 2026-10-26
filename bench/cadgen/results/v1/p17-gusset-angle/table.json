@@ -1,0 +1,22 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all dimensions on the drawing, mm" },
+  "frame": "origin at the front-left-bottom corner; X along the 90 width, Y back from the upright wall's front face (0..70), Z up",
+  "overall": { "x": 90, "y": 70, "z": 70 },
+  "bbox": { "min": [0, 0, 0], "max": [90, 70, 70] },
+  "body": [
+    "base plate 90 x 70 x 12 at z 0..12",
+    "upright wall 90 x 12 x 70 at y 0..12",
+    "R8 inside-corner fillet along X where the wall meets the base (y=12, z=12)"
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 2, "positions": [[20, 48, 12], [70, 48, 12]], "axis": "+z",
+      "dia": 9, "depth": "thru", "cbore": { "d": 15, "depth": 9 },
+      "source": "2X Ø9 THRU, ⌴ Ø15 ↧ 9 (top view)", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[45, 0, 45]], "axis": "-y",
+      "dia": 26, "depth": "thru", "source": "Ø26 THRU (front view)", "confidence": "high" },
+    { "id": "C", "type": "fillet", "count": 1, "positions": [[0, 12, 12]], "along": "x",
+      "dia": 16, "source": "R8 INSIDE CORNER (right view)", "confidence": "high" }
+  ],
+  "guessed": []
+}

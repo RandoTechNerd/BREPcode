@@ -1,0 +1,205 @@
+{
+ "id": "p20-hub",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.159164,
+   "s": 59,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the RIGHT view and hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+     "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the FRONT view and hidden in the TOP view\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.173436,
+   "s": 53,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the RIGHT view, hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+     "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the FRONT view, hidden in the TOP view\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.16386,
+   "s": 59,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (45, 22.5, 28) (\"Ø5 ↧ 12 in FRONT view at x 45, z 28; TOP view hidden lines on the -Y side\"): should be 12 deep but goes through",
+     "hole E at (67.5, 45, 28) (\"Ø5 ↧ 12 in RIGHT view at z 28; TOP view hidden lines on the +X side\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.162744,
+   "s": 59,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧12, right view; hidden lines in the top and front views\"): should be 12 deep but goes through",
+     "hole E at (45, 22.5, 28) (\"Ø5 ↧12, front view; hidden lines in the top view\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.15716,
+   "s": 13,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.816364,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.935,
+   "consensus": 0.935,
+   "rank": 0.935
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.935,
+   "consensus": 0.935,
+   "rank": 0.935
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.935,
+   "consensus": 0.935,
+   "rank": 0.935
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.935,
+   "consensus": 0.935,
+   "rank": 0.935
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the RIGHT view and hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+     "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the FRONT view and hidden in the TOP view\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.935
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the RIGHT view, hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+     "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the FRONT view, hidden in the TOP view\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.935
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (45, 22.5, 28) (\"Ø5 ↧ 12 in FRONT view at x 45, z 28; TOP view hidden lines on the -Y side\"): should be 12 deep but goes through",
+     "hole E at (67.5, 45, 28) (\"Ø5 ↧ 12 in RIGHT view at z 28; TOP view hidden lines on the +X side\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.935
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.935,
+    "checked": 31,
+    "issues": [
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧12, right view; hidden lines in the top and front views\"): should be 12 deep but goes through",
+     "hole E at (45, 22.5, 28) (\"Ø5 ↧12, front view; hidden lines in the top view\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.935
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 0.935,
+ "attempts": 5,
+ "seconds": 192
+}

@@ -1,0 +1,105 @@
+{
+ "id": "242",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.11437160000000002,
+   "s": 88,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    2e+100,
+    2e+100,
+    2e+100
+   ]
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1219276,
+   "s": 78,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    207.157,
+    129.57,
+    70.364
+   ]
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.1215396,
+   "s": 92,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    2e+100,
+    2e+100,
+    2e+100
+   ]
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.1132716,
+   "s": 87,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    2e+100,
+    2e+100,
+    2e+100
+   ]
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.1536156,
+   "s": 131,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    207.157,
+    129.57,
+    70.364
+   ]
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.15944360000000002,
+   "s": 82,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel: Rust kernel, IMPORT3D IMPORT3D1: import3d: STEP import failed: step_import: reconstructed solid failed validation: [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = -19, expected -18 (1 coincident parallel edge pair(s) credited)\" }]; OpenCASCA"
+  }
+ ],
+ "cost": 0.7841696,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    2e+100,
+    2e+100,
+    2e+100
+   ]
+  }
+ ],
+ "editError": "invalid: the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 570
+}

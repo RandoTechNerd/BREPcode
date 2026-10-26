@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views: 255 x 210 flange, 81 body height, 146 overall height, 134 pipe start" },
+  "frame": "origin at the centre of the main R90 body / Ø50 top hole, on the underside of the flange; X toward the right (the inlet sits at -X), Y up the plan view, Z up",
+  "overall": { "x": 255, "y": 210, "z": 146 },
+  "bbox": { "min": [-150, -105, 0], "max": [105, 105, 146] },
+  "body": [
+    "flange plate 2 thick, z 0..2, polygon outline spanning x -150..105 and y -105..105",
+    "main drum: outer R90 cylinder at (0,0), z 0..81, wall 2, top 2, open bottom",
+    "inlet lobe: R40 cylinder at (-105,0), z 0..81, wall 2, joined to the drum by a waist box y ±40",
+    "inlet cone: axis at (-105,0), r 60 -> 25.5 over z 79..134, wall 2, clipped to the body footprint",
+    "inlet pipe: Ø51 outside / Ø45 inside, z 134..146"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 81]], "axis": "+z", "dia": 50, "depth": "thru", "source": "Ø50 top hole / R25", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[-75, 78, 2], [-75, -78, 2]], "axis": "+z", "dia": 12, "depth": "thru", "source": "Ø12 THROUGH-4X, 75 -2X, 78/78", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 2, "positions": [[70, 80, 2], [70, -80, 2]], "axis": "+z", "dia": 12, "depth": "thru", "source": "Ø12 THROUGH-4X, 70 -2X, 80/80", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[-105, 0, 146]], "axis": "+z", "dia": 45, "depth": "thru", "source": "inlet pipe Ø45 bore, 105 from the centre", "confidence": "high" }
+  ],
+  "guessed": [
+    "The flange outline is approximated by a polygon; the R15/R50/R60/R75 corner blends are omitted.",
+    "Cone base radius 60, read from the half-moon in plan reaching about x=-45; the oblique cone with its 107.51 break is simplified to a straight cone clipped to the footprint.",
+    "Wall thickness is taken as 2 from the 2.00 callout.",
+    "Fillets (R5, R2, R4, R50) and the 2.5 chamfers are omitted."
+  ]
+}

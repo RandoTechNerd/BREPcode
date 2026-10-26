@@ -1,0 +1,95 @@
+{
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 30,
+    "volume": 63087.84,
+    "bbox": {
+      "x": 120.0,
+      "y": 90.0,
+      "z": 19.64
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.9839999670731708,
+    "shape_volume_iou": 0.9999720924677011,
+    "shape_similarity_score": 0.9919860297704359
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 151.14388480458132,
+    "surface_distance_f1": 0.9839999670731708,
+    "surface_distance_precision": 0.98418,
+    "surface_distance_recall": 0.98382,
+    "surface_distance_threshold": 0.7557194240229066,
+    "surface_distance_mean_chamfer": 0.00013699895240926267,
+    "surface_distance_mean_normal_dot": 0.9956558936584463,
+    "volume_intersection": 63052.148992617746,
+    "volume_union": 63053.90867161057,
+    "volume_symmetric_difference": 1.7596789928211365
+  },
+  "alignment": {
+    "rmse": 0.8902
+  },
+  "interface_metrics": {
+    "score": 1.0,
+    "contexts": {
+      "1": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KIR": 1.0,
+          "2__KIR": 1.0,
+          "3__KIR": 1.0,
+          "4__KIR": 1.0
+        }
+      },
+      "2": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0,
+          "2__KOR": 1.0,
+          "3__KOR": 1.0,
+          "4__KOR": 1.0
+        }
+      },
+      "3": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 5,
+      "b2": 0,
+      "chi_surface": -8,
+      "n_components": 1,
+      "n_triangles": 1104,
+      "n_vertices": 544,
+      "linear_deflection_mm": 0.15114388480458132
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 5,
+      "b2": 0,
+      "chi_surface": -8,
+      "n_components": 1,
+      "n_triangles": 1360,
+      "n_vertices": 672,
+      "linear_deflection_mm": 0.15114388480458132
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 1.0,
+      "b2": 1.0
+    },
+    "score": 1.0
+  },
+  "cad_score": 0.9967944119081744
+}

@@ -1,0 +1,96 @@
+{
+ "id": "149",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.309012,
+   "s": 123,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B73: boolean SUBTRACT failed: fragment_face: chain 24 fragmented into an incomplete run"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.196284,
+   "s": 53,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B63: boolean SUBTRACT failed: fragment_face: chain 17 fragmented into an incomplete run"
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.22883599999999998,
+   "s": 100,
+   "ok": true,
+   "size": [
+    150,
+    150,
+    25
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.264212,
+   "s": 94,
+   "ok": true,
+   "size": [
+    150,
+    150,
+    25
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.998344,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.3",
+   "ok": true,
+   "size": [
+    150,
+    150,
+    25
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    150,
+    150,
+    25
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 4,
+ "seconds": 381
+}

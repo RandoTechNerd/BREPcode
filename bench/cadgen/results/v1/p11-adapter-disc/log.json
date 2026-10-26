@@ -1,0 +1,63 @@
+{
+ "id": "p11-adapter-disc",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.138668,
+   "s": 19,
+   "ok": false,
+   "kind": "syntax",
+   "error": "drill(...) is not a function"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.14782800000000001,
+   "s": 42,
+   "ok": true,
+   "size": [
+    120,
+    120,
+    18
+   ],
+   "check": {
+    "score": 1,
+    "checked": 65,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.14660800000000002,
+   "s": 9,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.43310400000000004,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    120,
+    120,
+    18
+   ],
+   "check": {
+    "score": 1,
+    "checked": 65,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.2",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 77
+}

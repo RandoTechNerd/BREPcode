@@ -1,0 +1,30 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes are read from the plan view, the side view (300.00 overall), sections A-A and C-C, and details B and D" },
+  "frame": "Origin at the centre of the flange bottom face. Z points up, toward the hub. X and Y follow the plan view. The flange occupies z 0..15 and the hub z 15..65.",
+  "overall": { "x": 300, "y": 300, "z": 65 },
+  "bbox": { "min": [-150, -150, 0], "max": [150, 150, 65] },
+  "body": [
+    "Regular octagonal flange: 300 across flats (flats normal to X, Y and the diagonals), 15 thick, z 0..15",
+    "Cylindrical hub: OD 185, z 15..65",
+    "Ø155 bore from z 15 to 65, open at the top; the flange forms the cup floor",
+    "8 triangular gussets, 10 thick, on the flange at 22.5+45k deg. Each runs from the hub out to r 133.2 (Ø266.43) and slopes about 25 deg up to the hub."
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 8,
+      "positions": [[56.56,136.54,15],[-56.56,136.54,15],[56.56,-136.54,15],[-56.56,-136.54,15],[136.54,56.56,15],[-136.54,56.56,15],[136.54,-56.56,15],[-136.54,-56.56,15]],
+      "axis": "+z", "dia": 12.5, "depth": "thru", "source": "Ø12.50 (8X)", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 8,
+      "positions": [[32.66,78.86,15],[-32.66,78.86,15],[32.66,-78.86,15],[-32.66,-78.86,15],[78.86,32.66,15],[-78.86,32.66,15],[78.86,-32.66,15],[-78.86,-32.66,15]],
+      "axis": "+z", "dia": 10, "depth": "thru", "source": "Ø10.00 (8X), detail B", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[0,0,15]], "axis": "+z", "dia": 60, "depth": "thru", "source": "Ø60.00", "confidence": "high" },
+    { "id": "D", "type": "pocket", "count": 1, "positions": [[0,0,65]], "axis": "+z", "dia": 155, "depth": 50, "source": "Ø155.00 and 50.00 in section A-A", "confidence": "high" }
+  ],
+  "guessed": [
+    "Octagon taken as regular at 300 across flats, from the 300.00 side-view dimension and the plan-view proportions; 278.56 is read as a reference spacing",
+    "Hub OD of 185: wall thickness is not dimensioned",
+    "Gusset thickness of 10, and gusset slope taken from 25.12 deg",
+    "Trapezoid rib pockets (detail D), the raised 21.51 rim region and the keyway notches at the Ø60 hole are omitted because their depths are unclear",
+    "Ø10 holes taken as through the flange"
+  ]
+}

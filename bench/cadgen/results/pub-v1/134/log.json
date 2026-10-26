@@ -1,0 +1,126 @@
+{
+ "id": "134",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.33132,
+   "s": 142,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B69: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=5 genus=22): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 308 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 309 used 1 times (expecte"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.318736,
+   "s": 129,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B69: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=5 genus=22): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 316 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 317 used 1 times (expecte"
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.329056,
+   "s": 224,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    215,
+    268,
+    338
+   ],
+   "check": {
+    "score": 0.962,
+    "checked": 79,
+    "issues": [
+     "overall X is 215 mm, the table says 240",
+     "tapped C#4 at (0, 67, 323) (\"sheet 2 table, M5x0.4 thru\"): should go THRU but is blind (9.5 deep)",
+     "tapped D at (0, -130, 318) (\"M30x0.7\"): should be 70 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.447876,
+   "s": 166,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B41: boolean Union on 'E6' failed: boolean assembly produced invalid topology (S=1 genus=8): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 86 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 87 used 1 times (expec"
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.37612,
+   "s": 181,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B47: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=5 genus=6): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 329 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 330 used 1 times (expected"
+  },
+  {
+   "tag": "c1.2",
+   "attempt": 2,
+   "cost": 0.30963599999999997,
+   "s": 53,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B26: boolean Union on 'P.CU25' failed: boolean: unsupported tangent-curve surface intersection between faces 0/135 and 1/55: the carriers touch along a tangent curve from (-74.246212,74.246212,0.000000) to (-74.246212,74.246212,8.000000) (length 8.000000, 13 stations) which the imprin"
+  },
+  {
+   "tag": "c2.2",
+   "attempt": 2,
+   "cost": 0.33100399999999996,
+   "s": 102,
+   "ok": true,
+   "size": [
+    220,
+    268,
+    338
+   ],
+   "check": {
+    "score": 0.872,
+    "checked": 39,
+    "issues": [
+     "overall X is 220 mm, the table says 241",
+     "tapped C#1 at (-58.02, -33.5, 318) (\"sheet 2 hole table, M5x0.4 Thru\"): should go THRU but is blind (13 deep)",
+     "tapped C#4 at (0, 67, 318) (\"sheet 2 hole table, M5x0.4 Thru\"): should go THRU but is blind (13 deep)",
+     "tapped C#6 at (58.02, -33.5, 318) (\"sheet 2 hole table, M5x0.4 Thru\"): should go THRU but is blind (13 deep)",
+     "hole G at (120, 0, 313) (\"Ø40 port with Ø30 bore\"): should be 60 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c1.3",
+   "attempt": 3,
+   "cost": 0.313116,
+   "s": 249,
+   "ok": true,
+   "size": [
+    225,
+    267.954,
+    338
+   ],
+   "check": {
+    "score": 0.872,
+    "checked": 39,
+    "issues": [
+     "tapped A#1 at (-58.02, -33.5, 313) (\"sheet 2 table A1-A6, M5x0.4 Thru\"): should go THRU but is blind (6 deep)",
+     "tapped A#4 at (0, 67, 313) (\"sheet 2 table A1-A6, M5x0.4 Thru\"): should go THRU but is blind (6 deep)",
+     "tapped A#6 at (58.02, -33.5, 313) (\"sheet 2 table A1-A6, M5x0.4 Thru\"): should go THRU but is blind (6 deep)",
+     "tapped F at (120, 0, 313) (\"round port Ø40\"): should be 60 deep but goes through",
+     "tapped G at (0, -130, 313) (\"M30x0.7, section A-A\"): should be 70 deep but goes through"
+    ]
+   }
+  }
+ ],
+ "cost": 2.7568639999999998,
+ "error": "TypeError: (g.positions || []).filter is not a function\n    at file:///home/user/BREPcode/src/imageread.js:115:39\n    at Array.map (<anonymous>)\n    at normalizeTable (file:///home/user/BREPcode/src/imageread.js:110:64)\n    at file:///home/user/BREPcode/bench/cadgen/run.mjs:212:43\n    at Array.map (<anonymous>)\n    at consensus (file:///home/user/BREPcode/bench/cadgen/run.mjs:212:20)\n    at runGeneration (file:///home/user/BREPcode/bench/cadgen/run.mjs:255:42)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async runSample (file:///home/user/BREPcode/bench/cadgen/run.mjs:316:51)\n    at async file:///home/user/BREPcode/bench/cadgen/run.mjs:341:34",
+ "ok": false,
+ "fallback": false,
+ "attempts": 8,
+ "seconds": 965
+}

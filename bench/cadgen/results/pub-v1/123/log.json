@@ -1,0 +1,87 @@
+{
+ "id": "123",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.185672,
+   "s": 56,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B29: boolean Union on 'P.CY26' failed: boolean assembly: missing boundary edge 10"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.169344,
+   "s": 45,
+   "ok": true,
+   "size": [
+    488,
+    275,
+    115
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.224316,
+   "s": 71,
+   "ok": true,
+   "size": [
+    488,
+    275,
+    115
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.579332,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    488,
+    275,
+    115
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    488,
+    275,
+    115
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 176
+}

@@ -1,0 +1,25 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Ø116 overall, 20 thick, Ø66.94 / Ø86.94 rings, Ø40 hub, Ø15 bore, PCD 27.5 (13.75 / 23.82), 29 pad widths, 45° pad tilt, Ø8 pad holes" },
+  "frame": "origin at the wheel centre on the bottom face, Z up along the wheel axis, pads centred at k*45° about Z",
+  "overall": { "x": 116, "y": 116, "z": 20 },
+  "bbox": { "min": [-58, -58, 0], "max": [58, 58, 20] },
+  "body": [
+    "full disc Ø116 x 20",
+    "8 gaps cut between pads outside Ø86.94, leaving 8 pads 29 wide in plan",
+    "each pad trimmed to a slab inclined 45° about its radial axis (normal thickness 29*cos45 = 20.5)",
+    "spoked web between Ø40 hub and Ø66.94: 8 spokes 6 wide, pockets 5 deep from top and from bottom leaving a 10 web"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 20]], "axis": "+z", "dia": 15, "depth": "thru", "source": "Ø15.00", "confidence": "high" },
+    { "id": "B", "type": "cbore", "count": 6, "positions": [[13.75, 0, 20], [6.875, 11.91, 20], [-6.875, 11.91, 20], [-13.75, 0, 20], [-6.875, -11.91, 20], [6.875, -11.91, 20]], "axis": "+z", "dia": 7, "depth": "thru", "cbore": { "d": 10, "depth": 3 }, "source": "Ø7 (6X), Ø10 (6X), 3.00, 27.50 / 13.75 / 23.82", "confidence": "high" },
+    { "id": "C", "type": "pocket", "count": 16, "positions": [[0, 0, 20], [0, 0, 0]], "axis": "+z", "depth": 5, "source": "section A-A, detail B: 8 spokes 6 wide", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 8, "positions": [[50.7, 7.25, 17.25]], "axis": "[0, 0.7071, 0.7071] (inclined 45°, pad face normal; pattern rotated k*45° about Z)", "dia": 8, "depth": "thru", "source": "Ø8.00 (8X), section C-C 45°", "confidence": "medium" }
+  ],
+  "guessed": [
+    "pocket depth 5 each side, giving a 10 web",
+    "pad hole centre at radius 50.7, mid-thickness",
+    "pad slab normal thickness 20.5 from the 29 plan width",
+    "R2 fillets omitted"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "flat-pattern dimensions; folded with 90° bends, thickness 3 (bend radii ignored)" },
+  "frame": "X across the part (flat-pattern left edge x=0, symmetry plane x=84.3), Y along the part (y=0 at the lower base edge line, +Y toward the keyhole tab), Z up from the underside of the base",
+  "overall": { "x": 144, "y": 253, "z": 60 },
+  "bbox": { "min": [12.3, -88, 0], "max": [156.3, 165, 60] },
+  "body": [
+    "base plate x 12.3..156.3, y -15..105.5, z 0..3",
+    "lower body x 47.3..121.3, y -57..-14.5, z 0..3",
+    "tongue x 70.3..98.3, y -88..-56, z 0..3, rounded end R14 about (84.3,-74.1)",
+    "top web extensions x 47.8..63.8 and 104.8..120.8, y 105..165, z 0..3",
+    "side flanges x 12.3..15.3 and 153.3..156.3, y 0..105, z 0..15",
+    "lower lugs x 47.3..50.3 and 118.3..121.3, y -55..-15, z 0..23",
+    "top lugs x 47.8..50.8 and 117.8..120.8, y 105..165, z 0..34",
+    "keyhole tab x 63.3..105.3, y 104.5..107.5, z 0..60"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[50.8, 146.1, 18], [120.8, 146.1, 18]], "axis": "+x", "dia": 13, "depth": "thru", "source": "Ø13 THRU TYP", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[50.3, -35, 15], [121.3, -35, 15]], "axis": "+x", "dia": 9, "depth": "thru", "source": "Ø9 THRU TYP", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[84.3, -74.1, 3]], "axis": "+z", "dia": 12, "depth": "thru", "source": "Ø12 THRU, 13.9 from tip", "confidence": "high" },
+    { "id": "D", "type": "hole", "count": 4, "positions": [[63.8, 6.3, 3], [63.8, -8, 3], [104.8, 6.3, 3], [104.8, -8, 3]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6 THRU TYP", "confidence": "medium" },
+    { "id": "E", "type": "slot", "count": 1, "positions": [[84.3, 70, 3]], "axis": "+z", "width": 10, "length": 39.3, "along": "y", "source": "slot centres 14 / 53.8 dims", "confidence": "medium" },
+    { "id": "F", "type": "hole", "count": 4, "positions": [[12.3, 7.2, 11], [12.3, 99, 11], [156.3, 7.2, 11], [156.3, 99, 11]], "axis": "-x", "dia": 3, "depth": "thru", "source": "Ø3 in side flanges, 7.2 / 99", "confidence": "medium" },
+    { "id": "G", "type": "pocket", "count": 1, "positions": [[84.3, 107.5, 19.5]], "axis": "+y", "dia": 12, "depth": "thru", "source": "keyhole in tab", "confidence": "low" }
+  ],
+  "guessed": ["bend radii ignored; flange heights taken from flat lengths", "lug outlines simplified to rectangles", "keyhole shape approximated by three circles", "slot width 10"]
+}

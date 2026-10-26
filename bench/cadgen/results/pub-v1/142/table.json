@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "side view chains 17.9/18.1/45.8/135.8/156.4 and 29.1/69.6/81.6/131.1; front view 10/25/69/84 and 18.7/71/99.8/142; plan view 6.9/75.9/195" },
+  "frame": "Origin at the leftmost point of the hook rib. X runs right along the clevis arm. Y is up in the side view, with Y=0 at the tip-circle centre. Z is the thickness: the body spans Z 0..74 and the pin side is at Z<0.",
+  "overall": { "x": 195, "y": 142, "z": 84 },
+  "bbox": { "min": [0, -12, -10], "max": [195, 131.1, 74] },
+  "body": [
+    "Main hook/clevis profile extruded Z 0..74. The arm spans Y 88.9..131.1 from X 56.1 to 195, with an R21.1 round end centred at (173.9,110)",
+    "Outer bend R49.5 centred at (56.1,81.6), then a curve down to the Ø19.7 tip circle centred at (56.1,0)",
+    "Inner bend R19.3 centred at (56.1,69.6). A small tooth sits at Y 61.2 (tip X 29.4), then a 65° slanted face runs down to a 60° V notch at the tip",
+    "Outer crown rib 6.9 proud of the outer curve, Z 15..59",
+    "Fork gap: a rectangular open-ended cut 44 wide (Z 15..59, front view 25..69), from X 78.9 (plan view inner wall) out past the arm end, through the full arm height. It is square-ended, not a round-ended slot, so it is a body cut",
+    "Pin Ø16 standing 10 out of the Z=0 face at (83.9,123.1)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[173.9, 110, 74]], "axis": "+z", "dia": 22, "depth": "thru", "source": "Ø22 2X (one bore through both fork arms)", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[38.0, 29.1, 74]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6 THRU, 29.1 high, on the 17.9 line", "confidence": "medium" },
+    { "id": "C", "type": "boss", "count": 1, "positions": [[83.9, 123.1, 0]], "axis": "-z", "dia": 16, "height": 10, "source": "Ø16/Ø18, 45.8 + 38.1 offset, 75.9 + 8 in plan view, 10 in front view", "confidence": "medium" }
+  ],
+  "guessed": [
+    "The shape of the outer curve below the bend is a bezier fitted to the drawn line",
+    "The 0.5 edge-break fillets and the Ø18 shoulder ring on the pin are omitted",
+    "The sloped floor of the fork gap is omitted; the gap is cut flat",
+    "The rib's start and end points along the curve are estimated",
+    "The V-notch apex position is estimated from Detail A"
+  ]
+}

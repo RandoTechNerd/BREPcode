@@ -1,0 +1,37 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "860 overall length, 500/350 body widths, 40 wall, Ø200/Ø120/Ø40 bores, Ø100/Ø52 side boss, 6x Ø22 feet with Ø60 depth 8 counterbores, 30/8 bottom recess; heights scaled from Section B-B against the 860 dimension" },
+  "frame": "origin at the min corner of the main body (wide end at x=0, front face y=0, bottom z=0), X along the 860 length, Y across, Z up",
+  "overall": { "x": 860, "y": 640, "z": 370 },
+  "bbox": { "min": [-45, -70, 0], "max": [815, 570, 370] },
+  "body": [
+    "main hollow casting: plan outline wide part 500 (x 0..376), taper to narrow part 350 (x 520..770, y 75..425), height 330",
+    "interior cavity: outline inset by the 40 wall, z 40..290",
+    "end bosses Ø200 on each X face, axis at y 250, z 190, protruding 45 (gives 860 overall)",
+    "front boss Ø100 on the y=0 face at x 178, z 145, protruding 10",
+    "top cover pad 250 x 270 at x 60..310, y 115..385, raised 40",
+    "6 mounting feet 80 x 70 x 40: 4 on the wide part (x 98, 301), 2 on the narrow part (x 635)",
+    "bottom recess 260 x 260 centred at x 385, y 250, depth 30"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[-45, 250, 190]], "axis": "-x", "dia": 40, "depth": "thru", "source": "Detail C 2x Ø40, coaxial bores through both end walls", "confidence": "medium" },
+    { "id": "A1", "type": "hole", "count": 1, "positions": [[-45, 250, 190]], "axis": "-x", "dia": 75, "depth": 10, "source": "Detail C 2x Ø75", "confidence": "medium" },
+    { "id": "A2", "type": "hole", "count": 1, "positions": [[815, 250, 190]], "axis": "+x", "dia": 75, "depth": 10, "source": "Detail C 2x Ø75", "confidence": "medium" },
+    { "id": "B1", "type": "pocket", "count": 1, "positions": [[40, 250, 190]], "axis": "+x", "dia": 120, "depth": 15, "source": "Detail C 2x Ø120/Ø115", "confidence": "low" },
+    { "id": "B2", "type": "pocket", "count": 1, "positions": [[730, 250, 190]], "axis": "-x", "dia": 120, "depth": 15, "source": "Detail C 2x Ø120/Ø115", "confidence": "low" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[178, -10, 145]], "axis": "-y", "dia": 52, "depth": "thru", "source": "side view Ø52", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 8, "positions": [[242.7, 0, 171.8], [204.8, 0, 209.7], [151.2, 0, 209.7], [113.3, 0, 171.8], [113.3, 0, 118.2], [151.2, 0, 80.3], [204.8, 0, 80.3], [242.7, 0, 118.2]], "axis": "-y", "dia": 8.4, "depth": 20, "source": "bolt holes around the Ø100 boss, r 70", "confidence": "low" },
+    { "id": "E", "type": "cbore", "count": 6, "positions": [[98, -38, 40], [301, -38, 40], [98, 538, 40], [301, 538, 40], [635, 37, 40], [635, 463, 40]], "axis": "+z", "dia": 22, "depth": "thru", "cbore": { "d": 60, "depth": 8 }, "source": "6x Ø22, 6x Ø60 depth 8", "confidence": "medium" },
+    { "id": "F", "type": "pocket", "count": 1, "positions": [[185, 250, 370]], "axis": "+z", "width": 70, "length": 180, "along": "x", "depth": "thru", "source": "keyhole opening 180 x 70 with R60", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 21, "positions": [[96.9,130,370],[140.7,130,370],[184.5,130,370],[228.3,130,370],[272.1,130,370],[295,150.9,370],[295,194.7,370],[295,238.5,370],[295,282.3,370],[295,326.2,370],[295,370,370],[251.2,370,370],[207.4,370,370],[163.6,370,370],[119.8,370,370],[76,370,370],[75,327.1,370],[75,283.3,370],[75,239.5,370],[75,195.7,370],[75,151.9,370]], "axis": "+z", "dia": 8.4, "depth": 30, "source": "21X Ø8.4 around the cover pad", "confidence": "low" },
+    { "id": "H", "type": "hole", "count": 33, "positions": [[20,20,330],[78,20,330],[137,20,330],[195,20,330],[253,20,330],[312,20,330],[370,20,330],[442,57.5,330],[514,95,330],[593,95,330],[672,95,330],[750,95,330],[750,157,330],[750,219,330],[750,281,330],[750,343,330],[750,405,330],[672,405,330],[593,405,330],[514,405,330],[442,442.5,330],[370,480,330],[312,480,330],[253,480,330],[195,480,330],[137,480,330],[78,480,330],[20,480,330],[20,403,330],[20,327,330],[20,250,330],[20,173,330],[20,97,330]], "axis": "+z", "dia": 10.1, "depth": 30, "source": "33x Ø10.1 depth 30 (Detail F), on the top flange 20 in from the edge", "confidence": "low" }
+  ],
+  "guessed": [
+    "body length 770 and boss length 45, from the 860 overall",
+    "height 330 and boss axis z 190, scaled from Section B-B",
+    "taper x 376..520, scaled from the plan view",
+    "front boss position x 178, z 145",
+    "hole layouts on the cover pad and the top flange",
+    "inner Ø120 bore depth 15"
+  ]
+}

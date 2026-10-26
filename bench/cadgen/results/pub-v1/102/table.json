@@ -1,0 +1,31 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Ø120 bore, Ø200 hub, Ø230 bolt circle, Ø250/Ø270 outline, 29.5/15/3 heights, 220/160 arm reaches, 55/39 widths" },
+  "frame": "origin on the bore axis at the bottom of the 3 mm spigot, Z up toward the raised hub; X right and Y up as in the plan view",
+  "overall": { "x": 343.7, "y": 260.5, "z": 32.5 },
+  "bbox": { "min": [-213.7, -134.6, 0], "max": [130, 125.9, 32.5] },
+  "body": [
+    "bottom spigot Ø200, z 0..3",
+    "flange plate z 3..18 (15 thick): base disc Ø250 with six R20 lobes centred on the bolt holes (Ø270 envelope)",
+    "long arm 55 wide at 157.4° in XY, reaching r=220 from the axis",
+    "short tab 39 wide at -135° in XY, reaching r=160",
+    "raised hub Ø200, z 18..32.5 (14.5 high; 29.5 from the hub top to the flange bottom)"
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 1, "positions": [[0, 0, 32.5]], "axis": "+z", "dia": 120, "depth": "thru", "cbore": { "d": 150, "depth": 6 }, "source": "Ø120 bore; section 75 radius, 6 deep recess at the hub top", "confidence": "medium" },
+    { "id": "C", "type": "pocket", "count": 1, "positions": [[0, 0, 8]], "axis": "+z", "dia": 132, "depth": 6, "source": "internal groove, section 66/66.8 radii", "confidence": "low" },
+    { "id": "D", "type": "hole", "count": 6, "positions": [[-55.8, 100.6, 18], [44.9, 105.9, 18], [110.0, 33.6, 18], [104.2, -48.6, 18], [-10.0, -114.6, 18], [-110.5, -31.7, 18]], "axis": "+z", "dia": 12, "depth": "thru", "source": "six bolt holes on the Ø230 circle at 119°, 67°, 17°, -25°, -95°, 196°", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 1, "positions": [[-162.4, 67.6, 18]], "axis": "+z", "width": 39, "length": 72, "along": 157.4, "depth": 3.5, "source": "39 wide, R6 corners, 3.5 deep", "confidence": "medium" },
+    { "id": "F", "type": "slot", "count": 1, "positions": [[-164.3, 68.4, 18]], "axis": "+z", "width": 6, "length": 48, "along": 157.4, "depth": "thru", "source": "R3 slot in the arm, ends at r=157 and r=199", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 1, "positions": [[-41.3, -77.7, 32.5]], "axis": "+z", "dia": 4, "depth": 5, "source": "small dot on the hub face", "confidence": "low" }
+  ],
+  "guessed": [
+    "bolt hole diameter 12, measured from the drawing scale",
+    "lobe radius 20, chosen so the lobes meet the Ø270 envelope",
+    "arm angle 157.4° and tab angle -135°, measured from the plan view",
+    "pocket and slot radial positions",
+    "groove size and position",
+    "small hole diameter 4 and depth 5",
+    "outer fillets (R10, R30, R6, R4) omitted"
+  ]
+}

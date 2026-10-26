@@ -1,0 +1,25 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "OD Ø150, bore Ø95, H 25, pocket floor 13, detail A: apexes 46 apart, 100° V, 5 wide keys, R2.5 reliefs; flats 4X 149 at 45°" },
+  "frame": "origin at ring centre on bottom face, Z up, top z=25; plan X right, Y up",
+  "overall": { "x": 150, "y": 150, "z": 25 },
+  "bbox": { "min": [-75, -75, 0], "max": [75, 75, 25] },
+  "body": [
+    "ring Ø150 x 25 with Ø95 bore, 4 inward keys 5 wide to r=42 at 0/90/180/270",
+    "8 V pockets z=13..25, apex at ±23 tangential / r≈61 about each Ø10 axis, 100° included, bisector parallel to the hole radial, opening through OD",
+    "4 workholding flats 149 across at 45/135/225/315 deg"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4, "positions": [[67,0,25],[0,67,25],[-67,0,25],[0,-67,25]], "axis": "+z", "dia": 10, "depth": "thru", "source": "4X Ø10 THRU", "confidence": "medium" },
+    { "id": "B", "type": "cbore", "count": 4, "positions": "r=67 at 34,124,214,304 deg, z=25", "axis": "+z", "dia": 9, "depth": "thru", "cbore": { "d": 15, "depth": 8.6 }, "source": "4X Ø9 THRU Ø15 ↧8.6, 56°", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 8, "positions": "r=52 at 45,55,135,145,225,235,315,325 deg, z=25", "axis": "+z", "dia": 5, "depth": 12, "source": "8X Ø5 ↧12, 10° TYP", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 8, "positions": "r=47.8, 5.2 either side of each key", "axis": "+z", "dia": 5, "depth": 12, "source": "R2.5 ↧12", "confidence": "low" },
+    { "id": "E", "type": "pocket", "count": 8, "positions": "apex (±23,-61) about each Ø10 axis, floor z=13", "axis": "+z", "depth": 12, "source": "detail A, side view", "confidence": "medium" }
+  ],
+  "guessed": [
+    "bolt circle r=67 from plan proportions",
+    "pocket bisector parallel to hole radial, 50° half-angle",
+    "key protrusion to r=42, full height",
+    "small chamfers and fillets omitted"
+  ]
+}

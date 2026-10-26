@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "flat-pattern dimensions, folded per the bend table with sharp bends; sheet thickness 2 mm assumed" },
+  "frame": "folded part: floor plate at z=0..2. X runs along the flat pattern from the left arm ends. Y = 567.8 - flat y, where flat y is measured down from the top ear edge. Z is up.",
+  "overall": { "x": 421.6, "y": 400.5, "z": 111.9 },
+  "bbox": { "min": [82.7, 30, 0], "max": [504.3, 430.5, 111.9] },
+  "body": [
+    "floor: one extruded outline. Plate x190..370 Y130..430, left upper arm Y390..430, strip x190..230 Y70..130, left lower arm Y30..70, right tab x370..443 Y170..200. t=2",
+    "left Z-brackets (bend 1 down 90): L profile. Wall x127.1..129.1 up to z84.7, flange outward to x82.7. Y spans 390.2..429.8 and 30.2..69.8",
+    "top tab (bend 3 up 90): two L pieces x190..220 and x305..335. Wall at y428.5..430.5, ears folded inward to y402.1 at z109.9..111.9. Middle wall x219.5..305.5 up to z84",
+    "bottom tab (bend 3 up 90): x252.5..272.5. Wall at y129.5..131.5 up to z102.6, ear inward to y159.4",
+    "right arm (bends 2 and 4, 75 deg): incline from x442.3 rises 81.9 mm, then a flange to x504.3 at z79.1..81.1. Y spans 170.3..199.7"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[205, 414.1, 111.9], [320, 414.1, 111.9]], "axis": "+z", "dia": 9, "depth": "thru", "source": "Ø9 TYP, 15 from ear sides, 12 from edge", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[100.7, 410, 84.7], [100.7, 50, 84.7]], "axis": "+z", "dia": 9, "depth": "thru", "source": "18 from arm end, centred on the 40 arm", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[489.3, 185, 81.1]], "axis": "+z", "dia": 9, "depth": "thru", "source": "15 from right arm end", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[262.5, 149.4, 102.6]], "axis": "+z", "dia": 9, "depth": "thru", "source": "bottom tab hole", "confidence": "low" }
+  ],
+  "guessed": [
+    "sheet thickness 2 mm (not stated)",
+    "bends are sharp with no bend allowance; beads, gussets and embossed pockets are omitted",
+    "pieces are offset a few tenths of a mm so that no faces are coplanar (this fixes the earlier build failure)",
+    "middle top wall height 84; bottom tab wall height 100.6"
+  ]
+}

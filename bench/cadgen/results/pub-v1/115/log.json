@@ -1,0 +1,287 @@
+{
+ "id": "115",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.193952,
+   "s": 109,
+   "ok": true,
+   "size": [
+    101.5,
+    97,
+    21
+   ],
+   "check": {
+    "score": 0.896,
+    "checked": 48,
+    "issues": [
+     "hole A#6 at (10, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 8)",
+     "hole A#7 at (30, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 8)",
+     "hole A#8 at (50, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 8)",
+     "hole A#9 at (70, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 8)",
+     "hole A#10 at (90, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 8)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.18026799999999998,
+   "s": 68,
+   "ok": true,
+   "size": [
+    101.5,
+    97,
+    21
+   ],
+   "check": {
+    "score": 0.792,
+    "checked": 48,
+    "issues": [
+     "hole A#1 at (10, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#2 at (30, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#3 at (50, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#4 at (70, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#5 at (90, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A2#1 at (10, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 8)",
+     "hole A2#2 at (30, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 8)",
+     "hole A2#3 at (50, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 8)",
+     "hole A2#4 at (70, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 8)",
+     "hole A2#5 at (90, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 8)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.237908,
+   "s": 101,
+   "ok": true,
+   "size": [
+    113.687,
+    97,
+    22
+   ],
+   "check": {
+    "score": 0.896,
+    "checked": 48,
+    "issues": [
+     "hole A#6 at (10, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 4)",
+     "hole A#7 at (30, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 4)",
+     "hole A#8 at (50, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 4)",
+     "hole A#9 at (70, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 4)",
+     "hole A#10 at (90, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 4)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.271952,
+   "s": 128,
+   "ok": true,
+   "size": [
+    128.814,
+    96.4,
+    27.607
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 48,
+    "issues": [
+     "overall X is 128.81 mm, the table says 131",
+     "hole A#6 at (10, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.2, 9.8)",
+     "hole A#7 at (30, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.2, 9.8)",
+     "hole A#8 at (50, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.2, 9.8)",
+     "hole A#9 at (70, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.2, 9.8)",
+     "hole A#10 at (90, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.2, 9.8)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.20046,
+   "s": 72,
+   "ok": true,
+   "size": [
+    101.5,
+    97,
+    21
+   ],
+   "check": {
+    "score": 0.792,
+    "checked": 48,
+    "issues": [
+     "hole A#1 at (10, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#2 at (30, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#3 at (50, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#4 at (70, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#5 at (90, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A2#1 at (10, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 8)",
+     "hole A2#2 at (30, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 8)",
+     "hole A2#3 at (50, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 8)",
+     "hole A2#4 at (70, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 8)",
+     "hole A2#5 at (90, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 8)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.08454,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.896,
+   "consensus": 0.547,
+   "rank": 0.756
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.792,
+   "consensus": 0.5816666666666667,
+   "rank": 0.708
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.896,
+   "consensus": 0.4346666666666667,
+   "rank": 0.711
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.875,
+   "consensus": 0.39399999999999996,
+   "rank": 0.683
+  }
+ ],
+ "look": "rejected (self-check 0.896 -> 0.792)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    101.5,
+    97,
+    21
+   ],
+   "check": {
+    "score": 0.896,
+    "checked": 48,
+    "issues": [
+     "hole A#6 at (10, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 8)",
+     "hole A#7 at (30, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 8)",
+     "hole A#8 at (50, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 8)",
+     "hole A#9 at (70, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 8)",
+     "hole A#10 at (90, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 8)"
+    ]
+   },
+   "consensus": 0.547
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    101.5,
+    97,
+    21
+   ],
+   "check": {
+    "score": 0.792,
+    "checked": 48,
+    "issues": [
+     "hole A#1 at (10, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#2 at (30, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#3 at (50, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#4 at (70, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A#5 at (90, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (front flange)\"): should be 1 deep but goes through",
+     "hole A2#1 at (10, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 8)",
+     "hole A2#2 at (30, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 8)",
+     "hole A2#3 at (50, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 8)",
+     "hole A2#4 at (70, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 8)",
+     "hole A2#5 at (90, 97, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 8)"
+    ]
+   },
+   "consensus": 0.5816666666666667
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    113.687,
+    97,
+    22
+   ],
+   "check": {
+    "score": 0.896,
+    "checked": 48,
+    "issues": [
+     "hole A#6 at (10, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 4)",
+     "hole A#7 at (30, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 4)",
+     "hole A#8 at (50, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 4)",
+     "hole A#9 at (70, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 4)",
+     "hole A#10 at (90, 97, 4) (\"Ø4 THRU TYP, pitch 20, 10 from the edge\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 4)"
+    ]
+   },
+   "consensus": 0.4346666666666667
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    128.814,
+    96.4,
+    27.607
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 48,
+    "issues": [
+     "overall X is 128.81 mm, the table says 131",
+     "hole A#6 at (10, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.2, 9.8)",
+     "hole A#7 at (30, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.2, 9.8)",
+     "hole A#8 at (50, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.2, 9.8)",
+     "hole A#9 at (70, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.2, 9.8)",
+     "hole A#10 at (90, 96.4, 9.8) (\"Ø4 THRU TYP, 10/20 pitch\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.2, 9.8)"
+    ]
+   },
+   "consensus": 0.39399999999999996
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    101.5,
+    97,
+    21
+   ],
+   "check": {
+    "score": 0.792,
+    "checked": 48,
+    "issues": [
+     "hole A#1 at (10, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#2 at (30, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#3 at (50, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#4 at (70, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A#5 at (90, 0, 8) (\"Ø4 THRU TYP, pitch 20, first at 10 (through the 1 mm front flange)\"): should be 3 deep but goes through",
+     "hole A2#1 at (10, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (10, 48.5, 8)",
+     "hole A2#2 at (30, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (30, 48.5, 8)",
+     "hole A2#3 at (50, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (50, 48.5, 8)",
+     "hole A2#4 at (70, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (70, 48.5, 8)",
+     "hole A2#5 at (90, 97, 8) (\"Ø4 THRU TYP (through the 1 mm rear flange)\"): no Ø4 hole along Y there; the nearest is Ø4 0 mm away, axis through (90, 48.5, 8)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 0.896,
+ "attempts": 5,
+ "seconds": 385
+}

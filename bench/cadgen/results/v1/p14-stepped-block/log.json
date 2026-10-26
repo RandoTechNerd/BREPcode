@@ -1,0 +1,54 @@
+{
+ "id": "p14-stepped-block",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.131392,
+   "s": 39,
+   "ok": true,
+   "size": [
+    120,
+    60,
+    45
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.139884,
+   "s": 7,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.271276,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    120,
+    60,
+    45
+   ],
+   "check": {
+    "score": 1,
+    "checked": 27,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 51
+}

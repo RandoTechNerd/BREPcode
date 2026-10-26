@@ -1,0 +1,35 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views: overall length 420, length chain 143.46 / 199.67 / 16.90 / 6.79 / 53.18, diameters on the front view and Section A-A" },
+  "frame": "Part axis along +Z. z=0 is the large collar end face and z=420 is the threaded end. The axis passes through x=0, y=0.",
+  "overall": { "x": 130.94, "y": 130.94, "z": 420 },
+  "bbox": { "min": [-65.47, -65.47, 0], "max": [65.47, 65.47, 420] },
+  "body": [
+    "collar Ø130.94, z 0-57.42",
+    "gap Ø122, z 57.42-67.42 (10)",
+    "grip ring 1 Ø130.94, z 67.42-87.42",
+    "gap Ø122 (6)",
+    "grip ring 2 Ø130.94, z 93.42-113.42",
+    "gap Ø122 (6)",
+    "grip ring 3 Ø130.94, z 119.42-139.42",
+    "body Ø122, z 139.42-343.13",
+    "neck Ø118, z 343.13-360.03 (16.90)",
+    "groove zone, two 60° V-grooves, z 360.03-366.82 (6.79)",
+    "threaded end Ø112.91 major diameter, z 366.82-420 (53.18); thread modelled as a plain cylinder",
+    "through bore Ø94, with a Ø103.13 counterbore entering from the threaded end (z 319-420)"
+  ],
+  "features": [
+    { "id": "A", "type": "pocket", "count": 12, "positions": [[65.47, 0, 67.42]], "axis": "+x",
+      "width": 6, "depth": 2, "length": 72, "along": "z",
+      "source": "ALL POCKETS DEPTH 2.00, 6.00 TYP, 30° TYP; axial slots across the grip rings every 30°", "confidence": "medium" },
+    { "id": "B", "type": "cbore", "count": 1, "positions": [[0, 0, 420]], "axis": "+z", "dia": 94, "depth": "thru",
+      "cbore": { "d": 103.13, "depth": 101 },
+      "source": "Ø94.00 thru bore; ID Ø103.13 counterbore at the threaded end, step shown in Section A-A", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Ring spacing uses the 10 gap and the 6 gaps. The 4.92 below the last ring (48.19° chamfer zone) is treated as part of the Ø122 body",
+    "The two neck grooves in the 6.79 zone are 60° V-grooves about 1.55 deep, centred at z 361.6 and 365.2",
+    "The counterbore step at z=319 is scaled off Section A-A",
+    "Threads and R1 fillets are omitted"
+  ]
+}

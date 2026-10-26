@@ -1,0 +1,283 @@
+{
+ "id": "126",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.25197200000000003,
+   "s": 88,
+   "ok": true,
+   "size": [
+    1000.6,
+    75,
+    75
+   ],
+   "check": {
+    "score": 0,
+    "checked": 17,
+    "issues": [
+     "overall X is 1000.6 mm, the table says 860",
+     "overall Y is 75 mm, the table says 640",
+     "overall Z is 75 mm, the table says 370",
+     "hole A#1 at (-45, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): no Ø40 hole along Z there",
+     "hole A#2 at (815, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): no Ø40 hole along Z there",
+     "cbore B#1 at (40, 250, 190) (\"Detail C 2x Ø120/Ø115\"): no Ø120 hole along Z there",
+     "cbore B#2 at (730, 250, 190) (\"Detail C 2x Ø120/Ø115\"): no Ø120 hole along Z there",
+     "hole C at (178, -10, 145) (\"side view Ø52\"): no Ø52 hole along Y there",
+     "hole D at (178, -10, 145) (\"bolt holes on the Ø100 boss, about r 70\"): no Ø8.4 hole along Y there",
+     "cbore E#1 at (98, -38, 40) (\"6x Ø22, 6x Ø60 depth 8\"): no Ø22 hole along Z there",
+     "cbore E#2 at (301, -38, 40) (\"6x Ø22, 6x Ø60 depth 8\"): no Ø22 hole along Z there",
+     "cbore E#3 at (98, 538, 40) (\"6x Ø22, 6x Ø60 depth 8\"): no Ø22 hole along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.273424,
+   "s": 97,
+   "ok": true,
+   "size": [
+    860,
+    640,
+    370
+   ],
+   "check": {
+    "score": 0.967,
+    "checked": 305,
+    "issues": [
+     "cbore A1 at (-45, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): counterbore 860 deep, the table says 10",
+     "cbore A2 at (815, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): no Ø40 hole along X there; the nearest is Ø40 0 mm away, axis through (385, 250, 190)",
+     "hole D#1 at (242.7, -10, 171.8) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#2 at (204.8, -10, 209.7) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#3 at (151.2, -10, 209.7) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#4 at (113.3, -10, 171.8) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#5 at (113.3, -10, 118.2) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#6 at (151.2, -10, 80.3) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#7 at (204.8, -10, 80.3) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#8 at (242.7, -10, 118.2) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.37597200000000003,
+   "s": 185,
+   "ok": true,
+   "size": [
+    859.4,
+    640,
+    360
+   ],
+   "check": {
+    "score": 0.891,
+    "checked": 55,
+    "issues": [
+     "hole E#1 at (809.7, 0, 139) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø8.4 168.28 mm away, axis through (643, 23, 350)",
+     "hole E#2 at (-49.7, 0, 139) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø22 284.56 mm away, axis through (139, -213, 20)",
+     "cbore F#1 at (720, 0, 139) (\"detail C 2x Ø75, inner side\"): no Ø75 hole along Z there; the nearest is Ø8.4 80.36 mm away, axis through (643, 23, 350)",
+     "cbore F#2 at (40, 0, 139) (\"detail C 2x Ø75, inner side\"): no Ø75 hole along Z there; the nearest is Ø22 234.88 mm away, axis through (139, -213, 20)",
+     "cbore G#1 at (600, -250, 184) (\"Ø52, Ø100 on the front view\"): no Ø52 hole along Z there; the nearest is Ø22 81.86 mm away, axis through (672.5, -288, 20)",
+     "cbore G#2 at (600, 250, 184) (\"Ø52, Ø100 on the front view\"): no Ø52 hole along Z there; the nearest is Ø22 81.86 mm away, axis through (672.5, 288, 20)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.414788,
+   "s": 203,
+   "ok": true,
+   "size": [
+    859.4,
+    640,
+    398
+   ],
+   "check": {
+    "score": 0.925,
+    "checked": 53,
+    "issues": [
+     "hole A#1 at (-49.7, 0, 150) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø10.1 71.34 mm away, axis through (20, 15.19, 15)",
+     "hole A#2 at (809.7, 0, 150) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø10.1 72.2 mm away, axis through (740, 18.85, 15)",
+     "cbore B#1 at (40, 0, 150) (\"detail C 2x Ø120/Ø115 from the inside\"): no Ø120 hole along Z there; the nearest is Ø10.1 25.11 mm away, axis through (20, 15.19, 15)",
+     "cbore B#2 at (720, 0, 150) (\"detail C 2x Ø120/Ø115 from the inside\"): no Ø120 hole along Z there; the nearest is Ø10.1 27.48 mm away, axis through (740, 18.85, 15)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.279748,
+   "s": 84,
+   "ok": true,
+   "size": [
+    860,
+    640,
+    370
+   ],
+   "check": {
+    "score": 0.993,
+    "checked": 303,
+    "issues": [
+     "hole A1 at (-45, 250, 190) (\"Detail C 2x Ø75\"): no Ø75 hole along X there; the nearest is Ø40 0 mm away, axis through (385, 250, 190)",
+     "hole A2 at (815, 250, 190) (\"Detail C 2x Ø75\"): no Ø75 hole along X there; the nearest is Ø40 0 mm away, axis through (385, 250, 190)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.595904,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0,
+   "consensus": 0,
+   "rank": 0
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.967,
+   "consensus": 0.39399999999999996,
+   "rank": 0.738
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.925,
+   "consensus": 0.14400000000000002,
+   "rank": 0.613
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.891,
+   "consensus": 0.09599999999999999,
+   "rank": 0.573
+  }
+ ],
+ "look": "kept (self-check 0.967 -> 0.993)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    1000.6,
+    75,
+    75
+   ],
+   "check": {
+    "score": 0,
+    "checked": 17,
+    "issues": [
+     "overall X is 1000.6 mm, the table says 860",
+     "overall Y is 75 mm, the table says 640",
+     "overall Z is 75 mm, the table says 370",
+     "hole A#1 at (-45, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): no Ø40 hole along Z there",
+     "hole A#2 at (815, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): no Ø40 hole along Z there",
+     "cbore B#1 at (40, 250, 190) (\"Detail C 2x Ø120/Ø115\"): no Ø120 hole along Z there",
+     "cbore B#2 at (730, 250, 190) (\"Detail C 2x Ø120/Ø115\"): no Ø120 hole along Z there",
+     "hole C at (178, -10, 145) (\"side view Ø52\"): no Ø52 hole along Y there",
+     "hole D at (178, -10, 145) (\"bolt holes on the Ø100 boss, about r 70\"): no Ø8.4 hole along Y there",
+     "cbore E#1 at (98, -38, 40) (\"6x Ø22, 6x Ø60 depth 8\"): no Ø22 hole along Z there",
+     "cbore E#2 at (301, -38, 40) (\"6x Ø22, 6x Ø60 depth 8\"): no Ø22 hole along Z there",
+     "cbore E#3 at (98, 538, 40) (\"6x Ø22, 6x Ø60 depth 8\"): no Ø22 hole along Z there"
+    ]
+   },
+   "consensus": 0
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    860,
+    640,
+    370
+   ],
+   "check": {
+    "score": 0.967,
+    "checked": 305,
+    "issues": [
+     "cbore A1 at (-45, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): counterbore 860 deep, the table says 10",
+     "cbore A2 at (815, 250, 190) (\"Detail C 2x Ø40 / Ø75\"): no Ø40 hole along X there; the nearest is Ø40 0 mm away, axis through (385, 250, 190)",
+     "hole D#1 at (242.7, -10, 171.8) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#2 at (204.8, -10, 209.7) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#3 at (151.2, -10, 209.7) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#4 at (113.3, -10, 171.8) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#5 at (113.3, -10, 118.2) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#6 at (151.2, -10, 80.3) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#7 at (204.8, -10, 80.3) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20",
+     "hole D#8 at (242.7, -10, 118.2) (\"bolt holes on the Ø100 boss region, r 70\"): depth is 11, the table says 20"
+    ]
+   },
+   "consensus": 0.39399999999999996
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    859.4,
+    640,
+    398
+   ],
+   "check": {
+    "score": 0.925,
+    "checked": 53,
+    "issues": [
+     "hole A#1 at (-49.7, 0, 150) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø10.1 71.34 mm away, axis through (20, 15.19, 15)",
+     "hole A#2 at (809.7, 0, 150) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø10.1 72.2 mm away, axis through (740, 18.85, 15)",
+     "cbore B#1 at (40, 0, 150) (\"detail C 2x Ø120/Ø115 from the inside\"): no Ø120 hole along Z there; the nearest is Ø10.1 25.11 mm away, axis through (20, 15.19, 15)",
+     "cbore B#2 at (720, 0, 150) (\"detail C 2x Ø120/Ø115 from the inside\"): no Ø120 hole along Z there; the nearest is Ø10.1 27.48 mm away, axis through (740, 18.85, 15)"
+    ]
+   },
+   "consensus": 0.14400000000000002
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    859.4,
+    640,
+    360
+   ],
+   "check": {
+    "score": 0.891,
+    "checked": 55,
+    "issues": [
+     "hole E#1 at (809.7, 0, 139) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø8.4 168.28 mm away, axis through (643, 23, 350)",
+     "hole E#2 at (-49.7, 0, 139) (\"detail C 2x Ø40\"): no Ø40 hole along Z there; the nearest is Ø22 284.56 mm away, axis through (139, -213, 20)",
+     "cbore F#1 at (720, 0, 139) (\"detail C 2x Ø75, inner side\"): no Ø75 hole along Z there; the nearest is Ø8.4 80.36 mm away, axis through (643, 23, 350)",
+     "cbore F#2 at (40, 0, 139) (\"detail C 2x Ø75, inner side\"): no Ø75 hole along Z there; the nearest is Ø22 234.88 mm away, axis through (139, -213, 20)",
+     "cbore G#1 at (600, -250, 184) (\"Ø52, Ø100 on the front view\"): no Ø52 hole along Z there; the nearest is Ø22 81.86 mm away, axis through (672.5, -288, 20)",
+     "cbore G#2 at (600, 250, 184) (\"Ø52, Ø100 on the front view\"): no Ø52 hole along Z there; the nearest is Ø22 81.86 mm away, axis through (672.5, 288, 20)"
+    ]
+   },
+   "consensus": 0.09599999999999999
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    860,
+    640,
+    370
+   ],
+   "check": {
+    "score": 0.993,
+    "checked": 303,
+    "issues": [
+     "hole A1 at (-45, 250, 190) (\"Detail C 2x Ø75\"): no Ø75 hole along X there; the nearest is Ø40 0 mm away, axis through (385, 250, 190)",
+     "hole A2 at (815, 250, 190) (\"Detail C 2x Ø75\"): no Ø75 hole along X there; the nearest is Ø40 0 mm away, axis through (385, 250, 190)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 0.993,
+ "attempts": 5,
+ "seconds": 479
+}

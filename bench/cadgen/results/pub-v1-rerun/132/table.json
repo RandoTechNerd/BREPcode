@@ -1,0 +1,31 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views: 140 overall length, Ø130 flanges, Detail B star flange" },
+  "frame": "Spool axis = Z. Origin at the centre of the bottom face of the bottom Ø130 flange, Z up. The drawing's depth d (0 at the star top) maps to z = 140 - d.",
+  "overall": { "x": 130, "y": 130, "z": 140 },
+  "bbox": { "min": [-65, -65, 0], "max": [65, 65, 140] },
+  "body": [
+    "bottom flange Ø130, z 0-5",
+    "tube Ø70 OD, z 5-128",
+    "middle flange Ø130, z 108-113 (d 27-32)",
+    "star flange 12 thick, z 128-140: six R10 lobes around holes on R45 (110 across the lobes), joined by concave R40 arcs tangent to the lobes (arc centres on R83.62 at 30° + k·60°)",
+    "R10 fillet: tube to top of bottom flange",
+    "R10 fillet: tube to underside of middle flange",
+    "R5 fillet: neck to top of middle flange",
+    "R10 fillet: neck to underside of star",
+    "through bore Ø62 with a Ø70 x 12 counterbore through the star flange"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 12,
+      "positions": [[0, 55, 113], [27.5, 47.63, 113], [47.63, 27.5, 113], [55, 0, 113], [47.63, -27.5, 113], [27.5, -47.63, 113], [0, -55, 113], [-27.5, -47.63, 113], [-47.63, -27.5, 113], [-55, 0, 113], [-47.63, 27.5, 113], [-27.5, 47.63, 113]],
+      "axis": "+z", "dia": 8, "depth": "thru",
+      "source": "Ø8.00(12X) on R55 at 30° spacing; the bottom flange carries the same coaxial pattern", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 6, "positions": [[45, 0, 140], [22.5, 38.97, 140], [-22.5, 38.97, 140], [-45, 0, 140], [-22.5, -38.97, 140], [22.5, -38.97, 140]], "axis": "+z", "dia": 10, "depth": "thru", "source": "Ø10.00(6X), Detail B", "confidence": "high" },
+    { "id": "E", "type": "cbore", "count": 1, "positions": [[0, 0, 140]], "axis": "+z", "dia": 62, "depth": "thru", "cbore": { "d": 70, "depth": 12 }, "source": "Ø70 in the section view at the star flange; bore wall scaled from the section", "confidence": "medium" }
+  ],
+  "guessed": [
+    "tube bore Ø62: scaled from the section view against the 130 flange",
+    "concave R40 arc centres placed so that each arc is tangent to the R10 lobes",
+    "the Ø80 neck callout is not modelled separately; the neck is taken as the Ø70 tube"
+  ]
+}

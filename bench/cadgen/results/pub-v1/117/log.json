@@ -1,0 +1,89 @@
+{
+ "id": "117",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.38463200000000003,
+   "s": 180,
+   "ok": true,
+   "size": [
+    300,
+    215.5,
+    138
+   ],
+   "check": {
+    "score": 0.987,
+    "checked": 75,
+    "issues": [
+     "hole H#1 at (-135, 86.75, 138) (\"Ø8.00 -8x and the chained hole dimensions\"): the table puts the entry 113 mm beyond the end of the hole the model has"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.17669600000000002,
+   "s": 54,
+   "ok": true,
+   "size": [
+    300,
+    215.5,
+    138
+   ],
+   "check": {
+    "score": 1,
+    "checked": 75,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.163828,
+   "s": 13,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.725156,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    300,
+    215.5,
+    138
+   ],
+   "check": {
+    "score": 0.987,
+    "checked": 75,
+    "issues": [
+     "hole H#1 at (-135, 86.75, 138) (\"Ø8.00 -8x and the chained hole dimensions\"): the table puts the entry 113 mm beyond the end of the hole the model has"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    300,
+    215.5,
+    138
+   ],
+   "check": {
+    "score": 1,
+    "checked": 75,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 255
+}

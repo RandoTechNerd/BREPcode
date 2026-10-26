@@ -1,0 +1,89 @@
+{
+ "id": "p13-spacer",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.14837999999999998,
+   "s": 49,
+   "ok": true,
+   "size": [
+    80,
+    80,
+    25
+   ],
+   "check": {
+    "score": 0.966,
+    "checked": 29,
+    "issues": [
+     "hole C at (40, 0, 12.5) (\"Ø5 THRU in the right view at 40 from its edge (on the centre) and 12.5 up; hidden lines in the top and front views run from the +X face into the bore only\"): should be 20 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.155192,
+   "s": 34,
+   "ok": true,
+   "size": [
+    80,
+    80,
+    25
+   ],
+   "check": {
+    "score": 1,
+    "checked": 29,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.14458800000000002,
+   "s": 9,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.44816,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    80,
+    80,
+    25
+   ],
+   "check": {
+    "score": 0.966,
+    "checked": 29,
+    "issues": [
+     "hole C at (40, 0, 12.5) (\"Ø5 THRU in the right view at 40 from its edge (on the centre) and 12.5 up; hidden lines in the top and front views run from the +X face into the bore only\"): should be 20 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    80,
+    80,
+    25
+   ],
+   "check": {
+    "score": 1,
+    "checked": 29,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 98
+}

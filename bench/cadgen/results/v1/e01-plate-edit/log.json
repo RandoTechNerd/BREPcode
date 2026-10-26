@@ -1,0 +1,35 @@
+{
+ "id": "e01-plate-edit",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.0525596,
+   "s": 35,
+   "ok": true,
+   "size": [
+    120,
+    80,
+    12
+   ]
+  }
+ ],
+ "cost": 0.0525596,
+ "candidates": [
+  {
+   "tag": "e0.1",
+   "ok": true,
+   "size": [
+    120,
+    80,
+    12
+   ]
+  }
+ ],
+ "ok": true,
+ "kept": "e0.1",
+ "fallback": false,
+ "attempts": 1,
+ "seconds": 37
+}

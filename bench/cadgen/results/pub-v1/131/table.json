@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensions on the drawing; positions with no dimension were estimated from the plan-view scale (~2.36 px/mm, from 198.85)" },
+  "frame": "origin at the bottom-left corner of the plan view; X right, Y up the sheet, Z up from the plate underside",
+  "overall": { "x": 145.32, "y": 198.85, "z": 50 },
+  "bbox": { "min": [0, 0, 0], "max": [145.32, 198.85, 50] },
+  "body": [
+    "base plate, Z 0..15, outline from the plan view",
+    "bearing ring OD 90, Z 0..50, centred (94.5, 100.79); bore 80 through",
+    "left spoke at 112 deg and right spoke at 66 deg, tips at R102 / R101.6",
+    "each spoke is a gusset: 50 high at the ring, sloping 44.76 deg down to 10 high at the tip (section A-A), with a triangular through-window",
+    "lobes R7.5 / R7.62 round the two Ø10 holes",
+    "bottom notch 36.35 wide x 11.18 deep between the Ø6 holes",
+    "triangular through-window in the lower plate"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[28.8, 140.86, 15], [8.88, 69.67, 15]], "axis": "+z", "dia": 10, "depth": "thru", "source": "Ø10.00 (2X), 140.86 / 69.67", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[11.88, 6.88, 15], [61.98, 6.88, 15]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6.00 (2X), 11.88 / 61.98", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[94.5, 100.79, 50]], "axis": "+z", "dia": 80, "depth": "thru", "source": "Ø80 / Ø90 in section A-A, 100.79", "confidence": "medium" },
+    { "id": "D", "type": "pocket", "count": 1, "positions": [[36.93, 0, 7.5]], "axis": "-y", "width": 36.35, "length": 11.18, "depth": "thru", "source": "36.35, 11.18", "confidence": "medium" }
+  ],
+  "guessed": [
+    "ring centre x = 94.5, estimated from the plan view",
+    "spoke tip radii and angles were chosen so the extremes match the overall 145.32 x 198.85",
+    "spoke slope begins at r = 61.6 so the tip at r ~102 stands 10 high (44.76 deg over 40 mm)",
+    "plate thickness 15; the plate outline and window shapes are approximated",
+    "upper Ø10 hole x = 28.8, estimated"
+  ]
+}

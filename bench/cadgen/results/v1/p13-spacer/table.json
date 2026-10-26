@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes from the dimensioned top, front and right views (mm, third-angle)" },
+  "frame": "origin on the ring axis at the bottom face; Z up the axis; X to the right in the top view; Y up the sheet in the top view",
+  "overall": { "x": 80, "y": 80, "z": 25 },
+  "bbox": { "min": [-40, -40, 0], "max": [40, 40, 25] },
+  "body": [
+    "ring Ø80 OD x 25 high, z 0..25, centred on the Z axis",
+    "outer edge chamfer C1.5 at the top and at the bottom (outer circle only)",
+    "central bore Ø40 THRU"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 25]], "axis": "+z", "dia": 40, "depth": "thru",
+      "source": "BORE Ø40 THRU", "confidence": "high" },
+    { "id": "B", "type": "csk", "count": 3,
+      "positions": [[0, 30, 25], [-25.981, -15, 25], [25.981, -15, 25]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "csk": { "d": 10, "angle": 90 },
+      "source": "3X Ø5.5 THRU, CSK Ø10 X 90°, 3X EQ SP ON Ø60 PCD, one hole at +Y in the top view", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[40, 0, 12.5]], "axis": "+x", "dia": 5, "depth": "thru",
+      "source": "Ø5 THRU in the right view, on the centre and 12.5 up; hidden lines run from the +X face into the bore (through the wall)", "confidence": "high" },
+    { "id": "D", "type": "chamfer", "count": 2, "positions": [[40, 0, 25], [40, 0, 0]], "axis": "+z", "width": 1.5,
+      "source": "C1.5 TOP & BOTTOM", "confidence": "high" }
+  ],
+  "guessed": [
+    "Radial Ø5 hole goes through the +X wall into the bore only, not across the whole ring (hidden lines stop at the bore)",
+    "Chamfer applies to the outer edges only"
+  ]
+}

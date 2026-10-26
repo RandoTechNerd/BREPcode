@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from the dimensioned top, front and right views" },
+  "frame": "origin at the plate's min corner (bottom-left of the TOP view, underside); X along 160, Y along 100, Z up; top face at z=15",
+  "overall": { "x": 160, "y": 100, "z": 15 },
+  "bbox": { "min": [0, 0, 0], "max": [160, 100, 15] },
+  "body": [ "rectangular plate 160 x 100 x 15 at the origin" ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 4,
+      "positions": [[10, 10, 15], [150, 10, 15], [10, 90, 15], [150, 90, 15]],
+      "axis": "+z", "dia": 9, "depth": "thru", "cbore": { "d": 15, "depth": 9 },
+      "source": "4X Ø9 THRU, ⌴ Ø15 ↧ 9; positions from 10 / 150 / 90 dims", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2,
+      "positions": [[10, 50, 15], [150, 50, 15]],
+      "axis": "+z", "dia": 8, "depth": 10,
+      "source": "2X Ø8 ↧ 10 at y=50 (50 dim), x on the corner-hole columns", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 15,
+      "positions": [[30,25,15],[55,25,15],[80,25,15],[105,25,15],[130,25,15],
+                    [30,50,15],[55,50,15],[80,50,15],[105,50,15],[130,50,15],
+                    [30,75,15],[55,75,15],[80,75,15],[105,75,15],[130,75,15]],
+      "axis": "+z", "dia": 6.8, "depth": 12,
+      "source": "15X Ø6.8 ↧ 12; 15X GRID 25 PITCH FIRST AT (30, 25): 5 x 3", "confidence": "high" }
+  ],
+  "guessed": [ "the 5x3 grid layout is read from the top view, which shows 5 columns and 3 rows" ],
+  "zoom": []
+}

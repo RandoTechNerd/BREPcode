@@ -1,0 +1,86 @@
+{
+ "id": "132",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.18535200000000002,
+   "s": 53,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B27: boolean Union on 'P.CU7' failed: boolean: unsupported tangent-curve surface intersection between faces 0/14 and 1/120: the carriers touch along a curve through (-17.500000,30.310889,128.000000) with neither carrier planar, a curved/curved tangent contact the lane does not trace y"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.18303199999999997,
+   "s": 38,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B27: boolean Union on 'P.CU7' failed: boolean assembly: missing boundary edge 102"
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.18708,
+   "s": 457,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.215968,
+   "s": 101,
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.23787200000000003,
+   "s": 267,
+   "ok": true,
+   "size": [
+    130,
+    130,
+    140
+   ],
+   "check": {
+    "score": 0.802,
+    "checked": 91,
+    "issues": [
+     "hole C#1 at (55, 0, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (55, 0, 56.5)",
+     "hole C#2 at (47.63, 27.5, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (47.63, 27.5, 56.5)",
+     "hole C#3 at (27.5, 47.63, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (27.5, 47.63, 56.5)",
+     "hole C#4 at (0, 55, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (0, 55, 56.5)",
+     "hole C#5 at (-27.5, 47.63, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (-27.5, 47.63, 56.5)",
+     "hole C#6 at (-47.63, 27.5, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (-47.63, 27.5, 56.5)",
+     "hole C#7 at (-55, 0, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (-55, 0, 56.5)",
+     "hole C#8 at (-47.63, -27.5, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (-47.63, -27.5, 56.5)",
+     "hole C#9 at (-27.5, -47.63, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (-27.5, -47.63, 56.5)",
+     "hole C#10 at (0, -55, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (0, -55, 56.5)",
+     "hole C#11 at (27.5, -47.63, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (27.5, -47.63, 56.5)",
+     "hole C#12 at (47.63, -27.5, 5) (\"bottom flange holes, same pattern as B\"): no Ø8 hole along Z there; the nearest is Ø8 0 mm away, axis through (47.63, -27.5, 56.5)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.009304,
+ "error": "TypeError: (g.positions || []).filter is not a function\n    at file:///home/user/BREPcode/src/imageread.js:115:39\n    at Array.map (<anonymous>)\n    at normalizeTable (file:///home/user/BREPcode/src/imageread.js:110:64)\n    at file:///home/user/BREPcode/bench/cadgen/run.mjs:212:43\n    at Array.map (<anonymous>)\n    at consensus (file:///home/user/BREPcode/bench/cadgen/run.mjs:212:20)\n    at runGeneration (file:///home/user/BREPcode/bench/cadgen/run.mjs:255:42)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async runSample (file:///home/user/BREPcode/bench/cadgen/run.mjs:316:51)\n    at async file:///home/user/BREPcode/bench/cadgen/run.mjs:341:34",
+ "ok": false,
+ "fallback": false,
+ "attempts": 5,
+ "seconds": 818
+}

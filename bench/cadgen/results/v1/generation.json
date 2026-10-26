@@ -1,0 +1,2309 @@
+{
+ "model": "claude-opus-5-5",
+ "options": {
+  "run": "v1",
+  "inputs": "/home/user/BREPcode/bench/cadgen/practice/data/inputs",
+  "only": null,
+  "parallel": 3,
+  "tries": 3,
+  "model": "claude-opus-5-5",
+  "timeout": 600,
+  "candidates": 3,
+  "look": true,
+  "check": true
+ },
+ "samples": 21,
+ "stepOk": 21,
+ "cost": 10.304887599999999,
+ "logs": [
+  {
+   "id": "e01-plate-edit",
+   "task": "editing",
+   "calls": [
+    {
+     "tag": "e0.1",
+     "attempt": 1,
+     "cost": 0.0525596,
+     "s": 35,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      12
+     ]
+    }
+   ],
+   "cost": 0.0525596,
+   "candidates": [
+    {
+     "tag": "e0.1",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      12
+     ]
+    }
+   ],
+   "ok": true,
+   "kept": "e0.1",
+   "fallback": false,
+   "attempts": 1,
+   "seconds": 37
+  },
+  {
+   "id": "p01-plate",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.244868,
+     "s": 32,
+     "ok": true,
+     "size": [
+      11,
+      11,
+      1000.6
+     ],
+     "check": {
+      "score": 0,
+      "checked": 9,
+      "issues": [
+       "overall X is 11 mm, the table says 120",
+       "overall Y is 11 mm, the table says 80",
+       "overall Z is 1000.6 mm, the table says 12",
+       "cbore A#1 at (12, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "cbore A#2 at (108, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "cbore A#3 at (12, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "cbore A#4 at (108, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "hole B at (60, 40, 12) (\"Ø30 THRU at 60 in X, 40 in Y\"): no Ø30 hole along Z there",
+       "slot C at (60, 15, 12) (\"SLOT 8 WIDE, 30 CTR-CTR THRU; centreline 15 from the bottom edge, centred on the X = 60 centreline\"): no Ø8 round ends at (75, 15, 12) and (45, 15, 12) (width 8, 30 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.156232,
+     "s": 34,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      12
+     ],
+     "check": {
+      "score": 1,
+      "checked": 36,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.14174,
+     "s": 11,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.54284,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      11,
+      11,
+      1000.6
+     ],
+     "check": {
+      "score": 0,
+      "checked": 9,
+      "issues": [
+       "overall X is 11 mm, the table says 120",
+       "overall Y is 11 mm, the table says 80",
+       "overall Z is 1000.6 mm, the table says 12",
+       "cbore A#1 at (12, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "cbore A#2 at (108, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "cbore A#3 at (12, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "cbore A#4 at (108, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+       "hole B at (60, 40, 12) (\"Ø30 THRU at 60 in X, 40 in Y\"): no Ø30 hole along Z there",
+       "slot C at (60, 15, 12) (\"SLOT 8 WIDE, 30 CTR-CTR THRU; centreline 15 from the bottom edge, centred on the X = 60 centreline\"): no Ø8 round ends at (75, 15, 12) and (45, 15, 12) (width 8, 30 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      12
+     ],
+     "check": {
+      "score": 1,
+      "checked": 36,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0fix.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 3,
+   "seconds": 83
+  },
+  {
+   "id": "p02-flange",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.254988,
+     "s": 40,
+     "ok": false,
+     "kind": "invalid",
+     "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+     "size": [
+      140,
+      140,
+      36
+     ],
+     "check": {
+      "score": 1,
+      "checked": 31,
+      "issues": []
+     }
+    },
+    {
+     "tag": "c0.2",
+     "attempt": 2,
+     "cost": 0.159352,
+     "s": 44,
+     "ok": true,
+     "size": [
+      140,
+      140,
+      36
+     ],
+     "check": {
+      "score": 1,
+      "checked": 31,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.144952,
+     "s": 10,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.559292,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "size": [
+      140,
+      140,
+      36
+     ],
+     "check": {
+      "score": 1,
+      "checked": 31,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.2",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 3,
+   "seconds": 100
+  },
+  {
+   "id": "p03-angle-bracket",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.161848,
+     "s": 55,
+     "ok": true,
+     "size": [
+      100,
+      70,
+      80
+     ],
+     "check": {
+      "score": 1,
+      "checked": 17,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.19786399999999998,
+     "s": 58,
+     "ok": true,
+     "size": [
+      100,
+      70,
+      80
+     ],
+     "check": {
+      "score": 1,
+      "checked": 17,
+      "issues": []
+     }
+    }
+   ],
+   "cost": 0.359712,
+   "look": "kept (self-check 1 -> 1)",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      100,
+      70,
+      80
+     ],
+     "check": {
+      "score": 1,
+      "checked": 17,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look.1",
+     "ok": true,
+     "size": [
+      100,
+      70,
+      80
+     ],
+     "check": {
+      "score": 1,
+      "checked": 17,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 118
+  },
+  {
+   "id": "p05-cover-plate",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.130672,
+     "s": 43,
+     "ok": true,
+     "size": [
+      110,
+      110,
+      8
+     ],
+     "check": {
+      "score": 1,
+      "checked": 51,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.13769199999999998,
+     "s": 9,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.268364,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      110,
+      110,
+      8
+     ],
+     "check": {
+      "score": 1,
+      "checked": 51,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 58
+  },
+  {
+   "id": "p06-motor-plate",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.127112,
+     "s": 44,
+     "ok": true,
+     "size": [
+      70,
+      70,
+      6
+     ],
+     "check": {
+      "score": 1,
+      "checked": 51,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.13682,
+     "s": 7,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.263932,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      70,
+      70,
+      6
+     ],
+     "check": {
+      "score": 1,
+      "checked": 51,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 59
+  },
+  {
+   "id": "p07-bearing-housing",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.133228,
+     "s": 45,
+     "ok": true,
+     "size": [
+      100,
+      100,
+      42
+     ],
+     "check": {
+      "score": 1,
+      "checked": 26,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.139068,
+     "s": 7,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.272296,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      100,
+      100,
+      42
+     ],
+     "check": {
+      "score": 1,
+      "checked": 26,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 59
+  },
+  {
+   "id": "p04-pillow-block",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.150732,
+     "s": 46,
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view); it breaks into the bore\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.164244,
+     "s": 56,
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view). It is 12 deep from z 64 to z 52, but the bore's top is at z 54, so the hole opens into the bore (FRONT view dashed lines run from the top face to the bore). It is effectively through into the bore; that is intended (oil hole)\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.149148,
+     "s": 54,
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12, at x=65, y=20\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.16115200000000002,
+     "s": 71,
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at x = 65, y = 20 (TOP view); the hole breaks into the bore\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.14665999999999998,
+     "s": 11,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.7719360000000001,
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.923,
+     "consensus": 0.923,
+     "rank": 0.923
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.923,
+     "consensus": 0.923,
+     "rank": 0.923
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.923,
+     "consensus": 0.923,
+     "rank": 0.923
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.923,
+     "consensus": 0.923,
+     "rank": 0.923
+    }
+   ],
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view); it breaks into the bore\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.923
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view). It is 12 deep from z 64 to z 52, but the bore's top is at z 54, so the hole opens into the bore (FRONT view dashed lines run from the top face to the bore). It is effectively through into the bore; that is intended (oil hole)\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.923
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12, at x=65, y=20\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.923
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      130,
+      40,
+      64
+     ],
+     "check": {
+      "score": 0.923,
+      "checked": 13,
+      "issues": [
+       "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at x = 65, y = 20 (TOP view); the hole breaks into the bore\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.923
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 0.923,
+   "attempts": 5,
+   "seconds": 193
+  },
+  {
+   "id": "p08-channel",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.130744,
+     "s": 54,
+     "ok": true,
+     "size": [
+      140,
+      60,
+      45
+     ],
+     "check": {
+      "score": 1,
+      "checked": 23,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.138252,
+     "s": 9,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.268996,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      140,
+      60,
+      45
+     ],
+     "check": {
+      "score": 1,
+      "checked": 23,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 70
+  },
+  {
+   "id": "p09-standoff-plate",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.137488,
+     "s": 59,
+     "ok": true,
+     "size": [
+      120,
+      90,
+      18
+     ],
+     "check": {
+      "score": 1,
+      "checked": 23,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.141216,
+     "s": 7,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.278704,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      120,
+      90,
+      18
+     ],
+     "check": {
+      "score": 1,
+      "checked": 23,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 74
+  },
+  {
+   "id": "p12-rib-bracket",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.150188,
+     "s": 42,
+     "ok": true,
+     "size": [
+      80,
+      70,
+      90
+     ],
+     "check": {
+      "score": 1,
+      "checked": 27,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.140284,
+     "s": 10,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.29047199999999995,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      80,
+      70,
+      90
+     ],
+     "check": {
+      "score": 1,
+      "checked": 27,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 57
+  },
+  {
+   "id": "p11-adapter-disc",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.138668,
+     "s": 19,
+     "ok": false,
+     "kind": "syntax",
+     "error": "drill(...) is not a function"
+    },
+    {
+     "tag": "c0.2",
+     "attempt": 2,
+     "cost": 0.14782800000000001,
+     "s": 42,
+     "ok": true,
+     "size": [
+      120,
+      120,
+      18
+     ],
+     "check": {
+      "score": 1,
+      "checked": 65,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.14660800000000002,
+     "s": 9,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.43310400000000004,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "size": [
+      120,
+      120,
+      18
+     ],
+     "check": {
+      "score": 1,
+      "checked": 65,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.2",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 3,
+   "seconds": 77
+  },
+  {
+   "id": "p14-stepped-block",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.131392,
+     "s": 39,
+     "ok": true,
+     "size": [
+      120,
+      60,
+      45
+     ],
+     "check": {
+      "score": 1,
+      "checked": 27,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.139884,
+     "s": 7,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.271276,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      120,
+      60,
+      45
+     ],
+     "check": {
+      "score": 1,
+      "checked": 27,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 51
+  },
+  {
+   "id": "p13-spacer",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.14837999999999998,
+     "s": 49,
+     "ok": true,
+     "size": [
+      80,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.966,
+      "checked": 29,
+      "issues": [
+       "hole C at (40, 0, 12.5) (\"Ø5 THRU in the right view at 40 from its edge (on the centre) and 12.5 up; hidden lines in the top and front views run from the +X face into the bore only\"): should be 20 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.155192,
+     "s": 34,
+     "ok": true,
+     "size": [
+      80,
+      80,
+      25
+     ],
+     "check": {
+      "score": 1,
+      "checked": 29,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.14458800000000002,
+     "s": 9,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.44816,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      80,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.966,
+      "checked": 29,
+      "issues": [
+       "hole C at (40, 0, 12.5) (\"Ø5 THRU in the right view at 40 from its edge (on the centre) and 12.5 up; hidden lines in the top and front views run from the +X face into the bore only\"): should be 20 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      80,
+      80,
+      25
+     ],
+     "check": {
+      "score": 1,
+      "checked": 29,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0fix.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 3,
+   "seconds": 98
+  },
+  {
+   "id": "p10-clamp-block",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.151912,
+     "s": 35,
+     "ok": true,
+     "size": [
+      5,
+      5,
+      12.6
+     ],
+     "check": {
+      "score": 0,
+      "checked": 8,
+      "issues": [
+       "overall X is 5 mm, the table says 50",
+       "overall Y is 5 mm, the table says 40",
+       "overall Z is 12.6 mm, the table says 60",
+       "hole A at (0, 20, 30) (\"Ø25 THRU, right view, centre 20 from front, 30 up\"): no Ø25 hole along X there",
+       "slot B at (25, 20, 60) (\"SLOT 3 WIDE TO BORE, centred at X=25, full depth in Y, bottom at Z=35 per the front view\"): no Ø3 round ends at (25, 38.5, 60) and (25, 1.5, 60) (width 3, 37 centre to centre)",
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; the counterbore is on the front face per the right view\"): no Ø5.5 hole along Y there",
+       "hole D#1 at (12, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there",
+       "hole D#2 at (38, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.17508,
+     "s": 49,
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.9,
+      "checked": 20,
+      "issues": [
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): diameter is 10, the table says 5.5",
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): the Ø10 counterbore is missing"
+      ]
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.150988,
+     "s": 50,
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.857,
+      "checked": 21,
+      "issues": [
+       "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): diameter is 10, the table says 5.5",
+       "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): the Ø10 counterbore is missing",
+       "slot C at (25, 0, 35) (\"SLOT 3 WIDE TO BORE, centred x=25, runs full depth in TOP view, from top face down to z≈35 (into bore)\"): no Ø3 round ends at (25, 18.5, 35) and (25, -18.5, 35) (width 3, 37 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.157732,
+     "s": 51,
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.857,
+      "checked": 21,
+      "issues": [
+       "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): diameter is 10, the table says 5.5",
+       "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): the Ø10 counterbore is missing",
+       "slot C at (25, 0, 60) (\"SLOT 3 WIDE TO BORE, centred x=25, full depth in TOP, slot bottom at z=35 in FRONT\"): no Ø3 round ends at (25, 18.5, 60) and (25, -18.5, 60) (width 3, 37 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.175092,
+     "s": 24,
+     "ok": false,
+     "kind": "syntax",
+     "error": "drill(...) is not a function"
+    },
+    {
+     "tag": "look.2",
+     "attempt": 2,
+     "cost": 0.186928,
+     "s": 40,
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.9,
+      "checked": 20,
+      "issues": [
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): diameter is 10, the table says 5.5",
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): the Ø10 counterbore is missing"
+      ]
+     }
+    }
+   ],
+   "cost": 0.9977320000000001,
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0,
+     "consensus": 0,
+     "rank": 0
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.9,
+     "consensus": 0.8569999999999999,
+     "rank": 0.883
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.857,
+     "consensus": 0.8713333333333333,
+     "rank": 0.863
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.857,
+     "consensus": 0.8713333333333333,
+     "rank": 0.863
+    }
+   ],
+   "look": "kept (self-check 0.9 -> 0.9)",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      5,
+      5,
+      12.6
+     ],
+     "check": {
+      "score": 0,
+      "checked": 8,
+      "issues": [
+       "overall X is 5 mm, the table says 50",
+       "overall Y is 5 mm, the table says 40",
+       "overall Z is 12.6 mm, the table says 60",
+       "hole A at (0, 20, 30) (\"Ø25 THRU, right view, centre 20 from front, 30 up\"): no Ø25 hole along X there",
+       "slot B at (25, 20, 60) (\"SLOT 3 WIDE TO BORE, centred at X=25, full depth in Y, bottom at Z=35 per the front view\"): no Ø3 round ends at (25, 38.5, 60) and (25, 1.5, 60) (width 3, 37 centre to centre)",
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; the counterbore is on the front face per the right view\"): no Ø5.5 hole along Y there",
+       "hole D#1 at (12, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there",
+       "hole D#2 at (38, 20, 0) (\"2X Ø5 ↧12, top view X=12 and 38, Y=20; hidden lines run up from the bottom in the front view\"): no Ø5 hole along Z there"
+      ]
+     },
+     "consensus": 0
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.9,
+      "checked": 20,
+      "issues": [
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): diameter is 10, the table says 5.5",
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore 6 deep from the front face\"): the Ø10 counterbore is missing"
+      ]
+     },
+     "consensus": 0.8569999999999999
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.857,
+      "checked": 21,
+      "issues": [
+       "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): diameter is 10, the table says 5.5",
+       "cbore B at (25, 0, 50) (\"FRONT view: Ø5.5 THRU, CBORE Ø10 depth 6, at x=25, z=50; cbore visible at y=0..6 in RIGHT view\"): the Ø10 counterbore is missing",
+       "slot C at (25, 0, 35) (\"SLOT 3 WIDE TO BORE, centred x=25, runs full depth in TOP view, from top face down to z≈35 (into bore)\"): no Ø3 round ends at (25, 18.5, 35) and (25, -18.5, 35) (width 3, 37 centre to centre)"
+      ]
+     },
+     "consensus": 0.8713333333333333
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.857,
+      "checked": 21,
+      "issues": [
+       "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): diameter is 10, the table says 5.5",
+       "cbore B at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧ 6 at x=25, z=50 in FRONT; counterbore on the front face in RIGHT view\"): the Ø10 counterbore is missing",
+       "slot C at (25, 0, 60) (\"SLOT 3 WIDE TO BORE, centred x=25, full depth in TOP, slot bottom at z=35 in FRONT\"): no Ø3 round ends at (25, 18.5, 60) and (25, -18.5, 60) (width 3, 37 centre to centre)"
+      ]
+     },
+     "consensus": 0.8713333333333333
+    },
+    {
+     "tag": "look.2",
+     "ok": true,
+     "size": [
+      50,
+      40,
+      60
+     ],
+     "check": {
+      "score": 0.9,
+      "checked": 20,
+      "issues": [
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): diameter is 10, the table says 5.5",
+       "cbore C at (25, 0, 50) (\"Ø5.5 THRU, CBORE Ø10 ↧6, front view at X=25, Z=50; right view shows the counterbore on the front face\"): the Ø10 counterbore is missing"
+      ]
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.2",
+   "fallback": false,
+   "selfCheck": 0.9,
+   "attempts": 6,
+   "seconds": 204
+  },
+  {
+   "id": "p17-gusset-angle",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.139808,
+     "s": 36,
+     "ok": true,
+     "size": [
+      90,
+      70,
+      70
+     ],
+     "check": {
+      "score": 1,
+      "checked": 21,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.139764,
+     "s": 8,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.279572,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      90,
+      70,
+      70
+     ],
+     "check": {
+      "score": 1,
+      "checked": 21,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 50
+  },
+  {
+   "id": "p18-fixture-plate",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.137688,
+     "s": 43,
+     "ok": true,
+     "size": [
+      160,
+      100,
+      15
+     ],
+     "check": {
+      "score": 1,
+      "checked": 99,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.13966800000000001,
+     "s": 7,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.27735600000000005,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      160,
+      100,
+      15
+     ],
+     "check": {
+      "score": 1,
+      "checked": 99,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 57
+  },
+  {
+   "id": "p16-slotted-rail",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.148088,
+     "s": 42,
+     "ok": true,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "check": {
+      "score": 0.833,
+      "checked": 12,
+      "issues": [
+       "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom\"): should be 15 deep but goes through",
+       "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.158036,
+     "s": 29,
+     "ok": true,
+     "size": [
+      12.88,
+      4.92,
+      4.364
+     ],
+     "check": {
+      "score": 0,
+      "checked": 9,
+      "issues": [
+       "overall X is 12.88 mm, the table says 200",
+       "overall Y is 4.92 mm, the table says 30",
+       "overall Z is 4.36 mm, the table says 12",
+       "slot A#1 at (30, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (37, 15, 12) and (23, 15, 12) (width 6.6, 14 centre to centre)",
+       "slot A#2 at (80, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (87, 15, 12) and (73, 15, 12) (width 6.6, 14 centre to centre)",
+       "slot A#3 at (130, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (137, 15, 12) and (123, 15, 12) (width 6.6, 14 centre to centre)",
+       "slot A#4 at (170, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (177, 15, 12) and (163, 15, 12) (width 6.6, 14 centre to centre)",
+       "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom; hidden lines ~15 long at left end\"): no Ø4.2 hole along X there",
+       "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines ~15 long at right end in TOP/FRONT\"): no Ø4.2 hole along X there"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.141088,
+     "s": 38,
+     "ok": true,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "check": {
+      "score": 0.833,
+      "checked": 12,
+      "issues": [
+       "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15; RIGHT view gives 15 across and 6 up; hidden lines in TOP and FRONT views show one hole in each end\"): should be 15 deep but goes through",
+       "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15 (second hole, right end)\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+      ]
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.163684,
+     "s": 53,
+     "ok": true,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "check": {
+      "score": 0.778,
+      "checked": 9,
+      "issues": [
+       "hole B#1 at (0, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there",
+       "hole B#2 at (200, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there"
+      ]
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.143944,
+     "s": 11,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.75484,
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.833,
+     "consensus": 0.8146666666666667,
+     "rank": 0.826
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0,
+     "consensus": 0,
+     "rank": 0
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.778,
+     "consensus": 0.8329999999999999,
+     "rank": 0.8
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.833,
+     "consensus": 0.8146666666666667,
+     "rank": 0.826
+    }
+   ],
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "check": {
+      "score": 0.833,
+      "checked": 12,
+      "issues": [
+       "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom\"): should be 15 deep but goes through",
+       "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+      ]
+     },
+     "consensus": 0.8146666666666667
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      12.88,
+      4.92,
+      4.364
+     ],
+     "check": {
+      "score": 0,
+      "checked": 9,
+      "issues": [
+       "overall X is 12.88 mm, the table says 200",
+       "overall Y is 4.92 mm, the table says 30",
+       "overall Z is 4.36 mm, the table says 12",
+       "slot A#1 at (30, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (37, 15, 12) and (23, 15, 12) (width 6.6, 14 centre to centre)",
+       "slot A#2 at (80, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (87, 15, 12) and (73, 15, 12) (width 6.6, 14 centre to centre)",
+       "slot A#3 at (130, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (137, 15, 12) and (123, 15, 12) (width 6.6, 14 centre to centre)",
+       "slot A#4 at (170, 15, 12) (\"4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge\"): no Ø6.6 round ends at (177, 15, 12) and (163, 15, 12) (width 6.6, 14 centre to centre)",
+       "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom; hidden lines ~15 long at left end\"): no Ø4.2 hole along X there",
+       "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15, hidden lines ~15 long at right end in TOP/FRONT\"): no Ø4.2 hole along X there"
+      ]
+     },
+     "consensus": 0
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "check": {
+      "score": 0.778,
+      "checked": 9,
+      "issues": [
+       "hole B#1 at (0, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there",
+       "hole B#2 at (200, 15, 6) (\"2X Ø4.2 ↧ 15 in RIGHT view at 15 from side, 6 from bottom; hidden lines at both ends in TOP/FRONT\"): no Ø4.2 hole along Z there"
+      ]
+     },
+     "consensus": 0.8329999999999999
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      200,
+      30,
+      12
+     ],
+     "check": {
+      "score": 0.833,
+      "checked": 12,
+      "issues": [
+       "hole B at (0, 15, 6) (\"2X Ø4.2 ↧ 15; RIGHT view gives 15 across and 6 up; hidden lines in TOP and FRONT views show one hole in each end\"): should be 15 deep but goes through",
+       "hole C at (200, 15, 6) (\"2X Ø4.2 ↧ 15 (second hole, right end)\"): no Ø4.2 hole along X there; the nearest is Ø4.2 0 mm away, axis through (100, 15, 6)"
+      ]
+     },
+     "consensus": 0.8146666666666667
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 0.833,
+   "attempts": 5,
+   "seconds": 143
+  },
+  {
+   "id": "p15-lid",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.145604,
+     "s": 37,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B10: boolean Union on 'P.CY8' failed: boolean assembly: non-integral genus (V=43 E=63 F=22 H=1 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]] one_use=7 [27, 7, 6, 29, 5, 28, 8] one_use_geometry=[(27, false, 1, Vec3 { x: 8.0, y: 77.0, "
+    },
+    {
+     "tag": "c0.2",
+     "attempt": 2,
+     "cost": 0.167152,
+     "s": 46,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.164708,
+     "s": 39,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B11: boolean Union on 'P.CY10' failed: boolean assembly: non-integral genus (V=43 E=63 F=22 H=1 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]] one_use=7 [27, 7, 6, 29, 5, 28, 8] one_use_geometry=[(27, false, 1, Vec3 { x: 8.0, y: 77.0,"
+    },
+    {
+     "tag": "c0fix.2",
+     "attempt": 2,
+     "cost": 0.183312,
+     "s": 55,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.147904,
+     "s": 41,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B10: boolean Union on 'P.CY8' failed: boolean assembly: non-integral genus (V=43 E=63 F=22 H=1 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]] one_use=7 [27, 7, 6, 29, 5, 28, 8] one_use_geometry=[(27, false, 1, Vec3 { x: 8.0, y: 77.0, "
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.1529,
+     "s": 59,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there"
+      ]
+     }
+    },
+    {
+     "tag": "c2.2",
+     "attempt": 2,
+     "cost": 0.165416,
+     "s": 43,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there"
+      ]
+     }
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.18241600000000002,
+     "s": 47,
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there"
+      ]
+     }
+    }
+   ],
+   "cost": 1.309412,
+   "ranking": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "own": 0.886,
+     "consensus": 0.886,
+     "rank": 0.886
+    },
+    {
+     "tag": "c0fix.2",
+     "ok": true,
+     "own": 0.886,
+     "consensus": 0.886,
+     "rank": 0.886
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.886,
+     "consensus": 0.886,
+     "rank": 0.886
+    },
+    {
+     "tag": "c2.2",
+     "ok": true,
+     "own": 0.886,
+     "consensus": 0.886,
+     "rank": 0.886
+    }
+   ],
+   "look": "kept (self-check 0.886 -> 0.886)",
+   "candidates": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there"
+      ]
+     },
+     "consensus": 0.886
+    },
+    {
+     "tag": "c0fix.2",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 2) (\"4X POST Ø11 INSIDE; front/right hidden lines show the posts from the top plate down to about 2 mm above the bottom\"): no Ø11 boss along Z there"
+      ]
+     },
+     "consensus": 0.886
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 22) (\"4X POST Ø11 INSIDE; hidden lines in FRONT view\"): no Ø11 boss along Z there"
+      ]
+     },
+     "consensus": 0.886
+    },
+    {
+     "tag": "c2.2",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 0) (\"4X POST Ø11 INSIDE\"): no Ø11 boss along Z there"
+      ]
+     },
+     "consensus": 0.886
+    },
+    {
+     "tag": "look.1",
+     "ok": true,
+     "size": [
+      120,
+      80,
+      25
+     ],
+     "check": {
+      "score": 0.886,
+      "checked": 35,
+      "issues": [
+       "boss B#1 at (8, 8, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there",
+       "boss B#2 at (112, 8, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there",
+       "boss B#3 at (8, 72, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there",
+       "boss B#4 at (112, 72, 2) (\"4X POST Ø11 INSIDE; front view shows posts ending just above the bottom edge\"): no Ø11 boss along Z there"
+      ]
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.1",
+   "fallback": false,
+   "selfCheck": 0.886,
+   "attempts": 8,
+   "seconds": 315
+  },
+  {
+   "id": "p19-shaft-support",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.154092,
+     "s": 50,
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 10, 60) (\"SLOT 2 WIDE from top down into the Ø20 bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.17258800000000002,
+     "s": 51,
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 0, 52.5) (\"SLOT 2 WIDE: saw cut through the full 20 depth, from the top face (z 60) down into the Ø20 bore (top at z 45); end centres z 45 and z 60\"): no Ø2 round ends at (42, 0, 60) and (42, 0, 45) (width 2, 15 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.151628,
+     "s": 51,
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 10, 60) (\"SLOT 2 WIDE, from the top of the upright down into the bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.16523200000000002,
+     "s": 57,
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 0, 47.5) (\"SLOT 2 WIDE from bore to top, centred x=42\"): no Ø2 round ends at (42, 0, 59) and (42, 0, 36) (width 2, 23 centre to centre)"
+      ]
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.144428,
+     "s": 9,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.7879680000000001,
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.957,
+     "consensus": 0.957,
+     "rank": 0.957
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.957,
+     "consensus": 0.957,
+     "rank": 0.957
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.957,
+     "consensus": 0.957,
+     "rank": 0.957
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.957,
+     "consensus": 0.957,
+     "rank": 0.957
+    }
+   ],
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 10, 60) (\"SLOT 2 WIDE from top down into the Ø20 bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+      ]
+     },
+     "consensus": 0.957
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 0, 52.5) (\"SLOT 2 WIDE: saw cut through the full 20 depth, from the top face (z 60) down into the Ø20 bore (top at z 45); end centres z 45 and z 60\"): no Ø2 round ends at (42, 0, 60) and (42, 0, 45) (width 2, 15 centre to centre)"
+      ]
+     },
+     "consensus": 0.957
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 10, 60) (\"SLOT 2 WIDE, from the top of the upright down into the bore\"): no Ø2 round ends at (42, 19, 60) and (42, 1, 60) (width 2, 18 centre to centre)"
+      ]
+     },
+     "consensus": 0.957
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      84,
+      20,
+      60
+     ],
+     "check": {
+      "score": 0.957,
+      "checked": 23,
+      "issues": [
+       "slot C at (42, 0, 47.5) (\"SLOT 2 WIDE from bore to top, centred x=42\"): no Ø2 round ends at (42, 0, 59) and (42, 0, 36) (width 2, 23 centre to centre)"
+      ]
+     },
+     "consensus": 0.957
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 0.957,
+   "attempts": 5,
+   "seconds": 173
+  },
+  {
+   "id": "p20-hub",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.159164,
+     "s": 59,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the RIGHT view and hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+       "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the FRONT view and hidden in the TOP view\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.173436,
+     "s": 53,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the RIGHT view, hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+       "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the FRONT view, hidden in the TOP view\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.16386,
+     "s": 59,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"Ø5 ↧ 12 in FRONT view at x 45, z 28; TOP view hidden lines on the -Y side\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"Ø5 ↧ 12 in RIGHT view at z 28; TOP view hidden lines on the +X side\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.162744,
+     "s": 59,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (67.5, 45, 28) (\"Ø5 ↧12, right view; hidden lines in the top and front views\"): should be 12 deep but goes through",
+       "hole E at (45, 22.5, 28) (\"Ø5 ↧12, front view; hidden lines in the top view\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.15716,
+     "s": 13,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.816364,
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    }
+   ],
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the RIGHT view and hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+       "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, seen face-on in the FRONT view and hidden in the TOP view\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the RIGHT view, hidden in the TOP and FRONT views\"): should be 12 deep but goes through",
+       "hole E at (45, 22.5, 28) (\"Ø5 ↧ 12 at 28 high, face-on in the FRONT view, hidden in the TOP view\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"Ø5 ↧ 12 in FRONT view at x 45, z 28; TOP view hidden lines on the -Y side\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"Ø5 ↧ 12 in RIGHT view at z 28; TOP view hidden lines on the +X side\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (67.5, 45, 28) (\"Ø5 ↧12, right view; hidden lines in the top and front views\"): should be 12 deep but goes through",
+       "hole E at (45, 22.5, 28) (\"Ø5 ↧12, front view; hidden lines in the top view\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 0.935,
+   "attempts": 5,
+   "seconds": 192
+  }
+ ]
+}

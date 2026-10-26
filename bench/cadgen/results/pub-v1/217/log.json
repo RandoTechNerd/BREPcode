@@ -1,0 +1,110 @@
+{
+ "id": "217",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.1200396,
+   "s": 55,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1023516,
+   "s": 37,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.1086396,
+   "s": 40,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.1042596,
+   "s": 39,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.15849560000000001,
+   "s": 67,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.1186836,
+   "s": 51,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  }
+ ],
+ "cost": 0.7124696,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    132.619,
+    126.983,
+    60.009
+   ]
+  }
+ ],
+ "editError": "invalid: the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 297
+}

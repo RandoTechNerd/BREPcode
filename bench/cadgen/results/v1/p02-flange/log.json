@@ -1,0 +1,73 @@
+{
+ "id": "p02-flange",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.254988,
+   "s": 40,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    140,
+    140,
+    36
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.159352,
+   "s": 44,
+   "ok": true,
+   "size": [
+    140,
+    140,
+    36
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.144952,
+   "s": 10,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.559292,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    140,
+    140,
+    36
+   ],
+   "check": {
+    "score": 1,
+    "checked": 31,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.2",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 100
+}

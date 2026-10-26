@@ -1,0 +1,197 @@
+{
+ "id": "p04-pillow-block",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.150732,
+   "s": 46,
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view); it breaks into the bore\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.164244,
+   "s": 56,
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view). It is 12 deep from z 64 to z 52, but the bore's top is at z 54, so the hole opens into the bore (FRONT view dashed lines run from the top face to the bore). It is effectively through into the bore; that is intended (oil hole)\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.149148,
+   "s": 54,
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12, at x=65, y=20\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.16115200000000002,
+   "s": 71,
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at x = 65, y = 20 (TOP view); the hole breaks into the bore\"): should be 12 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.14665999999999998,
+   "s": 11,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.7719360000000001,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.923,
+   "consensus": 0.923,
+   "rank": 0.923
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.923,
+   "consensus": 0.923,
+   "rank": 0.923
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.923,
+   "consensus": 0.923,
+   "rank": 0.923
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.923,
+   "consensus": 0.923,
+   "rank": 0.923
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view); it breaks into the bore\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.923
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at 65 along X and 20 in Y (top view). It is 12 deep from z 64 to z 52, but the bore's top is at z 54, so the hole opens into the bore (FRONT view dashed lines run from the top face to the bore). It is effectively through into the bore; that is intended (oil hole)\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.923
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12, at x=65, y=20\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.923
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    130,
+    40,
+    64
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "hole B at (65, 20, 64) (\"Ø6 ↧ 12 at x = 65, y = 20 (TOP view); the hole breaks into the bore\"): should be 12 deep but goes through"
+    ]
+   },
+   "consensus": 0.923
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 0.923,
+ "attempts": 5,
+ "seconds": 193
+}

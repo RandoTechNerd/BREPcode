@@ -1,0 +1,23 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all dimensions read from the TOP, FRONT and RIGHT views" },
+  "frame": "origin at the plate's lower-left bottom corner in the TOP view; X right, Y up the sheet, Z up through the 6 mm thickness",
+  "overall": { "x": 70, "y": 70, "z": 6 },
+  "bbox": { "min": [0, 0, 0], "max": [70, 70, 6] },
+  "body": [ "rectangular plate 70 x 70 x 6, corner at origin" ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4,
+      "positions": [[6, 6, 6], [64, 6, 6], [6, 64, 6], [64, 64, 6]],
+      "axis": "+z", "dia": 5.5, "depth": "thru",
+      "source": "4X Ø5.5 THRU, positions 6 / 64 in X and Y", "confidence": "high" },
+    { "id": "B", "type": "cbore", "count": 4,
+      "positions": [[19.5, 19.5, 6], [50.5, 19.5, 6], [19.5, 50.5, 6], [50.5, 50.5, 6]],
+      "axis": "+z", "dia": 3.4, "depth": "thru", "cbore": { "d": 6.5, "depth": 3.5 },
+      "source": "4X Ø3.4 THRU, ⌴ Ø6.5 ↧ 3.5, positions 19.5 / 50.5 in X and Y; front view shows the counterbores from the top face", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[35, 35, 6]],
+      "axis": "+z", "dia": 22.5, "depth": "thru",
+      "source": "Ø22.5 THRU at 35, 35", "confidence": "high" }
+  ],
+  "guessed": []
+}

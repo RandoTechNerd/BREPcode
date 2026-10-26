@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned top, front and right views; third-angle projection" },
+  "frame": "origin at the plate's min corner (bottom-left in TOP view, bottom face); X right along 120, Y up along 90, Z up",
+  "overall": { "x": 120, "y": 90, "z": 18 },
+  "bbox": { "min": [0, 0, 0], "max": [120, 90, 18] },
+  "body": [
+    "base plate 120 x 90 x 6 at z 0..6, vertical corners R6 (note 4)",
+    "4 round bosses Ø10, 12 high, on top of the plate at z 6..18, centred at (20,15), (100,15), (20,75), (100,75)"
+  ],
+  "features": [
+    { "id": "A", "type": "boss", "count": 4,
+      "positions": [[20, 15, 6], [100, 15, 6], [20, 75, 6], [100, 75, 6]],
+      "axis": "+z", "dia": 10, "height": 12,
+      "source": "4X BOSS Ø10 X 12 HIGH; positions from 20/100 and 15/75; 18 overall height minus 6 plate", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 4,
+      "positions": [[20, 15, 18], [100, 15, 18], [20, 75, 18], [100, 75, 18]],
+      "axis": "+z", "dia": 3.2, "depth": "thru",
+      "source": "4X Ø3.2 THRU; BORE Ø3.2 THRU BOSS; note 3 boss bores thru all", "confidence": "high" },
+    { "id": "C", "type": "pocket", "count": 1,
+      "positions": [[60, 45, 6]],
+      "axis": "+z", "width": 20, "length": 40, "along": "x", "depth": 6,
+      "source": "POCKET 40 X 20 ↧ 6 R4, centre at 60 / 45; depth 6 equals the plate thickness, so it breaks through", "confidence": "high" }
+  ],
+  "guessed": [
+    "plate thickness 6 = 18 overall minus 12 boss height (matches the front-view proportions)",
+    "pocket depth 6 equals the plate thickness, so it is modelled as a through opening (the hidden lines in FRONT/RIGHT span the full thickness)"
+  ]
+}

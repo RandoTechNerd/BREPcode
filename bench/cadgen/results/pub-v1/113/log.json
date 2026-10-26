@@ -1,0 +1,95 @@
+{
+ "id": "113",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.26985200000000004,
+   "s": 114,
+   "ok": true,
+   "size": [
+    205,
+    205,
+    51.6
+   ],
+   "check": {
+    "score": 0.818,
+    "checked": 22,
+    "issues": [
+     "overall Z is 51.6 mm, the table says 49.6",
+     "boss C#1 at (63.7, 1, 1) (\"GUSSET notes\"): no boss along Z there",
+     "boss C#2 at (114.95, 1, 1) (\"GUSSET notes\"): no boss along Z there",
+     "boss C#3 at (168.08, 1, 1) (\"GUSSET notes\"): no boss along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.160988,
+   "s": 39,
+   "ok": true,
+   "size": [
+    205,
+    205,
+    51.6
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.166416,
+   "s": 16,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.597256,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    205,
+    205,
+    51.6
+   ],
+   "check": {
+    "score": 0.818,
+    "checked": 22,
+    "issues": [
+     "overall Z is 51.6 mm, the table says 49.6",
+     "boss C#1 at (63.7, 1, 1) (\"GUSSET notes\"): no boss along Z there",
+     "boss C#2 at (114.95, 1, 1) (\"GUSSET notes\"): no boss along Z there",
+     "boss C#3 at (168.08, 1, 1) (\"GUSSET notes\"): no boss along Z there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    205,
+    205,
+    51.6
+   ],
+   "check": {
+    "score": 1,
+    "checked": 19,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 173
+}

@@ -1,0 +1,21 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned top and front views, mm, third-angle" },
+  "frame": "origin at the min corner of the plate (bottom-left in TOP view, underside), X right, Y up the sheet, Z up; top face at z=8",
+  "overall": { "x": 110, "y": 110, "z": 8 },
+  "bbox": { "min": [0, 0, 0], "max": [110, 110, 8] },
+  "body": [
+    "square plate 110 x 110 x 8, vertical corner radii R5 (note 3)",
+    "rectangular pocket 70 x 70 centred at (55,55), 3 deep from the top face (floor at z=5), corner R6"
+  ],
+  "features": [
+    { "id": "A", "type": "csk", "count": 8,
+      "positions": [[10,10,8],[55,10,8],[100,10,8],[10,55,8],[100,55,8],[10,100,8],[55,100,8],[100,100,8]],
+      "axis": "+z", "dia": 5.5, "depth": "thru", "csk": { "d": 11, "angle": 90 },
+      "source": "8X Ø5.5 THRU, CSK Ø11 X 90°; positions 10/55/100 from the left and bottom edges", "confidence": "high" },
+    { "id": "B", "type": "pocket", "count": 1,
+      "positions": [[55,55,8]], "axis": "+z", "width": 70, "length": 70, "depth": 3,
+      "source": "POCKET 70 X 70 ↧ 3 R6", "confidence": "high" }
+  ],
+  "guessed": ["The pocket is centred on the plate. The drawing shows it symmetric but does not dimension its position."]
+}

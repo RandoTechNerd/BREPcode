@@ -1,0 +1,49 @@
+{
+ "id": "250",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.09723960000000001,
+   "s": 311,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: mesh non-manifold: edge (0, 1) shared by 4 triangles (expected ≤ 2)",
+   "size": [
+    264.409,
+    228.335,
+    167.492
+   ]
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.09824360000000001,
+   "s": 310,
+   "ok": true,
+   "size": [
+    264.409,
+    228.335,
+    167.492
+   ]
+  }
+ ],
+ "cost": 0.19548320000000002,
+ "candidates": [
+  {
+   "tag": "e0.2",
+   "ok": true,
+   "size": [
+    264.409,
+    228.335,
+    167.492
+   ]
+  }
+ ],
+ "ok": true,
+ "kept": "e0.2",
+ "fallback": false,
+ "attempts": 2,
+ "seconds": 632
+}

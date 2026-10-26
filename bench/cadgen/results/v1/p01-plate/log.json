@@ -1,0 +1,105 @@
+{
+ "id": "p01-plate",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.244868,
+   "s": 32,
+   "ok": true,
+   "size": [
+    11,
+    11,
+    1000.6
+   ],
+   "check": {
+    "score": 0,
+    "checked": 9,
+    "issues": [
+     "overall X is 11 mm, the table says 120",
+     "overall Y is 11 mm, the table says 80",
+     "overall Z is 1000.6 mm, the table says 12",
+     "cbore A#1 at (12, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "cbore A#2 at (108, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "cbore A#3 at (12, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "cbore A#4 at (108, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "hole B at (60, 40, 12) (\"Ø30 THRU at 60 in X, 40 in Y\"): no Ø30 hole along Z there",
+     "slot C at (60, 15, 12) (\"SLOT 8 WIDE, 30 CTR-CTR THRU; centreline 15 from the bottom edge, centred on the X = 60 centreline\"): no Ø8 round ends at (75, 15, 12) and (45, 15, 12) (width 8, 30 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.156232,
+   "s": 34,
+   "ok": true,
+   "size": [
+    120,
+    80,
+    12
+   ],
+   "check": {
+    "score": 1,
+    "checked": 36,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.14174,
+   "s": 11,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.54284,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    11,
+    11,
+    1000.6
+   ],
+   "check": {
+    "score": 0,
+    "checked": 9,
+    "issues": [
+     "overall X is 11 mm, the table says 120",
+     "overall Y is 11 mm, the table says 80",
+     "overall Z is 1000.6 mm, the table says 12",
+     "cbore A#1 at (12, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "cbore A#2 at (108, 12, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "cbore A#3 at (12, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "cbore A#4 at (108, 68, 12) (\"4X Ø6.6 THRU, ⌴ Ø11 ↧ 6.5; positions 12 / 108 in X, 12 / 68 in Y; counterbore shown at the top in the FRONT view\"): no Ø6.6 hole along Z there",
+     "hole B at (60, 40, 12) (\"Ø30 THRU at 60 in X, 40 in Y\"): no Ø30 hole along Z there",
+     "slot C at (60, 15, 12) (\"SLOT 8 WIDE, 30 CTR-CTR THRU; centreline 15 from the bottom edge, centred on the X = 60 centreline\"): no Ø8 round ends at (75, 15, 12) and (45, 15, 12) (width 8, 30 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    120,
+    80,
+    12
+   ],
+   "check": {
+    "score": 1,
+    "checked": 36,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 83
+}

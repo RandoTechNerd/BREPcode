@@ -1,0 +1,24 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensions on the sheet, mm, third-angle projection" },
+  "frame": "origin at the front-left-bottom corner; X along the 100 length, Y from the front (upright plate) toward the back of the base, Z up",
+  "overall": { "x": 100, "y": 70, "z": 80 },
+  "bbox": { "min": [0, 0, 0], "max": [100, 70, 80] },
+  "body": [
+    "base plate 100 x 70 x 10 at [0,0,0]",
+    "upright plate 100 x 10 x 80 at [0,0,0] (front edge, Y 0..10)",
+    "2X gusset 8 thick, right triangle in YZ with legs ~30.75 (Y) x ~41.3 (Z) from corner (y=9, z=9), visible hypotenuse (y10,z49)-(y39,z10), at X 10..18 and X 82..90"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 2, "positions": [[30, 45, 10], [70, 45, 10]], "axis": "+z",
+      "width": 9, "length": 25, "along": "y", "depth": "thru",
+      "source": "2X SLOT 9 WIDE 16 CTR-CTR THRU, positions 30 / 70 from left, 45 from front", "confidence": "high" },
+    { "id": "B", "type": "csk", "count": 2, "positions": [[30, 0, 55], [70, 0, 55]], "axis": "-y",
+      "dia": 6.6, "depth": "thru", "csk": { "d": 13, "angle": 90 },
+      "source": "2X Ø6.6 THRU, CSK Ø13 X 90°, at 30 / 70 from left, 55 up", "confidence": "high" }
+  ],
+  "guessed": [
+    "Gusset X positions 10..18 and 82..90, read from the front view's hidden lines and the 8 dimension",
+    "Gusset corner at (y=9, z=9) so the visible hypotenuse meets the upright at z≈49 and the base at y≈39, as drawn"
+  ]
+}

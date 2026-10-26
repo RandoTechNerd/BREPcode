@@ -1,0 +1,89 @@
+{
+ "id": "142",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.372572,
+   "s": 165,
+   "ok": true,
+   "size": [
+    195.3,
+    140.944,
+    84
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "slot D at (78.9, 110, 37) (\"front view 25..69, plan view inner wall at 78.9\"): no Ø44 round ends at (114.9, 110, 37) and (42.9, 110, 37) (width 44, 72 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.185448,
+   "s": 43,
+   "ok": true,
+   "size": [
+    195.3,
+    140.944,
+    84
+   ],
+   "check": {
+    "score": 1,
+    "checked": 12,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.177192,
+   "s": 19,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.735212,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    195.3,
+    140.944,
+    84
+   ],
+   "check": {
+    "score": 0.923,
+    "checked": 13,
+    "issues": [
+     "slot D at (78.9, 110, 37) (\"front view 25..69, plan view inner wall at 78.9\"): no Ø44 round ends at (114.9, 110, 37) and (42.9, 110, 37) (width 44, 72 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    195.3,
+    140.944,
+    84
+   ],
+   "check": {
+    "score": 1,
+    "checked": 12,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 231
+}

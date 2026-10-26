@@ -1,0 +1,26 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Overall 788.72 x 658.63 x 105; hole positions come from the chain dimensions in the front view" },
+  "frame": "Origin on the vertical centre line C-C at the bottom edge of the cover. X right, Y up the sheet, Z out of the plate toward the deep tub side. Plate face at z=0.",
+  "overall": { "x": 788.72, "y": 658.63, "z": 105 },
+  "bbox": { "min": [-387.6, 0, 0], "max": [401.1, 658.63, 105] },
+  "body": [
+    "Flat cover plate, 10 thick, polygonal outline following the plan view",
+    "Lower deep tub: x -230..250, y 0..301, z 0..105, walls 5, open on +Z, plate is its floor",
+    "Lower hub ring: OD 140, Ø115 bore, at (-100,175), full 105 height",
+    "Upper hub boss: OD 120, 40 high, Ø90 bore, at (0, 412.75)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[-100, 175, 105]], "axis": "+z", "dia": 115, "depth": "thru", "source": "Section B-B Ø115/Ø140; position scaled off the plan view", "confidence": "low" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[0, 412.75, 40]], "axis": "+z", "dia": 90, "depth": "thru", "source": "Ø90 on centre line C-C, 412.75", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 16, "dia": 8, "depth": "thru", "axis": "+z",
+      "positions": [[-346.52,215,10],[-266.2,258,10],[-195.42,326,10],[-188.61,276.64,10],[-81,441,10],[-320.66,71.08,10],[-258.04,34.33,10],[-365.58,23.44,10],[20,633.31,10],[237,633.31,10],[275,514.88,10],[275,376.02,10],[297.39,276.64,10],[380,290.26,10],[297.39,193.6,10],[319.17,61.55,10]],
+      "source": "Ø8.00 (14X) plus the plan view chain dimensions", "confidence": "low" }
+  ],
+  "guessed": [
+    "Outline polygon traced from the plan view, so it is approximate",
+    "Wall thickness 5 and plate thickness 10",
+    "Hub centres scaled off the plan view",
+    "Raised flange ribs and small fillets are omitted"
+  ]
+}

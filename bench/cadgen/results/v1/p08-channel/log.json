@@ -1,0 +1,54 @@
+{
+ "id": "p08-channel",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.130744,
+   "s": 54,
+   "ok": true,
+   "size": [
+    140,
+    60,
+    45
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.138252,
+   "s": 9,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.268996,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    140,
+    60,
+    45
+   ],
+   "check": {
+    "score": 1,
+    "checked": 23,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 70
+}

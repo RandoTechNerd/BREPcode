@@ -1,0 +1,33 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned top views, section A-A and section B-B, in mm" },
+  "frame": "Origin at the plate centre in XY, at the A-A centre line (y=0). X points right in the top view and Y points up the sheet. Z=0 is the flange underside and Z points up toward the pocket openings.",
+  "overall": { "x": 300, "y": 215.5, "z": 138 },
+  "bbox": { "min": [-150, -111.75, 0], "max": [150, 103.75, 138] },
+  "body": [
+    "Flange plate: x -150..150, y -111.75..103.75, z 0..25, vertical corners R12.5",
+    "Lower body block: x -125..125, y -72.25..80, z 25..111",
+    "Three lobes R20 at (-105,-72.25), (-25,-72.25) and (55,-72.25), z 25..111",
+    "Side boss R15 at (125,11), z 25..111",
+    "Upper deck, z 111..138: x -125..105, y -34..71, plus x -125..-35, y -61..-34",
+    "Bump on the deck: R12.5 at (-73.75,69.75), z 111..138"
+  ],
+  "features": [
+    { "id": "P1", "type": "pocket", "count": 1, "positions": [[-82.75, 24.75, 138]], "axis": "+z", "width": 60.5, "length": 68.5, "depth": 50, "source": "60.50 x 68.50, 50 deep (3x)", "confidence": "medium" },
+    { "id": "P2", "type": "pocket", "count": 1, "positions": [[7.4, 18.5, 138]], "axis": "+z", "width": 79.8, "length": 81, "depth": 50, "source": "79.80 x 81.00", "confidence": "medium" },
+    { "id": "P3", "type": "pocket", "count": 1, "positions": [[73.15, 18.5, 138]], "axis": "+z", "width": 39.7, "length": 81, "depth": 50, "source": "39.70 x 81.00", "confidence": "medium" },
+    { "id": "P4", "type": "pocket", "count": 1, "positions": [[-80, -33, 138]], "axis": "+z", "width": 66, "length": 32, "depth": 50, "source": "66.00 x 32.00", "confidence": "low" },
+    { "id": "H", "type": "hole", "count": 17, "axis": "+z", "dia": 8, "depth": "thru",
+      "positions": [[-135,86.75,25],[110,86.75,25],[135,86.75,25],[-137.5,-95.25,25],[135,-83.25,25],[-73.75,69.75,138],[-110,56.75,138],[-37.5,56.75,138],[90,56.75,138],[-42.5,1.75,138],[-37.5,-18.25,138],[90,-18.25,138],[-110,-48.25,138],[-43,-55.75,138],[-105,-72.25,111],[-25,-72.25,111],[55,-72.25,111]],
+      "source": "Ø8.00 -8x and the chained hole dimensions", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[125, 11, 111]], "axis": "+z", "dia": 10, "depth": "thru", "source": "R15 boss, 10.00", "confidence": "low" }
+  ],
+  "guessed": [
+    "Plate Y extent was split as -111.75..103.75 to fit the hole dimensions",
+    "Lower body Y extent -72.25..80 was taken from the views",
+    "Boss centre y=11 and boss bore Ø10",
+    "Pocket Y positions",
+    "Hole (-43,-55.75): its y position is not dimensioned",
+    "Corner relief notches in the pockets were omitted"
+  ]
+}

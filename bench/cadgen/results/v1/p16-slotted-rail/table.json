@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned third-angle drawing, mm" },
+  "frame": "origin at min corner; X along 200 length (left end of TOP view at x=0), Y across 30 width, Z up through 12 thickness",
+  "overall": { "x": 200, "y": 30, "z": 12 },
+  "bbox": { "min": [0, 0, 0], "max": [200, 30, 12] },
+  "body": [
+    "rectangular bar 200 x 30 x 12, top edges chamfered C1 (note 3), built as an exact hull of a 200x30x11 slab and a 198x28x1 top slab"
+  ],
+  "features": [
+    { "id": "A", "type": "slot", "count": 4,
+      "positions": [[30, 15, 12], [80, 15, 12], [130, 15, 12], [170, 15, 12]],
+      "axis": "+z", "width": 6.6, "length": 20.6, "along": "x", "depth": "thru",
+      "source": "4X SLOT 6.6 WIDE 14 CTR-CTR THRU; centres 30/80/130/170 from left, 15 from edge", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1,
+      "positions": [[0, 15, 6]], "axis": "-x", "dia": 4.2, "depth": 15,
+      "source": "2X Ø4.2 ↧ 15, RIGHT view 15 from side, 6 from bottom", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 1,
+      "positions": [[200, 15, 6]], "axis": "+x", "dia": 4.2, "depth": 15,
+      "source": "2X Ø4.2 ↧ 15, hidden lines at both ends in TOP/FRONT", "confidence": "high" },
+    { "id": "D", "type": "chamfer", "count": 4, "dia": 1,
+      "source": "NOTE 3 CHAMFER TOP EDGES C1", "confidence": "high" }
+  ],
+  "guessed": [
+    "slot length 14 ctr-ctr means overall length 14 + 6.6 = 20.6",
+    "end hole height read as 6 from bottom (mid-thickness)"
+  ]
+}

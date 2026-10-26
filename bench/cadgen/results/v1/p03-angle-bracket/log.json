@@ -1,0 +1,78 @@
+{
+ "id": "p03-angle-bracket",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.161848,
+   "s": 55,
+   "ok": true,
+   "size": [
+    100,
+    70,
+    80
+   ],
+   "check": {
+    "score": 1,
+    "checked": 17,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.19786399999999998,
+   "s": 58,
+   "ok": true,
+   "size": [
+    100,
+    70,
+    80
+   ],
+   "check": {
+    "score": 1,
+    "checked": 17,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 0.359712,
+ "look": "kept (self-check 1 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    100,
+    70,
+    80
+   ],
+   "check": {
+    "score": 1,
+    "checked": 17,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    100,
+    70,
+    80
+   ],
+   "check": {
+    "score": 1,
+    "checked": 17,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 118
+}

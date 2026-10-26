@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned front, top and side views plus detail A" },
+  "frame": "origin at the min corner. X along the 210 width, Y the 120 depth with y=0 at the front face, Z up with z=0 at the bottom of the U",
+  "overall": { "x": 216, "y": 120, "z": 115 },
+  "bbox": { "min": [-3, 0, 0], "max": [213, 120, 115] },
+  "body": [
+    "U-shaped bracket in XZ, extruded along Y 0..120. Outer 210 wide, 80 tall, bottom corners R60 (flat bottom only x 60..150). Inner slot 150 wide (legs 30 thick), inner floor at z=30, inner corners R30",
+    "Two leg-top bosses: cylinder R35 along X with its axis at y=85, z=80, x 0..30 and 180..210, blended to the leg top with an R40 concave fillet",
+    "Rings Ø60 x 3 on both faces of each leg: x -3..0, 30..33, 177..180, 210..213, concentric with the bore"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[-3, 85, 80]], "axis": "-x", "dia": 40, "depth": "thru", "source": "Ø40 bore through both legs", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[15, 85, 115], [195, 85, 115]], "axis": "+z", "dia": 6, "depth": 25, "source": "Ø6.00 (2X), 85 from the front face; breaks into the bore", "confidence": "medium" },
+    { "id": "C", "type": "pocket", "count": 1, "positions": [[105, 60, 30]], "axis": "+z", "width": 56.9, "length": 114, "along": "x", "depth": 10, "source": "detail A: 114 x 56.90, R30 ends", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[63, 60, 20]], "axis": "+z", "dia": 8, "depth": "thru", "source": "Ø8.00, 60 from the front face", "confidence": "medium" },
+    { "id": "E", "type": "tapped", "count": 4, "positions": [[15, 0, 58], [195, 0, 58], [50, 0, 17], [160, 0, 17]], "axis": "-y", "dia": 10.2, "depth": 24, "source": "M12 ↧24 (4X); 180 and 110 spacing; 58 and 17 heights", "confidence": "medium" },
+    { "id": "F1", "type": "hole", "count": 1, "positions": [[-3, 110.49, 88.55]], "axis": "-x", "dia": 5, "depth": 10, "source": "side view Ø5.00: 8.55 / 9.51", "confidence": "low" },
+    { "id": "F2", "type": "hole", "count": 1, "positions": [[213, 110.49, 88.55]], "axis": "+x", "dia": 5, "depth": 10, "source": "mirror of F1 on the other leg", "confidence": "low" }
+  ],
+  "guessed": [
+    "pocket depth 10 (not dimensioned)",
+    "Ø6 runs from the boss top down into the bore",
+    "Ø5 depth 10, on the outer ring faces",
+    "Ø8 x position ≈63, scaled from the drawing",
+    "shallow front groove omitted"
+  ]
+}

@@ -1,0 +1,244 @@
+{
+ "id": "110",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.330472,
+   "s": 152,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B7: boolean Union on 'P.CY4' failed: boolean assembly produced invalid topology (S=1 genus=11): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 15 of face 15 is open between coedges 77 and 1807\" }, ValidationIssue { severity: \"error\", kind: Other, message: \"loop 15 o"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.562844,
+   "s": 266,
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    227
+   ],
+   "check": {
+    "score": 0.882,
+    "checked": 17,
+    "issues": [
+     "hole C at (0, 0, -93) (\"Ø15.5 / Ø35.5 foot, coaxial with the left hole\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (0, 0, -40.5)",
+     "hole D at (75, 39, 124) (\"Ø11 bore in the Ø20 lug; its axis is normal to the arm plane\"): no Ø11 hole along X there"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.189728,
+   "s": 50,
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    227
+   ],
+   "check": {
+    "score": 0.882,
+    "checked": 17,
+    "issues": [
+     "hole C at (0, 0, -93) (\"Ø15.5 / Ø35.5 foot, coaxial with the left plate hole (the same Z axis through x 0, y 0)\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (0, 0, -40.5)",
+     "hole D at (79.12, 42.3, 124) (\"Ø11 bore in the Ø20 lug. Its axis is normal to the arm plane, which sits at 130 degrees in plan, so the axis is (cos40, sin40, 0). The arm is 10 thick, centred at (75.29, 39.09, 124).\"): no Ø11 hole along Z there; the nearest is Ø15.5 51.89 mm away, axis through (110, 84, 6)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.353132,
+   "s": 164,
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    219
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 20,
+    "issues": [
+     "overall X is 270.25 mm, the table says 252.75",
+     "hole B at (235, 0, -86) (\"Ø15.5 / Ø35.5 foot\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (235, 0, -43)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.525108,
+   "s": 255,
+   "ok": true,
+   "size": [
+    270.25,
+    122.214,
+    218.6
+   ],
+   "check": {
+    "score": 0.824,
+    "checked": 17,
+    "issues": [
+     "overall Y is 122.21 mm, the table says 119",
+     "hole B at (0, 0, -83) (\"foot Ø15.5 / Ø35.5, 46.2 from the leg edge\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (0, 0, -41.5)",
+     "hole D at (67.6, 26.6, 113.6) (\"arm eye Ø11 in an Ø20 boss; axis normal to the arm plane (40° in XY)\"): no Ø11 hole along X there"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.225964,
+   "s": 57,
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    219
+   ],
+   "check": {
+    "score": 0.95,
+    "checked": 20,
+    "issues": [
+     "hole B at (235, 0, -98) (\"Ø15.5 / Ø35.5 foot\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (235, 0, -43)"
+    ]
+   }
+  }
+ ],
+ "cost": 2.187248,
+ "ranking": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "own": 0.882,
+   "consensus": 0.8236666666666667,
+   "rank": 0.859
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.882,
+   "consensus": 0.8236666666666667,
+   "rank": 0.859
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.824,
+   "consensus": 0.765,
+   "rank": 0.8
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.9,
+   "consensus": 0.8433333333333333,
+   "rank": 0.877
+  }
+ ],
+ "look": "kept (self-check 0.9 -> 0.95)",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    227
+   ],
+   "check": {
+    "score": 0.882,
+    "checked": 17,
+    "issues": [
+     "hole C at (0, 0, -93) (\"Ø15.5 / Ø35.5 foot, coaxial with the left hole\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (0, 0, -40.5)",
+     "hole D at (75, 39, 124) (\"Ø11 bore in the Ø20 lug; its axis is normal to the arm plane\"): no Ø11 hole along X there"
+    ]
+   },
+   "consensus": 0.8236666666666667
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    227
+   ],
+   "check": {
+    "score": 0.882,
+    "checked": 17,
+    "issues": [
+     "hole C at (0, 0, -93) (\"Ø15.5 / Ø35.5 foot, coaxial with the left plate hole (the same Z axis through x 0, y 0)\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (0, 0, -40.5)",
+     "hole D at (79.12, 42.3, 124) (\"Ø11 bore in the Ø20 lug. Its axis is normal to the arm plane, which sits at 130 degrees in plan, so the axis is (cos40, sin40, 0). The arm is 10 thick, centred at (75.29, 39.09, 124).\"): no Ø11 hole along Z there; the nearest is Ø15.5 51.89 mm away, axis through (110, 84, 6)"
+    ]
+   },
+   "consensus": 0.8236666666666667
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    270.25,
+    122.214,
+    218.6
+   ],
+   "check": {
+    "score": 0.824,
+    "checked": 17,
+    "issues": [
+     "overall Y is 122.21 mm, the table says 119",
+     "hole B at (0, 0, -83) (\"foot Ø15.5 / Ø35.5, 46.2 from the leg edge\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (0, 0, -41.5)",
+     "hole D at (67.6, 26.6, 113.6) (\"arm eye Ø11 in an Ø20 boss; axis normal to the arm plane (40° in XY)\"): no Ø11 hole along X there"
+    ]
+   },
+   "consensus": 0.765
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    219
+   ],
+   "check": {
+    "score": 0.9,
+    "checked": 20,
+    "issues": [
+     "overall X is 270.25 mm, the table says 252.75",
+     "hole B at (235, 0, -86) (\"Ø15.5 / Ø35.5 foot\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (235, 0, -43)"
+    ]
+   },
+   "consensus": 0.8433333333333333
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    270.25,
+    119.25,
+    219
+   ],
+   "check": {
+    "score": 0.95,
+    "checked": 20,
+    "issues": [
+     "hole B at (235, 0, -98) (\"Ø15.5 / Ø35.5 foot\"): no Ø15.5 hole along Z there; the nearest is Ø15.5 0 mm away, axis through (235, 0, -43)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 0.95,
+ "attempts": 6,
+ "seconds": 786
+}

@@ -137,6 +137,11 @@ and 40 s per sample.
 | GT vs itself | 0.998 | 1.000 | 0.996 | 1.000 | the ceiling: p11's symmetric disc aligns to 0.964 |
 | `v0` | 0.969 | 0.954 | 0.976 | 0.987 | first run |
 | `v0.1` | 0.994 | 0.991 | 0.995 | 1.000 | rules say `csink:` (and `drill()` takes `csk:`), the rotate order is stated |
+| `v1` | **0.996** | 0.994 | 0.995 | 1.000 | shared reader + self-check + candidates + look-compare (the 20 drawing parts; e01, the editing sample, scores 0.998) |
+
+v1 on the practice set: 21/21 valid exact STEPs, $0.49 and 108 s per sample
+(3.2 AI calls), against v0.1's ~40 s. It lifted p15 (0.988 to 1.000), p03,
+p10 and p16, and lost nothing; p11 sits at the aligner's 0.964 ceiling.
 
 The per-sample tables are in `results/<run>/scores.json`. The AI's dimension
 table, code and attempt log for each sample are next to its `output.step`.
@@ -145,3 +150,42 @@ These drawings are cleaner than CADGenBench's: every feature has a baseline
 dimension, there are no sections or detail views, and callouts are
 machine-placed. Treat these scores as an upper bound on what the leaderboard
 will show. What matters is the gap between runs.
+
+## The public inputs (v1, 2026-10-26)
+
+`HuggingAI4Engineering/cadgenbench-data`, all 81 fixtures, run with
+`--inputs` (`results/pub-v1`, with `pub-v1-rerun*` for samples re-run after a
+parser crash was fixed). The ground truth is private, so what can be measured
+here is the evaluator's validity gate (`lib/validity.py`, cadgenbench's own
+`analyze_step`) and the cost. `node bench/cadgen/summary.mjs pub-v1
+pub-v1-rerun pub-v1-rerun2` prints the table; nothing was submitted.
+
+| task | samples | pass the validity gate | real edit (not the fallback) | AI calls | $/sample (median) | s/sample (median) |
+|---|---|---|---|---|---|---|
+| generation | 49 | **49/49** | - | 4.1 | 0.98 (0.74) | 333 (253) |
+| editing | 32 | **32/32** | 18/32 | 3.5 | 0.44 (0.38) | 927 (296) |
+
+36 of 49 drawings ended with every self-check agreeing; the look-compare
+changed the kept model on 30, the self-check fix round on 12, and no extra
+candidate ever beat the fixed or look-compared one (worth trimming to save
+cost). The 14 editing fallbacks are edits that never built on either exact
+lane (all 32 inputs were readable through OpenCASCADE; 15 not by the Rust
+kernel). The run cost $69 including re-runs. See `results/pub-v1/summary.json`
+for the per-sample numbers. Side by side
+(input drawing | the app's blueprint of our STEP) in `shots/`:
+`pub_101.jpg` and `pub_117.jpg` (good reads), `pub_121.jpg` (the deep bowl and
+its ribs missed), `pub_115.jpg` and `pub_129.jpg` (sheet metal: 129 came out as
+the flat pattern, not the formed part).
+
+What went wrong in the reading:
+- **Sheet metal** (115, 129): the drawing is a flat pattern plus bend notes.
+  The table described the flat blank faithfully, so the self-check was happy
+  (129 checks 1.0) and the model is still wrong. The self-check only proves
+  the code matches the table, not that the table matches the part.
+- **Sections and depth** (121): the deep Ø155 bowl in SECTION A-A was read as
+  a shallow ring and the internal ribs were lost.
+- **Overall height** (117): 145.1 built against the drawn 138.
+- **Editing**: the Rust kernel cannot read 15 of the 32 input STEPs
+  (B-spline seams) and fails some booleans on big imported solids; those go
+  through OpenCASCADE, and edits that never build fall back to the unedited
+  input.

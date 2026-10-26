@@ -1,0 +1,282 @@
+{
+ "id": "128",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.251392,
+   "s": 91,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B8: boolean Union on 'P.CO5' failed: boolean assembly produced invalid topology (S=3 genus=0): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 2 of face 2 is open between coedges 7 and 8\" }, ValidationIssue { severity: \"error\", kind: Other, message: \"loop 2 of face 2"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.209864,
+   "s": 105,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.75,
+    "checked": 8,
+    "issues": [
+     "slot A at (335, 0, 0) (\"Ø670 (x8), R12.00, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length",
+     "hole C at (0, 0, 370.02) (\"Ø100\"): should be 50 deep but goes through"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.179236,
+   "s": 88,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot A at (335, 0, 0) (\"Ø670 (x8), R12.00, 30.14° (x8), 14.86° (x8)\"): no Ø24 round ends at (422.1, 0, 0) and (247.9, 0, 0) (width 24, 174.2 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.207708,
+   "s": 81,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape; Face: BRepCheck_UnorientableShape",
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "slot D at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length",
+     "slot E at (365, 0, 0) (\"19.56 (x2), 36.00, 21.66°\"): the table gives no slot length"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.233352,
+   "s": 99,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot D at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length"
+    ]
+   }
+  },
+  {
+   "tag": "c1.2",
+   "attempt": 2,
+   "cost": 0.17918800000000001,
+   "s": 68,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape; Face: BRepCheck_UnorientableShape",
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "slot D at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length",
+     "slot E at (365, 0, 30) (\"19.56 (x2), 28.68°\"): the table gives no slot length"
+    ]
+   }
+  },
+  {
+   "tag": "c1.3",
+   "attempt": 3,
+   "cost": 0.18292399999999998,
+   "s": 52,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape; Face: BRepCheck_UnorientableShape",
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "slot D at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length",
+     "slot E at (365, 0, 30) (\"19.56 (x2), 28.68°\"): the table gives no slot length"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.20604,
+   "s": 96,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 1,
+    "checked": 8,
+    "issues": []
+   }
+  }
+ ],
+ "cost": 1.649704,
+ "ranking": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "own": 0.75,
+   "consensus": 0.875,
+   "rank": 0.8
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.875,
+   "consensus": 0.8125,
+   "rank": 0.85
+  },
+  {
+   "tag": "c1.3",
+   "ok": false,
+   "own": 0.778,
+   "consensus": 0,
+   "rank": -1
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.875,
+   "consensus": 0.8125,
+   "rank": 0.85
+  }
+ ],
+ "look": "kept (self-check 0.875 -> 1)",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.75,
+    "checked": 8,
+    "issues": [
+     "slot A at (335, 0, 0) (\"Ø670 (x8), R12.00, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length",
+     "hole C at (0, 0, 370.02) (\"Ø100\"): should be 50 deep but goes through"
+    ]
+   },
+   "consensus": 0.875
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot A at (335, 0, 0) (\"Ø670 (x8), R12.00, 30.14° (x8), 14.86° (x8)\"): no Ø24 round ends at (422.1, 0, 0) and (247.9, 0, 0) (width 24, 174.2 centre to centre)"
+    ]
+   },
+   "consensus": 0.8125
+  },
+  {
+   "tag": "c1.3",
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape; Face: BRepCheck_UnorientableShape",
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.778,
+    "checked": 9,
+    "issues": [
+     "slot D at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length",
+     "slot E at (365, 0, 30) (\"19.56 (x2), 28.68°\"): the table gives no slot length"
+    ]
+   },
+   "consensus": 0
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot D at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): the table gives no slot length"
+    ]
+   },
+   "consensus": 0.8125
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 1,
+    "checked": 8,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 8,
+ "seconds": 612
+}

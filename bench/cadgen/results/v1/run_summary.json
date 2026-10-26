@@ -1,0 +1,137 @@
+{
+  "aggregate_score": 0.9958,
+  "validity_rate": 1.0,
+  "n_samples": 21,
+  "n_valid": 21,
+  "n_invalid": 0,
+  "n_missing": 0,
+  "score_by_task_type": {
+    "generation": 0.9957,
+    "editing": 0.9982
+  },
+  "per_task_scores": {
+    "editing": {
+      "score": 0.9982,
+      "validity_rate": 1.0,
+      "n_samples": 1,
+      "n_valid": 1,
+      "n_invalid": 0,
+      "n_missing": 0
+    },
+    "generation": {
+      "score": 0.9957,
+      "validity_rate": 1.0,
+      "n_samples": 20,
+      "n_valid": 20,
+      "n_invalid": 0,
+      "n_missing": 0
+    }
+  },
+  "per_sample_scores": {
+    "e01-plate-edit": {
+      "status": "valid",
+      "cad_score": 0.9982,
+      "task_type": "editing"
+    },
+    "p01-plate": {
+      "status": "valid",
+      "cad_score": 0.9999,
+      "task_type": "generation"
+    },
+    "p02-flange": {
+      "status": "valid",
+      "cad_score": 0.9993,
+      "task_type": "generation"
+    },
+    "p03-angle-bracket": {
+      "status": "valid",
+      "cad_score": 0.9995,
+      "task_type": "generation"
+    },
+    "p04-pillow-block": {
+      "status": "valid",
+      "cad_score": 0.9893,
+      "task_type": "generation"
+    },
+    "p05-cover-plate": {
+      "status": "valid",
+      "cad_score": 0.9975,
+      "task_type": "generation"
+    },
+    "p06-motor-plate": {
+      "status": "valid",
+      "cad_score": 0.9973,
+      "task_type": "generation"
+    },
+    "p07-bearing-housing": {
+      "status": "valid",
+      "cad_score": 1.0,
+      "task_type": "generation"
+    },
+    "p08-channel": {
+      "status": "valid",
+      "cad_score": 0.9979,
+      "task_type": "generation"
+    },
+    "p09-standoff-plate": {
+      "status": "valid",
+      "cad_score": 0.9968,
+      "task_type": "generation"
+    },
+    "p10-clamp-block": {
+      "status": "valid",
+      "cad_score": 0.9981,
+      "task_type": "generation"
+    },
+    "p11-adapter-disc": {
+      "status": "valid",
+      "cad_score": 0.9633,
+      "task_type": "generation"
+    },
+    "p12-rib-bracket": {
+      "status": "valid",
+      "cad_score": 0.9977,
+      "task_type": "generation"
+    },
+    "p13-spacer": {
+      "status": "valid",
+      "cad_score": 0.9959,
+      "task_type": "generation"
+    },
+    "p14-stepped-block": {
+      "status": "valid",
+      "cad_score": 1.0,
+      "task_type": "generation"
+    },
+    "p15-lid": {
+      "status": "valid",
+      "cad_score": 0.9998,
+      "task_type": "generation"
+    },
+    "p16-slotted-rail": {
+      "status": "valid",
+      "cad_score": 0.9974,
+      "task_type": "generation"
+    },
+    "p17-gusset-angle": {
+      "status": "valid",
+      "cad_score": 0.9977,
+      "task_type": "generation"
+    },
+    "p18-fixture-plate": {
+      "status": "valid",
+      "cad_score": 0.9977,
+      "task_type": "generation"
+    },
+    "p19-shaft-support": {
+      "status": "valid",
+      "cad_score": 0.9912,
+      "task_type": "generation"
+    },
+    "p20-hub": {
+      "status": "valid",
+      "cad_score": 0.9975,
+      "task_type": "generation"
+    }
+  }
+}

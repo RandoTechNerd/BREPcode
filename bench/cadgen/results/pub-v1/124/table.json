@@ -1,0 +1,24 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "plan view chain dims 104.1 / 123.2 / 161.3, 35.9 / 18.5 / 20.4, side view 40 / 24 / 29, sections E-E and F-F 7 / 10 / 7" },
+  "frame": "origin at the big bore axis on the bottom face of the ring; X along the arm to the right, Y up the plan view, Z through the 40 mm ring height",
+  "overall": { "x": 198.8, "y": 74.4, "z": 40 },
+  "bbox": { "min": [-27.5, -28.5, 0], "max": [171.3, 45.9, 40] },
+  "body": [
+    "ring: Ø55 x 40 tall at (0,0), z 0..40",
+    "arm web plate: polygon from the ring to the upper boss (123.2,35.9) and lower boss (104.1,-18.5), 24 thick, z 8..32",
+    "3 bosses Ø20 x 29 tall, z 5.5..34.5, at (104.1,-18.5), (123.2,35.9), (161.3,15.5)",
+    "curved arm between the upper boss and the right boss, outer edge R59.4, inner edge arc, 24 thick, z 8..32"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[0, 0, 40]], "axis": "+z", "dia": 40, "depth": "thru", "source": "Ø40", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 3, "positions": [[104.1, -18.5, 34.5], [123.2, 35.9, 34.5], [161.3, 15.5, 34.5]], "axis": "+z", "dia": 13, "depth": "thru", "source": "3x Ø13", "confidence": "high" },
+    { "id": "C", "type": "pocket", "count": 6, "positions": [[60, 15, 32], [60, 15, 8]], "axis": "+z", "depth": 7, "source": "sections E-E / F-F: 7 deep each side, 10 mm web; three pockets per side (large upper, lower triangle 32.2 / 30°-60°, small 14.8)", "confidence": "medium" }
+  ],
+  "guessed": [
+    "the arm outline vertices were scaled from the plan view",
+    "the pocket outlines were approximated as polygons, and the R5 interior fillets were omitted",
+    "the curved arm's inner arc radius was taken as 40, and the 2.5 step from section H-H was omitted",
+    "the small radial hole on the ring was left out because it has no dimension"
+  ]
+}

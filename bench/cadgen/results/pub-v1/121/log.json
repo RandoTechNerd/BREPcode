@@ -1,0 +1,212 @@
+{
+ "id": "121",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.217992,
+   "s": 68,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B62: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=3 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 5, expected 6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [65:Some(Vec3 { x: 0.0, y: "
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.192044,
+   "s": 45,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B72: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=3 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 5, expected 6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [65:Some(Vec3 { x: 0.0, y: "
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.180868,
+   "s": 37,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B72: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=3 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 5, expected 6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [65:Some(Vec3 { x: 0.0, y: "
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.21343199999999998,
+   "s": 74,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B57: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 3, expected 4 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: 0.0, y: "
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.208528,
+   "s": 83,
+   "ok": true,
+   "size": [
+    278.56,
+    278.56,
+    65
+   ],
+   "check": {
+    "score": 0.66,
+    "checked": 47,
+    "issues": [
+     "hole A#1 at (56.56, 136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (32.66, 78.86, 8)",
+     "hole A#2 at (-56.56, 136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-32.66, 78.86, 8)",
+     "hole A#3 at (56.56, -136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (32.66, -78.86, 8)",
+     "hole A#4 at (-56.56, -136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-32.66, -78.86, 8)",
+     "hole A#5 at (136.54, 56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (78.86, 32.66, 8)",
+     "hole A#6 at (-136.54, 56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-78.86, 32.66, 8)",
+     "hole A#7 at (136.54, -56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (78.86, -32.66, 8)",
+     "hole A#8 at (-136.54, -56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-78.86, -32.66, 8)",
+     "hole B#1 at (32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#2 at (-32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#3 at (32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#4 at (-32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.2",
+   "attempt": 2,
+   "cost": 0.20768799999999998,
+   "s": 51,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B92: boolean SUBTRACT failed: fragment_face: chain 1 fragmented into an incomplete run"
+  },
+  {
+   "tag": "c2.3",
+   "attempt": 3,
+   "cost": 0.215484,
+   "s": 58,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B92: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=1): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 1, expected 2 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: -17.6498"
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.223128,
+   "s": 53,
+   "ok": true,
+   "size": [
+    300,
+    300,
+    65
+   ],
+   "check": {
+    "score": 0.887,
+    "checked": 71,
+    "issues": [
+     "hole B#1 at (32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#2 at (-32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#3 at (32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#4 at (-32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#5 at (78.86, 32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#6 at (-78.86, 32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#7 at (78.86, -32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#8 at (-78.86, -32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.659164,
+ "ranking": [
+  {
+   "tag": "c0.3",
+   "ok": false,
+   "consensus": 0,
+   "rank": -1
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.66,
+   "consensus": null,
+   "rank": 0.66
+  },
+  {
+   "tag": "c2.3",
+   "ok": false,
+   "consensus": 0,
+   "rank": -1
+  }
+ ],
+ "look": "kept (self-check 0.66 -> 0.887)",
+ "candidates": [
+  {
+   "tag": "c0.3",
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B72: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=3 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 5, expected 6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [65:Some(Vec3 { x: 0.0, y: ",
+   "consensus": 0
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    278.56,
+    278.56,
+    65
+   ],
+   "check": {
+    "score": 0.66,
+    "checked": 47,
+    "issues": [
+     "hole A#1 at (56.56, 136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (32.66, 78.86, 8)",
+     "hole A#2 at (-56.56, 136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-32.66, 78.86, 8)",
+     "hole A#3 at (56.56, -136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (32.66, -78.86, 8)",
+     "hole A#4 at (-56.56, -136.54, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-32.66, -78.86, 8)",
+     "hole A#5 at (136.54, 56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (78.86, 32.66, 8)",
+     "hole A#6 at (-136.54, 56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-78.86, 32.66, 8)",
+     "hole A#7 at (136.54, -56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (78.86, -32.66, 8)",
+     "hole A#8 at (-136.54, -56.56, 15) (\"Ø12.50 (8X)\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.44 mm away, axis through (-78.86, -32.66, 8)",
+     "hole B#1 at (32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#2 at (-32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#3 at (32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#4 at (-32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)"
+    ]
+   },
+   "consensus": null
+  },
+  {
+   "tag": "c2.3",
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B92: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=1): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 1, expected 2 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: -17.6498",
+   "consensus": 0
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    300,
+    300,
+    65
+   ],
+   "check": {
+    "score": 0.887,
+    "checked": 71,
+    "issues": [
+     "hole B#1 at (32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#2 at (-32.66, 78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#3 at (32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#4 at (-32.66, -78.86, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#5 at (78.86, 32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#6 at (-78.86, 32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#7 at (78.86, -32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)",
+     "hole B#8 at (-78.86, -32.66, 15) (\"Ø10.00 (8X), detail B\"): should go THRU but is blind (16 deep)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "look.1",
+ "fallback": false,
+ "selfCheck": 0.887,
+ "attempts": 8,
+ "seconds": 395
+}

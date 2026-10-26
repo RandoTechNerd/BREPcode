@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "plan dims 110/125/(235), 84, 3xØ35/Ø15.5, plate 12, pocket depth 2, arm 41.2+60.4, foot Ø35.5/Ø15.5, 46.2, 31" },
+  "frame": "origin at centre of left Ø35 boss on the plate underside; X along the 235 bottom chord, Y toward the top boss, Z up (plate z 0..12, leg hangs below, arm rises above)",
+  "overall": { "x": 270.25, "y": 119.25, "z": 219 },
+  "bbox": { "min": [-17.5, -17.75, -98], "max": [252.75, 101.5, 121] },
+  "body": [
+    "triangular truss plate 12 thick: bosses Ø35 at (0,0),(110,84),(235,0), bottom chord edge y=-15.7, 50° left chord, right chord tangent to bosses",
+    "downward leg 31 (x 188.8..219.8) x 8 (y -4..4), from z=2.5 down to z=-86",
+    "foot pad 12.5 thick, z -98..-85.5, x 188.8..235 plus Ø35.5 boss centred under the right boss (235,0)",
+    "upward arm 8 x 12 section: diagonal brace from bottom chord (x≈112) to (170,46,53), vertical bar at x 166..174, y 40..52 up to the eye",
+    "eye Ø20 with axis along X at (170,46,111)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 3, "positions": [[0,0,12],[110,84,12],[235,0,12]], "axis": "+z", "dia": 15.5, "depth": "thru", "source": "3xØ15.5", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[235,0,-98]], "axis": "-z", "dia": 15.5, "depth": 12.5, "source": "Ø15.5 / Ø35.5 foot", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[174,46,111]], "axis": "+x", "dia": 11, "depth": "thru", "source": "Ø11 eye in side view", "confidence": "medium" },
+    { "id": "D", "type": "pocket", "count": 6, "positions": [[55,10,12],[86,50,12],[155,20,12],[55,10,0],[86,50,0],[155,20,0]], "axis": "+z", "depth": 2, "source": "Detail A/B/C, Section D-D 'pocket depth remains same', pockets on both faces", "confidence": "medium" }
+  ],
+  "guessed": [
+    "bottom chord edge y=-15.7 and pocket floor line y=-5.7, scaled from the plan",
+    "pocket outlines are straight-sided, R6 corners left off",
+    "leg Y position centred on y=0 under the right boss; leg length 86, scaled from the front view",
+    "arm path and eye position (y=46, z=111) scaled from the side and front views; R10/R13.8 bends simplified",
+    "pockets assumed on both faces of the plate"
+  ]
+}

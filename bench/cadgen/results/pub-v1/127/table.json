@@ -1,0 +1,33 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views on sheets 1 and 2 (top, section A-A, section B-B, back, bottom, detail views)" },
+  "frame": "Origin at the centre of the vertical Ø216 cylinder on the bottom (mounting) face. X runs along the long axis, Y across it (the side port faces -Y), Z is up. The part spans z = 0..305.",
+  "overall": { "x": 967.83, "y": 292.6, "z": 305 },
+  "bbox": { "min": [-483.91, -146.3, 0], "max": [483.91, 146.3, 305] },
+  "body": [
+    "Flange: a stadium with R99.29 ends whose arc centres sit at x=±384.62, 10 thick (z 0..10)",
+    "Main hollow body: a stadium with R79.29 ends on the same centres, 124 high, 5 mm wall, open at the bottom",
+    "Centre block: 199.76 (x) by 272.27 (y) by 124 high, hollow, open at the bottom",
+    "Centre flange: 199.76 (x) by 292.6 (y) by 10 at the bottom",
+    "Neck: a cone from R125 at z=124 to R108.2 at z=213.6",
+    "Top ring: Ø216.43 from z=213.6 to z=305, with a Ø183.53 bore running through it into the cavity",
+    "Side port boss: Ø96.44, axis along -Y, centred at z=66, reaching y=-146.3, bored Ø79.43",
+    "Post: Ø16, standing at x=263, y=60, up to z=169"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4, "positions": [[-339.17, 70, 0], [-339.17, -70, 0], [328.09, 70, 0], [328.09, -70, 0]], "axis": "-z", "dia": 30, "depth": "thru", "source": "DIA 30.00 THROUGH-4X", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[-95, 105, 0], [-95, -105, 0], [95, 105, 0], [95, -105, 0]], "axis": "-z", "dia": 6.14, "depth": "thru", "source": "DIA6.14 THROUGH-4X", "confidence": "low" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[263, 0, 124]], "axis": "+z", "dia": 16.15, "depth": "thru", "source": "Ø16.15", "confidence": "low" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[263, -50, 124]], "axis": "+z", "dia": 11.9, "depth": "thru", "source": "DIA11.90 THROUGH", "confidence": "low" },
+    { "id": "E", "type": "hole", "count": 1, "positions": [[0, 0, 305]], "axis": "+z", "dia": 183.53, "depth": "thru", "source": "Ø183.53 bore", "confidence": "high" },
+    { "id": "F", "type": "hole", "count": 1, "positions": [[0, -146.3, 66]], "axis": "-y", "dia": 79.43, "depth": "thru", "source": "Ø79.43 side port", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Y positions of the Ø30 holes (±70)",
+    "Positions of the Ø6.14 holes",
+    "x=263 for the Ø16.15 and Ø11.90 holes and the post, measured from the view scale",
+    "Height of the side port (z=66)",
+    "Wall thickness (5) and flange thicknesses (10)",
+    "Y of the post"
+  ]
+}

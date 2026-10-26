@@ -1,0 +1,63 @@
+{
+ "id": "101",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.366632,
+   "s": 150,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B26: boolean Union on 'P.CY11' failed: boolean assembly produced invalid topology (S=1 genus=2): [ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 27 used 1 times (expected 2)\" }, ValidationIssue { severity: \"error\", kind: OpenEdge, message: \"edge 43 used 1 times (e"
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.21516799999999997,
+   "s": 74,
+   "ok": true,
+   "size": [
+    200,
+    148,
+    45
+   ],
+   "check": {
+    "score": 1,
+    "checked": 74,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.17508,
+   "s": 19,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.75688,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.2",
+   "ok": true,
+   "size": [
+    200,
+    148,
+    45
+   ],
+   "check": {
+    "score": 1,
+    "checked": 74,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.2",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 3,
+ "seconds": 253
+}

@@ -1,0 +1,27 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned front view, detail view, section A-A" },
+  "frame": "Origin on the bore axis at the rear end face; X across the flats (horizontal in the front view), Y up toward the top port (vertical in the front view), Z along the pump axis from 0 to 50",
+  "overall": { "x": 100, "y": 87, "z": 50 },
+  "bbox": { "min": [-50, -43.5, 0], "max": [50, 43.5, 50] },
+  "body": [
+    "Ø100 round body, 50 long along Z, with flats at y=±43.5 (87 across flats, from section A-A)",
+    "Figure-8 gear bore through along Z: two R19.5 lobes centred at x=±16, y=0 (71 overall), plus an R7.5 U-pocket centred at (0,-20) that opens downward to y=-27.5",
+    "Face pocket at each end, 5 deep: a convex outline around the lobes (R23 about x=±16, 78 wide) that reaches y=±33 at x=0"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4, "positions": [[-25.74, 30.94, 50], [25.74, 30.94, 50], [-25.74, -30.94, 50], [25.74, -30.94, 50]], "axis": "+z", "dia": 12, "depth": "thru", "source": "Ø12.00(x4), 25.74 / 30.94", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 2, "positions": [[-44.5, 0, 50], [44.5, 0, 50]], "axis": "+z", "dia": 6, "depth": "thru", "source": "Ø6.00(x2), 44.50", "confidence": "high" },
+    { "id": "F", "type": "hole", "count": 1, "positions": [[0, 43.5, 25]], "axis": "+y", "dia": 15, "depth": "thru", "source": "Section A-A: Ø15 from top port through the bore to bottom port, on one axis", "confidence": "high" },
+    { "id": "C", "type": "pocket", "count": 1, "positions": [[0, 43.5, 25]], "axis": "+y", "dia": 20, "depth": 12, "source": "Section A-A: Ø20, 12 deep from top flat", "confidence": "high" },
+    { "id": "D", "type": "pocket", "count": 1, "positions": [[0, -43.5, 25]], "axis": "-y", "dia": 20, "depth": 12, "source": "Section A-A: Ø20, 12 deep from bottom flat", "confidence": "high" },
+    { "id": "G", "type": "pocket", "count": 2, "positions": [[0, 43.5, 25], [0, -43.5, 25]], "axis": "+y", "dia": 30, "depth": 2, "source": "Section A-A: Ø30 spot face, 2 deep, at both flats", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 2, "positions": [[0, 0, 50], [0, 0, 0]], "axis": "+z", "depth": 5, "source": "5.00 in section A-A; 78.00 width in the detail view", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Face-pocket outline approximated as the convex hull of R23 circles about the lobe centres plus the points (0,±33)",
+    "Omitted: R10 waist rounding, R2/R3 fillets and detail C reliefs",
+    "Flat position ±43.5 taken from the 87 mm section height",
+    "Ø30 spot face taken as 2 deep"
+  ]
+}

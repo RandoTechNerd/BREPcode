@@ -1,0 +1,90 @@
+{
+ "id": "202",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.1481116,
+   "s": 439,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    450.714,
+    355.177,
+    264.121
+   ]
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1639756,
+   "s": 443,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e0.3",
+   "attempt": 3,
+   "cost": 0.1638676,
+   "s": 445,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e1.1",
+   "attempt": 1,
+   "cost": 0.1518716,
+   "s": 417,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    450.714,
+    355.177,
+    264.121
+   ]
+  },
+  {
+   "tag": "e1.2",
+   "attempt": 2,
+   "cost": 0.1627956,
+   "s": 441,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    450.714,
+    355.177,
+    264.121
+   ]
+  },
+  {
+   "tag": "e1.3",
+   "attempt": 3,
+   "cost": 0.16274360000000002,
+   "s": 443,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  }
+ ],
+ "cost": 0.9533656,
+ "candidates": [
+  {
+   "tag": "e0.3",
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  }
+ ],
+ "editError": "build: \n[timeout after 420s]",
+ "ok": true,
+ "kept": "fallback-unedited",
+ "fallback": true,
+ "attempts": 6,
+ "seconds": 2674
+}

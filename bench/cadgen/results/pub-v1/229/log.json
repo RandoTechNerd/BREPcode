@@ -1,0 +1,44 @@
+{
+ "id": "229",
+ "task": "editing",
+ "calls": [
+  {
+   "tag": "e0.1",
+   "attempt": 1,
+   "cost": 0.1008116,
+   "s": 447,
+   "ok": false,
+   "kind": "build",
+   "error": "\n[timeout after 420s]"
+  },
+  {
+   "tag": "e0.2",
+   "attempt": 2,
+   "cost": 0.1169636,
+   "s": 208,
+   "ok": true,
+   "size": [
+    147.735,
+    109.647,
+    65.5
+   ]
+  }
+ ],
+ "cost": 0.2177752,
+ "candidates": [
+  {
+   "tag": "e0.2",
+   "ok": true,
+   "size": [
+    147.735,
+    109.647,
+    65.5
+   ]
+  }
+ ],
+ "ok": true,
+ "kept": "e0.2",
+ "fallback": false,
+ "attempts": 2,
+ "seconds": 659
+}

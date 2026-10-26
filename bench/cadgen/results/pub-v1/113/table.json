@@ -1,0 +1,25 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "flat-pattern ordinate dimensions; the part is folded with t=1 assumed" },
+  "frame": "origin at the inner corner of the base and the hemmed wall; X along the hemmed wall (flat u), Y = flat v - 48.6, Z up",
+  "overall": { "x": 206, "y": 205, "z": 51.6 },
+  "bbox": { "min": [0, -5, 0], "max": [206, 200, 51.6] },
+  "body": [
+    "base plate t=1, z 0..1: outline (55,0)-(205,0)-(205,200)-(121.2,200)-(121.2,125.6)-(141.6,106.2) bump-(121.2,86.9)-(121.2,59.3)-(98,59.3)-(98,40.1)-(84,40.1)-(84,24)-(55,24)",
+    "hemmed wall at y 0..1, x 0..205, height 48.6; R20 cutout at bottom-left (x<55, arc center x35 z5.5)",
+    "180 deg hem R2 on top of the hemmed wall, folded outward, 4.7 long; its outer bend top sets the overall height 48.6+2+1=51.6",
+    "holed wall at x 204..205, y 0..200, height 24.9 (flange 205->229.9)",
+    "3 gussets (stiffening ribs in the base-to-hemmed-wall bend corner, not bosses) 5 wide / 5 deep at x = 63.7, 114.95, 168.075, each a triangular web in the YZ plane"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 3, "positions": [[205, 50, 12.8], [205, 100, 12.8], [205, 150, 12.8]], "axis": "+x", "dia": 6, "depth": "thru", "source": "Ø6 THRU X3, 50/100 pitch, u=217.8", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[141.6, 5, 1]], "axis": "+z", "dia": 4, "depth": "thru", "source": "Ø4 at (141.6, 53.6) flat", "confidence": "medium" }
+  ],
+  "guessed": [
+    "sheet thickness 1 mm (not stated)",
+    "bend allowances ignored; flange heights taken from the flat lengths",
+    "the 45 deg flap on the notched edge was modelled flat",
+    "gusset datum A taken as x=55; gussets modelled as corner ribs (listed under body)",
+    "Ø1.5 relief holes omitted"
+  ]
+}

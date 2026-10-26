@@ -1,0 +1,251 @@
+{
+ "id": "138",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.26103200000000004,
+   "s": 103,
+   "ok": true,
+   "size": [
+    120,
+    79.5,
+    28.8
+   ],
+   "check": {
+    "score": 0.948,
+    "checked": 96,
+    "issues": [
+     "hole H#5 at (23, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (23, 37.35, 10.4)",
+     "hole H#6 at (60, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (60, 37.35, 10.4)",
+     "hole H#7 at (80.9, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (80.9, 37.35, 10.4)",
+     "hole H#8 at (103, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (103, 37.35, 10.4)",
+     "hole I#2 at (70.5, 70.8, -10.4) (\"70.5 tab hole\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (70.5, 37.35, -10.4)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.191612,
+   "s": 48,
+   "ok": true,
+   "size": [
+    120,
+    79.5,
+    28.8
+   ],
+   "check": {
+    "score": 0.948,
+    "checked": 96,
+    "issues": [
+     "hole H#5 at (23, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (23, 37.35, 10.4)",
+     "hole H#6 at (60, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (60, 37.35, 10.4)",
+     "hole H#7 at (80.9, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (80.9, 37.35, 10.4)",
+     "hole H#8 at (103, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (103, 37.35, 10.4)",
+     "hole I#2 at (70.5, 70.8, -10.4) (\"70.5 tab hole\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (70.5, 37.35, -10.4)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.208572,
+   "s": 73,
+   "ok": true,
+   "size": [
+    120,
+    75.4,
+    10
+   ],
+   "check": {
+    "score": 0.886,
+    "checked": 79,
+    "issues": [
+     "hole D#3 at (91, 36.6, 1) (\"Detail A: 3 / 12 / 14.5 / 24 and 3.7 / 4.1 / 15.7 / 19.6\"): diameter is 8, the table says 6",
+     "hole J#1 at (23, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 17.36 mm away, axis through (6, 3.5, 0.5)",
+     "hole J#2 at (60, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø8 18.06 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole J#3 at (80.9, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø8 18.01 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole J#4 at (103, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 11.54 mm away, axis through (114, 3.5, 0.5)",
+     "hole J#5 at (23, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 17.36 mm away, axis through (6, 71.9, 0.5)",
+     "hole J#6 at (60, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø5 22.07 mm away, axis through (56, 53.7, 0.5)",
+     "hole J#7 at (80.9, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø5 33.03 mm away, axis through (56, 53.7, 0.5)",
+     "hole J#8 at (103, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 11.54 mm away, axis through (114, 71.9, 0.5)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.298248,
+   "s": 125,
+   "ok": true,
+   "size": [
+    120,
+    66.61,
+    15
+   ],
+   "check": {
+    "score": 0.797,
+    "checked": 69,
+    "issues": [
+     "hole F1#1 at (23, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 21.71 mm away, axis through (6, 17.7, 0.5)",
+     "hole F1#2 at (60, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø8 14.85 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole F1#3 at (80.9, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø8 14.78 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole F1#4 at (103, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø6 15.65 mm away, axis through (112, 17, 0.5)",
+     "hole F1#5 at (23, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø5 24.55 mm away, axis through (27.7, 46.7, 0.5)",
+     "hole F1#6 at (60, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 17.56 mm away, axis through (56, 53.7, 0.5)",
+     "hole F1#7 at (80.9, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 30.21 mm away, axis through (56, 53.7, 0.5)",
+     "hole F1#8 at (103, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø6 36.24 mm away, axis through (91, 36.6, 0.5)",
+     "hole F2#1 at (70.5, 4.2, 11.5) (\"70.5 middle tab\"): no Ø4 hole along Z there; the nearest is Ø8 10.5 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole F2#2 at (70.5, 70.8, 11.5) (\"70.5 middle tab\"): no Ø4 hole along Z there; the nearest is Ø4.5 22.42 mm away, axis through (56, 53.7, 0.5)",
+     "hole F3#1 at (6, 4.2, 4.5) (\"6 and 114 corner holes\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 13.5 mm away, axis through (6, 17.7, 0.5)",
+     "hole F3#2 at (114, 4.2, 4.5) (\"6 and 114 corner holes\"): no Ø3.2 hole along Z there; the nearest is Ø6 12.96 mm away, axis through (112, 17, 0.5)"
+    ]
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.1662,
+   "s": 14,
+   "noChanges": true
+  }
+ ],
+ "cost": 1.125664,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.948,
+   "consensus": 0.7879999999999999,
+   "rank": 0.884
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.948,
+   "consensus": 0.7879999999999999,
+   "rank": 0.884
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.797,
+   "consensus": 0.7033333333333335,
+   "rank": 0.76
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.886,
+   "consensus": 0.7203333333333334,
+   "rank": 0.82
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    120,
+    79.5,
+    28.8
+   ],
+   "check": {
+    "score": 0.948,
+    "checked": 96,
+    "issues": [
+     "hole H#5 at (23, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (23, 37.35, 10.4)",
+     "hole H#6 at (60, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (60, 37.35, 10.4)",
+     "hole H#7 at (80.9, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (80.9, 37.35, 10.4)",
+     "hole H#8 at (103, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (103, 37.35, 10.4)",
+     "hole I#2 at (70.5, 70.8, -10.4) (\"70.5 tab hole\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (70.5, 37.35, -10.4)"
+    ]
+   },
+   "consensus": 0.7879999999999999
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    120,
+    79.5,
+    28.8
+   ],
+   "check": {
+    "score": 0.948,
+    "checked": 96,
+    "issues": [
+     "hole H#5 at (23, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (23, 37.35, 10.4)",
+     "hole H#6 at (60, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (60, 37.35, 10.4)",
+     "hole H#7 at (80.9, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (80.9, 37.35, 10.4)",
+     "hole H#8 at (103, 70.8, 10.4) (\"flat pattern 23/60/80.9/103, 10.4 from bend\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (103, 37.35, 10.4)",
+     "hole I#2 at (70.5, 70.8, -10.4) (\"70.5 tab hole\"): no Ø3.2 hole along Y there; the nearest is Ø3.2 0 mm away, axis through (70.5, 37.35, -10.4)"
+    ]
+   },
+   "consensus": 0.7879999999999999
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    120,
+    66.61,
+    15
+   ],
+   "check": {
+    "score": 0.797,
+    "checked": 69,
+    "issues": [
+     "hole F1#1 at (23, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 21.71 mm away, axis through (6, 17.7, 0.5)",
+     "hole F1#2 at (60, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø8 14.85 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole F1#3 at (80.9, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø8 14.78 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole F1#4 at (103, 4.2, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø6 15.65 mm away, axis through (112, 17, 0.5)",
+     "hole F1#5 at (23, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø5 24.55 mm away, axis through (27.7, 46.7, 0.5)",
+     "hole F1#6 at (60, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 17.56 mm away, axis through (56, 53.7, 0.5)",
+     "hole F1#7 at (80.9, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 30.21 mm away, axis through (56, 53.7, 0.5)",
+     "hole F1#8 at (103, 70.8, 11.5) (\"flat pattern 23, 60, 80.9, 103; 3.7 from tab end\"): no Ø3.2 hole along Z there; the nearest is Ø6 36.24 mm away, axis through (91, 36.6, 0.5)",
+     "hole F2#1 at (70.5, 4.2, 11.5) (\"70.5 middle tab\"): no Ø4 hole along Z there; the nearest is Ø8 10.5 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole F2#2 at (70.5, 70.8, 11.5) (\"70.5 middle tab\"): no Ø4 hole along Z there; the nearest is Ø4.5 22.42 mm away, axis through (56, 53.7, 0.5)",
+     "hole F3#1 at (6, 4.2, 4.5) (\"6 and 114 corner holes\"): no Ø3.2 hole along Z there; the nearest is Ø4.5 13.5 mm away, axis through (6, 17.7, 0.5)",
+     "hole F3#2 at (114, 4.2, 4.5) (\"6 and 114 corner holes\"): no Ø3.2 hole along Z there; the nearest is Ø6 12.96 mm away, axis through (112, 17, 0.5)"
+    ]
+   },
+   "consensus": 0.7033333333333335
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    120,
+    75.4,
+    10
+   ],
+   "check": {
+    "score": 0.886,
+    "checked": 79,
+    "issues": [
+     "hole D#3 at (91, 36.6, 1) (\"Detail A: 3 / 12 / 14.5 / 24 and 3.7 / 4.1 / 15.7 / 19.6\"): diameter is 8, the table says 6",
+     "hole J#1 at (23, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 17.36 mm away, axis through (6, 3.5, 0.5)",
+     "hole J#2 at (60, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø8 18.06 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole J#3 at (80.9, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø8 18.01 mm away, axis through (70.5, 14.7, 0.5)",
+     "hole J#4 at (103, 0, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 11.54 mm away, axis through (114, 3.5, 0.5)",
+     "hole J#5 at (23, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 17.36 mm away, axis through (6, 71.9, 0.5)",
+     "hole J#6 at (60, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø5 22.07 mm away, axis through (56, 53.7, 0.5)",
+     "hole J#7 at (80.9, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø5 33.03 mm away, axis through (56, 53.7, 0.5)",
+     "hole J#8 at (103, 75.4, 6) (\"x dims 23 / 60 / 80.9 / 103\"): no Ø3 hole along Z there; the nearest is Ø3 11.54 mm away, axis through (114, 71.9, 0.5)"
+    ]
+   },
+   "consensus": 0.7203333333333334
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 0.948,
+ "attempts": 5,
+ "seconds": 294
+}
