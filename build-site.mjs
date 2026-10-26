@@ -312,9 +312,9 @@ for (const f of ["favicon.svg", "favicon.png", "apple-touch-icon.png"]) {
 // was not in the bundle. A missing ES module import aborts the whole script,
 // so the site and the packaged exe both came up blank — from a change that
 // passed every test, because the tests run against the source tree where the
-// file is obviously present. cli.js is the one exclusion: it is the headless
-// entry point and pulls in node builtins.
-for (const f of readdirSync("src").filter((n) => n.endsWith(".js") && n !== "cli.js")) {
+// file is obviously present. cli.js and runcode.js are the exclusions: the headless
+// entry point (node builtins) and its editor-code runner (imports viewer/ by its source path).
+for (const f of readdirSync("src").filter((n) => n.endsWith(".js") && n !== "cli.js" && n !== "runcode.js")) {
   cpSync(`src/${f}`, join(OUT, "src", f));
 }
 // The model catalog is a folder tree (one folder per category, one file per
