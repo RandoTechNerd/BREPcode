@@ -96,6 +96,83 @@ app.whenReady().then(async () => {
     await wait(600);
     await shot("01-browser-timeline-gizmo");
 
+    say("\nhandle dots: constant on-screen size, ring, dwell arrows");
+    const handles = () => run(`brepscript.handles()`);
+    const sizes = (hs) => hs.map((h) => `${h.look}:${h.dotPx.toFixed(1)}/${h.hitPx.toFixed(1)}`).join(" ");
+    const sameSize = (hs) => hs.length && hs.every((h) => Math.abs(h.hitPx - 20) < 0.6
+      && Math.abs(h.dotPx - (h.look === "corner" ? 6 : 5)) < 0.3);
+    // the gizmo off, so the dots are what is on the part
+    await run(`document.querySelector('#dz-bar [data-tool="select"]').click()`);
+    let hs = await handles();
+    check("face dots ~5 px, corner dots ~6 px, ~20 px hit area", sameSize(hs) && hs.some((h) => h.look === "face") && hs.some((h) => h.look === "corner"), sizes(hs));
+    const zoom = (k) => run(`(() => { const { camera, controls } = brepscript;
+      camera.position.sub(controls.target).multiplyScalar(${k}).add(controls.target); controls.update(); })()`);
+    await zoom(0.45);
+    await wait(500);
+    hs = await handles();
+    check("…the same on screen zoomed in", sameSize(hs), sizes(hs));
+    await shot("08-handles-zoomed-in");
+    await zoom(1 / 0.45 * 1.9);
+    await wait(500);
+    hs = await handles();
+    check("…and zoomed out", sameSize(hs), sizes(hs));
+    await shot("09-handles-zoomed-out");
+    await zoom(1 / 1.9);
+    await wait(500);
+    hs = await handles();
+    // the +X face dot (the one a width drag uses), and a corner
+    const fx0 = hs.filter((h) => h.kind === "face").sort((a, b) => b.x - a.x)[0];
+    await mouse("mouseMove", fx0.x, fx0.y);
+    await wait(250);
+    hs = await handles();
+    let on = hs.find((h) => h.ring);
+    check("hovering a dot rings it", on && on.kind === "face" && hs.filter((h) => h.ring).length === 1, JSON.stringify(on));
+    check("…no arrows before the dwell", on && on.arrows === 0);
+    await wait(700);
+    on = (await handles()).find((h) => h.ring);
+    check("after ~600 ms a face dot shows one arrow (its normal)", on?.arrows === 1, JSON.stringify(on));
+    await shot("10-handle-hover-arrows");
+    const c0 = hs.find((h) => h.kind === "corner");
+    await mouse("mouseMove", c0.x, c0.y);
+    await wait(900);
+    on = (await handles()).find((h) => h.ring);
+    check("a box corner shows two arrows (width and depth)", on?.kind === "corner" && on.arrows === 2, JSON.stringify(on));
+    await mouse("mouseMove", 800, 120);
+    await wait(250);
+    hs = await handles();
+    check("leaving the dot drops the ring and arrows", hs.every((h) => !h.ring && h.arrows === 0));
+    // drag-to-resize still writes the code: the +X face dot, pulled outwards
+    const fd = (await handles()).filter((h) => h.kind === "face").sort((a, b) => b.x - a.x)[0];
+    const before = await run(`document.getElementById("code").value`);
+    await mouse("mouseMove", fd.x, fd.y);
+    await mouse("mouseDown", fd.x, fd.y);
+    for (let i = 1; i <= 6; i++) await mouse("mouseMove", fd.x + i * 12, fd.y);
+    await mouse("mouseUp", fd.x + 72, fd.y);
+    check("dragging a face dot resizes in the code", await built(`document.getElementById("code").value !== ${JSON.stringify(before)}`));
+    await wait(600);
+    const resized = await run(`document.getElementById("code").value`);
+    // whichever side that dot is in this view, exactly one of the cube's sizes changed
+    const dims = /const w = ([\d.]+);[\s\S]*cube\(\[w, ([\d.]+), ([\d.]+)\]/.exec(resized);
+    check("…by rewriting one of the cube's sizes, nothing else",
+      !!dims && [dims[1] !== "60", dims[2] !== "40", dims[3] !== "8"].filter(Boolean).length === 1
+      && resized.replace(/-?[\d.]+/g, "#") === before.replace(/-?[\d.]+/g, "#"), resized.split("\n").slice(0, 5).join(" / "));
+    await setCode(PEGS);
+    await built(`brepscript.design().steps.length >= 7 && document.getElementById("code").value.startsWith("const w = 60;")`);
+    await wait(600);
+    await run(`document.querySelector('#dz-bar [data-tool="move"]').click()`);
+    await run(`[...document.querySelectorAll(".dz-row")].find((b) => b.querySelector(".dz-name").textContent === "cube").click()`);
+    await wait(400);
+    await run(`document.getElementById("panel").classList.contains("open") && document.getElementById("open-btn").click()`);
+    await wait(500);
+
+    say("\nface pre-selection");
+    const [hx, hy] = await toScreen(`(() => { const m = brepscript.modelGroup.children.find((x) => x.userData.faceName === "P.CU1_PZ");
+      const b = new THREE.Box3().setFromObject(m); return new THREE.Vector3(b.min.x + 16, b.min.y + 5, b.max.z); })()`);
+    await mouse("mouseMove", hx, hy);
+    await wait(300);
+    check("the face under the pointer is pre-highlighted", (await run(`brepscript.design().hoverFace`)) === "P.CU1_PZ");
+    await shot("11-face-prehighlight");
+
     say("\nface pick");
     // the cube's top, front left: clear of the pegs and the gizmo
     const [fx, fy] = await toScreen(`(() => { const m = brepscript.modelGroup.children.find((x) => x.userData.faceName === "P.CU1_PZ");

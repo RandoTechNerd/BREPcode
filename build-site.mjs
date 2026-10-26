@@ -127,6 +127,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   // Design mode phase 1: the shell, model browser, timeline, move gizmo and
   // the move writer the body drag shares
   "design-shell.js", "design-tree.js", "design-timeline.js", "design-gizmo.js", "design-move.js",
+  // the selection's drag handles, as screen-sized dots
+  "handle-dots.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.

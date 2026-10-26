@@ -195,13 +195,32 @@ export function initDesignShell(host) {
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, side: THREE.DoubleSide });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false, transparent: true });
   const edgeHotMat = new THREE.LineBasicMaterial({ color: 0xff5c8a, depthTest: false, transparent: true });
+  // pre-selection: the face under the pointer, tinted before you click it
+  const hoverGroup = new THREE.Group();
+  hoverGroup.name = "design-face-hover";
+  scene.add(hoverGroup);
+  const hoverMat = new THREE.MeshBasicMaterial({ color: 0x3b9dff, transparent: true, opacity: 0.28, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: THREE.DoubleSide });
+  let hoverMesh = null;
+  const setHoverFace = (mesh) => {
+    if (mesh === hoverMesh) return;
+    hoverMesh = mesh;
+    for (const c of [...hoverGroup.children]) hoverGroup.remove(c);
+    if (!mesh || mesh === face?.mesh) return;
+    const t = new THREE.Mesh(mesh.geometry, hoverMat);
+    t.matrixAutoUpdate = false;
+    mesh.updateMatrixWorld(true);
+    t.matrix.copy(mesh.matrixWorld);
+    t.renderOrder = 989;
+    hoverGroup.add(t);
+  };
   const clearOverlay = () => { for (const c of [...overlay.children]) { if (c.isLine || c.isLineSegments) c.geometry.dispose(); overlay.remove(c); } };
 
   // ---- gizmo ----
   const gizmo = createMoveGizmo({
     THREE, scene, camera: host.camera, renderer: host.renderer, orbit: host.orbit,
     // the face tint marks where the face WAS; it would only mislead mid-drag
-    onDragging(on) { overlay.visible = !on; },
+    onDragging(on) { overlay.visible = !on; if (on) setHoverFace(null); },
     onRelease(fid, d) {
       const r = host.commitMove(fid, d);
       if (r?.how && r.how !== "none") {
@@ -398,7 +417,7 @@ export function initDesignShell(host) {
     setActive(on) {
       active = !!on;
       if (active) refresh();
-      else { gizmo.detach(); clearOverlay(); face = null; }
+      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
     onSelect(fid) {
@@ -431,13 +450,17 @@ export function initDesignShell(host) {
     pickFace(mesh) {
       if (!active || !mesh?.userData?.faceName) return;
       pickedRow = null;
+      setHoverFace(null);
       showFace(mesh);
       draw();
     },
-    refresh() { if (active) refresh(); },
+    refresh() { if (active) refresh(); setHoverFace(null); },
+    // index.html's hover tick: should it look for a face, and here it is
+    wantsFaceHover() { return active && !gizmo.dragging; },
+    hoverFace(mesh) { setHoverFace(active ? mesh : null); },
     gizmoOwnsPointer() { return active && gizmo.ownsPointer(); },
     // for tests and the console
-    debug: () => ({ active, tool, selectedFid, face: face && { name: face.name, edges: face.edges.map((e) => e.name) },
+    debug: () => ({ active, tool, selectedFid, hoverFace: hoverMesh?.userData.faceName ?? null, face: face && { name: face.name, edges: face.edges.map((e) => e.name) },
       rows: tree.groups.flatMap((g) => g.rows.map((r) => ({ group: g.key, name: r.name, depth: r.depth, fids: r.fids, pattern: r.pattern?.count ?? null }))),
       steps: steps.map((s) => ({ id: s.id, type: s.type, op: s.op, linked: !!s.link, text: s.link ? code.value.slice(s.link.start, s.link.end).slice(0, 40) : null })),
       gizmo: gizmo.fid }),

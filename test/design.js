@@ -214,6 +214,22 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
     /from "three\/addons\/controls\/TransformControls\.js"/.test(gizmo));
   const design = readFileSync(new URL("../viewer/design.js", import.meta.url), "utf8");
   check("the phase 0 placeholder note is gone", !/design-note/.test(design));
+
+  // handle dots: the drag handles are screen-sized dots on hit spheres
+  const dots = readFileSync(new URL("../viewer/handle-dots.js", import.meta.url), "utf8");
+  const H = await import("../viewer/handle-dots.js");
+  check("dot sizes: corners 6 px, faces 5 px, 20 px hit, 16 px ring, 600 ms dwell",
+    H.DOT_PX.corner === 6 && H.DOT_PX.face === 5 && H.HIT_PX === 20 && H.RING_PX === 16 && H.DWELL_MS === 600);
+  check("handle-dots.js ships with the site", build.includes(`"handle-dots.js"`));
+  check("sized from view depth every frame", /sizeHandleDots\?\.\(\)/.test(html) && /matrixWorldInverse/.test(dots));
+  check("each handle is ONE hit mesh carrying userData.handle (drag paths unchanged)",
+    /const h = handleDots\.make\(\{ kind: solidMat === faceHandleMat \? "face" : "corner", dirs \}\);[\s\S]{0,80}h\.userData\.handle = handleData;/.test(html));
+  check("face dots move along their normal; box corners along width and depth",
+    /\{ kind: "face", axis, sign, fid \}, \[out\]\)/.test(html) && /if \(boxy\) return \[new THREE\.Vector3\(Math\.sign\(x - c\.x\)/.test(html));
+  check("the dwell is a setting (mat.handleDwellMs, default 600)",
+    /handleDwellMs: 600/.test(html) && /id="mat-dwell"/.test(html) && /handleDots\.hover\(onHandle\?\.object \?\? null, mat\.handleDwellMs \?\? 600\)/.test(html));
+  check("Design mode pre-highlights the face under the pointer", /designUI\.hoverFace\(/.test(html) && /hoverFace\(mesh\) \{ setHoverFace/.test(shell));
+  check("the old model-space beads are gone", !/shapedHandleGeo|SphereGeometry\(1, 28, 20\)/.test(html));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

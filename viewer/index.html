@@ -4063,6 +4063,10 @@
             <button id="ball-add" class="swatch-add" title="Add a custom corner-ball colour">+</button>
             <input type="color" id="mat-ballcol" value="#eaf1ff" style="display:none" />
           </label>
+          <label class="mat-row"><span>Handle arrows after</span>
+            <input type="range" id="mat-dwell" min="0" max="2000" step="100" value="600" title="How long the pointer rests on a handle before arrows show which way it moves" />
+            <output id="mat-dwell-o">600 ms</output>
+          </label>
           <label class="mat-row"><span>Edge sharpness</span>
             <input type="range" id="mat-outlineangle" min="1" max="60" value="20" />
             <output id="mat-outlineangle-o">20°</output>
@@ -4401,6 +4405,7 @@
     import { initModeSwitch } from "./design.js";
     import { moveText, ridersOf } from "./design-move.js";
     import { initDesignShell } from "./design-shell.js";
+    import { createHandleDots } from "./handle-dots.js";
     import * as mgeom from "../src/measuregeom.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
@@ -5412,6 +5417,7 @@
     // loop's body runs once SYNCHRONOUSLY and a `let` further down the module
     // is still in its dead zone at that moment.
     let camGlide = null;
+    let sizeHandleDots = null;   // set once the handles exist (handle-dots.js)
     // Did the APP choose where the model is sitting, or did the user? The
     // answer decides how much licence the clearance has: it may rearrange its
     // own work freely, and touches a hand-set view only to get it out from
@@ -5427,6 +5433,7 @@
       controls.update();
       fadeAxisLabels();
       measureRescale();       // markers and labels hold their size on screen
+      sizeHandleDots?.();     // …and so do the selection's handle dots
       renderer.render(scene, camera);
     })();
 
@@ -6691,6 +6698,8 @@
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
       selOutline: true, selOutlineCol: "#3b9dff",
       grabCol: "#2e76f2", ballCol: "#eaf1ff",
+      // how long the pointer rests on a handle before its arrows show
+      handleDwellMs: 600,
       // brighter, rounder studio light: a strong ambient so dark filaments
       // still read, a rim for edge pop, filmic so the brights do not clip
       ambient: 146, key: 97, fill: 87, rim: 105,
@@ -6910,6 +6919,8 @@
       $("mat-seloutlinecol").value = mat.selOutlineCol || "#3b9dff";
       $("mat-grabcol").value = mat.grabCol || "#2e76f2";
       $("mat-ballcol").value = mat.ballCol || "#eaf1ff";
+      $("mat-dwell").value = mat.handleDwellMs ?? 600;
+      $("mat-dwell-o").textContent = `${mat.handleDwellMs ?? 600} ms`;
       applyHandleColours();
       $("tex-controls").style.display = mat.texture ? "block" : "none";
       // Orca-style labels for fuzzy skin
@@ -7244,6 +7255,11 @@
     $("mat-seloutline").addEventListener("change", (e) => {
       mat.selOutline = e.target.checked;
       refreshHighlight();
+      saveMat();
+    });
+    $("mat-dwell").addEventListener("input", (e) => {
+      mat.handleDwellMs = +e.target.value;
+      $("mat-dwell-o").textContent = `${mat.handleDwellMs} ms`;
       saveMat();
     });
     $("mat-outlineangle").addEventListener("input", (e) => {
@@ -10743,6 +10759,10 @@ ${joined}${SITE_TAIL}`), joined);
     // resize that side) and balls on its corners (drag to scale the whole shape).
     const handleGroup = new THREE.Group();
     scene.add(handleGroup);
+    // The handles are dots of constant on-screen size (handle-dots.js): an
+    // invisible HIT_PX sphere carries userData.handle, as the beads did.
+    const handleDots = createHandleDots(THREE);
+    sizeHandleDots = () => handleDots.resize(handleGroup, camera, renderer.domElement.clientHeight);
     // A bright outline drawn around the selected shape, so "what's selected"
     // reads instantly — whether you clicked the model or a word in the editor.
     const highlightGroup = new THREE.Group();
@@ -10958,13 +10978,10 @@ ${joined}${SITE_TAIL}`), joined);
         }
       }
     }
-    // Shaded beads — a shared unit sphere, scaled per handle, lit so they read
-    // as clean 3D pucks/balls rather than flat blue chips.
-    //
-    // Each handle renders TWICE: a crisp pass that respects the depth buffer
-    // (so the model blocks it), and a faint "ghost" pass drawn through
-    // everything. Where a handle is behind the model only the hazy ghost
-    // shows — you can still see and grab it, but it clearly reads as behind.
+    // The handle colours, and which look (face grabber or corner ball) a
+    // handle gets. The handles themselves are screen-sized dots now
+    // (handle-dots.js), each with a crisp pass the model hides and a faint
+    // one drawn through it, so a handle behind the part still reads as behind.
     const faceHandleMat = new THREE.MeshStandardMaterial({
       color: 0x2e76f2, emissive: 0x0b2b63, metalness: 0.2, roughness: 0.35,
       transparent: true, opacity: 0.97,
@@ -10981,7 +10998,6 @@ ${joined}${SITE_TAIL}`), joined);
       color: 0xeaf1ff, emissive: 0x3a5788, metalness: 0.25, roughness: 0.3,
       depthTest: false, depthWrite: false, transparent: true, opacity: 0.22,
     });
-    const handleGeo = new THREE.SphereGeometry(1, 28, 20);   // shared; meshes scale it
 
     // Handle colours are user-settable. The emissive is derived from the chosen
     // colour rather than left at its original blue, or an orange grabber would
@@ -10996,75 +11012,20 @@ ${joined}${SITE_TAIL}`), joined);
         m.color.set(col);
         m.emissive.set(col).multiplyScalar(glow);
       }
+      handleDots.setColors({ face: grab, corner: ball, ring: mat.selOutlineCol || "#3b9dff" });
     };
 
-    // A face grab handle shaped like the face it sits on: square on a cube,
-    // round on a cylinder. Built from the same projected hull as the emphasis
-    // panel, shrunk about its centroid to bead size and given a little
-    // thickness so it reads as a puck rather than a decal.
-    //
-    // Returned in LOCAL space centred on the origin, so the caller still just
-    // sets position and leaves scale at 1.
-    function shapedHandleGeo(fid, axis, radius, thickness) {
-      const dims = [[1, 2], [0, 2], [0, 1]][axis];
-      const hull = faceHull(fid, dims);
-      if (!hull || hull.length < 3) return null;
-      let cu = 0, cv = 0;
-      for (const [u, v] of hull) { cu += u; cv += v; }
-      cu /= hull.length; cv /= hull.length;
-      let maxR = 0;
-      for (const [u, v] of hull) maxR = Math.max(maxR, Math.hypot(u - cu, v - cv));
-      if (!(maxR > 1e-6)) return null;
-      const k = radius / maxR;
-      const ring = hull.map(([u, v]) => [(u - cu) * k, (v - cv) * k]);
-
-      // Keep the outline but resample it: a 48-sided hull would make a handle
-      // heavier than it needs to look round.
-      const MAX_SIDES = 24;
-      const outline = ring.length <= MAX_SIDES ? ring
-        : Array.from({ length: MAX_SIDES }, (_, i) => ring[Math.round(i * ring.length / MAX_SIDES) % ring.length]);
-
-      // A LENS, not a flat plate: each side sweeps from the rim to a pole on a
-      // quarter-circle, so the face keeps the outline's shape while the surface
-      // stays domed and catches the light the way the old bead did. Flat caps
-      // shaded like paper and lost that entirely.
-      const RINGS = 4;
-      const half = thickness / 2;
-      const verts = [];
-      const at = (u, v, w) => { const p = [0, 0, 0]; p[axis] = w; p[dims[0]] = u; p[dims[1]] = v; return p; };
-      const push = (...ps) => { for (const p of ps) verts.push(p[0], p[1], p[2]); };
-      for (const sign of [1, -1]) {
-        for (let j = 0; j < RINGS; j++) {
-          const t0 = (j / RINGS) * (Math.PI / 2), t1 = ((j + 1) / RINGS) * (Math.PI / 2);
-          const s0 = Math.cos(t0), w0 = sign * half * Math.sin(t0);
-          const s1 = Math.cos(t1), w1 = sign * half * Math.sin(t1);
-          for (let i = 0; i < outline.length; i++) {
-            const a = outline[i], b = outline[(i + 1) % outline.length];
-            const A0 = at(a[0] * s0, a[1] * s0, w0), B0 = at(b[0] * s0, b[1] * s0, w0);
-            const A1 = at(a[0] * s1, a[1] * s1, w1), B1 = at(b[0] * s1, b[1] * s1, w1);
-            // wound outward on the +side, reversed on the -side
-            if (sign > 0) { push(A0, B0, B1); push(A0, B1, A1); }
-            else { push(A0, B1, B0); push(A0, A1, B1); }
-          }
-        }
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-      geo.computeVertexNormals();
-      geo.userData.owned = true;      // not the shared bead; clearHandles disposes it
-      return geo;
-    }
     let selected = null;   // { fid }
 
-    // the crisp mesh + its see-through twin, sharing transform and handle data
-    function addHandlePair(solidMat, ghostMat, configure, handleData) {
-      for (const [material, order] of [[ghostMat, 996], [solidMat, 998]]) {
-        const h = new THREE.Mesh(handleGeo, material);
-        configure(h);
-        h.renderOrder = order;
-        h.userData.handle = handleData;
-        handleGroup.add(h);
-      }
+    // One handle: a dot (face look for the grabber materials, corner look for
+    // the balls) on an invisible hit sphere carrying the handle data. `dirs`
+    // are the world directions it moves along, drawn as arrows on a dwell.
+    // (It was a crisp bead plus a see-through twin; the dot does both itself.)
+    function addHandlePair(solidMat, ghostMat, configure, handleData, dirs = []) {
+      const h = handleDots.make({ kind: solidMat === faceHandleMat ? "face" : "corner", dirs });
+      configure(h);
+      h.userData.handle = handleData;
+      handleGroup.add(h);
     }
 
     function clearHandles() {
@@ -11072,14 +11033,10 @@ ${joined}${SITE_TAIL}`), joined);
       designUI?.onSelect(null);
       clearHighlight();
       clearEmphasis();
-      // the bead geometry is shared and must survive; shaped face pucks are
-      // built per selection, so those do get disposed (once, not per mesh)
-      const done = new Set();
+      handleDots.hover(null);
+      // the hit sphere and dot materials are shared; only dwell arrows are owned
       for (const h of [...handleGroup.children]) {
-        if (h.geometry?.userData?.owned && !done.has(h.geometry)) {
-          done.add(h.geometry);
-          h.geometry.dispose();
-        }
+        handleDots.hideArrows(h);
         handleGroup.remove(h);
       }
     }
@@ -11402,35 +11359,20 @@ ${joined}${SITE_TAIL}`), joined);
       // of which the world-axis face handles can express. It gets its own.
       if (site.kind === "drill" && spawnDrillHandles(fid, site, bb)) return;
       const c = bb.getCenter(new THREE.Vector3());
-      const size = bb.getSize(new THREE.Vector3());
-      // generous floor: on small parts (a 20mm sphere) 1.2mm handles were
-      // near-impossible to grab. Super theme uses noticeably smaller beads.
-      const handleScale = currentTheme === "super" ? 0.5 : 1;
-      const s = Math.min(Math.max(Math.max(size.x, size.y, size.z) * 0.1, 2.4), 6) * handleScale;
+      // the handles are sized on screen, not here (handle-dots.js)
 
       // face handles — only where the shape has an editable number on that axis
       for (const [axis, sign] of [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]]) {
         if (!findResizeTarget(code.value, site, axis)) continue;
         const pos = c.clone();
         pos.setComponent(axis, sign > 0 ? bb.max.getComponent(axis) : bb.min.getComponent(axis));
-        // A puck shaped like the face it hugs (square on a cube, round on a
-        // cylinder), falling back to the flattened bead when the solid has no
-        // usable geometry to project.
-        // Sit the puck ON the face, not half-sunk INTO it. Centred on the face
-        // plane, half the lens is inside the solid, so on the vertical sides it
-        // looked buried or clipped.
-        const thick = s * 0.34;
-        pos.setComponent(axis, pos.getComponent(axis) + sign * thick * 0.55);
-        const shaped = shapedHandleGeo(fid, axis, s * 0.55, thick);
+        // a dot ON the face (handle-dots.js lifts it towards the camera), and
+        // the one way it moves: along the face's normal
+        const out = new THREE.Vector3();
+        out.setComponent(axis, sign);
         addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
-          if (shaped) {
-            h.geometry = shaped;      // already sized and centred in local space
-          } else {
-            h.scale.set(s * 0.62, s * 0.62, s * 0.62);
-            h.scale.setComponent(axis, s * 0.22);
-          }
           h.position.copy(pos);
-        }, { kind: "face", axis, sign, fid });
+        }, { kind: "face", axis, sign, fid }, [out]);
       }
       // corner handles — round beads, uniform scale when the shape has scale targets
       // A freeform's balls sit on its REAL corners, carrying the index of the
@@ -11438,22 +11380,34 @@ ${joined}${SITE_TAIL}`), joined);
       // other shape does) left them floating off the part the moment it skewed,
       // because a skewed solid's corners are nowhere near its axis-aligned box.
       const ffPts = site.kind === "freeform" ? existingFreeformPoints(code.value, site) : null;
+      // The arrows a corner shows say how its drag reads the cursor: a free
+      // corner goes anywhere (x, y, and z with Shift), a box corner stretches
+      // width and depth, anything else scales about its centre.
+      const AX = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+      const boxy = site.kind === "cube" || site.kind === "cuboid";
+      const cornerDirs = (x, y, free) => {
+        if (free) return AX;
+        if (boxy) return [new THREE.Vector3(Math.sign(x - c.x) || 1, 0, 0), new THREE.Vector3(0, Math.sign(y - c.y) || 1, 0)];
+        const d = new THREE.Vector3(x - c.x, y - c.y, 0);
+        return d.lengthSq() > 1e-9 ? [d] : [];
+      };
       if (ffPts) {
         ffPts.forEach((p, i) => {
           addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
-            h.scale.setScalar(s * 0.38);
             h.position.set(p[0], p[1], p[2]);
-          }, { kind: "corner", fid, center: c.clone(), point: i });
+          }, { kind: "corner", fid, center: c.clone(), point: i }, cornerDirs(p[0], p[1], true));
         });
       } else if (findScaleTargets(code.value, site).length) {
+        const free = $("freeform").checked && boxy;
         for (const sx of [bb.min.x, bb.max.x]) for (const sy of [bb.min.y, bb.max.y]) for (const sz of [bb.min.z, bb.max.z]) {
           addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
-            h.scale.setScalar(s * 0.38);
             h.position.set(sx, sy, sz);
-          }, { kind: "corner", fid, center: c.clone() });
+          }, { kind: "corner", fid, center: c.clone() }, cornerDirs(sx, sy, free));
         }
       }
-      // raycasting needs fresh world matrices immediately, not at the next frame
+      // raycasting needs the right size and fresh world matrices immediately,
+      // not at the next frame
+      sizeHandleDots();
       handleGroup.updateMatrixWorld(true);
     }
 
@@ -12611,26 +12565,24 @@ ${joined}${SITE_TAIL}`), joined);
 
       // width: on the rim, where the bore meets the surface
       addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
-        h.scale.setScalar(s * 0.5);
         h.position.copy(entry).addScaledVector(u, P.dia / 2);
-      }, { kind: "drillDia", fid, site });
+      }, { kind: "drillDia", fid, site }, [u.clone()]);
 
       // depth: at the bottom of the bore. Meaningless on a through hole, which
       // is bored to a fixed 1000mm and is not a number anyone wants to drag.
       if (!P.through) {
         addHandlePair(faceHandleMat, faceHandleGhost, (h) => {
-          h.scale.setScalar(s * 0.5);
           h.position.copy(entry).addScaledVector(n, -P.depth);
-        }, { kind: "drillDepth", fid, site });
+        }, { kind: "drillDepth", fid, site }, [n.clone().negate()]);
       }
 
       // aim: out along the bore, above the surface, so it never sits inside the
       // material where it could not be clicked
       addHandlePair(cornerHandleMat, cornerHandleGhost, (h) => {
-        h.scale.setScalar(s * 0.42);
         h.position.copy(entry).addScaledVector(n, Math.max(P.depth * 0.6, s * 3));
-      }, { kind: "drillAim", fid, site });
+      }, { kind: "drillAim", fid, site }, [u.clone(), new THREE.Vector3().crossVectors(n, u)]);
 
+      sizeHandleDots();
       handleGroup.updateMatrixWorld(true);
       return true;
     }
@@ -13012,6 +12964,34 @@ ${joined}${SITE_TAIL}`), joined);
         };
         controls.enabled = false;
         try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
+      }
+    }
+
+    // Hover over the stage, at most once a frame: the handle under the pointer
+    // gets its ring, and after a dwell (mat.handleDwellMs) the arrows for the
+    // ways it moves; in Design mode the face under the pointer is
+    // pre-highlighted. Nothing while a button is down: that is a drag or an orbit.
+    let hoverEv = null;
+    const hoverOff = () => { hoverEv = null; handleDots.hover(null); designUI?.hoverFace(null); };
+    renderer.domElement.addEventListener("pointermove", (e) => {
+      if (drag || e.buttons || e.pointerType === "touch") { hoverOff(); return; }
+      if (!hoverEv) requestAnimationFrame(hoverTick);
+      hoverEv = e;
+    });
+    renderer.domElement.addEventListener("pointerleave", hoverOff);
+    function hoverTick() {
+      const e = hoverEv;
+      hoverEv = null;
+      if (!e || drag) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ), camera);
+      const onHandle = handleGroup.children.length ? raycaster.intersectObjects(handleGroup.children, false)[0] : null;
+      handleDots.hover(onHandle?.object ?? null, mat.handleDwellMs ?? 600);
+      if (designUI?.wantsFaceHover()) {
+        const hit = onHandle || designUI.gizmoOwnsPointer() || measureArmed ? null : pickModel(raycaster)[0];
+        designUI.hoverFace(hit?.object?.userData?.faceName ? hit.object : null);
       }
     }
 
@@ -21816,6 +21796,10 @@ let SIMPLIFY_TARGET = 10000;
     // Design mode's state: tree rows, timeline steps and what they link to,
     // the selection, the picked face and its edges, the gizmo's shape
     window.brepscript.design = () => designUI.debug();
+    // The selection's handle dots as drawn: kind, on-screen position and size,
+    // ring and arrow state (handle-dots.js)
+    window.brepscript.handles = () => handleDots.describe(handleGroup, camera,
+      renderer.domElement.clientWidth, renderer.domElement.clientHeight);
 
     // The edges around a picked face, by the names fillet()/chamfer() take
     // ("A|B[0]"). A build on this thread still has the kernel's own EDGE
