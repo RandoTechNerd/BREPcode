@@ -230,6 +230,20 @@ if (!EMBEDDED) app.whenReady().then(() => {
     },
   ]));
 
+  // Right-click Cut / Copy / Paste in text: Electron draws no context menu of
+  // its own, and on a Mac a two-finger click is how people copy. Only for
+  // editable fields and selected text, so a right-click on the model still
+  // opens the page's own "Ask about this" menu.
+  app.on("web-contents-created", (_e, wc) => {
+    wc.on("context-menu", (_ev, p) => {
+      if (!p.isEditable && !p.selectionText) return;
+      const items = p.isEditable
+        ? [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { type: "separator" }, { role: "selectAll" }]
+        : [{ role: "copy" }, { role: "selectAll" }];
+      Menu.buildFromTemplate(items).popup({ window: BrowserWindow.fromWebContents(wc) || undefined });
+    });
+  });
+
   const win = createWindow();
   sendFileToWindow(win, fileFromArgv(process.argv));   // launched by double-click
   app.on("activate", () => {

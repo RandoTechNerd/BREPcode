@@ -68,6 +68,18 @@ async function probe() {
     const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     exe = lines.find((l) => /\.cmd$/i.test(l)) || lines[0] || null;
   } catch (e) { log.push(`where claude: ${String(e?.message || e).slice(0, 160)}`); }
+  // macOS/Linux: an app opened from the Dock or Finder gets launchd's bare
+  // PATH, not the one the user's shell builds, so `which` above misses every
+  // install a Terminal would find. Ask the login shell itself.
+  if (!exe && process.platform !== "win32") {
+    try {
+      const sh = process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
+      const out = execFileSync(sh, ["-ilc", "command -v claude"], { encoding: "utf8", timeout: 8000 });
+      const hit = out.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith("/")).pop();
+      if (hit) exe = hit;
+      log.push(`login shell (${sh}): ${hit || "nothing"}`);
+    } catch (e) { log.push(`login shell: ${String(e?.message || e).slice(0, 160)}`); }
+  }
   // (`where` is near-instant; the expensive step is the version probe below.)
   if (!exe) {
     // PATH is where a CLI should be, but real installs miss it: the native
@@ -80,7 +92,38 @@ async function probe() {
       path.join(home, ".local", "bin", "claude.exe"),
       path.join(home, ".local", "bin", "claude"),
       process.env.APPDATA && path.join(process.env.APPDATA, "npm", "claude.cmd"),
+      // macOS / Linux installs a GUI app's PATH never includes
+      ...(process.platform === "win32" ? [] : [
+        path.join(home, ".claude", "local", "claude"),
+        "/opt/homebrew/bin/claude",
+        "/usr/local/bin/claude",
+        path.join(home, ".npm-global", "bin", "claude"),
+        path.join(home, ".bun", "bin", "claude"),
+        path.join(home, ".volta", "bin", "claude"),
+      ]),
     ].filter(Boolean);
+    // The Claude desktop app's bundled CLI lives at claude-code/<version>/
+    // claude(.exe) or, in newer builds, claude-code/<version>/<build>/claude(.exe).
+    // Newest version first; both layouts on every platform.
+    const bundled = (root) => {
+      const exeName = process.platform === "win32" ? "claude.exe" : "claude";
+      const out = [];
+      try {
+        const versions = fs.readdirSync(root).filter((d) => /^\d+[\d.]*$/.test(d))
+          .sort((a, b) => {
+            const A = a.split(".").map(Number), B = b.split(".").map(Number);
+            for (let i = 0; i < Math.max(A.length, B.length); i++) if ((A[i] || 0) !== (B[i] || 0)) return (B[i] || 0) - (A[i] || 0);
+            return 0;
+          });
+        for (const v of versions) {
+          out.push(path.join(root, v, exeName));
+          try { for (const b of fs.readdirSync(path.join(root, v))) out.push(path.join(root, v, b, exeName)); } catch { /* not a dir */ }
+        }
+      } catch (e) { log.push(`bundled ${root}: ${String(e?.message || e).slice(0, 120)}`); }
+      return out;
+    };
+    if (process.platform === "darwin") candidates.push(...bundled(path.join(home, "Library", "Application Support", "Claude", "claude-code")));
+    if (process.platform === "win32" && process.env.APPDATA) candidates.push(...bundled(path.join(process.env.APPDATA, "Claude", "claude-code")));
     // The Claude DESKTOP APP bundles the CLI too, versioned under its own
     // AppData — found by tracing what was actually running this integration's
     // own development session. Anyone with the Claude app already has the CLI
