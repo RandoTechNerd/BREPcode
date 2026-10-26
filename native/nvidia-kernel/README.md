@@ -19,15 +19,17 @@ a model on SMLib alone; `--engine nvidia` lets it fall back.
 
 ## What it covers today
 
-Box, cylinder, cone, sphere and full torus primitives, sketches on XY (lines,
-cubic Beziers, arcs and circles, with hole loops), extrude, full and partial
-revolve, union / subtract / intersect, fillet and chamfer on named edges, and
-translate / rotate / scale transforms. Arcs are SMLib's own exact rational
+Box, cylinder, cone, sphere and torus (full or part) primitives, sketches on XY
+(lines, cubic Beziers, arcs and circles, with hole loops), extrude, full and
+partial revolve, union / subtract / intersect, a primitive, extrude or revolve
+carrying its own boolean (one target), fillet and chamfer on named edges, and
+translate / rotate / scale transforms, mirrored (negative) scales and transforms
+about the bounding-box centre included. Arcs are SMLib's own exact rational
 quadratics (SmApiCreateArc); a full circle goes in as two half arcs, as the
 Rust kernel builds it, so both name its wall's two faces alike. Anything else
-is refused and the model builds on the Rust kernel instead: part tori, mirrored (negative) scales, transforms about the bounding
-box centre, primitives that carry their own boolean, and exact imports (STEP),
-which SMLib can't read.
+is refused and the model builds on the Rust kernel instead: pyramids, sketches
+off the XY plane, a feature's own boolean with more than one target, and exact
+imports (STEP), which SMLib can't read.
 
 ## Gotchas
 
@@ -43,3 +45,10 @@ which SMLib can't read.
 - SMLib can report success and return a body that isn't a solid (a torus
   tangent to a cylinder came back with zero volume), so every boolean, sweep
   and fillet checks `SmApiBrepIsManifoldSolid` and refuses if it fails.
+- A part revolve needs the closed profile, axis edge included (a full turn
+  takes the open one); without it SmApiCreateRotationalSweep returns 1001.
+- SMLib's merge isn't symmetric in its numerics: a union that comes back open
+  one way round can be a clean solid the other way, so the addon retries a
+  failed union or intersection with the operands swapped.
+- SmApiScale refuses negative factors; a mirror goes through the brep's own
+  4x4 `Transform`, which splits the reflection out and turns the faces over.

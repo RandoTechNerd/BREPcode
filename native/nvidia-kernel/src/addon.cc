@@ -126,6 +126,26 @@ Napi::Value Torus(const Napi::CallbackInfo& info) {
   return Napi::Number::New(info.Env(), keep(b));
 }
 
+void freeCurves(SmTArray<SmCurve*>& curves);
+
+// (majorRadius, tubeRadius, degrees): a part torus, the tube's circle (in the
+// XZ plane, centred on +X) swept about +Z from +X toward +Y, capped at both ends
+Napi::Value TorusArc(const Napi::CallbackInfo& info) {
+  SmAxis2Placement frame;
+  frame.SetCanonical(SmPoint3d(num(info, 0), 0, 0), SmVector3d(1, 0, 0), SmVector3d(0, 0, 1));
+  SmCircle* c = nullptr;
+  CHECK(info.Env(), SmCircle::CreateCanonical(*SmApiGetOrCreateContext(), frame, num(info, 1), c), "torus circle");
+  SmTArray<SmCurve*> curves;
+  curves.Add(c);
+  SmBrep* b = nullptr;
+  long s = SmApiCreateRotationalSweep(curves, SmPoint3d(0, 0, 0), SmVector3d(0, 0, 1), num(info, 2), TRUE, b);
+  freeCurves(curves);
+  if (s != SM_SUCCESS || !b) fail(info.Env(), "part torus", s);
+  uint32_t id = keep(b);
+  checkSolid(info.Env(), b, "part torus");
+  return Napi::Number::New(info.Env(), id);
+}
+
 // -------------------------------------------------------------- transforms
 
 Napi::Value Translate(const Napi::CallbackInfo& info) {
@@ -141,27 +161,68 @@ Napi::Value Rotate(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value Scale(const Napi::CallbackInfo& info) {
-  CHECK(info.Env(), SmApiScale(get(info, 0), SmVector3d(num(info, 1), num(info, 2), num(info, 3))), "scale");
+  double sx = num(info, 1), sy = num(info, 2), sz = num(info, 3);
+  if (sx > 0 && sy > 0 && sz > 0) {
+    CHECK(info.Env(), SmApiScale(get(info, 0), SmVector3d(sx, sy, sz)), "scale");
+    return info.Env().Undefined();
+  }
+  // a mirror: SmApiScale takes positive factors only, but the brep's own 4x4
+  // transform splits a reflection out of the matrix and turns the faces over
+  if (!(sx != 0 && sy != 0 && sz != 0)) throw Napi::Error::New(info.Env(), "a zero scale flattens the solid");
+  const double m[4][4] = { { sx, 0, 0, 0 }, { 0, sy, 0, 0 }, { 0, 0, sz, 0 }, { 0, 0, 0, 1 } };
+  SmBrep* b = get(info, 0);
+  CHECK(info.Env(), b->Transform(m, TRUE), "mirror");
+  checkSolid(info.Env(), b, "mirror");
   return info.Env().Undefined();
 }
 
 // ---------------------------------------------------------------- booleans
 
+bool isSolid(SmBrep* b) {
+  SmBoolean ok = FALSE;
+  return b && SmApiBrepIsManifoldSolid(b, ok) == SM_SUCCESS && ok;
+}
+
 // (op, a, b): a is modified in place and stays valid; b is consumed.
 // op: 1 union, 2 intersection, 3 difference (SmBooleanOperationType).
+//
+// SMLib's merge is not symmetric in its numerics: a bar unioned with an arm
+// overlapping it by 0.01 (filament-guide) came back as an open shell, the arm
+// unioned with the bar as the right solid. Union and intersection don't care
+// about order, so when one order fails they are tried the other way round.
 Napi::Value Boolean(const Napi::CallbackInfo& info) {
   int op = info[0].As<Napi::Number>().Int32Value();
   uint32_t ida = info[1].As<Napi::Number>().Uint32Value();
   uint32_t idb = info[2].As<Napi::Number>().Uint32Value();
   SmBrep* a = get(info, 1);
   SmBrep* b = get(info, 2);
+  SmBrep* ca = nullptr;
+  SmBrep* cb = nullptr;
+  if (op != SM_BO_DIFFERENCE && (SmApiBrepCopy(a, ca) != SM_SUCCESS || SmApiBrepCopy(b, cb) != SM_SUCCESS)) {
+    delete ca; delete cb; ca = cb = nullptr;
+  }
   SmBrep* out = nullptr;
   long s = SmApiBoolean(a, b, (SmBooleanOperationType)op, out);
+  if (s == SM_SUCCESS && out) {
+    g_solids.erase(idb);          // deleted by the kernel on success
+    g_solids[ida] = out;          // aliases a
+  }
+  if (s == SM_SUCCESS && isSolid(out)) { delete ca; delete cb; return info.Env().Undefined(); }
+  if (ca && cb) {
+    SmBrep* out2 = nullptr;
+    long s2 = SmApiBoolean(cb, ca, (SmBooleanOperationType)op, out2);
+    if (s2 == SM_SUCCESS && isSolid(out2)) {
+      // ca was consumed and cb became out2; drop what the first try left
+      if (s == SM_SUCCESS && out) delete out;
+      else { delete a; delete b; g_solids.erase(idb); }
+      g_solids[ida] = out2;
+      return info.Env().Undefined();
+    }
+    if (s2 == SM_SUCCESS && out2) delete out2;
+    else { delete ca; delete cb; }
+  } else { delete ca; delete cb; }
   if (s != SM_SUCCESS || !out) fail(info.Env(), "boolean", s);
-  g_solids.erase(idb);          // deleted by the kernel on success
-  g_solids[ida] = out;          // aliases a
-  checkSolid(info.Env(), out, "boolean");
-  return info.Env().Undefined();
+  throw Napi::Error::New(info.Env(), "boolean did not produce a closed solid");
 }
 
 // ------------------------------------------------------------------ sweeps
@@ -370,6 +431,15 @@ Napi::Value Edges(const Napi::CallbackInfo& info) {
   return out;
 }
 
+// bbox(handle) -> [minX, minY, minZ, maxX, maxY, maxZ], tight to the surfaces
+Napi::Value BBox(const Napi::CallbackInfo& info) {
+  SmPoint3d mn, mx;
+  CHECK(info.Env(), SmApiBrepBoundingBox(get(info, 0), TRUE, mn, mx), "bounding box");
+  Napi::Float64Array out = Napi::Float64Array::New(info.Env(), 6);
+  out[0] = mn.x; out[1] = mn.y; out[2] = mn.z; out[3] = mx.x; out[4] = mx.y; out[5] = mx.z;
+  return out;
+}
+
 Napi::Value Volume(const Napi::CallbackInfo& info) {
   double v = 0;
   CHECK(info.Env(), SmApiBrepComputeVolume(get(info, 0), 1e-3, v), "volume");
@@ -481,6 +551,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   fn("cone", Cone);
   fn("sphere", Sphere);
   fn("torus", Torus);
+  fn("torusArc", TorusArc);
   fn("translate", Translate);
   fn("rotate", Rotate);
   fn("scale", Scale);
@@ -491,6 +562,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   fn("faces", Faces);
   fn("matchFaces", MatchFaces);
   fn("edges", Edges);
+  fn("bbox", BBox);
   fn("volume", Volume);
   fn("tessellate", Tessellate);
   return exports;

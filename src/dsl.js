@@ -3052,7 +3052,10 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // The same, for EDGES picked by direction or height. Edge names are
   // "FACEA|FACEB[i]" in both kernels; helper edges such as a cylinder's
   // "_AXIS" have no "|" and are never real edges of the solid.
-  async function childEdgeNames(childId, spec) {
+  // `matrix` is the transform the child was placed with: "x" / "y" / "z" and
+  // "top" / "bottom" mean the shape's own axes where the fillet is written,
+  // so a rounded part stays rounded the same way after a rotate() around it.
+  async function childEdgeNames(childId, spec, matrix = IDENTITY) {
     await partHistory.runHistory({ throwOnFeatureError: true });
     const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
     const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
@@ -3066,17 +3069,20 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     });
     if (spec === "all") return edges.map((e) => e.name);
     if (spec === "convex") return convexEdgeNames(solid, edges);
+    const axis = (v) => { const a = new Vector3(...v).transformDirection(matrix); return [a.x, a.y, a.z]; };
+    const along = (p, u) => p[0] * u[0] + p[1] * u[1] + p[2] * u[2];
     if (spec === "top" || spec === "bottom") {
+      const up = axis([0, 0, 1]);
       let lo = Infinity, hi = -Infinity;
-      for (const e of edges) for (const p of e.pts) { lo = Math.min(lo, p[2]); hi = Math.max(hi, p[2]); }
+      for (const e of edges) for (const p of e.pts) { lo = Math.min(lo, along(p, up)); hi = Math.max(hi, along(p, up)); }
       const at = spec === "top" ? hi : lo, tol = Math.max(1e-4, (hi - lo) * 1e-4);
-      return edges.filter((e) => e.pts.every((p) => Math.abs(p[2] - at) <= tol)).map((e) => e.name);
+      return edges.filter((e) => e.pts.every((p) => Math.abs(along(p, up) - at) <= tol)).map((e) => e.name);
     }
-    const k = { x: 0, y: 1, z: 2 }[spec];
+    const u = axis({ x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }[spec]);
     return edges.filter(({ pts }) => {
       const a = pts[0], b = pts[pts.length - 1];
       const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], len = Math.hypot(...d);
-      if (len < 1e-9 || Math.abs(d[k]) / len < 0.9998) return false;      // not along the axis
+      if (len < 1e-9 || Math.abs(along(d, u)) / len < 0.9998) return false;      // not along the axis
       // straight: every sample on the chord
       return pts.every((p) => {
         const v = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
@@ -3267,7 +3273,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
             + ` (edge names follow the build order; pick the edges again)`);
         }
         faces = n.edges.flatMap((e) => (have.has(e) ? [e] : [...have].filter((h) => bare(h) === e)));
-      } else faces = n.edges ? await childEdgeNames(childId, n.edges) : await childFaceNames(childId, n.faces);
+      } else faces = n.edges ? await childEdgeNames(childId, n.edges, matrix) : await childFaceNames(childId, n.faces);
       if (!faces.length) {
         throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): couldn't find any edges to work on for this shape`);
       }
