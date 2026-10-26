@@ -29,7 +29,10 @@ const ENGINE = arg("engine", "nvidia");
 const SHOTS = arg("shots", null);
 const ONLY = arg("only", null)?.split(",");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-const OUT = path.join(HERE, "results", stamp);
+// --reshoot <dir>: only photograph the models saved in an earlier results
+// folder that have no screenshots yet (heavy models can need the longer wait)
+const RESHOOT = arg("reshoot", null);
+const OUT = RESHOOT ? path.resolve(RESHOOT) : path.join(HERE, "results", stamp);
 mkdirSync(OUT, { recursive: true });
 
 const prompts = JSON.parse(readFileSync(path.join(HERE, "prompts.json"), "utf8")).filter((p) => !ONLY || ONLY.includes(p.id));
@@ -130,10 +133,18 @@ async function photograph(url, id, code) {
     // viewer chokes on) must cost one screenshot, not the whole run
     const send = (method, params = {}) => Promise.race([
       new Promise((r) => { const n = ++seq; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); }),
-      new Promise((_, no) => setTimeout(() => no(new Error(`${method} timed out`)), 60000)),
+      new Promise((_, no) => setTimeout(() => no(new Error(`${method} timed out`)), RESHOOT ? 240000 : 60000)),
     ]);
     const js = async (expr) => (await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true })).result?.result?.value;
+    // the first-visit welcome card (and any example note) never belongs in a
+    // photo: close it right before every shot, whenever it chose to appear
+    const dismiss = `(() => { try { localStorage.setItem("brepcode-welcomed", "1"); } catch {}
+      document.querySelectorAll(".wl-x").forEach((b) => b.click());
+      document.querySelectorAll(".card, div").forEach((e) => { if (e.querySelector?.(":scope > .wl-head")) e.remove(); });
+      document.getElementById("brep-example-note")?.remove(); return 1 })()`;
     const shot = async (name) => {
+      await js(dismiss);
+      await wait(400);
       const r = await send("Page.captureScreenshot", { format: "png" });
       const f = path.join(OUT, `${id}-${name}.png`);
       writeFileSync(f, Buffer.from(r.result.data, "base64"));
@@ -145,7 +156,11 @@ async function photograph(url, id, code) {
     await send("Page.navigate", { url });
     for (let i = 0; i < 60 && !(await js("!!window.__brepAgent")); i++) await wait(500);
     await js(`document.querySelectorAll('button[title=Close]').forEach(b=>{try{b.click()}catch{}}); document.getElementById('brep-example-note')?.remove(); 1`);
-    const state = await js(`window.__brepAgent.run({ action: "set_code", code: ${JSON.stringify(code)}, name: ${JSON.stringify(id)} }).then(s => JSON.stringify(s?.status || s))`);
+    // start the build without waiting on it inside one DevTools call (a heavy
+    // model can take minutes in the browser); poll the status line instead
+    await js(`(window.__benchState = null, window.__brepAgent.run({ action: "set_code", code: ${JSON.stringify(code)}, name: ${JSON.stringify(id)} }).then(s => { window.__benchState = JSON.stringify(s?.status || s); }), 1)`);
+    for (let i = 0; i < (RESHOOT ? 720 : 240) && !(await js("window.__benchState")); i++) await wait(1000);
+    const state = await js("window.__benchState");
     for (let i = 0; i < 120; i++) {                          // until the build settles
       const st = await js(`document.getElementById('status')?.textContent || ''`);
       if (st && !/build/i.test(st)) break;
@@ -173,6 +188,16 @@ async function photograph(url, id, code) {
 }
 
 // ---------------------------------------------------------------- the run
+if (RESHOOT) {
+  for (const p of prompts) {
+    const f = path.join(OUT, `${p.id}.js`);
+    if (!existsSync(f) || (!process.argv.includes("--all") && existsSync(path.join(OUT, `${p.id}-hero.png`)))) continue;
+    log(`photographing ${p.id}`);
+    const shots = await photograph(SHOTS || "http://localhost:5320/viewer/index.html", p.id, readFileSync(f, "utf8"));
+    log(`  ${shots.length ? shots.join(", ") : "no screenshots"}`);
+  }
+  process.exit(0);
+}
 log(`claude: ${CLAUDE} · model ${MODEL} · engine ${ENGINE}`);
 const rows = [];
 for (const p of prompts) {
