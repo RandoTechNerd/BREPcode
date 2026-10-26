@@ -161,6 +161,9 @@ async function photograph(url, id, code) {
     await js(`(window.__benchState = null, window.__brepAgent.run({ action: "set_code", code: ${JSON.stringify(code)}, name: ${JSON.stringify(id)} }).then(s => { window.__benchState = JSON.stringify(s?.status || s); }), 1)`);
     for (let i = 0; i < (RESHOOT ? 720 : 240) && !(await js("window.__benchState")); i++) await wait(1000);
     const state = await js("window.__benchState");
+    // no state = the build never finished: the viewer still shows its starter
+    // model, and a photo of that would be a lie (use the desktop Alpha for heavy models)
+    if (!state) throw new Error(`the build did not finish in the viewer in time; no shots saved for ${id}`);
     for (let i = 0; i < 120; i++) {                          // until the build settles
       const st = await js(`document.getElementById('status')?.textContent || ''`);
       if (st && !/build/i.test(st)) break;
@@ -181,7 +184,6 @@ async function photograph(url, id, code) {
     await js(`window.brepscript.setMode && window.brepscript.setMode("code"); window.__brepAgent.run({ action: "set_view", view: "top" }).then(() => window.__brepAgent.run({ action: "fit" })).then(() => 1)`);
     await wait(1500);
     await shot("top");
-    if (!state) log(`    (viewer gave no build state for ${id})`);
   } catch (e) { log(`    screenshots failed: ${e.message}`); }
   try { chrome.kill(); } catch { /* gone */ }
   return saved;
