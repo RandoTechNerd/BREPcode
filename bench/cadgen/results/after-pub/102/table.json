@@ -1,0 +1,67 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Dimensioned views. Ø270/Ø250/Ø230/Ø175.3/Ø120 and R106; section A-A gives 220/212/160/150, the bore radii and the step heights; the front view gives 15, 29.5 and 3" },
+  "frame": "Origin at the bore axis on the plate's bottom face (z=0). Z points up toward the raised ring. X and Y are as in the TOP view (X right, Y up the sheet). Angles are measured CCW from +X. Section A-A is drawn inverted (bottom face up) and unfolded along the two tab directions.",
+  "overall": { "x": 353.6, "y": 281.3, "z": 32.5 },
+  "bbox": { "min": [-214, -144.7, -3], "max": [139.6, 136.6, 29.5] },
+  "body": [
+    "Plate: R135 disc, z 0..15. Between about 280° and 12° the outline is R125 (Ø250), and six R30 lobes are centred on the bolt holes",
+    "Long tab: 55 wide at 160.8°, reaching r=220, R10 end corners",
+    "Short tab: 55 wide at 225.8°, reaching r=160, R10 end corners",
+    "Raised ring: R106, z 15..29.5",
+    "Bottom pad: R106, z -3..0",
+    "Bore Ø120 through, with a Ø150 x 6 counterbore from the bottom and an R5 groove at z 17"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.113, 0.199, 0.316, 0.426], "right": "+x", "up": "+y", "shows": "hole angles, tab angles, Ø230 bolt circle, Ø175.3 pin circle" },
+    { "name": "BOTTOM", "region": [0.48, 0.355, 0.70, 0.585], "right": "-x", "up": "+y", "shows": "tab pockets (39 wide, R6 / R4), slot R3, outline Ø270 / Ø250 / R30, R106" },
+    { "name": "SECTION A-A", "region": [0.122, 0.710, 0.334, 0.735], "shows": "inverted bent section through both tabs: bore steps, R5 groove, pocket ends at 212 and 150, tab ends at 220 and 160" },
+    { "name": "FRONT", "region": [0.119, 0.846, 0.353, 0.879], "right": "-x", "up": "+z", "shows": "plate 15, total 29.5, bottom pad 3, R3 and R5 fillets" },
+    { "name": "ISO", "region": [0.71, 0.08, 0.96, 0.33], "shows": "overall form" }
+  ],
+  "callouts": [
+    { "text": "Ø270 TYP UNLESS CALLED OUT", "view": "BOTTOM", "kind": "dimension", "feature": "OUT" },
+    { "text": "Ø250 (x2)", "view": "BOTTOM", "kind": "dimension", "feature": "IND" },
+    { "text": "R30 TYP", "view": "BOTTOM", "kind": "fillet", "feature": "L" },
+    { "text": "R10 TYP ALL EXTERIOR FILLETS", "view": "BOTTOM", "kind": "fillet", "feature": "T1" },
+    { "text": "R6 TYP", "view": "BOTTOM", "kind": "fillet", "feature": "P1" },
+    { "text": "R4 TYP", "view": "BOTTOM", "kind": "fillet", "feature": "P2" },
+    { "text": "R3", "view": "BOTTOM", "kind": "dimension", "feature": "S" },
+    { "text": "55 / 39 / 8", "view": "BOTTOM", "kind": "dimension", "feature": "P1" },
+    { "text": "65°", "view": "BOTTOM", "kind": "angle", "feature": "T2" },
+    { "text": "R106", "view": "BOTTOM", "kind": "dimension", "feature": "PAD" },
+    { "text": "1MM FILLET", "view": "BOTTOM", "kind": "fillet", "skip": "small bore-edge blends are not modelled" },
+    { "text": "2.5x45°, 1x45°, 1.6x45°", "view": "SECTION A-A", "kind": "chamfer", "skip": "small bore chamfers are not modelled" },
+    { "text": "R5", "view": "SECTION A-A", "kind": "dimension", "feature": "G" },
+    { "text": "R3 TYP", "view": "SECTION A-A", "kind": "fillet", "skip": "ring-base fillet is not modelled" },
+    { "text": "3.5 / 6 / 6.5 / 16.5", "view": "SECTION A-A", "kind": "step", "feature": "B" },
+    { "text": "29.5 / 15 / 3", "view": "FRONT", "kind": "step", "feature": "R" },
+    { "text": "R5 plate edge", "view": "FRONT", "kind": "fillet", "skip": "top-edge round is not modelled" },
+    { "text": "angles 143.1/92.8/40.4/36.7/174.2/105/82.9", "view": "TOP", "kind": "pattern", "feature": "H" }
+  ],
+  "features": [
+    { "id": "H", "type": "hole", "count": 6, "positions": [[109.6, 35.0, 15], [43.1, 106.6, 15], [-58.2, 99.2, 15], [-109.6, -34.6, 15], [-8.4, -114.7, 15], [104.2, -48.6, 15]], "axis": "+z", "dia": 10, "depth": "thru", "source": "Ø230 bolt circle, angles 17.7/68/120.4/197.5/265.8/335°", "confidence": "medium" },
+    { "id": "B", "type": "cbore", "count": 1, "positions": [[0, 0, -3]], "axis": "-z", "dia": 120, "depth": "thru", "cbore": { "d": 150, "depth": 6 }, "source": "Ø120; r75 step at the bottom face in section A-A", "confidence": "medium" },
+    { "id": "G", "type": "pocket", "count": 1, "positions": [[0, 0, 17]], "axis": "+z", "r": 5, "probes": [[-62, 0, 17]], "source": "R5 groove in the bore, section A-A", "confidence": "medium" },
+    { "id": "PIN", "type": "hole", "count": 1, "positions": [[-38.8, -78.6, 29.5]], "axis": "+z", "dia": 4, "depth": "thru", "source": "small hole on the Ø175.3 circle at 243.7°, seen in the top and bottom views", "confidence": "low" },
+    { "id": "OUT", "type": "step", "count": 1, "positions": [[0, 0, 0]], "axis": "+z", "probes": [[0, 130, 7.5], [-130, 0, 7.5]], "source": "Ø270 outline", "confidence": "medium" },
+    { "id": "IND", "type": "notch", "count": 2, "positions": [[130, 0, 0], [76, -105, 0]], "axis": "+z", "probes": [[130, 0, 7.5], [76.5, -105.3, 7.5]], "source": "Ø250 outline between the lobes on the +x side", "confidence": "medium" },
+    { "id": "T1", "type": "rib", "count": 1, "positions": [[-160, 55.6, 0]], "axis": "+z", "width": 55, "length": 120, "along": 160.8, "height": 15, "r": 10, "edges": "end corners", "probes": [[-145, 64.5, 10], [-195, 82, 10]], "source": "220 in section, 55 wide", "confidence": "medium" },
+    { "id": "T2", "type": "rib", "count": 1, "positions": [[-90.6, -93.2, 0]], "axis": "+z", "width": 55, "length": 60, "along": 225.8, "height": 15, "r": 10, "probes": [[-104.5, -107.6, 7.5]], "source": "160 in section, 65° from the long tab", "confidence": "medium" },
+    { "id": "L", "type": "step", "count": 6, "positions": [[109.6, 35.0, 0]], "axis": "+z", "r": 30, "probes": [[135, 43.2, 7.5]], "source": "R30 TYP lobes", "confidence": "medium" },
+    { "id": "R", "type": "boss", "count": 1, "positions": [[0, 0, 15]], "axis": "+z", "dia": 212, "height": 14.5, "source": "29.5 - 15, Ø212 in the front view", "confidence": "medium" },
+    { "id": "PAD", "type": "boss", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 212, "height": 3, "source": "R106 in the bottom view; front view 3", "confidence": "medium" },
+    { "id": "P1", "type": "pocket", "count": 1, "positions": [[-166, 57.5, 0]], "axis": "-z", "width": 39, "length": 72, "along": 160.8, "depth": 3.5, "r": 6, "probes": [[-170, 59, 1.5]], "source": "39 wide, ends at 212, 3.5 deep", "confidence": "medium" },
+    { "id": "P2", "type": "pocket", "count": 1, "positions": [[-91.5, -94.3, 0]], "axis": "-z", "width": 39, "length": 39, "along": 225.8, "depth": 3.5, "r": 4, "probes": [[-91.5, -94.3, 1.5]], "source": "39 square, ends at 150", "confidence": "medium" },
+    { "id": "S", "type": "slot", "count": 1, "positions": [[-140.7, 48.9, 15]], "axis": "+z", "width": 6, "length": 43, "along": 160.8, "depth": "thru", "source": "R3 slot in the long tab", "confidence": "low" }
+  ],
+  "guessed": [
+    "Bolt hole Ø10: estimated from the drawn size",
+    "Pin hole Ø4, taken through",
+    "Slot 43 overall (ends centred at r=130.5 and r=167.5), on the tab centreline",
+    "Pocket inner ends at r=140 (long tab) and r=111 (short tab)",
+    "Groove centre at z=17, scaled from the section",
+    "Only one bottom counterbore (r75 x 6) is modelled; the r66 x 6.5 step adds 0.5 mm and is merged into it",
+    "Ø250 arc span about 280°..12°, between the lobes"
+  ]
+}

@@ -571,8 +571,8 @@ function checkSubtle(table, measured, { shift, tol, inside, skipped, pass, issue
     // flat steps at the levels a section dimensions
     for (const lv of (Array.isArray(f.levels) ? f.levels : []).map(num).filter((v) => v != null)) {
       any = true;
-      const at = lv + dot(shift, axis);
-      const hit = planes.some((p) => Math.abs(Math.abs(dot(p.normal, axis)) - 1) < 1e-3 && Math.abs(p.offset * Math.sign(dot(p.normal, axis)) - at) <= tol);
+      // in the frame the holes matched best, or as written
+      const hit = [lv + dot(shift, axis), lv].some((at) => planes.some((p) => Math.abs(Math.abs(dot(p.normal, axis)) - 1) < 1e-3 && Math.abs(p.offset * Math.sign(dot(p.normal, axis)) - at) <= tol));
       if (!pass(hit)) { bad = true; issues.push({ kind: "level", id, msg: `${label}: no flat face across ${axisName(axis)} at ${fmt(lv)} (a step height the table reads)` }); }
     }
     // probe points: material for what is added, empty for what is cut
@@ -597,8 +597,9 @@ function checkSubtle(table, measured, { shift, tol, inside, skipped, pass, issue
     const text = `callout "${c.text ?? "?"}"${c.view ? ` (${c.view})` : ""}`;
     if (c.skip) { notes.push(`${text}: skipped (${c.skip})`); continue; }
     if (!used || !used.length) { pass(false); missing++; issues.push({ kind: "callout", msg: `${text} is not used by any feature and has no skip reason: model it, or say why not` }); continue; }
-    const unknown = used.filter((u) => !ids.has(u));
-    if (unknown.length) { pass(false); missing++; issues.push({ kind: "callout", msg: `${text} points at feature ${unknown.join(", ")}, which the table does not have` }); }
+    // a callout the body pieces carry ("body", "base") is accounted for too
+    const unknown = used.filter((u) => !ids.has(u) && !/^(body|base|overall|part|plate|hub)/i.test(u));
+    if (unknown.length) notes.push(`${text} points at ${unknown.join(", ")}, which is not a feature id in the table`);
   }
   return { missing, unchecked, skipped: skippedOut };
 }

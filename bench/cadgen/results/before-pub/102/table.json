@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Diameters Ø120/Ø175.3/Ø200/Ø230/Ø250/Ø270, tab extents 220/160, widths 55/39, slot 39 x 8; side view: 29.5 overall including the 3 mm underside step, flange 15" },
+  "frame": "Origin on the bore axis at the flange underside, Z up toward the raised ring. X right and Y up in the plan view.",
+  "overall": { "x": 343, "y": 260.5, "z": 29.5 },
+  "bbox": { "min": [-213, -134.6, -3], "max": [130, 125.9, 26.5] },
+  "body": [
+    "Flange disc Ø250, z 0..15",
+    "6 lobes r20 centred on the Ø230 hole circle, reaching Ø270, z 0..15",
+    "Tab 1 along 160°: width 55, from r100 to r220, z 0..15, R10 vertical corners",
+    "Tab 2 along 226°: width 39, from r100 to r160, z 0..15, R4 vertical corners",
+    "Raised ring Ø200, z 14.5..26.5",
+    "Underside step Ø200, z -3..0.5"
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 1, "positions": [[0, 0, 26.5]], "axis": "+z", "dia": 120, "depth": "thru", "cbore": { "d": 150, "depth": 4 }, "source": "Ø120 bore, section radii 60/75", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 6, "positions": [[109.98, 33.62, 15], [44.93, 105.86, 15], [-55.75, 100.58, 15], [-110.55, -31.70, 15], [-10.02, -114.56, 15], [103.36, -50.41, 15]], "axis": "+z", "dia": 11, "depth": "thru", "source": "6 holes on the Ø230 circle", "confidence": "medium" },
+    { "id": "C", "type": "slot", "count": 1, "positions": [[-139.07, 50.62, 15]], "axis": "+z", "width": 8, "length": 39, "along": 160, "depth": "thru", "source": "slot in tab 1, 39 x 8", "confidence": "medium" },
+    { "id": "D", "type": "hole", "count": 1, "positions": [[-39.79, -78.10, 26.5]], "axis": "+z", "dia": 4, "depth": 6, "source": "small pin hole on the Ø175.3 circle", "confidence": "low" }
+  ],
+  "guessed": [
+    "Bolt hole diameter 11 (scaled from the view)",
+    "Hole and tab angles measured from the plan view",
+    "Ring outer Ø200; underside step Ø200 x 3",
+    "Counterbore Ø150 x 4 from section radius 75",
+    "Internal R5 groove and chamfers omitted",
+    "Pin hole Ø4 x 6"
+  ]
+}

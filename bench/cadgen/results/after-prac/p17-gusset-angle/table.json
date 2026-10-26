@@ -1,0 +1,30 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from dimensions on TOP, FRONT and RIGHT views" },
+  "frame": "origin at the front-left-bottom corner; X right along the 90 width, Y back along the 70 depth (wall at the front, y 0..12), Z up (70 tall)",
+  "overall": { "x": 90, "y": 70, "z": 70 },
+  "bbox": { "min": [0, 0, 0], "max": [90, 70, 70] },
+  "body": [
+    "base plate 90 x 70 x 12: x 0..90, y 0..70, z 0..12",
+    "upright wall 90 x 12 x 70: x 0..90, y 0..12, z 0..70",
+    "R8 inside-corner fillet (added material) along X at the wall/base join (y 12, z 12), arc centre at y 20, z 20"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.129, 0.135, 0.353, 0.381], "right": "+x", "up": "+y", "shows": "plate outline, 2 counterbored holes, wall strip and fillet tangent line, hidden Ø26 in wall" },
+    { "name": "FRONT", "region": [0.129, 0.529, 0.353, 0.775], "right": "+x", "up": "+z", "shows": "wall face with Ø26 through hole at x45 z45, hidden counterbores and fillet line" },
+    { "name": "RIGHT", "region": [0.457, 0.529, 0.631, 0.775], "right": "+y", "up": "+z", "shows": "L profile: 12 wall, 12 base, 70 depth, R8 inside corner" },
+    { "name": "ISO", "region": [0.666, 0.246, 0.944, 0.588], "shows": "overall shape check" }
+  ],
+  "callouts": [
+    { "text": "2X Ø9 THRU ⌴ Ø15 ↧ 9", "view": "TOP", "kind": "dimension", "feature": "A" },
+    { "text": "Ø26 THRU", "view": "FRONT", "kind": "dimension", "feature": "B" },
+    { "text": "R8 INSIDE CORNER", "view": "RIGHT", "kind": "fillet", "feature": "C" },
+    { "text": "THIRD-ANGLE PROJECTION, DIMENSIONS IN MM", "view": "NOTES", "kind": "note", "skip": "general note, no geometry" }
+  ],
+  "features": [
+    { "id": "A", "type": "cbore", "count": 2, "positions": [[20, 48, 12], [70, 48, 12]], "axis": "+z", "dia": 9, "depth": "thru", "cbore": { "d": 15, "depth": 9 }, "source": "2X Ø9 THRU ⌴ Ø15 ↧ 9; x 20 and 70, y 48", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[45, 0, 45]], "axis": "-y", "dia": 26, "depth": "thru", "source": "Ø26 THRU at 45 from left, 45 up", "confidence": "high" },
+    { "id": "C", "type": "fillet", "r": 8, "edges": "inside corner between wall back face (y 12) and base top (z 12), along X; adds material", "source": "R8 INSIDE CORNER", "confidence": "high" }
+  ],
+  "guessed": []
+}

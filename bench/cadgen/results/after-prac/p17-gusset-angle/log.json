@@ -1,0 +1,250 @@
+{
+ "id": "p17-gusset-angle",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.1959924,
+   "s": 43,
+   "ok": true,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "missing": 1,
+    "skipped": [],
+    "issues": [
+     "fillet C (\"R8 INSIDE CORNER\"): at (45, 13, 13) the model is solid, the table puts a cut there"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.896
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.91
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.941
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 8..74, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..8, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 0..47 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x 90..97, z 0..70 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.22868840000000001,
+   "s": 38,
+   "ok": true,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "check": {
+    "score": 1,
+    "checked": 22,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.896
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.91
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.941
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 8..74, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..8, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 0..47 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x 90..97, z 0..70 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.2075844,
+   "s": 11,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.6777892000000001,
+ "views": [
+  {
+   "name": "TOP",
+   "region": [
+    0.03,
+    0.07,
+    0.36,
+    0.45
+   ],
+   "right": "+x",
+   "up": "+y",
+   "cut": null
+  },
+  {
+   "name": "FRONT",
+   "region": [
+    0.08,
+    0.5,
+    0.36,
+    0.85
+   ],
+   "right": "+x",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "RIGHT",
+   "region": [
+    0.45,
+    0.49,
+    0.66,
+    0.85
+   ],
+   "right": "+y",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "ISOMETRIC",
+   "region": [
+    0.66,
+    0.24,
+    0.95,
+    0.6
+   ],
+   "right": null,
+   "up": null,
+   "cut": null
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "check": {
+    "score": 0.957,
+    "checked": 23,
+    "missing": 1,
+    "skipped": [],
+    "issues": [
+     "fillet C (\"R8 INSIDE CORNER\"): at (45, 13, 13) the model is solid, the table puts a cut there"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.896
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.91
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.941
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 8..74, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..8, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 0..47 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x 90..97, z 0..70 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "check": {
+    "score": 1,
+    "checked": 22,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.896
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.91
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.941
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 8..74, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..8, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 0..47 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x 90..97, z 0..70 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+     ]
+    }
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "missing": 0,
+ "outline": [
+  {
+   "name": "TOP",
+   "iou": 0.896
+  },
+  {
+   "name": "FRONT",
+   "iou": 0.91
+  },
+  {
+   "name": "RIGHT",
+   "iou": 0.941
+  }
+ ],
+ "attempts": 3,
+ "seconds": 108
+}

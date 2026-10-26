@@ -1,0 +1,35 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Ø195 bolt circle, Ø170 cavity, 45/34/16 section depths, 60x25 side pattern, Ø75/Ø65 port; a few sizes scaled from views against these" },
+  "frame": "Housing bore axis = Z. Rear face z=0, front (bolt-flange) face z=100. Origin on the bore axis. +Y up toward the top port, X horizontal across the front view.",
+  "overall": { "x": 205, "y": 216, "z": 100 },
+  "bbox": { "min": [-102.5, -97, 0], "max": [102.5, 118.5, 100] },
+  "body": [
+    "Octagonal prism, apothem 97 on the orthogonal flats and 107.6 on the 45° flats, z 0..100",
+    "Ø170 bore through the full depth, leaving walls",
+    "Conical web, run 3 mm into the wall: rear frustum r42 at z29.4 to r88 at z46, ring disc r88 at z45.5..55.5, front frustum r88 at z55 to r42 at z70",
+    "Top port: Ø75 boss on the Y axis at z=50, y 90..118.5, with 6 R7.5 lobes on r40",
+    "2X side tabs 7 x 26 x 45 at x=±(95.5..102.5), z 55..100"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 8, "positions": [[84.4,48.75,100],[48.75,84.4,100],[-48.75,84.4,100],[-84.4,48.75,100],[-84.4,-48.75,100],[-48.75,-84.4,100],[48.75,-84.4,100],[84.4,-48.75,100]], "axis": "+z", "dia": 10, "depth": "thru", "source": "8X Ø10 THRU on Ø195, 30°/60° spacing", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 7, "positions": [[61.8,20.1,70],[-61.8,20.1,70],[-61.8,-20.1,70],[-38.2,-52.6,70],[0,-65,70],[38.2,-52.6,70],[61.8,-20.1,70]], "axis": "+z", "dia": 27.5, "depth": "thru", "source": "7X Ø27.5 THRU on Ø130, 36° spacing", "confidence": "high" },
+    { "id": "C", "type": "cbore", "count": 1, "positions": [[0,0,70]], "axis": "+z", "dia": 50, "depth": "thru", "cbore": {"d": 60, "depth": 15}, "source": "section B-B 50 bore, 60 counterbore front side", "confidence": "medium" },
+    { "id": "D", "type": "cbore", "count": 1, "positions": [[0,0,29.4]], "axis": "-z", "dia": 50, "depth": "thru", "cbore": {"d": 60, "depth": 18.4}, "source": "section B-B 60 counterbore rear side", "confidence": "medium" },
+    { "id": "E", "type": "hole", "count": 1, "positions": [[0,118.5,50]], "axis": "+y", "dia": 65, "depth": 63.5, "source": "Ø65 port bore into the cavity", "confidence": "medium" },
+    { "id": "F", "type": "hole", "count": 6, "positions": [[40,118.5,50],[20,118.5,84.6],[-20,118.5,84.6],[-40,118.5,50],[-20,118.5,15.4],[20,118.5,15.4]], "axis": "+y", "dia": 7, "depth": 15, "source": "6X Ø7 UNTIL NEXT on r40 lobes, 60° spacing", "confidence": "medium" },
+    { "id": "G", "type": "hole", "count": 8, "axis": "45° flats normal", "dia": 10, "depth": 25, "source": "4X Ø10 UNTIL NEXT, 60 x 25 pattern, on each upper diagonal flat", "confidence": "medium" },
+    { "id": "H", "type": "slot", "count": 2, "width": 25, "length": 45, "along": "z", "depth": 3, "source": "R12.5 obround, 20 between centres", "confidence": "low" },
+    { "id": "I", "type": "hole", "count": 1, "positions": [[102.5,0,66]], "axis": "+x", "dia": 10, "depth": 11, "source": "2X Ø10, 11 long (right tab)", "confidence": "medium" },
+    { "id": "J", "type": "hole", "count": 1, "positions": [[-102.5,0,66]], "axis": "-x", "dia": 10, "depth": 11, "source": "2X Ø10, 11 long (left tab)", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Orthogonal apothem 97, scaled from the front view",
+    "Rear web faces z29.4/z46, scaled from section B-B",
+    "Web outer radius 88 so it overlaps the wall cleanly",
+    "Port height 118.5 above the axis",
+    "Slot pocket depth 3",
+    "Tab z extent 55..100",
+    "Ribs, small R fillets and the inner Ø27/Ø35 port detail omitted"
+  ]
+}

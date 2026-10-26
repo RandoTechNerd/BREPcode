@@ -1,0 +1,3100 @@
+{
+ "model": "claude-opus-5-5",
+ "options": {
+  "run": "after-pub",
+  "inputs": "/home/user/cgbdata/data",
+  "only": [
+   "121",
+   "102",
+   "128",
+   "139",
+   "148"
+  ],
+  "parallel": 3,
+  "tries": 3,
+  "model": "claude-opus-5-5",
+  "timeout": 600,
+  "candidates": 3,
+  "look": true,
+  "check": true,
+  "views": true
+ },
+ "samples": 5,
+ "stepOk": 5,
+ "cost": 14.1791412,
+ "logs": [
+  {
+   "id": "102",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.3959524,
+     "s": 181,
+     "ok": true,
+     "size": [
+      353.622,
+      281.317,
+      32.5
+     ],
+     "check": {
+      "score": 0.83,
+      "checked": 47,
+      "missing": 7,
+      "skipped": [],
+      "issues": [
+       "overall Y is 281.32 mm, the table says 300",
+       "cbore C1 at (0, 0, 29.5) (\"75 radius in section A-A\"): no Ø150 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 13.25)",
+       "cbore C2 at (0, 0, -3) (\"66 radius in section A-A\"): no Ø132 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 13.25)",
+       "boss T1 at (-207.8, 72, 0) (\"220 in section, 55 wide\"): no boss along Z there",
+       "boss T2 at (-111.4, -114.7, 0) (\"160 in section, 65° from the long tab\"): no boss along Z there",
+       "boss L at (109.6, 35, 0) (\"R30 TYP lobes\"): no Ø60 boss along Z there",
+       "slot S at (-140.7, 48.8, 15) (\"R3 slot in the long tab\"): no Ø6 round ends at (-122.2, 48.8, 15) and (-159.2, 48.8, 15) (width 6, 37 centre to centre)",
+       "callout \"Ø270 TYP UNLESS CALLED OUT\" (BOTTOM) points at feature plate, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.695
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.795
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.784
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -203..-3, y -168..42 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -146..-89, y 66..112 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 54..139, y -98..-4 (4% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -203..-146, y 42..89 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -131..-16, y -168..-75 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -131..-74, y -52..18 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 156..214, y 41..87 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -211..-94, z 13..30 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.5660684,
+     "s": 236,
+     "ok": true,
+     "size": [
+      353.622,
+      281.317,
+      32.5
+     ],
+     "check": {
+      "score": 0.942,
+      "checked": 52,
+      "missing": 2,
+      "skipped": [],
+      "issues": [
+       "overall X is 353.62 mm, the table says 356",
+       "slot S at (-140.7, 48.9, 15) (\"R3 slot in the long tab\"): no Ø6 round ends at (-158.17, 54.98, 15) and (-123.23, 42.82, 15) (width 6, 37 centre to centre)",
+       "rib T1 (\"220 in section, 55 wide\"): at (-150, 52, 7.5) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.699
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.785
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.806
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -203..-3, y -168..42 (14% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -146..-89, y 66..112 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 54..139, y -98..-4 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -203..-146, y 42..89 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -128..-14, y -168..-75 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -128..-71, y -52..18 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 157..214, y 41..87 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (-x right, +z up): the drawing shows material the model lacks around -x 97..213, z 13..27 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.3006124,
+     "s": 141,
+     "ok": true,
+     "size": [
+      343.306,
+      261.285,
+      29.5
+     ],
+     "check": {
+      "score": 0.86,
+      "checked": 43,
+      "missing": 4,
+      "skipped": [],
+      "issues": [
+       "overall X is 343.31 mm, the table says 382",
+       "overall Y is 261.29 mm, the table says 300",
+       "cbore C at (0, 0, 29.5) (\"section 75 radius\"): no Ø150 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 14.75)",
+       "boss T1 at (-205.7, 78.1, 3): no boss along Z there",
+       "boss T2 at (-111, -115, 3): no boss along Z there",
+       "slot S at (-140, 53, 18): no Ø6 round ends at (-125, 53, 18) and (-155, 53, 18) (width 6, 30 centre to centre)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.668
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.757
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.819
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -202..-8, y -156..39 (17% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 48..131, y -91..-4 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -202..-147, y 39..104 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -120..-9, y -156..-69 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x 46..129, y 61..126 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 129..212, y 39..105 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -120..-64, y -47..18 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -179..-95, z 17..30 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.3216084,
+     "s": 147,
+     "ok": true,
+     "size": [
+      353.733,
+      281.671,
+      32.5
+     ],
+     "check": {
+      "score": 0.756,
+      "checked": 41,
+      "missing": 7,
+      "skipped": [],
+      "issues": [
+       "overall X is 353.73 mm, the table says 360",
+       "overall Y is 281.67 mm, the table says 300",
+       "hole H#1 at (-59, 98.8, 29.5) (\"bolt holes on Ø230 at 120.8, 68.4, 18.1, 335.4, 266.2, 197.9 degrees\"): the table puts the entry 14.5 mm beyond the end of the hole the model has",
+       "hole H#6 at (-106.4, -43.2, 15) (\"bolt holes on Ø230 at 120.8, 68.4, 18.1, 335.4, 266.2, 197.9 degrees\"): no Ø11 hole along Z there; the nearest is Ø11 8.42 mm away, axis through (-109.43, -35.35, 7.5)",
+       "cbore CB at (0, 0, -3) (\"R75 step in Section A-A\"): no Ø150 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 13.25)",
+       "slot S at (-139, 47.5, 15) (\"R3 slot in the long tab\"): no Ø6 round ends at (-123, 47.5, 15) and (-155, 47.5, 15) (width 6, 32 centre to centre)",
+       "callout \"Ø270 TYP UNLESS CALLED OUT\" (BOTTOM) points at feature BODY, which the table does not have",
+       "callout \"R30 TYP\" (BOTTOM) points at feature BODY, which the table does not have",
+       "callout \"R10 TYP ALL EXTERIOR FILLETS\" (BOTTOM) points at feature BODY, which the table does not have",
+       "callout \"29.5 / 15 / 3\" (FRONT) points at feature BODY, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.692
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.796
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.788
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -204..-4, y -167..20 (14% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -147..-89, y 66..113 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 53..139, y -97..-4 (4% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -204..-147, y 43..90 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -130..-15, y -168..-74 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -130..-72, y -51..19 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 157..214, y 43..89 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -211..-94, z 13..30 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.4064964,
+     "s": 144,
+     "ok": true,
+     "size": [
+      353.622,
+      281.317,
+      32.5
+     ],
+     "check": {
+      "score": 1,
+      "checked": 52,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.699
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.783
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.806
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -203..-3, y -168..42 (14% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -146..-89, y 66..112 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 54..139, y -98..-4 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -203..-146, y 42..89 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -131..-16, y -167..-74 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -131..-73, y -51..20 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 156..214, y 43..90 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (-x right, +z up): the drawing shows material the model lacks around -x 97..213, z 13..27 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    }
+   ],
+   "cost": 2.047122,
+   "views": [
+    {
+     "name": "TOP",
+     "region": [
+      0.08,
+      0.08,
+      0.38,
+      0.52
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "BOTTOM",
+     "region": [
+      0.42,
+      0.26,
+      0.76,
+      0.67
+     ],
+     "right": "-x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "SECTION A-A",
+     "region": [
+      0.09,
+      0.56,
+      0.38,
+      0.77
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": {
+      "axis": "+y",
+      "at": 0
+     }
+    },
+    {
+     "name": "FRONT",
+     "region": [
+      0.11,
+      0.79,
+      0.42,
+      0.92
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": null
+    },
+    {
+     "name": "ISOMETRIC",
+     "region": [
+      0.72,
+      0.08,
+      0.95,
+      0.33
+     ],
+     "right": null,
+     "up": null,
+     "cut": null
+    }
+   ],
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.83,
+     "consensus": 0.6876666666666668,
+     "rank": 0.773
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.942,
+     "consensus": 0.637,
+     "rank": 0.82
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.756,
+     "consensus": 0.6233333333333334,
+     "rank": 0.703
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.86,
+     "consensus": 0.5133333333333333,
+     "rank": 0.721
+    }
+   ],
+   "look": "kept (self-check 0.942 -> 1)",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      353.622,
+      281.317,
+      32.5
+     ],
+     "consensus": 0.6876666666666668,
+     "check": {
+      "score": 0.83,
+      "checked": 47,
+      "missing": 7,
+      "skipped": [],
+      "issues": [
+       "overall Y is 281.32 mm, the table says 300",
+       "cbore C1 at (0, 0, 29.5) (\"75 radius in section A-A\"): no Ø150 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 13.25)",
+       "cbore C2 at (0, 0, -3) (\"66 radius in section A-A\"): no Ø132 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 13.25)",
+       "boss T1 at (-207.8, 72, 0) (\"220 in section, 55 wide\"): no boss along Z there",
+       "boss T2 at (-111.4, -114.7, 0) (\"160 in section, 65° from the long tab\"): no boss along Z there",
+       "boss L at (109.6, 35, 0) (\"R30 TYP lobes\"): no Ø60 boss along Z there",
+       "slot S at (-140.7, 48.8, 15) (\"R3 slot in the long tab\"): no Ø6 round ends at (-122.2, 48.8, 15) and (-159.2, 48.8, 15) (width 6, 37 centre to centre)",
+       "callout \"Ø270 TYP UNLESS CALLED OUT\" (BOTTOM) points at feature plate, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.695
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.795
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.784
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -203..-3, y -168..42 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -146..-89, y 66..112 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 54..139, y -98..-4 (4% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -203..-146, y 42..89 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -131..-16, y -168..-75 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -131..-74, y -52..18 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 156..214, y 41..87 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -211..-94, z 13..30 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      353.622,
+      281.317,
+      32.5
+     ],
+     "consensus": 0.637,
+     "check": {
+      "score": 0.942,
+      "checked": 52,
+      "missing": 2,
+      "skipped": [],
+      "issues": [
+       "overall X is 353.62 mm, the table says 356",
+       "slot S at (-140.7, 48.9, 15) (\"R3 slot in the long tab\"): no Ø6 round ends at (-158.17, 54.98, 15) and (-123.23, 42.82, 15) (width 6, 37 centre to centre)",
+       "rib T1 (\"220 in section, 55 wide\"): at (-150, 52, 7.5) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.699
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.785
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.806
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -203..-3, y -168..42 (14% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -146..-89, y 66..112 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 54..139, y -98..-4 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -203..-146, y 42..89 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -128..-14, y -168..-75 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -128..-71, y -52..18 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 157..214, y 41..87 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (-x right, +z up): the drawing shows material the model lacks around -x 97..213, z 13..27 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      353.733,
+      281.671,
+      32.5
+     ],
+     "consensus": 0.6233333333333334,
+     "check": {
+      "score": 0.756,
+      "checked": 41,
+      "missing": 7,
+      "skipped": [],
+      "issues": [
+       "overall X is 353.73 mm, the table says 360",
+       "overall Y is 281.67 mm, the table says 300",
+       "hole H#1 at (-59, 98.8, 29.5) (\"bolt holes on Ø230 at 120.8, 68.4, 18.1, 335.4, 266.2, 197.9 degrees\"): the table puts the entry 14.5 mm beyond the end of the hole the model has",
+       "hole H#6 at (-106.4, -43.2, 15) (\"bolt holes on Ø230 at 120.8, 68.4, 18.1, 335.4, 266.2, 197.9 degrees\"): no Ø11 hole along Z there; the nearest is Ø11 8.42 mm away, axis through (-109.43, -35.35, 7.5)",
+       "cbore CB at (0, 0, -3) (\"R75 step in Section A-A\"): no Ø150 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 13.25)",
+       "slot S at (-139, 47.5, 15) (\"R3 slot in the long tab\"): no Ø6 round ends at (-123, 47.5, 15) and (-155, 47.5, 15) (width 6, 32 centre to centre)",
+       "callout \"Ø270 TYP UNLESS CALLED OUT\" (BOTTOM) points at feature BODY, which the table does not have",
+       "callout \"R30 TYP\" (BOTTOM) points at feature BODY, which the table does not have",
+       "callout \"R10 TYP ALL EXTERIOR FILLETS\" (BOTTOM) points at feature BODY, which the table does not have",
+       "callout \"29.5 / 15 / 3\" (FRONT) points at feature BODY, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.692
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.796
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.788
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -204..-4, y -167..20 (14% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -147..-89, y 66..113 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 53..139, y -97..-4 (4% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -204..-147, y 43..90 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -130..-15, y -168..-74 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -130..-72, y -51..19 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 157..214, y 43..89 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -211..-94, z 13..30 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      343.306,
+      261.285,
+      29.5
+     ],
+     "consensus": 0.5133333333333333,
+     "check": {
+      "score": 0.86,
+      "checked": 43,
+      "missing": 4,
+      "skipped": [],
+      "issues": [
+       "overall X is 343.31 mm, the table says 382",
+       "overall Y is 261.29 mm, the table says 300",
+       "cbore C at (0, 0, 29.5) (\"section 75 radius\"): no Ø150 hole along Z there; the nearest is Ø120 0 mm away, axis through (0, 0, 14.75)",
+       "boss T1 at (-205.7, 78.1, 3): no boss along Z there",
+       "boss T2 at (-111, -115, 3): no boss along Z there",
+       "slot S at (-140, 53, 18): no Ø6 round ends at (-125, 53, 18) and (-155, 53, 18) (width 6, 30 centre to centre)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.668
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.757
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.819
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -202..-8, y -156..39 (17% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 48..131, y -91..-4 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -202..-147, y 39..104 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -120..-9, y -156..-69 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x 46..129, y 61..126 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 129..212, y 39..105 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -120..-64, y -47..18 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -179..-95, z 17..30 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.1",
+     "ok": true,
+     "size": [
+      353.622,
+      281.317,
+      32.5
+     ],
+     "check": {
+      "score": 1,
+      "checked": 52,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.699
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.783
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.806
+        }
+       ],
+       "lines": [
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -203..-3, y -168..42 (14% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -146..-89, y 66..112 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 54..139, y -98..-4 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -203..-146, y 42..89 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x -131..-16, y -167..-74 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x -131..-73, y -51..20 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the model has material the drawing does not show around -x 156..214, y 43..90 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (-x right, +z up): the drawing shows material the model lacks around -x 97..213, z 13..27 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "missing": 0,
+   "outline": [
+    {
+     "name": "TOP",
+     "iou": 0.699
+    },
+    {
+     "name": "BOTTOM",
+     "iou": 0.783
+    },
+    {
+     "name": "FRONT",
+     "iou": 0.806
+    }
+   ],
+   "attempts": 5,
+   "seconds": 733
+  },
+  {
+   "id": "128",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.34296840000000006,
+     "s": 168,
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "check": {
+      "score": 0.531,
+      "checked": 32,
+      "missing": 9,
+      "skipped": [],
+      "issues": [
+       "slot S#1 at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#2 at (236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#3 at (0, 335, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#4 at (-236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#5 at (-335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#6 at (-236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#7 at (0, -335, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#8 at (236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 0 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 60 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 90 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 111.01 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -424..-303 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.41553640000000003,
+     "s": 178,
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "check": {
+      "score": 0.621,
+      "checked": 29,
+      "missing": 9,
+      "skipped": [],
+      "issues": [
+       "hole H at (0, 0, 370.02) (\"Ø100 through the top wall (z320.02..370.02), opening into the Ø240 / Ø368 bores below\"): should be 50 deep but goes through",
+       "slot S#1 at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (423.1, 0, 0) and (246.9, 0, 0) (width 24, 176.2 centre to centre)",
+       "slot S#2 at (236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (324.98, 236.88, 0) and (148.78, 236.88, 0) (width 24, 176.2 centre to centre)",
+       "slot S#3 at (0, 335, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (88.1, 335, 0) and (-88.1, 335, 0) (width 24, 176.2 centre to centre)",
+       "slot S#4 at (-236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (-148.78, 236.88, 0) and (-324.98, 236.88, 0) (width 24, 176.2 centre to centre)",
+       "slot S#5 at (-335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (-246.9, 0, 0) and (-423.1, 0, 0) (width 24, 176.2 centre to centre)",
+       "slot S#6 at (-236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (-148.78, -236.88, 0) and (-324.98, -236.88, 0) (width 24, 176.2 centre to centre)",
+       "slot S#7 at (0, -335, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (88.1, -335, 0) and (-88.1, -335, 0) (width 24, 176.2 centre to centre)",
+       "slot S#8 at (236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (324.98, -236.88, 0) and (148.78, -236.88, 0) (width 24, 176.2 centre to centre)",
+       "step BODY (\"SECTION C-C: flat faces at z0 (flange underside), z60 (flange top), z200 (Ø368 bore floor), z320.02 (Ø240 bore floor), z370.02 (top face); 90 / 111.01 / 164.99 / 300 are slope transitions, not flats\"): no flat face across Z at 0 (a step height the table reads)",
+       "step BODY (\"SECTION C-C: flat faces at z0 (flange underside), z60 (flange top), z200 (Ø368 bore floor), z320.02 (Ø240 bore floor), z370.02 (top face); 90 / 111.01 / 164.99 / 300 are slope transitions, not flats\"): no flat face across Z at 60 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -424..-303 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.2598484,
+     "s": 125,
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "check": {
+      "score": 0.476,
+      "checked": 21,
+      "missing": 11,
+      "skipped": [],
+      "issues": [
+       "slot S#1 at (335, 0, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#2 at (236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#3 at (0, 335, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#4 at (-236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#5 at (-335, 0, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#6 at (-236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#7 at (0, -335, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#8 at (236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "callout \"370.02\" (SECTION C-C) points at feature body, which the table does not have",
+       "callout \"60 / 90 / 111.01 / 164.99 / 200 / 300\" (SECTION C-C) points at feature body, which the table does not have",
+       "callout \"35.00° (x3)\" (SECTION C-C) points at feature body, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x 303..424, y 130..248 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.36070440000000004,
+     "s": 184,
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "check": {
+      "score": 0.476,
+      "checked": 21,
+      "missing": 10,
+      "skipped": [],
+      "issues": [
+       "hole H1 at (0, 0, 370.02) (\"R68.00\"): should be 50 deep but goes through",
+       "slot S#1 at (335, 0, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#2 at (236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#3 at (0, 335, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#4 at (-236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#5 at (-335, 0, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#6 at (-236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#7 at (0, -335, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#8 at (236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "callout \"370.02/320.02/300/200/164.99/111.01/90/60\" (SECTION C-C) points at feature BODY, which the table does not have",
+       "callout \"35.00° x3\" (SECTION C-C) points at feature BODY, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.861
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -423..-302 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..242, y -363..-242 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -363..-303, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.4075044,
+     "s": 167,
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "check": {
+      "score": 0.724,
+      "checked": 29,
+      "missing": 7,
+      "skipped": [],
+      "issues": [
+       "slot S1#1 at (323.48, 0, 0) (\"arc slot on Ø670 centred at 0°/180°; position = chord midpoint, length = chord 174.19 + 24\"): no Ø24 round ends at (410.58, 0, 0) and (236.39, 0, 0) (width 24, 174.19 centre to centre)",
+       "slot S1#2 at (-323.48, 0, 0) (\"arc slot on Ø670 centred at 0°/180°; position = chord midpoint, length = chord 174.19 + 24\"): no Ø24 round ends at (-236.39, 0, 0) and (-410.58, 0, 0) (width 24, 174.19 centre to centre)",
+       "slot S2#1 at (228.73, 228.73, 0) (\"arc slot at 45°/225°\"): no Ø24 round ends at (315.83, 228.73, 0) and (141.64, 228.73, 0) (width 24, 174.19 centre to centre)",
+       "slot S2#2 at (-228.73, -228.73, 0) (\"arc slot at 45°/225°\"): no Ø24 round ends at (-141.63, -228.73, 0) and (-315.82, -228.73, 0) (width 24, 174.19 centre to centre)",
+       "slot S4#1 at (-228.73, 228.73, 0) (\"arc slot at 135°/315°\"): no Ø24 round ends at (-141.63, 228.73, 0) and (-315.82, 228.73, 0) (width 24, 174.19 centre to centre)",
+       "slot S4#2 at (228.73, -228.73, 0) (\"arc slot at 135°/315°\"): no Ø24 round ends at (315.83, -228.73, 0) and (141.64, -228.73, 0) (width 24, 174.19 centre to centre)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 0 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 60 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -424..-303 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    }
+   ],
+   "cost": 1.8352460000000002,
+   "views": [
+    {
+     "name": "TOP",
+     "region": [
+      0.09,
+      0.36,
+      0.35,
+      0.76
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "SECTION C-C",
+     "region": [
+      0.37,
+      0.27,
+      0.51,
+      0.7
+     ],
+     "right": "+z",
+     "up": "+y",
+     "cut": {
+      "axis": "+x",
+      "at": 0
+     }
+    },
+    {
+     "name": "BOTTOM",
+     "region": [
+      0.54,
+      0.35,
+      0.75,
+      0.59
+     ],
+     "right": "-x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "ISO",
+     "region": [
+      0.62,
+      0.1,
+      0.77,
+      0.26
+     ],
+     "right": null,
+     "up": null,
+     "cut": null
+    },
+    {
+     "name": "ISO (rear)",
+     "region": [
+      0.78,
+      0.1,
+      0.91,
+      0.27
+     ],
+     "right": null,
+     "up": null,
+     "cut": null
+    }
+   ],
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.531,
+     "consensus": 0.38633333333333336,
+     "rank": 0.473
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.621,
+     "consensus": 0.3666666666666667,
+     "rank": 0.519
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.476,
+     "consensus": 0.379,
+     "rank": 0.437
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.476,
+     "consensus": 0.39566666666666667,
+     "rank": 0.444
+    }
+   ],
+   "look": "kept (self-check 0.621 -> 0.724)",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "consensus": 0.38633333333333336,
+     "check": {
+      "score": 0.531,
+      "checked": 32,
+      "missing": 9,
+      "skipped": [],
+      "issues": [
+       "slot S#1 at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#2 at (236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#3 at (0, 335, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#4 at (-236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#5 at (-335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#6 at (-236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#7 at (0, -335, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "slot S#8 at (236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8)\"): the table gives no slot length",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 0 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 60 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 90 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 111.01 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -424..-303 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "consensus": 0.3666666666666667,
+     "check": {
+      "score": 0.621,
+      "checked": 29,
+      "missing": 9,
+      "skipped": [],
+      "issues": [
+       "hole H at (0, 0, 370.02) (\"Ø100 through the top wall (z320.02..370.02), opening into the Ø240 / Ø368 bores below\"): should be 50 deep but goes through",
+       "slot S#1 at (335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (423.1, 0, 0) and (246.9, 0, 0) (width 24, 176.2 centre to centre)",
+       "slot S#2 at (236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (324.98, 236.88, 0) and (148.78, 236.88, 0) (width 24, 176.2 centre to centre)",
+       "slot S#3 at (0, 335, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (88.1, 335, 0) and (-88.1, 335, 0) (width 24, 176.2 centre to centre)",
+       "slot S#4 at (-236.88, 236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (-148.78, 236.88, 0) and (-324.98, 236.88, 0) (width 24, 176.2 centre to centre)",
+       "slot S#5 at (-335, 0, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (-246.9, 0, 0) and (-423.1, 0, 0) (width 24, 176.2 centre to centre)",
+       "slot S#6 at (-236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (-148.78, -236.88, 0) and (-324.98, -236.88, 0) (width 24, 176.2 centre to centre)",
+       "slot S#7 at (0, -335, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (88.1, -335, 0) and (-88.1, -335, 0) (width 24, 176.2 centre to centre)",
+       "slot S#8 at (236.88, -236.88, 0) (\"Ø670 (x8), R12, 30.14° (x8): length = 335·30.14°·π/180 + 24 = 200.2\"): no Ø24 round ends at (324.98, -236.88, 0) and (148.78, -236.88, 0) (width 24, 176.2 centre to centre)",
+       "step BODY (\"SECTION C-C: flat faces at z0 (flange underside), z60 (flange top), z200 (Ø368 bore floor), z320.02 (Ø240 bore floor), z370.02 (top face); 90 / 111.01 / 164.99 / 300 are slope transitions, not flats\"): no flat face across Z at 0 (a step height the table reads)",
+       "step BODY (\"SECTION C-C: flat faces at z0 (flange underside), z60 (flange top), z200 (Ø368 bore floor), z320.02 (Ø240 bore floor), z370.02 (top face); 90 / 111.01 / 164.99 / 300 are slope transitions, not flats\"): no flat face across Z at 60 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -424..-303 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "consensus": 0.379,
+     "check": {
+      "score": 0.476,
+      "checked": 21,
+      "missing": 10,
+      "skipped": [],
+      "issues": [
+       "hole H1 at (0, 0, 370.02) (\"R68.00\"): should be 50 deep but goes through",
+       "slot S#1 at (335, 0, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#2 at (236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#3 at (0, 335, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#4 at (-236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#5 at (-335, 0, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#6 at (-236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#7 at (0, -335, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "slot S#8 at (236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°/14.86°\"): the table gives no slot length",
+       "callout \"370.02/320.02/300/200/164.99/111.01/90/60\" (SECTION C-C) points at feature BODY, which the table does not have",
+       "callout \"35.00° x3\" (SECTION C-C) points at feature BODY, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.861
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -423..-302 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..242, y -363..-242 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -363..-303, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "consensus": 0.39566666666666667,
+     "check": {
+      "score": 0.476,
+      "checked": 21,
+      "missing": 11,
+      "skipped": [],
+      "issues": [
+       "slot S#1 at (335, 0, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#2 at (236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#3 at (0, 335, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#4 at (-236.9, 236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#5 at (-335, 0, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#6 at (-236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#7 at (0, -335, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "slot S#8 at (236.9, -236.9, 60) (\"Ø670 (x8), R12, 30.14°, 14.86°\"): the table gives no slot length",
+       "callout \"370.02\" (SECTION C-C) points at feature body, which the table does not have",
+       "callout \"60 / 90 / 111.01 / 164.99 / 200 / 300\" (SECTION C-C) points at feature body, which the table does not have",
+       "callout \"35.00° (x3)\" (SECTION C-C) points at feature body, which the table does not have"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "BOTTOM (-x right, +y up): the drawing shows material the model lacks around -x 303..424, y 130..248 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.1",
+     "ok": true,
+     "size": [
+      730,
+      730,
+      370.02
+     ],
+     "check": {
+      "score": 0.724,
+      "checked": 29,
+      "missing": 7,
+      "skipped": [],
+      "issues": [
+       "slot S1#1 at (323.48, 0, 0) (\"arc slot on Ø670 centred at 0°/180°; position = chord midpoint, length = chord 174.19 + 24\"): no Ø24 round ends at (410.58, 0, 0) and (236.39, 0, 0) (width 24, 174.19 centre to centre)",
+       "slot S1#2 at (-323.48, 0, 0) (\"arc slot on Ø670 centred at 0°/180°; position = chord midpoint, length = chord 174.19 + 24\"): no Ø24 round ends at (-236.39, 0, 0) and (-410.58, 0, 0) (width 24, 174.19 centre to centre)",
+       "slot S2#1 at (228.73, 228.73, 0) (\"arc slot at 45°/225°\"): no Ø24 round ends at (315.83, 228.73, 0) and (141.64, 228.73, 0) (width 24, 174.19 centre to centre)",
+       "slot S2#2 at (-228.73, -228.73, 0) (\"arc slot at 45°/225°\"): no Ø24 round ends at (-141.63, -228.73, 0) and (-315.82, -228.73, 0) (width 24, 174.19 centre to centre)",
+       "slot S4#1 at (-228.73, 228.73, 0) (\"arc slot at 135°/315°\"): no Ø24 round ends at (-141.63, 228.73, 0) and (-315.82, 228.73, 0) (width 24, 174.19 centre to centre)",
+       "slot S4#2 at (228.73, -228.73, 0) (\"arc slot at 135°/315°\"): no Ø24 round ends at (315.83, -228.73, 0) and (141.64, -228.73, 0) (width 24, 174.19 centre to centre)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 0 (a step height the table reads)",
+       "step BODY (\"SECTION C-C\"): no flat face across Z at 60 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION C-C",
+         "iou": 0.605
+        },
+        {
+         "name": "TOP",
+         "iou": 0.854
+        },
+        {
+         "name": "BOTTOM",
+         "iou": 0.962
+        }
+       ],
+       "lines": [
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y 182..424 (12% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the drawing shows material the model lacks around -z -350..-57, y -424..-182 (11% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y 0..364 (8% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -379..-350, y -121..121 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (-z right, +y up, cut at x = 0): the model has material the drawing does not show around -z -57..1, y -364..-303 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x -242..0, y -424..-303 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 0..363, y -363..0 (5% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -364..-303, y -121..182 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.1",
+   "fallback": false,
+   "selfCheck": 0.724,
+   "missing": 7,
+   "outline": [
+    {
+     "name": "SECTION C-C",
+     "iou": 0.605
+    },
+    {
+     "name": "TOP",
+     "iou": 0.854
+    },
+    {
+     "name": "BOTTOM",
+     "iou": 0.962
+    }
+   ],
+   "attempts": 5,
+   "seconds": 747
+  },
+  {
+   "id": "139",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.3142524,
+     "s": 92,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B19: boolean Intersect on 'P.CU18' failed: boolean: unsupported tangent-curve surface intersection between faces 0/129 and 1/105: the carriers touch along a tangent curve from (-164.000000,0.000000,0.000000) to (-164.000000,0.000000,131.800000) (length 131.800000, 19 stations) which t"
+    },
+    {
+     "tag": "c0.2",
+     "attempt": 2,
+     "cost": 0.2793084,
+     "s": 79,
+     "ok": true,
+     "size": [
+      328,
+      316,
+      270
+     ],
+     "check": {
+      "score": 0.6,
+      "checked": 35,
+      "missing": 6,
+      "skipped": [],
+      "issues": [
+       "hole H1#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H1#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H1#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H1#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H2#1 at (120, 120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+       "hole H2#2 at (-120, 120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+       "hole H2#3 at (120, -120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+       "hole H2#4 at (-120, -120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION B-B",
+         "iou": 0.936
+        },
+        {
+         "name": "TOP",
+         "iou": 0.965
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.972
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.941
+        }
+       ],
+       "lines": [
+        "SECTION B-B (+x right, +y up, cut at z = 200.4): the drawing shows material the model lacks around x -75..50, y 149..174 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "RIGHT (-y right, +z up): the drawing shows material the model lacks around -y 131..184, z 180..269 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.33882439999999997,
+     "s": 99,
+     "ok": true,
+     "size": [
+      328,
+      340,
+      270
+     ],
+     "check": {
+      "score": 1,
+      "checked": 44,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION B-B",
+         "iou": 0.936
+        },
+        {
+         "name": "TOP",
+         "iou": 0.967
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.972
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.906
+        }
+       ],
+       "lines": [
+        "SECTION B-B (+x right, +y up, cut at z = 200.4): the drawing shows material the model lacks around x -75..50, y 149..174 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "RIGHT (-y right, +z up): the drawing shows material the model lacks around -y 141..197, z 180..270 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "RIGHT (-y right, +z up): the model has material the drawing does not show around -y -170..-141, z 45..158 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "RIGHT (-y right, +z up): the model has material the drawing does not show around -y 141..169, z 45..158 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.36874439999999997,
+     "s": 100,
+     "ok": true,
+     "size": [
+      328,
+      314,
+      270
+     ],
+     "check": {
+      "score": 1,
+      "checked": 42,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.96
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.978
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.937
+        }
+       ],
+       "lines": [
+        "RIGHT (-y right, +z up): the drawing shows material the model lacks around -y 131..183, z 180..247 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    }
+   ],
+   "cost": 1.3565536,
+   "views": [
+    {
+     "name": "TOP",
+     "region": [
+      0.07,
+      0.13,
+      0.41,
+      0.5
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "FRONT",
+     "region": [
+      0.09,
+      0.55,
+      0.34,
+      0.9
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": null
+    },
+    {
+     "name": "SECTION A-A",
+     "region": [
+      0.44,
+      0.13,
+      0.74,
+      0.4
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": {
+      "axis": "+y",
+      "at": 0
+     }
+    },
+    {
+     "name": "RIGHT",
+     "region": [
+      0.43,
+      0.42,
+      0.73,
+      0.67
+     ],
+     "right": "+y",
+     "up": "+z",
+     "cut": null
+    },
+    {
+     "name": "SECTION B-B",
+     "region": [
+      0.68,
+      0.35,
+      0.91,
+      0.66
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": {
+      "axis": "+z",
+      "at": 220
+     }
+    },
+    {
+     "name": "ISO",
+     "region": [
+      0.76,
+      0.08,
+      0.93,
+      0.34
+     ],
+     "right": null,
+     "up": null,
+     "cut": null
+    }
+   ],
+   "look": "kept (self-check 1 -> 1)",
+   "candidates": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "size": [
+      328,
+      316,
+      270
+     ],
+     "check": {
+      "score": 0.6,
+      "checked": 35,
+      "missing": 6,
+      "skipped": [],
+      "issues": [
+       "hole H1#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H1#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H1#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H1#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+       "hole H1#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+       "hole H2#1 at (120, 120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+       "hole H2#2 at (-120, 120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+       "hole H2#3 at (120, -120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+       "hole H2#4 at (-120, -120, 0) (\"4X Ø25 THRU, PCD 339.4\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION B-B",
+         "iou": 0.936
+        },
+        {
+         "name": "TOP",
+         "iou": 0.965
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.972
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.941
+        }
+       ],
+       "lines": [
+        "SECTION B-B (+x right, +y up, cut at z = 200.4): the drawing shows material the model lacks around x -75..50, y 149..174 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "RIGHT (-y right, +z up): the drawing shows material the model lacks around -y 131..184, z 180..269 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      328,
+      340,
+      270
+     ],
+     "check": {
+      "score": 1,
+      "checked": 44,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION B-B",
+         "iou": 0.936
+        },
+        {
+         "name": "TOP",
+         "iou": 0.967
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.972
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.906
+        }
+       ],
+       "lines": [
+        "SECTION B-B (+x right, +y up, cut at z = 200.4): the drawing shows material the model lacks around x -75..50, y 149..174 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "RIGHT (-y right, +z up): the drawing shows material the model lacks around -y 141..197, z 180..270 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "RIGHT (-y right, +z up): the model has material the drawing does not show around -y -170..-141, z 45..158 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "RIGHT (-y right, +z up): the model has material the drawing does not show around -y 141..169, z 45..158 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.1",
+     "ok": true,
+     "size": [
+      328,
+      314,
+      270
+     ],
+     "check": {
+      "score": 1,
+      "checked": 42,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "TOP",
+         "iou": 0.96
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.978
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.937
+        }
+       ],
+       "lines": [
+        "RIGHT (-y right, +z up): the drawing shows material the model lacks around -y 131..183, z 180..247 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "missing": 0,
+   "outline": [
+    {
+     "name": "TOP",
+     "iou": 0.96
+    },
+    {
+     "name": "FRONT",
+     "iou": 0.978
+    },
+    {
+     "name": "RIGHT",
+     "iou": 0.937
+    }
+   ],
+   "attempts": 4,
+   "seconds": 395
+  },
+  {
+   "id": "121",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.3688484,
+     "s": 236,
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "check": {
+      "score": 0.988,
+      "checked": 81,
+      "missing": 1,
+      "skipped": [],
+      "issues": [
+       "rib R (\"SECTION C-C\"): at (125, 52, 47) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.803
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.704
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -140..-92, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -68..77, z -6..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 74..146 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -141..-93 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -70..-65, y -141..122 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.4462044,
+     "s": 243,
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "check": {
+      "score": 0.988,
+      "checked": 81,
+      "missing": 0,
+      "skipped": [],
+      "issues": [
+       "hole C at (0, 0, 65) (\"Ø60.00, opens into the Ø155 bore\"): should be 15 deep but goes through"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.784
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.703
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -141..-93, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -69..75, z -5..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the model has material the drawing does not show around x 75..99, z 0..33 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 73..145 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -142..-94 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.30510840000000006,
+     "s": 107,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B72: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=5): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = -7, expected -6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: 0.0, y"
+    },
+    {
+     "tag": "c2.2",
+     "attempt": 2,
+     "cost": 0.3033324,
+     "s": 105,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B102: boolean SUBTRACT failed: fragment_face: chain 1 fragmented into an incomplete run"
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.5418044,
+     "s": 289,
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "check": {
+      "score": 0.963,
+      "checked": 80,
+      "missing": 2,
+      "skipped": [],
+      "issues": [
+       "boss H at (32.66, 78.86, 0): no Ø16 boss along Z there",
+       "rib E (\"SECTION C-C, ribs at 22.5°+45k\"): at (95, 0, 40) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)",
+       "rib E (\"SECTION C-C, ribs at 22.5°+45k\"): at (128, 0, 47) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.803
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "TOP",
+         "iou": 0.88
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.713
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -140..-92, z 5..49 (7% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -68..77, z -6..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -145..-98 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 94..141 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -70..-65, y -145..117 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the model has material the drawing does not show around -z -65..-54, y 94..165 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.3",
+     "attempt": 3,
+     "cost": 0.2899044,
+     "s": 79,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B80: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=5): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = -7, expected -6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: 0.0, y"
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.5600564,
+     "s": 282,
+     "ok": false,
+     "kind": "invalid",
+     "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "check": {
+      "score": 1,
+      "checked": 80,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.784
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.88
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.703
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -141..-93, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -69..75, z -5..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the model has material the drawing does not show around x 75..99, z 0..33 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 73..145 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -142..-94 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "look.2",
+     "attempt": 2,
+     "cost": 0.37704839999999995,
+     "s": 153,
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "check": {
+      "score": 1,
+      "checked": 81,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.784
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.88
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.703
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -141..-93, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -69..75, z -5..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the model has material the drawing does not show around x 75..99, z 0..33 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 73..145 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -142..-94 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    }
+   ],
+   "cost": 3.2484512000000008,
+   "views": [
+    {
+     "name": "TOP",
+     "region": [
+      0.09,
+      0.08,
+      0.34,
+      0.46
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "SIDE (LEFT/RIGHT)",
+     "region": [
+      0.373,
+      0.085,
+      0.443,
+      0.38
+     ],
+     "right": "-z",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "DETAIL B",
+     "region": [
+      0.446,
+      0.085,
+      0.682,
+      0.39
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "ISO",
+     "region": [
+      0.7,
+      0.14,
+      0.94,
+      0.37
+     ],
+     "right": null,
+     "up": null,
+     "cut": null
+    },
+    {
+     "name": "SECTION A-A",
+     "region": [
+      0.11,
+      0.46,
+      0.415,
+      0.65
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": {
+      "axis": "+y",
+      "at": 0
+     }
+    },
+    {
+     "name": "DETAIL D",
+     "region": [
+      0.44,
+      0.455,
+      0.615,
+      0.67
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "SECTION C-C",
+     "region": [
+      0.095,
+      0.69,
+      0.41,
+      0.9
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": {
+      "axis": "+y",
+      "at": 0
+     }
+    }
+   ],
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.988,
+     "consensus": 0.986,
+     "rank": 0.987
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.988,
+     "consensus": 0.993,
+     "rank": 0.99
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.963,
+     "consensus": 0.993,
+     "rank": 0.975
+    },
+    {
+     "tag": "c2.3",
+     "ok": false,
+     "consensus": 0,
+     "rank": -1
+    }
+   ],
+   "look": "kept (self-check 0.988 -> 1)",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "consensus": 0.986,
+     "check": {
+      "score": 0.988,
+      "checked": 81,
+      "missing": 1,
+      "skipped": [],
+      "issues": [
+       "rib R (\"SECTION C-C\"): at (125, 52, 47) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.803
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.704
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -140..-92, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -68..77, z -6..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 74..146 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -141..-93 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -70..-65, y -141..122 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "consensus": 0.993,
+     "check": {
+      "score": 0.988,
+      "checked": 81,
+      "missing": 0,
+      "skipped": [],
+      "issues": [
+       "hole C at (0, 0, 65) (\"Ø60.00, opens into the Ø155 bore\"): should be 15 deep but goes through"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.784
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.703
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -141..-93, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -69..75, z -5..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the model has material the drawing does not show around x 75..99, z 0..33 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 73..145 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -142..-94 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "consensus": 0.993,
+     "check": {
+      "score": 0.963,
+      "checked": 80,
+      "missing": 2,
+      "skipped": [],
+      "issues": [
+       "boss H at (32.66, 78.86, 0): no Ø16 boss along Z there",
+       "rib E (\"SECTION C-C, ribs at 22.5°+45k\"): at (95, 0, 40) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)",
+       "rib E (\"SECTION C-C, ribs at 22.5°+45k\"): at (128, 0, 47) the model is empty, the table puts material there (the rib stops short, or runs at another angle or height)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.803
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "TOP",
+         "iou": 0.88
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.713
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -140..-92, z 5..49 (7% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -68..77, z -6..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -145..-98 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 94..141 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -70..-65, y -145..117 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the model has material the drawing does not show around -z -65..-54, y 94..165 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.3",
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B80: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=5): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = -7, expected -6 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: 0.0, y",
+     "consensus": 0
+    },
+    {
+     "tag": "look.2",
+     "ok": true,
+     "size": [
+      300,
+      300,
+      65
+     ],
+     "check": {
+      "score": 1,
+      "checked": 81,
+      "missing": 0,
+      "skipped": [],
+      "issues": [],
+      "outline": {
+       "views": [
+        {
+         "name": "DETAIL B",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION A-A",
+         "iou": 0.784
+        },
+        {
+         "name": "DETAIL D",
+         "skipped": "a detail view shows only part of the model"
+        },
+        {
+         "name": "SECTION C-C",
+         "iou": 0.818
+        },
+        {
+         "name": "TOP",
+         "iou": 0.88
+        },
+        {
+         "name": "SIDE (LEFT/RIGHT)",
+         "iou": 0.703
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -141..-93, z 5..49 (8% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -69..75, z -5..0 (4% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION A-A (+x right, +z up, cut at y = 0): the model has material the drawing does not show around x 75..99, z 0..33 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION C-C (+x right, +z up, cut at y = 0): the drawing shows material the model lacks around x -97..118, z -5..38 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 100..150, y 75..124 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -149..-100, y 25..99 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y 73..145 (10% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SIDE (LEFT/RIGHT) (-z right, +y up): the drawing shows material the model lacks around -z -49..0, y -142..-94 (9% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.2",
+   "fallback": false,
+   "selfCheck": 1,
+   "missing": 0,
+   "outline": [
+    {
+     "name": "DETAIL B",
+     "skipped": "a detail view shows only part of the model"
+    },
+    {
+     "name": "SECTION A-A",
+     "iou": 0.784
+    },
+    {
+     "name": "DETAIL D",
+     "skipped": "a detail view shows only part of the model"
+    },
+    {
+     "name": "SECTION C-C",
+     "iou": 0.818
+    },
+    {
+     "name": "TOP",
+     "iou": 0.88
+    },
+    {
+     "name": "SIDE (LEFT/RIGHT)",
+     "iou": 0.703
+    }
+   ],
+   "attempts": 8,
+   "seconds": 1231
+  },
+  {
+   "id": "148",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.5760204000000001,
+     "s": 237,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B22: boolean Union on 'R21' failed: boolean: the result SELF-INTERSECTS — faces 7 and 47 near (-79.6630, 55.1692, 29.4329) (straddle 5.000e-1 against a band of 3.1e-4); faces 9 and 47 near (-79.8020, 44.8180, 29.0241) (straddle 5.000e-1 against a band of 3.1e-4). The enclosed space ca"
+    },
+    {
+     "tag": "c0.2",
+     "attempt": 2,
+     "cost": 0.3640684,
+     "s": 148,
+     "ok": true,
+     "size": [
+      202,
+      100,
+      220
+     ],
+     "check": {
+      "score": 0.745,
+      "checked": 55,
+      "missing": 6,
+      "skipped": [],
+      "issues": [
+       "boss TAB#1 at (101, 0, 0) (\"B-B / FRONT\"): no boss along X there",
+       "boss TAB#2 at (-101, 0, 0) (\"B-B / FRONT\"): no boss along X there",
+       "hole T#1 at (101, 34, 0) (\"2X Ø10, 34, 11\"): should be 11 deep but goes through",
+       "hole T#2 at (-101, 34, 0) (\"2X Ø10, 34, 11\"): no Ø10 hole along X there; the nearest is Ø10 0 mm away, axis through (0, 34, 0)",
+       "boss BOSS at (0, 50, 101) (\"Ø75 boss, 6 lobes R7.5 on r38\"): no Ø75 boss along Z there",
+       "hole BB at (0, 50, 119) (\"Ø65\"): diameter is 27, the table says 65",
+       "hole BB at (0, 50, 119) (\"Ø65\"): depth is 95, the table says 79",
+       "hole D27 at (0, 50, 40) (\"Ø27\"): no Ø27 hole along Z there; the nearest is Ø27 0 mm away, axis through (0, 50, 71.5)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 29.4 (a step height the table reads)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 45 (a step height the table reads)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 53.8 (a step height the table reads)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 55 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.922
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.805
+        },
+        {
+         "name": "TOP",
+         "iou": 0.886
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.852
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.934
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 58): the drawing shows material the model lacks around x 65..97, z 60..96 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the drawing shows material the model lacks around x -84..67, -y 0..8 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -100..-58 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -17..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x -101..-84, -y -42..0 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the drawing shows material the model lacks around x 17..101, -y 0..8 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x -101..17, -y -8..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x 84..101, -y -100..-50 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.7345644,
+     "s": 418,
+     "ok": true,
+     "size": [
+      203.2,
+      100,
+      218
+     ],
+     "check": {
+      "score": 0.861,
+      "checked": 122,
+      "missing": 15,
+      "skipped": [],
+      "issues": [
+       "hole T#1 at (101.6, 34, 0) (\"2X Ø10, 34, 11\"): should be 11 deep but goes through",
+       "hole T#2 at (-101.6, 34, 0) (\"2X Ø10, 34, 11\"): no Ø10 hole along X there; the nearest is Ø10 0 mm away, axis through (0, 34, 0)",
+       "boss BOSS at (0, 50, 99) (\"Ø75 boss, 6 lobes R7.5 on r38\"): no Ø75 boss along Z there",
+       "cbore BB at (0, 50, 119) (\"Ø65 boss bore to the lens at z 58, Ø27 drilling into the hub bore\"): should be 99 deep but goes through",
+       "hole P#1 at (66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#2 at (83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#3 at (66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#4 at (83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#5 at (-66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#6 at (-83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)",
+       "hole P#7 at (-66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#8 at (-83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.923
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.806
+        },
+        {
+         "name": "TOP",
+         "iou": 0.886
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.854
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.94
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 53): the drawing shows material the model lacks around x 64..97, z 62..98 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the drawing shows material the model lacks around x -84..67, -y 0..8 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -100..-58 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -17..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x -101..-84, -y -42..0 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the drawing shows material the model lacks around x 17..101, -y 0..8 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x -101..17, -y -9..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x 84..101, -y -100..-50 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.43090039999999996,
+     "s": 151,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B20: boolean Union on 'R19' failed: boolean: the result SELF-INTERSECTS — faces 9 and 50 near (-79.8020, 44.8250, 29.0244) (straddle 5.000e-1 against a band of 3.1e-4); faces 7 and 50 near (-39.2770, 53.7060, -75.3247) (straddle 5.000e-1 against a band of 3.1e-4). The enclosed space c"
+    },
+    {
+     "tag": "c2.2",
+     "attempt": 2,
+     "cost": 0.3809404,
+     "s": 91,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B32: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=1 genus=4): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 52 of face 47 is open between coedges 308 and 309\" }, ValidationIssue { severity: \"error\", kind: Other, message: \"loop 52 of face 4"
+    },
+    {
+     "tag": "c2.3",
+     "attempt": 3,
+     "cost": 0.3448044,
+     "s": 68,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B19: boolean Union on 'R9' failed: boolean: the result SELF-INTERSECTS — faces 5 and 21 near (-28.8632, 57.1256, -79.9321) (straddle 5.000e-1 against a band of 2.9e-4); faces 7 and 21 near (-81.0806, 44.8712, 25.2651) (straddle 5.000e-1 against a band of 2.9e-4). The enclosed space ca"
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.8348963999999999,
+     "s": 375,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B24: boolean Union on 'R9' failed: boolean: the result SELF-INTERSECTS — faces 7 and 21 near (-48.5709, 46.7124, -69.6425) (straddle 1.000e0 against a band of 2.9e-4); faces 5 and 21 near (-18.6229, 54.2615, -82.8989) (straddle 1.000e0 against a band of 2.9e-4). The enclosed space can"
+    },
+    {
+     "tag": "c1.2",
+     "attempt": 2,
+     "cost": 0.37124440000000003,
+     "s": 260,
+     "ok": false,
+     "kind": "invalid",
+     "error": "the STEP failed the validity gate: STEP load failed: Bnd_Box is void",
+     "size": [
+      202.2,
+      100,
+      218
+     ],
+     "check": {
+      "score": 0.65,
+      "checked": 20,
+      "missing": 4,
+      "skipped": [],
+      "issues": [
+       "cbore F at (0, 50, 45): should be 31 deep but goes through",
+       "cbore F at (0, 50, 45): counterbore Ø65, the table says Ø35",
+       "cbore F at (0, 50, 45): counterbore 73 deep, the table says 3",
+       "hole J#1 at (101.1, 66, 0): no Ø10 hole along Z there; the nearest is Ø7 65.58 mm away, axis through (37.5, 50, 105.5)",
+       "hole J#2 at (-101.1, 66, 0): no Ø10 hole along Z there; the nearest is Ø7 65.58 mm away, axis through (-37.5, 50, 105.5)",
+       "boss T at (0, 50, 90): no boss along Z there",
+       "step W: at (0, 50, 35) the model is empty, the table puts material there"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.954
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.79
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.86
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 42): the drawing shows material the model lacks around x 67..101, z 59..95 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, +y up, cut at z = 0): the drawing shows material the model lacks around x -84..67, y 100..108 (5% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, +y up, cut at z = 0): the model has material the drawing does not show around x 67..101, y 0..42 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, +y up, cut at z = 0): the model has material the drawing does not show around x -101..-67, y 58..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, +y up, cut at z = 0): the model has material the drawing does not show around x 67..101, y 75..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 17..101, y 100..108 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 84..101, y 0..50 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "FRONT (+x right, +z up): the drawing shows material the model lacks around x -117..-67, z -79..-8 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.3",
+     "attempt": 3,
+     "cost": 0.6223404000000001,
+     "s": 407,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B116: boolean SUBTRACT failed: boolean assembly: non-integral genus (V=265 E=396 F=138 H=100 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,"
+    },
+    {
+     "tag": "look.1",
+     "attempt": 1,
+     "cost": 0.5208204000000001,
+     "s": 170,
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B35: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=1 genus=2): [ValidationIssue { severity: \"error\", kind: Other, message: \"loop 54 of face 50 is open between coedges 441 and 294\" }, ValidationIssue { severity: \"error\", kind: Other, message: \"loop 54 of face 5"
+    },
+    {
+     "tag": "look.2",
+     "attempt": 2,
+     "cost": 0.4530044,
+     "s": 170,
+     "ok": true,
+     "size": [
+      203.2,
+      100,
+      218
+     ],
+     "check": {
+      "score": 0.862,
+      "checked": 123,
+      "missing": 15,
+      "skipped": [],
+      "issues": [
+       "hole T#1 at (101.6, 66, 0) (\"2X Ø10, 34, 11\"): should be 11 deep but goes through",
+       "hole T#2 at (-101.6, 66, 0) (\"2X Ø10, 34, 11\"): no Ø10 hole along X there; the nearest is Ø10 0 mm away, axis through (0, 66, 0)",
+       "boss BOSS at (0, 50, 99) (\"Ø75 boss, 6 lobes R7.5 on r38\"): no Ø75 boss along Z there",
+       "cbore BB at (0, 50, 119) (\"Ø65 boss bore into the lens, Ø27 drilling into the hub bore\"): counterbore 48.29 deep, the table says 59",
+       "hole P#1 at (66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#2 at (83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#3 at (66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#4 at (83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#5 at (-66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#6 at (-83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)",
+       "hole P#7 at (-66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#8 at (-83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.928
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.794
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.855
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.94
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 53): the drawing shows material the model lacks around x 68..101, z 61..97 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the drawing shows material the model lacks around x -84..67, y 100..108 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, y 0..42 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, y 75..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the model has material the drawing does not show around x -101..-84, y 58..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 17..101, y 100..108 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -101..17, y 92..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 84..101, y 0..42 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    }
+   ],
+   "cost": 5.6917684,
+   "views": [
+    {
+     "name": "TOP",
+     "region": [
+      0.08,
+      0.07,
+      0.38,
+      0.38
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": null
+    },
+    {
+     "name": "FRONT",
+     "region": [
+      0.07,
+      0.39,
+      0.48,
+      0.93
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": null
+    },
+    {
+     "name": "RIGHT",
+     "region": [
+      0.585,
+      0.08,
+      0.75,
+      0.37
+     ],
+     "right": "-y",
+     "up": "+z",
+     "cut": null
+    },
+    {
+     "name": "ISO",
+     "region": [
+      0.745,
+      0.07,
+      0.93,
+      0.39
+     ],
+     "right": null,
+     "up": null,
+     "cut": null
+    },
+    {
+     "name": "SECTION A-A",
+     "region": [
+      0.445,
+      0.38,
+      0.615,
+      0.62
+     ],
+     "right": "+x",
+     "up": "+z",
+     "cut": {
+      "axis": "+y",
+      "at": -8
+     }
+    },
+    {
+     "name": "SECTION B-B",
+     "region": [
+      0.635,
+      0.41,
+      0.93,
+      0.665
+     ],
+     "right": "+x",
+     "up": "+y",
+     "cut": {
+      "axis": "-z",
+      "at": 0
+     }
+    }
+   ],
+   "ranking": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "own": 0.745,
+     "consensus": 0.75,
+     "rank": 0.747
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.861,
+     "consensus": 0.815,
+     "rank": 0.843
+    },
+    {
+     "tag": "c1.3",
+     "ok": false,
+     "consensus": 0,
+     "rank": -1
+    },
+    {
+     "tag": "c2.3",
+     "ok": false,
+     "consensus": 0,
+     "rank": -1
+    }
+   ],
+   "look": "kept (self-check 0.861 -> 0.862)",
+   "candidates": [
+    {
+     "tag": "c0.2",
+     "ok": true,
+     "size": [
+      202,
+      100,
+      220
+     ],
+     "consensus": 0.75,
+     "check": {
+      "score": 0.745,
+      "checked": 55,
+      "missing": 6,
+      "skipped": [],
+      "issues": [
+       "boss TAB#1 at (101, 0, 0) (\"B-B / FRONT\"): no boss along X there",
+       "boss TAB#2 at (-101, 0, 0) (\"B-B / FRONT\"): no boss along X there",
+       "hole T#1 at (101, 34, 0) (\"2X Ø10, 34, 11\"): should be 11 deep but goes through",
+       "hole T#2 at (-101, 34, 0) (\"2X Ø10, 34, 11\"): no Ø10 hole along X there; the nearest is Ø10 0 mm away, axis through (0, 34, 0)",
+       "boss BOSS at (0, 50, 101) (\"Ø75 boss, 6 lobes R7.5 on r38\"): no Ø75 boss along Z there",
+       "hole BB at (0, 50, 119) (\"Ø65\"): diameter is 27, the table says 65",
+       "hole BB at (0, 50, 119) (\"Ø65\"): depth is 95, the table says 79",
+       "hole D27 at (0, 50, 40) (\"Ø27\"): no Ø27 hole along Z there; the nearest is Ø27 0 mm away, axis through (0, 50, 71.5)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 29.4 (a step height the table reads)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 45 (a step height the table reads)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 53.8 (a step height the table reads)",
+       "shoulder W (\"SECTION B-B\"): no flat face across Y at 55 (a step height the table reads)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.922
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.805
+        },
+        {
+         "name": "TOP",
+         "iou": 0.886
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.852
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.934
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 58): the drawing shows material the model lacks around x 65..97, z 60..96 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the drawing shows material the model lacks around x -84..67, -y 0..8 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -100..-58 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -17..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x -101..-84, -y -42..0 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the drawing shows material the model lacks around x 17..101, -y 0..8 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x -101..17, -y -8..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x 84..101, -y -100..-50 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      203.2,
+      100,
+      218
+     ],
+     "consensus": 0.815,
+     "check": {
+      "score": 0.861,
+      "checked": 122,
+      "missing": 15,
+      "skipped": [],
+      "issues": [
+       "hole T#1 at (101.6, 34, 0) (\"2X Ø10, 34, 11\"): should be 11 deep but goes through",
+       "hole T#2 at (-101.6, 34, 0) (\"2X Ø10, 34, 11\"): no Ø10 hole along X there; the nearest is Ø10 0 mm away, axis through (0, 34, 0)",
+       "boss BOSS at (0, 50, 99) (\"Ø75 boss, 6 lobes R7.5 on r38\"): no Ø75 boss along Z there",
+       "cbore BB at (0, 50, 119) (\"Ø65 boss bore to the lens at z 58, Ø27 drilling into the hub bore\"): should be 99 deep but goes through",
+       "hole P#1 at (66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#2 at (83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#3 at (66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#4 at (83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#5 at (-66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#6 at (-83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)",
+       "hole P#7 at (-66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#8 at (-83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.923
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.806
+        },
+        {
+         "name": "TOP",
+         "iou": 0.886
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.854
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.94
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 53): the drawing shows material the model lacks around x 64..97, z 62..98 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the drawing shows material the model lacks around x -84..67, -y 0..8 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -100..-58 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, -y -17..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, -y up, cut at -z = 0): the model has material the drawing does not show around x -101..-84, -y -42..0 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the drawing shows material the model lacks around x 17..101, -y 0..8 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x -101..17, -y -9..0 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, -y up): the model has material the drawing does not show around x 84..101, -y -100..-50 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    },
+    {
+     "tag": "c1.3",
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B116: boolean SUBTRACT failed: boolean assembly: non-integral genus (V=265 E=396 F=138 H=100 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,",
+     "consensus": 0
+    },
+    {
+     "tag": "c2.3",
+     "ok": false,
+     "kind": "build",
+     "error": "Rust kernel, B B19: boolean Union on 'R9' failed: boolean: the result SELF-INTERSECTS — faces 5 and 21 near (-28.8632, 57.1256, -79.9321) (straddle 5.000e-1 against a band of 2.9e-4); faces 7 and 21 near (-81.0806, 44.8712, 25.2651) (straddle 5.000e-1 against a band of 2.9e-4). The enclosed space ca",
+     "consensus": 0
+    },
+    {
+     "tag": "look.2",
+     "ok": true,
+     "size": [
+      203.2,
+      100,
+      218
+     ],
+     "check": {
+      "score": 0.862,
+      "checked": 123,
+      "missing": 15,
+      "skipped": [],
+      "issues": [
+       "hole T#1 at (101.6, 66, 0) (\"2X Ø10, 34, 11\"): should be 11 deep but goes through",
+       "hole T#2 at (-101.6, 66, 0) (\"2X Ø10, 34, 11\"): no Ø10 hole along X there; the nearest is Ø10 0 mm away, axis through (0, 66, 0)",
+       "boss BOSS at (0, 50, 99) (\"Ø75 boss, 6 lobes R7.5 on r38\"): no Ø75 boss along Z there",
+       "cbore BB at (0, 50, 119) (\"Ø65 boss bore into the lens, Ø27 drilling into the hub bore\"): counterbore 48.29 deep, the table says 59",
+       "hole P#1 at (66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#2 at (83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#3 at (66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (38, 50, 109)",
+       "hole P#4 at (83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (38, 50, 109)",
+       "hole P#5 at (-66.16, 20, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#6 at (-83.84, 20, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)",
+       "hole P#7 at (-66.16, 80, 86.04) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 41.15 mm away, axis through (-38, 50, 109)",
+       "hole P#8 at (-83.84, 80, 68.36) (\"4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats\"): no Ø10 hole along Z there; the nearest is Ø7 54.78 mm away, axis through (-38, 50, 109)"
+      ],
+      "outline": {
+       "views": [
+        {
+         "name": "SECTION A-A",
+         "iou": 0.928
+        },
+        {
+         "name": "SECTION B-B",
+         "iou": 0.794
+        },
+        {
+         "name": "TOP",
+         "iou": 0.881
+        },
+        {
+         "name": "FRONT",
+         "iou": 0.855
+        },
+        {
+         "name": "RIGHT",
+         "iou": 0.94
+        }
+       ],
+       "lines": [
+        "SECTION A-A (+x right, +z up, cut at y = 53): the drawing shows material the model lacks around x 68..101, z 61..97 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the drawing shows material the model lacks around x -84..67, y 100..108 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, y 0..42 (6% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the model has material the drawing does not show around x 67..101, y 75..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "SECTION B-B (+x right, +y up, cut at -z = 0): the model has material the drawing does not show around x -101..-84, y 58..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the drawing shows material the model lacks around x 17..101, y 100..108 (3% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x -101..17, y 92..100 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+        "TOP (+x right, +y up): the model has material the drawing does not show around x 84..101, y 0..42 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+       ]
+      }
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "look.2",
+   "fallback": false,
+   "selfCheck": 0.862,
+   "missing": 15,
+   "outline": [
+    {
+     "name": "SECTION A-A",
+     "iou": 0.928
+    },
+    {
+     "name": "SECTION B-B",
+     "iou": 0.794
+    },
+    {
+     "name": "TOP",
+     "iou": 0.881
+    },
+    {
+     "name": "FRONT",
+     "iou": 0.855
+    },
+    {
+     "name": "RIGHT",
+     "iou": 0.94
+    }
+   ],
+   "attempts": 11,
+   "seconds": 2230
+  }
+ ]
+}

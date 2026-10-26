@@ -1,0 +1,63 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensions on the sheet in mm; plate 300 across flats, 15 thick; hub 50 tall; bore Ø155" },
+  "frame": "origin on the hub axis at the open bottom end of the hub, Z up, plate top at z=65; X right and Y up as in TOP",
+  "overall": { "x": 300, "y": 300, "z": 65 },
+  "bbox": { "min": [-150, -150, 0], "max": [150, 150, 65] },
+  "body": [
+    "regular octagon plate, 300 across flats, flats normal to 0/45/90.. deg, z 50..65",
+    "hub tube outer R88, bore Ø155, z 0..50.5",
+    "8 bosses r9.5 at the Ø10 hole centres (R85.4, 22.5+45k deg), z 0..50.5",
+    "8 sloped ribs 8 thick at 22.5+45k deg from (r86.5, z24.36) to (r133.2, z43.49), vertical end face up to the plate"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.09, 0.08, 0.36, 0.47], "right": "+x", "up": "+y", "shows": "octagon, holes, through pockets" },
+    { "name": "SIDE", "region": [0.38, 0.12, 0.45, 0.38], "right": "+z", "up": "+y", "shows": "15 + 50 = 65, ribs 26.91 deg" },
+    { "name": "DETAIL B", "region": [0.48, 0.12, 0.66, 0.39], "right": "+x", "up": "+y", "shows": "12 top pockets, Ø10 x8" },
+    { "name": "SECTION A-A", "region": [0.12, 0.46, 0.42, 0.57], "right": "+x", "up": "+z", "cut": { "axis": "+y", "at": 0 }, "shows": "hub wall, bore" },
+    { "name": "DETAIL D", "region": [0.47, 0.46, 0.62, 0.65], "right": "+x", "up": "+y", "shows": "through pocket trapezoid" },
+    { "name": "SECTION C-C", "region": [0.12, 0.69, 0.42, 0.88], "right": "+x", "up": "+z", "cut": { "axis": "+y", "at": 0 }, "shows": "sloped rib, top pockets 7.5" },
+    { "name": "ISO", "region": [0.7, 0.12, 0.94, 0.4], "shows": "lobed hub, ribs, pockets, notches around Ø60 hole" }
+  ],
+  "callouts": [
+    { "text": "Ø12.50 (8X)", "view": "TOP", "kind": "pattern", "feature": "H1" },
+    { "text": "Ø10.00 (8X)", "view": "DETAIL B", "kind": "pattern", "feature": "H2" },
+    { "text": "Ø60.00", "view": "TOP", "kind": "dimension", "feature": "C" },
+    { "text": "Ø155.00", "view": "SECTION A-A", "kind": "dimension", "feature": "BORE" },
+    { "text": "R97.50 (8X)", "view": "TOP", "kind": "pattern", "feature": "P" },
+    { "text": "41.78 / 61.00 / 67.50° / R5.00 TYP", "view": "DETAIL D", "kind": "fillet", "feature": "P" },
+    { "text": "25.12° / 26.91° / 21.51 / 24.36 / 266.43", "view": "SECTION C-C", "kind": "angle", "feature": "R" },
+    { "text": "7.50", "view": "SECTION C-C", "kind": "step", "feature": "TP" },
+    { "text": "30.00° 15.00° 7.50° 15.08 35.51", "view": "DETAIL B", "kind": "pattern", "feature": "TP" },
+    { "text": "R1.00", "view": "SECTION C-C", "kind": "fillet", "skip": "tiny blend" },
+    { "text": "5.7", "view": "SECTION A-A", "kind": "dimension", "feature": "R" }
+  ],
+  "features": [
+    { "id": "H1", "type": "hole", "count": 8,
+      "positions": [[136.54, 56.56, 65], [56.56, 136.54, 65], [-56.56, 136.54, 65], [-136.54, 56.56, 65], [-136.54, -56.56, 65], [-56.56, -136.54, 65], [56.56, -136.54, 65], [136.54, -56.56, 65]],
+      "axis": "+z", "dia": 12.5, "depth": "thru", "source": "Ø12.50 (8X)", "confidence": "high" },
+    { "id": "H2", "type": "hole", "count": 8,
+      "positions": [[78.86, 32.66, 65], [32.66, 78.86, 65], [-32.66, 78.86, 65], [-78.86, 32.66, 65], [-78.86, -32.66, 65], [-32.66, -78.86, 65], [32.66, -78.86, 65], [78.86, -32.66, 65]],
+      "axis": "+z", "dia": 10, "depth": "thru", "source": "Ø10.00 (8X)", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[0, 0, 65]], "axis": "+z", "dia": 60, "depth": "thru", "source": "Ø60.00 through the plate into the bore", "confidence": "high" },
+    { "id": "BORE", "type": "pocket", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 155, "depth": 50, "probes": [[0, 60, 25]], "source": "Ø155", "confidence": "high" },
+    { "id": "P", "type": "pocket", "count": 8, "positions": [[118.4, 0, 65]], "axis": "+z", "depth": "thru", "r": 5, "edges": "vertical corners",
+      "probes": [[118, 0, 57], [0, 118, 57], [-118, 0, 57], [0, -118, 57]],
+      "source": "DETAIL D: R97.5..R139.28, width 61 at mid-height, 67.5 deg sides", "confidence": "medium" },
+    { "id": "R", "type": "rib", "count": 8, "angle": 25.12, "from": [133.2, 0, 43.49], "to": [87.5, 0, 24.36],
+      "probes": [[95, 36, 40], [115, 47.6, 46]], "source": "SECTION C-C", "confidence": "medium" },
+    { "id": "TP", "type": "pocket", "count": 12, "positions": [[52, 14, 65]], "axis": "+z", "depth": 7.5,
+      "probes": [[50, 13.4, 62]], "source": "DETAIL B, C-C 7.50", "confidence": "low" },
+    { "id": "N", "type": "notch", "count": 4, "positions": [[21.2, 21.2, 65]], "axis": "+z", "width": 6, "depth": "thru",
+      "probes": [[22.6, 22.6, 60]], "source": "ISO: notches around the Ø60 hole", "confidence": "low" }
+  ],
+  "guessed": [
+    "hub outer R88 from A-A wall",
+    "boss r9.5",
+    "Ø10 holes through-all",
+    "rib thickness 8",
+    "61.00 taken as pocket width at mid-radius",
+    "top pocket radii 35..72, spokes at 0+30k deg",
+    "notch size 7 x 6"
+  ]
+}

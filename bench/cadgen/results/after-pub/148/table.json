@@ -1,0 +1,56 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Ø170 bore, Ø195 bolt circle, Ø130 hole circle, 45/34 depths and 16.1/11 in SECTION B-B, 60/25/20/R12.5 in the auxiliary view; overall length 100 scaled from B-B against the 45" },
+  "frame": "origin on the housing axis at the face seen in the FRONT view; +Y runs along the axis away from that viewer (0..100); the tab end is y 55..100; X right; Z up (toward the top boss)",
+  "overall": { "x": 203.2, "y": 100, "z": 218 },
+  "bbox": { "min": [-101.6, 0, -99], "max": [101.6, 100, 119] },
+  "body": [
+    "octagonal prism along Y, y 0..100: side flats x=±97, top/bottom flats z=±99, four diagonal flats |x|+|z|=152.2",
+    "tab-side cavity: Ø170 bore from y 100 down to y 55, web face sloping to r42.15 at y 70.6, flat to the Ø60 hub bore; hub bore Ø60 y 55..70.6, lip bore Ø50 y 45.7..55",
+    "other cavity: hub bore Ø60 y 30.5..46.2, web face flat to r42.15 at y 30.5 then sloping to r85 at y 45, Ø170 bore to y 0",
+    "2 side tabs on x=±97: x 96.5..101.6, z ±11, y 66..100 straight with an R11 round end centred on the Ø10 hole at y 66 (tab spans y 55..100)",
+    "top boss Ø75 on the z=99 flat at (0,50), z 95..119, 6 R7.5 lobes on r38",
+    "lens cut under the boss, y 38..62: above z 58, below an arc R125.2 centred at z -50.2 (x ±63 at z 58, peak z 75)"
+  ],
+  "views": [
+    { "name": "FRONT", "region": [0.08, 0.40, 0.46, 0.94], "right": "+x", "up": "+z", "shows": "flange octagon, 8 bolt holes, 7 Ø27.5 web holes, hub" },
+    { "name": "TOP", "region": [0.11, 0.16, 0.35, 0.33], "right": "+x", "up": "+y", "shows": "boss face, 6 Ø7 holes, diagonal-flat holes and slots, tabs at the far end" },
+    { "name": "SECTION A-A", "region": [0.45, 0.38, 0.62, 0.61], "right": "+x", "up": "+z", "cut": { "axis": "+y", "at": 53 }, "shows": "web holes, lens under the boss, slot pockets on the diagonals" },
+    { "name": "SECTION B-B", "region": [0.66, 0.41, 0.89, 0.64], "right": "+x", "up": "+y", "cut": { "axis": "-z", "at": 0 }, "shows": "web half-section, bore steps, tab 45 long, tab holes" },
+    { "name": "RIGHT (aux, normal to upper diagonal flat)", "region": [0.6, 0.09, 0.71, 0.36], "shows": "4X Ø10 60x25, slot 20 c-c R12.5 offset 2.5" },
+    { "name": "ISO", "region": [0.74, 0.07, 0.94, 0.38], "shows": "overall form" }
+  ],
+  "callouts": [
+    { "text": "8X Ø10 THRU", "view": "FRONT", "kind": "pattern", "feature": "B" },
+    { "text": "7X Ø27.5 THRU / Ø130 / 7X 36°", "view": "FRONT", "kind": "pattern", "feature": "C" },
+    { "text": "107.6 TYP", "view": "FRONT", "kind": "dimension", "feature": "W" },
+    { "text": "106.3 TYP", "view": "FRONT", "kind": "dimension", "skip": "outline uses the 107.6 flats" },
+    { "text": "R7 TYP / R1.5 TYP / R5 TYP", "view": "FRONT", "kind": "fillet", "skip": "small rounds kept off for a robust solid" },
+    { "text": "170 / 84.3 / 60 / 50 / 45 / 157.5° TYP", "view": "SECTION B-B", "kind": "step", "feature": "W" },
+    { "text": "2X Ø10, 34, 11, 16.1", "view": "SECTION B-B", "kind": "dimension", "feature": "T" },
+    { "text": "2X 22 Inner Length of Tab", "view": "FRONT", "kind": "dimension", "feature": "TAB" },
+    { "text": "R5 / R3 / R2.5 TYP", "view": "SECTION B-B", "kind": "fillet", "skip": "web blend rounds" },
+    { "text": "2X 16", "view": "SECTION B-B", "kind": "dimension", "skip": "covered by the 45 and 34" },
+    { "text": "6X Ø7 UNTIL NEXT, R7.5 TYP, R10 TYP, Ø75, Ø65", "view": "TOP", "kind": "pattern", "feature": "BOSS" },
+    { "text": "Ø35 / Ø27", "view": "TOP", "kind": "dimension", "feature": "BB" },
+    { "text": "4X Ø10 UNTIL NEXT, 60, 25", "view": "RIGHT", "kind": "pattern", "feature": "P" },
+    { "text": "20, R12.5, 2.5 / A-A 25, 10", "view": "RIGHT", "kind": "dimension", "feature": "S" },
+    { "text": "R2.5 TYP FOR INTERNAL FILLETS", "view": "TOP", "kind": "fillet", "skip": "internal rounds" },
+    { "text": "R35", "view": "SECTION A-A", "kind": "dimension", "feature": "D35" }
+  ],
+  "features": [
+    { "id": "B", "type": "hole", "count": 8, "positions": [[84.44,0,48.75],[48.75,0,84.44],[-48.75,0,84.44],[-84.44,0,48.75],[-84.44,0,-48.75],[-48.75,0,-84.44],[48.75,0,-84.44],[84.44,0,-48.75]], "axis": "-y", "dia": 10, "depth": "thru", "source": "8X Ø10 THRU on Ø195", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 7, "positions": [[61.82,30.5,20.09],[-61.82,30.5,20.09],[-61.82,30.5,-20.09],[-38.21,30.5,-52.59],[0,30.5,-65],[38.21,30.5,-52.59],[61.82,30.5,-20.09]], "axis": "-y", "dia": 27.5, "depth": "thru", "source": "7X Ø27.5 THRU on Ø130", "confidence": "high" },
+    { "id": "W", "type": "shoulder", "axis": "+y", "levels": [30.5, 46.2, 55, 70.6], "probes": [[0,50,36],[60,55,0]], "source": "SECTION B-B", "confidence": "medium" },
+    { "id": "TAB", "type": "step", "count": 2, "positions": [[101.6,78,0],[-101.6,78,0]], "axis": "+x", "height": 4.6, "probes": [[99.5,80,0],[-99.5,80,0]], "source": "B-B 45 / 16.1, FRONT 22, TOP", "confidence": "medium" },
+    { "id": "T", "type": "hole", "count": 2, "positions": [[101.6,66,0],[-101.6,66,0]], "axis": "+x", "dia": 10, "depth": 11, "source": "2X Ø10, 34, 11", "confidence": "high" },
+    { "id": "BOSS", "type": "boss", "positions": [[0,50,99]], "axis": "+z", "dia": 75, "height": 20, "source": "Ø75 boss, 6 lobes R7.5 on r38", "confidence": "medium" },
+    { "id": "BB", "type": "cbore", "positions": [[0,50,119]], "axis": "+z", "dia": 27, "depth": "thru", "cbore": { "d": 65, "depth": 59 }, "source": "Ø65 boss bore into the lens, Ø27 drilling into the hub bore", "confidence": "medium" },
+    { "id": "D35", "type": "pocket", "positions": [[0,50,58]], "axis": "+z", "dia": 35, "depth": 16, "probes": [[0,50,50]], "source": "Ø35 / R35", "confidence": "low" },
+    { "id": "LENS", "type": "pocket", "positions": [[0,50,58]], "axis": "+z", "probes": [[0,50,65],[40,50,62]], "source": "SECTION A-A lens", "confidence": "medium" },
+    { "id": "BH", "type": "hole", "count": 6, "positions": [[38,50,119],[19,82.91,119],[-19,82.91,119],[-38,50,119],[-19,17.09,119],[19,17.09,119]], "axis": "+z", "dia": 7, "depth": 20, "source": "6X Ø7 UNTIL NEXT", "confidence": "medium" },
+    { "id": "P", "type": "hole", "count": 8, "positions": [[66.16,20,86.04],[83.84,20,68.36],[66.16,80,86.04],[83.84,80,68.36],[-66.16,20,86.04],[-83.84,20,68.36],[-66.16,80,86.04],[-83.84,80,68.36]], "dia": 10, "depth": 25, "source": "4X Ø10 UNTIL NEXT 60x25, normal to the upper diagonal flats", "confidence": "medium" },
+    { "id": "S", "type": "slot", "count": 4, "positions": [[76.77,50,75.43],[-76.77,50,75.43],[75,50,-77.2],[-75,50,-77.2]], "width": 25, "length": 45, "along": "y", "depth": 10, "probes": [[72,50,73],[-72,50,73],[71,50,-73],[-71,50,-73]], "source": "20 c-c R12.5 offset 2.5; A-A 25 x 10", "confidence": "medium" }
+  ],
+  "guessed": ["overall length 100 scaled from B-B", "side flats 97, top/bottom 99 scaled", "boss z 95..119 scaled", "hole circle r38", "lens z 58..75, x ±63 scaled from A-A", "Ø35 depth to z 42, Ø27 to z 20", "lower slot pockets centred", "web levels scaled from B-B", "tab end placed opposite the FRONT viewer from the TOP view"]
+}

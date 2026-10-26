@@ -1,0 +1,31 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from the dimensioned TOP and FRONT views and the notes" },
+  "frame": "origin at the flange's min corner (left, front, bottom). X runs to the right in TOP, Y runs up the sheet in TOP, Z is up. The flange bottom is at z=0.",
+  "overall": { "x": 100, "y": 100, "z": 42 },
+  "bbox": { "min": [0, 0, 0], "max": [100, 100, 42] },
+  "body": [
+    "Square flange plate 100 x 100 x 12, z 0..12, vertical corners R10 (note 3)",
+    "Round boss Ø76 centred at (50,50), z 12..42 (42 overall - 12 flange = 30 tall)"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.129, 0.135, 0.329, 0.417], "right": "+x", "up": "+y", "shows": "plate outline, R10 corners, 4 bolt holes, Ø76 boss, Ø40 bore with Ø52 counterbore" },
+    { "name": "FRONT", "region": [0.129, 0.563, 0.329, 0.682], "right": "+x", "up": "+z", "shows": "flange thickness 12, overall height 42, hidden bore and counterbore steps" },
+    { "name": "RIGHT", "region": [0.432, 0.563, 0.632, 0.682], "right": "+y", "up": "+z", "shows": "same profile as FRONT, width 100" },
+    { "name": "ISO", "region": [0.66, 0.27, 0.95, 0.56], "shows": "counterbore step inside the boss, rounded flange corners" }
+  ],
+  "callouts": [
+    { "text": "4X Ø9 THRU", "view": "TOP", "kind": "pattern", "feature": "H" },
+    { "text": "Ø40 THRU ⌴ Ø52 ↧ 15", "view": "TOP", "kind": "dimension", "feature": "B" },
+    { "text": "Ø76", "view": "TOP", "kind": "dimension", "feature": "BOSS" },
+    { "text": "FLANGE CORNER RADII R10", "view": "NOTES", "kind": "fillet", "feature": "R" },
+    { "text": "12 / 42", "view": "FRONT", "kind": "step", "feature": "BOSS" }
+  ],
+  "features": [
+    { "id": "BOSS", "type": "boss", "count": 1, "positions": [[50, 50, 12]], "axis": "+z", "dia": 76, "height": 30, "probes": [[50, 88, 30]], "source": "Ø76, 42 overall, 12 flange", "confidence": "high" },
+    { "id": "B", "type": "cbore", "count": 1, "positions": [[50, 50, 42]], "axis": "+z", "dia": 40, "depth": "thru", "cbore": { "d": 52, "depth": 15 }, "source": "Ø40 THRU ⌴ Ø52 ↧ 15", "confidence": "high" },
+    { "id": "H", "type": "hole", "count": 4, "positions": [[12, 12, 12], [88, 12, 12], [12, 88, 12], [88, 88, 12]], "axis": "+z", "dia": 9, "depth": "thru", "source": "4X Ø9 THRU at 12 and 88 from the left and bottom edges", "confidence": "high" },
+    { "id": "R", "type": "fillet", "count": 4, "r": 10, "edges": "the four vertical corner edges of the flange", "source": "note 3", "confidence": "high" }
+  ],
+  "guessed": []
+}

@@ -1,0 +1,254 @@
+{
+ "id": "p12-rib-bracket",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.21766839999999998,
+   "s": 50,
+   "ok": true,
+   "size": [
+    80,
+    70,
+    90
+   ],
+   "check": {
+    "score": 1,
+    "checked": 30,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.889
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.907
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.928
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 7..66, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..7, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 15..75 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..13, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 66..79, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..7, z 75..90 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.25494439999999996,
+   "s": 46,
+   "ok": true,
+   "size": [
+    80,
+    70,
+    90
+   ],
+   "check": {
+    "score": 1,
+    "checked": 30,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.889
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.907
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.928
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 7..66, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..7, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 15..75 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..13, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 66..79, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..7, z 75..90 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.2130604,
+   "s": 7,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.7324372,
+ "views": [
+  {
+   "name": "TOP",
+   "region": [
+    0.026,
+    0.05,
+    0.348,
+    0.46
+   ],
+   "right": "+x",
+   "up": "+y",
+   "cut": null
+  },
+  {
+   "name": "FRONT",
+   "region": [
+    0.067,
+    0.505,
+    0.348,
+    0.977
+   ],
+   "right": "+x",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "RIGHT",
+   "region": [
+    0.376,
+    0.536,
+    0.657,
+    0.977
+   ],
+   "right": "+y",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "ISO",
+   "region": [
+    0.663,
+    0.212,
+    0.947,
+    0.622
+   ],
+   "right": null,
+   "up": null,
+   "cut": null
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    80,
+    70,
+    90
+   ],
+   "check": {
+    "score": 1,
+    "checked": 30,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.889
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.907
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.928
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 7..66, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..7, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 15..75 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..13, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 66..79, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..7, z 75..90 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    80,
+    70,
+    90
+   ],
+   "check": {
+    "score": 1,
+    "checked": 30,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.889
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.907
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.928
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 7..66, y -6..0 (6% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..7, y 47..70 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..0, z 15..75 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..13, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 66..79, z 0..15 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 0..7, z 75..90 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "missing": 0,
+ "outline": [
+  {
+   "name": "TOP",
+   "iou": 0.889
+  },
+  {
+   "name": "FRONT",
+   "iou": 0.907
+  },
+  {
+   "name": "RIGHT",
+   "iou": 0.928
+  }
+ ],
+ "attempts": 3,
+ "seconds": 120
+}

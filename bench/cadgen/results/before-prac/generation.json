@@ -1,0 +1,392 @@
+{
+ "model": "claude-opus-5-5",
+ "options": {
+  "run": "before-prac",
+  "inputs": "/home/user/v1base/bench/cadgen/practice/data/inputs",
+  "only": [
+   "p07",
+   "p12",
+   "p17",
+   "p20"
+  ],
+  "parallel": 4,
+  "tries": 3,
+  "model": "claude-opus-5-5",
+  "timeout": 600,
+  "candidates": 3,
+  "look": true,
+  "check": true
+ },
+ "samples": 4,
+ "stepOk": 4,
+ "cost": 1.6626280000000002,
+ "logs": [
+  {
+   "id": "p07-bearing-housing",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.130464,
+     "s": 30,
+     "ok": true,
+     "size": [
+      100,
+      100,
+      42
+     ],
+     "check": {
+      "score": 1,
+      "checked": 26,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.14084,
+     "s": 8,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.271304,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      100,
+      100,
+      42
+     ],
+     "check": {
+      "score": 1,
+      "checked": 26,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 45
+  },
+  {
+   "id": "p17-gusset-angle",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.145324,
+     "s": 43,
+     "ok": true,
+     "size": [
+      90,
+      70,
+      70
+     ],
+     "check": {
+      "score": 1,
+      "checked": 21,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.141024,
+     "s": 8,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.28634800000000005,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      90,
+      70,
+      70
+     ],
+     "check": {
+      "score": 1,
+      "checked": 21,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 55
+  },
+  {
+   "id": "p12-rib-bracket",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.144764,
+     "s": 44,
+     "ok": true,
+     "size": [
+      80,
+      70,
+      90
+     ],
+     "check": {
+      "score": 1,
+      "checked": 27,
+      "issues": []
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.14065999999999998,
+     "s": 10,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.285424,
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      80,
+      70,
+      90
+     ],
+     "check": {
+      "score": 1,
+      "checked": 27,
+      "issues": []
+     }
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 1,
+   "attempts": 2,
+   "seconds": 58
+  },
+  {
+   "id": "p20-hub",
+   "task": "generation",
+   "calls": [
+    {
+     "tag": "c0.1",
+     "attempt": 1,
+     "cost": 0.1519,
+     "s": 51,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"FRONT view Ø5 ↧12 at height 28\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"RIGHT view Ø5 ↧12 at height 28\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c0fix.1",
+     "attempt": 1,
+     "cost": 0.174436,
+     "s": 45,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"FRONT view Ø5 ↧12 at height 28; wall is 10 thick so it breaks into the bore (hidden lines stop at the bore)\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"RIGHT view Ø5 ↧12 at height 28; breaks into the bore through the 10 mm wall\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c2.1",
+     "attempt": 1,
+     "cost": 0.16032000000000002,
+     "s": 44,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"Ø5 ↧ 12 in the front view at z=28; hidden lines below centre in the top view\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"Ø5 ↧ 12 in the right view at z=28; hidden lines on the +X side in the top view\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "c1.1",
+     "attempt": 1,
+     "cost": 0.173676,
+     "s": 48,
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"FRONT view Ø5 ↧ 12, 28 from the bottom, 45 from the left\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"RIGHT view Ø5 ↧ 12, 28 from the bottom, 45 across\"): should be 12 deep but goes through"
+      ]
+     }
+    },
+    {
+     "tag": "look",
+     "attempt": 1,
+     "cost": 0.15922,
+     "s": 15,
+     "noChanges": true
+    }
+   ],
+   "cost": 0.8195520000000001,
+   "ranking": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "own": 0.935,
+     "consensus": 0.935,
+     "rank": 0.935
+    }
+   ],
+   "look": "no changes",
+   "candidates": [
+    {
+     "tag": "c0.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"FRONT view Ø5 ↧12 at height 28\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"RIGHT view Ø5 ↧12 at height 28\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    },
+    {
+     "tag": "c0fix.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"FRONT view Ø5 ↧12 at height 28; wall is 10 thick so it breaks into the bore (hidden lines stop at the bore)\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"RIGHT view Ø5 ↧12 at height 28; breaks into the bore through the 10 mm wall\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    },
+    {
+     "tag": "c1.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"FRONT view Ø5 ↧ 12, 28 from the bottom, 45 from the left\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"RIGHT view Ø5 ↧ 12, 28 from the bottom, 45 across\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    },
+    {
+     "tag": "c2.1",
+     "ok": true,
+     "size": [
+      90,
+      90,
+      40
+     ],
+     "check": {
+      "score": 0.935,
+      "checked": 31,
+      "issues": [
+       "hole D at (45, 22.5, 28) (\"Ø5 ↧ 12 in the front view at z=28; hidden lines below centre in the top view\"): should be 12 deep but goes through",
+       "hole E at (67.5, 45, 28) (\"Ø5 ↧ 12 in the right view at z=28; hidden lines on the +X side in the top view\"): should be 12 deep but goes through"
+      ]
+     },
+     "consensus": 0.935
+    }
+   ],
+   "ok": true,
+   "kept": "c0.1",
+   "fallback": false,
+   "selfCheck": 0.935,
+   "attempts": 5,
+   "seconds": 170
+  }
+ ]
+}

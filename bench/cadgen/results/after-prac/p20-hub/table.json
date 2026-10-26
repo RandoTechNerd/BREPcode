@@ -1,0 +1,42 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "all sizes read from dimensions and callouts, mm" },
+  "frame": "origin at the min corner of the flange bounding box; flange and hub axis at x=45, y=45; Z up, flange bottom at z=0; top view: X right, Y up",
+  "overall": { "x": 90, "y": 90, "z": 40 },
+  "bbox": { "min": [0, 0, 0], "max": [90, 90, 40] },
+  "body": [
+    "flange: Ø90 disc, z 0..10, axis at (45,45)",
+    "hub: Ø45 cylinder, z 0..40 (40 high overall), same axis"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.12, 0.08, 0.34, 0.45], "right": "+x", "up": "+y", "shows": "flange and hub outlines, bore, keyway, bolt pattern" },
+    { "name": "FRONT", "region": [0.12, 0.56, 0.34, 0.7], "right": "+x", "up": "+z", "shows": "flange 10, hub 40, front radial hole at z=28" },
+    { "name": "RIGHT", "region": [0.43, 0.56, 0.64, 0.7], "right": "+y", "up": "+z", "shows": "radial hole from +X at z=28, y=45" },
+    { "name": "ISO", "region": [0.66, 0.24, 0.95, 0.56], "shows": "keyway at the top of the bore, radial holes" }
+  ],
+  "callouts": [
+    { "text": "Ø45 X 40 HIGH", "view": "TOP", "kind": "dimension", "skip": "hub base body, built as body piece" },
+    { "text": "4X Ø6.6 THRU", "view": "TOP", "kind": "pattern", "feature": "B" },
+    { "text": "4X ON Ø72 PCD, 45° OFFSET", "view": "TOP", "kind": "pattern", "feature": "B" },
+    { "text": "POCKET 8 X 7 ↧ 40", "view": "TOP", "kind": "dimension", "feature": "K" },
+    { "text": "57.5", "view": "TOP", "kind": "dimension", "feature": "K" },
+    { "text": "Ø25 THRU", "view": "TOP", "kind": "dimension", "feature": "A" },
+    { "text": "Ø5 ↧ 12", "view": "FRONT", "kind": "dimension", "feature": "S1" },
+    { "text": "Ø5 ↧ 12", "view": "RIGHT", "kind": "dimension", "feature": "S2" },
+    { "text": "28", "view": "FRONT", "kind": "dimension", "feature": "S1" },
+    { "text": "10", "view": "FRONT", "kind": "dimension", "skip": "flange thickness, built as body piece z 0..10" }
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[45, 45, 40]], "axis": "+z", "dia": 25, "depth": "thru", "source": "Ø25 THRU", "confidence": "high" },
+    { "id": "K", "type": "keyway", "count": 1, "positions": [[45, 57.5, 40]], "axis": "+z", "width": 8, "length": 7, "along": "y", "depth": 40,
+      "probes": [[45, 59.5, 5], [45, 59.5, 35]], "source": "POCKET 8 X 7 ↧ 40; 57.5 locates the pocket centre (pocket spans y 54..61, its top line sits well above the bore circle in TOP)", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[70.456, 70.456, 10], [19.544, 70.456, 10], [19.544, 19.544, 10], [70.456, 19.544, 10]],
+      "axis": "+z", "dia": 6.6, "depth": "thru", "source": "4X Ø6.6 THRU on Ø72 PCD, 45° offset", "confidence": "high" },
+    { "id": "S1", "type": "hole", "count": 1, "positions": [[45, 22.5, 28]], "axis": "-y", "dia": 5, "depth": 12, "source": "FRONT Ø5 ↧ 12 at z=28", "confidence": "high" },
+    { "id": "S2", "type": "hole", "count": 1, "positions": [[67.5, 45, 28]], "axis": "+x", "dia": 5, "depth": 12, "source": "RIGHT Ø5 ↧ 12 at z=28, y=45", "confidence": "high" }
+  ],
+  "guessed": [
+    "S1/S2: the hub wall is only 10 thick (22.5 - 12.5), so a 12 deep Ø5 hole from the hub surface breaks into the Ø25 bore; that is the drawing's geometry (set-screw holes), not a code error.",
+    "K: 57.5 read as the pocket's centre line, so the 8 x 7 pocket spans y 54..61 (16 from the axis), matching the keyway top drawn above the bore circle; a pocket ending at 57.5 would remove no material at all."
+  ]
+}

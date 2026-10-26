@@ -1,0 +1,28 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "Section C-C axial chain (370.02/320.02/300/200/164.99/111.01/90/60), plan-view diameters Ø730/610/550/450/250/100, bores Ø368/Ø240" },
+  "frame": "Revolution axis = Z. Flange bottom face at z=0, cone top face at z=370.02. Origin on the axis. Notches and slots are placed by angle from +X in the XY plane.",
+  "overall": { "x": 730, "y": 730, "z": 370.02 },
+  "bbox": { "min": [-365, -365, 0], "max": [365, 365, 370.02] },
+  "body": [
+    "flange cylinder Ø730, z 0..60",
+    "step cylinder Ø610, z 60..90",
+    "35° cone Ø610→Ø550, z 90..111.01",
+    "cylinder Ø550, z 111.01..164.99",
+    "35° cone Ø550→Ø450, z 164.99..200",
+    "cylinder Ø450, z 200..300",
+    "35° cone Ø450→Ø250, z 300..370.02 (flat top Ø250)"
+  ],
+  "features": [
+    { "id": "A", "type": "pocket", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 368, "depth": 200, "source": "Ø368 in section, depth 200", "confidence": "high" },
+    { "id": "B", "type": "pocket", "count": 1, "positions": [[0, 0, 200]], "axis": "-z", "dia": 240, "depth": 120.02, "source": "Ø240 bore, ends at 320.02", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[0, 0, 370.02]], "axis": "+z", "dia": 100, "depth": "thru", "source": "Ø100 in plan view", "confidence": "high" },
+    { "id": "D", "type": "slot", "count": 8, "positions": [[0, 0, 60]], "axis": "+z", "width": 24, "length": "arc 30.14° between end centres on Ø670", "along": "arc on Ø670, centres at 43.75°+45k", "depth": "thru", "source": "Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 2, "positions": [[330.5, 155.3, 60], [-330.5, -155.3, 60]], "axis": "+z", "width": 19.56, "depth": "thru flange", "source": "19.56 (x2), 21.66° / 28.68° rim notches", "confidence": "low" }
+  ],
+  "guessed": [
+    "The 8 slot angular positions are taken as arc-centre angles, with the 31.18° datum placing the centres at 43.75° + 45k.",
+    "The two rim notches are centred at 25.17° and 205.17°, the mean of the 21.66° and 28.68° dimensions.",
+    "Notch radial depth is taken as 15 mm, read from the view proportions; the 36.00 dimension is ambiguous."
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensions on the drawing (270 height, 328/314 widths, Ø339.4 bolt circle, flange thickness 35, holes Ø30/Ø25). Plan sizes not dimensioned are scaled from views against those values." },
+  "frame": "Origin on the vertical axis of the part at the underside of the base flange. Z up, X and Y along the flange edges.",
+  "overall": { "x": 328, "y": 328, "z": 270 },
+  "bbox": { "min": [-164, -164, 0], "max": [164, 164, 270] },
+  "body": [
+    "Base flange: 314 x 314 square, 4X R60 corners, z 0..35",
+    "Lower round body: Ø328 cylinder, z 0..100; it closes with a taper/shoulder (approximating R50 + R13) up to z 131.8",
+    "Drafted square body: 314 square at z 35 tapering at 4.1 deg to 285 square at z 235",
+    "Top flange: 304 x 304 square, R30 corners, z 235..270"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 4, "positions": [[122,122,270],[-122,122,270],[122,-122,270],[-122,-122,270]], "axis": "+z", "dia": 30, "depth": "thru", "source": "4X Ø30 THRU (top flange), concentric with the R30 corners", "confidence": "medium" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[120,120,35],[-120,120,35],[120,-120,35],[-120,-120,35]], "axis": "+z", "dia": 25, "depth": "thru", "source": "4X Ø25 THRU on Ø339.4 bolt circle at 45 deg", "confidence": "high" },
+    { "id": "C", "type": "pocket", "count": 4, "positions": [[122,122,235]], "axis": "-z", "dia": 40, "depth": 115, "source": "relief under the top flange holes (section A-A)", "confidence": "low" },
+    { "id": "D", "type": "pocket", "count": 4, "positions": [[120,120,35]], "axis": "+z", "dia": 40, "depth": 90, "source": "relief above the base flange holes (section A-A)", "confidence": "low" },
+    { "id": "E", "type": "pocket", "count": 1, "positions": [[0,0,270]], "axis": "-z", "width": 220, "length": 220, "depth": 100, "source": "open funnel cavity above z 170 (section A-A)", "confidence": "low" },
+    { "id": "F", "type": "pocket", "count": 2, "positions": [[0,0,170]], "axis": "-z", "width": 110, "length": 250, "depth": 135, "along": "x and y", "source": "cross-shaped cavity, section B-B", "confidence": "low" },
+    { "id": "G", "type": "hole", "count": 1, "positions": [[0,0,270]], "axis": "-z", "dia": 100, "depth": 235, "source": "Ø100 central bore, open down to z 35", "confidence": "medium" }
+  ],
+  "guessed": [
+    "Base flange width 314: taken from the right view's 314 dimension",
+    "Top flange width 304: scaled from the front view",
+    "Hole positions ±122 (top) and ±120 (bottom): the bottom value comes from Ø339.4/2 at 45 deg; the top value is from concentricity with the R30 corners",
+    "Cavity sizes, relief pockets and the R50/R13 shoulder are approximated",
+    "Not modelled: kidney slots, external fins and the 1 mm blends"
+  ]
+}

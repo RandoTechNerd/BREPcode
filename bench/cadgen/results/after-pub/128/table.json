@@ -1,0 +1,58 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "axial lengths from the SECTION C-C chain dimensions, diameters from the plan views" },
+  "frame": "Part axis = Z. z=0 on the flat slotted flange face, +Z toward the stepped conical boss. Origin on the axis. Angles in XY from +X, counter-clockwise, as in the TOP view.",
+  "overall": { "x": 730, "y": 730, "z": 370.02 },
+  "bbox": { "min": [-365, -365, 0], "max": [365, 365, 370.02] },
+  "body": [
+    "Flange Ø730, z 0..60",
+    "Step ring Ø610, z 60..90",
+    "35° slope Ø610 (z90) -> Ø550 (z111.01)",
+    "Cylinder Ø550, z 111.01..164.99",
+    "35° slope Ø550 (z164.99) -> Ø450 (z200)",
+    "Cylinder Ø450, z 200..300",
+    "35° cone Ø450 (z300) -> Ø250 top face (z370.02)",
+    "Bore Ø368 from bottom, depth 200",
+    "Bore Ø240 from z200 to z320.02",
+    "Through hole Ø100 in top wall z320.02..370.02"
+  ],
+  "views": [
+    { "name": "SECTION C-C", "region": [0.37, 0.27, 0.49, 0.71], "right": "-z", "up": "+y", "cut": { "axis": "+x", "at": 0 }, "shows": "half-section: steps, 35° slopes, bores Ø368/Ø240/Ø100, slots cut in the flange at ±y 335" },
+    { "name": "TOP", "region": [0.12, 0.40, 0.35, 0.73], "right": "+x", "up": "+y", "shows": "8 arc slots on Ø670, R12 ends, 30.14° span, 14.86° gap, 2 rim notches" },
+    { "name": "BOTTOM", "region": [0.54, 0.35, 0.73, 0.72], "right": "+x", "up": "+y", "shows": "diameters Ø730/610/550/450/250/100, notch 19.56 x 36 at 21.66°" },
+    { "name": "ISO", "region": [0.62, 0.08, 0.76, 0.25], "shows": "stepped conical boss with top hole" },
+    { "name": "ISO (rear)", "region": [0.78, 0.08, 0.92, 0.25], "shows": "flat slotted face, stepped bore" }
+  ],
+  "callouts": [
+    { "text": "370.02", "view": "SECTION C-C", "kind": "dimension", "feature": "BODY" },
+    { "text": "320.02", "view": "SECTION C-C", "kind": "dimension", "feature": "B2" },
+    { "text": "300.00", "view": "SECTION C-C", "kind": "step", "feature": "BODY" },
+    { "text": "200.00 (x2)", "view": "SECTION C-C", "kind": "step", "feature": "B1" },
+    { "text": "164.99 / 111.01 / 90.00 / 60.00", "view": "SECTION C-C", "kind": "step", "feature": "BODY" },
+    { "text": "35.00° (x3)", "view": "SECTION C-C", "kind": "angle", "feature": "BODY" },
+    { "text": "Ø240.00", "view": "SECTION C-C", "kind": "dimension", "feature": "B2" },
+    { "text": "Ø368.00", "view": "SECTION C-C", "kind": "dimension", "feature": "B1" },
+    { "text": "Ø730/Ø610/Ø550/Ø450/Ø250", "view": "BOTTOM", "kind": "dimension", "feature": "BODY" },
+    { "text": "Ø100.00", "view": "BOTTOM", "kind": "dimension", "feature": "H" },
+    { "text": "R120.00", "view": "BOTTOM", "kind": "dimension", "feature": "B2" },
+    { "text": "R68.00", "view": "BOTTOM", "kind": "note", "skip": "no edge at R68 in the section; construction/leader radius" },
+    { "text": "Ø670.00 (x8), R12.00, 30.14° (x8), 14.86° (x8), 31.18°", "view": "TOP", "kind": "pattern", "feature": "S1" },
+    { "text": "19.56 (x2), 36.00, 21.66°, 28.68°", "view": "TOP/BOTTOM", "kind": "pattern", "feature": "N" }
+  ],
+  "features": [
+    { "id": "BODY", "type": "step", "axis": "+z", "levels": [0, 60, 200, 320.02, 370.02], "angle": 35, "probes": [[314.1, 130.1, 30], [0, 290, 75], [0, 260, 140], [0, 210, 250]], "source": "SECTION C-C", "confidence": "high" },
+    { "id": "B1", "type": "pocket", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 368, "depth": 200, "probes": [[0, 0, 100]], "source": "Ø368, 200", "confidence": "high" },
+    { "id": "B2", "type": "pocket", "count": 1, "positions": [[0, 0, 200]], "axis": "-z", "dia": 240, "depth": 120.02, "probes": [[0, 100, 260]], "source": "Ø240, 320.02", "confidence": "high" },
+    { "id": "H", "type": "hole", "count": 1, "positions": [[0, 0, 370.02]], "axis": "+z", "dia": 100, "depth": "thru", "source": "Ø100 through the top wall, opening into the bores below: clear through the part", "confidence": "high" },
+    { "id": "S1", "type": "slot", "count": 2, "positions": [[323.48, 0, 0], [-323.48, 0, 0]], "axis": "-z", "width": 24, "length": 198.19, "depth": "thru", "along": "90", "probes": [[335, 0, 30], [-335, 0, 30]], "source": "arc slot on Ø670 centred at 0°/180°; position = chord midpoint, length = chord 174.19 + 24", "confidence": "medium" },
+    { "id": "S2", "type": "slot", "count": 2, "positions": [[228.73, 228.73, 0], [-228.73, -228.73, 0]], "axis": "-z", "width": 24, "length": 198.19, "depth": "thru", "along": "135", "probes": [[236.88, 236.88, 30], [-236.88, -236.88, 30]], "source": "arc slot at 45°/225°", "confidence": "medium" },
+    { "id": "S3", "type": "slot", "count": 2, "positions": [[0, 323.48, 0], [0, -323.48, 0]], "axis": "-z", "width": 24, "length": 198.19, "depth": "thru", "along": "x", "probes": [[0, 335, 30], [0, -335, 30]], "source": "arc slot at 90°/270°", "confidence": "medium" },
+    { "id": "S4", "type": "slot", "count": 2, "positions": [[-228.73, 228.73, 0], [228.73, -228.73, 0]], "axis": "-z", "width": 24, "length": 198.19, "depth": "thru", "along": "45", "probes": [[-236.88, 236.88, 30], [236.88, -236.88, 30]], "source": "arc slot at 135°/315°", "confidence": "medium" },
+    { "id": "N", "type": "notch", "count": 2, "positions": [[330.5, 155.0, 0], [-330.5, -155.0, 0]], "axis": "-z", "width": 36, "depth": 19.56, "probes": [[356, 167, 30], [-356, -167, 30]], "source": "19.56 (x2), 36.00, 21.66° / 28.68°", "confidence": "low" }
+  ],
+  "guessed": [
+    "SECTION/TOP overlay mismatches are registration offset; the profile matches the drawing at sheet scale",
+    "Slot 30.14° taken centre-to-centre of the R12 ends, slots centred at 0°,45°,...; slots are true arcs, the table gives chord midpoint and chord length",
+    "Notch: 36 tangential width, 19.56 radial depth, centred at 25.17° and 205.17°"
+  ]
+}

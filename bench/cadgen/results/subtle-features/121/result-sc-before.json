@@ -1,0 +1,97 @@
+{
+  "alignment": {
+    "rmse": 4.6832
+  },
+  "status": "valid",
+  "validation": {
+    "is_valid": true,
+    "is_watertight": true,
+    "solid_count": 1,
+    "shell_count": 1,
+    "face_count": 171,
+    "volume": 1297162.95,
+    "bbox": {
+      "x": 300.0,
+      "y": 300.0,
+      "z": 65.0
+    },
+    "topology_errors": []
+  },
+  "gt_metrics": {
+    "shape_surface_distance_f1": 0.5100832580354696,
+    "shape_volume_iou": 0.7514182748486805,
+    "shape_similarity_score": 0.6307507664420751
+  },
+  "shape_diagnostics": {
+    "part_diagonal": 429.57813576680087,
+    "surface_distance_f1": 0.5100832580354696,
+    "surface_distance_precision": 0.49094,
+    "surface_distance_recall": 0.53078,
+    "surface_distance_threshold": 2.1478906788340044,
+    "surface_distance_mean_chamfer": 1.6281333958560706,
+    "surface_distance_mean_normal_dot": 0.8289514877620165,
+    "volume_intersection": 1096269.8481734348,
+    "volume_union": 1458934.237917224,
+    "volume_symmetric_difference": 362664.3897437891
+  },
+  "interface_metrics": {
+    "score": 0.5475,
+    "contexts": {
+      "1": {
+        "score": 1.0,
+        "sub_volumes": {
+          "1__KOR": 1.0,
+          "2__KOR": 1.0,
+          "3__KOR": 1.0,
+          "4__KOR": 1.0,
+          "5__KOR": 1.0,
+          "6__KOR": 1.0,
+          "7__KOR": 1.0,
+          "8__KOR": 1.0
+        }
+      },
+      "2": {
+        "score": 0.0949,
+        "sub_volumes": {
+          "1__KOR": 0.1106,
+          "2__KOR": 0.0949,
+          "3__KOR": 0.1449,
+          "4__KOR": 0.1071,
+          "5__KOR": 0.11,
+          "6__KOR": 0.0958,
+          "7__KOR": 0.1261,
+          "8__KOR": 0.1301
+        }
+      }
+    }
+  },
+  "topology_metrics": {
+    "candidate": {
+      "b0": 1,
+      "b1": 9,
+      "b2": 0,
+      "chi_surface": -16,
+      "n_components": 1,
+      "n_triangles": 2702,
+      "n_vertices": 1335,
+      "linear_deflection_mm": 0.4295781357668009
+    },
+    "gt": {
+      "b0": 1,
+      "b1": 16,
+      "b2": 0,
+      "chi_surface": -30,
+      "n_components": 1,
+      "n_triangles": 4292,
+      "n_vertices": 2116,
+      "linear_deflection_mm": 0.4295781357668009
+    },
+    "per_axis_scores": {
+      "b0": 1.0,
+      "b1": 0.34602076124567477,
+      "b2": 1.0
+    },
+    "score": 0.34602076124567477
+  },
+  "cad_score": 0.5405044588259651
+}

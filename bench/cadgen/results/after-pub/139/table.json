@@ -1,0 +1,57 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensions on the sheet (mm); sizes without a dimension are scaled from the 314, 328 and 270 dimensions" },
+  "frame": "origin at the centre of the bottom face, Z up along the hub axis, X to the right in FRONT, Y away from the viewer in FRONT",
+  "overall": { "x": 328, "y": 314, "z": 270 },
+  "bbox": { "min": [-164, -157, 0], "max": [164, 157, 270] },
+  "body": [
+    "bottom flange: 314 x 314 x 35 square, R30 corners, z 0..35",
+    "top flange: 300 x 300 x 35 square, R30 corners, z 235..270, with a large central opening",
+    "main body: hollow 290-square column with rounded corners (box intersected with a cylinder of R150), z 35..235, wall 10",
+    "central hub: Ø130 cylinder, z 35..176, with a Ø100 blind bore",
+    "4 diagonal ribs at 45 deg, 15 thick, running from the hub to the body corners",
+    "3 external fins on each ±X wall, 5 thick, at y = 0 and ±34; the profile reaches x = ±164 up to z 131.8 and rises to z 166.9 at the wall"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.07, 0.13, 0.4, 0.47], "right": "+x", "up": "+y", "shows": "flange outline, corner holes, kidney slots, central bore, fin tabs at ±X" },
+    { "name": "FRONT", "region": [0.16, 0.58, 0.34, 0.8], "right": "+x", "up": "+z", "shows": "328 width over the fins, fin profile R50 / 131.8 / 104" },
+    { "name": "RIGHT", "region": [0.45, 0.44, 0.58, 0.6], "right": "-y", "up": "+z", "shows": "314 width, 270 / 235 / 35 heights, fins face-on, 4.1 deg draft" },
+    { "name": "SECTION A-A", "region": [0.43, 0.12, 0.74, 0.37], "cut": { "axis": "diag", "at": 0 }, "shows": "Ø100 bore with a 35 floor, hub height 176, funnel above it" },
+    { "name": "SECTION B-B", "region": [0.74, 0.37, 0.9, 0.64], "cut": { "axis": "+z", "at": 200.4 }, "shows": "diagonal 15 ribs, PCD 339.4, body outline, fins" },
+    { "name": "ISO", "region": [0.76, 0.08, 0.92, 0.33], "shows": "overall form" }
+  ],
+  "callouts": [
+    { "text": "4X Ø30 THRU", "view": "SECTION A-A", "kind": "dimension", "feature": "H1" },
+    { "text": "4X Ø25 THRU", "view": "SECTION A-A", "kind": "dimension", "feature": "H1" },
+    { "text": "Ø100", "view": "TOP", "kind": "dimension", "feature": "B" },
+    { "text": "Ø339.4", "view": "SECTION B-B", "kind": "dimension", "feature": "H1" },
+    { "text": "15 TYP", "view": "SECTION B-B", "kind": "dimension", "feature": "R" },
+    { "text": "R30 TYP", "view": "TOP", "kind": "fillet", "feature": "FL" },
+    { "text": "5", "view": "RIGHT", "kind": "dimension", "feature": "FN" },
+    { "text": "131.8 / R50", "view": "FRONT", "kind": "dimension", "feature": "FN" },
+    { "text": "32X R5 TYP", "view": "TOP", "kind": "fillet", "skip": "corner radii on the kidney slots, which are not modelled" },
+    { "text": "4X 10° DRAFT", "view": "TOP", "kind": "angle", "skip": "draft on the inner walls; the walls are built straight" },
+    { "text": "4.1°", "view": "RIGHT", "kind": "angle", "skip": "draft on the outer wall; the walls are built straight" },
+    { "text": "69°", "view": "SECTION A-A", "kind": "angle", "skip": "the funnel lies inside the open cavity" },
+    { "text": "R13 / 104", "view": "FRONT", "kind": "fillet", "skip": "small inner fin detail" },
+    { "text": "4X R60", "view": "SECTION B-B", "kind": "fillet", "skip": "inner quarter-round pockets" },
+    { "text": "R202", "view": "SECTION B-B", "kind": "dimension", "skip": "the body outline is approximated by a box intersected with a cylinder" },
+    { "text": "ALL INTERNAL CORNERS EDGE BLEND 1MM", "kind": "note", "skip": "small blends" }
+  ],
+  "features": [
+    { "id": "H1", "type": "cbore", "count": 4, "positions": [[120, 120, 270], [-120, 120, 270], [120, -120, 270], [-120, -120, 270]], "axis": "+z", "dia": 25, "depth": "thru", "cbore": { "d": 30, "depth": 35 }, "source": "4X Ø30 THRU in the top flange and 4X Ø25 THRU in the bottom flange, coaxial on PCD 339.4", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[0, 0, 176]], "axis": "+z", "dia": 100, "depth": 141, "source": "Ø100, floor of 35 in section A-A", "confidence": "medium" },
+    { "id": "OP", "type": "pocket", "count": 1, "positions": [[0, 0, 270]], "axis": "+z", "depth": "thru", "probes": [[0, 100, 250]], "source": "opening in the top view", "confidence": "low" },
+    { "id": "R", "type": "rib", "count": 4, "positions": [[75, 75, 35]], "axis": "+z", "width": 15, "probes": [[60, 60, 150], [95, 95, 150]], "source": "15 TYP", "confidence": "medium" },
+    { "id": "FN", "type": "rib", "count": 6, "positions": [[145, 0, 35]], "axis": "+x", "width": 5, "from": [164, 0, 131.8], "to": [150, 0, 166.9], "probes": [[158, 0, 80], [-158, 34, 80], [146, 0, 160]], "source": "5, 166.9 (RIGHT); 328, 131.8 (FRONT); tabs at ±X in TOP", "confidence": "medium" },
+    { "id": "FL", "type": "fillet", "r": 30, "edges": "vertical corners of both flanges", "source": "R30 TYP", "confidence": "high" }
+  ],
+  "guessed": [
+    "top flange 300 square, scaled from the drawing",
+    "body 290 square with a wall thickness of 10",
+    "hub outer diameter 130",
+    "top opening 268 square, clipped to R150",
+    "fin spacing ±34, scaled from the RIGHT view",
+    "fin profile: a straight slope from (164, 131.8) to (150, 166.9) standing in for the R50 blend"
+  ]
+}

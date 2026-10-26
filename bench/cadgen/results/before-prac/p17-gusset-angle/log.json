@@ -1,0 +1,54 @@
+{
+ "id": "p17-gusset-angle",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.145324,
+   "s": 43,
+   "ok": true,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "check": {
+    "score": 1,
+    "checked": 21,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.141024,
+   "s": 8,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.28634800000000005,
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    90,
+    70,
+    70
+   ],
+   "check": {
+    "score": 1,
+    "checked": 21,
+    "issues": []
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 2,
+ "seconds": 55
+}

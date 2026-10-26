@@ -1,0 +1,218 @@
+{
+ "id": "128",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.24380000000000002,
+   "s": 122,
+   "ok": false,
+   "kind": "invalid",
+   "error": "the STEP failed the validity gate: Face: BRepCheck_UnorientableShape",
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot D at (335, 0, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8); one slot centred every 45°\"): the table gives no slot length"
+    ]
+   }
+  },
+  {
+   "tag": "c0.2",
+   "attempt": 2,
+   "cost": 0.18875999999999998,
+   "s": 39,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B20: boolean SUBTRACT failed: fragment_face: chain 12 fragmented into an incomplete run"
+  },
+  {
+   "tag": "c0.3",
+   "attempt": 3,
+   "cost": 0.21059599999999998,
+   "s": 53,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B25: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=3 genus=1): [ValidationIssue { severity: \"error\", kind: CurveVertexGap { at_start: true }, message: \"edge 7 curve start does not match vertex 3 (gap=0.697350070, curve=Vec3 { x: 0.0, y: 305.0, z: 89.9999999999"
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.22147599999999998,
+   "s": 74,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B8: boolean Union on 'P.CO4' failed: boolean assembly produced invalid topology (S=1 genus=0): [ValidationIssue { severity: \"error\", kind: CurveVertexGap { at_start: true }, message: \"edge 4 curve start does not match vertex 3 (gap=0.006998042, curve=Vec3 { x: 3.366127315889249e-14, y"
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.24256,
+   "s": 103,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot D at (0, 0, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): the table gives no slot length"
+    ]
+   }
+  },
+  {
+   "tag": "c1.2",
+   "attempt": 2,
+   "cost": 0.28322400000000003,
+   "s": 142,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.7,
+    "checked": 10,
+    "issues": [
+     "slot D at (335, 0, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): no Ø24 round ends at (338.07, 0, 60) and (331.93, 0, 60) (width 24, 6.14 centre to centre)",
+     "slot E#1 at (320.3, 175.2, 0) (\"19.56 (x2), 28.68°\"): no Ø19.56 round ends at (316.52, 175.2, 0) and (324.08, 175.2, 0) (width 19.56, -7.56 centre to centre)",
+     "slot E#2 at (-320.3, -175.2, 0) (\"19.56 (x2), 28.68°\"): no Ø19.56 round ends at (-324.08, -175.2, 0) and (-316.52, -175.2, 0) (width 19.56, -7.56 centre to centre)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.20905600000000002,
+   "s": 56,
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.467,
+    "checked": 15,
+    "issues": [
+     "slot D#1 at (241.9, 231.7, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (329, 231.7, 60) and (154.8, 231.7, 60) (width 24, 174.2 centre to centre)",
+     "slot D#2 at (-6.2, 334.9, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (80.9, 334.9, 60) and (-93.3, 334.9, 60) (width 24, 174.2 centre to centre)",
+     "slot D#3 at (-246.7, 226.6, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (-159.6, 226.6, 60) and (-333.8, 226.6, 60) (width 24, 174.2 centre to centre)",
+     "slot D#4 at (-334.9, -6.2, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (-247.8, -6.2, 60) and (-422, -6.2, 60) (width 24, 174.2 centre to centre)",
+     "slot D#5 at (-231.7, -241.9, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (-144.6, -241.9, 60) and (-318.8, -241.9, 60) (width 24, 174.2 centre to centre)",
+     "slot D#6 at (6.2, -334.9, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (93.3, -334.9, 60) and (-80.9, -334.9, 60) (width 24, 174.2 centre to centre)",
+     "slot D#7 at (246.7, -226.6, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (333.8, -226.6, 60) and (159.6, -226.6, 60) (width 24, 174.2 centre to centre)",
+     "slot D#8 at (334.9, 6.2, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (422, 6.2, 60) and (247.8, 6.2, 60) (width 24, 174.2 centre to centre)"
+    ]
+   }
+  }
+ ],
+ "cost": 1.599472,
+ "ranking": [
+  {
+   "tag": "c0.3",
+   "ok": false,
+   "consensus": 0,
+   "rank": -1
+  },
+  {
+   "tag": "c1.2",
+   "ok": true,
+   "own": 0.7,
+   "consensus": 0.875,
+   "rank": 0.77
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.875,
+   "consensus": 0.7,
+   "rank": 0.805
+  }
+ ],
+ "look": "rejected (self-check 0.875 -> 0.467)",
+ "candidates": [
+  {
+   "tag": "c0.3",
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B25: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=3 genus=1): [ValidationIssue { severity: \"error\", kind: CurveVertexGap { at_start: true }, message: \"edge 7 curve start does not match vertex 3 (gap=0.697350070, curve=Vec3 { x: 0.0, y: 305.0, z: 89.9999999999",
+   "consensus": 0
+  },
+  {
+   "tag": "c1.2",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.7,
+    "checked": 10,
+    "issues": [
+     "slot D at (335, 0, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8)\"): no Ø24 round ends at (338.07, 0, 60) and (331.93, 0, 60) (width 24, 6.14 centre to centre)",
+     "slot E#1 at (320.3, 175.2, 0) (\"19.56 (x2), 28.68°\"): no Ø19.56 round ends at (316.52, 175.2, 0) and (324.08, 175.2, 0) (width 19.56, -7.56 centre to centre)",
+     "slot E#2 at (-320.3, -175.2, 0) (\"19.56 (x2), 28.68°\"): no Ø19.56 round ends at (-324.08, -175.2, 0) and (-316.52, -175.2, 0) (width 19.56, -7.56 centre to centre)"
+    ]
+   },
+   "consensus": 0.875
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.875,
+    "checked": 8,
+    "issues": [
+     "slot D at (0, 0, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): the table gives no slot length"
+    ]
+   },
+   "consensus": 0.7
+  },
+  {
+   "tag": "look.1",
+   "ok": true,
+   "size": [
+    730,
+    730,
+    370.02
+   ],
+   "check": {
+    "score": 0.467,
+    "checked": 15,
+    "issues": [
+     "slot D#1 at (241.9, 231.7, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (329, 231.7, 60) and (154.8, 231.7, 60) (width 24, 174.2 centre to centre)",
+     "slot D#2 at (-6.2, 334.9, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (80.9, 334.9, 60) and (-93.3, 334.9, 60) (width 24, 174.2 centre to centre)",
+     "slot D#3 at (-246.7, 226.6, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (-159.6, 226.6, 60) and (-333.8, 226.6, 60) (width 24, 174.2 centre to centre)",
+     "slot D#4 at (-334.9, -6.2, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (-247.8, -6.2, 60) and (-422, -6.2, 60) (width 24, 174.2 centre to centre)",
+     "slot D#5 at (-231.7, -241.9, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (-144.6, -241.9, 60) and (-318.8, -241.9, 60) (width 24, 174.2 centre to centre)",
+     "slot D#6 at (6.2, -334.9, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (93.3, -334.9, 60) and (-80.9, -334.9, 60) (width 24, 174.2 centre to centre)",
+     "slot D#7 at (246.7, -226.6, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (333.8, -226.6, 60) and (159.6, -226.6, 60) (width 24, 174.2 centre to centre)",
+     "slot D#8 at (334.9, 6.2, 60) (\"Ø670 (x8), R12, 30.14° (x8), 14.86° (x8), 31.18°\"): no Ø24 round ends at (422, 6.2, 60) and (247.8, 6.2, 60) (width 24, 174.2 centre to centre)"
+    ]
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c2.1",
+ "fallback": false,
+ "selfCheck": 0.875,
+ "attempts": 7,
+ "seconds": 491
+}

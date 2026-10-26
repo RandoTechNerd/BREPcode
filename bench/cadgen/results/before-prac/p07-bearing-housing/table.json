@@ -1,0 +1,22 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned top, front and right views; third-angle projection; mm" },
+  "frame": "origin at the flange's min corner (x=0, y=0, z=0 at the bottom face); X right, Y back, Z up; boss axis at (50, 50)",
+  "overall": { "x": 100, "y": 100, "z": 42 },
+  "bbox": { "min": [0, 0, 0], "max": [100, 100, 42] },
+  "body": [
+    "square flange 100 x 100 x 12, z 0..12, vertical corners rounded R10 (note 3)",
+    "cylindrical boss Ø76 on axis (50, 50), z 12..42 (42 overall - 12 flange = 30 tall)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 1, "positions": [[50, 50, 42]], "axis": "+z",
+      "dia": 40, "depth": "thru", "cbore": { "d": 52, "depth": 15 },
+      "source": "Ø40 THRU, ⌴ Ø52 ↧ 15", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 4,
+      "positions": [[12, 12, 12], [88, 12, 12], [12, 88, 12], [88, 88, 12]], "axis": "+z",
+      "dia": 9, "depth": "thru",
+      "source": "4X Ø9 THRU, 12 and 88 from the left and bottom edges", "confidence": "high" }
+  ],
+  "guessed": [],
+  "zoom": []
+}

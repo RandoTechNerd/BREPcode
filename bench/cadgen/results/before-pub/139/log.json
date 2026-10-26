@@ -1,0 +1,298 @@
+{
+ "id": "139",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.22315999999999997,
+   "s": 87,
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.478,
+    "checked": 23,
+    "issues": [
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole B#1 at (120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole B#2 at (-120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+     "hole B#3 at (120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+     "hole B#4 at (-120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.176612,
+   "s": 33,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B30: boolean SUBTRACT failed: boolean assembly: non-integral genus (V=153 E=225 F=69 H=10 S=1 shell_faces=[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47"
+  },
+  {
+   "tag": "c0fix.2",
+   "attempt": 2,
+   "cost": 0.200088,
+   "s": 47,
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.556,
+    "checked": 27,
+    "issues": [
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole B#1 at (120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole B#2 at (-120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+     "hole B#3 at (120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+     "hole B#4 at (-120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+    ]
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.244956,
+   "s": 100,
+   "ok": true,
+   "size": [
+    328,
+    314,
+    270
+   ],
+   "check": {
+    "score": 0.481,
+    "checked": 27,
+    "issues": [
+     "hole A at (0, 0, 270) (\"Ø100 bore; Section A-A shows a 35 floor\"): depth is 141, the table says 235",
+     "hole A at (0, 0, 270) (\"Ø100 bore; Section A-A shows a 35 floor\"): the table puts the entry 94 mm beyond the end of the hole the model has",
+     "hole B#1 at (120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#1 at (120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole B#2 at (-120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#2 at (-120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole B#3 at (120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#3 at (120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole B#4 at (-120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#4 at (-120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole C#1 at (120, 120, 0) (\"4X Ø25 THRU in the bottom flange\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole C#2 at (-120, 120, 0) (\"4X Ø25 THRU in the bottom flange\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)"
+    ]
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.24156,
+   "s": 105,
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.972,
+    "checked": 36,
+    "issues": [
+     "hole G at (0, 0, 270) (\"Ø100 central bore, open down to z 35\"): no Ø100 hole along Z there; the nearest is Ø25 169.71 mm away, axis through (-120, 120, 62.5)"
+    ]
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.228752,
+   "s": 53,
+   "ok": false,
+   "kind": "step",
+   "error": "IMPORT3D IMPORT3D6: only ASCII STL text goes through the mesh lane"
+  },
+  {
+   "tag": "look.2",
+   "attempt": 2,
+   "cost": 0.23868,
+   "s": 43,
+   "ok": false,
+   "kind": "step",
+   "error": "IMPORT3D IMPORT3D6: only ASCII STL text goes through the mesh lane"
+  },
+  {
+   "tag": "look.3",
+   "attempt": 3,
+   "cost": 0.23599599999999998,
+   "s": 48,
+   "ok": false,
+   "kind": "step",
+   "error": "IMPORT3D IMPORT3D6: only ASCII STL text goes through the mesh lane"
+  }
+ ],
+ "cost": 1.7898040000000002,
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.478,
+   "consensus": 0.5926666666666667,
+   "rank": 0.524
+  },
+  {
+   "tag": "c0fix.2",
+   "ok": true,
+   "own": 0.556,
+   "consensus": 0.5666666666666667,
+   "rank": 0.56
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.481,
+   "consensus": 0.565,
+   "rank": 0.515
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.972,
+   "consensus": 0.282,
+   "rank": 0.696
+  }
+ ],
+ "look": "rejected (step)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.478,
+    "checked": 23,
+    "issues": [
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): diameter is 25, the table says 30",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange)\"): should be 35 deep but goes through",
+     "hole B#1 at (120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole B#2 at (-120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+     "hole B#3 at (120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+     "hole B#4 at (-120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+    ]
+   },
+   "consensus": 0.5926666666666667
+  },
+  {
+   "tag": "c0fix.2",
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.556,
+    "checked": 27,
+    "issues": [
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#1 at (120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#2 at (-120, 120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#3 at (120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): diameter is 25, the table says 30",
+     "hole A#4 at (-120, -120, 270) (\"4X Ø30 THRU (top flange is 35 thick; the hole opens into the R60 corner scallop)\"): should be 35 deep but goes through",
+     "hole B#1 at (120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole B#2 at (-120, 120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)",
+     "hole B#3 at (120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, -120, 135)",
+     "hole B#4 at (-120, -120, 0) (\"4X Ø25 THRU (bottom flange, 35 thick)\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, -120, 135)"
+    ]
+   },
+   "consensus": 0.5666666666666667
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    328,
+    314,
+    270
+   ],
+   "check": {
+    "score": 0.481,
+    "checked": 27,
+    "issues": [
+     "hole A at (0, 0, 270) (\"Ø100 bore; Section A-A shows a 35 floor\"): depth is 141, the table says 235",
+     "hole A at (0, 0, 270) (\"Ø100 bore; Section A-A shows a 35 floor\"): the table puts the entry 94 mm beyond the end of the hole the model has",
+     "hole B#1 at (120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#1 at (120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole B#2 at (-120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#2 at (-120, 120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole B#3 at (120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#3 at (120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole B#4 at (-120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): diameter is 25, the table says 30",
+     "hole B#4 at (-120, -120, 270) (\"4X Ø30 THRU on the Ø339.4 bolt circle\"): should be 235 deep but goes through",
+     "hole C#1 at (120, 120, 0) (\"4X Ø25 THRU in the bottom flange\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (120, 120, 135)",
+     "hole C#2 at (-120, 120, 0) (\"4X Ø25 THRU in the bottom flange\"): no Ø25 hole along Z there; the nearest is Ø25 0 mm away, axis through (-120, 120, 135)"
+    ]
+   },
+   "consensus": 0.565
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    328,
+    328,
+    270
+   ],
+   "check": {
+    "score": 0.972,
+    "checked": 36,
+    "issues": [
+     "hole G at (0, 0, 270) (\"Ø100 central bore, open down to z 35\"): no Ø100 hole along Z there; the nearest is Ø25 169.71 mm away, axis through (-120, 120, 62.5)"
+    ]
+   },
+   "consensus": 0.282
+  },
+  {
+   "tag": "look.3",
+   "ok": false,
+   "kind": "step",
+   "error": "IMPORT3D IMPORT3D6: only ASCII STL text goes through the mesh lane"
+  }
+ ],
+ "ok": true,
+ "kept": "c2.1",
+ "fallback": false,
+ "selfCheck": 0.972,
+ "attempts": 8,
+ "seconds": 422
+}

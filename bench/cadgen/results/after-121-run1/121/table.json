@@ -1,0 +1,57 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensions on the sheet, mm" },
+  "frame": "Origin on the part axis at the open end of the hub. Z up: the hub runs z 0..50 and the flange plate z 50..65, outer face at z=65. X and Y follow the TOP view (X right, Y up the sheet).",
+  "overall": { "x": 300, "y": 300, "z": 65 },
+  "bbox": { "min": [-150, -150, 0], "max": [150, 150, 65] },
+  "body": [
+    "Flange plate: regular octagon, 300 across flats, flats normal to X and Y, 15 thick, z 50..65",
+    "Hub: tube OD 175, bore Ø155, z 0..50.5, fused to the plate underside",
+    "8 bosses r9 on the hub rim at R85.36, at 22.5°+45k (the Ø10 hole positions)",
+    "8 gussets 15.08 thick at 22.5°+45k. Each is solid from the plate underside down to z 43.49 (21.51 below the outer face) at r 133.2 (266.43/2), then slopes at 25.12° down toward the hub/boss and runs 0.5 mm into it"
+  ],
+  "views": [
+    { "name": "TOP", "region": [0.09, 0.08, 0.36, 0.47], "right": "+x", "up": "+y", "shows": "octagon outline, Ø12.5 holes, Ø60 hole, windows, spokes" },
+    { "name": "RIGHT", "region": [0.38, 0.12, 0.45, 0.38], "right": "+z", "up": "+y", "shows": "300 overall, 15 plate, 50 hub, gusset slope 26.91°" },
+    { "name": "DETAIL B", "region": [0.48, 0.12, 0.68, 0.40], "shows": "8 Ø10 holes, 12 spokes at 30° pitch, gusset width 15.08" },
+    { "name": "SECTION A-A", "region": [0.12, 0.46, 0.42, 0.62], "right": "+x", "up": "+z", "cut": { "axis": "+y", "at": 0 }, "shows": "Ø155 bore, 50 hub, plate; gussets beyond the cut" },
+    { "name": "DETAIL D", "region": [0.47, 0.46, 0.62, 0.67], "shows": "trapezoid window 61 wide x 41.78, 67.5° sides, inner arc R97.5, R5 TYP" },
+    { "name": "SECTION C-C", "region": [0.12, 0.69, 0.40, 0.86], "up": "+z", "shows": "section along a gusset: 25.12° slope, 21.51 / 15 / 24.36, 266.43, 7.50 face pockets, Ø10 holes nearly full hub height" },
+    { "name": "ISO", "region": [0.70, 0.12, 0.93, 0.40], "shows": "overall form" }
+  ],
+  "callouts": [
+    { "text": "Ø12.50 (8X)", "view": "TOP", "kind": "pattern", "feature": "A" },
+    { "text": "Ø60.00", "view": "TOP", "kind": "dimension", "feature": "B" },
+    { "text": "Ø10.00 (8X)", "view": "DETAIL B", "kind": "pattern", "feature": "C" },
+    { "text": "Ø155.00", "view": "SECTION A-A", "kind": "dimension", "feature": "D" },
+    { "text": "R97.50 (8X) / 61.00 / 41.78 / 67.50°", "view": "DETAIL D", "kind": "pattern", "feature": "E" },
+    { "text": "R5.00 TYP", "view": "DETAIL D", "kind": "fillet", "feature": "E" },
+    { "text": "25.12° / 21.51 / 24.36 / 266.43 / 26.91° / 15.08", "view": "SECTION C-C", "kind": "angle", "feature": "F" },
+    { "text": "7.50", "view": "SECTION C-C", "kind": "step", "feature": "G" },
+    { "text": "15.00° / 30.00°", "view": "DETAIL B", "kind": "pattern", "feature": "G" },
+    { "text": "R1.00", "view": "SECTION C-C", "kind": "fillet", "skip": "small blend, not worth the build cost" },
+    { "text": "5.7", "view": "SECTION A-A", "kind": "dimension", "feature": "F" },
+    { "text": "key notches on the Ø60 hole", "view": "ISO", "kind": "note", "skip": "not dimensioned" }
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 8,
+      "positions": [[136.54, 56.56, 65], [56.56, 136.54, 65], [-56.56, 136.54, 65], [-136.54, 56.56, 65], [-136.54, -56.56, 65], [-56.56, -136.54, 65], [56.56, -136.54, 65], [136.54, -56.56, 65]],
+      "axis": "+z", "dia": 12.5, "depth": "thru", "source": "Ø12.50 (8X)", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 1, "positions": [[0, 0, 65]], "axis": "+z", "dia": 60, "depth": "thru", "source": "Ø60.00", "confidence": "high" },
+    { "id": "C", "type": "hole", "count": 8,
+      "positions": [[78.86, 32.66, 0], [32.66, 78.86, 0], [-32.66, 78.86, 0], [-78.86, 32.66, 0], [-78.86, -32.66, 0], [-32.66, -78.86, 0], [32.66, -78.86, 0], [78.86, -32.66, 0]],
+      "axis": "-z", "dia": 10, "depth": 48, "source": "Ø10.00 (8X); depth from SECTION C-C", "confidence": "medium" },
+    { "id": "D", "type": "pocket", "count": 1, "positions": [[0, 0, 0]], "axis": "-z", "dia": 155, "depth": 50, "probes": [[0, 70, 25]], "source": "Ø155.00", "confidence": "high" },
+    { "id": "E", "type": "pocket", "count": 8, "positions": [[118.4, 0, 65]], "axis": "+z", "depth": "thru", "r": 5, "edges": "vertical corners",
+      "probes": [[118, 0, 57], [0, 118, 57], [83.5, 83.5, 57]], "source": "DETAIL D trapezoid at 45° pitch", "confidence": "medium" },
+    { "id": "F", "type": "gusset", "count": 8, "angle": 25.12, "from": [123.06, 50.97, 43.49], "to": [85.37, 35.36, 24.36],
+      "probes": [[87.77, 36.36, 40], [115.48, 47.84, 46]], "source": "SECTION C-C, at 22.5°+45k", "confidence": "medium" },
+    { "id": "G", "type": "pocket", "count": 12, "positions": [[53.13, 14.24, 65]], "axis": "+z", "depth": 7.5,
+      "probes": [[53.13, 14.24, 62]], "source": "SECTION C-C 7.50, DETAIL B spokes at 0°+30k", "confidence": "low" }
+  ],
+  "guessed": [
+    "Hub outer diameter 175 (wall about 10, scaled from SECTION A-A)",
+    "Ø10 hub-hole depth 48 (scaled from SECTION C-C)",
+    "Spoke pockets r 36..74 with 5 mm spokes, cut in the outer plate face"
+  ]
+}

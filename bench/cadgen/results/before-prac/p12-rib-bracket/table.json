@@ -1,0 +1,20 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned third-angle drawing, mm" },
+  "frame": "origin at the front-left-bottom corner; X along the 80 width, Y back from the wall's front face (the base runs 70 in +Y), Z up",
+  "overall": { "x": 80, "y": 70, "z": 90 },
+  "bbox": { "min": [0, 0, 0], "max": [80, 70, 90] },
+  "body": [
+    "base plate 80 x 70 x 8, z 0..8",
+    "upright wall 80 (x) x 8 (y) x 90 (z) at the front, y 0..8",
+    "triangular rib 10 thick, centred at x 35..45, in the YZ plane: corners (y8,z8), (y8,z~74), (y~59,z8)"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 2, "positions": [[15, 50, 8], [65, 50, 8]], "axis": "+z", "dia": 6.6, "depth": "thru", "source": "2X Ø6.6 THRU, 15 / 65 from left, 50 from front", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 4, "positions": [[15, 0, 30], [65, 0, 30], [15, 0, 70], [65, 0, 70]], "axis": "-y", "dia": 8.5, "depth": "thru", "source": "4X Ø8.5 THRU, 15 / 65 from left, 30 / 70 from bottom", "confidence": "high" }
+  ],
+  "guessed": [
+    "rib top height on the wall z≈74, scaled from the right view; it lines up with the top of the upper hole",
+    "rib toe on the base y≈59, scaled from the right view"
+  ]
+}

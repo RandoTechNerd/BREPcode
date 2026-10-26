@@ -1,0 +1,129 @@
+{
+ "id": "121",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.23702,
+   "s": 120,
+   "ok": true,
+   "size": [
+    278.56,
+    278.56,
+    65
+   ],
+   "check": {
+    "score": 0.83,
+    "checked": 47,
+    "issues": [
+     "hole A#1 at (136.54, 56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (78.86, 32.67, 55)",
+     "hole A#2 at (56.56, 136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (32.67, 78.86, 55)",
+     "hole A#3 at (-56.56, 136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-32.67, 78.86, 55)",
+     "hole A#4 at (-136.54, 56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-78.86, 32.67, 55)",
+     "hole A#5 at (-136.54, -56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-78.86, -32.67, 55)",
+     "hole A#6 at (-56.56, -136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-32.67, -78.86, 55)",
+     "hole A#7 at (56.56, -136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (32.67, -78.86, 55)",
+     "hole A#8 at (136.54, -56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (78.86, -32.67, 55)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.236832,
+   "s": 80,
+   "ok": true,
+   "size": [
+    300,
+    300,
+    65
+   ],
+   "check": {
+    "score": 1,
+    "checked": 71,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.1",
+   "attempt": 1,
+   "cost": 0.243552,
+   "s": 53,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B79: boolean SUBTRACT failed: fragment_face: chain 8 fragmented into an incomplete run"
+  },
+  {
+   "tag": "look.2",
+   "attempt": 2,
+   "cost": 0.252616,
+   "s": 45,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B82: boolean SUBTRACT failed: boolean assembly produced invalid topology (S=2 genus=0): [ValidationIssue { severity: \"error\", kind: GenusMismatch, message: \"Euler formula: V-E+F-H = 3, expected 4 (0 coincident parallel edge pair(s) credited)\" }]; open edges [89:Some(Vec3 { x: 0.0, y: "
+  },
+  {
+   "tag": "look.3",
+   "attempt": 3,
+   "cost": 0.262332,
+   "s": 44,
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B98: boolean SUBTRACT failed: fragment_face: chain 8 fragmented into an incomplete run"
+  }
+ ],
+ "cost": 1.232352,
+ "look": "rejected (build)",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    278.56,
+    278.56,
+    65
+   ],
+   "check": {
+    "score": 0.83,
+    "checked": 47,
+    "issues": [
+     "hole A#1 at (136.54, 56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (78.86, 32.67, 55)",
+     "hole A#2 at (56.56, 136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (32.67, 78.86, 55)",
+     "hole A#3 at (-56.56, 136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-32.67, 78.86, 55)",
+     "hole A#4 at (-136.54, 56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-78.86, 32.67, 55)",
+     "hole A#5 at (-136.54, -56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-78.86, -32.67, 55)",
+     "hole A#6 at (-56.56, -136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (-32.67, -78.86, 55)",
+     "hole A#7 at (56.56, -136.54, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (32.67, -78.86, 55)",
+     "hole A#8 at (136.54, -56.56, 65) (\"Ø12.50 (8X), coordinates 56.56/136.54\"): no Ø12.5 hole along Z there; the nearest is Ø10 62.43 mm away, axis through (78.86, -32.67, 55)"
+    ]
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    300,
+    300,
+    65
+   ],
+   "check": {
+    "score": 1,
+    "checked": 71,
+    "issues": []
+   }
+  },
+  {
+   "tag": "look.3",
+   "ok": false,
+   "kind": "build",
+   "error": "Rust kernel, B B98: boolean SUBTRACT failed: fragment_face: chain 8 fragmented into an incomplete run"
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "attempts": 5,
+ "seconds": 348
+}

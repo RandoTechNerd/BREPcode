@@ -1,0 +1,242 @@
+{
+ "id": "p07-bearing-housing",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.1770604,
+   "s": 33,
+   "ok": true,
+   "size": [
+    100,
+    100,
+    42
+   ],
+   "check": {
+    "score": 1,
+    "checked": 28,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.895
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.979
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.985
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 2..19 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 92..100 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 92..100, y 2..27 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.2174724,
+   "s": 37,
+   "ok": true,
+   "size": [
+    100,
+    100,
+    42
+   ],
+   "check": {
+    "score": 1,
+    "checked": 28,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.895
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.979
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.985
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 2..19 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 92..100 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 92..100, y 2..27 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.1990804,
+   "s": 9,
+   "noChanges": true
+  }
+ ],
+ "cost": 0.6344972,
+ "views": [
+  {
+   "name": "TOP",
+   "region": [
+    0.05,
+    0.07,
+    0.4,
+    0.5
+   ],
+   "right": "+x",
+   "up": "+y",
+   "cut": null
+  },
+  {
+   "name": "FRONT",
+   "region": [
+    0.085,
+    0.555,
+    0.335,
+    0.73
+   ],
+   "right": "+x",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "RIGHT",
+   "region": [
+    0.43,
+    0.555,
+    0.635,
+    0.755
+   ],
+   "right": "+y",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "ISO",
+   "region": [
+    0.66,
+    0.27,
+    0.95,
+    0.56
+   ],
+   "right": null,
+   "up": null,
+   "cut": null
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    100,
+    100,
+    42
+   ],
+   "check": {
+    "score": 1,
+    "checked": 28,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.895
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.979
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.985
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 2..19 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 92..100 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 92..100, y 2..27 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    100,
+    100,
+    42
+   ],
+   "check": {
+    "score": 1,
+    "checked": 28,
+    "missing": 0,
+    "skipped": [],
+    "issues": [],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.895
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.979
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.985
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 2..19 (3% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..25, y 92..100 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 92..100, y 2..27 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 1,
+ "missing": 0,
+ "outline": [
+  {
+   "name": "TOP",
+   "iou": 0.895
+  },
+  {
+   "name": "FRONT",
+   "iou": 0.979
+  },
+  {
+   "name": "RIGHT",
+   "iou": 0.985
+  }
+ ],
+ "attempts": 3,
+ "seconds": 91
+}

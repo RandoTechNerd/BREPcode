@@ -1,0 +1,29 @@
+{
+  "kind": "drawing",
+  "scale": { "source": "dimensions", "basis": "dimensioned views: top, side (300 across, 65 tall), Detail B, Detail D, sections A-A and C-C" },
+  "frame": "Origin on the part axis at the bottom of the hub, Z up. The hub runs z 0-50 and the flange z 50-65. The octagon has flats facing ±X and ±Y.",
+  "overall": { "x": 300, "y": 300, "z": 65 },
+  "bbox": { "min": [-150, -150, 0], "max": [150, 150, 65] },
+  "body": [
+    "Regular octagonal flange, 300 across flats (side view 300.00), 15 thick, z 50-65, vertices at 22.5°+k·45°",
+    "Cylindrical hub, OD ~185, z 0-50, with a Ø155 bore from z 0 up to the flange underside (z 50)",
+    "Central plate inside the hub: the flange (z 50-65), with a Ø60 centre hole through",
+    "8 triangular gusset ribs under the flange at 22.5°+k·45°, ~12 thick, sloping from (r 92, z 24.36) to (r 133.2, z 50); outer extent Ø266.43"
+  ],
+  "features": [
+    { "id": "A", "type": "hole", "count": 8, "positions": [[136.54,56.56,65],[56.56,136.54,65],[-56.56,136.54,65],[-136.54,56.56,65],[-136.54,-56.56,65],[-56.56,-136.54,65],[56.56,-136.54,65],[136.54,-56.56,65]], "axis": "+z", "dia": 12.5, "depth": "thru", "source": "Ø12.50 (8X), coordinates 56.56/136.54", "confidence": "high" },
+    { "id": "B", "type": "hole", "count": 8, "positions": [[78.86,32.66,65],[32.66,78.86,65],[-32.66,78.86,65],[-78.86,32.66,65],[-78.86,-32.66,65],[-32.66,-78.86,65],[32.66,-78.86,65],[78.86,-32.66,65]], "axis": "+z", "dia": 10, "depth": 20, "source": "Ø10.00 (8X), Detail B coordinates", "confidence": "medium" },
+    { "id": "C", "type": "hole", "count": 1, "positions": [[0,0,65]], "axis": "+z", "dia": 60, "depth": "thru", "source": "Ø60.00", "confidence": "high" },
+    { "id": "D", "type": "pocket", "count": 8, "positions": [[118.4,0,65]], "axis": "+z", "width": 61, "length": 41.78, "depth": 9.3, "source": "Detail D: trapezoid 61 wide at its outer edge, 67.5° sides, R97.5 inner edge, 41.78 radial (r 97.5-139.28), R5 TYP corners; 5.7 floor from section A-A", "confidence": "medium" },
+    { "id": "E", "type": "pocket", "count": 12, "positions": [[53,0,65]], "axis": "+z", "depth": 7.5, "source": "Section C-C 7.50; spoke pattern at 30° pitch, offset 15°", "confidence": "low" },
+    { "id": "F", "type": "pocket", "count": 1, "positions": [[0,0,0]], "axis": "-z", "dia": 155, "depth": 50, "source": "Section A-A Ø155.00 and 50.00 (the bore from below)", "confidence": "high" }
+  ],
+  "guessed": [
+    "Octagon 300 across flats: taken from the side view. The previous 278.56 made the Ø12.5 holes break out of the edge. The 278.56 dimensions are read as a reference across the hole pattern.",
+    "Hub OD 185, estimated from the section's scale",
+    "Rib thickness 12, and the rib profile endpoints",
+    "Spoke-pocket radii 35-72 and the spoke width",
+    "Ø10 hole depth 20",
+    "Fillets and the keyed notches around the Ø60 hole are omitted"
+  ]
+}

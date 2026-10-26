@@ -1,0 +1,462 @@
+{
+ "id": "p20-hub",
+ "task": "generation",
+ "calls": [
+  {
+   "tag": "c0.1",
+   "attempt": 1,
+   "cost": 0.2063364,
+   "s": 54,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.938,
+    "checked": 32,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole S1 at (45, 22.5, 28) (\"FRONT Ø5 ↧ 12 at z=28\"): should be 12 deep but goes through",
+     "hole S2 at (67.5, 45, 28) (\"RIGHT Ø5 ↧ 12 at z=28, y=45\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 9..31 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 53..75 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "attempt": 1,
+   "cost": 0.2560084,
+   "s": 52,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.939,
+    "checked": 33,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole S1 at (45, 22.5, 28) (\"FRONT Ø5 ↧ 12 at z=28\"): should be 12 deep but goes through",
+     "hole S2 at (67.5, 45, 28) (\"RIGHT Ø5 ↧ 12 at z=28, y=45\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 10..25 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 54..75 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c1.1",
+   "attempt": 1,
+   "cost": 0.21937240000000002,
+   "s": 57,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.939,
+    "checked": 33,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole C at (45, 22.5, 28) (\"Ø5 ↧ 12 in FRONT, at x45 z28\"): should be 12 deep but goes through",
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 in RIGHT, at y45 z28\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 10..25 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 54..75 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c2.1",
+   "attempt": 1,
+   "cost": 0.2202964,
+   "s": 60,
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "check": {
+    "score": 0.938,
+    "checked": 32,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole R1 at (45, 22.5, 28) (\"Ø5 ↧ 12 seen as a circle in FRONT at x=45, z=28\"): should be 12 deep but goes through",
+     "hole R2 at (67.5, 45, 28) (\"Ø5 ↧ 12 seen as a circle in RIGHT at y=45, z=28\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 10..25 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 54..75 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "look",
+   "attempt": 1,
+   "cost": 0.2227364,
+   "s": 16,
+   "noChanges": true
+  }
+ ],
+ "cost": 1.164238,
+ "views": [
+  {
+   "name": "TOP",
+   "region": [
+    0.07,
+    0.06,
+    0.48,
+    0.46
+   ],
+   "right": "+x",
+   "up": "+y",
+   "cut": null
+  },
+  {
+   "name": "FRONT",
+   "region": [
+    0.07,
+    0.53,
+    0.33,
+    0.77
+   ],
+   "right": "+x",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "RIGHT",
+   "region": [
+    0.43,
+    0.53,
+    0.66,
+    0.79
+   ],
+   "right": "+y",
+   "up": "+z",
+   "cut": null
+  },
+  {
+   "name": "ISO",
+   "region": [
+    0.66,
+    0.24,
+    0.95,
+    0.56
+   ],
+   "right": null,
+   "up": null,
+   "cut": null
+  }
+ ],
+ "ranking": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "own": 0.938,
+   "consensus": 0.9359999999999999,
+   "rank": 0.937
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "own": 0.939,
+   "consensus": 0.9359999999999999,
+   "rank": 0.938
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "own": 0.939,
+   "consensus": 0.935,
+   "rank": 0.937
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "own": 0.938,
+   "consensus": 0.9359999999999999,
+   "rank": 0.937
+  }
+ ],
+ "look": "no changes",
+ "candidates": [
+  {
+   "tag": "c0.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "consensus": 0.9359999999999999,
+   "check": {
+    "score": 0.938,
+    "checked": 32,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole S1 at (45, 22.5, 28) (\"FRONT Ø5 ↧ 12 at z=28\"): should be 12 deep but goes through",
+     "hole S2 at (67.5, 45, 28) (\"RIGHT Ø5 ↧ 12 at z=28, y=45\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 9..31 (2% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 53..75 (1% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c0fix.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "consensus": 0.9359999999999999,
+   "check": {
+    "score": 0.939,
+    "checked": 33,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole S1 at (45, 22.5, 28) (\"FRONT Ø5 ↧ 12 at z=28\"): should be 12 deep but goes through",
+     "hole S2 at (67.5, 45, 28) (\"RIGHT Ø5 ↧ 12 at z=28, y=45\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 10..25 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 54..75 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c1.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "consensus": 0.935,
+   "check": {
+    "score": 0.939,
+    "checked": 33,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole C at (45, 22.5, 28) (\"Ø5 ↧ 12 in FRONT, at x45 z28\"): should be 12 deep but goes through",
+     "hole D at (67.5, 45, 28) (\"Ø5 ↧ 12 in RIGHT, at y45 z28\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 10..25 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 54..75 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  },
+  {
+   "tag": "c2.1",
+   "ok": true,
+   "size": [
+    90,
+    90,
+    40
+   ],
+   "consensus": 0.9359999999999999,
+   "check": {
+    "score": 0.938,
+    "checked": 32,
+    "missing": 0,
+    "skipped": [],
+    "issues": [
+     "hole R1 at (45, 22.5, 28) (\"Ø5 ↧ 12 seen as a circle in FRONT at x=45, z=28\"): should be 12 deep but goes through",
+     "hole R2 at (67.5, 45, 28) (\"Ø5 ↧ 12 seen as a circle in RIGHT at y=45, z=28\"): should be 12 deep but goes through"
+    ],
+    "outline": {
+     "views": [
+      {
+       "name": "TOP",
+       "iou": 0.884
+      },
+      {
+       "name": "FRONT",
+       "iou": 0.754
+      },
+      {
+       "name": "RIGHT",
+       "iou": 0.97
+      }
+     ],
+     "lines": [
+      "TOP (+x right, +y up): the drawing shows material the model lacks around x 0..15, y 10..25 (1% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "TOP (+x right, +y up): the model has material the drawing does not show around x 0..15, y 54..75 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?",
+      "FRONT (+x right, +z up): the drawing shows material the model lacks around x -7..22, z 0..27 (15% of the view): a rib that stops short, a missing step, shoulder or boss? (or a dimension line; check the overlay)",
+      "FRONT (+x right, +z up): the model has material the drawing does not show around x 22..65, z 37..40 (2% of the view): too long or too tall there, or a cut, notch or chamfer missing?"
+     ]
+    }
+   }
+  }
+ ],
+ "ok": true,
+ "kept": "c0fix.1",
+ "fallback": false,
+ "selfCheck": 0.939,
+ "missing": 0,
+ "outline": [
+  {
+   "name": "TOP",
+   "iou": 0.884
+  },
+  {
+   "name": "FRONT",
+   "iou": 0.754
+  },
+  {
+   "name": "RIGHT",
+   "iou": 0.97
+  }
+ ],
+ "attempts": 5,
+ "seconds": 200
+}
