@@ -625,6 +625,15 @@ console.log("\nPhase 2: wiring\n");
     const picks = [[0.95, 0.5, 1], [0.5, 0.95, 1], [0.05, 0.4, 1], [0.6, 0.05, 1]].map((p) => D.nearestEdge(edges, p, meshes)?.name);
     check("an edge pick without segments takes the edge nearest the click", picks.join() === "PX|PZ[0],PY|PZ[0],NX|PZ[0],NY|PZ[0]", picks.join());
   }
+  {
+    // a face or body whose feature has no call in the code: a message, not a TypeError
+    const env = { bodyOf: () => null };
+    const sq = { fid: "X1", outline: { loops: [[[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]]], normal: [0, 0, 1], point: [5, 5, 0] } };
+    let rv, cb;
+    try { rv = D._test.SPECS.revolve.write("return cube(1);", { face: sq, axis: "0", angle: 360, op: "join" }, env); } catch (e) { rv = { threw: String(e) }; }
+    try { cb = D._test.SPECS.combine.write("return cube(1);", { fid: "X1", bodies: [{ fid: "X2" }], op: "union" }, env); } catch (e) { cb = { threw: String(e) }; }
+    check("revolve / combine on a shape with no call: an error message, no throw", !!rv?.error && !rv.threw && !!cb?.error && !cb.threw, JSON.stringify({ rv, cb }));
+  }
   check("ten feature dialogs", ["extrude", "revolve", "hole", "fillet", "chamfer", "shell", "mirror", "linear", "circular", "combine"].every((d) => D.DIALOGS.includes(d)));
   check("the dialogs load lazily (dynamic import on first use)", /await import\("\.\/design\/dialogs\.js"\)/.test(shell) && !/^import .*design\/dialogs/m.test(shell));
   check("…and press-pull too", /await import\("\.\/design\/presspull\.js"\)/.test(shell));
@@ -640,6 +649,9 @@ console.log("\nPhase 2: wiring\n");
   check("right-click menu: a contextmenu during the press waits for the release, and opens only if the pointer stayed put",
     /if \(rightHeld\) \{ menuOnRelease = true; return; \}/.test(html)
     && /const still = rightDown && Math\.hypot\(e\.clientX - rightDown\[0\], e\.clientY - rightDown\[1\]\) <= 6;[\s\S]{0,80}if \(still\) openShapeMenuAt\(e\.clientX, e\.clientY\);/.test(html));
+  const sketcherSrc = readFileSync(new URL("../viewer/design/sketcher.js", import.meta.url), "utf8");
+  check("sketch Finish refuses when the code changed while it was open (it would undo that)", /async function finish\(\) \{[\s\S]{0,400}if \(host\.text\(\) !== S\.orig\) \{ setMsg\(/.test(sketcherSrc));
+  check("a feature dialog closes an open sketch first", /if \(dialog\) await dialog\.cancel\(\);\s*\/\/[^\n]*\n\s*if \(sketcher\?\.active \|\| sketcher\?\.choosing\) sketcher\.cancel\(\);/.test(shell));
   check("rotate and scale are gizmo modes", /rotate: "rotate", scale: "scale"/.test(shell));
   check("a failed build reaches Design mode with the kernel's reason", /designUI\?\.buildResult\?\.\(ok, ok \? null : lastBuildFailure\)/.test(html)
     && /reason: String\(e\?\.message \|\| e\), stage: attempt/.test(html));

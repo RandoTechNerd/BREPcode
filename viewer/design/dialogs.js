@@ -155,6 +155,7 @@ const SPECS = {
       const call = revolveCall(s.face.outline, ax, s.angle);
       if (call.error) return call;
       const body = env.bodyOf(s.face.fid);
+      if (!body) return { error: "That face has no call in the code to add to." };
       if (s.op === "cut") return F.addTool(base, body, call.text);
       if (s.op === "join") return F.addTool(base, body, call.text, "union");
       return F.newBodyText(base, body, call.text);
@@ -286,6 +287,7 @@ const SPECS = {
       if (!s.fid) return { wait: "Select the target body first." };
       if (!s.bodies.length) return { wait: "Click the bodies to combine with it." };
       const target = env.bodyOf(s.fid);
+      if (!target) return { error: "The target body has no call in the code." };
       const tools = s.bodies.map((b) => env.bodyOf(b.fid));
       if (tools.some((t) => !t || (t.start === target.start && t.end === target.end))) return { error: "Pick bodies other than the target." };
       return F.combineText(base, target, tools, s.op);
@@ -431,8 +433,16 @@ export function openDialog(id, ctx) {
   const pickMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.4, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, side: THREE.DoubleSide });
   const lineMat = new THREE.LineBasicMaterial({ color: 0xff5c8a, depthTest: false, transparent: true });
+  // a face's tint borrows the model's own geometry; lines and points are ours
+  const clearPicks = () => {
+    for (const c of [...overlay.children]) {
+      overlay.remove(c);
+      if (c.isLine || c.isLineSegments || c.isPoints) c.geometry.dispose();
+      if (c.isPoints) c.material.dispose();
+    }
+  };
   const drawPicks = () => {
-    for (const c of [...overlay.children]) { overlay.remove(c); if (c.isLine || c.isLineSegments || c.isPoints) c.geometry.dispose(); }
+    clearPicks();
     const faces = [state.face, ...(state.faces || []), state.at].filter(Boolean);
     for (const f of faces) {
       if (!f.mesh?.geometry) continue;
@@ -586,7 +596,9 @@ export function openDialog(id, ctx) {
     clearTimeout(previewT);
     removeEventListener("keydown", onKey);
     box.remove();
-    for (const c of [...overlay.children]) overlay.remove(c);
+    clearPicks();
+    pickMat.dispose();
+    lineMat.dispose();
     scene.remove(overlay);
     ctx.onClose?.();
   }
@@ -704,7 +716,7 @@ function shortReason(r) {
 }
 
 export const DIALOGS = Object.keys(SPECS);
-export const _test = { revolveAxes, revolveCall, changedLine, diffSpan };
+export const _test = { revolveAxes, revolveCall, changedLine, diffSpan, SPECS };
 
 // The range of `next` that differs from `base`: where a dialog's edit went.
 function diffSpan(base, next) {

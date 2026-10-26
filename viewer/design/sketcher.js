@@ -735,14 +735,15 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   async function finish() {
     const p = M.profileProblem(S.sk);
     if (S.feat !== "none" && p) { setMsg(`Not a profile yet: ${esc(p)}`, "err"); return; }
+    // the sketch is written into the code as it was when it opened: anything
+    // changed since (typed, or another tool) would be silently undone
+    if (host.text() !== S.orig) { setMsg("The code changed while this sketch was open, so Finish would undo that. Cancel and sketch again.", "err"); return; }
     let next;
     try { next = finishText(); } catch (e) { setMsg(esc(e.message || e), "err"); return; }
-    const base = S.text;
     close();
     const res = await host.commit(next);
     host.setHint(res.ok ? "Sketch finished: written into the code as <code>sketch({ … })</code>."
       : `The sketch was written, but the build failed: ${esc(res.failure?.reason ?? "")}. Ctrl+Z takes it back.`);
-    void base;
   }
   function cancel() { endChoose(); close(); host.setHint("Sketch cancelled; the code is as it was."); }
   function close() {
