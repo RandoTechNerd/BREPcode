@@ -570,6 +570,24 @@ console.log("\nPhase 2: a face's outline, and the failed step\n");
   check("…linked to its call", r && src.slice(r.steps[r.index].link.start, r.steps[r.index].link.end).startsWith("fillet("));
   const g = failedSteps({ ...f, reason: "something odd" }, { words });
   check("a message naming no step blames the last one", g.index === g.steps.length - 1);
+  // a fillet refused while the list was being written never became a step:
+  // the red goes on a step of its own for it, not on the box before it
+  const stale = `return fillet({ r: 2, edges: ["P.CU9_PX|P.CU9_PZ[0]"] }, cube([40, 30, 10]));`;
+  const st = await build(`return cube([40, 30, 10]);`, `return cube([40, 30, 10]);`);
+  const sf = failedSteps({ reason: `fillet(): no edge "P.CU9_PX|P.CU9_PZ[0]" on this shape`, features: st.features, trace: [], runText: stale, editorText: stale }, { words });
+  check("a refused fillet with no step of its own: a red Fillet step, not the Box", sf.steps[sf.index].label === "Fillet" && sf.steps[sf.index - 1]?.type === "P.CU",
+    JSON.stringify(sf.steps.map((s) => s.label ?? s.type)));
+  check("…linked to the fillet() call", stale.slice(sf.steps[sf.index].link.start, sf.steps[sf.index].link.end).startsWith("fillet({ r: 2"));
+  const pend = failedSteps({ reason: "kernel said no", features: st.features, pending: { label: "Chamfer", link: { start: 7, end: 20 } } }, { words });
+  check("a dialog's failed preview marks the dialog's own feature", pend.steps[pend.index].label === "Chamfer" && pend.index === pend.steps.length - 1);
+
+  // picks during a preview: the dialog keeps the model's face names from when
+  // it opened, and a pick on any other face is the preview's own
+  const D = await import("../viewer/design/dialogs.js");
+  check("the dialog marks faces it did not open on as the preview's (and maps them back)", /const baseFaces = new Set\(host\.modelMeshes\(\)/.test(readFileSync(new URL("../viewer/design/dialogs.js", import.meta.url), "utf8"))
+    && typeof D._test.diffSpan === "function");
+  const ds = D._test.diffSpan("return cube(5);", "return fillet(1, cube(5));");
+  check("a dialog's edit span is the text it wrote", ds.start === 7 && "return fillet(1, cube(5));".slice(ds.start, ds.end) === "fillet(1, cube(5))".slice(0, ds.end - ds.start), JSON.stringify(ds));
 }
 
 console.log("\nPhase 2: wiring\n");

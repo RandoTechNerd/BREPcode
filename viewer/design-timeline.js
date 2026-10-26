@@ -87,21 +87,37 @@ export function linkFeatures(features, { sites = null, trace = [], runText = nul
 // failedSteps(failure, { words }) -> { steps, index } for a build the kernel
 // refused: the feature list it was asked for, linked like a good build's,
 // and which step failed. The kernels name the feature in their message
-// ("…, F F2: fillet did not produce a closed solid"); a message that names
-// none blames the last step, where a history stops.
+// ("…, F F2: fillet did not produce a closed solid"). A feature refused
+// before it was ever made (fillet(): "no edge …" is thrown while the list is
+// being written, so it has no step) gets one of its own, red, linked to its
+// call: the dialog's pending call when a preview failed (failure.pending:
+// { label, link }), else the last call of the word the message starts with.
+// Only a message that names neither blames the last step.
 export function failedSteps(failure, { words, lineOffset } = {}) {
-  if (!failure?.features?.length) return null;
+  if (!failure?.features?.length && !failure?.pending) return null;
+  const editorText = failure.editorText ?? failure.runText ?? "";
   const sites = failure.trace && failure.runText != null
-    ? mapTraceSites(failure.trace, failure.runText, failure.editorText ?? failure.runText, { words, lineOffset }).byId : {};
-  const steps = linkFeatures(failure.features, { sites, trace: failure.trace || [], runText: failure.runText, editorText: failure.editorText ?? failure.runText, lineOffset });
+    ? mapTraceSites(failure.trace, failure.runText, editorText, { words, lineOffset }).byId : {};
+  const steps = linkFeatures(failure.features || [], { sites, trace: failure.trace || [], runText: failure.runText, editorText, lineOffset });
   const reason = String(failure.reason || "");
   const ids = steps.map((s, i) => [s.id, i]).filter(([id]) => id).sort((a, b) => b[0].length - a[0].length);
-  const named = ids.find(([id]) => new RegExp(`(^|[^\w.])${escRe(id)}(?![\w.])`).test(reason));
-  return { steps, index: named ? named[1] : steps.length - 1 };
+  const named = ids.find(([id]) => new RegExp(`(^|[^\\w.])${escRe(id)}(?![\\w.])`).test(reason));
+  if (named) return { steps, index: named[1] };
+  const add = (label, link) => {
+    steps.push({ index: steps.length, id: null, type: "pending", op: null, label, link, refs: [] });
+    return { steps, index: steps.length - 1 };
+  };
+  if (failure.pending) return add(failure.pending.label, failure.pending.link ?? null);
+  const word = /^(?:Error:\s*)?(\w+)\(\)/.exec(reason)?.[1];
+  const map = word ? parseCode(editorText) : null;
+  const call = map?.ok ? [...map.calls].reverse().find((c) => c.name === word) : null;
+  if (call) return add(word[0].toUpperCase() + word.slice(1), { start: call.start, end: call.end, exact: false });
+  return { steps, index: steps.length - 1 };
 }
 
 // A short human label for a step.
 export function stepLabel(step, featureLabel) {
+  if (step.label) return step.label;
   if (step.type === "B") {
     return { UNION: "Union", SUBTRACT: "Cut", INTERSECT: "Intersect" }[step.op] ?? "Boolean";
   }
