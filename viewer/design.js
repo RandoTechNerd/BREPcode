@@ -4,9 +4,10 @@
 // the same model: a model browser, a timeline, selection, a move gizmo and
 // feature dialogs, every one of them editing the CODE (which stays the single
 // source of truth), so switching back shows exactly what was done. This file
-// is phase 0 of that: the switch itself, remembered per browser, and a body
-// class (`design-mode`) the later phases hang their UI on. Code mode is the app
-// as it always was; nothing here changes it.
+// is the switch itself, remembered per browser, and a body class
+// (`design-mode`) the Design UI hangs on (design-shell.js and the design-*.js
+// pieces it wires, phase 1). Code mode is the app as it always was; nothing
+// here changes it.
 
 export const MODE_KEY = "brepcode.mode";
 export const MODES = ["code", "design"];
@@ -37,17 +38,6 @@ const CSS = `
 #mode-switch button:hover { color: var(--text, #dfe6f3); }
 #mode-switch button[aria-pressed="true"] { background: var(--accent, #1c66e5); color: #fff; }
 #mode-switch button:focus-visible { outline: 2px solid var(--accent, #1c66e5); outline-offset: 1px; }
-#design-note {
-  position: fixed; top: 52px; left: 12px; z-index: 30; max-width: 300px;
-  padding: 10px 12px; border-radius: 10px;
-  background: var(--card, #121826);
-  border: 1px solid var(--border, #26314a);
-  color: var(--text, #dfe6f3); font: 12.5px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-}
-#design-note b { display: block; margin-bottom: 3px; font-size: 13px; }
-#design-note small { color: var(--muted, #8ea0c0); }
-body:not(.design-mode) #design-note { display: none; }
 `;
 
 // Builds the switch, applies the remembered mode, and returns
@@ -65,15 +55,8 @@ export function initModeSwitch({ onChange } = {}) {
   bar.setAttribute("role", "group");
   bar.setAttribute("aria-label", "Editing mode");
   bar.innerHTML = `<button type="button" data-mode="code" title="Code: write or ask for the model in text (the way BREPcode has always worked)">Code</button>`
-    + `<button type="button" data-mode="design" title="Design: point-and-click CAD on the same model. Early preview.">Design</button>`;
-  const note = document.createElement("div");
-  note.id = "design-note";
-  note.setAttribute("role", "note");
-  note.innerHTML = `<b>Design mode is on its way</b>`
-    + `A model browser, timeline, move gizmo and feature dialogs are coming here, `
-    + `each one editing the same code you see in Code mode. `
-    + `<small>For now everything works exactly as in Code mode.</small>`;
-  document.body.append(bar, note);
+    + `<button type="button" data-mode="design" title="Design: point-and-click CAD on the same model: browser, timeline, move gizmo. Early preview.">Design</button>`;
+  document.body.append(bar);
 
   let mode = null;
   const setMode = (next) => {

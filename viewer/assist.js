@@ -1419,8 +1419,12 @@ export function addImplicitReturn(src) {
     if (run >= 2) {
       const tailSegs = segs.slice(-run);
       const head = src.slice(0, tailSegs[0].from);
-      const parts = tailSegs.map((s) =>
-        `(${src.slice(s.from, s.to).trim().replace(/;+\s*$/, "")})`);
+      // a trailing `// remark` would swallow the closing paren, so it goes on
+      // its own line whenever the piece has one
+      const parts = tailSegs.map((s) => {
+        const text = src.slice(s.from, s.to).trim().replace(/;+\s*$/, "");
+        return text.includes("//") ? `(${text}\n  )` : `(${text})`;
+      });
       return `${head}return group(\n  ${parts.join(",\n  ")},\n);`;
     }
   }

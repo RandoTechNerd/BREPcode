@@ -4399,6 +4399,8 @@
     import * as codemap from "../src/codemap.js";
     import { faceEdges } from "./faceedges.js";
     import { initModeSwitch } from "./design.js";
+    import { moveText, ridersOf } from "./design-move.js";
+    import { initDesignShell } from "./design-shell.js";
     import * as mgeom from "../src/measuregeom.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
@@ -10195,6 +10197,7 @@ ${joined}${SITE_TAIL}`), joined);
       workerHasModel && !!kernelWorker && modelEpoch === workerEpoch;
     let modelIsImport = false;   // imported meshes: drag orbits instead of manipulating
     let lastFeatures = [];   // the kernel feature history from that build
+    let designUI = null;     // Design mode's shell (design-shell.js), once it is up
 
     // featureId -> { kind, start, end, codes, exact?, pattern?, name? }.
     //
@@ -10480,6 +10483,7 @@ ${joined}${SITE_TAIL}`), joined);
         updateDims();
         // keep the selection's handles alive across rebuilds (ids are stable)
         if (selected) spawnHandles(selected.fid);
+        designUI?.refresh();  // model browser + timeline, against the new map
         refreshSplit();       // redraw the stretch() cut plane against new bounds
         refreshOutlines();    // and re-trace the CAD edges on the new geometry
 
@@ -11065,6 +11069,7 @@ ${joined}${SITE_TAIL}`), joined);
 
     function clearHandles() {
       selected = null;
+      designUI?.onSelect(null);
       clearHighlight();
       clearEmphasis();
       // the bead geometry is shared and must survive; shaped face pucks are
@@ -11392,6 +11397,7 @@ ${joined}${SITE_TAIL}`), joined);
       if (bb.isEmpty()) return;
       selected = { fid };
       highlightMeshesOf(fid);
+      designUI?.onSelect(fid);
       // A drill's numbers are a point, a direction, a width and a depth — none
       // of which the world-axis face handles can express. It gets its own.
       if (site.kind === "drill" && spawnDrillHandles(fid, site, bb)) return;
@@ -12667,8 +12673,33 @@ ${joined}${SITE_TAIL}`), joined);
       } finally { replayingPointer = false; }
     }
 
+    // What moving the shape fid writes and drags along: the span the move
+    // edits (dragSpanFor), the shapes that ride with it, and whether it is a
+    // cutter. Shared by the body drag and Design mode's gizmo.
+    function moveMembersOf(fid, site = featureMap?.[fid]) {
+      const span = dragSpanFor(code.value, site);
+      const fids = span.whole
+        // everything inside the boolean, helpers called from in there included
+        ? ridersOf(span, { sites: featureMap, trace: lastTrace, runText: lastRunText, editorText: code.value })
+        // one call in a loop is every instance: the translate() the drag
+        // writes moves them all, so the preview must too
+        : patternIds(fid);
+      // A CUTTER's "faces" are the inside of the hole it made, so sliding them
+      // tore the wall out of the solid and left a gap: it read as the solid
+      // moving. Leave the model alone and drag a translucent ghost of the
+      // cutter instead, which is honest about what the boolean will do
+      // without re-running it every frame.
+      const encl = enclosingBooleanSpan(code.value, site.start);
+      const isCutter = !span.whole && !!encl && encl.op === "difference";
+      const meshes = modelGroup.children.filter((m) => fids.includes(m.userData.featureId));
+      return { site, span, fids, isCutter, meshes };
+    }
+
     renderer.domElement.addEventListener("pointerdown", (e) => {
       if (replayingPointer) return;
+      // Design mode's move gizmo is under the pointer: the press is its drag,
+      // not a body drag, an orbit or a pick.
+      if (designUI?.gizmoOwnsPointer()) { downAt = null; return; }
       if (drag && dragPointer && e.pointerId !== dragPointer.id) {
         // A second finger on a touch drag means PINCH: the first finger just
         // happened to land on the part. Drop the drag before it has edited
@@ -12955,21 +12986,7 @@ ${joined}${SITE_TAIL}`), joined);
 
         // plain drag = move. Grabbing the main shape of a boolean moves the
         // whole thing — holes and cutters ride along.
-        const span = dragSpanFor(code.value, site);
-        const memberFids = span.whole
-          ? Object.keys(featureMap).filter((id) =>
-              featureMap[id].start >= span.start && featureMap[id].end <= span.end)
-          // one call in a loop is every instance: the translate() the drag
-          // writes moves them all, so the preview must too
-          : patternIds(fid);
-        // A CUTTER's "faces" are the inside of the hole it made, so sliding them
-        // tore the wall out of the solid and left a gap: it read as the solid
-        // moving. Leave the model alone and drag a translucent ghost of the
-        // cutter instead, which is honest about what the boolean will do
-        // without re-running it every frame.
-        const encl = enclosingBooleanSpan(code.value, site.start);
-        const isCutter = !span.whole && encl && encl.op === "difference";
-        const dragMeshes = modelGroup.children.filter((m) => memberFids.includes(m.userData.featureId));
+        const { span, isCutter, meshes: dragMeshes } = moveMembersOf(fid, site);
         let ghosts = null;
         if (isCutter) {
           ghosts = [];
@@ -13510,33 +13527,16 @@ ${joined}${SITE_TAIL}`), joined);
       } else if (drag.mode === "resize") {
         next = resizeNextText(text, drag, drag.amount);
       } else {
-        const { span, delta } = drag;
-        const head = text.slice(0, span.start);
-        // A drill already carries its position: it is the first argument, and
-        // that is the number someone reading the code expects to see change.
-        // Wrapping it in a translate() would work and would be worse — the
-        // point would then say one thing and the hole sit somewhere else.
-        const body = text.slice(span.start, span.end);
-        const bore = /^drill\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/.exec(body);
-        if (bore) {
-          const p = [r1(+bore[1] + delta.x), r1(+bore[2] + delta.y), r1(+bore[3] + delta.z)];
-          next = text.slice(0, span.start)
-            + `drill([${p.join(", ")}]` + body.slice(bore[0].length)
-            + text.slice(span.end);
+        // drill point / fold into a translate() / wrap in one: design-move.js,
+        // shared with Design mode's gizmo
+        const moved = moveText(text, drag.span, drag.delta);
+        if (moved.how === "none") { clearDragPreview(); return; }
+        next = moved.next;
+        if (moved.how === "drill") {
           code.value = next;
           pushHistory();
           buildAfterToolEdit();
           return;
-        }
-        const wrap = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/.exec(head);
-        if (wrap) {
-          const [nx, ny, nz] = [r1(+wrap[1] + delta.x), r1(+wrap[2] + delta.y), r1(+wrap[3] + delta.z)];
-          next = head.slice(0, wrap.index) + `translate([${nx}, ${ny}, ${nz}], ` + text.slice(span.start);
-        } else {
-          const [dx, dy, dz] = [r1(delta.x), r1(delta.y), r1(delta.z)];
-          next = text.slice(0, span.start)
-            + `translate([${dx}, ${dy}, ${dz}], ${text.slice(span.start, span.end)})`
-            + text.slice(span.end);
         }
       }
       code.value = next;
@@ -13685,9 +13685,16 @@ ${joined}${SITE_TAIL}`), joined);
       // before the drag had even happened: pick a shape, go to turn the view,
       // and its handles vanished under your hand.
       if (!hit) { clearHandles(); return; }
+      if (selectFeature(hit.object.userData.featureId) && hit.object.userData.faceName) {
+        designUI?.pickFace(hit.object);
+      }
+    });
 
+    // Select the shape fid as a click on it does: handles, outline, its call
+    // selected in the editor and a hint. Design mode's model browser and
+    // timeline select through here too. False when fid has no call to map to.
+    function selectFeature(fid, { range = null } = {}) {
       // dimensions of everything that came from the same primitive
-      const fid = hit.object.userData.featureId;
       const fbb = featureBox(fid);
       const fdims = fbb.isEmpty() ? "" :
         ` (${["x", "y", "z"].map((a) => (fbb.max[a] - fbb.min[a]).toFixed(1)).join(" × ")} mm)`;
@@ -13697,17 +13704,21 @@ ${joined}${SITE_TAIL}`), joined);
         if (modelGroup.children.length) {
           hint.innerHTML = `This piece measures <b>${fdims.replace(/[()]/g, "").trim() || "?"}</b> — can't map it back to a single call (loops, helpers, or modules), so edit the text directly.`;
         }
-        return;
+        return false;
       }
       spawnHandles(fid);
+      selectCodeRange(range ?? site);
+      hint.innerHTML = `Selected <b>${site.kind}</b>${fdims} — drag a <b>square</b> to push that side, a <b>corner ball</b> to ${site.kind === "cube" || site.kind === "cuboid" ? "stretch width &amp; depth" : "scale it"}, or drag the body to move it (Shift = vertical). <b>Right-click</b> it to change the shape or its colour.`;
+      return true;
+    }
+    function selectCodeRange({ start, end }) {
       toggleCard(panel, openBtn, true);
       code.focus();
-      code.setSelectionRange(site.start, site.end);
+      code.setSelectionRange(start, end);
       // scroll the selection into view: rough line-based estimate
-      const line = code.value.slice(0, site.start).split("\n").length - 1;
+      const line = code.value.slice(0, start).split("\n").length - 1;
       code.scrollTop = Math.max(0, line * 21 - code.clientHeight / 2);
-      hint.innerHTML = `Selected <b>${site.kind}</b>${fdims} — drag a <b>square</b> to push that side, a <b>corner ball</b> to ${site.kind === "cube" || site.kind === "cuboid" ? "stretch width &amp; depth" : "scale it"}, or drag the body to move it (Shift = vertical). <b>Right-click</b> it to change the shape or its colour.`;
-    });
+    }
 
     // ------------------------------------------------------------- keyboard
     code.addEventListener("keydown", (e) => {
@@ -21769,11 +21780,42 @@ let SIMPLIFY_TARGET = 10000;
 
     // ---- Design mode, phase 0: the switch, and the links it will stand on ----
     //
-    // The Code | Design switch (viewer/design.js). Design mode adds nothing yet
-    // beyond its body class and a note; Code mode is untouched.
-    const modeSwitch = initModeSwitch();
+    // The Code | Design switch (viewer/design.js) and, phase 1, the Design
+    // shell (viewer/design-*.js): model browser, timeline, selection card,
+    // move gizmo, toolbar. It only shows with body.design-mode; Code mode is
+    // untouched. Everything it edits goes through the same writers as the
+    // body drag and a click on the model; this is the whole of its reach.
+    designUI = initDesignShell({
+      THREE, scene, camera, renderer, orbit: controls, code, words: vocabWords,
+      featureMap: () => (featureMap && mapText === code.value ? featureMap : null),
+      features: () => lastFeatures,
+      trace: () => lastTrace,
+      runText: () => lastRunText,
+      featureLabel: (type) => longNames[type] ?? null,
+      featureBox,
+      select: (fid, range) => selectFeature(fid, { range }),
+      selectRange: (r) => selectCodeRange(r),
+      clear: () => clearHandles(),
+      edgesOfFace: (mesh) => edgesOfPickedFace(mesh),
+      moveMembers: (fid) => (featureMap?.[fid] ? moveMembersOf(fid) : null),
+      // a move from the gizmo: the body drag's writer, history and rebuild
+      commitMove(fid, delta) {
+        const m = moveMembersOf(fid);
+        const r = moveText(code.value, m.span, delta);
+        if (r.how === "none") return r;
+        code.value = r.next;
+        pushHistory();
+        buildAfterToolEdit();
+        return r;
+      },
+      setHint: (html) => { hint.innerHTML = html; },
+    });
+    const modeSwitch = initModeSwitch({ onChange: (m) => designUI.setActive(m === "design") });
     window.brepscript.mode = () => modeSwitch.mode;
     window.brepscript.setMode = (m) => modeSwitch.setMode(m);
+    // Design mode's state: tree rows, timeline steps and what they link to,
+    // the selection, the picked face and its edges, the gizmo's shape
+    window.brepscript.design = () => designUI.debug();
 
     // The edges around a picked face, by the names fillet()/chamfer() take
     // ("A|B[0]"). A build on this thread still has the kernel's own EDGE

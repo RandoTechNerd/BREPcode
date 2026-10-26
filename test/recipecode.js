@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import * as dsl from "../index.js";
 import { build, toSTL } from "../index.js";
+import { addImplicitReturn } from "../viewer/assist.js";
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -23,11 +24,17 @@ const values = names.map((n) => dsl[n]);
 // Examples are illustrative fragments as often as whole models: `difference(a,
 // b)` on its own is a perfectly good teaching snippet. Both must EVALUATE to a
 // shape — that is what proves the vocabulary and the argument shapes are real.
+// A bare expression after the prelude's statements (or a reference card of
+// calls, one per line) has no `return`; the viewer adds one in front of the
+// last expression (addImplicitReturn), so the check does the same.
 const evalSnippet = (src) => {
   let fn;
   try { fn = new Function(...names, `"use strict"; return (\n${src}\n);`); }
   catch { fn = new Function(...names, `"use strict";\n${src}`); }
-  return fn(...values);
+  const out = fn(...values);
+  if (out !== undefined) return out;
+  const withReturn = addImplicitReturn(src);
+  return withReturn ? new Function(...names, `"use strict";\n${withReturn}`)(...values) : out;
 };
 
 const isShape = (v) => !!(v && typeof v === "object" && v.__brepscript);

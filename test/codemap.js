@@ -299,7 +299,7 @@ console.log("\nthe viewer: face names on meshes, the switch, the wiring\n");
   check("the vocabulary is wrapped by tagCall", /values = names\.map\(\(n\) => dsl\.tagCall\(vocab\[n\]\)\)/.test(html));
   check("the feature map tries exact sites first", /function buildFeatureMap[\s\S]{0,1600}codemap\.mapTraceSites/.test(html));
   check("right-click colour writes to the code", /codemap\.colorizeAt\(/.test(html));
-  check("the Code | Design switch is installed", /initModeSwitch\(\)/.test(html));
+  check("the Code | Design switch is installed", /initModeSwitch\(\{ onChange/.test(html));
   const design = readFileSync(new URL("../viewer/design.js", import.meta.url), "utf8");
   check("the mode is remembered as brepcode.mode", /"brepcode\.mode"/.test(design) && /design-mode/.test(design));
   const build = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
