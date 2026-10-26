@@ -329,7 +329,7 @@ export function compact(sk) {
   sk.points.forEach((p, i) => { if (keep.has(i)) { map.set(i, points.length); points.push(p); } });
   const m = (ids) => ids.map((i) => map.get(i));
   return {
-    on: sk.on, points,
+    on: sk.on, ...(sk.onSrc ? { onSrc: sk.onSrc } : {}), points,
     curves: sk.curves.map((c) => ({ ...c, ids: m(c.ids) })),
     constraints: sk.constraints.filter((c) => c.ids.every((i) => map.has(i))).map((c) => ({ ...c, ids: m(c.ids) })),
     dims: sk.dims.filter((d) => d.ids.every((i) => map.has(i))).map((d) => ({ ...d, ids: m(d.ids) })),
@@ -344,8 +344,15 @@ export function sketchCode(skIn, indent = "") {
   const sk = compact(skIn);
   const i1 = indent + "  ";
   const list = (items) => `[${items.join(", ")}]`;
-  const lines = [`on: ${onText(sk.on)}`, `points: ${list(sk.points.map((p) => `[${num(p[0])}, ${num(p[1])}]`))}`,
-    `curves: ${list(sk.curves.map((c) => `[${curveArr(c).map((v) => (typeof v === "string" ? JSON.stringify(v) : num(v))).join(", ")}]`))}`];
+  // a name read from the code goes back as that name while its value is untouched
+  const coord = (p, k) => (p.names?.[k] && p[k] === p.read[k] ? p.names[k] : num(p[k]));
+  const curve = (c) => {
+    const a = curveArr(c).map((v) => (typeof v === "string" ? JSON.stringify(v) : num(v)));
+    if (c.kind === "circle" && c.rName && c.r === c.rRead) a[2] = c.rName;
+    return `[${a.join(", ")}]`;
+  };
+  const lines = [`on: ${sk.onSrc ?? onText(sk.on)}`, `points: ${list(sk.points.map((p) => `[${coord(p, 0)}, ${coord(p, 1)}]`))}`,
+    `curves: ${list(sk.curves.map(curve))}`];
   if (sk.constraints.length) lines.push(`constraints: ${list(sk.constraints.map((c) => `[${[JSON.stringify(c.type), ...c.ids].join(", ")}]`))}`);
   if (sk.dims.length) lines.push(`dims: ${list(sk.dims.map((d) => `[${[JSON.stringify(d.type), ...d.ids, d.name ?? num(d.value)].join(", ")}]`))}`);
   return `sketch({\n${lines.map((l) => i1 + l + ",").join("\n")}\n${indent}})`;
@@ -372,11 +379,22 @@ export function readSketch(text, call) {
   };
   const named = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : { value: v });
   const on = val(prop("on")) ?? "XY";
-  const points = (val(prop("points")) || []).map((p) => p.map((v) => named(v).value));
+  // a plane written as a name or an expression is drawn on XY here but goes
+  // back exactly as written, so finishing the sketch never moves it
+  const onNode = prop("on");
+  const literal = (n) => n && (n.type === "Literal" || (n.type === "UnaryExpression" && n.argument.type === "Literal")
+    || (n.type === "ArrayExpression" && n.elements.every(literal))
+    || (n.type === "ObjectExpression" && n.properties.every((p) => !p.computed && literal(p.value))));
+  const onSrc = onNode && !literal(onNode) ? src.slice(onNode.start, onNode.end) : null;
+  const points = (val(prop("points")) || []).map((p) => {
+    const q = p.map((v) => named(v).value);
+    if (p.some((v) => named(v).name)) { q.names = p.map((v) => named(v).name ?? null); q.read = [...q]; }
+    return q;
+  });
   const curves = (val(prop("curves")) || []).map((c) => {
     const construction = c[c.length - 1] === "construction";
     const args = construction ? c.slice(1, -1) : c.slice(1);
-    if (c[0] === "circle") return { kind: "circle", ids: [args[0]], r: named(args[1]).value, rName: named(args[1]).name, construction };
+    if (c[0] === "circle") return { kind: "circle", ids: [args[0]], r: named(args[1]).value, rName: named(args[1]).name, rRead: named(args[1]).value, construction };
     return { kind: c[0], ids: args, construction };
   });
   const constraints = (val(prop("constraints")) || []).map((c) => ({ type: c[0], ids: c.slice(1) }));
@@ -384,7 +402,7 @@ export function readSketch(text, call) {
     const v = named(d[d.length - 1]);
     return { type: d[0], ids: d.slice(1, -1), value: v.value, ...(v.name ? { name: v.name } : {}) };
   });
-  return { on: typeof on === "object" && on && "name" in on ? "XY" : on, points, curves, constraints, dims };
+  return { on: onSrc ? "XY" : on, ...(onSrc ? { onSrc } : {}), points, curves, constraints, dims };
 }
 function constValues(text) {
   const out = new Map();
