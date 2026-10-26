@@ -9,7 +9,7 @@
 // call those chains share that is the right kind of word (union for a UNION,
 // difference for a SUBTRACT, the fillet() itself for a fillet).
 
-import { parseCode, offsetAt, callAt, runLineOffset } from "../src/codemap.js";
+import { parseCode, offsetAt, callAt, runLineOffset, mapTraceSites } from "../src/codemap.js";
 
 const OP_WORDS = {
   UNION: ["union", "add", "merge"],
@@ -84,6 +84,22 @@ export function linkFeatures(features, { sites = null, trace = [], runText = nul
   });
 }
 
+// failedSteps(failure, { words }) -> { steps, index } for a build the kernel
+// refused: the feature list it was asked for, linked like a good build's,
+// and which step failed. The kernels name the feature in their message
+// ("…, F F2: fillet did not produce a closed solid"); a message that names
+// none blames the last step, where a history stops.
+export function failedSteps(failure, { words, lineOffset } = {}) {
+  if (!failure?.features?.length) return null;
+  const sites = failure.trace && failure.runText != null
+    ? mapTraceSites(failure.trace, failure.runText, failure.editorText ?? failure.runText, { words, lineOffset }).byId : {};
+  const steps = linkFeatures(failure.features, { sites, trace: failure.trace || [], runText: failure.runText, editorText: failure.editorText ?? failure.runText, lineOffset });
+  const reason = String(failure.reason || "");
+  const ids = steps.map((s, i) => [s.id, i]).filter(([id]) => id).sort((a, b) => b[0].length - a[0].length);
+  const named = ids.find(([id]) => new RegExp(`(^|[^\w.])${escRe(id)}(?![\w.])`).test(reason));
+  return { steps, index: named ? named[1] : steps.length - 1 };
+}
+
 // A short human label for a step.
 export function stepLabel(step, featureLabel) {
   if (step.type === "B") {
@@ -101,7 +117,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&
 const KIND = (s) => (s.type === "B" ? "bool" : /^P\./.test(s.type) ? "prim" : "op");
 
 // renderTimeline(el, steps, { selectedFid, featureLabel, onPick(step) })
-export function renderTimeline(el, steps, { selectedFid = null, featureLabel, onPick } = {}) {
+export function renderTimeline(el, steps, { selectedFid = null, featureLabel, onPick, failed = -1 } = {}) {
   el.textContent = "";
   if (!steps.length) {
     el.innerHTML = `<span class="dz-empty">The timeline fills in after a build.</span>`;
@@ -116,10 +132,12 @@ export function renderTimeline(el, steps, { selectedFid = null, featureLabel, on
     const b = document.createElement("button");
     b.type = "button";
     b.className = `dt-step dt-${KIND(s)}` + (s.link ? "" : " dead")
-      + (selectedFid && s.id === selectedFid ? " on" : selectedFid && s.refs.includes(selectedFid) ? " rel" : "");
+      + (selectedFid && s.id === selectedFid ? " on" : selectedFid && s.refs.includes(selectedFid) ? " rel" : "")
+      + (failed >= 0 && i === failed ? " fail" : failed >= 0 && i > failed ? " unbuilt" : "");
     b.dataset.id = s.id ?? "";
     const label = stepLabel(s, featureLabel);
-    b.title = `${i + 1}. ${label} (${s.id ?? s.type})` + (s.link ? "" : " · no call to jump to");
+    b.title = `${i + 1}. ${label} (${s.id ?? s.type})` + (s.link ? "" : " · no call to jump to")
+      + (failed >= 0 && i === failed ? " · FAILED (the kernel's reason is beside the timeline)" : failed >= 0 && i > failed ? " · not built" : "");
     b.innerHTML = `<span class="dt-n">${i + 1}</span><span class="dt-l">${esc(label)}</span>`;
     b.addEventListener("click", () => onPick?.(s));
     el.appendChild(b);

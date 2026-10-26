@@ -572,7 +572,55 @@ export function linearExtrude(opts, profile) {
   const ordered = area < 0 ? [...pts].reverse() : pts;
   const segs = profile.segs ? (area < 0 ? reverseSegs(profile.segs) : profile.segs) : null;
   const n = node({ kind: "prism", pts: ordered, segs, h, fix: IDENTITY });
-  return (typeof opts === "object" && opts?.center) ? translate([0, 0, -h / 2], n) : n;
+  const o = typeof opts === "object" ? opts : {};
+  // Where along its own +Z the prism sits: [0, h] by default, centred on the
+  // plane (center), or [-h, 0] under it (reverse: a cut into a face), plus
+  // `proud` mm past the plane on the other side, so a cutter starting on a
+  // face does not share that face (coincident faces are unreliable booleans).
+  const proud = Number(o.proud) || 0;
+  let lo = o.center ? -h / 2 : o.reverse ? -h : 0;
+  let len = h;
+  if (proud > 0) { if (o.reverse) len += proud; else { lo -= proud; len += proud; } }
+  const placed = len !== h ? { ...n, h: len } : n;
+  const local = lo ? translate([0, 0, lo], placed) : placed;
+  const on = o.on ?? profile.on;
+  return on ? node({ kind: "xform", matrix: planeMatrix(on), child: local }) : local;
+}
+
+// A sketch plane: { origin, normal, x } (x optional). The profile's x axis
+// runs along `x`, its y along normal × x, and extrusion along the normal.
+// "XY" | "XZ" | "YZ" name the world planes. Without x: a +-Z plane takes
+// world X; any other plane takes the horizontal direction Z × normal, so a
+// face's outline is drawn the way you'd look at that face.
+export function planeFrame(on) {
+  const named = { XY: [0, 0, 1], XZ: [0, -1, 0], YZ: [1, 0, 0] };
+  const o = typeof on === "string" ? { normal: named[on.toUpperCase()] ?? [0, 0, 1] } : (on || {});
+  const origin = new Vector3(...(o.origin ?? [0, 0, 0]));
+  const n = new Vector3(...(o.normal ?? [0, 0, 1])).normalize();
+  let x;
+  if (o.x) x = new Vector3(...o.x);
+  else if (typeof on === "string" && on.toUpperCase() === "XZ") x = new Vector3(1, 0, 0);
+  else if (Math.abs(n.z) > 0.999) x = new Vector3(1, 0, 0);
+  else x = new Vector3(0, 0, 1).cross(n);
+  x.sub(n.clone().multiplyScalar(x.dot(n))).normalize();      // square to the normal
+  const y = n.clone().cross(x);
+  return { origin, x, y, n };
+}
+function planeMatrix(on) {
+  const f = planeFrame(on);
+  return new Matrix4().makeBasis(f.x, f.y, f.n).setPosition(f.origin);
+}
+// [x, y] on a plane -> world [x, y, z], and back (Design mode writes outlines
+// picked off a face in the plane's own coordinates).
+export function planeToWorld(on, [u, v]) {
+  const f = planeFrame(on);
+  const p = f.origin.clone().addScaledVector(f.x, u).addScaledVector(f.y, v);
+  return [p.x, p.y, p.z];
+}
+export function worldToPlane(on, [x, y, z]) {
+  const f = planeFrame(on);
+  const d = new Vector3(x, y, z).sub(f.origin);
+  return [d.dot(f.x), d.dot(f.y)];
 }
 
 // ---------------------------------------------------------------- transforms
@@ -597,15 +645,26 @@ export function translate(v, ...children) {
 }
 
 // rotate([rx,ry,rz]) in DEGREES (the kernel uses degrees for rotationEuler).
+// rotate(v, { about: [x, y, z] }, shape) turns it about that point instead of
+// the origin (Design mode's rotate gizmo writes the shape's own centre).
 export function rotate(v, ...children) {
   const [rx, ry, rz] = Array.isArray(v) ? v : [0, 0, v];
   const m = new Matrix4().makeRotationFromEuler(new Euler(rx * DEG, ry * DEG, rz * DEG, "XYZ"));
-  return wrap(m, children, "rotate");
+  return wrap(aboutPoint(m, children), shapesOnly(children), "rotate");
 }
 
+// scale(s | [x, y, z], shape); scale(s, { about: [x, y, z] }, shape) about a point.
 export function scale(v, ...children) {
   const [x, y, z] = Array.isArray(v) ? v : [v, v, v];
-  return wrap(new Matrix4().makeScale(x, y, z), children, "scale");
+  return wrap(aboutPoint(new Matrix4().makeScale(x, y, z), children), shapesOnly(children), "scale");
+}
+const isAboutOpts = (a) => !!a && typeof a === "object" && !Array.isArray(a) && !isNode(a) && Array.isArray(a.about);
+const shapesOnly = (children) => children.filter((a) => !isAboutOpts(a));
+function aboutPoint(m, children) {
+  const o = children.find(isAboutOpts);
+  if (!o) return m;
+  const [cx = 0, cy = 0, cz = 0] = o.about;
+  return new Matrix4().makeTranslation(cx, cy, cz).multiply(m).multiply(new Matrix4().makeTranslation(-cx, -cy, -cz));
 }
 
 export function mirror(v, ...children) {
@@ -659,7 +718,7 @@ function reflectDown(n, M) {
     const col = (i) => [e[4 * i], e[4 * i + 1], e[4 * i + 2]];
     const rigid = [0, 1, 2].every((i) => Math.abs(Math.hypot(...col(i)) - 1) < 1e-9)
       && Math.abs(col(0)[0] * col(1)[0] + col(0)[1] * col(1)[1] + col(0)[2] * col(1)[2]) < 1e-9;
-    if (!rigid || (n.faces && n.faces !== "all")) return null;
+    if (!rigid || (n.faces && n.faces !== "all") || Array.isArray(n.edges)) return null;
     let edges = n.edges;
     const axis = { x: 0, y: 1, z: 2 }[edges];
     if (axis != null && Math.abs(Math.abs(col(axis)[axis]) - 1) > 1e-9) return null;
@@ -711,6 +770,8 @@ const op = (operation) => (...children) => {
   // Tool nodes are deliberately REUSED across members: every appearance in the
   // tree compiles to its own fresh solid, so each member gets its own cutter.
   const [head, ...rest] = kids;
+  // a pattern's copies fused into a union are part of it, not an assembly
+  if (head?.kind === "group" && head.pattern && operation === "UNION") return op(operation)(...head.children, ...rest);
   if (head?.kind === "group" && rest.length) {
     if (operation === "UNION") return node({ kind: "group", children: [...head.children, ...rest] });
     return node({
@@ -718,6 +779,13 @@ const op = (operation) => (...children) => {
       children: head.children.map((m) => node({ kind: "op", operation, children: [m, ...rest] })),
     });
   }
+  // A pattern (linearPattern, circularPattern, mirrored) used as a TOOL is
+  // every one of its copies: difference(plate, linearPattern(…, hole)) cuts
+  // them all. Emitted as one group it would only cut the last copy.
+  const tools = rest.flatMap((t) => (t.kind === "group" && t.pattern
+    ? (operation === "INTERSECT" ? [node({ kind: "op", operation: "UNION", children: t.children })] : t.children)
+    : [t]));
+  if (tools.length !== rest.length || tools.some((t, i) => t !== rest[i])) return node({ kind: "op", operation, children: [head, ...tools] });
   return node({ kind: "op", operation, children: kids });
 };
 
@@ -1941,8 +2009,189 @@ export function drill(point, dir, opts = {}) {
   // then aimed so +Z points along the normal and dropped onto `point`.
   const q = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), n);
   const m = new Matrix4().makeRotationFromQuaternion(q).setPosition(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0);
+  // Counterbore { d, depth } / countersink { d, angle } (angle: the included
+  // angle, 90 by default): the whole hole is ONE turned cutter, a lathe
+  // profile of bore, step and mouth, so it stays exact and cuts as one tool.
+  const cb = opts.cbore ?? opts.counterbore, cs = opts.csink ?? opts.countersink;
+  if (cb || cs) {
+    const r = d / 2;
+    const prof = [[0, -depth], [r, -depth]];
+    if (cb) {
+      const R = (cb.d ?? (cb.r ? cb.r * 2 : d * 2)) / 2, k = cb.depth ?? cb.h ?? 3;
+      if (!(R > r) || !(k > 0) || k >= depth) throw new TypeError("drill() cbore: { d, depth } wider than the hole and shallower than it");
+      prof.push([r, -k], [R, -k], [R, proud]);
+    } else {
+      const R = (cs.d ?? (cs.r ? cs.r * 2 : d * 2)) / 2, ang = cs.angle ?? 90;
+      const k = (R - r) / Math.tan((ang / 2) * DEG);
+      if (!(R > r) || !(k < depth)) throw new TypeError("drill() csink: { d, angle } wider than the hole, and not deeper than it");
+      prof.push([r, -k], [R, 0], [R, proud]);
+    }
+    prof.push([0, proud]);
+    return node({ kind: "xform", matrix: m, child: revolve(360, polygon(prof)) });
+  }
   const cyl = translate([0, 0, -depth], cylinder({ d, h: depth + proud }));
   return node({ kind: "xform", matrix: m, child: cyl });
+}
+
+// ------------------------------------------------- Design mode's feature words
+//
+// The words Design mode's feature dialogs write. Each is ONE readable call
+// that wraps the shape it works on, and each is built from what every kernel
+// already builds exactly (boxes, cylinders, extrusions, revolves, booleans),
+// so a Design edit builds the same on NVIDIA SMLib, the Rust kernel and the
+// JS kernel.
+
+// shelled({ wall, open }, shape): the shape with its inside taken out, walls
+// `wall` thick, and the faces named in `open` ("top", "bottom", "+x", "-x",
+// "+y", "-y", world directions; one or a list) left open. Exact for a box
+// (rounded or not), a cylinder and an extruded outline, moved or turned.
+const OPEN_DIRS = { top: [0, 0, 1], bottom: [0, 0, -1], "+z": [0, 0, 1], "-z": [0, 0, -1],
+  "+x": [1, 0, 0], "-x": [-1, 0, 0], "+y": [0, 1, 0], "-y": [0, -1, 0], right: [1, 0, 0], left: [-1, 0, 0], back: [0, 1, 0], front: [0, -1, 0] };
+export function shelled(opts, ...children) {
+  const o = typeof opts === "number" ? { wall: opts } : (opts || {});
+  const wall = Number(o.wall ?? o.t ?? o.thickness ?? 2);
+  if (!(wall > 0)) throw new TypeError("shelled() needs a positive wall, e.g. shelled({ wall: 2, open: \"top\" }, cube([40, 30, 20]))");
+  const kids = collect(children);
+  if (!kids.length) throw new Error("shelled() needs a shape to work on");
+  const child = kids.length === 1 ? kids[0] : union(kids);
+  const open = (o.open == null ? [] : Array.isArray(o.open) ? o.open : [o.open]).map((k) => {
+    const v = OPEN_DIRS[String(k).toLowerCase()];
+    if (!v) throw new TypeError(`shelled() open: "top", "bottom", "+x", "-x", "+y" or "-y" (got ${JSON.stringify(k)})`);
+    return new Vector3(...v);
+  });
+  const inner = innerOf(child, wall, open, new Matrix4());
+  if (!inner) {
+    throw new Error("shelled() works on a box (rounded or not), a cylinder or an extruded outline, moved or turned;"
+      + " for anything else take a smaller copy away with difference()");
+  }
+  return node({ kind: "op", operation: "SUBTRACT", children: [child, inner] });
+}
+// The cavity: the shape's own kind, `wall` smaller all round, pushed out past
+// each open face. `world` is the matrix above n, to read "top" in n's frame.
+function innerOf(n, wall, open, world) {
+  if (n.kind === "xform") {
+    const inner = innerOf(n.child, wall, open, new Matrix4().multiplyMatrices(world, n.matrix));
+    return inner && { ...n, child: inner };
+  }
+  // each open face, in this shape's own axes: which axis, which end
+  const inv = new Matrix4().extractRotation(world).invert();
+  const ends = open.map((v) => {
+    const l = v.clone().applyMatrix4(inv);
+    const a = [0, 1, 2].reduce((b, i) => (Math.abs(l.getComponent(i)) > Math.abs(l.getComponent(b)) ? i : b), 0);
+    return Math.abs(l.getComponent(a)) > 0.999 ? { axis: a, sign: Math.sign(l.getComponent(a)) } : null;
+  });
+  if (ends.some((e) => !e)) return null;            // an open face at a slant is no face of this shape
+  const over = wall + 1;
+  if (n.kind === "prim" && n.code === "P.CU") {
+    const s = [n.params.sizeX, n.params.sizeY, n.params.sizeZ];
+    const lo = [wall, wall, wall], size = s.map((v) => v - 2 * wall);
+    if (size.some((v) => !(v > 0))) throw new Error(`shelled(): a wall of ${wall} leaves nothing inside a ${s.join(" × ")} box`);
+    for (const e of ends) { size[e.axis] += over; if (e.sign < 0) lo[e.axis] -= over; }
+    const box = node({ kind: "prim", code: "P.CU", params: { sizeX: size[0], sizeY: size[1], sizeZ: size[2] }, fix: IDENTITY });
+    return translate(lo, box);
+  }
+  if (n.kind === "prim" && n.code === "P.CY") {
+    if (ends.some((e) => e.axis !== 2)) return null;  // the round side is not a face to open
+    const r = n.params.radius - wall;
+    let z0 = wall, h = n.params.height - 2 * wall;
+    if (!(r > 0) || !(h > 0)) throw new Error(`shelled(): a wall of ${wall} leaves nothing inside that cylinder`);
+    for (const e of ends) { h += over; if (e.sign < 0) z0 -= over; }
+    const params = { radius: r, height: h };
+    if (n.params.resolution) params.resolution = n.params.resolution;
+    return translate([0, 0, z0], node({ kind: "prim", code: "P.CY", params, fix: AXIS_FIX }));
+  }
+  if (n.kind === "prism" && !n.segs) {
+    if (ends.some((e) => e.axis !== 2)) return null;  // a side of an outline is not one face
+    const pts = insetPolygon(n.pts, wall);
+    if (!pts) throw new Error(`shelled(): a wall of ${wall} leaves nothing inside that outline`);
+    let z0 = wall, h = n.h - 2 * wall;
+    if (!(h > 0)) throw new Error(`shelled(): a wall of ${wall} is too thick for an outline ${n.h} tall`);
+    for (const e of ends) { h += over; if (e.sign < 0) z0 -= over; }
+    return translate([0, 0, z0], node({ kind: "prism", pts, segs: null, h, fix: IDENTITY }));
+  }
+  if (n.kind === "edgeop" && !Array.isArray(n.edges) && !n.shrink && n.child.kind === "prim" && n.child.code === "P.CU") {
+    // a rounded box's true offset is a box rounded by r - wall (sharp past that)
+    const inner = innerOf(n.child, wall, open, world);
+    const r = Math.round((n.amount - wall) * 1000) / 1000;
+    if (!inner || r < 0.05 || ends.length) return inner;   // an open face: the cut rim would round too
+    return { ...n, amount: r, child: inner };
+  }
+  return null;
+}
+// A simple CCW polygon moved in by d on every side, mitred; null if it turns
+// inside out.
+function insetPolygon(pts, d) {
+  const n = pts.length;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[(i + n - 1) % n], b = pts[i], c = pts[(i + 1) % n];
+    const e1 = [b[0] - a[0], b[1] - a[1]], e2 = [c[0] - b[0], c[1] - b[1]];
+    const l1 = Math.hypot(...e1), l2 = Math.hypot(...e2);
+    if (l1 < 1e-9 || l2 < 1e-9) continue;
+    const n1 = [-e1[1] / l1, e1[0] / l1], n2 = [-e2[1] / l2, e2[0] / l2];   // inward, for CCW
+    const k = 1 + n1[0] * n2[0] + n1[1] * n2[1];
+    if (k < 1e-6) return null;
+    out.push([b[0] + (d * (n1[0] + n2[0])) / k, b[1] + (d * (n1[1] + n2[1])) / k]);
+  }
+  let area = 0;
+  for (let i = 0; i < out.length; i++) area += out[i][0] * out[(i + 1) % out.length][1] - out[(i + 1) % out.length][0] * out[i][1];
+  return out.length >= 3 && area > 1e-6 ? out : null;
+}
+
+// Copies. Each returns the original and its copies as separate bodies (a
+// group), or as one body with join: true. As the tool of a difference(),
+// every copy cuts (see op()).
+//   mirrored({ normal: [1, 0, 0], at: 0 }, shape)          the plane n·p = at
+//   linearPattern({ count: 4, step: [20, 0, 0], count2, step2 }, shape)
+//   circularPattern({ count: 6, axis: [0, 0, 1], center: [0, 0, 0], angle: 360 }, shape)
+function copies(list, join, verb) {
+  if (list.length < 2) throw new TypeError(`${verb}() needs a count of at least 2`);
+  return join ? union(list) : { ...node({ kind: "group", children: list }), pattern: true };
+}
+function patternChild(children, verb) {
+  const kids = collect(children);
+  if (!kids.length) throw new Error(`${verb}() needs a shape to copy`);
+  return kids.length === 1 ? kids[0] : union(kids);
+}
+export function mirrored(opts, ...children) {
+  const o = opts || {};
+  const child = patternChild(children, "mirrored");
+  const nv = Array.isArray(o.normal) ? o.normal : ({ x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }[o.plane ?? o.normal ?? "x"] ?? [1, 0, 0]);
+  const n = new Vector3(...nv).normalize();
+  const at = Number(o.at ?? 0);
+  const p = [n.x * at, n.y * at, n.z * at];
+  const copy = translate(p, mirror([n.x, n.y, n.z], translate(p.map((v) => -v), child)));
+  return copies([child, copy], o.join, "mirrored");
+}
+export function linearPattern(opts, ...children) {
+  const o = opts || {};
+  const child = patternChild(children, "linearPattern");
+  const n1 = Math.round(o.count ?? o.n ?? 2), n2 = Math.max(1, Math.round(o.count2 ?? 1));
+  const s1 = o.step ?? [10, 0, 0], s2 = o.step2 ?? [0, 10, 0];
+  if (n1 * n2 > 2000) throw new RangeError("linearPattern(): at most 2000 copies");
+  const list = [];
+  for (let j = 0; j < n2; j++) for (let i = 0; i < n1; i++) {
+    list.push(i || j ? translate([0, 1, 2].map((k) => (s1[k] ?? 0) * i + (s2[k] ?? 0) * j), child) : child);
+  }
+  return copies(list, o.join, "linearPattern");
+}
+export function circularPattern(opts, ...children) {
+  const o = opts || {};
+  const child = patternChild(children, "circularPattern");
+  const n = Math.round(o.count ?? o.n ?? 6);
+  if (n > 2000) throw new RangeError("circularPattern(): at most 2000 copies");
+  const total = o.angle ?? 360;
+  const stepDeg = Math.abs(total) >= 360 ? total / n : total / Math.max(1, n - 1);
+  const axis = new Vector3(...(o.axis ?? [0, 0, 1])).normalize();
+  const c = o.center ?? [0, 0, 0];
+  const list = [child];
+  for (let i = 1; i < n; i++) {
+    const m = new Matrix4().makeTranslation(c[0], c[1], c[2])
+      .multiply(new Matrix4().makeRotationAxis(axis, i * stepDeg * DEG))
+      .multiply(new Matrix4().makeTranslation(-c[0], -c[1], -c[2]));
+    list.push(node({ kind: "xform", matrix: m, child }));
+  }
+  return copies(list, o.join, "circularPattern");
 }
 
 // --------------------------------------------------------------------- fins
@@ -2270,9 +2519,16 @@ function edgeOp(code, opts, children, amountKey, verb) {
   // "bottom" = every edge lying at the solid's highest / lowest Z; "all".
   // build123d's part.edges().filter_by(Axis.Z) and .group_by(Axis.Z)[-1]
   // arrive here.
-  const edges = o.edges ?? null;
-  if (edges != null && !["x", "y", "z", "top", "bottom", "convex", "all"].includes(edges)) {
-    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom", "convex" or "all" (got ${JSON.stringify(edges)})`);
+  // …or the edges by name, as Design mode picks them on the model:
+  // edges: ["P.CU1_PZ|P.CU1_PX[0]", …] (or one name)
+  let edges = o.edges ?? null;
+  if (typeof edges === "string" && edges.includes("|")) edges = [edges];
+  if (Array.isArray(edges)) {
+    if (!edges.length || edges.some((e) => typeof e !== "string" || !e.includes("|"))) {
+      throw new TypeError(`${verb}() edges: a list of edge names like "P.CU1_PZ|P.CU1_PX[0]" (got ${JSON.stringify(edges)})`);
+    }
+  } else if (edges != null && !["x", "y", "z", "top", "bottom", "convex", "all"].includes(edges)) {
+    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom", "convex", "all" or a list of edge names (got ${JSON.stringify(edges)})`);
   }
   // pieces: true = round each box the part is built from, then union them and
   // cut the holes. The chat's "round the edges" uses it on finished designs.
@@ -2342,6 +2598,14 @@ export function revolve(opts, profile) {
   const angle = o.angle ?? o.deg ?? o.a ?? 360;
   if (!profile?.__brepscript2d) {
     throw new TypeError("revolve() takes a 2D profile — make one with polygon([[x, y], ...]) in the x >= 0 half-plane, touching x = 0");
+  }
+  // on: { origin, normal, x } — the profile drawn on that plane (planeFrame)
+  // instead of standing up from XZ; it spins about the plane's own y axis
+  // (normal × x) through origin.
+  const on = o.on ?? profile.on;
+  if (on) {
+    const back = new Matrix4().copy(AXIS_FIX).invert();
+    return node({ kind: "xform", matrix: planeMatrix(on).multiply(back), child: revolve({ ...o, on: null }, { ...profile, on: null }) });
   }
   const res = o.$fn ?? o.resolution;
   // stretch: L pulls the round shape apart into a racetrack (a stadium, like a
@@ -2576,7 +2840,26 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
 
     if (n.kind === "edgeop") {
       const childId = await emit(n.child, matrix, st);
-      const faces = n.edges ? await childEdgeNames(childId, n.edges) : await childFaceNames(childId, n.faces);
+      let faces;
+      if (Array.isArray(n.edges)) {
+        // named edges: every one must be on the shape. A name goes stale when
+        // a shape is added before this one (ids count in build order), and
+        // rounding whatever edges happen to be left would be a silent lie.
+        const have = new Set(await childEdgeNames(childId, "all"));
+        const bare = (e) => e.replace(/\[\d+\]$/, "");
+        // "A|B[0]" and "B|A[0]" are one edge: the kernels sort the pair
+        const sorted = (e) => {
+          const m = /^([^|]+)\|([^|[]+)(\[\d+\])?$/.exec(e);
+          return m ? [m[1], m[2]].sort().join("|") + (m[3] ?? "") : e;
+        };
+        n = { ...n, edges: n.edges.map(sorted) };
+        const missing = n.edges.filter((e) => !have.has(e) && !(!/\[\d+\]$/.test(e) && [...have].some((h) => bare(h) === e)));
+        if (missing.length) {
+          throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): no edge ${missing.map((e) => JSON.stringify(e)).join(", ")} on this shape`
+            + ` (edge names follow the build order; pick the edges again)`);
+        }
+        faces = n.edges.flatMap((e) => (have.has(e) ? [e] : [...have].filter((h) => bare(h) === e)));
+      } else faces = n.edges ? await childEdgeNames(childId, n.edges) : await childFaceNames(childId, n.faces);
       if (!faces.length) {
         throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): couldn't find any edges to work on for this shape`);
       }

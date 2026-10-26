@@ -24,9 +24,12 @@ function die(kind, e) {
 process.on("uncaughtException", (e) => die("uncaught", e));
 process.on("unhandledRejection", (e) => die("unhandled rejection", e));
 
+// --phase2 (or DESIGN_PHASE=2) runs the phase 2 check (feature dialogs, press-pull,
+// rotate/scale): design2-check-run.cjs
+const RUN = process.env.DESIGN_PHASE === "2" || process.argv.includes("--phase2") ? "./design2-check-run.cjs" : "./design-check-run.cjs";
 try {
-  const done = require("./design-check-run.cjs");
+  const done = require(RUN);
   Promise.resolve(done).catch((e) => die("run", e));
 } catch (e) {
-  die("could not load design-check-run.cjs", e);
+  die(`could not load ${RUN}`, e);
 }

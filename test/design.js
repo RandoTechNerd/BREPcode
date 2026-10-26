@@ -13,7 +13,11 @@ import * as codemap from "../src/codemap.js";
 import { dragSpanFor } from "../viewer/assist.js";
 import { moveText, ridersOf } from "../viewer/design-move.js";
 import { buildTree, primaryFid, rowForFid, callCategory } from "../viewer/design-tree.js";
-import { linkFeatures, referencedIds, stepLabel } from "../viewer/design-timeline.js";
+import { linkFeatures, referencedIds, stepLabel, failedSteps } from "../viewer/design-timeline.js";
+import * as F from "../viewer/design/features.js";
+import { build as buildModel } from "../index.js";
+import { loadNvidiaKernel } from "../src/engine-node.js";
+import { findResizeTarget } from "../viewer/assist.js";
 
 let pass = 0, fail = 0;
 function check(label, ok, detail = "") {
@@ -343,8 +347,248 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
     && (html.match(/handleDots\.hideLabel\(\)/g) || []).length >= 2 && /v > 0 \? "\+"/.test(dots));
   const guard = readFileSync(new URL("../scripts/design-check.cjs", import.meta.url), "utf8");
   check("the Electron check is guarded: failures print and exit, never a main-process dialog",
-    /process\.on\("uncaughtException"/.test(guard) && /require\("\.\/design-check-run\.cjs"\)/.test(guard));
+    /process\.on\("uncaughtException"/.test(guard) && /"\.\/design-check-run\.cjs"/.test(guard) && /"\.\/design2-check-run\.cjs"/.test(guard)
+    && /try \{\s*const done = require\(RUN\);/.test(guard));
   check("the old model-space beads are gone", !/shapedHandleGeo|SphereGeometry\(1, 28, 20\)/.test(html));
+}
+
+// ======================================================== phase 2: features
+//
+// Every dialog writes through design/features.js; these check the TEXT each
+// writes, then that the text builds to the right solid on every kernel this
+// machine has (the JS kernel always; the Rust one; NVIDIA SMLib when built).
+
+function volumeOf(res) {
+  let vol = 0;
+  for (const s of res.solids) {
+    const v = [...s.toSTL(s.name).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    for (let i = 0; i + 2 < v.length; i += 3) {
+      const [a, b, c] = [v[i], v[i + 1], v[i + 2]];
+      vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+  }
+  return vol;
+}
+const ENGINES = ["js", "split", ...(loadNvidiaKernel() ? ["nvidia-split"] : [])];
+const quiet = async (fn) => {
+  const log = console.log, warn = console.warn;
+  console.log = () => {}; console.warn = () => {};
+  try { return await fn(); } finally { console.log = log; console.warn = warn; }
+};
+async function volumes(src) {
+  const out = {};
+  for (const engine of ENGINES) {
+    try { out[engine] = await quiet(async () => volumeOf(await buildModel(evaluate(src), { engine }))); }
+    catch (e) { out[engine] = `ERR ${String(e.message || e).slice(0, 120)}`; }
+  }
+  return out;
+}
+async function onEveryKernel(label, src, want, tol = 0.01) {
+  const v = await volumes(src);
+  const bad = Object.entries(v).filter(([, x]) => typeof x !== "number" || Math.abs(x - want) / want > tol);
+  check(`${label}: builds to ${want.toFixed(0)} mm³ on ${ENGINES.join(", ")}`, !bad.length,
+    Object.entries(v).map(([k, x]) => `${k} ${typeof x === "number" ? x.toFixed(1) : x}`).join("; "));
+}
+// A rectangle face as features.faceOutline sees one: its loop, normal, middle.
+const rectFace = (z, x0, y0, x1, y1, up = true) => ({
+  normal: [0, 0, up ? 1 : -1], point: [(x0 + x1) / 2, (y0 + y1) / 2, z],
+  loops: [[[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]]],
+});
+const planeOf = (outline) => { const pl = F.facePlane(outline); return (p) => dsl.worldToPlane(pl, p); };
+
+console.log("\nPhase 2: where a feature goes\n");
+{
+  const { sites, trace } = await build(PEGS);
+  const cubeId = Object.keys(sites).find((id) => sites[id].kind === "cube");
+  const pegId = Object.keys(sites).find((id) => sites[id].kind === "cylinder" && sites[id].name === "peg");
+  const b = F.bodySpan(PEGS, cubeId, { sites, trace, runText: PEGS });
+  check("a body is its outermost call (the fillet around everything)", PEGS.slice(b.start, b.end).startsWith("fillet({ r: 1"));
+  const bp = F.bodySpan(PEGS, pegId, { sites, trace, runText: PEGS });
+  check("…for a peg built in a helper too (found through the trace path)", bp.start === b.start && bp.end === b.end);
+  const src = `return group(cube([10, 10, 10]), translate([20, 0, 0], rotate([0, 0, 30], cylinder({ r: 3, h: 5 }))));`;
+  const s2 = await build(src);
+  const cyl = Object.keys(s2.sites).find((id) => s2.sites[id].kind === "cylinder");
+  const bb = F.bodySpan(src, cyl, { sites: s2.sites, trace: s2.trace, runText: src });
+  check("inside a group(), each member is its own body", src.slice(bb.start, bb.end).startsWith("translate([20"));
+  const sh = F.shapeSpan(src, s2.sites[cyl]);
+  check("a shape span takes its transforms with it", src.slice(sh.start, sh.end) === "translate([20, 0, 0], rotate([0, 0, 30], cylinder({ r: 3, h: 5 })))");
+}
+
+console.log("\nPhase 2: what each feature writes, and that it builds everywhere\n");
+{
+  const box = `return cube([40, 30, 10]);`;
+  const span = { start: 7, end: box.length - 1 };
+  // fillet / chamfer by picked edge names
+  const fil = F.edgeOpText(box, span, { kind: "fillet", amount: 2, edges: ["P.CU1_PX|P.CU1_PZ[0]", "P.CU1_NX|P.CU1_PZ[0]"] });
+  check("fillet: one readable call around the body", fil.next === `return fillet({ r: 2, edges: ["P.CU1_PX|P.CU1_PZ[0]", "P.CU1_NX|P.CU1_PZ[0]"] }, cube([40, 30, 10]));`, fil.next);
+  await onEveryKernel("fillet two top edges", fil.next, 12000 - 2 * (4 - Math.PI) * 30, 0.002);
+  const ch = F.edgeOpText(box, span, { kind: "chamfer", amount: 1, edges: ["P.CU1_PZ|P.CU1_PY[0]"] });
+  await onEveryKernel("chamfer (edge pair written either way round)", ch.next, 12000 - 0.5 * 40, 0.002);
+  const stale = await volumes(`return fillet({ r: 2, edges: ["P.CU9_PX|P.CU9_PZ[0]"] }, cube([40, 30, 10]));`);
+  check("a stale edge name is refused with a reason, not silently ignored", /no edge "P\.CU9_PX\|P\.CU9_PZ\[0\]"/.test(String(stale.js)), String(stale.js));
+
+  // shell
+  const hol = F.shellText(`return cube([40, 30, 20]);`, { start: 7, end: 25 }, { wall: 2, open: F.openKeys([[0, 0, 1]]) });
+  check("shell: shelled({ wall, open }) around the shape", hol.next === `return shelled({ wall: 2, open: "top" }, cube([40, 30, 20]));`, hol.next);
+  await onEveryKernel("open-top box, 2 mm walls", hol.next, 40 * 30 * 20 - 36 * 26 * 18);
+  await onEveryKernel("closed hollow cylinder", `return shelled({ wall: 2 }, cylinder({ r: 10, h: 20 }));`, Math.PI * (100 * 20 - 64 * 16), 0.01);
+  await onEveryKernel("rounded box shelled (the cavity rounds by r - wall)", `return shelled({ wall: 2 }, fillet({ r: 4, edges: "z" }, cube([40, 30, 20])));`,
+    (1200 - 4 * 16 * (1 - Math.PI / 4)) * 20 - (36 * 26 - 4 * 4 * (1 - Math.PI / 4)) * 16, 0.005);
+  check("a slanted face cannot be left open (said, not guessed)", F.openKeys([[0.6, 0, 0.8]]) === null);
+
+  // hole: simple / counterbore / countersink, added to an existing difference
+  const plate = `return difference(\n  cube([40, 30, 10]),\n  translate([5, 5, -1], cylinder({ r: 1, h: 12 })));`;
+  const pspan = { start: 7, end: plate.length - 1 };
+  const h1 = F.addTool(plate, pspan, F.holeCall({ point: [20, 15, 10], normal: [0, 0, 1], d: 4, through: true, kind: "counterbore", cbD: 8, cbDepth: 3 }));
+  check("a hole joins the body's own difference() as one more line",
+    h1.next.endsWith(`cylinder({ r: 1, h: 12 })),\n  drill([20, 15, 10], [0, 0, 1], { d: 4, through: true, cbore: { d: 8, depth: 3 } }));`), h1.next);
+  await onEveryKernel("counterbored through hole", h1.next, 12000 - Math.PI * 12 - Math.PI * 4 * 7 - Math.PI * 16 * 3, 0.003);
+  const h2 = F.addTool(box, span, F.holeCall({ point: [20, 15, 10], normal: [0, 0, 1], d: 4, depth: 8, kind: "countersink", csD: 8 }));
+  check("…and wraps a body that is not a difference yet", h2.next.startsWith("return difference(cube([40, 30, 10]), drill([20, 15, 10]"), h2.next);
+  await onEveryKernel("countersunk blind hole", h2.next, 12000 - Math.PI * 4 * 8 - (Math.PI * 2 / 3) * (16 + 8 + 4) + Math.PI * 4 * 2, 0.003);
+
+  // mirror and patterns
+  const mir = F.mirrorText(`return cube([30, 10, 10]);`, { start: 7, end: 25 }, { normal: [1, 0, 0], at: 30, join: true });
+  check("mirror writes mirrored({ normal, at })", mir.next === `return mirrored({ normal: [1, 0, 0], at: 30, join: true }, cube([30, 10, 10]));`, mir.next);
+  await onEveryKernel("mirrored and joined", mir.next, 6000);
+  const holes = `return difference(cube([60, 20, 5]), translate([12, 10, -1], cylinder({ r: 2, h: 7 })));`;
+  const cutter = { start: holes.indexOf("translate"), end: holes.length - 2 };
+  const lin = F.linearPatternText(holes, F.shapeSpan(holes, cutter), { count: 4, step: [12, 0, 0] });
+  check("a pattern of a cutter wraps the placed cutter", lin.next.includes("linearPattern({ count: 4, step: [12, 0, 0] }, translate([12, 10, -1], cylinder("), lin.next);
+  await onEveryKernel("4 holes from one patterned cutter", lin.next, 6000 - 4 * Math.PI * 4 * 5, 0.003);
+  const circ = F.circularPatternText(`return translate([20, 0, 0], cube([5, 5, 5]));`, { start: 7, end: 45 }, { count: 6 });
+  await onEveryKernel("circular pattern of 6", circ.next, 6 * 125);
+  const grid = F.linearPatternText(`return cube([5, 5, 5]);`, { start: 7, end: 22 }, { count: 3, step: [10, 0, 0], count2: 2, step2: [0, 10, 0] });
+  check("a grid writes count2/step2", /count2: 2, step2: \[0, 10, 0\]/.test(grid.next), grid.next);
+  await onEveryKernel("3 x 2 grid", grid.next, 6 * 125);
+
+  // combine
+  const two = `return group(\n  cube([20, 20, 10]),\n  translate([10, 10, 0], cylinder({ r: 5, h: 20 })));`;
+  const tgt = { start: two.indexOf("cube"), end: two.indexOf("),\n") + 1 };
+  const tool = { start: two.indexOf("translate"), end: two.length - 2 };
+  const comb = F.combineText(two, tgt, [tool], "difference");
+  check("combine moves the tool body into op(target, tool)", comb.next === `return group(\n  difference(cube([20, 20, 10]), translate([10, 10, 0], cylinder({ r: 5, h: 20 }))));`, comb.next);
+  await onEveryKernel("combine: cut", comb.next, 4000 - Math.PI * 25 * 10, 0.003);
+  check("a body in a variable is refused with a reason", !!F.combineText(`const a = cube(5);\nreturn group(cube(3), a);`, { start: 34, end: 41 }, [{ start: 10, end: 17 }]).error);
+
+  // extrude a picked face: join / cut / new body / symmetric; a round face as a cylinder
+  const top = rectFace(10, 10, 10, 30, 20);
+  const ej = F.extrudeText(box, span, top, { h: 5, mode: "join", toPlane: planeOf(top) });
+  check("extrude join writes union(body, linearExtrude({ h, on }, polygon))",
+    ej.next === `return union(cube([40, 30, 10]), linearExtrude({ h: 5, on: { origin: [0, 0, 10], normal: [0, 0, 1] } }, polygon([[10, 10], [30, 10], [30, 20], [10, 20]])));`, ej.next);
+  await onEveryKernel("extrude join", ej.next, 12000 + 1000);
+  const ec = F.extrudeText(box, span, top, { h: 4, mode: "cut", toPlane: planeOf(top) });
+  check("extrude cut goes in from the face, 0.5 proud", /reverse: true, proud: 0\.5/.test(ec.next), ec.next);
+  await onEveryKernel("extrude cut", ec.next, 12000 - 800);
+  const en = F.extrudeText(box, span, top, { h: 5, mode: "new", toPlane: planeOf(top) });
+  check("extrude new body sits beside it in a group()", en.next.startsWith("return group(cube([40, 30, 10]), linearExtrude("), en.next);
+  const side = { normal: [1, 0, 0], point: [40, 15, 5], loops: [[[40, 0, 0], [40, 30, 0], [40, 30, 10], [40, 0, 10]]] };
+  await onEveryKernel("extrude a side face (+X)", F.extrudeText(box, span, side, { h: 5, mode: "join", toPlane: planeOf(side) }).next, 12000 + 1500);
+  const ring = Array.from({ length: 48 }, (_, i) => [5 * Math.cos(i * Math.PI / 24), 5 * Math.sin(i * Math.PI / 24), 10]);
+  const disc = { normal: [0, 0, 1], point: [0, 0, 10], loops: [ring] };
+  const ed = F.extrudeText(`return cylinder({ r: 5, h: 10 });`, { start: 7, end: 32 }, disc, { h: 6, mode: "join", toPlane: planeOf(disc) });
+  check("a round face extrudes as a cylinder (exact), not a 48-gon", /translate\(\[0, 0, 10\], cylinder\(\{ r: 5, h: 6 \}\)\)/.test(ed.next), ed.next);
+  const sym = F.extrudeText(box, span, top, { h: 6, mode: "new", symmetric: true, toPlane: planeOf(top) });
+  check("symmetric extrude is centred on the face", /h: 6, center: true/.test(sym.next), sym.next);
+}
+
+console.log("\nPhase 2: press-pull\n");
+{
+  const box = `return cube([40, 30, 10]);`;
+  const site = { kind: "cube", start: 7, end: 25 };
+  const tgt = (axis) => findResizeTarget(box, site, axis);
+  const top = rectFace(10, 0, 0, 40, 30);
+  const ctx = { body: { start: 7, end: 25 }, outline: top, target: tgt(2), sign: 1, axis: 2, siteSpan: site, toPlane: planeOf(top) };
+  let r = F.pressPullText(box, ctx, 5);
+  check("pull a box's top out: its height grows", r.how === "size" && r.next === `return cube([40, 30, 15]);`, r.next);
+  r = F.pressPullText(box, ctx, -4);
+  check("push it in: the height shrinks", r.how === "size" && r.next === `return cube([40, 30, 6]);`, r.next);
+  r = F.pressPullText(box, ctx, -12);
+  check("push it past the box: the face cuts on through", r.how === "cut" && /difference\(cube\(\[40, 30, 10\]\), linearExtrude\(\{ h: 12, reverse: true/.test(r.next), r.next);
+  const bottom = { ...rectFace(0, 0, 0, 40, 30, false) };
+  const rb = F.pressPullText(box, { ...ctx, outline: bottom, sign: -1, toPlane: planeOf(bottom) }, 3);
+  check("pull the bottom down: height + 3 and moved down 3 (the top stays put)", rb.next === `return translate([0, 0, -3], cube([40, 30, 13]));`, rb.next);
+  const rc = F.pressPullText(`return cube([40, 30, 10], { center: true });`, { ...ctx, siteSpan: { start: 7, end: 43 }, centered: true, target: findResizeTarget(`return cube([40, 30, 10], { center: true });`, { kind: "cube", start: 7, end: 43 }, 2) }, 4);
+  check("a centred box grows and moves half way", rc.next === `return translate([0, 0, 2], cube([40, 30, 14], { center: true }));`, rc.next);
+  const pocket = rectFace(10, 10, 10, 30, 20);
+  const rp = F.pressPullText(`return union(cube([40, 30, 10]), sphere({ r: 1 }));`, { body: { start: 7, end: 50 }, outline: pocket, target: null, toPlane: planeOf(pocket) }, 3);
+  check("a face with no size behind it: joined as its outline", rp.how === "join" && /^return union\(union\(cube/.test(rp.next) === false && /linearExtrude\(\{ h: 3, on:/.test(rp.next), rp.next);
+  // a boss pushed down past its own 5 mm: the cut goes on 3 mm into the base
+  const boss = `return union(cube([40, 30, 10]), translate([10, 10, 10], cube([20, 10, 5])));`;
+  const bsite = { kind: "cube", start: boss.indexOf("cube([20"), end: boss.length - 3 };
+  const btop = rectFace(15, 10, 10, 30, 20);
+  const past = F.pressPullText(boss, { body: { start: 7, end: boss.length - 1 }, outline: btop, target: findResizeTarget(boss, bsite, 2), sign: 1, axis: 2, siteSpan: bsite, toPlane: planeOf(btop) }, -8);
+  check("a boss pushed past its height cuts on into the body", past.how === "cut" && past.next.startsWith("return difference(union("), past.next);
+  await onEveryKernel("…3 mm deep in the base", past.next, 12000 - 200 * 3, 0.002);
+  const inside = F.pressPullText(boss, { body: { start: 7, end: boss.length - 1 }, outline: btop, target: findResizeTarget(boss, bsite, 2), sign: 1, axis: 2, siteSpan: bsite, toPlane: planeOf(btop) }, -2);
+  check("…while a push inside its height just shrinks it", inside.next.includes("cube([20, 10, 3])"), inside.next);
+}
+
+console.log("\nPhase 2: rotate and scale gizmo writes\n");
+{
+  const src = `return cube([40, 30, 10]);`;
+  const span = { start: 7, end: 25 };
+  let r = F.rotateText(src, span, 2, 45, [20, 15, 5]);
+  check("rotate wraps with the shape's centre as about", r.next === `return rotate([0, 0, 45], { about: [20, 15, 5] }, cube([40, 30, 10]));`, r.next);
+  r = F.rotateText(r.next, { start: r.start, end: r.end }, 2, 15, [20, 15, 5]);
+  check("a second turn about the same axis and point folds in", r.how === "fold" && r.next === `return rotate([0, 0, 60], { about: [20, 15, 5] }, cube([40, 30, 10]));`, r.next);
+  const r2 = F.rotateText(r.next, { start: r.start, end: r.end }, 0, 10, [20, 15, 5]);
+  check("a turn about another axis nests (Euler angles do not add)", r2.how === "wrap", r2.next);
+  await onEveryKernel("rotated about its centre keeps its volume", r.next, 12000);
+  const built = await quiet(() => buildModel(evaluate(`return rotate([0, 0, 90], { about: [20, 15, 5] }, cube([40, 30, 10]));`), { engine: "js" }));
+  const pts = [...built.solids[0].toSTL("s").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2]]);
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  check("…and turns in place (90° about its centre: 30 wide, 40 deep, same middle)",
+    Math.abs(Math.min(...xs) - 5) < 1e-3 && Math.abs(Math.max(...xs) - 35) < 1e-3 && Math.abs(Math.min(...ys) + 5) < 1e-3 && Math.abs(Math.max(...ys) - 35) < 1e-3,
+    `${Math.min(...xs)}..${Math.max(...xs)} x ${Math.min(...ys)}..${Math.max(...ys)}`);
+  let s = F.scaleText(src, span, 1.5, [20, 15, 5]);
+  check("scale wraps with about", s.next === `return scale(1.5, { about: [20, 15, 5] }, cube([40, 30, 10]));`, s.next);
+  s = F.scaleText(s.next, { start: s.start, end: s.end }, 2, [20, 15, 5]);
+  check("…and folds by multiplying", s.next === `return scale(3, { about: [20, 15, 5] }, cube([40, 30, 10]));`, s.next);
+  await onEveryKernel("scaled ×3 about its centre", s.next, 12000 * 27);
+}
+
+console.log("\nPhase 2: a face's outline, and the failed step\n");
+{
+  // two triangles of a 10 x 4 rectangle at z = 3, unwelded (as a mesh arrives)
+  const q = [0, 0, 3, 10, 0, 3, 10, 4, 3, 0, 0, 3, 10, 4, 3, 0, 4, 3];
+  const o = F.faceOutline({ positions: q });
+  check("a flat face's outline: one loop of its 4 corners, normal +Z", o && o.loops.length === 1 && o.loops[0].length === 4 && o.normal[2] > 0.999, JSON.stringify(o?.loops));
+  check("…on the plane z = 3 with its origin there", JSON.stringify(F.facePlane(o)) === JSON.stringify({ origin: [0, 0, 3], normal: [0, 0, 1] }));
+  const bent = [0, 0, 0, 10, 0, 0, 10, 4, 0, 0, 0, 0, 10, 4, 0, 0, 4, 5];
+  check("a face that is not flat has no outline", F.faceOutline({ positions: bent }) === null);
+  const ring = Array.from({ length: 32 }, (_, i) => [3 * Math.cos(i / 5.09), 3 * Math.sin(i / 5.09), 0]);
+  check("a ring of points is a circle", Math.abs((F.circleOf(ring)?.r ?? 0) - 3) < 1e-6);
+
+  const src = `return fillet({ r: 20, edges: "z" }, cube([40, 30, 10]));`;
+  const { trace, features } = await build(src);
+  const f = { reason: "Rust kernel, F F2: NVIDIA kernel: fillet did not produce a closed solid", features, trace, runText: src, editorText: src };
+  const r = failedSteps(f, { words });
+  check("a kernel refusal marks the step it names (F2)", r && r.steps[r.index].id === "F2", JSON.stringify(r?.steps.map((s) => s.id)));
+  check("…linked to its call", r && src.slice(r.steps[r.index].link.start, r.steps[r.index].link.end).startsWith("fillet("));
+  const g = failedSteps({ ...f, reason: "something odd" }, { words });
+  check("a message naming no step blames the last one", g.index === g.steps.length - 1);
+}
+
+console.log("\nPhase 2: wiring\n");
+{
+  const html = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const shell = readFileSync(new URL("../viewer/design-shell.js", import.meta.url), "utf8");
+  const gizmo = readFileSync(new URL("../viewer/design-gizmo.js", import.meta.url), "utf8");
+  const build_ = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
+  const D = await import("../viewer/design/dialogs.js");
+  check("ten feature dialogs", ["extrude", "revolve", "hole", "fillet", "chamfer", "shell", "mirror", "linear", "circular", "combine"].every((d) => D.DIALOGS.includes(d)));
+  check("the dialogs load lazily (dynamic import on first use)", /await import\("\.\/design\/dialogs\.js"\)/.test(shell) && !/^import .*design\/dialogs/m.test(shell));
+  check("…and press-pull too", /await import\("\.\/design\/presspull\.js"\)/.test(shell));
+  check("no placeholder tools left in the ribbon", !/phase2: true/.test(shell) && !/coming in Design mode phase 2/.test(shell));
+  check("the site build ships viewer/design/", /"design\/features\.js", "design\/dialogs\.js", "design\/presspull\.js"/.test(build_) && /split\('"\.\.\/\.\.\/src\/'\)\.join\('"\.\.\/src\/'\)/.test(build_));
+  check("fix (a): in Design mode a pick does not open the code card", /const design = !!designUI\?\.isActive\(\);\s*if \(!design\) \{\s*toggleCard\(panel, openBtn, true\);/.test(html));
+  check("fix (b): the hint talks dots, not squares and balls", !/drag a <b>square<\/b>|corner ball<\/b>/.test(html) && /double-click<\/b> a dot to type the numbers/.test(html));
+  check("fix (c): no plane squares or centre block on the move gizmo", /translate: \["XY", "YZ", "XZ", "XYZ"\]/.test(gizmo));
+  check("rotate and scale are gizmo modes", /rotate: "rotate", scale: "scale"/.test(shell));
+  check("a failed build reaches Design mode with the kernel's reason", /designUI\?\.buildResult\?\.\(ok, ok \? null : lastBuildFailure\)/.test(html)
+    && /reason: String\(e\?\.message \|\| e\), stage: attempt/.test(html));
+  check("a preview builds without an undo step; OK is one", /preview\(text\) \{[\s\S]{0,400}rebuild\(\);/.test(html) && /commit\(text, \{ built = false \} = \{\}\) \{[\s\S]{0,300}pushHistory\(\);/.test(html));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

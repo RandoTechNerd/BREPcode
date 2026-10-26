@@ -131,6 +131,10 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "handle-dots.js",
   // what the handle gestures write (Alt box corner, double-click numbers)
   "design-edit.js",
+  // Design mode phase 2: the feature writers, the dialogs and press-pull
+  // (lazy: loaded the first time a feature tool is used). They sit in
+  // viewer/design/, one level down, so their "../../src/" is "../src/" here.
+  "design/features.js", "design/dialogs.js", "design/presspull.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -212,7 +216,12 @@ bounce("welcome", "welcome=1", "BREPcode — free CAD in your browser",
   "Opening BREPcode");
 for (const f of VIEWER_JS) {
   if (!existsSync(`viewer/${f}`)) continue;      // locked-key.js is optional by design
-  writeFileSync(join(OUT, f), rewrite(readFileSync(`viewer/${f}`, "utf8")));
+  let body = rewrite(readFileSync(`viewer/${f}`, "utf8"));
+  if (f.includes("/")) {
+    mkdirSync(join(OUT, dirname(f)), { recursive: true });
+    body = body.split('"../../src/').join('"../src/');     // after rewrite(): "../src/" there means the root's src/
+  }
+  writeFileSync(join(OUT, f), body);
 }
 // ---- recipe library (markdown, fetched per-message by recipes.js) ----
 // The manifest is REGENERATED here rather than trusted: it is derived from the

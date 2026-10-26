@@ -116,8 +116,7 @@ double-click, and re-selecting would pop the code panel over the dot).
 ### Toolbar
 
 A thin strip across the top; double-click it or press ▾ for the full ribbon
-(remembered as `localStorage["brepcode.ribbon"]`). Extrude, Revolve, Hole,
-Press-pull, Fillet, Chamfer, Shell and Pattern are placeholders for phase 2.
+(remembered as `localStorage["brepcode.ribbon"]`). Phase 2 fills it in (below).
 
 ### Hooks
 
@@ -125,3 +124,110 @@ Press-pull, Fillet, Chamfer, Shell and Pattern are placeholders for phase 2.
 the text they link to, the selection, the picked face and its edges, the
 gizmo's shape). Tests: `test/design.js` (in `npm test`) and
 `npm run test:design` (Electron, against `npm run serve`; writes screenshots).
+
+## Phase 2: feature dialogs
+
+| Piece | File | What it does |
+|---|---|---|
+| Writers | `viewer/design/features.js` | the text every feature writes (no DOM, no kernel); tested in `test/design.js` |
+| Dialogs | `viewer/design/dialogs.js` | the panels, their picks on the model, the live preview; loaded on first use |
+| Press-pull | `viewer/design/presspull.js` | the face drag; loaded on first use |
+| Words | `src/dsl.js` | `shelled`, `mirrored`, `linearPattern`, `circularPattern`, `drill` cbore/csink, `fillet`/`chamfer` by edge name, `linearExtrude`/`revolve` `on` a plane, `rotate`/`scale` `about` a point |
+
+Every new word is built from what all three kernels already build exactly
+(boxes, cylinders, extrusions, revolves, booleans, fillets), and `test/design.js`
+builds each one on the JS kernel, the Rust kernel and NVIDIA SMLib (when the
+addon is built) and checks the volume.
+
+### Where a feature goes
+
+As in a history-based CAD: a feature on a **body** (fillet, chamfer, hole,
+extrude join/cut, press-pull past a shape's own size) wraps the body's
+outermost call, so it comes after everything already in it. The body is found
+through the trace `path` (variables and helpers included); members of a
+`group()` are separate bodies. A feature on a **shape** (shell, rotate, scale,
+mirror, a pattern) wraps that call and the transforms around it; a pattern of
+a main shape takes its whole boolean, as a move does. A hole or a cut joins a
+body that already is a `difference(…)` as one more argument line.
+
+### The dialogs
+
+| Tool | Picks | Writes |
+|---|---|---|
+| Extrude | a flat face | `union(body, linearExtrude({ h, on }, polygon([…])))`; Cut: `reverse: true, proud: 0.5` into the body; New body: one more `group()` member; Symmetric: `center: true`. A round face writes a placed `cylinder()` (exact) |
+| Revolve | a flat face, an axis (one of its sides or a world axis) | `revolve({ angle, on: { origin, normal, x } }, polygon([…]))`, join / cut / new |
+| Hole | a point on a face | `drill(p, n, { d, depth \| through, cbore \| csink })` |
+| Fillet, Chamfer | edges, clicked (the nearest edge of the face under the click) | `fillet({ r, edges: ["A|B[0]", …] }, body)` |
+| Shell | the selected shape, faces to leave open | `shelled({ wall, open: "top" }, shape)` |
+| Mirror | the selected shape; a world plane or a flat face | `mirrored({ normal, at }, shape)` |
+| Linear / Circular pattern | the selected shape | `linearPattern({ count, step, count2, step2 }, …)`, `circularPattern({ count, axis, center, angle }, …)` |
+| Combine | the selected body (target), bodies clicked (tools) | the tools move into `union/difference/intersection(target, …)` |
+
+Each change is written and built as a **live preview** (`host.preview`: the real
+kernel, no undo step). The panel shows the line it will write. OK keeps it as
+one undo step (no rebuild: the preview is already on screen); Cancel or Esc puts
+the text back exactly. A preview the kernel refuses turns the dialog's status
+red with the kernel's reason, and OK waits for one that builds. Spans are always
+read against the text the dialog opened on, never the preview's.
+
+### Press-pull
+
+The Press-pull tool: drag any flat face (or a cylinder's round side) along its
+normal. A translucent slab shows what comes (green) or goes (red), with a signed
+`+5 mm` / `−3 mm cut` label at the cursor; 1 mm steps, Ctrl 0.1, Shift 5.
+
+- A box side or a cylinder's end with a plain size number: out grows, in
+  shrinks, by editing that number (plus the `translate` that keeps the far side
+  put; half of it for `center: true`). Only when the shape is not turned.
+- Past the shape's own size, or a face with no number behind it: the face's
+  outline is extruded, joined outward, cut inward on through whatever lies
+  beyond, as deep as it was pushed.
+- A cylinder's round side pulls its radius.
+
+### Rotate and Scale
+
+Gizmo modes beside Move. Rotate shows one ring per axis and writes
+`rotate([0, 0, deg], { about: centre }, …)`, folding a second turn about the same
+axis and point into it (5° steps with snap on). Scale is uniform, by the centre
+dot: `scale(k, { about: centre }, …)`, folding by multiplying. The stock gizmo's
+plane squares and centre block are gone (the "green square at the centre"):
+Alt-drag is the free move.
+
+### Failed features
+
+Every build reports its outcome to the shell (`fireBuilt` → `buildResult`).
+When the kernel refuses, the feature list it was asked for is linked like a
+good build's and the step the message names (`"F F2: …"`) turns red, later
+steps dashed ("not built"), the reason beside the timeline. A message that
+names no step blames the last one.
+
+### Fixes from the phase 1 review
+
+- In Design mode a pick no longer opens the code card (`selectCodeRange`); the
+  call is still selected in the editor for when it is opened.
+- The status hint speaks of dots: face / corner dots, arrows after a rest,
+  Alt-drag free, double-click to type.
+- The green square at the gizmo's centre (three.js' XZ plane handle) is gone.
+
+### Hooks and checks
+
+`brepscript.openFeature(id)`, `brepscript.featureDialog()` (`set`, `takePick`,
+`ok`, `cancel`, `debug`), `brepscript.toScreen([x, y, z])`.
+`npm run test:design2` drives every dialog, press-pull and the gizmo modes in an
+offscreen Electron window against `npm run serve` and saves screenshots.
+
+### Known limits (phase 2)
+
+- Edge names count in build order: inserting a shape before a fillet's body
+  renames its edges. The fillet then refuses with "no edge … pick the edges
+  again" instead of rounding the wrong ones.
+- A face outline is read from the tessellated face: curved boundaries (a
+  fillet's rounded corner) come out as short straight segments, not arcs.
+  Phase 3's arcs make that exact.
+- An extruded face ignores holes in it (a pulled-up plate with drill holes
+  covers them).
+- `shelled()` takes a box (rounded or not), a cylinder or a straight-sided
+  extrusion; anything else refuses with a reason.
+- Mirror/pattern of a pattern member edits the shared call (all instances).
+- Part-turn revolves are refused by the NVIDIA kernel today (the
+  `nvidia-gaps` branch fixes it); auto mode falls back to the Rust kernel.

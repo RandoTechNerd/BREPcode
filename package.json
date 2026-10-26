@@ -34,6 +34,7 @@
     "test:api": "node scripts/api-conformance.mjs",
     "test:lessons": "electron scripts/lessons-check.cjs",
     "test:design": "electron scripts/design-check.cjs",
+    "test:design2": "electron scripts/design-check.cjs --phase2",
     "build:nvidia": "node build-nvidia.mjs",
     "desktop:build:alpha": "node build-native.mjs && node build-nvidia.mjs && node build-site.mjs --no-zip && electron-builder --win --config electron-builder.yml -c.productName=\"BREPcode Alpha\" -c.appId=com.randotechnerd.brepcode.alpha -c.extraMetadata.brepcodeKernelDefault=nvidia -c.portable.artifactName=BREPcode-Alpha.exe",
     "desktop:build:mac": "node build-native.mjs && node build-nvidia.mjs --clean && node build-site.mjs --no-zip && electron-builder --mac --config electron-builder.yml",

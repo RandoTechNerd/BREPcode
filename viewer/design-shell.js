@@ -18,31 +18,40 @@ import { buildTree, renderTree, primaryFid } from "./design-tree.js";
 import { linkFeatures, renderTimeline } from "./design-timeline.js";
 import { createMoveGizmo } from "./design-gizmo.js";
 import { parseTyped } from "./design-edit.js";
+import { rotateText, scaleText, shapeSpan } from "./design/features.js";
+import { failedSteps } from "./design-timeline.js";
 
 const RIBBON_KEY = "brepcode.ribbon";
 const SNAPS = [1, 0.5, 0.1, 0];
 
-// The ribbon. `phase2` buttons are placeholders until their dialogs land.
+// The ribbon. `dialog` tools open a feature dialog (design/dialogs.js, loaded
+// the first time one is clicked); the rest are modes of the pointer.
 const TOOLS = [
   { group: "Select", items: [
     { id: "select", label: "Select", tip: "Pick a shape or a face, no gizmo", icon: `<path d="M4 2l9 5-4 1.2L7.5 13z"/>` },
     { id: "move", label: "Move", tip: "Move the selected shape with arrows; the move is written into the code", icon: `<path d="M8 1.5v13M1.5 8h13M8 1.5 6 3.5M8 1.5l2 2M14.5 8l-2-2M14.5 8l-2 2M8 14.5l-2-2M8 14.5l2-2M1.5 8l2-2M1.5 8l2 2"/>` },
+    { id: "rotate", label: "Rotate", tip: "Turn the selected shape about its centre, one axis at a time; writes rotate([…], { about }, …)", icon: `<path d="M12.5 5.5A5 5 0 1 0 13 9"/><path d="M13 2.5v3h-3"/>` },
+    { id: "scale", label: "Scale", tip: "Scale the selected shape evenly about its centre (drag the centre dot); writes scale(k, { about }, …)", icon: `<rect x="2.5" y="6.5" width="7" height="7"/><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5"/>` },
   ] },
   { group: "Create", items: [
-    { id: "extrude", label: "Extrude", phase2: true, icon: `<path d="M3 11l5 2.5 5-2.5M3 11V6l5-2.5L13 6v5M8 8.5V13.5M3 6l5 2.5L13 6"/>` },
-    { id: "revolve", label: "Revolve", phase2: true, icon: `<path d="M8 2v12"/><ellipse cx="8" cy="8" rx="5" ry="2.2"/>` },
-    { id: "hole", label: "Hole", phase2: true, icon: `<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/>` },
+    { id: "extrude", label: "Extrude", dialog: true, tip: "Extrude a flat face: join, cut or a new body", icon: `<path d="M3 11l5 2.5 5-2.5M3 11V6l5-2.5L13 6v5M8 8.5V13.5M3 6l5 2.5L13 6"/>` },
+    { id: "revolve", label: "Revolve", dialog: true, tip: "Spin a flat face about one of its edges or an axis", icon: `<path d="M8 2v12"/><ellipse cx="8" cy="8" rx="5" ry="2.2"/>` },
+    { id: "hole", label: "Hole", dialog: true, tip: "A simple, counterbored or countersunk hole where you click", icon: `<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/>` },
   ] },
   { group: "Modify", items: [
-    { id: "presspull", label: "Press-pull", phase2: true, icon: `<path d="M3 10h10v3H3zM8 2v6M6 4l2-2 2 2"/>` },
-    { id: "fillet", label: "Fillet", phase2: true, icon: `<path d="M3 13V8a5 5 0 0 1 5-5h5"/>` },
-    { id: "chamfer", label: "Chamfer", phase2: true, icon: `<path d="M3 13V7l4-4h6"/>` },
-    { id: "shell", label: "Shell", phase2: true, icon: `<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><rect x="5" y="5" width="6" height="6"/>` },
+    { id: "presspull", label: "Press-pull", tip: "Drag a face along its normal: out grows, in shrinks, past the shape cuts", icon: `<path d="M3 10h10v3H3zM8 2v6M6 4l2-2 2 2"/>` },
+    { id: "fillet", label: "Fillet", dialog: true, tip: "Round the edges you click", icon: `<path d="M3 13V8a5 5 0 0 1 5-5h5"/>` },
+    { id: "chamfer", label: "Chamfer", dialog: true, tip: "Bevel the edges you click", icon: `<path d="M3 13V7l4-4h6"/>` },
+    { id: "shell", label: "Shell", dialog: true, tip: "Hollow the selected shape, leaving the faces you click open", icon: `<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><rect x="5" y="5" width="6" height="6"/>` },
+    { id: "combine", label: "Combine", dialog: true, tip: "Join, cut or intersect bodies", icon: `<circle cx="6" cy="8" r="4"/><circle cx="10" cy="8" r="4"/>` },
   ] },
   { group: "Pattern", items: [
-    { id: "pattern", label: "Pattern", phase2: true, icon: `<rect x="2" y="2" width="4" height="4"/><rect x="10" y="2" width="4" height="4"/><rect x="2" y="10" width="4" height="4"/><rect x="10" y="10" width="4" height="4"/>` },
+    { id: "mirror", label: "Mirror", dialog: true, tip: "Copy the selected shape across a plane", icon: `<path d="M8 1.5v13" stroke-dasharray="1.5 1.5"/><path d="M6 4 2 12h4zM10 4l4 8h-4z"/>` },
+    { id: "linear", label: "Linear", dialog: true, tip: "Copies of the selected shape in a row or grid", icon: `<rect x="2" y="2" width="4" height="4"/><rect x="10" y="2" width="4" height="4"/><rect x="2" y="10" width="4" height="4"/><rect x="10" y="10" width="4" height="4"/>` },
+    { id: "circular", label: "Circular", dialog: true, tip: "Copies of the selected shape around an axis", icon: `<circle cx="8" cy="8" r="5.5" stroke-dasharray="2 2"/><circle cx="8" cy="2.5" r="1.3"/><circle cx="13" cy="10.5" r="1.3"/><circle cx="3" cy="10.5" r="1.3"/>` },
   ] },
 ];
+const GIZMO_MODE = { move: "translate", rotate: "rotate", scale: "scale" };
 
 const CSS = `
 body:not(.design-mode) .dz-ui { display: none !important; }
@@ -139,6 +148,12 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 .dt-step.rel { border-color: color-mix(in srgb, var(--accent, #1c66e5) 60%, transparent); }
 .dt-step.dead { opacity: 0.55; }
 .dt-n { font-size: 10px; color: var(--muted, #8ea0c0); }
+.dt-step.fail { border-color: #ff5c5c; background: rgba(255, 92, 92, 0.16); color: #ffc2c2; }
+.dt-step.unbuilt { opacity: 0.4; border-style: dashed; }
+.dt-fail-note { flex: none; margin-left: 8px; color: #ff9c9c; font-size: 11.5px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dz-pp-label { position: fixed; z-index: 40; pointer-events: none; padding: 2px 7px; border-radius: 6px; font: 600 12px ui-monospace, Consolas, monospace;
+  background: rgba(10, 14, 24, 0.85); color: #9ff0d2; border: 1px solid #2f6e5a; }
+#dz-pp-label.cut { color: #ffb3b3; border-color: #7a3434; }
 .dt-prim { border-left: 3px solid #6aa0ff; }
 .dt-bool { border-left: 3px solid #c08bff; }
 .dt-op { border-left: 3px solid #4fd1a5; }
@@ -168,8 +183,8 @@ export function initDesignShell(host) {
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Design tools");
   bar.innerHTML = TOOLS.map((g) => `<div class="dz-g"><div class="dz-gl">${g.group}</div><div class="dz-gi">`
-      + g.items.map((t) => `<button type="button" class="dz-t${t.phase2 ? " p2" : ""}" data-tool="${t.id}" title="${esc(t.tip ?? `${t.label}: coming in Design mode phase 2`)}"`
-        + `${t.phase2 ? "" : ` aria-pressed="false"`}>${svg(t.icon)}<span>${t.label}</span></button>`).join("")
+      + g.items.map((t) => `<button type="button" class="dz-t" data-tool="${t.id}" title="${esc(t.tip ?? t.label)}"`
+        + `${t.dialog ? "" : ` aria-pressed="false"`}>${svg(t.icon)}<span>${t.label}</span></button>`).join("")
       + `</div></div>`).join("")
     + `<div class="dz-g"><div class="dz-gl">Snap</div><div class="dz-gi"><button type="button" class="dz-snap" title="Move snap (click to change)">1 mm</button></div></div>`
     + `<button type="button" class="dz-more" title="Show the full ribbon (or double-click the toolbar)" aria-expanded="false">▾</button>`;
@@ -197,6 +212,10 @@ export function initDesignShell(host) {
   let tree = { ok: true, groups: [] };
   let steps = [];
   let snapIx = 0;
+  let dialog = null;              // the open feature dialog (design/dialogs.js)
+  let failure = null;             // the last build's failure, as timeline steps
+  let press = null;               // a press the shell owns: { x, y, pp? }
+  let pressPull = null;           // design/presspull.js, once loaded
 
   // ---- face overlay: the picked face tinted, its edges drawn ----
   const overlay = new THREE.Group();
@@ -233,6 +252,20 @@ export function initDesignShell(host) {
     // the face tint marks where the face WAS; it would only mislead mid-drag
     onDragging(on) { overlay.visible = !on; if (on) setHoverFace(null); },
     onRelease(fid, d) {
+      if (d.mode === "rotate" || d.mode === "scale") {
+        const m = host.moveMembers(fid);
+        if (!m) return;
+        const text = host.text();
+        const span = shapeSpan(text, m.span);
+        const about = [d.about.x, d.about.y, d.about.z];
+        const r = d.mode === "rotate" ? rotateText(text, span, d.axis, d.deg, about) : scaleText(text, span, d.factor, about);
+        if (r.how === "none") return;
+        host.commit(r.next);
+        host.setHint(d.mode === "rotate"
+          ? `Turned <b>${d.deg}°</b> about ${"XYZ"[d.axis]}: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>rotate(…, { about })</code>.`
+          : `Scaled <b>×${d.factor}</b>: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>scale(…, { about })</code>.`);
+        return;
+      }
       const r = host.commitMove(fid, d);
       if (r?.how && r.how !== "none") {
         host.setHint(`Moved by <b>[${[d.x, d.y, d.z].map((v) => Math.round(v * 10) / 10).join(", ")}]</b> mm: `
@@ -242,7 +275,8 @@ export function initDesignShell(host) {
   });
 
   const attachGizmo = () => {
-    if (!active || tool !== "move" || !selectedFid) { gizmo.detach(); return; }
+    if (!active || !GIZMO_MODE[tool] || !selectedFid || dialog) { gizmo.detach(); return; }
+    if (gizmo.mode !== GIZMO_MODE[tool]) gizmo.setMode(GIZMO_MODE[tool]);
     const m = host.moveMembers(selectedFid);
     if (!m?.meshes.length) { gizmo.detach(); return; }
     gizmo.attach(selectedFid, m);
@@ -261,7 +295,14 @@ export function initDesignShell(host) {
     }
     const shapes = fm ? Object.keys(fm).length : 0;
     countEl.textContent = fm ? `${shapes} shape${shapes === 1 ? "" : "s"}` : "building…";
-    renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep });
+    if (failure) {
+      renderTimeline(stepsEl, failure.steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, failed: failure.index });
+      const note = document.createElement("span");
+      note.className = "dt-fail-note";
+      note.textContent = `✕ ${failure.reason}`;
+      note.title = failure.reason;
+      stepsEl.appendChild(note);
+    } else renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep });
     drawSelection();
   };
 
@@ -399,11 +440,12 @@ export function initDesignShell(host) {
     const b = e.target.closest(".dz-t");
     if (!b) return;
     const t = TOOLS.flatMap((g) => g.items).find((x) => x.id === b.dataset.tool);
-    if (t.phase2) {
-      host.setHint(`<b>${t.label}</b> is coming in Design mode phase 2: a dialog that writes the ${t.label.toLowerCase()} into your code. For now, type it in Code mode or ask the chat.`);
-      return;
-    }
+    if (t.dialog) { openFeature(t.id); return; }
     setTool(t.id);
+    if (t.id === "presspull") {
+      loadPressPull();
+      host.setHint("<b>Press-pull</b>: drag any flat face (or a round side) along its normal. Out grows, in shrinks; pushed past the shape it cuts on through. Esc or another tool to stop.");
+    }
   });
   bar.addEventListener("dblclick", (e) => { if (!e.target.closest(".dz-t, .dz-snap, .dz-more")) setRibbon(!ribbon); });
   side.querySelector(".dz-fold").addEventListener("click", (e) => {
@@ -431,13 +473,87 @@ export function initDesignShell(host) {
     numBox = null;
   }
 
+  // ---- feature dialogs ----
+  let dialogsMod = null;
+  async function openFeature(id) {
+    dialogsMod ??= await import("./design/dialogs.js");
+    if (dialog) await dialog.cancel();
+    const sel = { fid: selectedFid, face: null };
+    if (face?.mesh) {
+      const fp = dialogsMod.facePick({ object: face.mesh, point: face.point ?? face.mesh.position }, THREE);
+      if (fp) sel.face = { ...fp, hitPoint: face.point ? [face.point.x, face.point.y, face.point.z] : null };
+    }
+    gizmo.detach();
+    dialog = dialogsMod.openDialog(id, {
+      host, THREE, scene, sel,
+      onClose: () => { dialog = null; attachGizmo(); },
+      markFailure: (f) => showFailure(f),
+    });
+    for (const x of bar.querySelectorAll(".dz-t")) x.classList.toggle("open", x.dataset.tool === id);
+  }
+
+  // ---- a failed build in the timeline ----
+  function showFailure(f) {
+    if (!f) { failure = null; return; }
+    const r = failedSteps(f, { words: host.words });
+    failure = r ? { ...r, reason: f.reason } : { steps, index: -1, reason: f.reason };
+    if (active) draw();
+  }
+
+  // ---- press-pull ----
+  async function loadPressPull() {
+    if (pressPull) return pressPull;
+    const mod = await import("./design/presspull.js");
+    pressPull = mod.createPressPull({ host, THREE, scene, camera: host.camera, orbit: host.orbit });
+    return pressPull;
+  }
+
+  // a press on the model that a dialog or press-pull takes for itself
+  function onPressMove(e) {
+    if (press?.pp) pressPull.move(e);
+  }
+  function onPressUp(e) {
+    removeEventListener("pointermove", onPressMove, true);
+    removeEventListener("pointerup", onPressUp, true);
+    const p = press;
+    press = null;
+    if (!p) return;
+    if (p.pp) { pressPull.up(e); return; }
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 5) return;    // an orbit
+    const hit = host.pickAt(e.clientX, e.clientY);
+    if (hit && dialog) dialog.takePick(hit);
+  }
+
   // ---- what index.html calls ----
   let clearQueued = false;
   return {
+    // A press on the stage: true when Design mode takes it (the viewer then
+    // stays out of it, the camera still orbits on a drag).
+    pressOwns(e) {
+      if (!active || e.button !== 0) return false;
+      if (dialog) {
+        press = { x: e.clientX, y: e.clientY };
+      } else if (tool === "presspull" && pressPull) {
+        const hit = host.pickAt(e.clientX, e.clientY);
+        if (!hit || !pressPull.down(e, hit)) return false;
+        press = { x: e.clientX, y: e.clientY, pp: true };
+      } else return false;
+      addEventListener("pointermove", onPressMove, true);
+      addEventListener("pointerup", onPressUp, true);
+      return true;
+    },
+    // every build's outcome (index.html fireBuilt)
+    buildResult(ok, f) {
+      if (ok) { if (failure) { failure = null; if (active) draw(); } return; }
+      if (!dialog) showFailure(f);       // a dialog shows its own preview's failure
+    },
+    openFeature: (id) => openFeature(id),
+    dialog: () => dialog,
+    pressPull: () => pressPull,
     setActive(on) {
       active = !!on;
       if (active) refresh();
-      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); }
+      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
     onSelect(fid) {
@@ -467,16 +583,17 @@ export function initDesignShell(host) {
       draw();
     },
     // a click on the model landed on this face mesh (after onSelect)
-    pickFace(mesh) {
+    pickFace(mesh, point = null) {
       if (!active || !mesh?.userData?.faceName) return;
       pickedRow = null;
       setHoverFace(null);
       showFace(mesh);
+      if (face && point) face.point = point.clone();
       draw();
     },
     refresh() { if (active) refresh(); setHoverFace(null); },
     // index.html's hover tick: should it look for a face, and here it is
-    wantsFaceHover() { return active && !gizmo.dragging; },
+    wantsFaceHover() { return active && !gizmo.dragging && !pressPull?.dragging; },
     hoverFace(mesh) { setHoverFace(active ? mesh : null); },
     gizmoOwnsPointer() { return active && gizmo.ownsPointer(); },
     isActive() { return active; },
@@ -533,6 +650,8 @@ export function initDesignShell(host) {
     get numberBox() { return numBox ? [...numBox.querySelectorAll("input")].map((i) => i.value) : null; },
     // for tests and the console
     debug: () => ({ active, tool, selectedFid, hoverFace: hoverMesh?.userData.faceName ?? null, face: face && { name: face.name, edges: face.edges.map((e) => e.name) },
+      dialog: dialog?.debug() ?? null, failure: failure && { reason: failure.reason, index: failure.index, step: failure.steps[failure.index]?.id ?? null },
+      gizmoMode: gizmo.mode, gizmoHandles: gizmo.handles(), pressPull: pressPull?.debug() ?? null,
       rows: tree.groups.flatMap((g) => g.rows.map((r) => ({ group: g.key, name: r.name, depth: r.depth, fids: r.fids, pattern: r.pattern?.count ?? null }))),
       steps: steps.map((s) => ({ id: s.id, type: s.type, op: s.op, linked: !!s.link, text: s.link ? code.value.slice(s.link.start, s.link.end).slice(0, 40) : null })),
       gizmo: gizmo.fid }),

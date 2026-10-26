@@ -10168,6 +10168,10 @@ ${joined}${SITE_TAIL}`), joined);
     // too — a share that cannot build must stop glowing and show its error,
     // not spin forever.
     const builtOnce = new Set();
+    // Why the last build failed (null after a good one): the message, and when
+    // the kernel was the one to refuse, the feature list it was asked for, so
+    // Design mode's timeline can turn that step red with the kernel's reason.
+    let lastBuildFailure = null;
     const onceBuilt = (fn) => builtOnce.add(fn);
     // `ok` says whether a model actually reached the plate.
     //
@@ -10181,6 +10185,7 @@ ${joined}${SITE_TAIL}`), joined);
     // successful build at 7.5s — three and a half of those seconds spent
     // looking at an empty stage.
     function fireBuilt(ok = true) {
+      designUI?.buildResult?.(ok, ok ? null : lastBuildFailure);
       if (!builtOnce.size) return;
       const fns = [...builtOnce];
       builtOnce.clear();
@@ -10304,6 +10309,7 @@ ${joined}${SITE_TAIL}`), joined);
       try {
         shape = evaluate(src);
       } catch (e) {
+        lastBuildFailure = { reason: String(e?.message || e), stage: "code" };
         setStatus("err", diagnose(src, e));
         fireBuilt(false);      // a share that cannot build must stop glowing
         return;
@@ -10333,11 +10339,13 @@ ${joined}${SITE_TAIL}`), joined);
         }
       } catch { /* an estimate must never break a build */ }
       if (!shape || !shape.__brepscript) {
+        lastBuildFailure = { reason: "the code did not return a shape", stage: "code" };
         setStatus("err", diagnose(src, null, shape));
         fireBuilt(false);      // a share that cannot build must stop glowing
         return;
       }
 
+      let attempt = null;      // the feature list this build asked for (for a failure report)
       try {
         // Translated languages (OpenSCAD / JSCAD / build123d / CadQuery) get an
         // honest "translating…" note while the kernel works — it's a best-effort
@@ -10365,6 +10373,7 @@ ${joined}${SITE_TAIL}`), joined);
         // compile() only builds the feature list — cheap, and it's what produces
         // the trace the click-map and the colours are keyed to. The expensive
         // half is runHistory(), and that is what goes to the worker.
+        attempt = { ph, trace };
         dsl.resetSceneLook();
         await dsl.compile(shape, ph, trace);
         if (mine !== token) return;
@@ -10529,6 +10538,7 @@ ${joined}${SITE_TAIL}`), joined);
           if (measureArmed) $("measure-live").innerHTML = "The model changed — measurements cleared.";
         }
         lastGoodStatus = `${via}${solids.length} solid${solids.length === 1 ? "" : "s"}, ${tris} triangles${dims} · ${Math.round(performance.now() - t0)} ms${rebuiltNote}`;
+        lastBuildFailure = null;
         fireBuilt();
         logEvent("build", "ok", { ms: Math.round(lastBuildMs), solids: solids.length, tris,
           lang: lastLang || "brepcode", chars: code.value.length });
@@ -10565,6 +10575,11 @@ ${joined}${SITE_TAIL}`), joined);
         lastBuildMs = performance.now() - t0;
         logEvent("build", "failed", { ms: Math.round(lastBuildMs), error: String(e?.message || e).slice(0, 300),
           lang: lastLang || "brepcode", source: code.value.slice(0, 4000) });
+        lastBuildFailure = {
+          reason: String(e?.message || e), stage: attempt?.ph.features.length ? "kernel" : "code",
+          features: attempt ? attempt.ph.features.map((f) => ({ type: f.type, params: { ...f.inputParams } })) : null,
+          trace: attempt?.trace ?? null, runText: lastRunText, editorText: code.value,
+        };
         setStatus("err", diagnose(src, e));
         fireBuilt(false);      // a share that cannot build must stop glowing
         // A saved model naming a mesh this session has not imported is not a
@@ -12675,6 +12690,9 @@ ${joined}${SITE_TAIL}`), joined);
       // Design mode's move gizmo is under the pointer: the press is its drag,
       // not a body drag, an orbit or a pick.
       if (designUI?.gizmoOwnsPointer()) { downAt = null; return; }
+      // …or a Design tool takes the press: a dialog picking faces or edges,
+      // press-pull on a face, the sketcher (its own clicks and drags)
+      if (designUI?.pressOwns(e)) { downAt = null; return; }
       if (drag && dragPointer && e.pointerId !== dragPointer.id) {
         // A second finger on a touch drag means PINCH: the first finger just
         // happened to land on the part. Drop the drag before it has edited
@@ -13794,7 +13812,7 @@ ${joined}${SITE_TAIL}`), joined);
       // and its handles vanished under your hand.
       if (!hit) { clearHandles(); return; }
       if (selectFeature(hit.object.userData.featureId) && hit.object.userData.faceName) {
-        designUI?.pickFace(hit.object);
+        designUI?.pickFace(hit.object, hit.point);
       }
     });
 
@@ -13816,12 +13834,19 @@ ${joined}${SITE_TAIL}`), joined);
       }
       spawnHandles(fid);
       selectCodeRange(range ?? site);
-      hint.innerHTML = `Selected <b>${site.kind}</b>${fdims} — drag a <b>square</b> to push that side, a <b>corner ball</b> to ${site.kind === "cube" || site.kind === "cuboid" ? "stretch width &amp; depth" : "scale it"}, or drag the body to move it (Shift = vertical). <b>Right-click</b> it to change the shape or its colour.`;
+      hint.innerHTML = `Selected <b>${site.kind}</b>${fdims} — drag a <b>face dot</b> to push that side, a <b>corner dot</b> to ${site.kind === "cube" || site.kind === "cuboid" ? "stretch width &amp; depth" : "scale it"}`
+        + ` (rest on a dot for its arrows), or drag the body to move it (Shift = vertical). <b>Alt-drag</b> moves it freely, <b>double-click</b> a dot to type the numbers. <b>Right-click</b> it to change the shape or its colour.`;
       return true;
     }
     function selectCodeRange({ start, end }) {
-      toggleCard(panel, openBtn, true);
-      code.focus();
+      // Design mode works on the model, and the code card popping open over it
+      // on every pick hid what was picked: there the card stays as the user
+      // left it (the call is still selected in it, for when they open it).
+      const design = !!designUI?.isActive();
+      if (!design) {
+        toggleCard(panel, openBtn, true);
+        code.focus();
+      }
       code.setSelectionRange(start, end);
       // scroll the selection into view: rough line-based estimate
       const line = code.value.slice(0, start).split("\n").length - 1;
@@ -21926,6 +21951,45 @@ let SIMPLIFY_TARGET = 10000;
         return true;
       },
       setHint: (html) => { hint.innerHTML = html; },
+      // ---- phase 2: feature dialogs and press-pull ----
+      // what is under the pointer at client (x, y): the model's first hit
+      pickAt(x, y) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const ndc = new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+        raycaster.setFromCamera(ndc, camera);
+        return pickModel(raycaster)[0] ?? null;
+      },
+      // A dialog's live preview: the candidate code built as it would be
+      // committed, with no undo step (the dialog puts the text back on
+      // Cancel). Resolves with the build's outcome.
+      preview(text) {
+        return new Promise((resolve) => {
+          onceBuilt((ok) => resolve({ ok, failure: ok ? null : lastBuildFailure }));
+          code.value = text;
+          rebuild();
+        });
+      },
+      // a Design edit for real: one undo step, then the usual build
+      commit(text, { built = false } = {}) {
+        // already built as a preview: the text and the model on screen agree,
+        // so it only needs its undo step
+        if (built && code.value === text && !lastBuildFailure) {
+          pushHistory();
+          designUI?.refresh();
+          return Promise.resolve({ ok: true, failure: null });
+        }
+        code.value = text;
+        pushHistory();
+        return new Promise((resolve) => {
+          onceBuilt((ok) => resolve({ ok, failure: ok ? null : lastBuildFailure }));
+          buildAfterToolEdit();
+        });
+      },
+      text: () => code.value,
+      lastFailure: () => lastBuildFailure,
+      modelMeshes: () => modelGroup.children,
+      clearSelection: () => clearHandles(),
+      featureId: (mesh) => mesh?.userData?.featureId ?? null,
     });
     const modeSwitch = initModeSwitch({ onChange: (m) => designUI.setActive(m === "design") });
     window.brepscript.mode = () => modeSwitch.mode;
@@ -21933,6 +21997,23 @@ let SIMPLIFY_TARGET = 10000;
     // Design mode's state: tree rows, timeline steps and what they link to,
     // the selection, the picked face and its edges, the gizmo's shape
     window.brepscript.design = () => designUI.debug();
+    // phase 2, for tests and the console: open a feature dialog by id, and
+    // the open dialog's controller (set(key, value), takePick(hit), ok(), cancel())
+    window.brepscript.openFeature = (id) => designUI.openFeature(id);
+    window.brepscript.featureDialog = () => designUI.dialog();
+    window.brepscript.pickAt = (x, y) => designUI.dialog()?.takePick(pickModelAt(x, y));
+    // a click on the model at client (x, y), as a dialog would take it
+    function pickModelAt(x, y) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1), camera);
+      return pickModel(raycaster)[0] ?? null;
+    }
+    // where a world point lands on screen (client px): for tests that click on geometry
+    window.brepscript.toScreen = (p) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const v = new THREE.Vector3(...p).project(camera);
+      return [rect.left + (v.x + 1) / 2 * rect.width, rect.top + (1 - v.y) / 2 * rect.height];
+    };
     // the values in an open double-click number box, or null
     window.brepscript.designNumberBox = () => designUI.numberBox;
     // The selection's handle dots as drawn: kind, on-screen position and size,

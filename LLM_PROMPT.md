@@ -80,6 +80,7 @@ cone({ r1, r2, h })            sphere({ r })           sphere(r)        sphere({
 torus({ r, tube })             torus({ r, tube, arc }) // arc in degrees for a partial ring
 polygon([[x, y], ...])                   // a flat 2D outline — not a solid on its own
 linearExtrude({ h, center }, profile)    // extrude a polygon up +Z from z=0
+linearExtrude({ h, on: { origin, normal } }, profile)   // …drawn on any plane, extruded along its normal
 revolve(angle, profile)                  // lathe a polygon about x = 0 (OpenSCAD's rotate_extrude)
 revolve({ stretch: L }, profile)         // ...pulled apart into a stadium shape, L mm of straight sides
 path2d([x,y], ..., bezierTo(c1, c2, p), ...)  // an outline with smooth curves; extruding or revolving keeps them exact
@@ -150,6 +151,13 @@ return group(
 tube(path, { r })              // sweep a round profile along a point list — ONE solid, real arcs
 helix({ r, turns, pitch })     circlePath({ r })     // point lists for tube()
 drill([x,y,z], [nx,ny,nz], { d, depth, through })    // bore along a face normal
+drill(p, n, { d, through, cbore: { d, depth } })     // counterbored; csink: { d, angle } countersunk
+shelled({ wall, open: "top" }, shape)                 // shell a box, cylinder or extrusion; open faces optional
+mirrored({ normal: [1,0,0], at }, shape)             // shape plus its mirror copy; join: true fuses them
+linearPattern({ count, step: [x,y,z] }, shape)       // copies in a row; count2 and step2 make a grid
+circularPattern({ count, axis, center }, shape)      // copies around an axis; as a difference() tool every copy cuts
+fillet({ r, edges: ["A|B[0]", …] }, shape)           // only the named edges, as Design mode picks them
+rotate([0,0,45], { about: [x,y,z] }, shape)          // turns about that point; scale(k, { about }, shape) too
 stretch({ axis, by, at }, shape)                     // cut at a plane and widen the middle
 texture({ pattern, depth, scale, faces }, shape)     // real displaced geometry, survives export
 heightmap(...)                 freeform(...)         importedMesh("file.stl", { split })
