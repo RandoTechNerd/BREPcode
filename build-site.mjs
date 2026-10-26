@@ -135,6 +135,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   // (lazy: loaded the first time a feature tool is used). They sit in
   // viewer/design/, one level down, so their "../../src/" is "../src/" here.
   "design/features.js", "design/dialogs.js", "design/presspull.js",
+  // phase 3: the sketcher and its model (lazy, on the Sketch tool)
+  "design/sketcher.js", "design/sketch-model.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -219,7 +221,7 @@ for (const f of VIEWER_JS) {
   let body = rewrite(readFileSync(`viewer/${f}`, "utf8"));
   if (f.includes("/")) {
     mkdirSync(join(OUT, dirname(f)), { recursive: true });
-    body = body.split('"../../src/').join('"../src/');     // after rewrite(): "../src/" there means the root's src/
+    body = body.split('"../../src/').join('"../src/').split('"../../vendor/').join('"../vendor/');     // after rewrite(): one level up is the site root
   }
   writeFileSync(join(OUT, f), body);
 }

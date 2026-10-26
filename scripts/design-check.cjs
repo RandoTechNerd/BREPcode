@@ -24,9 +24,10 @@ function die(kind, e) {
 process.on("uncaughtException", (e) => die("uncaught", e));
 process.on("unhandledRejection", (e) => die("unhandled rejection", e));
 
-// --phase2 (or DESIGN_PHASE=2) runs the phase 2 check (feature dialogs, press-pull,
+// --phase2 / --phase3 (or DESIGN_PHASE=2 / 3) run the phase 2 / 3 check (feature dialogs, press-pull,
 // rotate/scale): design2-check-run.cjs
-const RUN = process.env.DESIGN_PHASE === "2" || process.argv.includes("--phase2") ? "./design2-check-run.cjs" : "./design-check-run.cjs";
+const RUN = process.env.DESIGN_PHASE === "3" || process.argv.includes("--phase3") ? "./design3-check-run.cjs"
+  : process.env.DESIGN_PHASE === "2" || process.argv.includes("--phase2") ? "./design2-check-run.cjs" : "./design-check-run.cjs";
 try {
   const done = require(RUN);
   Promise.resolve(done).catch((e) => die("run", e));

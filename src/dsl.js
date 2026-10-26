@@ -589,6 +589,219 @@ export function region2d(outer, ...holes) {
   }
   return { ...outer, holes: [...(outer.holes || []), ...list.map((h) => ({ pts: h.pts, segs: h.segs ?? null }))] };
 }
+
+// ------------------------------------------------------------------ sketch
+//
+// sketch({ on, points, curves, constraints, dims }) — a constrained 2D sketch
+// as Design mode's sketcher writes it, and a 2D profile like path2d's: it
+// extrudes and revolves (exact lines, arcs, circles and Beziers), holes and all.
+//
+//   on:          "XY" | "XZ" | "YZ" | { origin, normal, x }   (see planeFrame)
+//   points:      [[x, y], …]                    indexed from 0
+//   curves:      ["line", a, b]  ["arc", center, start, end]  (counter-clockwise)
+//                ["circle", center, r]  ["bezier", a, c1, c2, b]
+//                a trailing "construction" leaves a curve out of the profile
+//   constraints: ["coincident", p, q]  ["horizontal", p, q]  ["vertical", p, q]
+//                ["parallel", a, b, c, d]  ["perpendicular", a, b, c, d]
+//                ["tangent", a, b, center, p]  (line a–b touches the arc at p)
+//                ["equal", a, b, c, d]  ["fixed", p]  ["onLine", a, b, p]
+//                ["midpoint", a, b, m]
+//   dims:        ["distance", p, q, mm]  ["angle", a, b, c, d, deg]
+//                (a circle's radius is its own number in curves)
+//
+// The kernel's ConstraintSolver (SketchSolver2D, the BREP.io sketcher's own)
+// solves the points against the constraints and dims whenever they disagree,
+// so a dim that is a named const (`["distance", 0, 1, w]`) is a slider: move it
+// and the sketch re-solves. The points as written are the starting guess (the
+// sketcher writes them solved). With no solver registered (useSketchSolver),
+// the points are taken as written.
+let SketchSolver = null;
+export function useSketchSolver(Solver) { SketchSolver = Solver || null; }
+export const hasSketchSolver = () => !!SketchSolver;
+
+const GLYPH = {
+  coincident: "≡", horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂",
+  tangent: "⟂", equal: "⇌", fixed: "⏚", onLine: "⏛", midpoint: "⋯", distance: "⟺", angle: "∠",
+};
+const ARITY = { coincident: 2, horizontal: 2, vertical: 2, parallel: 4, perpendicular: 4, tangent: 4, equal: 4, fixed: 1, onLine: 3, midpoint: 3, distance: 2, angle: 4 };
+const CURVE_ARITY = { line: 2, arc: 3, bezier: 4 };
+
+export function sketch(spec = {}) {
+  const pts = (spec.points || []).map((p, i) => {
+    const x = Number(p?.[0]), y = Number(p?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`sketch(): point ${i} isn't an [x, y] pair`);
+    return [x, y];
+  });
+  const curves = (spec.curves || []).map((c, i) => {
+    if (!Array.isArray(c) || typeof c[0] !== "string") throw new TypeError(`sketch(): curve ${i} isn't ["line", a, b], ["arc", c, a, b], ["circle", c, r] or ["bezier", a, c1, c2, b]`);
+    const kind = c[0];
+    const construction = c[c.length - 1] === "construction";
+    const args = construction ? c.slice(1, -1) : c.slice(1);
+    if (kind === "circle") {
+      const r = Number(args[1]);
+      if (!(r > 0) || !pts[args[0]]) throw new TypeError(`sketch(): curve ${i} ["circle", center, r] needs a point and a positive radius`);
+      return { kind, ids: [args[0]], r, construction };
+    }
+    const n = CURVE_ARITY[kind];
+    if (!n) throw new TypeError(`sketch(): curve ${i} is a "${kind}"; a curve is a line, arc, circle or bezier`);
+    if (args.length !== n || args.some((k) => !pts[k])) throw new TypeError(`sketch(): curve ${i} ["${kind}", …] needs ${n} point numbers from points`);
+    return { kind, ids: args.map(Number), construction };
+  });
+  const rule = (list, what, numbered) => (list || []).map((c, i) => {
+    if (!Array.isArray(c) || !GLYPH[c[0]]) throw new TypeError(`sketch(): ${what} ${i} is not one of ${Object.keys(GLYPH).join(", ")}`);
+    const n = ARITY[c[0]];
+    const ids = c.slice(1, 1 + n), value = numbered ? Number(c[1 + n]) : null;
+    if (ids.length !== n || ids.some((k) => !pts[k])) throw new TypeError(`sketch(): ${what} ${i} ["${c[0]}", …] needs ${n} point numbers`);
+    if (numbered && !Number.isFinite(value)) throw new TypeError(`sketch(): dim ${i} ["${c[0]}", …] needs a value after its points`);
+    return { type: c[0], ids: ids.map(Number), value };
+  });
+  const constraints = rule(spec.constraints, "constraint", false);
+  const dims = rule(spec.dims, "dim", true);
+  const solved = solveSketch2D(pts, curves, constraints, dims);
+  const profile = sketchProfile(solved, curves);
+  // the rules again, by position, for the kernel's sketch record (sketchOf)
+  const rules = [...constraints, ...dims].map((c) => ({ type: GLYPH[c.type], at: c.ids.map((k) => solved[k]), value: c.value ?? null }));
+  return { ...profile, on: spec.on ?? null, rules, sketch: { points: solved, curves, constraints, dims } };
+}
+
+// The solver's own sketch: point 0 is its fixed origin, so ours are id i + 1;
+// a circle's radius is a rim point held at that distance.
+function solverSketch(pts, curves, constraints, dims) {
+  const points = [{ id: 0, x: 0, y: 0, fixed: true, construction: true }];
+  pts.forEach(([x, y], i) => points.push({ id: i + 1, x, y, fixed: false, construction: false }));
+  const geometries = [], cons = [{ id: 0, type: "⏚", points: [0] }];
+  let rim = pts.length + 1, cid = 1;
+  curves.forEach((c, i) => {
+    const ids = c.ids.map((k) => k + 1);
+    if (c.kind === "circle") {
+      const [cx, cy] = pts[c.ids[0]];
+      points.push({ id: rim, x: cx + c.r, y: cy, fixed: false, construction: true });
+      geometries.push({ id: 100 + i, type: "circle", points: [ids[0], rim], construction: c.construction });
+      cons.push({ id: cid++, type: "⟺", points: [ids[0], rim], value: c.r });
+      rim++;
+    } else {
+      geometries.push({ id: 100 + i, type: c.kind, points: ids, construction: c.construction });
+    }
+  });
+  for (const c of constraints) cons.push({ id: cid++, type: GLYPH[c.type], points: c.ids.map((k) => k + 1) });
+  for (const d of dims) cons.push({ id: cid++, type: GLYPH[d.type], points: d.ids.map((k) => k + 1), value: d.value });
+  return { points, geometries, constraints: cons };
+}
+// how far the points are from what the rules ask (0 = solved)
+function sketchError(pts, constraints, dims) {
+  const P = (k) => pts[k];
+  const dir = (a, b) => { const v = [P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]]; const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l]; };
+  let e = 0;
+  for (const c of [...constraints, ...dims]) {
+    const [a, b, cc, d] = c.ids;
+    switch (c.type) {
+      case "coincident": e = Math.max(e, Math.hypot(P(a)[0] - P(b)[0], P(a)[1] - P(b)[1])); break;
+      case "horizontal": e = Math.max(e, Math.abs(P(a)[1] - P(b)[1])); break;
+      case "vertical": e = Math.max(e, Math.abs(P(a)[0] - P(b)[0])); break;
+      case "parallel": { const u = dir(a, b), v = dir(cc, d); e = Math.max(e, Math.abs(u[0] * v[1] - u[1] * v[0])); break; }
+      case "perpendicular": case "tangent": { const u = dir(a, b), v = dir(cc, d); e = Math.max(e, Math.abs(u[0] * v[0] + u[1] * v[1])); break; }
+      case "equal": e = Math.max(e, Math.abs(Math.hypot(P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]) - Math.hypot(P(d)[0] - P(cc)[0], P(d)[1] - P(cc)[1]))); break;
+      case "distance": e = Math.max(e, Math.abs(Math.hypot(P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]) - c.value)); break;
+      case "angle": {
+        const u = dir(a, b), v = dir(cc, d);
+        const ang = (Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]) * 180) / Math.PI;
+        e = Math.max(e, Math.min(Math.abs(ang - c.value), Math.abs(ang + 360 - c.value), Math.abs(ang - 360 - c.value)) / 57.3);
+        break;
+      }
+      case "onLine": {
+        const u = dir(a, b), w = [P(cc)[0] - P(a)[0], P(cc)[1] - P(a)[1]];
+        e = Math.max(e, Math.abs(u[0] * w[1] - u[1] * w[0])); break;
+      }
+      case "midpoint": e = Math.max(e, Math.hypot((P(a)[0] + P(b)[0]) / 2 - P(cc)[0], (P(a)[1] + P(b)[1]) / 2 - P(cc)[1])); break;
+      default: break;
+    }
+  }
+  return e;
+}
+export function solveSketch2D(pts, curves, constraints, dims) {
+  if (!SketchSolver || sketchError(pts, constraints, dims) < 1e-6) return pts.map((p) => [...p]);
+  const s = new SketchSolver({ sketch: solverSketch(pts, curves, constraints, dims) });
+  const out = s.solveSketch("full");
+  const byId = new Map(out.points.map((p) => [p.id, p]));
+  return pts.map((p, i) => { const q = byId.get(i + 1); return q ? [q.x, q.y] : [...p]; });
+}
+
+// The profile: closed loops of the curves that are not construction, chained
+// end to end through shared points. The biggest is the outline, the loops
+// inside it holes.
+function sketchProfile(pts, curves) {
+  const segs = [];
+  for (const c of curves) {
+    if (c.construction) continue;
+    const P = c.ids.map((k) => pts[k]);
+    if (c.kind === "line") segs.push({ t: "line", p: [P[0], P[1]], ends: [c.ids[0], c.ids[1]] });
+    else if (c.kind === "bezier") segs.push({ t: "bezier", p: P, ends: [c.ids[0], c.ids[3]] });
+    else if (c.kind === "arc") segs.push({ t: "arc", p: [P[1], P[2]], c: P[0], cw: false, ends: [c.ids[1], c.ids[2]] });
+    else if (c.kind === "circle") {
+      const ctr = P[0], rim = [ctr[0] + c.r, ctr[1]];
+      segs.push({ t: "circle", p: [rim, rim], c: ctr, cw: false, ends: null });
+    }
+  }
+  if (!segs.length) throw new TypeError("sketch(): there is nothing to make a profile of (every curve is construction)");
+  // chain open curves into loops
+  const loops = [];
+  const used = new Set();
+  segs.forEach((s, i) => { if (!s.ends) { loops.push([s]); used.add(i); } });
+  for (let i = 0; i < segs.length; i++) {
+    if (used.has(i)) continue;
+    used.add(i);
+    const start = segs[i].ends[0];
+    let cur = segs[i].ends[1];
+    const loop = [segs[i]];
+    for (let guard = 0; cur !== start && guard < segs.length; guard++) {
+      const j = segs.findIndex((s, k) => !used.has(k) && s.ends && (s.ends[0] === cur || s.ends[1] === cur));
+      if (j < 0) break;
+      used.add(j);
+      const s = segs[j];
+      if (s.ends[0] === cur) { loop.push(s); cur = s.ends[1]; }
+      else { loop.push(reverseSeg(s)); cur = s.ends[0]; }
+    }
+    if (cur !== start) throw new TypeError("sketch(): a chain of curves does not close; every outline must end where it starts (or mark the stray curve construction)");
+    loops.push(loop);
+  }
+  const asLoop = (segList) => {
+    const clean = segList.map(({ ends, ...s }) => s);
+    return { pts: sampleSegs(clean), segs: clean };
+  };
+  const made = loops.map(asLoop).map((l) => ({ ...l, area: Math.abs(loopArea(l.pts)) }));
+  made.sort((a, b) => b.area - a.area);
+  // nesting: a loop inside an even number of others is an outline, inside an
+  // odd number a hole in the smallest outline around it (an island in a hole
+  // is an outline again)
+  const inside = (a, b) => a !== b && a.area < b.area && pointInLoop(a.pts[0], b.pts);
+  const depth = made.map((l) => made.filter((m) => inside(l, m)).length);
+  const outlines = made.filter((_, i) => depth[i] % 2 === 0).map((l) => ({ ...l, holes: [] }));
+  made.forEach((l, i) => {
+    if (depth[i] % 2 === 0) return;
+    const host = outlines.filter((o) => inside(l, o)).sort((a, b) => a.area - b.area)[0];
+    host.holes.push({ pts: l.pts, segs: l.segs });
+  });
+  const ccw = (l) => (loopArea(l.pts) < 0 ? { pts: [...l.pts].reverse(), segs: reverseSegs(l.segs) } : l);
+  const profileOf = (l) => {
+    const o = ccw(l);
+    return { __brepscript2d: true, pts: o.pts, segs: o.segs, ...(l.holes.length ? { holes: l.holes } : {}) };
+  };
+  const [first, ...more] = outlines.map(profileOf);
+  // separate outlines extrude and revolve as one body each (islands)
+  return more.length ? { ...first, islands: more } : first;
+}
+function reverseSeg(s) {
+  const r = reverseSegs([s])[0];
+  return { ...r, ends: s.ends ? [s.ends[1], s.ends[0]] : null };
+}
+function pointInLoop([x, y], loop) {
+  let inside = false;
+  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+    const [xi, yi] = loop[i], [xj, yj] = loop[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
 function sampleSegs(segs, n = 16) {
   const out = [];
   for (const sg of segs) {
@@ -672,7 +885,15 @@ function sketchOf(profile) {
     geometries.push({ id: gid, type, points: pts, construction: false });
     geomIds.push({ gid, sg });
   });
-  return { sketch: { points, geometries, constraints: [{ id: 0, type: "⏚", points: [0] }] }, geomIds };
+  // a sketch()'s own constraints and dims, onto the kernel sketch's points
+  // (found by position: they are the solved points the geometry was built from)
+  const constraints = [{ id: 0, type: "⏚", points: [0] }];
+  for (const r of profile.rules || []) {
+    const pids = r.at.map(([x, y]) => ids.get(`${x.toFixed(9)},${y.toFixed(9)}`));
+    if (pids.some((p) => p == null)) continue;
+    constraints.push({ id: constraints.length, type: r.type, points: pids, ...(r.value != null ? { value: r.value } : {}) });
+  }
+  return { sketch: { points, geometries, constraints }, geomIds };
 }
 
 // linearExtrude({ h, center }, polygon([...])) — extrudes along +Z from z=0,
@@ -682,6 +903,10 @@ export function linearExtrude(opts, profile) {
   if (!Number.isFinite(h) || h <= 0) throw new TypeError("linearExtrude() needs a positive height, e.g. linearExtrude({ h: 10 }, polygon([...]))");
   if (!profile?.__brepscript2d) {
     throw new TypeError("linearExtrude() takes a 2D profile — make one with polygon([[x,y], ...])");
+  }
+  // a sketch of separate outlines: one body each (as a tool, every one cuts)
+  if (profile.islands?.length) {
+    return islandsOf(profile, (p) => linearExtrude(opts, p));
   }
   // Normalise winding to CCW so the sketch face always points +Z.
   let area = 0;
@@ -693,7 +918,7 @@ export function linearExtrude(opts, profile) {
   const ordered = area < 0 ? [...pts].reverse() : pts;
   const segs = profile.segs ? (area < 0 ? reverseSegs(profile.segs) : profile.segs) : null;
   const holes = clockwiseHoles(profile.holes);
-  const n = node({ kind: "prism", pts: ordered, segs, ...(holes?.length ? { holes } : {}), h, fix: IDENTITY });
+  const n = node({ kind: "prism", pts: ordered, segs, ...(holes?.length ? { holes } : {}), ...(profile.rules ? { rules: profile.rules } : {}), h, fix: IDENTITY });
   const o = typeof opts === "object" ? opts : {};
   // Where along its own +Z the prism sits: [0, h] by default, centred on the
   // plane (center), or [-h, 0] under it (reverse: a cut into a face), plus
@@ -869,7 +1094,7 @@ function reflectDown(n, M) {
       segs: l.segs ? reverseSegs(l.segs).map((sg) => mapSeg(sg, fy, true)) : l.segs,
     });
     const { pts, segs } = flipLoop(n);
-    return place(flipY, { ...n, pts, segs, ...(n.holes ? { holes: n.holes.map(flipLoop) } : {}) });
+    return place(flipY, { ...n, pts, segs, rules: null, ...(n.holes ? { holes: n.holes.map(flipLoop) } : {}) });
   }
   return null;
 }
@@ -2270,6 +2495,12 @@ function insetPolygon(pts, d) {
 //   mirrored({ normal: [1, 0, 0], at: 0 }, shape)          the plane n·p = at
 //   linearPattern({ count: 4, step: [20, 0, 0], count2, step2 }, shape)
 //   circularPattern({ count: 6, axis: [0, 0, 1], center: [0, 0, 0], angle: 360 }, shape)
+// each outline of a many-outline sketch, made into a body by `make`
+function islandsOf(profile, make) {
+  const { islands, ...first } = profile;
+  const all = [first, ...islands.map((p) => ({ ...p, on: profile.on, sketch: profile.sketch }))];
+  return { ...node({ kind: "group", children: all.map(make) }), pattern: true };
+}
 function copies(list, join, verb) {
   if (list.length < 2) throw new TypeError(`${verb}() needs a count of at least 2`);
   return join ? union(list) : { ...node({ kind: "group", children: list }), pattern: true };
@@ -2725,9 +2956,35 @@ export function revolve(opts, profile) {
   if (!profile?.__brepscript2d) {
     throw new TypeError("revolve() takes a 2D profile — make one with polygon([[x, y], ...]) in the x >= 0 half-plane, touching x = 0");
   }
+  if (profile.islands?.length) return islandsOf(profile, (p) => revolve(opts, p));
   // on: { origin, normal, x } — the profile drawn on that plane (planeFrame)
   // instead of standing up from XZ; it spins about the plane's own y axis
   // (normal × x) through origin.
+  // axis: [i, j] (two of a sketch()'s points) or [[x, y], [x, y]]: spin about
+  // that line of the sketch rather than its y axis. The profile is moved so
+  // the line is its y axis, and the plane moved with it.
+  if (o.axis) {
+    const sp = profile.sketch?.points;
+    const end = (k) => (Array.isArray(k) ? k : sp?.[k]);
+    const A = end(o.axis[0]), B = end(o.axis[1]);
+    if (!A || !B) throw new TypeError("revolve() axis: two point numbers of the sketch, or two [x, y] points");
+    const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    if (len < 1e-9) throw new TypeError("revolve() axis: its two points are the same point");
+    const d = [(B[0] - A[0]) / len, (B[1] - A[1]) / len];
+    // the side of the axis the profile is on becomes +x
+    const side = Math.sign(profile.pts.reduce((s, p) => s + (d[0] * (p[1] - A[1]) - d[1] * (p[0] - A[0])), 0)) || 1;
+    const nx = [-d[1] * side, d[0] * side];                 // in-plane, toward the profile
+    const map = ([x, y]) => [(x - A[0]) * nx[0] + (y - A[1]) * nx[1], (x - A[0]) * d[0] + (y - A[1]) * d[1]];
+    const flip = nx[0] * d[1] - nx[1] * d[0] < 0;           // a mirror image: arcs turn the other way
+    const loop = (l) => ({ pts: l.pts.map(map), segs: l.segs ? l.segs.map((sg) => mapSeg(sg, map, flip)) : null });
+    const moved = { ...profile, ...loop(profile), ...(profile.holes ? { holes: profile.holes.map(loop) } : {}), on: null, sketch: null, rules: null };
+    const f = planeFrame(profile.on ?? o.on ?? { origin: [0, 0, 0], normal: [0, -1, 0], x: [1, 0, 0] });
+    const w = (u, v) => f.x.clone().multiplyScalar(u).addScaledVector(f.y, v);
+    const origin = f.origin.clone().add(w(A[0], A[1]));
+    const X = w(nx[0], nx[1]), Y = w(d[0], d[1]);
+    const placed = { origin: origin.toArray(), normal: X.clone().cross(Y).toArray(), x: X.toArray() };
+    return revolve({ ...o, axis: null, on: placed }, moved);
+  }
   const on = o.on ?? profile.on;
   if (on) {
     const back = new Matrix4().copy(AXIS_FIX).invert();
@@ -2745,7 +3002,18 @@ export function revolve(opts, profile) {
     const middle = translate([-L / 2, 0, 0], rotate([0, 0, 90], rotate([90, 0, 0], linearExtrude({ h: L }, mirrorAcrossAxis(profile)))));
     return union(half(1), half(-1), middle);
   }
-  const body = node({ kind: "revolve", pts: profile.pts, segs: profile.segs ?? null, angle, resolution: res, fix: AXIS_FIX });
+  const body = node({ kind: "revolve", pts: profile.pts, segs: profile.segs ?? null, ...(profile.rules ? { rules: profile.rules } : {}), angle, resolution: res, fix: AXIS_FIX });
+  // A profile clear of the axis (a ring's cross-section) spins about a short
+  // line on the axis drawn beside it, as a hole's cutter does below.
+  if (profile.pts.some(([x]) => x < -1e-6)) throw new TypeError("revolve(): the profile crosses its axis (x = 0); keep it on one side");
+  const onAxis = (profile.segs ?? profile.pts.map((q, i, a) => ({ t: "line", p: [q, a[(i + 1) % a.length]] })))
+    .some((sg) => sg.t === "line" && Math.abs(sg.p[0][0]) < 1e-6 && Math.abs(sg.p[1][0]) < 1e-6);
+  if (!onAxis) {
+    let lo = Infinity, hi = -Infinity;
+    for (const [, y] of profile.pts) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+    body.axisSpan = [lo, hi];
+    if (res == null && hasArcs(profile)) body.resolution = ARC_RESOLUTION;
+  }
   if (!profile.holes?.length) return body;
   // a round hole in a straight-sided profile: the body steps as finely as the cutter
   if (res == null && hasArcs(profile)) body.resolution = ARC_RESOLUTION;

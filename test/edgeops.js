@@ -171,10 +171,16 @@ console.log("\nrevolve (lathe)\n");
   const r = await build(translate([10, 10, 0], revolve(360, polygon([[0, 0], [8, 0], [8, 4], [3, 10], [0, 10]]))));
   check("vase profile revolves + translates", volumeOf(r) > 100 && near(boundsOf(r).x[0], 10 - 8, 0.4), JSON.stringify(boundsOf(r).x));
 }
+{
+  // a profile clear of the axis spins about a line on the axis beside it: a
+  // ring (it used to be refused; the sketcher's revolves need it)
+  const ring = volumeOf(await build(revolve(360, polygon([[2, 0], [6, 0], [6, 10], [2, 10]]))));
+  check("a profile off the axis revolves into a ring", near(ring, Math.PI * (36 - 4) * 10, 30), ring.toFixed(0));
+}
 try {
-  await build(revolve(360, polygon([[2, 0], [6, 0], [6, 10], [2, 10]])));
-  check("profile off the axis errors", false, "no error");
-} catch (e) { check("profile off the axis errors", /x = 0 axis/.test(e.message), e.message.slice(0, 40)); }
+  await build(revolve(360, polygon([[-2, 0], [6, 0], [6, 10], [-2, 10]])));
+  check("a profile across the axis errors", false, "no error");
+} catch (e) { check("a profile across the axis errors", /crosses its axis/.test(e.message), e.message.slice(0, 60)); }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

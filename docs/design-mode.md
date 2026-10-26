@@ -231,3 +231,79 @@ offscreen Electron window against `npm run serve` and saves screenshots.
 - Mirror/pattern of a pattern member edits the shared call (all instances).
 - Part-turn revolves are refused by the NVIDIA kernel today (the
   `nvidia-gaps` branch fixes it); auto mode falls back to the Rust kernel.
+
+## Phase 3: the sketcher
+
+| Piece | File | What it does |
+|---|---|---|
+| Word | `src/dsl.js` `sketch()` | a constrained sketch as code; solved by the kernel's `ConstraintSolver` (`useSketchSolver`), built as an exact profile |
+| Model | `viewer/design/sketch-model.js` | the sketch as data: tools, trim, offset, constraints, dims, solve, read from / write to code (no DOM) |
+| Sketcher | `viewer/design/sketcher.js` | the plane chooser, the square-on view and grid, drawing, the panel, Finish; loaded on first use |
+
+### The code it writes
+
+```js
+const slotW = 34;
+const sketch1 = sketch({
+  on: { origin: [0, 0, 8], normal: [0, 0, 1] },
+  points: [[13, 10], [47, 10], [47, 26], [13, 26], [50, 20]],
+  curves: [["line", 0, 1], ["line", 1, 2], ["line", 2, 3], ["line", 3, 0], ["circle", 4, 4]],
+  constraints: [["horizontal", 0, 1], ["vertical", 1, 2], ["horizontal", 2, 3], ["vertical", 3, 0], ["fixed", 0]],
+  dims: [["distance", 0, 1, slotW], ["distance", 1, 2, 16]],
+});
+return difference(cube([60, 40, 8]), linearExtrude({ h: 4, reverse: true, proud: 0.5 }, sketch1));
+```
+
+- `on`: `"XY"`, `"XZ"`, `"YZ"` or a face's plane (`planeFrame` sets its axes).
+- `curves`: `["line", a, b]`, `["arc", center, start, end]` (counter-clockwise),
+  `["circle", center, r]` (the radius is its own number, so it can be a const),
+  `["bezier", a, c1, c2, b]`; a trailing `"construction"` leaves a curve out of
+  the profile (an axis, a reference line).
+- `constraints`: coincident, horizontal, vertical, parallel, perpendicular,
+  tangent (line a–b touching an arc at its end p: `["tangent", a, b, center, p]`),
+  equal, fixed, onLine, midpoint. `dims`: distance, angle.
+- The points are the solved positions (the sketcher writes them solved) and the
+  starting guess. Whenever they disagree with a constraint or a dim, sketch()
+  re-solves with the kernel's solver, so a dim that is a `const` is a slider.
+  The viewer and the Node path (`src/render.js`) register the solver; the
+  viewer waits for it before building code with a `sketch(`.
+- The profile: closed loops of the non-construction curves chained through
+  shared points. Loops inside loops alternate outline / hole; separate outlines
+  are islands, one body each (as a difference() tool every one cuts).
+- The kernel sketch (`persistentData.sketch`) carries the constraints and dims
+  too, by the glyphs the BREP.io solver uses (━ │ ⟺ ⏚ …), mapped onto its points.
+- `revolve({ angle, axis: [i, j] }, sketch1)` spins about the line through two
+  of the sketch's points (a construction line). A profile clear of its axis
+  now revolves into a ring (it used to be refused: `test/edgeops.js`).
+
+### Using it
+
+Sketch (toolbar) → pick XY / XZ / YZ, click a flat face, or Edit an existing
+`sketch()`. The view turns square-on (rotation off; pan and zoom stay) with a
+1 mm / 10 mm grid. Keys: L line, R rectangle, C circle, A arc, S spline, T trim,
+O offset, X construction, D dimension, Esc ends a chain / back to select, Enter
+finishes a spline, Delete removes the selection. Points snap to existing points
+(9 px) and the grid (Alt: free). A line drawn within 3° of level or plumb gets
+horizontal / vertical. In select mode, drag a point: the rest re-solves around it.
+Click a dimension label to type its value or name it (★: it becomes a `const`
+at the top, a slider). Finish as Extrude (join / cut / new body), Revolve (about
+the sketch's Y axis or a construction line) or the sketch alone: one undo step.
+A sketch drawn on a face joins / cuts that face's body. Editing rewrites the
+call in place.
+
+Checks: `node test/design.js` (sketch() on JS, Rust and NVIDIA; the model's
+tools; the round trip), `npm run test:design3` (Electron, real mouse clicks,
+screenshots).
+
+### Known limits (phase 3)
+
+- Trim cuts lines (and deletes a whole curve otherwise); offset takes outlines
+  of straight lines and circles. Arc and spline trim/offset are not done.
+- Constraint glyphs mark each rule but cannot be clicked to delete one; Delete
+  removes curves (and the rules on their points), not single constraints.
+- A face's edges are not projected into the sketch as references yet; snap is
+  to the sketch's own points and the grid.
+- `on` a face is written as numbers (its plane), not as a link to the face: move
+  the body and the sketch stays put.
+- The solver is the BREP.io one (iterative): a heavily over-constrained sketch
+  settles where it can and says nothing more precise than "not satisfied".

@@ -87,6 +87,8 @@ path2d([x,y], ..., bezierTo(c1, c2, p), ...)  // an outline with smooth curves; 
   arcTo(end, { center })  arcTo(end, { r, cw, large })  arcTo(through, end)  // exact circular arcs in a path2d
 circle2d({ r, center })                  // a full circle profile, exact
 region2d(outline, ...holes)              // an outline with holes through it, e.g. region2d(path2d(...), circle2d({ r: 3, center: [10, 10] }))
+sketch({ on, points, curves, constraints, dims })   // a constrained sketch, as Design mode's sketcher writes it; dims may be const names
+revolve({ angle, axis: [i, j] }, sketch1)           // spin a sketch about the line through its points i and j
 ```
 
 ### Combining and moving

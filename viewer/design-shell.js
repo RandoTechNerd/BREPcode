@@ -34,6 +34,7 @@ const TOOLS = [
     { id: "scale", label: "Scale", tip: "Scale the selected shape evenly about its centre (drag the centre dot); writes scale(k, { about }, …)", icon: `<rect x="2.5" y="6.5" width="7" height="7"/><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5"/>` },
   ] },
   { group: "Create", items: [
+    { id: "sketch", label: "Sketch", tip: "Sketch on a plane or a flat face: lines, arcs, circles, splines, constraints and dimensions", icon: `<path d="M2.5 13.5h11M3 11l7.5-7.5 2 2L5 13H3z"/>` },
     { id: "extrude", label: "Extrude", dialog: true, tip: "Extrude a flat face: join, cut or a new body", icon: `<path d="M3 11l5 2.5 5-2.5M3 11V6l5-2.5L13 6v5M8 8.5V13.5M3 6l5 2.5L13 6"/>` },
     { id: "revolve", label: "Revolve", dialog: true, tip: "Spin a flat face about one of its edges or an axis", icon: `<path d="M8 2v12"/><ellipse cx="8" cy="8" rx="5" ry="2.2"/>` },
     { id: "hole", label: "Hole", dialog: true, tip: "A simple, counterbored or countersunk hole where you click", icon: `<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/>` },
@@ -275,7 +276,7 @@ export function initDesignShell(host) {
   });
 
   const attachGizmo = () => {
-    if (!active || !GIZMO_MODE[tool] || !selectedFid || dialog) { gizmo.detach(); return; }
+    if (!active || !GIZMO_MODE[tool] || !selectedFid || dialog || sketcher?.active) { gizmo.detach(); return; }
     if (gizmo.mode !== GIZMO_MODE[tool]) gizmo.setMode(GIZMO_MODE[tool]);
     const m = host.moveMembers(selectedFid);
     if (!m?.meshes.length) { gizmo.detach(); return; }
@@ -441,6 +442,7 @@ export function initDesignShell(host) {
     if (!b) return;
     const t = TOOLS.flatMap((g) => g.items).find((x) => x.id === b.dataset.tool);
     if (t.dialog) { openFeature(t.id); return; }
+    if (t.id === "sketch") { openSketch(); return; }
     setTool(t.id);
     if (t.id === "presspull") {
       loadPressPull();
@@ -492,6 +494,33 @@ export function initDesignShell(host) {
     for (const x of bar.querySelectorAll(".dz-t")) x.classList.toggle("open", x.dataset.tool === id);
   }
 
+  // ---- the sketcher (phase 3) ----
+  let sketcher = null;
+  async function loadSketcher() {
+    if (sketcher) return sketcher;
+    const mod = await import("./design/sketcher.js");
+    sketcher = mod.createSketcher({ host, THREE, scene, camera: host.camera, orbit: host.orbit, renderer: host.renderer });
+    // the rubber band follows the pointer between clicks; keys are the sketcher's while it is open
+    host.renderer.domElement.addEventListener("pointermove", (e) => { if (sketcher.active && !press) sketcher.move(e); });
+    addEventListener("keydown", (e) => {
+      if (!active || !sketcher.active) return;
+      if (sketcher.key(e)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    return sketcher;
+  }
+  async function openSketch() {
+    await loadSketcher();
+    if (dialog) await dialog.cancel();
+    gizmo.detach();
+    let fp = null;
+    if (face?.mesh) {
+      dialogsMod ??= await import("./design/dialogs.js");
+      fp = dialogsMod.facePick({ object: face.mesh, point: face.point ?? face.mesh.position }, THREE);
+    }
+    host.clearSelection();
+    sketcher.choose({ face: fp?.outline ? fp : null });
+  }
+
   // ---- a failed build in the timeline ----
   function showFailure(f) {
     if (!f) { failure = null; return; }
@@ -511,6 +540,7 @@ export function initDesignShell(host) {
   // a press on the model that a dialog or press-pull takes for itself
   function onPressMove(e) {
     if (press?.pp) pressPull.move(e);
+    else if (press?.sk) sketcher.move(e);
   }
   function onPressUp(e) {
     removeEventListener("pointermove", onPressMove, true);
@@ -519,6 +549,8 @@ export function initDesignShell(host) {
     press = null;
     if (!p) return;
     if (p.pp) { pressPull.up(e); return; }
+    if (p.sk) { sketcher.up(e); return; }
+    if (p.choose) { if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= 5) sketcher.chooserClick(e); return; }
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 5) return;    // an orbit
     const hit = host.pickAt(e.clientX, e.clientY);
     if (hit && dialog) dialog.takePick(hit);
@@ -531,7 +563,12 @@ export function initDesignShell(host) {
     // stays out of it, the camera still orbits on a drag).
     pressOwns(e) {
       if (!active || e.button !== 0) return false;
-      if (dialog) {
+      if (sketcher?.active) {
+        sketcher.down(e);
+        press = { x: e.clientX, y: e.clientY, sk: true };
+      } else if (sketcher?.choosing) {
+        press = { x: e.clientX, y: e.clientY, choose: true };
+      } else if (dialog) {
         press = { x: e.clientX, y: e.clientY };
       } else if (tool === "presspull" && pressPull) {
         const hit = host.pickAt(e.clientX, e.clientY);
@@ -548,12 +585,14 @@ export function initDesignShell(host) {
       if (!dialog) showFailure(f);       // a dialog shows its own preview's failure
     },
     openFeature: (id) => openFeature(id),
+    openSketch: () => openSketch(),
+    sketcher: () => sketcher,
     dialog: () => dialog,
     pressPull: () => pressPull,
     setActive(on) {
       active = !!on;
       if (active) refresh();
-      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); }
+      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); if (sketcher?.active || sketcher?.choosing) sketcher.cancel(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
     onSelect(fid) {
@@ -652,6 +691,7 @@ export function initDesignShell(host) {
     debug: () => ({ active, tool, selectedFid, hoverFace: hoverMesh?.userData.faceName ?? null, face: face && { name: face.name, edges: face.edges.map((e) => e.name) },
       dialog: dialog?.debug() ?? null, failure: failure && { reason: failure.reason, index: failure.index, step: failure.steps[failure.index]?.id ?? null },
       gizmoMode: gizmo.mode, gizmoHandles: gizmo.handles(), pressPull: pressPull?.debug() ?? null,
+      sketch: sketcher?.debug() ?? null,
       rows: tree.groups.flatMap((g) => g.rows.map((r) => ({ group: g.key, name: r.name, depth: r.depth, fids: r.fids, pattern: r.pattern?.count ?? null }))),
       steps: steps.map((s) => ({ id: s.id, type: s.type, op: s.op, linked: !!s.link, text: s.link ? code.value.slice(s.link.start, s.link.end).slice(0, 40) : null })),
       gizmo: gizmo.fid }),

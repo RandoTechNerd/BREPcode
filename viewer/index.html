@@ -4454,6 +4454,9 @@
       throw e;
     }));
     getKernel();
+    // sketch() solves its constraints and dims with the kernel's own solver
+    const sketchSolverReady = () => getKernel().then((k) => { if (k?.ConstraintSolver) dsl.useSketchSolver(k.ConstraintSolver); }).catch(() => {});
+    sketchSolverReady();
 
     // ---- the kernel's heavy half, off the main thread ---------------------
     //
@@ -10305,6 +10308,12 @@ ${joined}${SITE_TAIL}`), joined);
       const mine = ++token;
       const t0 = performance.now();
 
+      // a sketch() with a named dim must be solved before it is built: wait
+      // for the solver the first time (it comes with the kernel)
+      if (/\bsketch\s*\(/.test(src) && !dsl.hasSketchSolver()) {
+        await sketchSolverReady();
+        if (mine !== token) return;
+      }
       let shape;
       try {
         shape = evaluate(src);
@@ -22001,6 +22010,9 @@ let SIMPLIFY_TARGET = 10000;
     // the open dialog's controller (set(key, value), takePick(hit), ok(), cancel())
     window.brepscript.openFeature = (id) => designUI.openFeature(id);
     window.brepscript.featureDialog = () => designUI.dialog();
+    // phase 3: the sketcher (open(), choose(), tool(), clickPlane(), finish(), debug(), …)
+    window.brepscript.openSketch = () => designUI.openSketch();
+    window.brepscript.sketcher = () => designUI.sketcher();
     window.brepscript.pickAt = (x, y) => designUI.dialog()?.takePick(pickModelAt(x, y));
     // a click on the model at client (x, y), as a dialog would take it
     function pickModelAt(x, y) {

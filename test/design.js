@@ -18,6 +18,8 @@ import * as F from "../viewer/design/features.js";
 import { build as buildModel } from "../index.js";
 import { loadNvidiaKernel } from "../src/engine-node.js";
 import { findResizeTarget } from "../viewer/assist.js";
+import { ConstraintSolver } from "brep-io-kernel";
+import * as SM from "../viewer/design/sketch-model.js";
 
 let pass = 0, fail = 0;
 function check(label, ok, detail = "") {
@@ -589,6 +591,123 @@ console.log("\nPhase 2: wiring\n");
   check("a failed build reaches Design mode with the kernel's reason", /designUI\?\.buildResult\?\.\(ok, ok \? null : lastBuildFailure\)/.test(html)
     && /reason: String\(e\?\.message \|\| e\), stage: attempt/.test(html));
   check("a preview builds without an undo step; OK is one", /preview\(text\) \{[\s\S]{0,400}rebuild\(\);/.test(html) && /commit\(text, \{ built = false \} = \{\}\) \{[\s\S]{0,300}pushHistory\(\);/.test(html));
+}
+
+// ========================================================= phase 3: sketches
+//
+// sketch({ on, points, curves, constraints, dims }) is solved by the kernel's
+// own ConstraintSolver and builds as an exact profile; the sketcher's model
+// (design/sketch-model.js) edits one and writes it back as code.
+
+dsl.useSketchSolver(ConstraintSolver);
+const RECT = (w, extra = "") => `sketch({ on: "XY", points: [[0, 0], [60, 0], [60, 40], [0, 40]${extra ? ", " + extra.points : ""}],
+  curves: [["line", 0, 1], ["line", 1, 2], ["line", 2, 3], ["line", 3, 0]${extra ? ", " + extra.curves : ""}],
+  constraints: [["horizontal", 0, 1], ["vertical", 1, 2], ["horizontal", 2, 3], ["vertical", 3, 0], ["fixed", 0]],
+  dims: [["distance", 0, 1, ${w}], ["distance", 1, 2, 40]] })`;
+
+console.log("\nPhase 3: sketch() builds, solved, on every kernel\n");
+{
+  await onEveryKernel("a 60 x 40 sketch extruded 8", `return linearExtrude({ h: 8 }, ${RECT(60)});`, 60 * 40 * 8);
+  await onEveryKernel("its width dim set to 75: the solver moves the points", `return linearExtrude({ h: 8 }, ${RECT(75)});`, 75 * 40 * 8);
+  await onEveryKernel("the dim as a named const (a slider)", `const w = 50;\nreturn linearExtrude({ h: 8 }, ${RECT("w")});`, 50 * 40 * 8);
+  const holed = RECT(60, { points: "[45, 20]", curves: `["circle", 4, 5]` });
+  await onEveryKernel("a circle inside is a hole", `return linearExtrude({ h: 8 }, ${holed});`, 60 * 40 * 8 - Math.PI * 25 * 8, 0.003);
+  const arc = `sketch({ on: { origin: [0, 0, 10], normal: [0, 0, 1] }, points: [[0, 0], [20, 0], [20, 10], [10, 10], [0, 10]],
+    curves: [["line", 0, 1], ["line", 1, 2], ["arc", 3, 2, 4], ["line", 4, 0]] })`;
+  await onEveryKernel("an arc in the outline stays an arc (a D shape)", `return linearExtrude({ h: 5 }, ${arc});`, (200 + Math.PI * 50) * 5, 0.003);
+  const twoOut = `sketch({ points: [[10, 10], [20, 10], [20, 20], [10, 20], [40, 20]], curves: [["line", 0, 1], ["line", 1, 2], ["line", 2, 3], ["line", 3, 0], ["circle", 4, 5]] })`;
+  await onEveryKernel("two separate outlines cut as two (islands)", `return difference(cube([60, 40, 8]), linearExtrude({ h: 20, center: true }, ${twoOut}));`, 19200 - 800 - Math.PI * 25 * 8, 0.003);
+  const ring = `sketch({ points: [[10, 0], [14, 0], [14, 6], [10, 6], [0, -5], [0, 20]], curves: [["line", 0, 1], ["line", 1, 2], ["line", 2, 3], ["line", 3, 0], ["line", 4, 5, "construction"]] })`;
+  await onEveryKernel("revolved about a construction line of the sketch (a ring, clear of the axis)", `return revolve({ angle: 360, axis: [4, 5] }, ${ring});`, Math.PI * (196 - 100) * 6, 0.01);
+  const bez = `sketch({ points: [[0, 0], [30, 0], [30, 10], [20, 25], [10, 25], [0, 10]], curves: [["line", 0, 1], ["line", 1, 2], ["bezier", 2, 3, 4, 5], ["line", 5, 0]] })`;
+  const v = await volumes(`return linearExtrude({ h: 4 }, ${bez});`);
+  check("a spline (Bezier) outline builds on every kernel", Object.values(v).every((x) => typeof x === "number" && x > 30 * 10 * 4), JSON.stringify(v));
+  // the kernel's own sketch record carries the constraints and dims
+  const ph = new PartHistory();
+  await dsl.compile(evaluate(`return linearExtrude({ h: 8 }, ${RECT(70)});`), ph);
+  const sk = ph.features.find((f) => f.type === "S").persistentData.sketch;
+  const types = sk.constraints.map((c) => c.type).join("");
+  check("persistentData.sketch carries the constraints (━ │ ⏚) and the dims (⟺ 70, 40)",
+    types.includes("━") && types.includes("│") && sk.constraints.some((c) => c.type === "⟺" && c.value === 70) && sk.constraints.some((c) => c.type === "⟺" && c.value === 40), JSON.stringify(sk.constraints));
+  const xs = sk.points.map((p) => p.x);
+  check("…and its points are the solved ones (width 70)", Math.max(...xs) - Math.min(...xs) === 70, JSON.stringify(sk.points));
+  let err = "";
+  try { dsl.sketch({ points: [[0, 0], [10, 0], [10, 10]], curves: [["line", 0, 1], ["line", 1, 2]] }); } catch (e) { err = e.message; }
+  check("an open chain is refused, saying so", /does not close/.test(err), err);
+}
+
+console.log("\nPhase 3: the sketcher's model\n");
+{
+  const sk = SM.emptySketch("XY");
+  SM.addRect(sk, [0, 0], [30, 20]);
+  check("a rectangle is 4 lines, 4 corners, level and plumb sides", sk.curves.length === 4 && sk.points.length === 4
+    && sk.constraints.filter((c) => c.type === "horizontal").length === 2 && sk.constraints.filter((c) => c.type === "vertical").length === 2);
+  SM.addLine(sk, [0, 0], [50.5, 1]);
+  check("a line drawn nearly level is made level (auto constraint)", sk.constraints.some((c) => c.type === "horizontal" && c.ids.join() === "0,4"));
+  SM.removeCurve(sk, 4);
+  const r = SM.dimension(sk, [{ curve: 0 }], 42);
+  SM.constrain(sk, "fixed", [{ point: 0 }]);
+  SM.solve(sk);
+  check("a length dim re-solves the rectangle (30 → 42), the fixed corner stays", sk.points[1][0] === 42 && sk.points[0][0] === 0 && sk.points[2][0] === 42, JSON.stringify(sk.points));
+  check("…and it is one closed profile", SM.profileProblem(sk) === null && r.dim === 0);
+  check("perpendicular needs two lines (said, not guessed)", SM.constrain(sk, "perpendicular", [{ curve: 0 }]) === "pick two lines");
+  SM.addCircle(sk, [20, 10], 4);
+  const code = SM.sketchCode(sk);
+  check("written as sketch({ on, points, curves, constraints, dims })", /^sketch\(\{\n  on: "XY",\n  points: \[\[0, 0\], \[42, 0\]/.test(code) && /\["circle", 4, 4\]/.test(code) && /dims: \[\["distance", 0, 1, 42\]\]/.test(code), code);
+  const src = `const sk1 = ${code};\nreturn linearExtrude({ h: 5 }, sk1);`;
+  const m = codemap.parseCode(src).calls.find((c) => c.name === "sketch");
+  const back = SM.readSketch(src, m);
+  check("read back from the code it wrote (round trip)", SM.sketchCode(back) === code, SM.sketchCode(back));
+  await onEveryKernel("…and it builds: 42 x 20 less a round hole", src, (42 * 20 - Math.PI * 16) * 5, 0.003);
+  // a dim made a parameter
+  const pr = SM.promoteDim(src, back, 0, "width");
+  check("a dim promoted to a const: the param goes on top, the dim names it", pr.text.startsWith("const width = 42;\n") && /\["distance", 0, 1, width\]/.test(SM.sketchCode(back)));
+  const named = pr.text.replace(code, SM.sketchCode(back));
+  await onEveryKernel("…then the slider's value drives the sketch (width 55)", named.replace("const width = 42;", "const width = 55;"), (55 * 20 - Math.PI * 16) * 5, 0.003);
+  const again = SM.readSketch(named, codemap.parseCode(named).calls.find((c) => c.name === "sketch"));
+  check("…and reads back with its name and the param's value", again.dims[0].name === "width" && again.dims[0].value === 42);
+  check("a name that is taken is refused", !!SM.promoteDim(named, again, 0, "width").error);
+  // trim and offset
+  const t = SM.emptySketch();
+  SM.addLine(t, [0, 0], [20, 0], { auto: false });
+  SM.addLine(t, [10, -5], [10, 5], { auto: false });
+  SM.trim(t, 0, [15, 0]);
+  const lens = t.curves.filter((c) => c.kind === "line").map((c) => Math.hypot(t.points[c.ids[1]][0] - t.points[c.ids[0]][0], t.points[c.ids[1]][1] - t.points[c.ids[0]][1]));
+  check("trim cuts the piece of a line beyond a crossing away", lens.length === 2 && lens.includes(10) && lens.filter((l) => l === 10).length === 2, JSON.stringify(lens));
+  const o = SM.emptySketch();
+  SM.addRect(o, [0, 0], [20, 10]);
+  SM.offset(o, 0, 2);
+  const xsO = o.points.map((p) => p[0]);
+  check("offset copies a closed outline 2 mm out", Math.min(...xsO) === -2 && Math.max(...xsO) === 22 && o.curves.length === 8, JSON.stringify(o.points));
+  const sp = SM.emptySketch();
+  SM.addSpline(sp, [[0, 0], [10, 8], [20, 0]]);
+  check("a spline through 3 points is 2 Beziers", sp.curves.length === 2 && sp.curves.every((c) => c.kind === "bezier"));
+  SM.toggleConstruction(sp, 0);
+  check("construction toggles", sp.curves[0].construction === true);
+  check("an arc through 3 clicks: centre, start, end on its circle", (() => { const a = SM.emptySketch(); SM.addArc(a, [0, 0], [10, 0], [0, 25]); const e = a.points[2]; return Math.abs(Math.hypot(...e) - 10) < 1e-6; })());
+  // tangent: a line meeting an arc at its end
+  const tg = SM.emptySketch();
+  SM.addArc(tg, [0, 0], [10, 0], [0, 10]);
+  SM.addLine(tg, [10, 0], [12, -8], { auto: false });
+  check("tangent between a line and an arc it starts on", SM.constrain(tg, "tangent", [{ curve: 1 }, { curve: 0 }]) === null && tg.constraints.some((c) => c.type === "tangent"));
+  SM.solve(tg);
+  const [L0, L1] = tg.curves[1].ids.map((k) => tg.points[k]);
+  const [C, P] = [tg.points[tg.curves[0].ids[0]], tg.points[tg.curves[1].ids[0]]];
+  const dot = ((L1[0] - L0[0]) * (P[0] - C[0]) + (L1[1] - L0[1]) * (P[1] - C[1])) / (Math.hypot(L1[0] - L0[0], L1[1] - L0[1]) * Math.hypot(P[0] - C[0], P[1] - C[1]));
+  check("…solved: the line square to the radius where they meet", Math.abs(dot) < 1e-3, String(dot));
+}
+
+console.log("\nPhase 3: wiring\n");
+{
+  const shell = readFileSync(new URL("../viewer/design-shell.js", import.meta.url), "utf8");
+  const html = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const build_ = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
+  const render = readFileSync(new URL("../src/render.js", import.meta.url), "utf8");
+  check("Sketch is on the toolbar and loads the sketcher lazily", /id: "sketch", label: "Sketch"/.test(shell) && /await import\("\.\/design\/sketcher\.js"\)/.test(shell));
+  check("the viewer hands sketch() the kernel's solver (and waits for it before a sketch builds)",
+    /dsl\.useSketchSolver\(k\.ConstraintSolver\)/.test(html) && /\/\\bsketch\\s\*\\\(\/\.test\(src\) && !dsl\.hasSketchSolver\(\)/.test(html));
+  check("so does the CLI / Node path", /useSketchSolver\(ConstraintSolver\)/.test(render));
+  check("the site build ships the sketcher", /"design\/sketcher\.js", "design\/sketch-model\.js"/.test(build_) && /'"\.\.\/\.\.\/vendor\/'\)\.join\('"\.\.\/vendor\/'\)/.test(build_));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

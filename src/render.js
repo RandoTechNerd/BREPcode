@@ -1,9 +1,12 @@
 // Builds a BrepScript shape into kernel geometry and exports it.
 
-import { PartHistory } from "brep-io-kernel";
-import { compile } from "./dsl.js";
+import { PartHistory, ConstraintSolver } from "brep-io-kernel";
+import { compile, useSketchSolver } from "./dsl.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "./engine.js";
 import { loadRustKernel, loadManifoldNode, loadNvidiaKernel } from "./engine-node.js";
+
+// sketch() solves its constraints and dims with the kernel's own solver
+useSketchSolver(ConstraintSolver);
 
 // engine: "auto" runs the split engine (Rust for exact parts, manifold for
 // meshes, see src/engine.js) and falls back to the JS kernel when it refuses;
