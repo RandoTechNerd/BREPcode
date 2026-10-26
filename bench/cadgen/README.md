@@ -20,7 +20,8 @@ submitting anything. **Nothing here submits to the leaderboard.**
 | `run.mjs` | Generator v1: picture to feature table to BREPcode to exact STEP, self-checked, with candidates and a look-compare; also the editing track (details below). |
 | `lib/blueprint.mjs`, `lib/measurestep.mjs` | The app's blueprint of a candidate STEP (look-compare); measurements of an input STEP (editing). |
 | `score.mjs` | Runs cadgenbench's own `evaluate` against the practice GT, then prints the per-sample CAD Score with its shape / interface / topology breakdown. |
-| `lib/runcode.mjs`, `lib/validity.py`, `lib/tiles.py` | Child-process build of AI code, the evaluator's validity gate, and the drawing tiler. |
+| `lib/runcode.mjs`, `lib/validity.py`, `lib/tiles.py` | Child-process build of AI code, the evaluator's validity gate, and the drawing tiler (also gray view crops for the outline compare). |
+| `public/ref/*.mjs`, `public/make-ref.mjs` | Hand-made references for public samples (so far 121), built into `public/data/gt/` so a public drawing can get a CAD Score. A person's reading of the drawing, **not** the private ground truth: for before/after only. |
 
 ### Practice data layout (what `cadgenbench evaluate` reads)
 
@@ -49,7 +50,7 @@ node bench/cadgen/score.mjs v0             # score with the open evaluator (~7 m
 node src/cli.js model.js --step out.step   # exact STEP of any model
 ```
 
-`run.mjs` options: `--only p01,p07`, `--parallel 4`, `--tries 3`,
+`run.mjs` options: `--only p01,p07`, `--parallel 4`, `--tries 3`, `--no-views`,
 `--model claude-opus-5-5`, and `--inputs <dir>` to run on any folder of
 CADGenBench-style inputs (for example the public dataset).
 
@@ -107,6 +108,32 @@ never builds falls back to the unedited input, logged as `fallback`.
 
 `scripts/imageread-check.mjs` drives the same path through the app's chat in
 Chromium with a mocked AI (tiles, table card, self-check, fix, blueprint).
+
+## Subtle features (branch drawing-subtle-features)
+
+v1 got the big shapes of CADGenBench drawings right and dropped the small
+ones: R.. TYP fillets, shoulders and steps shown only in a SECTION, sloped
+ribs, notches in a DETAIL view. Each costs shape IoU and a per-feature
+interface score. The changes are in the shared modules, so the chat gets them
+for any picture a user attaches, not only the benchmark:
+
+| Stage | What changed |
+|---|---|
+| layout (new, bench) | A cheap first call on the overview finds every view (main, SECTION, DETAIL, ISO) with its region and axes. Each view is cut out and sent as its own zoomed crop with the tiles, so a section is read on its own. |
+| reading (`src/imageread.js`) | A **checklist pass**: TYP / ALL notes, every section and detail view, every angle (a diagonal rib is sloped), section step heights, pattern counts, notes. Each lands in `callouts` pointing at the feature it became or saying why it is skipped. New feature fields: `r`, `angle`, `levels`, `probes`, `from`/`to`, and the table's `views`. |
+| code rules (`BUILD_RULES`) | Sloped ribs as one side-outline polygon extruded and turned; shoulders, steps and tapers as ONE revolved half-section ring (coaxial revolves sharing faces are refused); fillets on the cutter or piece before the boolean (`fillet({ r, edges: "z" }, cutter)`); every feature built or logged with `// SKIP <id>: <why>`. |
+| self-check (`src/selfcheck.js`) | Measures blends (fillet radii from partial cylinders and the tightest curvature of torus / B-spline faces) and plane tilts. Checks a fillet's radius, a rib's or taper's slope, a section's step levels, and **probe points** (material for ribs and shoulders, empty for notches and pockets: a rib that stops short leaves its far probe empty). Counts missing features, reads `// SKIP` lines, and fails a callout no feature uses. |
+| outline compare (`src/silhouette.js`, new) | Draws the model in each view the drawing shows (a section clipped at its cut), places it on the view's crop at one scale by best overlap, and reports where the drawing has material the model lacks or the reverse, in model mm. Overlay pictures (model outline in red over the view) go with the fix and look-compare rounds, so the AI can tell a real difference from a dimension line. Detail views are skipped (they are magnified pieces). |
+| chat (`viewer/index.html`) | The same self-check (probes, `// SKIP`) and the outline compare on the user's own picture, using the views the table lists; outline lines go into the fix and look-compare requests. |
+
+Build costs measured while writing the rules: eight trapezoid pocket cutters
+with `edges: "z"` fillets cut from a flange in 30-40 s; adding an R1 floor
+fillet to each cutter took 4 min. One revolved half-section (hub wall, shoulder
+and taper together) builds; the same pieces as separate revolves that share
+faces are refused.
+
+Results, the reference for 121 and the regression note:
+`results/subtle-features.md`.
 
 ## Things learned building this
 

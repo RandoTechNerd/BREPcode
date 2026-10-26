@@ -4,6 +4,9 @@
 //
 //   node bench/cadgen/score.mjs <run>            results/<run>/<sample>/output.step
 //   node bench/cadgen/score.mjs <dir> --force    any folder laid out the same way
+//   node bench/cadgen/score.mjs <run> --only p07,p12          just these samples
+//   CADGENBENCH_DATA_DIR=bench/cadgen/public/data node bench/cadgen/score.mjs <run>
+//                                                 against the hand-made public references
 //
 // Needs the evaluator venv (bench/cadgen/README.md: setup) and, for its
 // renders, an X server: it runs under xvfb-run when DISPLAY is unset.
@@ -14,7 +17,10 @@ import { spawnSync } from "node:child_process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
-const target = argv.find((a) => !a.startsWith("--"));
+const VALUED = new Set(["--workers", "--only"]);
+const target = argv.find((a, i) => !a.startsWith("--") && !VALUED.has(argv[i - 1]));
+const only = argv.includes("--only") ? argv[argv.indexOf("--only") + 1].split(",") : null;
+const pick = (id) => !only || only.some((o) => id.startsWith(o));
 if (!target) { console.error("usage: score.mjs <run|dir> [--force] [--workers N]"); process.exit(1); }
 const dir = existsSync(join(HERE, "results", target)) ? join(HERE, "results", target) : resolve(target);
 const data = process.env.CADGENBENCH_DATA_DIR || join(HERE, "practice/data");
@@ -22,7 +28,7 @@ const bin = process.env.CGB_BIN || join(HERE, ".venv/bin/cadgenbench");
 const workers = argv.includes("--workers") ? argv[argv.indexOf("--workers") + 1] : "3";
 
 // every GT sample gets a folder, so a sample with no output scores 0 (missing)
-for (const id of readdirSync(join(data, "gt"))) mkdirSync(join(dir, id), { recursive: true });
+for (const id of readdirSync(join(data, "gt")).filter(pick)) mkdirSync(join(dir, id), { recursive: true });
 
 const cmd = [bin, "evaluate", dir, "--workers", workers, ...(argv.includes("--force") ? ["--force"] : [])];
 const r = process.env.DISPLAY
@@ -31,7 +37,7 @@ const r = process.env.DISPLAY
 if (r.status !== 0) console.error((r.stderr || "").split("\n").filter((l) => !l.includes("eval:phase")).slice(-15).join("\n"));
 
 const rows = [];
-for (const id of readdirSync(join(data, "gt")).sort()) {
+for (const id of readdirSync(join(data, "gt")).filter(pick).sort()) {
   const p = join(dir, id, "result.json");
   const j = existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : { status: "missing", cad_score: 0 };
   rows.push({

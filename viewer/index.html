@@ -22614,9 +22614,10 @@ let SIMPLIFY_TARGET = 10000;
       return v == null ? 2 : Math.max(0, Math.min(3, parseInt(v, 10) || 0));
     };
     let imageRead = null;   // { images, note, cands, candLeft, fixUsed, lookDone, phase, card, done }
-    let _ir = null, _sc = null;
+    let _ir = null, _sc = null, _sil = null;
     const getImageRead = () => (_ir ??= import("../src/imageread.js"));
     const getSelfCheck = () => (_sc ??= import("../src/selfcheck.js"));
+    const getSilhouette = () => (_sil ??= import("../src/silhouette.js"));
 
     const loadImg = (src) => new Promise((res, rej) => {
       const im = new Image();
@@ -22648,7 +22649,7 @@ let SIMPLIFY_TARGET = 10000;
           if (rects.length) notes.push(`${p.name || "the picture"}: ${IR.tilesNote([{}, ...rects])}`);
         } catch { /* sent whole */ }
       }
-      return { images, note: notes.join(" ") };
+      return { images, note: notes.join(" "), firstUrl: pending[0]?.dataUrl || null };
     }
 
     // Every B-rep face of the model as built: the worker's face records, or
@@ -22678,13 +22679,39 @@ let SIMPLIFY_TARGET = 10000;
       return out;
     }
 
-    async function irCheck(table) {
+    // The self-check: holes, fillets, slopes, steps, probe points for ribs /
+    // shoulders / notches, callouts nothing uses, // SKIP lines in the code;
+    // then the outline compare: the model drawn in each view the table lists
+    // (its region on the user's picture, its axes) against that view.
+    async function irCheck(table, src) {
       if (!table) return null;
       const [SC, IR] = await Promise.all([getSelfCheck(), getImageRead()]);
       const t = IR.normalizeTable(table).table;
       const faces = irFaceRecords();
       if (!t || !faces.length) return null;
-      return SC.diffTable(t, SC.measureFaces(faces));
+      const diff = SC.diffTable(t, SC.measureFaces(faces), { inside: SC.makeInside(faces), skipped: SC.skippedFromCode(src) });
+      try { diff.outline = await irOutline(t, faces, diff.frame?.shift); }
+      catch (e) { console.info("[chat] outline compare skipped:", e?.message || e); diff.outline = []; }
+      return diff;
+    }
+    async function irOutline(t, faces, shift) {
+      const url = imageRead?.firstUrl;
+      const views = (t.views || []).filter((v) => v.right && v.up);
+      if (!url || !views.length) return [];
+      const [SIL, IR, im] = await Promise.all([getSilhouette(), getImageRead(), loadImg(url)]);
+      const res = [];
+      for (const r of IR.viewRects(views, im.naturalWidth, im.naturalHeight)) {
+        const s = Math.min(1, 800 / Math.max(r.w, r.h));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(r.w * s)); c.height = Math.max(1, Math.round(r.h * s));
+        const g = c.getContext("2d", { willReadFrequently: true });
+        g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+        const px = g.getImageData(0, 0, c.width, c.height).data, gray = new Uint8Array(c.width * c.height);
+        for (let i = 0; i < gray.length; i++) gray[i] = Math.min(px[4 * i], px[4 * i + 1], px[4 * i + 2]);
+        res.push(SIL.compareView(gray, c.width, c.height, faces, views.find((v) => v.name === r.label), { shift }));
+      }
+      return SIL.outlineLines(res);
     }
 
     // The table as a card under the reply: rows to read, the JSON to edit.
@@ -22758,7 +22785,7 @@ let SIMPLIFY_TARGET = 10000;
       if (!st || st.done) return false;
       const IR = await getImageRead();
       let diff = null;
-      try { diff = lastEngine?.engine === "exact" ? await irCheck(parsed?.table) : null; }
+      try { diff = lastEngine?.engine === "exact" ? await irCheck(parsed?.table, src) : null; }
       catch (e) { console.warn("[chat] self-check failed:", e); }
       const SC = await getSelfCheck();
       const box = card?.querySelector(".ir-check");
@@ -22772,7 +22799,7 @@ let SIMPLIFY_TARGET = 10000;
           box.appendChild(ul);
         }
       }
-      st.cands.push({ code: src, tableText: parsed?.tableText, table: parsed?.table, score: diff ? diff.score : null, phase: st.phase });
+      st.cands.push({ code: src, tableText: parsed?.tableText, table: parsed?.table, score: diff ? diff.score : null, outline: diff?.outline || [], phase: st.phase });
       const send = (detail, short, phase) => {
         st.phase = phase;
         chatLog.push({ role: "user", text: detail });
@@ -22782,10 +22809,11 @@ let SIMPLIFY_TARGET = 10000;
       };
       const auto = maxAutoFix() > 0;
       if (st.phase === "look") { st.done = true; return irFinish(st); }
-      if (diff && !diff.ok && auto && !st.fixUsed) {
+      if (diff && (!diff.ok || diff.outline?.length) && auto && !st.fixUsed) {
         st.fixUsed = true;
-        addMsg("bot", `The model and the table disagree in ${diff.issues.length} place${diff.issues.length === 1 ? "" : "s"}; asking for a fix…`);
-        return send(IR.fixPrompt(SC.issuesText(diff), { notes: diff.notes }), IR_FIX_TEXT, "fix");
+        addMsg("bot", diff.ok ? "The model's outline differs from the picture's views; asking for a fix…"
+          : `The model and the table disagree in ${diff.issues.length} place${diff.issues.length === 1 ? "" : "s"}${diff.missing ? ` (${diff.missing} feature${diff.missing === 1 ? "" : "s"} missing)` : ""}; asking for a fix…`);
+        return send(IR.fixPrompt(SC.issuesText(diff), { notes: diff.notes, missing: diff.missing, outline: diff.outline }), IR_FIX_TEXT, "fix");
       }
       if (diff && !diff.ok && auto && st.candLeft > 0) {
         st.candLeft--;
@@ -22810,7 +22838,7 @@ let SIMPLIFY_TARGET = 10000;
           st.bestCode = best.code;
           st.bestScore = best.score;
           const sc = best.score != null ? `${Math.round(best.score * 100)}% of the measured checks agree with the table` : "";
-          return send(IR.lookPrompt({ selfCheck: sc }), IR_LOOK_TEXT, "look");
+          return send(IR.lookPrompt({ selfCheck: sc, outline: best.outline }), IR_LOOK_TEXT, "look");
         }
       }
       st.done = true;
@@ -23417,7 +23445,7 @@ let SIMPLIFY_TARGET = 10000;
           && !house && !["local", "browser"].includes(aiProvider.value) && !!CHAT?.wantsModelFromImage?.(text);
         if (irFirst) {
           const prep = await irPrepareImages(pendingImgs);
-          imageRead = { images: prep.images, note: prep.note, cands: [], candLeft: irCandidateCap(), fixUsed: false, lookDone: false, phase: "first", done: false };
+          imageRead = { images: prep.images, note: prep.note, firstUrl: prep.firstUrl, cands: [], candLeft: irCandidateCap(), fixUsed: false, lookDone: false, phase: "first", done: false };
           logLine(`picture -> model: feature table first${prep.images.length > pendingImgs.length ? `, with ${prep.images.length - pendingImgs.length} zoomed tiles` : ""}`);
         } else if (imageRead && IR_REBUILD.test(text)) {
           Object.assign(imageRead, { cands: [], candLeft: irCandidateCap(), fixUsed: false, lookDone: false, phase: "first", done: false });

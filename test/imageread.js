@@ -8,6 +8,7 @@
 import {
   READ_RULES, TABLE_SCHEMA, readerRules, parseLooseJSON, parseReply, normalizeTable, tableRows, tableText,
   tileRects, tilesNote, zoomRects, fixPrompt, lookPrompt, candidateHint, wantsModelFromImage,
+  BUILD_RULES, LAYOUT_PROMPT, parseViews, viewRects, viewsNote,
 } from "../src/imageread.js";
 
 let pass = 0, fail = 0;
@@ -83,6 +84,32 @@ console.log("\nfollow-ups\n");
 check("the fix prompt asks which is wrong, the table or the code", /TABLE .* or the CODE/.test(fixPrompt("- hole A: diameter 6, table 6.6")));
 check("the look prompt explains the blueprint and allows NO CHANGES", /TOP above FRONT/.test(lookPrompt()) && /NO CHANGES/.test(lookPrompt()));
 check("candidates read differently", candidateHint(1) !== candidateHint(2) && candidateHint(0) === "");
+
+console.log("\nsubtle features and views\n");
+check("the rules carry the checklist pass (TYP, sections, details, angles, steps, patterns, notes)",
+  /CHECKLIST PASS/.test(READ_RULES) && /R5 TYP/.test(READ_RULES) && /SECTION and DETAIL/.test(READ_RULES) && /SLOPED/.test(READ_RULES) && /Pattern counts/.test(READ_RULES));
+check("the schema has views, callouts, r, angle, levels and probes",
+  ["\"views\"", "\"callouts\"", "\"r\"", "\"angle\"", "\"levels\"", "\"probes\""].every((k) => TABLE_SCHEMA.includes(k)));
+check("the build rules say how: sloped ribs, revolved shoulders, fillets before booleans, // SKIP",
+  /SLOPED RIBS/.test(BUILD_RULES) && /revolve\(360, polygon/.test(BUILD_RULES) && /BEFORE the boolean/.test(BUILD_RULES) && /\/\/ SKIP/.test(BUILD_RULES));
+{
+  const v = parseViews({ views: [
+    { name: "FRONT", region: [0.1, 0.1, 0.4, 0.3], right: "+x", up: "+z" },
+    { name: "SECTION A-A", region: [0.1, 0.5, 0.4, 0.6], right: "x", up: "+z", cut: { axis: "+y", at: 0 } },
+    { name: "ISO", region: [0.7, 0.1, 0.9, 0.3] },
+    { name: "bad", region: [0.1, 0.2] },
+  ] });
+  check("views are parsed, a bad region dropped, axes kept only when they are axes", v.length === 3 && v[1].cut?.axis === "+y" && v[2].right === null, JSON.stringify(v));
+  const r = viewRects(v, 3000, 2000);
+  check("sections and details are cut out first, padded, inside the image", r[0].label === "SECTION A-A" && r.every((x) => x.x >= 0 && x.y >= 0 && x.x + x.w <= 3000 && x.y + x.h <= 2000) && r[0].w > 0.3 * 3000);
+  check("the note names the views in order", /SECTION A-A; FRONT; ISO/.test(viewsNote(r)) && /\{ "views"/.test(LAYOUT_PROMPT));
+  const t = normalizeTable({ overall: { x: 1, y: 1, z: 1 }, views: v, callouts: [{ text: "R5 TYP", feature: "Z" }, { text: "NOTE", skip: "a material note" }],
+    features: [{ id: "R", type: "rib", probes: [[1, 2, 3]], angle: 26.9 }] });
+  check("a rib with probes and no positions is fine; a callout naming no feature warns", !t.warnings.some((w) => /R: no positions/.test(w)) && t.warnings.some((w) => /R5 TYP/.test(w)), JSON.stringify(t.warnings));
+  check("the table text shows what is not modelled, and a rib's angle", /not modelled: NOTE \(a material note\)/.test(tableText(t.table)) && /26.9°/.test(tableText(t.table)), tableText(t.table));
+  check("the fix prompt counts missing features and carries the outline lines",
+    /2 features are MISSING/.test(fixPrompt("- x", { missing: 2, outline: ["FRONT: the drawing shows material the model lacks"] })) && /compared the outlines/.test(fixPrompt("", { outline: ["a"] })));
+}
 
 console.log("\nthe chat's test\n");
 for (const [t, want] of [

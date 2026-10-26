@@ -5,8 +5,8 @@
 //
 //   node test/selfcheck.js
 
-import { build, cube, cylinder, difference, union, translate, drill, hull, rotate } from "../index.js";
-import { measureFaces, diffTable, classifyFace, eigSym3, expandFeatures, issuesText, diffSummary, measuredText } from "../src/selfcheck.js";
+import { build, cube, cylinder, difference, union, translate, drill, hull, rotate, fillet, linearExtrude, polygon } from "../index.js";
+import { measureFaces, diffTable, classifyFace, eigSym3, expandFeatures, issuesText, diffSummary, measuredText, makeInside, skippedFromCode } from "../src/selfcheck.js";
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -108,6 +108,47 @@ console.log("\nfeatures in other directions\n");
   check("a hole tilted 30° about X: Ø6, axis (0, -0.5, 0.866)", h && near(h.d, 6) && near(Math.abs(h.axis[1]), 0.5, 1e-3) && near(Math.abs(h.axis[2]), Math.sqrt(3) / 2, 1e-3), JSON.stringify(h?.axis));
 }
 check("an unrecognisable face is 'other', not a guess", classifyFace({ positions: new Float32Array(3), normals: new Float32Array(3) }).kind === "other");
+
+console.log("\nsubtle features: fillets, a sloped rib, a step, a pocket, a notch\n");
+{
+  // a 100 x 60 x 10 plate; a rib sloping 30.5 up over 60 (26.95°) at y 27..33;
+  // a Ø20 x 5 boss whose top is a step at z 15; an R4-cornered pocket 6 deep;
+  // a notch through the +X edge
+  const rib = (x1) => translate([0, 33, 0], rotate([90, 0, 0], linearExtrude({ h: 6 }, polygon([[20, 9.5], [x1, 9.5], [20, 9.5 + 30.5 * (x1 - 20) / 60]]))));
+  const part = (full) => difference(
+    union(cube([100, 60, 10]), rib(full ? 80 : 45), translate([85, 45, 9.5], cylinder({ d: 20, h: 5.5 }))),
+    translate([30, 5, 4], full ? fillet({ r: 4, edges: "z" }, cube([20, 16, 7])) : cube([20, 16, 7])),
+    ...(full ? [translate([95, 25, -1], cube([6, 10, 12]))] : []));
+  const T = {
+    overall: { x: 100, y: 60, z: 40 },
+    features: [
+      { id: "F", type: "fillet", r: 4, count: 4, source: "R4 TYP" },
+      { id: "R", type: "rib", count: 1, angle: 26.95, probes: [[22, 30, 38], [75, 30, 11]] },
+      { id: "S", type: "step", levels: [15], probes: [[85, 45, 12]] },
+      { id: "P", type: "pocket", positions: [[40, 13, 10]], axis: "+z", depth: 6 },
+      { id: "N", type: "notch", probes: [[98, 30, 5]] },
+    ],
+    callouts: [{ text: "R4 TYP", feature: "F" }, { text: "6 x 45° SLOPE", view: "SECTION A-A" }],
+  };
+  const faces = await facesOf(part(true));
+  const mm = measureFaces(faces);
+  check("the R4 pocket corners are measured as R4 blends", mm.blends.filter((b) => near(b.r, 4, 0.05) && !b.convex).length === 4, JSON.stringify(mm.blends));
+  check("the rib's top is a plane sloped 26.95° from flat", mm.planes.some((p) => near(p.tilt, 26.95, 0.05)), JSON.stringify(mm.planes.map((p) => p.tilt)));
+  const ok = diffTable(T, mm, { inside: makeInside(faces) });
+  check("the full part agrees except for the callout no feature uses", ok.issues.length === 1 && ok.issues[0].kind === "callout" && ok.missing === 1, JSON.stringify(ok.issues));
+  const wf = await facesOf(part(false));
+  const bad = diffTable(T, measureFaces(wf), { inside: makeInside(wf) });
+  const kinds = bad.issues.map((i) => `${i.kind}:${i.id ?? ""}`);
+  check("no fillet is reported", kinds.includes("fillet:F"), kinds.join());
+  check("a rib that stops short leaves its far probe empty", bad.issues.some((i) => i.kind === "probe" && i.id === "R" && /stops short/.test(i.msg)), kinds.join());
+  check("the missing notch is reported", kinds.includes("probe:N"), kinds.join());
+  check("the missing features are counted", bad.missing === 4, String(bad.missing));
+  const sk = skippedFromCode("const a = 1;\n// SKIP F: R1 blends at the rib joins, the kernel refuses them\nreturn a;");
+  check("a // SKIP line in the code is read", sk.length === 1 && sk[0].id === "F" && /kernel refuses/.test(sk[0].why), JSON.stringify(sk));
+  const sd = diffTable(T, measureFaces(wf), { inside: makeInside(wf), skipped: sk });
+  check("...and a skipped feature is reported, not failed", !sd.issues.some((i) => i.id === "F") && sd.skipped.length === 1 && /skipped by the code/.test(sd.notes.join()), JSON.stringify(sd.skipped));
+  check("the summary counts missing and skipped features", /3 features missing, 1 skipped/.test(diffSummary(sd)), diffSummary(sd));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -8,8 +8,11 @@
 // cylinder or cone fitted to one face's vertices and normals recovers the
 // true axis and radius to float precision; nothing here is a mesh estimate.
 //
-//   measureFaces(faces)          -> { bounds, size, cylinders, cones, holes, bosses, slotEnds }
-//   diffTable(table, measured)   -> { ok, score, checked, issues, notes, frame }
+//   measureFaces(faces)          -> { bounds, size, cylinders, cones, holes, bosses, slotEnds, planes, blends }
+//   diffTable(table, measured, { inside, skipped })
+//                                -> { ok, score, checked, issues, notes, frame, missing, skipped, unchecked }
+//   makeInside(faces)            -> p => true when p is in the material
+//   skippedFromCode(code)        -> [{ id, why }] from the code's // SKIP <id>: <why> lines
 //   issuesText(diff)             -> the issues as lines for the AI or the user
 //
 // Plain arrays in, plain objects out; no three.js, no kernel.
@@ -154,7 +157,7 @@ export function classifyFace(face) {
 }
 
 // Ray-parity point-in-solid against every triangle of every face.
-function makeInside(faces) {
+export function makeInside(faces) {
   const tris = [];
   for (const f of faces) {
     const P = f.positions, I = f.index || Array.from({ length: P.length / 3 }, (_, i) => i);
@@ -268,20 +271,80 @@ export function measureFaces(faces, { inside = true } = {}) {
   const slotEnds = cylinders.filter((c) => c.concave && c.coverage > 0.4 && c.coverage <= 0.8).map((c) => ({
     axis: c.axis.map(r3), point: at(c, (c.t0 + c.t1) / 2).map(r3), d: r3(2 * c.r), length: r3(c.t1 - c.t0),
   }));
-  // flat faces, for an edit that moves a wall: normal, offset, extent
+  // flat faces, for an edit that moves a wall: normal, offset, extent; the
+  // tilt from +Z (a sloped rib's top, a taper, a chamfer) and the area
   const planes = [];
   shapes.forEach((s, i) => {
     if (s.kind !== "plane") return;
     const P = faces[i].positions, flo = [Infinity, Infinity, Infinity], fhi = [-Infinity, -Infinity, -Infinity];
     for (let j = 0; j < P.length; j++) { const k = j % 3; if (P[j] < flo[k]) flo[k] = P[j]; if (P[j] > fhi[k]) fhi[k] = P[j]; }
-    planes.push({ normal: s.normal.map(r3), offset: r3(s.offset), min: flo.map(r3), max: fhi.map(r3) });
+    planes.push({ normal: s.normal.map(r3), offset: r3(s.offset), min: flo.map(r3), max: fhi.map(r3),
+      tilt: r3(Math.acos(Math.min(1, Math.abs(s.normal[2]))) * 180 / Math.PI), area: r3(faceArea(faces[i])) });
+  });
+  // BLENDS: fillets and rounds. A cylinder that is only part of a turn, or a
+  // torus / B-spline face, whose tightest radius of curvature is small next
+  // to the part: the radius a drawing calls out as "R5 TYP".
+  const blends = [];
+  shapes.forEach((s, i) => {
+    let r = null, convex = null;
+    if (s.kind === "cylinder" && s.coverage <= 0.55) { r = s.r; convex = !s.concave; }
+    else if (s.kind === "other") ({ r, convex } = tightestRadius(faces[i]));
+    if (r == null || !(r > 0) || r > 0.2 * Math.max(...size)) return;
+    blends.push({ r: r3(r), convex, at: faceCentroid(faces[i]).map(r3), area: r3(faceArea(faces[i])), kind: s.kind });
   });
   return {
     bounds: { min: lo.map(r3), max: hi.map(r3) }, size: size.map(r3), planes,
     cylinders: cylinders.map((c) => ({ axis: c.axis.map(r3), origin: c.origin.map(r3), d: r3(2 * c.r), t0: r3(c.t0), t1: r3(c.t1), coverage: r3(c.coverage), concave: c.concave })),
     cones: cones.map((k) => ({ axis: k.axis.map(r3), origin: k.origin.map(r3), d0: r3(2 * k.r0), d1: r3(2 * k.r1), angle: r3(2 * k.halfAngle), concave: k.concave })),
-    holes, bosses, slotEnds,
+    holes, bosses, slotEnds, blends,
   };
+}
+
+function faceTris(face) {
+  const P = face.positions, I = face.index || Array.from({ length: P.length / 3 }, (_, i) => i);
+  const v = (k) => [P[3 * k], P[3 * k + 1], P[3 * k + 2]];
+  const out = [];
+  for (let t = 0; t + 2 < I.length; t += 3) out.push([I[t], I[t + 1], I[t + 2], v(I[t]), v(I[t + 1]), v(I[t + 2])]);
+  return out;
+}
+function faceArea(face) {
+  let a = 0;
+  for (const [, , , p, q, r] of faceTris(face)) a += len(cross(sub(q, p), sub(r, p))) / 2;
+  return a;
+}
+function faceCentroid(face) {
+  let a = 0, c = [0, 0, 0];
+  for (const [, , , p, q, r] of faceTris(face)) {
+    const w = len(cross(sub(q, p), sub(r, p))) / 2;
+    a += w; c = add(c, mul(add(add(p, q), r), w / 3));
+  }
+  return a > 0 ? mul(c, 1 / a) : [face.positions[0], face.positions[1], face.positions[2]];
+}
+// The tightest radius of curvature over a face's mesh edges: |dn| / |dp| is
+// the normal curvature along that edge, so its upper percentile is 1 / the
+// smaller principal radius (a torus fillet's tube radius). Convex when the
+// normals spread apart along the edges.
+function tightestRadius(face) {
+  const N = face.normals;
+  if (!N) return {};
+  const ks = [];
+  let sgn = 0;
+  const n = (k) => [N[3 * k], N[3 * k + 1], N[3 * k + 2]];
+  for (const [a, b, c, pa, pb, pc] of faceTris(face)) {
+    for (const [i, j, pi, pj] of [[a, b, pa, pb], [b, c, pb, pc], [c, a, pc, pa]]) {
+      const dp = sub(pj, pi), dl = len(dp);
+      if (dl < 1e-9) continue;
+      const dn = sub(unit(n(j)), unit(n(i)));
+      const k = len(dn) / dl;
+      if (k < 1e-6) continue;
+      ks.push(k);
+      sgn += Math.sign(dot(dp, dn));
+    }
+  }
+  if (ks.length < 3) return {};
+  ks.sort((x, y) => x - y);
+  const k = ks[Math.floor(0.9 * (ks.length - 1))];
+  return { r: 1 / k, convex: sgn >= 0 };
 }
 
 // ---------------------------------------------------------------- the diff
@@ -318,12 +381,25 @@ export function expandFeatures(table) {
 }
 
 const HOLE_TYPES = /^(hole|cbore|csk|tapped|counterbore|countersink|bore|drill)/;
+// The subtle features a drawing shows in TYP callouts, sections and details.
+const FILLET_T = /^(fillet|round|blend|radius)/;
+const CHAMFER_T = /^(chamfer|bevel)/;
+const ADD_T = /^(rib|gusset|web|shoulder|step|collar|ring|hub|lug|flange|pad|raised|spoke)/;
+const CUT_T = /^(notch|keyway|groove|pocket|recess|cutout|window|undercut|spline|flat|relief)/;
+const SUBTLE = (t) => FILLET_T.test(t) || CHAMFER_T.test(t) || ADD_T.test(t) || CUT_T.test(t);
+
+// "// SKIP F: R1 blends, the kernel refuses a fillet on the rib joins"
+export function skippedFromCode(code) {
+  const out = [];
+  for (const m of String(code || "").matchAll(/\/\/\s*SKIP(?:PED)?\s+([\w#.-]+)\s*[:-]?\s*(.*)$/gim)) out.push({ id: m[1], why: m[2].trim() });
+  return out;
+}
 
 // table: the AI's feature table. measured: measureFaces(). Positions are
 // compared after the best of three frame hypotheses (the table's own frame,
 // a min-corner origin, a centred origin) so a model built in a different
 // frame from its table is one frame note, not every feature wrong.
-export function diffTable(table, measured, { tolFrac = 0.005, minTol = 0.1 } = {}) {
+export function diffTable(table, measured, { tolFrac = 0.005, minTol = 0.1, inside = null, skipped = [] } = {}) {
   const size = measured.size, diag = Math.hypot(...size) || 1;
   const tol = Math.max(minTol, tolFrac * diag);
   const issues = [], notes = [];
@@ -388,7 +464,7 @@ export function diffTable(table, measured, { tolFrac = 0.005, minTol = 0.1 } = {
   for (const r of best?.res || []) {
     const { f } = r;
     const where = `${f.type} ${f.id} at ${fv(f.pos)}${f.source ? ` ("${f.source}")` : ""}`;
-    if (r.skipped) { notes.push(`${where}: not measured (${f.type})`); continue; }
+    if (r.skipped) { if (!SUBTLE(f.type)) notes.push(`${where}: not measured (${f.type})`); continue; }
     if (HOLE_TYPES.test(f.type)) {
       if (!pass(!!r.hole)) {
         const near = nearestHole(measured.holes, r.p, f.axis, lineDist);
@@ -426,13 +502,107 @@ export function diffTable(table, measured, { tolFrac = 0.005, minTol = 0.1 } = {
       if (!pass(!!r.slot?.ok)) issues.push({ kind: "slot", id: f.id, msg: `${where}: ${r.slot?.why || "slot not found"}` });
     }
   }
+  let missing = issues.filter((i) => i.kind === "missing" || i.kind === "slot").length;
+  const subtle = checkSubtle(table, measured, { shift: best?.hyp.shift ?? [0, 0, 0], tol, inside, skipped, pass, issues, notes });
+  missing += subtle.missing;
   for (const h of best?.extra || []) {
     if (!feats.some((f) => HOLE_TYPES.test(f.type))) break;
     notes.push(`the model has a Ø${fmt(h.d)} ${h.through ? "through" : "blind"} hole along ${axisName(h.axis)} through ${fv(sub(h.point, frame.shift))} that matches no table row`);
   }
   const score = checked ? passed / checked : 1;
-  return { ok: issues.length === 0, score: r3(score), checked, passed, issues, notes, frame, tol: r3(tol) };
+  return { ok: issues.length === 0, score: r3(score), checked, passed, issues, notes, frame, tol: r3(tol), missing, skipped: subtle.skipped, unchecked: subtle.unchecked };
 }
+
+// Fillets, chamfers, ribs, shoulders, steps, notches, pockets: the features a
+// hole matcher cannot see. Each is checked by what the table gives for it:
+//   r            a round face of that radius (fillet / round)
+//   angle        a face sloped that many degrees from the plane across `axis`
+//                (a sloped rib's top, a taper, a chamfer)
+//   levels       flat faces across `axis` at those coordinates (section steps)
+//   probes       points that must be material (rib, shoulder, boss...) or
+//                empty (notch, keyway, pocket...); a rib that stops short of
+//                the hub leaves its far probe empty
+// A feature the code skipped (// SKIP <id>: why) is reported, not failed;
+// a callout no feature uses and no SKIP explains is a missing feature.
+function checkSubtle(table, measured, { shift, tol, inside, skipped, pass, issues, notes }) {
+  let missing = 0, unchecked = 0;
+  const skipIds = new Map((skipped || []).map((x) => [String(x.id), x.why]));
+  const skippedOut = [];
+  const blends = measured.blends || [], planes = measured.planes || [], cones = measured.cones || [];
+  const ids = new Set();
+  for (const f of table?.features || []) {
+    const type = String(f.type || "").toLowerCase(), id = String(f.id ?? "?");
+    ids.add(id);
+    if (!SUBTLE(type)) continue;
+    const label = `${type} ${id}${f.source ? ` ("${f.source}")` : ""}`;
+    if (skipIds.has(id)) { skippedOut.push({ id, type, why: skipIds.get(id) }); notes.push(`${label}: skipped by the code (${skipIds.get(id) || "no reason given"}); build it if you can`); continue; }
+    let any = false, bad = false;
+    const fail = (kind, msg) => { pass(false); bad = true; issues.push({ kind, id, msg: `${label}: ${msg}` }); };
+    const axis = axisVec(f.axis ?? "+z");
+    const add = ADD_T.test(type) || type === "boss";
+    // a round face of the radius
+    const r = num(f.r ?? f.radius) ?? (FILLET_T.test(type) && num(f.dia ?? f.d) != null ? num(f.dia ?? f.d) / 2 : null);
+    if (r != null && FILLET_T.test(type)) {
+      any = true;
+      const hits = blends.filter((b) => Math.abs(b.r - r) <= Math.max(0.15, 0.1 * r));
+      const want = Math.max(1, Math.ceil((num(f.count) ?? 1) / 2));
+      if (!hits.length) {
+        const radii = [...new Set(blends.map((b) => fmt(b.r)))].slice(0, 6);
+        fail("fillet", `the model has no R${fmt(r)} round face${radii.length ? ` (its rounds: R${radii.join(", R")})` : " (it has no rounds at all)"}`);
+      } else if (hits.length < want) fail("fillet", `only ${hits.length} R${fmt(r)} round face${hits.length === 1 ? "" : "s"}; the table lists ${num(f.count)} places`);
+      else pass(true);
+    }
+    // a face at the angle
+    const ang = num(f.angle ?? f.slope ?? f.taper) ?? (CHAMFER_T.test(type) ? 45 : null);
+    if (ang != null && ang > 0.5 && ang < 89.5) {
+      any = true;
+      const tiltTo = (n, a) => Math.acos(Math.min(1, Math.abs(dot(n, a)))) * 180 / Math.PI;
+      const near = (v) => Math.abs(v - ang) <= 3;
+      let n = 0;
+      if (CHAMFER_T.test(type)) n = planes.filter((p) => [[1, 0, 0], [0, 1, 0], [0, 0, 1]].some((a) => near(tiltTo(p.normal, a)))).length;
+      else n = planes.filter((p) => near(tiltTo(p.normal, axis))).length;
+      n += cones.filter((k) => Math.abs(Math.abs(dot(k.axis, axis)) - 1) < 0.01 && (near(90 - k.angle / 2) || near(k.angle / 2))).length;
+      const want = /^(rib|gusset|web|spoke)/.test(type) ? (num(f.count) ?? 1) : 1;
+      if (n < want) {
+        const seen = [...new Set(planes.filter((p) => { const t = tiltTo(p.normal, axis); return t > 1 && t < 89; }).map((p) => Math.round(tiltTo(p.normal, axis))))].slice(0, 8);
+        fail("slope", n ? `only ${n} face${n === 1 ? "" : "s"} sloped ${fmt(ang)}°, the table lists ${want}` : `no face sloped ${fmt(ang)}° from the plane across ${axisName(axis)}${seen.length ? ` (the model's slopes: ${seen.join("°, ")}°)` : " (the model has no sloped faces: is it built square?)"}`);
+      } else pass(true);
+    }
+    // flat steps at the levels a section dimensions
+    for (const lv of (Array.isArray(f.levels) ? f.levels : []).map(num).filter((v) => v != null)) {
+      any = true;
+      const at = lv + dot(shift, axis);
+      const hit = planes.some((p) => Math.abs(Math.abs(dot(p.normal, axis)) - 1) < 1e-3 && Math.abs(p.offset * Math.sign(dot(p.normal, axis)) - at) <= tol);
+      if (!pass(hit)) { bad = true; issues.push({ kind: "level", id, msg: `${label}: no flat face across ${axisName(axis)} at ${fmt(lv)} (a step height the table reads)` }); }
+    }
+    // probe points: material for what is added, empty for what is cut
+    let probes = Array.isArray(f.probes) ? f.probes.filter((p) => Array.isArray(p) && p.length === 3).map((p) => p.map(Number)) : [];
+    if (!probes.length && Array.isArray(f.positions)) {
+      const d = num(f.depth) ?? num(f.height ?? f.h);
+      if (d != null) probes = f.positions.filter((p) => Array.isArray(p) && p.length >= 2).map((p) => add_(p.map((v) => +v || 0).concat([0]).slice(0, 3), mul(axis, (add ? 1 : -1) * d / 2)));
+    }
+    if (inside && probes.length) {
+      any = true;
+      for (const p of probes.slice(0, 16)) {
+        const solid = inside(add_(p, shift));
+        if (!pass(solid === add)) { bad = true; issues.push({ kind: "probe", id, msg: `${label}: at ${fv(p)} the model is ${solid ? "solid" : "empty"}, the table puts ${add ? "material" : "a cut"} there${/^(rib|gusset|web|spoke)/.test(type) && !solid ? " (the rib stops short, or runs at another angle or height)" : ""}` }); }
+      }
+    }
+    if (!any) { unchecked++; notes.push(`${label}: not measured; give it r, angle, levels or probes so the check can see it`); }
+    if (bad) missing++;
+  }
+  for (const c of Array.isArray(table?.callouts) ? table.callouts : []) {
+    if (!c || typeof c !== "object") continue;
+    const used = c.feature != null && String(c.feature).split(/[,\s]+/).filter(Boolean);
+    const text = `callout "${c.text ?? "?"}"${c.view ? ` (${c.view})` : ""}`;
+    if (c.skip) { notes.push(`${text}: skipped (${c.skip})`); continue; }
+    if (!used || !used.length) { pass(false); missing++; issues.push({ kind: "callout", msg: `${text} is not used by any feature and has no skip reason: model it, or say why not` }); continue; }
+    const unknown = used.filter((u) => !ids.has(u));
+    if (unknown.length) { pass(false); missing++; issues.push({ kind: "callout", msg: `${text} points at feature ${unknown.join(", ")}, which the table does not have` }); }
+  }
+  return { missing, unchecked, skipped: skippedOut };
+}
+const add_ = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 
 function axisName(a) {
   const i = [0, 1, 2].reduce((m, k) => (Math.abs(a[k]) > Math.abs(a[m]) ? k : m), 0);
@@ -484,8 +654,8 @@ export function issuesText(diff, { max = 25 } = {}) {
 // One line for a log or a chat bubble.
 export function diffSummary(diff) {
   if (!diff.checked) return "nothing in the table could be measured";
-  return diff.ok ? `all ${diff.checked} checks agree with the table`
-    : `${diff.passed}/${diff.checked} checks agree; ${diff.issues.length} disagree`;
+  const extra = [diff.missing ? `${diff.missing} feature${diff.missing === 1 ? "" : "s"} missing` : "", diff.skipped?.length ? `${diff.skipped.length} skipped` : ""].filter(Boolean).join(", ");
+  return (diff.ok ? `all ${diff.checked} checks agree with the table` : `${diff.passed}/${diff.checked} checks agree; ${diff.issues.length} disagree`) + (extra ? ` (${extra})` : "");
 }
 
 // Per-face buffers from a replicad (OpenCASCADE) shape, the same records the

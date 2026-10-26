@@ -3,25 +3,33 @@
 // STEP, centred on the origin. Run in its own process so a kernel that hangs
 // or panics costs one attempt, not the whole run.
 //
-//   node runcode.mjs code.js out.step [--table t.json] [--import name=file.step] [--keep-frame]
+//   node runcode.mjs code.js out.step [--table t.json] [--outline views.json] [--import name=file.step] [--keep-frame]
 //   ->  stdout: one JSON line { ok, lane, size, step, error, kind, check }
 //   kind: syntax | build | mesh | step
 // With --table, the model is measured BEFORE centring (in the code's own
 // frame, the table's frame) and diffed against the feature table
-// (src/selfcheck.js); the measurement goes to out.step.measure.json.
+// (src/selfcheck.js); the measurement goes to out.step.measure.json. Probe
+// points are tested against the solid, and // SKIP lines in the code are read.
+// With --outline (a list of { view, pgm } from lib/tiles.py --gray), the
+// model is drawn in each of the drawing's views and its outline compared
+// (src/silhouette.js); overlays go to out.step.<view>.png.
 import { readFileSync, writeFileSync } from "node:fs";
-import { measureFaces, diffTable } from "../../../src/selfcheck.js";
+import { measureFaces, diffTable, makeInside, skippedFromCode } from "../../../src/selfcheck.js";
+import { compareView, overlayRGB, outlineLines } from "../../../src/silhouette.js";
+import { readPGM } from "./pgm.mjs";
+import { encodePNG } from "./pngwrite.mjs";
 import { normalizeTable, parseLooseJSON } from "../../../src/imageread.js";
 import * as api from "../../../index.js";
 import { build, stats } from "../../../src/render.js";
 import { exactSTEP } from "../../../src/stepexport.js";
 
 const argv = process.argv.slice(2);
-const VALUED = new Set(["--table", "--import"]);
+const VALUED = new Set(["--table", "--import", "--outline"]);
 const [codePath, outPath] = argv.filter((a, i) => !a.startsWith("--") && !VALUED.has(argv[i - 1]));
 const keepFrame = argv.includes("--keep-frame");   // an edit stays where its input was
 const opt = (k) => argv.flatMap((a, i) => (a === k ? [argv[i + 1]] : []));
 const tablePath = opt("--table")[0];
+const outlinePath = opt("--outline")[0];
 for (const spec of opt("--import")) {
   const [name, file] = spec.split("=");
   api.registerImport(name, readFileSync(file, "utf8"));
@@ -35,9 +43,9 @@ export function compileCode(src) {
   return new Function(...names, `"use strict";\n{\n${body}\n}`);
 }
 
-let shape;
+let shape, src = "";
 try {
-  const src = readFileSync(codePath, "utf8");
+  src = readFileSync(codePath, "utf8");
   shape = compileCode(src)(...names.map((k) => api[k]));
   if (shape == null) throw new Error("the code returned nothing");
 } catch (e) { say({ ok: false, kind: "syntax", error: String(e?.message || e) }); }
@@ -58,12 +66,33 @@ try {
   let check;
   if (tablePath) {
     try {
-      const measured = measureFaces(r.solids.flatMap((s) => s.faces || []));
+      const faces = r.solids.flatMap((s) => s.faces || []);
+      const measured = measureFaces(faces);
       writeFileSync(`${outPath}.measure.json`, JSON.stringify(measured));
       const { table } = normalizeTable(parseLooseJSON(readFileSync(tablePath, "utf8")));
       if (table) {
-        const d = diffTable(table, measured);
-        check = { score: d.score, checked: d.checked, passed: d.passed, issues: d.issues.map((i) => i.msg), notes: d.notes, frame: d.frame };
+        const d = diffTable(table, measured, { inside: makeInside(faces), skipped: skippedFromCode(src) });
+        check = { score: d.score, checked: d.checked, passed: d.passed, issues: d.issues.map((i) => i.msg), notes: d.notes, frame: d.frame, missing: d.missing, skipped: d.skipped, unchecked: d.unchecked };
+      }
+      if (outlinePath) {
+        // the table's own view axes win over the layout pass's
+        const tv = new Map((table?.views || []).map((v) => [String(v.name).toUpperCase(), v]));
+        const shift = check?.frame?.shift ?? [0, 0, 0];
+        const res = [];
+        for (const { view, pgm } of JSON.parse(readFileSync(outlinePath, "utf8"))) {
+          const v = { ...view, ...(tv.get(String(view.name).toUpperCase()) || {}), name: view.name };
+          if (!v.right || !v.up) continue;
+          try {
+            const { gray, w, h } = readPGM(pgm);
+            const c = compareView(gray, w, h, faces, v, { shift });
+            if (c.mask) {
+              const png = `${outPath}.${String(v.name).replace(/[^\w-]+/g, "_")}.png`;
+              writeFileSync(png, encodePNG(Buffer.from(overlayRGB(gray, w, h, c.mask)), w, h));
+              res.push({ name: v.name, iou: c.iou, lines: c.lines, png });
+            } else res.push({ name: v.name, skipped: c.skipped });
+          } catch (e) { res.push({ name: v.name, skipped: String(e?.message || e).slice(0, 200) }); }
+        }
+        check = { ...(check || {}), outline: { views: res, lines: outlineLines(res) } };
       }
     } catch (e) { check = { error: String(e?.message || e).slice(0, 300) }; }
   }

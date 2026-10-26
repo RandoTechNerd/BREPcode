@@ -9,6 +9,10 @@
 //   tableRows(t) / tableText(t)   -> the table for people (the chat's summary)
 //   tileRects(w, h)               -> overview + zoomed tiles for a large image
 //   zoomRects(zoom, w, h)         -> crops the AI asked to see closer
+//   LAYOUT_PROMPT / parseViews / viewRects / viewsNote
+//                                 the sheet's views (FRONT, SECTION A-A,
+//                                 DETAIL D...) found first, each then sent as
+//                                 its own zoomed crop for the table
 //   fixPrompt / lookPrompt / candidateHint   follow-up turns
 //   wantsModelFromImage(text)     the chat's "make this from the picture" test
 //
@@ -21,12 +25,24 @@ export const TABLE_SCHEMA = `{ "kind": "drawing | sketch | photo | screenshot | 
   "overall": { "x": .., "y": .., "z": .. },
   "bbox": { "min": [x, y, z], "max": [x, y, z] },
   "body": [ "each base solid / step / rib / boss block / cut-out with its size and position" ],
-  "features": [ { "id": "A", "type": "hole|cbore|csk|tapped|slot|pocket|boss|keyway|chamfer|fillet", "count": n,
+  "views": [ { "name": "FRONT | TOP | RIGHT | SECTION A-A | DETAIL D | ISO ...", "region": [x0, y0, x1, y1],  // fractions 0-1 of the WHOLE image, tight around the view's outline (not its dimensions)
+               "right": "+x", "up": "+z",           // the model axis pointing right / up in that view (omit for ISO)
+               "cut": { "axis": "+y", "at": 0 },    // sections only: the cutting plane's normal (toward the viewer's back) and its coordinate
+               "shows": "what this view adds" } ],
+  "callouts": [ { "text": "R5.00 TYP", "view": "DETAIL D", "kind": "fillet|chamfer|angle|step|pattern|thread|note|dimension",
+                  "feature": "F",                     // the feature id it became; or
+                  "skip": "why it is not modelled" } ],
+  "features": [ { "id": "A", "type": "hole|cbore|csk|tapped|slot|pocket|boss|keyway|notch|rib|gusset|shoulder|step|fillet|chamfer", "count": n,
                   "positions": [[x, y, z], ...],   // centre ON the surface it enters, in your frame
                   "axis": "+z|-z|+x|-x|+y|-y",     // outward normal of that surface
                   "dia": .., "depth": .. or "thru", "cbore": {"d": .., "depth": ..}, "csk": {"d": .., "angle": ..},
                   "width": .., "length": .., "along": "x|y|<degrees in XY>",   // slots: overall length, its direction
                   "height": ..,                                              // bosses
+                  "r": .., "edges": "which edges, in words",                 // fillets / rounds
+                  "angle": ..,                                               // slopes, tapers, chamfers: degrees from the plane across "axis"
+                  "levels": [..],                                            // steps / shoulders: coordinates along "axis" of each flat a section dimensions
+                  "probes": [[x, y, z], ...],                                // ribs, shoulders, steps, notches, keyways, pockets: points INSIDE the added material or INSIDE the removed space (a rib: one near each end)
+                  "from": [x, y, z], "to": [x, y, z],                         // ribs / gussets: where the sloped edge starts and ends
                   "source": "the callout or the evidence you read", "confidence": "high|medium|low" } ],
   "guessed": [ "every number you did not read off the image, and why you chose it" ],
   "zoom": [ [x0, y0, x1, y1], ... ]   // optional: regions of the WHOLE image (fractions 0-1) you could not read and want to see closer
@@ -40,14 +56,28 @@ What kind of picture is it?
 - Callouts: "4X Ø6.6 THRU" = four Ø6.6 holes through. "⌴ Ø11 ↧ 6.5" / "CBORE Ø11 X 6.5 DEEP" = counterbore. "⌵ Ø12 X 90°" / "CSK" / "CSINK" = countersink (diameter at the surface, included angle). "↧ 10" = depth 10. "M6x1" / "M12x1.75-6H - 15 DEEP" tapped = model the tap-drill diameter (M3 2.5, M4 3.3, M5 4.2, M6 5, M8 6.8, M10 8.5, M12 10.2, M16 14) to the thread depth. "R5 TYP" = all similar corners. "PCD"/"B.C." = bolt-circle diameter; "EQ SP" = equally spaced. "8X 1.5 x 45°" = chamfers.
 - A HAND SKETCH: read the numbers written on it; proportions between them come from the sketch. Sketches are rarely to scale, so never measure one where a number exists.
 - A PHOTO of a part, a SCREENSHOT or a RENDER with no dimensions: work out the solids and cuts that make it (a plate, bosses, holes, a slot), and get the SIZE from, in order: a size the user stated (scale.source "stated"); a known object in the picture, such as a ruler, a coin, a hand, a standard bolt or a USB port (source "reference", say which); otherwise ask. In a chat, if no size was stated and nothing in the picture gives one, ask for ONE key size in one short question instead of writing the table; if the user told you to go ahead anyway, choose a sensible size, set scale.source "estimated", round every derived number and list it under "guessed". Never present an estimated size as if you read it.
-Mark each feature's "confidence"; anything inferred goes in "guessed". If text is too small to read, say so and add its region to "zoom" rather than guessing silently.`;
+Mark each feature's "confidence"; anything inferred goes in "guessed". If text is too small to read, say so and add its region to "zoom" rather than guessing silently.
+
+CHECKLIST PASS, after the main shape and before any code: go over the picture again for the small features models drop, and list every one in "callouts".
+1. TYP and ALL notes: "R5 TYP", "ALL FILLETS R2", "C1 x 45°", "BREAK EDGES": each becomes a fillet or chamfer feature with r (or size) and which edges.
+2. Every SECTION and DETAIL view, one at a time (each comes as its own zoomed crop when the app can cut it out): what it shows that the main views do not: a step, a shoulder, a taper, a floor thickness, an undercut, a notch, a blend.
+3. Every angle (°): a slope, a taper, a draft or an angular spacing. A rib or gusset drawn with a diagonal edge is SLOPED: give its angle and where its edge starts and ends ("from", "to"); a rib that runs from the plate edge up to the top of a hub must reach the hub.
+4. Step heights in sections: every flat a section dimensions is a level of a step or shoulder.
+5. Pattern counts (8X, 6X EQ SP, TYP): positions for every instance.
+6. Notes and the title block (units, scale, general tolerances that name edge breaks).
+Each callout names the feature it became, or says in "skip" why it is not modelled. A feature that adds or removes material (rib, shoulder, step, notch, keyway, pocket) gets "probes", at least one point per instance and two for a rib (near each end), so the app can test the model there. List every view in "views" with its region on the sheet and which way its axes point, so the app can draw its model the same way and compare the outlines.`;
 
 // What the code must do to match the table (the self-check's language).
 export const BUILD_RULES = `Building from the table:
 - Work in the table's frame: the numbers in the code are the numbers in the table. ONE solid: union the body pieces (overlap by 0.5 mm, never just touch), then cut.
 - Holes: drill([x, y, z], [nx, ny, nz], { d, depth }) with the point ON the entry surface and the outward normal; { through: true } for THRU; counterbore cbore: { d, depth }; countersink csink: { d, angle } (d at the surface). Never put $fn on a cylinder, cone or hole.
 - rotate([a, b, c]) turns about Z FIRST, then Y, then X (three.js Euler order, not OpenSCAD's). Turn about one axis per call and nest calls for two.
-- Slots: hull({ exact: true }, cylinder, cylinder) between the two end centres. Rounded rectangles: fillet({ r, edges: "z" }, cube(...)).`;
+- Slots: hull({ exact: true }, cylinder, cylinder) between the two end centres. Rounded rectangles: fillet({ r, edges: "z" }, cube(...)).
+- Every table feature becomes geometry. One you leave out gets a line \`// SKIP <id>: <reason>\` in the code; the app counts a feature that is neither built nor skipped as missing.
+- SLOPED RIBS AND GUSSETS: the rib's side outline as ONE polygon (the sloped edge from where it starts on the plate to where it meets the hub or wall, both ends run 0.5 mm into the solids they join), linearExtrude by the thickness, then turned into place; for a rib in the XZ plane: translate([0, t / 2, 0], rotate([90, 0, 0], linearExtrude({ h: t }, polygon([[x, z], ...])))), then rotate([0, 0, a], ...) for each of a radial pattern. A rib that tapers in thickness: hull({ exact: true }, two thin flat slabs). Check it reaches where the drawing shows it.
+- SHOULDERS, STEPS AND TAPERS on a round part: copy the half-section from the SECTION view as ONE polygon in (r, z), every step and slope in it, and revolve(360, polygon(...)). Keep it a ring (r from the bore outward, never touching the axis) and draw hub wall, shoulder and taper in that one profile: several coaxial revolves or cylinders that share faces are refused.
+- FILLETS ON THE EXACT LANE go on a piece BEFORE the boolean that joins it: a pocket's rounded corners are the cutter's vertical edges, fillet({ r, edges: "z" }, cutter), then subtract; a plate's corners are filleted before ribs are added. A fillet over a join after union is refused. Small floor blends (r under ~1.5) on many cutters cost minutes to build: skip them with a // SKIP line.
+- NOTCHES AND KEYWAYS: a box cutter for each, one difference() at a time, sized from the DETAIL view (width, depth, angle).`;
 
 export function readerRules({ schema = true } = {}) {
   return [READ_RULES, schema ? `The table (JSON; drop keys that do not apply):\n${TABLE_SCHEMA}` : "", BUILD_RULES].filter(Boolean).join("\n\n");
@@ -116,10 +146,14 @@ export function normalizeTable(t) {
     if (f.dia == null && f.d != null) g.dia = f.d;
     if (typeof g.depth === "string" && /thru|through/i.test(g.depth)) g.depth = "thru";
     if (f.count != null && g.positions.length && +f.count !== g.positions.length) warnings.push(`${g.id}: count ${f.count} but ${g.positions.length} positions`);
-    if (!g.positions.length && !/chamfer|fillet/.test(g.type)) warnings.push(`${g.id}: no positions`);
+    if (!g.positions.length && !/chamfer|fillet|round/.test(g.type) && !Array.isArray(f.probes) && !Array.isArray(f.levels)) warnings.push(`${g.id}: no positions`);
     return g;
   });
   out.guessed = Array.isArray(t.guessed) ? t.guessed : Array.isArray(t.uncertain) ? t.uncertain : [];
+  if (t.views != null) out.views = parseViews(t.views);
+  out.callouts = Array.isArray(t.callouts) ? t.callouts.filter((c) => c && typeof c === "object") : [];
+  const ids = new Set(out.features.map((f) => String(f.id)));
+  for (const c of out.callouts) if (!c.skip && c.feature != null && String(c.feature).split(/[,\s]+/).some((x) => x && !ids.has(x))) warnings.push(`callout "${c.text}" names a feature the table does not have`);
   return { table: out, warnings };
 }
 
@@ -140,6 +174,8 @@ export function tableRows(t) {
       f.depth === "thru" ? "THRU" : f.depth != null ? `↧${f2(f.depth)}` : "",
       f.cbore ? `⌴Ø${f2(f.cbore.d)}↧${f2(f.cbore.depth)}` : "", f.csk ? `⌵Ø${f2(f.csk.d)}×${f2(f.csk.angle ?? 90)}°` : "",
       f.height != null ? `${f2(f.height)} high` : "",
+      f.r != null ? `R${f2(f.r)}` : "", f.angle != null ? `${f2(f.angle)}°` : "",
+      Array.isArray(f.levels) && f.levels.length ? `steps at ${f.levels.map(f2).join(", ")}` : "",
     ].filter(Boolean).join(" ");
     rows.push({
       id: f.id, what: `${pos.length > 1 ? `${pos.length}× ` : ""}${f.type}`, size,
@@ -154,6 +190,8 @@ export function tableRows(t) {
 export function tableText(t) {
   const rows = tableRows(t);
   const lines = rows.map((r) => `${r.id ? `${r.id}. ` : ""}${r.what}  ${r.size}  ${r.where}${r.confidence && r.confidence !== "high" ? `  [${r.confidence}]` : ""}`);
+  const loose = (t?.callouts || []).filter((c) => c.skip);
+  if (loose.length) lines.push(`not modelled: ${loose.map((c) => `${c.text} (${c.skip})`).join("; ")}`);
   if (t?.guessed?.length) lines.push(`guessed: ${t.guessed.join("; ")}`);
   return lines.join("\n");
 }
@@ -199,20 +237,65 @@ export function zoomRects(zoom, w, h) {
   }).filter((r) => r.w > 8 && r.h > 8);
 }
 
+// ------------------------------------------------------------ the views
+
+// A first, cheap look at the whole sheet: where each view is. Each view is
+// then cut out as its own zoomed crop for the table, so a SECTION or DETAIL
+// view is read on its own, not as a corner of a tile.
+export const LAYOUT_PROMPT = `Before reading any numbers: find every VIEW on this sheet (main views, SECTION views, DETAIL views, auxiliary views, the isometric) and say where each is. Answer with one \`\`\`json block only:
+{ "views": [ { "name": "FRONT | TOP | RIGHT | SECTION A-A | DETAIL D | ISO ...", "region": [x0, y0, x1, y1], "right": "+x", "up": "+z", "cut": { "axis": "+y", "at": 0 } } ] }
+region: fractions 0-1 of the whole image (x from the left, y from the top), around the view's outline and its own dimensions. right / up: the model axis that points right / up in that view (Z up, the TOP/plan view looking down; omit for the isometric). cut: sections only. Nothing else.`;
+
+const AXIS_RE = /^[+-]?[xyz]$/i;
+export function parseViews(v) {
+  const list = Array.isArray(v) ? v : Array.isArray(v?.views) ? v.views : [];
+  return list.filter((x) => x && typeof x === "object" && Array.isArray(x.region) && x.region.length === 4 && x.region.every((n) => Number.isFinite(+n)))
+    .map((x) => ({
+      name: String(x.name || "view").slice(0, 40), region: x.region.map(Number),
+      right: AXIS_RE.test(String(x.right ?? "")) ? String(x.right).toLowerCase() : null,
+      up: AXIS_RE.test(String(x.up ?? "")) ? String(x.up).toLowerCase() : null,
+      cut: x.cut && AXIS_RE.test(String(x.cut.axis ?? "")) && Number.isFinite(+x.cut.at) ? { axis: String(x.cut.axis).toLowerCase(), at: +x.cut.at } : null,
+      shows: x.shows ? String(x.shows).slice(0, 200) : undefined,
+    })).slice(0, 12);
+}
+const isDetail = (v) => /section|detail|view [a-z]\b|aux/i.test(v.name);
+
+// Pixel crops of the views: sections and details first (they are what the
+// tiles cut in half), padded 4%, the main views after; at most `max`.
+export function viewRects(views, w, h, { max = 8 } = {}) {
+  const order = [...views].sort((a, b) => isDetail(b) - isDetail(a));
+  return order.slice(0, max).map((v, i) => {
+    let [x0, y0, x1, y1] = v.region.map((t) => Math.min(1, Math.max(0, t)));
+    if (x1 < x0) [x0, x1] = [x1, x0];
+    if (y1 < y0) [y0, y1] = [y1, y0];
+    const px = Math.max(0.04 * (x1 - x0), 0.01), py = Math.max(0.04 * (y1 - y0), 0.01);
+    const X0 = Math.max(0, x0 - px), X1 = Math.min(1, x1 + px), Y0 = Math.max(0, y0 - py), Y1 = Math.min(1, y1 + py);
+    const x = Math.round(X0 * w), y = Math.round(Y0 * h);
+    return { name: `view_${i}`, label: v.name, x, y, w: Math.round(X1 * w) - x, h: Math.round(Y1 * h) - y };
+  }).filter((r) => r.w > 16 && r.h > 16);
+}
+export function viewsNote(rects) {
+  if (!rects.length) return "";
+  return `After the tiles come the sheet's views, each cut out and zoomed on its own, in this order: ${rects.map((r) => r.label).join("; ")}. Read every SECTION and DETAIL view from its own crop for the checklist pass.`;
+}
+
 // ------------------------------------------------------------ follow-ups
 
 // The self-check's disagreements, for the AI to fix. Both may be wrong: the
 // table can be misread as easily as the code can be mistyped.
-export function fixPrompt(diffText, { notes = [] } = {}) {
-  return `The app measured the model you built against your own feature table. These disagree:\n${diffText}`
+export function fixPrompt(diffText, { notes = [], missing = 0, outline = [] } = {}) {
+  return `The app measured the model you built against your own feature table. These disagree:\n${diffText || "(no measured disagreement)"}`
+    + (missing ? `\n${missing} feature${missing === 1 ? " is" : "s are"} MISSING from the model (listed above): build each, or write // SKIP <id>: <why> in the code.` : "")
+    + (outline.length ? `\nThe app drew the model in the drawing's own views and compared the outlines with the drawing:\n${outline.map((x) => `- ${x}`).join("\n")}` : "")
     + (notes.length ? `\nAlso noticed:\n${notes.map((x) => `- ${x}`).join("\n")}` : "")
     + `\n\nFor each one, look at the picture again and decide which is wrong: the TABLE (a misread number, a wrong position or axis) or the CODE (it does not build what the table says). Fix whichever is wrong. Answer again in the same two blocks: the corrected \`\`\`json table, then the complete \`\`\`js code.`;
 }
 
-export function lookPrompt({ selfCheck = "" } = {}) {
+export function lookPrompt({ selfCheck = "", outline = [] } = {}) {
   return `LOOK-COMPARE. The first picture is the original. The next one is a 3-view drawing of the model you built, drawn by the app from the exact solid (third-angle: TOP above FRONT, RIGHT beside FRONT, an isometric in the corner, overall sizes dimensioned; hidden edges dashed).`
     + `${selfCheck ? ` The self-check against your table: ${selfCheck}.` : ""}`
-    + ` Compare them view by view: the outline, every step and boss, every hole (count, position, size, through or blind), slots, pockets, chamfers and fillets, and which side each feature is on. If the model matches the original, answer exactly NO CHANGES. Otherwise list each difference in one line, then answer in the same two blocks: the corrected \`\`\`json table, then the complete \`\`\`js code.`;
+    + `${outline.length ? ` The app also overlaid the model's outline on each view of the original:\n${outline.map((x) => `- ${x}`).join("\n")}\n` : ""}`
+    + ` Compare them view by view: the outline, every step, shoulder and boss, every rib (does it reach where it should, at the drawn slope?), every hole (count, position, size, through or blind), slots, pockets, notches, chamfers and fillets (R.. TYP), and which side each feature is on. If the model matches the original, answer exactly NO CHANGES. Otherwise list each difference in one line, then answer in the same two blocks: the corrected \`\`\`json table, then the complete \`\`\`js code.`;
 }
 
 // Extra candidates differ on purpose, so a misreading in one is not repeated

@@ -14,14 +14,21 @@
 //   viewer/curved.js   the app's 3-view blueprint, for the look-compare
 //
 // Per generation sample (input*.png):
+//   0. LAYOUT      a cheap first look at the overview: where each view is
+//                  (main views, SECTION and DETAIL views). Each is cut out as
+//                  its own zoomed crop for step 1 and for the outline compare.
 //   1. READ+BUILD  the AI (headless Claude Code, tools off, no MCP) answers
 //                  with the feature table, then BREPcode. The code is built
 //                  on the exact lane in a child process (lib/runcode.mjs),
 //                  measured, centred, written as exact STEP and put through
 //                  cadgenbench's validity gate. A build/validity failure goes
 //                  back with the error (--tries in all).
-//   2. SELF-CHECK  the measured model is diffed against the table; any
-//                  disagreement goes back once for a fix.
+//   2. SELF-CHECK  the measured model is diffed against the table (holes,
+//                  and now fillets, slopes, step levels, probe points for
+//                  ribs / shoulders / notches, callouts nothing uses), and its
+//                  outline is drawn in the drawing's own views and compared
+//                  (src/silhouette.js); a disagreement or a missing feature
+//                  goes back once for a fix.
 //   3. CANDIDATES  still disagreeing: --candidates-1 more fresh readings, in
 //                  parallel; the one that self-checks best (its own table,
 //                  then agreement with the others' tables) is kept.
@@ -45,6 +52,7 @@ import { EXACT_RULES } from "../../src/exactlane.js";
 import {
   readerRules, parseReply, normalizeTable, tileRects, tilesNote, zoomRects,
   fixPrompt, lookPrompt, candidateHint, parseLooseJSON,
+  LAYOUT_PROMPT, parseViews, viewRects, viewsNote,
 } from "../../src/imageread.js";
 import { diffTable } from "../../src/selfcheck.js";
 
@@ -54,7 +62,7 @@ const PY = process.env.CGB_PYTHON || join(HERE, ".venv/bin/python");
 
 const args = {
   run: "v1", inputs: join(HERE, "practice/data/inputs"), only: null, parallel: 3, tries: 3,
-  model: "claude-opus-5-5", timeout: 600, candidates: 3, look: true, check: true,
+  model: "claude-opus-5-5", timeout: 600, candidates: 3, look: true, check: true, views: true,
 };
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i], v = process.argv[i + 1];
@@ -68,6 +76,7 @@ for (let i = 2; i < process.argv.length; i++) {
   else if (a === "--candidates") args.candidates = Math.max(1, +v), i++;
   else if (a === "--no-look") args.look = false;
   else if (a === "--no-check") args.check = false;
+  else if (a === "--no-views") args.views = false;
   else throw new Error(`unknown option ${a}`);
 }
 const OUT = join(HERE, "results", args.run);
@@ -90,7 +99,8 @@ Code rules for the benchmark:
 - A profile for a rib or gusset standing in the YZ plane: polygon in (y, z), linearExtrude({ h: t }) along +Z, then rotate([0, 0, 90], rotate([90, 0, 0], ...)) maps (px, py, extrude) to (x = extrude, y = px, z = py).
 - Only use $fn: 6 for a hex on purpose; never on holes or round bosses.
 - Holes that cross other holes or slots: cut them one difference() at a time. Cut bores first, then saw slots that run into them.
-- Prefer simple, robust geometry: a small fillet you cannot place reliably is worth less than a valid solid. Never omit a hole, slot, pocket or boss.`;
+- Prefer simple, robust geometry: a fillet you cannot place reliably is worth less than a valid solid. But R.. TYP corners of pockets and plates are cheap on the exact lane (fillet the cutter or the piece before the boolean) and they count: build them. Never omit a hole, slot, pocket, boss, rib, shoulder, step or notch; anything you leave out gets a // SKIP <id>: <why> line.
+- Sections and details carry the subtle shape: a rib drawn diagonally is sloped and runs the full length shown; a section's steps and tapers are a revolve() of its half-section; a detail's notches and keyways are cut.`;
 
 export const EDIT_RULES = `BENCHMARK MODE (CADGenBench, editing). This overrides "reply with code only" above.
 You are given an existing part as an exact solid, importedSolid("input.step") (the file read exactly: true planes and cylinders), pictures of it, the app's measurements of it, and an instruction. Apply exactly that change and nothing else; everything not mentioned stays as it is.
@@ -129,6 +139,7 @@ const lastJSON = (s) => { try { return JSON.parse(s.trim().split("\n").pop()); }
 const png = (path) => ({ type: "image", source: { type: "base64", media_type: "image/png", data: readFileSync(path).toString("base64") } });
 const txt = (text) => ({ type: "text", text });
 
+const LAYOUT_SYSTEM = "You read engineering drawings and answer with JSON only.";
 async function askClaude(content, workdir, system = SYSTEM) {
   const msg = JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
   for (let k = 0; k < 2; k++) {
@@ -162,6 +173,7 @@ async function buildAnswer(ctx, tag, { table, code }, { edit = false } = {}) {
   const argv = [join(HERE, "lib/runcode.mjs"), codePath, stepPath];
   if (table && args.check) { const tp = join(ctx.work, `table.${tag}.json`); writeFileSync(tp, table); argv.push("--table", tp); }
   if (edit) argv.push("--import", `input.step=${ctx.stepIn}`, "--keep-frame");
+  if (table && args.check && ctx.outline) argv.push("--outline", ctx.outline);
   const r = await sh("node", argv, { timeout: 420 });
   const rc = lastJSON(r.out) || { ok: false, kind: "build", error: (r.err || r.out || "no output").slice(-800) };
   Object.assign(c, { kind: rc.kind, error: rc.error, size: rc.size, check: rc.check });
@@ -173,7 +185,15 @@ async function buildAnswer(ctx, tag, { table, code }, { edit = false } = {}) {
   return c;
 }
 const score = (c) => (!c?.ok ? -1 : c.check?.score ?? 0);
-const brief = (c) => ({ tag: c.tag, ok: c.ok, kind: c.kind, error: c.error?.slice(0, 300), size: c.size, check: c.check && { score: c.check.score, checked: c.check.checked, issues: c.check.issues?.slice(0, 12) }, consensus: c.consensus });
+const brief = (c) => ({
+  tag: c.tag, ok: c.ok, kind: c.kind, error: c.error?.slice(0, 300), size: c.size, consensus: c.consensus,
+  check: c.check && {
+    score: c.check.score, checked: c.check.checked, missing: c.check.missing, skipped: c.check.skipped, issues: c.check.issues?.slice(0, 12),
+    outline: c.check.outline && { views: c.check.outline.views?.map((v) => ({ name: v.name, iou: v.iou, skipped: v.skipped })), lines: c.check.outline.lines },
+  },
+});
+const outlineOf = (c) => c?.check?.outline?.lines || [];
+const overlays = (c) => (c?.check?.outline?.views || []).filter((v) => v.png && existsSync(v.png));
 
 // Ask, parse, build; a failure goes back with its error. The answer is
 // always a full table + code, so each round can correct either.
@@ -226,8 +246,30 @@ async function runGeneration(ctx, inDir) {
     notes.push(`${f}: ${tilesNote(rects) || "the whole image"}`);
     if (!ctx.first) ctx.first = { path: join(inDir, f), w, h };
   }
+  // 0. layout: where the views are; each one cut out on its own
+  if (args.views && ctx.first) {
+    try {
+      const ov = join(ctx.work, pngs[0].replace(".png", ""), "overview.png");
+      const reply = await askClaude([png(ov), txt(LAYOUT_PROMPT)], ctx.work, LAYOUT_SYSTEM);
+      ctx.log.cost += reply.cost;
+      const views = parseViews(parseReply(reply.text).table ?? parseLooseJSON((/\{[\s\S]*\}/.exec(reply.text) || [""])[0]));
+      ctx.log.views = views;
+      const rects = viewRects(views, ctx.first.w, ctx.first.h);
+      if (rects.length) {
+        const vdir = join(ctx.work, "views");
+        const paths = await cropImage(ctx.first.path, rects, vdir);
+        images.push(...paths.map(png));
+        notes.push(viewsNote(rects));
+        // the same crops as gray PGMs for the outline compare
+        await sh(PY, ["-I", join(HERE, "lib/tiles.py"), ctx.first.path, "--gray", join(vdir, "gray"), JSON.stringify(rects)]);
+        const list = rects.map((r) => ({ view: views.find((v) => v.name === r.label), pgm: join(vdir, "gray", `${r.name}.pgm`) })).filter((x) => x.view && existsSync(x.pgm));
+        ctx.outline = join(ctx.work, "outline.json");
+        writeFileSync(ctx.outline, JSON.stringify(list));
+      }
+    } catch (e) { ctx.log.viewsError = String(e?.message || e).slice(0, 300); }
+  }
   const desc = existsSync(join(inDir, "description.yaml")) ? readFileSync(join(inDir, "description.yaml"), "utf8") : "";
-  const TASK = `${pngs.length > 1 ? `There are ${pngs.length} sheets of the same part.` : ""} ${notes.join(" ")}\nWrite the feature table, then the BREPcode.\n\ndescription.yaml:\n${desc}`;
+  const TASK = `${pngs.length > 1 ? `There are ${pngs.length} sheets of the same part.` : ""} ${notes.join(" ")}\nWrite the feature table (with the checklist pass: callouts, views, probes), then the BREPcode.\n\ndescription.yaml:\n${desc}`;
   const zoomImages = async () => {
     if (!ctx.zoom?.length || !ctx.first) return [];
     const rects = zoomRects(ctx.zoom, ctx.first.w, ctx.first.h);
@@ -239,11 +281,13 @@ async function runGeneration(ctx, inDir) {
   // 1. read + build
   let best = await generate(ctx, "c0", [...images, txt(TASK)]);
   cands.push(best);
-  // 2. self-check -> one fix round
-  if (best.ok && args.check && best.check?.issues?.length) {
+  // 2. self-check -> one fix round (a disagreement, a missing feature, or an
+  // outline that differs from the drawing's view)
+  if (best.ok && args.check && (best.check?.issues?.length || best.check?.missing || outlineOf(best).length)) {
     const zi = await zoomImages();
-    const fixed = await generate(ctx, "c0fix", [...images, ...zi, txt(withPrev(best,
-      `${zi.length ? "The last images are the regions you asked to see closer.\n\n" : ""}${fixPrompt(best.check.issues.map((i) => `- ${i}`).join("\n"), { notes: best.check.notes })}`))]);
+    const ovl = overlays(best);
+    const fixed = await generate(ctx, "c0fix", [...images, ...zi, ...ovl.map((v) => png(v.png)), txt(withPrev(best,
+      `${zi.length ? "The images after the views are the regions you asked to see closer.\n\n" : ""}${ovl.length ? `The last ${ovl.length} image${ovl.length === 1 ? " is" : "s are"} the drawing's ${ovl.map((v) => v.name).join(", ")} with your model drawn over it in the same view (red outline, tinted material).\n\n` : ""}${fixPrompt((best.check.issues || []).map((i) => `- ${i}`).join("\n"), { notes: best.check.notes, missing: best.check.missing, outline: outlineOf(best) })}`))]);
     cands.push(fixed);
     if (score(fixed) >= score(best)) best = fixed;
   }
@@ -263,8 +307,10 @@ async function runGeneration(ctx, inDir) {
     const r = lastJSON((await sh("node", [join(HERE, "lib/blueprint.mjs"), best.step, bp, ctx.id, (best.size || []).join(",")], { timeout: 300 })).out);
     if (r?.ok) {
       copyFileSync(bp, join(ctx.outDir, "blueprint.png"));
-      const selfCheck = best.check ? `${best.check.passed}/${best.check.checked} checks agree${best.check.issues?.length ? `; still disagreeing: ${best.check.issues.slice(0, 6).join("; ")}` : ""}` : "";
-      const look = await generate(ctx, "look", [...images, png(bp), txt(withPrev(best, lookPrompt({ selfCheck })))]);
+      const selfCheck = best.check ? `${best.check.passed}/${best.check.checked} checks agree${best.check.missing ? `, ${best.check.missing} feature(s) missing` : ""}${best.check.issues?.length ? `; still disagreeing: ${best.check.issues.slice(0, 6).join("; ")}` : ""}` : "";
+      const ovl = overlays(best);
+      const look = await generate(ctx, "look", [...images, png(bp), ...ovl.map((v) => png(v.png)), txt(withPrev(best,
+        `${ovl.length ? `After the blueprint come the drawing's ${ovl.map((v) => v.name).join(", ")} with the model drawn over each (red outline).\n\n` : ""}${lookPrompt({ selfCheck, outline: outlineOf(best) })}`))]);
       if (look.noChanges) ctx.log.look = "no changes";
       else if (look.ok && score(look) >= score(best) - 0.05) { ctx.log.look = `kept (self-check ${score(best)} -> ${score(look)})`; best = look; cands.push(look); }
       else { ctx.log.look = look.ok ? `rejected (self-check ${score(best)} -> ${score(look)})` : `rejected (${look.kind})`; if (look.tag) cands.push(look); }
@@ -319,15 +365,18 @@ async function runSample(id) {
   if (best?.code) writeFileSync(join(outDir, "code.js"), best.code);
   rmSync(join(outDir, "output.step"), { force: true });
   if (best?.ok) copyFileSync(best.step, join(outDir, "output.step"));
+  for (const v of overlays(best)) copyFileSync(v.png, join(outDir, `outline-${String(v.name).replace(/[^\w-]+/g, "_")}.png`));
   log.ok = !!best?.ok;
   log.kept = best?.tag;
   log.fallback = !!best?.fallback;
   log.selfCheck = best?.check?.score;
+  log.missing = best?.check?.missing;
+  log.outline = best?.check?.outline?.views?.map((v) => ({ name: v.name, iou: v.iou, skipped: v.skipped }));
   log.attempts = log.calls.length;
   log.seconds = Math.round((Date.now() - t0) / 1000);
   writeFileSync(join(outDir, "log.json"), JSON.stringify(log, null, 1));
   rmSync(work, { recursive: true, force: true });
-  console.log(`${id}: ${log.ok ? `STEP ok (${log.kept}${log.selfCheck != null ? `, self-check ${log.selfCheck}` : ""})` : `FAILED (${best?.kind}: ${String(best?.error ?? log.error).slice(0, 120)})`}  calls ${log.attempts}  $${log.cost.toFixed(2)}  ${log.seconds}s`);
+  console.log(`${id}: ${log.ok ? `STEP ok (${log.kept}${log.selfCheck != null ? `, self-check ${log.selfCheck}` : ""}${log.missing ? `, ${log.missing} missing` : ""})` : `FAILED (${best?.kind}: ${String(best?.error ?? log.error).slice(0, 120)})`}  calls ${log.attempts}  $${log.cost.toFixed(2)}  ${log.seconds}s`);
   return log;
 }
 
@@ -335,7 +384,7 @@ async function runSample(id) {
 const ids = readdirSync(args.inputs).filter((d) => existsSync(join(args.inputs, d, "input.png")) || existsSync(join(args.inputs, d, "input.step")))
   .filter((d) => !args.only || args.only.some((o) => d.startsWith(o))).sort();
 mkdirSync(OUT, { recursive: true });
-console.log(`${ids.length} samples -> ${OUT}  (model ${args.model}, ${args.parallel} at a time, ${args.tries} tries, ${args.candidates} candidates, check ${args.check}, look ${args.look})`);
+console.log(`${ids.length} samples -> ${OUT}  (model ${args.model}, ${args.parallel} at a time, ${args.tries} tries, ${args.candidates} candidates, check ${args.check}, look ${args.look}, views ${args.views})`);
 const queue = [...ids], logs = [];
 await Promise.all(Array.from({ length: Math.max(1, args.parallel) }, async () => {
   while (queue.length) logs.push(await runSample(queue.shift()));
