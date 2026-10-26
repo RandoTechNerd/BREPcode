@@ -388,6 +388,25 @@ export function openDialog(id, ctx) {
     },
   };
   const state = spec.init(env);
+  // the model's faces as the dialog found them: anything else on screen later
+  // is the preview's own
+  const baseFaces = new Set(host.modelMeshes().map((m) => m.userData.faceName).filter(Boolean));
+  const fromPreview = (name) => !!name && !baseFaces.has(name);
+  let lastPick = null;        // for tests: { face, preview }
+  // the picked edge a preview face came from: by the edge's drawn segments
+  // nearest the click, else by both its faces' names inside the new face's
+  // (every kernel names a round or bevel after its edge), else the only one
+  const ownerEdge = (fp) => {
+    if (!state.edges?.length) return -1;
+    const withSegs = state.edges.map((e, i) => [e, i]).filter(([e]) => e.segments?.length);
+    if (withSegs.length) {
+      const best = nearestEdge(withSegs.map(([e]) => e), fp.point, []);
+      return state.edges.indexOf(best);
+    }
+    const flat = (s) => String(s).replace(/[^A-Za-z0-9]/g, "");
+    const k = state.edges.findIndex((e) => e.name.replace(/\[\d+\]$/, "").split("|").every((f) => flat(fp.name).includes(flat(f))));
+    return k >= 0 ? k : state.edges.length === 1 ? 0 : -1;
+  };
 
   // ---- DOM ----
   const box = document.createElement("div");
@@ -507,7 +526,8 @@ export function openDialog(id, ctx) {
     if (res.ok) setStatus("ok", "Preview built. OK keeps it (one undo step).");
     else {
       setStatus("err", `The kernel refused it: ${esc(shortReason(res.failure?.reason))}`);
-      ctx.markFailure?.(res.failure);
+      // the timeline marks THIS feature red (it may never have become a step)
+      ctx.markFailure?.({ ...res.failure, pending: { label: spec.title, link: diffSpan(base, r.next) } });
     }
     render();
   }
@@ -585,6 +605,26 @@ export function openDialog(id, ctx) {
       return true;
     }
     if (!fp) return true;
+    // Picks are of the model the dialog opened on. Once a preview has built,
+    // the screen also shows the pending feature's own faces (a fillet's round,
+    // a chamfer's bevel, a hole's wall), named differently on every kernel; a
+    // click on one is mapped back to the edge it came from (which toggles
+    // off) or refused, never written into the feature it is a preview of.
+    lastPick = { face: fp.name, preview: fromPreview(fp.name) };
+    if (fromPreview(fp.name)) {
+      if (p.kind === "edges") {
+        const k = ownerEdge(fp);
+        if (k >= 0) {
+          const [gone] = state.edges.splice(k, 1);
+          setStatus("busy", `${esc(gone.name)} dropped (that was its ${esc(spec.title.toLowerCase())} you clicked).`);
+          drawPicks(); render(); schedule(60);
+          return true;
+        }
+      }
+      setStatus("err", `That face is the preview's own (made by this ${esc(spec.title.toLowerCase())}); pick on the model as it was.`);
+      render();
+      return true;
+    }
     if (p.kind === "face") {
       if (p.flat && !fp.outline) { setStatus("err", `${esc(fp.name)} is not flat. Pick a flat face.`); render(); return true; }
       state.face = fp;
@@ -599,14 +639,15 @@ export function openDialog(id, ctx) {
         state.faces.push(fp);
       }
     } else if (p.kind === "edges") {
-      const edges = host.edgesOfFace(fp.mesh) || [];
+      // only edges between two of the model's own faces (not the preview's)
+      const edges = (host.edgesOfFace(fp.mesh) || []).filter((x) => (x.faces ?? []).every((f) => !fromPreview(f)));
       const e = nearestEdge(edges, fp.point, host.modelMeshes().filter((m) => m.userData.solidName === fp.solid));
       if (!e) { setStatus("err", "No named edge there."); render(); return true; }
       const i = state.edges.findIndex((x) => x.name === e.name);
       if (i >= 0) state.edges.splice(i, 1);
       else state.edges.push({ name: e.name, fid: fp.fid, segments: e.segments ?? null });
     } else if (p.kind === "bodies") {
-      if (fp.fid === state.fid) return true;
+      if (fp.fid === state.fid || !env0.sites[fp.fid]) return true;
       const i = state.bodies.findIndex((b) => b.fid === fp.fid);
       if (i >= 0) state.bodies.splice(i, 1);
       else state.bodies.push({ fid: fp.fid, name: (env.bodyOf(fp.fid)?.name ?? "body") + "(…)" });
@@ -628,7 +669,7 @@ export function openDialog(id, ctx) {
     get busy() { return !closed && last?.ok == null; },
     // for tests: the state, the text the preview built, and its outcome
     debug: () => ({ id, state: JSON.parse(JSON.stringify(state, (k, v) => (k === "mesh" || k === "outline" || k === "segments" ? undefined : v))),
-      text: last?.text ?? null, ok: last?.ok ?? null, status: status.text.replace(/<[^>]+>/g, ""), line: last?.text ? changedLine(base, last.text) : null }),
+      lastPick, text: last?.text ?? null, ok: last?.ok ?? null, status: status.text.replace(/<[^>]+>/g, ""), line: last?.text ? changedLine(base, last.text) : null }),
     set(key, value) { state[key] = value; render(); schedule(30); },
   };
 }
@@ -650,4 +691,13 @@ function shortReason(r) {
 }
 
 export const DIALOGS = Object.keys(SPECS);
-export const _test = { revolveAxes, revolveCall, changedLine };
+export const _test = { revolveAxes, revolveCall, changedLine, diffSpan };
+
+// The range of `next` that differs from `base`: where a dialog's edit went.
+function diffSpan(base, next) {
+  let a = 0;
+  while (a < base.length && a < next.length && base[a] === next[a]) a++;
+  let b = 0;
+  while (b < base.length - a && b < next.length - a && base[base.length - 1 - b] === next[next.length - 1 - b]) b++;
+  return { start: a, end: next.length - b, exact: false };
+}

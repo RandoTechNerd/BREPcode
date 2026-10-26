@@ -124,6 +124,23 @@ module.exports = app.whenReady().then(async () => {
     await run(`document.getElementById("redo-btn").click()`);
     await wait(1500);
 
+    say("\nreview repro: a second click on an edge whose fillet is previewing");
+    await setCode(`return difference(cube([30, 30, 12]), translate([15, 15, -1], cylinder({ r: 5, h: 14 })));`);
+    await open("fillet");
+    await pickWorld([15, 0.5, 12]);         // the top front edge
+    d = await settle();
+    check("first click: the top front edge, previewed", d.ok === true && d.state.edges.length === 1 && d.state.edges[0].name === "P.CU1_NY|P.CU1_PZ[0]", JSON.stringify(d.state.edges));
+    await pickWorld([15, 0.59, 11.41]);     // same place: now the preview's rounded face (45° on r 2)
+    d = await settle();
+    check("second click on the preview's round: that edge toggles off, no blend-face name picked", d.state.edges.length === 0, JSON.stringify(d.state.edges));
+    check("…through the preview-face path (its round mapped back to the edge), nothing failed", d.lastPick?.preview === true && !/refused/.test(d.status), JSON.stringify(d.lastPick));
+    await pickWorld([15, 0.5, 12]);
+    await set("amount", 2);
+    d = await settle();
+    check("…pick it again: back to one edge, built", d.ok === true && d.state.edges.length === 1, JSON.stringify(d));
+    await run(`brepscript.featureDialog().cancel()`);
+    await wait(1500);
+
     say("\nchamfer: Cancel restores the text");
     const pre = await codeText();
     await open("chamfer");
@@ -269,6 +286,8 @@ module.exports = app.whenReady().then(async () => {
     d = await run(`brepscript.design()`);
     check("the failure reaches the timeline", !!d.failure && /no edge/.test(d.failure.reason), JSON.stringify(d.failure));
     check("…as a red step", await run(`!!document.querySelector(".dt-step.fail")`));
+    check("…on the Fillet that failed, not on the Box before it", await run(`/Fillet/.test(document.querySelector(".dt-step.fail")?.textContent || "")`),
+      await run(`document.querySelector(".dt-step.fail")?.textContent`));
     await shot("16-failed-step");
 
     say("\nCode mode");
