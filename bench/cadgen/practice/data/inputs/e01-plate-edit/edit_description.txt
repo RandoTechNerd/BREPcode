@@ -1,0 +1,1 @@
+Open the central through bore from Ø30 to Ø36. Widen the through slot from 8 mm to 10 mm, keeping its centre line and its 30 mm centre-to-centre length. Add two Ø6.6 through holes, 20 mm either side of the central bore's centre along X and 20 mm from it along +Y (the side away from the slot).

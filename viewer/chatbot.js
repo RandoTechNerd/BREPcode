@@ -5,6 +5,11 @@ import { matchRequest, catalogSummary, rankFamilies, keyTokens, stem } from "../
 import { catalogOf, editCatalog, capabilities } from "../src/catalog/edit.js";
 import { catalogStats, FAMILIES, SPECS, CATEGORIES } from "../src/catalog/index.js";
 import { EXACT_CORE } from "../src/exactlane.js";
+import { readerRules, wantsModelFromImage, parseReply, normalizeTable, tableRows, tableText } from "../src/imageread.js";
+
+// The picture-to-model reader (src/imageread.js), shared with the benchmark
+// generator. Re-exported so the viewer reaches it through the one lazy import.
+export { wantsModelFromImage, parseReply, normalizeTable, tableRows, tableText };
 
 // ------------------------------------------------------------ rule engine
 
@@ -1799,7 +1804,7 @@ export const COMPACT_HARNESS = `You write BREPcode: JavaScript that RETURNS one 
 CATALOG CODE: keep a leading "From the BREPcode catalog: <id>." header, its "// Sized for" line and the const dials above the model exactly as they are; the app's follow-ups read them.
 SHAPES (the ONLY primitives): cube([x,y,z]) corner at origin · cylinder({r,h,$fn:48}) rises +Z from origin · sphere({r}).
 COMBINE: union(a,b,...) welds · difference(base, ...cutters) cuts holes · group(...parts) keeps parts separate — end multi-part assemblies with group(), never one big union.
-MOVE: translate([x,y,z], shape) · rotate([rx,ry,rz], shape) degrees.
+MOVE: translate([x,y,z], shape) · rotate([rx,ry,rz], shape) degrees, turned about Z FIRST, then Y, then X (not OpenSCAD's order): for two turns nest one-axis calls.
 RULES: sizes as named const at the top · cutters poke THROUGH faces (start 1mm below, end 1mm past) · keep it blocky and correct — rounding and colour come in a later Polish pass · there is no hole()/screw()/text()/fillet() here — build from the shapes above.
 THIS IS JAVASCRIPT: call the functions and nest shapes as arguments. NEVER OpenSCAD-style {} blocks after translate/rotate, NEVER shapes inside a string — return the shape object itself.
 EXAMPLE (a plate with one screw hole):
@@ -1830,7 +1835,7 @@ You are not a chatbot that discusses CAD — you are the tool that does it. Neve
 If the request is not about building a model at all — a question about the app, a browser, a bug, anything else — say in one sentence that you only build models, and write NO code block. Do not answer it with JavaScript. Your code block is executed to build the part, so a reply containing browser code (fetch, document, window, localStorage…) is refused by the app and the user just sees a warning. One honest sentence is far more useful than a snippet that will not run.
 
 LANGUAGE — BREPcode (JavaScript). This vocabulary is the whole language; nothing else exists:
-cube([x,y,z]) corner-at-origin; cylinder({r,h,$fn}) +Z from z=0; cone({r1,r2,h}); sphere({r}); torus({r,tube}); polygon([[x,y],...]) + linearExtrude({h}, profile); union(...); difference(target,...cutters); intersection(...); translate([x,y,z],s); rotate([rx,ry,rz],s) degrees; scale([x,y,z],s); mirror([nx,ny,nz],s); fillet(r,s); chamfer(d,s); revolve(angle, polygon([...])) about x=0; stretch({axis:'x'|'y'|'z', by:mm, at:pos}, s) cuts at a plane and widens the middle — a NEGATIVE by removes that much from the middle instead (scale a part up then stretch it back down to thicken its walls/rails while keeping the original outside size; anything in the removed slab is deleted); hull(...shapes) wraps everything in one convex skin (a MESH unless hull({exact:true}, ...): see EXACT B-REP FIRST) — for lofting between PROFILES no cone, extrude or revolve makes (a boss blending into a plate). If the taper runs ALONG a line or round a bend, that is tube() with a radius list, not hull: hulling a row of discs along a path is the slow way to write a sweep and produces about seven times the triangles; roundedGrow(mm,s) / minkowski(mm,s) rounds every outside edge, grows by mm; roundedShrink(mm,s) the opposite; smoothUnion(k, ...s) soft-min blend, flesh not creases; blob([[x,y,z,r],...],{k}) metaballs; drill([x,y,z],[nx,ny,nz],{d,depth,through}) bores into a face along its normal; group(...) keeps parts separate (assemblies).
+cube([x,y,z]) corner-at-origin; cylinder({r,h,$fn}) +Z from z=0; cone({r1,r2,h}); sphere({r}); torus({r,tube}); polygon([[x,y],...]) + linearExtrude({h}, profile); union(...); difference(target,...cutters); intersection(...); translate([x,y,z],s); rotate([rx,ry,rz],s) degrees, about Z first, then Y, then X; scale([x,y,z],s); mirror([nx,ny,nz],s); fillet(r,s); chamfer(d,s); revolve(angle, polygon([...])) about x=0; stretch({axis:'x'|'y'|'z', by:mm, at:pos}, s) cuts at a plane and widens the middle — a NEGATIVE by removes that much from the middle instead (scale a part up then stretch it back down to thicken its walls/rails while keeping the original outside size; anything in the removed slab is deleted); hull(...shapes) wraps everything in one convex skin (a MESH unless hull({exact:true}, ...): see EXACT B-REP FIRST) — for lofting between PROFILES no cone, extrude or revolve makes (a boss blending into a plate). If the taper runs ALONG a line or round a bend, that is tube() with a radius list, not hull: hulling a row of discs along a path is the slow way to write a sweep and produces about seven times the triangles; roundedGrow(mm,s) / minkowski(mm,s) rounds every outside edge, grows by mm; roundedShrink(mm,s) the opposite; smoothUnion(k, ...s) soft-min blend, flesh not creases; blob([[x,y,z,r],...],{k}) metaballs; drill([x,y,z],[nx,ny,nz],{d,depth,through}) bores into a face along its normal; group(...) keeps parts separate (assemblies).
 text({text, size, height, mode}) makes real 3D letters: union(plate, text(...)) embosses them, difference(plate, text({..., mode:'deboss'})) engraves them. stencil({text, size, thickness}) makes a spray/paint stencil — letters cut through a plate with auto tabs holding the counters (O, A, 0…).
 Codes (ONLY when the user explicitly asks for one): qrcode({text}), datamatrix({text}) — datamatrix also takes {label:"…"} to print human-readable text under it — and barcode({text}); options {module, relief, base}. Codes are raised; print them in a contrasting filament (2-colour). Never add a code unprompted.
 Colour: colorize([r,g,b], shape) tags a colour; a model with 2+ colours exports to 3MF as a colour group so a multi-material printer assigns a filament per colour (great for a coloured embossed label).
@@ -2178,6 +2183,13 @@ export const isDeepModel = (m) => {
     || /(ox-alpha|deepseek-r|\br1\b|qwq|thinking|reasoner|magistral)/i.test(s);
 };
 
+// "Make this from the picture": the two-step reader. The table comes first
+// so the app can measure the built model against it (src/selfcheck.js) and
+// show it to the user as an editable summary.
+export const IMAGE_READ_SECTION = `#imageread
+${readerRules()}
+ANSWER FORMAT for a picture-to-model request: one short line on what the picture is and where the sizes come from, then the \`\`\`json feature table, then the complete \`\`\`js model. The app shows the table to the user as an editable summary and checks the built model against it, so every hole, slot and boss in the code must be a row in the table. If you must ask for a size, ask that one question and send no table and no code.`;
+
 export const AUTO_SECTIONS = {
   // #speed and #deep are the same advice pointed in opposite directions, so
   // exactly one of them ships. #speed's "iterating in follow-ups beats one
@@ -2187,8 +2199,9 @@ export const AUTO_SECTIONS = {
   speed: (c) => !c.deepModel,
   deep: (c) => !!c.deepModel,
   fromimage: (c) => !!c.hasImage,
-  drawings: (c) => !!c.hasImage
-    || /\b(drawing|blueprint|dxf|dimensioned|title block|orthographic)\b/i.test(c.text || ""),
+  // #imageread replaces #drawings when the two-step reader is on (below)
+  drawings: (c) => !c.readImage && (!!c.hasImage)
+    || !c.readImage && /\b(drawing|blueprint|dxf|dimensioned|title block|orthographic)\b/i.test(c.text || ""),
   seeing: (c) => !!c.builtModel,
   splitting: (c) => /\b(split|halves|in half|two parts|separate (parts|pieces|colou?rs)|on the plate|build plate|print bed|dowel|glue|keyed|section it|too (big|tall|wide|large)|fit (my|the|a) printer|multi.?part)\b/i.test(c.text || ""),
   machine: (c) => /\b(gear|gears|gearbox|rack|pinion|ratio|winch|crank|trebuchet|mechanism|linkage|hinge|axle|pulley|cam|motor|drivetrain|bearing|shaft)\b/i.test(c.text || ""),
@@ -2216,6 +2229,7 @@ export function composeSystemParts(opts = {}) {
     }
     harnessText = keep.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     if (extra.length) autoExtra = "\n\n" + extra.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+    if (ctx.readImage) autoExtra += `\n\n${IMAGE_READ_SECTION}`;
   }
 
   // STABLE — identical for every message until the user changes a setting.

@@ -67,6 +67,9 @@ Use the bare-expression form for the live editor, the module form when the user 
 - `cylinder` and `cone` stand **along +Z with the base at z = 0**, centred in X and Y.
 - `sphere` is centred on the origin. `torus` lies flat in the XY plane, centred on the origin.
 - `{ center: true }` on `cube` or `cylinder` re-centres it on the origin instead.
+- `rotate([a, b, c], s)` turns about **Z first, then Y, then X** (three.js Euler order), the reverse of
+  OpenSCAD's X-then-Y-then-Z. For a turn about two axes, nest one-axis calls:
+  `rotate([0, 0, 90], rotate([90, 0, 0], s))` turns `s` about X, then about Z.
 
 ## The vocabulary
 

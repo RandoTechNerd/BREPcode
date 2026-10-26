@@ -296,6 +296,19 @@ export async function buildCurved(root) {
     return d.close();
   };
 
+  // a UNION (through any transforms) as its pieces, each with the matrix
+  // that places it; null when the node is not one
+  const unionPieces = (n, m = new Matrix4()) => {
+    if (n?.kind === "xform" && !stretchedShapes.get(n)) return unionPieces(n.child, new Matrix4().multiplyMatrices(m, n.matrix));
+    if (n?.kind === "op" && n.operation === "UNION") return n.children.map((c) => [c, m]);
+    return null;
+  };
+  // the same revolve() (through transforms) turned `deg` about its own axis
+  const seamTurned = (n, deg) => {
+    if (n?.kind === "xform" && !stretchedShapes.get(n)) { const c = seamTurned(n.child, deg); return c && { ...n, child: c }; }
+    if (n?.kind === "revolve" && (n.angle ?? 360) >= 360) return { kind: "xform", matrix: new Matrix4().makeRotationZ((deg * Math.PI) / 180), child: n };
+    return null;
+  };
   const build = (n, matrix) => {
     if (n.kind === "xform") {
       // a stretched subtree was baked to a mesh in the pre-pass — its own
@@ -307,10 +320,26 @@ export async function buildCurved(root) {
     if (n.kind === "op") {
       let acc = build(n.children[0], matrix);
       for (let i = 1; i < n.children.length; i++) {
-        const tool = build(n.children[i], matrix);
-        acc = n.operation === "SUBTRACT" ? acc.cut(tool)
-          : n.operation === "INTERSECT" ? acc.intersect(tool)
-          : acc.fuse(tool);
+        const child = n.children[i];
+        const tool = build(child, matrix);
+        if (n.operation !== "SUBTRACT") { acc = n.operation === "INTERSECT" ? acc.intersect(tool) : acc.fuse(tool); continue; }
+        try { acc = acc.cut(tool); }
+        catch (e) {
+          // OCCT sometimes refuses a cut that is fine geometrically. Measured:
+          // a counterbored drill() (one revolved cutter) into a filleted plate
+          // failed at one corner and not at the mirror-image one, which took
+          // the blueprint and the curved STEP down with it. A solid of
+          // revolution turned about its own axis is the same solid with its
+          // seam somewhere else, and that cut goes through; a fused tool is
+          // cut one piece at a time.
+          let done = false;
+          for (const deg of seamTurned(child, 0) ? [37, 90, 151, 211] : []) {
+            try { acc = acc.cut(build(seamTurned(child, deg), matrix)); done = true; break; } catch { /* next angle */ }
+          }
+          const pieces = done ? null : unionPieces(child);
+          if (pieces) for (const [p, m] of pieces) acc = acc.cut(build(p, new Matrix4().multiplyMatrices(matrix, m)));
+          else if (!done) throw e;
+        }
       }
       return acc;
     }
@@ -511,7 +540,9 @@ export function mergeSvgPaths(svg) {
 export async function curvedSvgText(root, view = "top") {
   const r = await loadReplicad();
   const shape = await buildCurved(root);
-  const { visible, hidden } = r.drawProjection(shape, view);
+  // named as a drafter means them: replicad's "top" looks up from below
+  const named = { top: "bottom", bottom: "top", right: "left", left: "right" }[view] ?? view;
+  const { visible, hidden } = r.drawProjection(shape, named);
   const vis = visible.toSVG();
   const hid = hidden.toSVG ? hidden.toSVG() : "";
   // pull the drawn paths out of replicad's two SVGs and merge into one,
@@ -535,9 +566,11 @@ ${pathsOf(hid)}
 // right) laid out in third-angle projection with a border and a title block —
 // visible edges solid, hidden edges dashed. Views share scale and align by their
 // common dimensions (front↔top share width, front↔right share height).
+// opts.shape: an already-built replicad shape (an imported STEP, say) instead
+// of building `root`.
 export async function curvedDrawingSVG(root, opts = {}) {
   const r = await loadReplicad();
-  const shape = await buildCurved(root);
+  const shape = opts.shape ?? await buildCurved(root);
 
   const pathsOf = mergeSvgPaths;
   // A projection can legitimately come back with nothing in it — a sphere seen
@@ -560,7 +593,10 @@ export async function curvedDrawingSVG(root, opts = {}) {
     const [x, y, w, h] = (vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 10 10").split(/\s+/).map(Number);
     return { x, y, w: w || 10, h: h || 10, vis: pathsOf(vis), hid: pathsOf(hid) };
   };
-  const front = project("front"), top = project("top"), right = project("right");
+  // replicad's "top" looks UP from below (a bottom view, mirrored), so the
+  // plan view seen from above is its "bottom"; and the third-angle RIGHT
+  // view, looking along -X from the +X side, is its "left".
+  const front = project("front"), top = project("bottom"), right = project("left");
   // an isometric pictorial view from the [1,1,1] corner for the spare corner
   const isoCam = new r.ProjectionCamera([100, 100, 100]);
   isoCam.lookAt([0, 0, 0]);

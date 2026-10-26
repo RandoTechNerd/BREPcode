@@ -90,9 +90,10 @@ console.log("\nthe always-on prompt did not grow to pay for it\n");
 
   // And the whole library, so the gated sections cannot grow without bound.
   // (36000 -> 36800 when #catalog arrived: ~500 chars that ride along only
-  // while a catalog design is the model on screen.)
+  // while a catalog design is the model on screen; 36800 -> 36850 for the
+  // rotate order, "about Z first, then Y, then X", which models got wrong.)
   check("...and the whole harness under its own",
-    DEFAULT_HARNESS.length < 36800, `${DEFAULT_HARNESS.length} chars`);
+    DEFAULT_HARNESS.length < 36850, `${DEFAULT_HARNESS.length} chars`);
 
   // The saving is the point of the split: if these ever converge, gating has
   // silently stopped working and every message is paying full price again.

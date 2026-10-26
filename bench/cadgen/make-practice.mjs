@@ -2,7 +2,11 @@
 // Builds the private practice set in cadgenbench's local layout:
 //   bench/cadgen/practice/data/inputs/<id>/{input.png, description.yaml}
 //   bench/cadgen/practice/data/gt/<id>/{ground_truth.step, jig_*.step, truth.json, drawing.svg}
-// from the part definitions in bench/cadgen/practice/parts/*.mjs.
+// from the part definitions in bench/cadgen/practice/parts/*.mjs. A part with
+// an `edit` ({ before, instruction }) is an EDITING sample: input.step is the
+// part with the `before` features, edit_description.txt the instruction,
+// renders/ the app's blueprint of the input, and the ground truth the part
+// with its own features.
 //
 //   node bench/cadgen/make-practice.mjs            all parts
 //   node bench/cadgen/make-practice.mjs p01 p07    just these
@@ -11,6 +15,8 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildPart } from "./lib/part.mjs";
 import { drawingSVG, svgToPNG, closeBrowser } from "./lib/drawing.mjs";
+import { initReplicad } from "./lib/occ.mjs";
+import { curvedDrawingSVG } from "../../viewer/curved.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PARTS = join(HERE, "practice/parts"), DATA = join(HERE, "practice/data");
@@ -29,11 +35,24 @@ for (const file of files) {
     mkdirSync(gtDir, { recursive: true }); mkdirSync(inDir, { recursive: true });
     writeFileSync(join(gtDir, "ground_truth.step"), gt.step);
     for (const j of gt.jigs) writeFileSync(join(gtDir, j.name), j.step);
-    const svg = await drawingSVG(gt.step, { ...part, features: gt.features, dims: gt.dims, leaders: gt.leaders }, gt.bbox);
-    writeFileSync(join(gtDir, "drawing.svg"), svg);
-    await svgToPNG(svg, join(inDir, "input.png"));
-    writeFileSync(join(inDir, "description.yaml"),
-      "description: >\n  Reproduce the geometry as accurately as possible from the drawing.\n\ninput_files:\n  - input.png\n\ninput_type: text+image\ntask_type: generation\n");
+    if (part.edit) {
+      const before = await buildPart({ ...part, features: part.edit.before });
+      if (before.center.some((v, i) => Math.abs(v - gt.center[i]) > 1e-6)) throw new Error("an edit must keep the bounding box (one shared frame)");
+      writeFileSync(join(inDir, "input.step"), before.step);
+      writeFileSync(join(inDir, "edit_description.txt"), part.edit.instruction);
+      mkdirSync(join(inDir, "renders"), { recursive: true });
+      const r = await initReplicad();
+      const shape = await r.importSTEP(new Blob([before.step]));
+      await svgToPNG(await curvedDrawingSVG(null, { shape, title: id, size: before.bbox.max.map((v, i) => v - before.bbox.min[i]) }), join(inDir, "renders/views.png"));
+      writeFileSync(join(inDir, "description.yaml"),
+        `description: >\n  ${part.edit.instruction}\n\ntask_type: editing\ninput_files:\n  - input.step\n\ninput_type: text+step\n`);
+    } else {
+      const svg = await drawingSVG(gt.step, { ...part, features: gt.features, dims: gt.dims, leaders: gt.leaders }, gt.bbox);
+      writeFileSync(join(gtDir, "drawing.svg"), svg);
+      await svgToPNG(svg, join(inDir, "input.png"));
+      writeFileSync(join(inDir, "description.yaml"),
+        "description: >\n  Reproduce the geometry as accurately as possible from the drawing.\n\ninput_files:\n  - input.png\n\ninput_type: text+image\ntask_type: generation\n");
+    }
     const size = gt.bbox.max.map((v, i) => +(v - gt.bbox.min[i]).toFixed(3));
     writeFileSync(join(gtDir, "truth.json"), JSON.stringify({ id, title: part.title, size, center: gt.center, features: gt.features }, null, 1));
     console.log(`${id}: ok  size ${size.join(" x ")}  ${gt.jigs.length} jigs  ${((Date.now() - t0) / 1000).toFixed(1)}s`);

@@ -1167,6 +1167,19 @@ console.log("\nwires are swept, not chained\n");
   check("...and #drawings with it — a sheet is an image too",
     img.volatile.includes("ENGINEERING DRAWINGS"));
 
+  // "make this from the drawing": the shared two-step reader replaces #drawings
+  const read = P({ text: "make this part from the drawing", hasImage: true, readImage: true });
+  check("a picture read brings the two-step reader (#imageread)",
+    read.volatile.includes("#imageread") && read.volatile.includes("STEP 1, THE FEATURE TABLE")
+    && read.volatile.includes("Z FIRST, then Y, then X"));
+  check("...in place of #drawings, so the two never disagree",
+    !read.volatile.includes("ENGINEERING DRAWINGS") && read.volatile.includes("FROM A PICTURE TO A MODEL"));
+  check("...and the stable prefix does not move", read.stable === img.stable);
+  check("the chat's reader test: a drawing to model, yes; a logo to emboss, no",
+    CB.wantsModelFromImage("make this from the drawing") && CB.wantsModelFromImage("can you model this part?")
+    && CB.wantsModelFromImage("") && !CB.wantsModelFromImage("emboss this logo on the lid")
+    && !CB.wantsModelFromImage("make this from the drawing", { hasImage: false }));
+
   const gear = P({ text: "a 3:1 gearbox with a crank handle" });
   check("gear words bring #machine", gear.volatile.includes("MACHINES AND GEARS"));
 
@@ -1830,7 +1843,7 @@ console.log("\nhearing a newcomer\n");
       && /if \(\(local\.fromCatalog && \(local\.code !== undefined \|\| !local\.cantDo\)\) \|\| acts\) \{/.test(HTML));
     // a catalog question or "it already has that" stays in the chat; only a
     // request the catalog cannot do reaches the AI, and then as an edit
-    check("...and an open model's change goes to the AI as a quick edit", /const quickEdit = withPicture \|\| \(text !== RETRY_TEXT/.test(HTML)
+    check("...and an open model's change goes to the AI as a quick edit", /const quickEdit = !readImage && \(withPicture \|\| \(text !== RETRY_TEXT/.test(HTML)
       && /lowReasoning: !!house \|\| quickEdit,/.test(HTML) && /This is an EDIT of the model above, not a new design/.test(HTML));
     check("...and so does a reply that acts on its own (undo)", /const acts = !!local\.run\?\.length;/.test(HTML)
       && /if \(!acts\) quickReplies\(/.test(HTML));
@@ -1877,6 +1890,56 @@ console.log("\nhearing a newcomer\n");
     check("the house request sends no images to a proxy that may not take them", /const vision = !house && !\["local", "browser", "claude-code"\]/.test(HTML));
     check("#ask= is cleared like ?ask= so a reload does not resend", /const inHash = \/\(\^\|\[#&\]\)ask=\/\.test\(u\.hash\);/.test(HTML));
   }
+}
+
+// ---------------------------------------------------------------------------
+// A picture into a model, through the chat: the reply is a feature table and
+// code (src/imageread.js), the built model is measured against the table
+// (src/selfcheck.js), and a disagreement becomes the fix request. Run here on
+// the real kernel with a canned reply, then the viewer's wiring is checked.
+console.log("\npicture -> model in the chat\n");
+{
+  const { parseReply, normalizeTable, fixPrompt } = await import("../src/imageread.js");
+  const { measureFaces, diffTable, issuesText } = await import("../src/selfcheck.js");
+  const reply = `A drawing; sizes from its dimensions.
+\`\`\`json
+{ "kind": "drawing", "scale": { "source": "dimensions" }, "overall": { "x": 60, "y": 40, "z": 8 },
+  "features": [ { "id": "A", "type": "hole", "positions": [[15, 20, 8], [45, 20, 8]], "axis": "+z", "dia": 6.6, "depth": "thru" },
+                { "id": "B", "type": "cbore", "positions": [[30, 20, 8]], "axis": "+z", "dia": 5.5, "depth": "thru", "cbore": { "d": 10, "depth": 3 } } ] }
+\`\`\`
+\`\`\`js
+return difference(cube([60, 40, 8]),
+  drill([15, 20, 8], [0, 0, 1], { d: 6.6, through: true }),
+  drill([45, 20, 8], [0, 0, 1], { d: 6.6, through: true }),
+  drill([30, 20, 8], [0, 0, 1], { d: 5.5, through: true }));
+\`\`\``;
+  const p = parseReply(reply);
+  check("the chat reads the code block, not the table, from a two-block reply",
+    /^return difference/.test(p.code) && p.table?.features?.length === 2 && p.prose.startsWith("A drawing"));
+  const shape = new Function(...names, `"use strict";\n${p.code}`)(...values);
+  const r = await build(shape, { engine: "split" });
+  const diff = diffTable(normalizeTable(p.table).table, measureFaces(r.solids.flatMap((s) => s.faces)));
+  check("the self-check finds the counterbore the code forgot, and nothing else",
+    diff.issues.length === 1 && /counterbore is missing/.test(diff.issues[0].msg), JSON.stringify(diff.issues));
+  check("...and turns it into the fix request",
+    /counterbore is missing/.test(fixPrompt(issuesText(diff))) && /```json table/.test(fixPrompt(issuesText(diff))));
+
+  const V = (await import("node:fs")).readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("the viewer starts a picture read only for a picture-to-model request",
+    /CHAT\?\.wantsModelFromImage\?\.\(text\)/.test(V) && /irPrepareImages\(pendingImgs\)/.test(V));
+  check("...parses the table-then-code reply with the shared parser",
+    /readImage \? CHAT\.parseReply\(answer\)/.test(V));
+  check("...does not trace the picture into an image() outline meanwhile",
+    /for \(const p of \(readImage \? \[\] : pendingImgs\)\)/.test(V));
+  check("...shows the table as an editable card and self-checks before the exact pass",
+    /irShowTable\(replyEl, irParsed\)/.test(V)
+    && V.indexOf("imageReadAfterBuild(irParsed") < V.indexOf("if (await exactFollowUp(r, fence[1].trim(), house)) return;"));
+  check("...caps the extra candidates (0 turns them off) and keeps the best-checking one",
+    /brepcode-image-candidates/.test(V) && /Kept the candidate that agrees best/.test(V));
+  check("...and sends the app's own blueprint back for the look-compare",
+    /curvedDrawingSVG\(lastShape, \{ title: "as built"/.test(V) && /IR\.lookPrompt\(/.test(V));
+  check("its follow-ups do not reset the fix budget like a new request",
+    /text !== RETRY_TEXT && text !== EXACT_TEXT && !irInternal\(text\)\) \{/.test(V));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

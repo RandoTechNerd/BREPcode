@@ -1,28 +1,28 @@
-"""Cut a drawing into an overview plus overlapping zoomed tiles for the model.
+"""Cut a picture into the crops src/imageread.js planned (overview, tiles,
+zooms), each scaled down to fit the model's 1568 px long edge.
 
-    python -I tiles.py input.png outdir [grid=2]
-Writes overview.png (long edge 1568) and tile_<r><c>.png (each a 1/grid
-crop with 12% overlap, at up to 1568 px, i.e. near native resolution).
+    python -I tiles.py input.png outdir '[{"name":"overview","x":0,"y":0,"w":W,"h":H}, ...]'
+    python -I tiles.py input.png --size      prints "W H"
 """
+import json
 import sys
 from pathlib import Path
 from PIL import Image
 
-src, out = Path(sys.argv[1]), Path(sys.argv[2])
-grid = int(sys.argv[3]) if len(sys.argv) > 3 else 2
-out.mkdir(parents=True, exist_ok=True)
+src = Path(sys.argv[1])
 im = Image.open(src).convert("L")
-W, H = im.size
+if sys.argv[2] == "--size":
+    print(im.size[0], im.size[1])
+    sys.exit(0)
+out = Path(sys.argv[2])
+out.mkdir(parents=True, exist_ok=True)
+rects = json.loads(sys.argv[3])
+
 
 def fit(img, edge=1568):
     s = edge / max(img.size)
     return img.resize((round(img.size[0] * s), round(img.size[1] * s)), Image.LANCZOS) if s < 1 else img
 
-fit(im).save(out / "overview.png")
-ov = 0.12
-tw, th = W / grid, H / grid
-for r in range(grid):
-    for c in range(grid):
-        x0 = max(0, int(c * tw - ov * tw)); x1 = min(W, int((c + 1) * tw + ov * tw))
-        y0 = max(0, int(r * th - ov * th)); y1 = min(H, int((r + 1) * th + ov * th))
-        fit(im.crop((x0, y0, x1, y1))).save(out / f"tile_{r}{c}.png")
+
+for r in rects:
+    fit(im.crop((r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"]))).save(out / f"{r['name']}.png")

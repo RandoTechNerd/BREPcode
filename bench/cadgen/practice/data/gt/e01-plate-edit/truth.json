@@ -1,0 +1,165 @@
+{
+ "id": "e01-plate-edit",
+ "title": "MOUNTING PLATE (EDIT)",
+ "size": [
+  120,
+  80,
+  12
+ ],
+ "center": [
+  60,
+  40,
+  6
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -48,
+    -28,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 12,
+   "through": true,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    48,
+    -28,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 12,
+   "through": true,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -48,
+    28,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 12,
+   "through": true,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    48,
+    28,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 12,
+   "through": true,
+   "cbore": {
+    "d": 11,
+    "depth": 6.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    0,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 36,
+   "depth": 12,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "slot",
+   "at": [
+    0,
+    -25,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "w": 10,
+   "len": 30,
+   "depth": 12,
+   "through": true,
+   "ctx": 3
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -20,
+    20,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 12,
+   "through": true,
+   "ctx": 4
+  },
+  {
+   "kind": "hole",
+   "at": [
+    20,
+    20,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.6,
+   "depth": 12,
+   "through": true,
+   "ctx": 4
+  }
+ ]
+}

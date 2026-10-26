@@ -17,7 +17,8 @@ submitting anything. **Nothing here submits to the leaderboard.**
 | `make-practice.mjs` | Builds each part into `practice/data/` in the evaluator's local layout (below). |
 | `lib/features.mjs` | One feature list per part drives the GT cutters, the interface jigs and the drawing callouts, so the three can never disagree. |
 | `lib/drawing.mjs` | A white-sheet engineering drawing: OCCT hidden-line TOP / FRONT / RIGHT views of the GT STEP, an isometric view, overall dimensions, baseline position dimensions for every feature, hole/slot/cbore/csk callouts with collision-avoiding leaders, notes and a title block. Rendered to a 3072 px PNG with headless Chromium. |
-| `run.mjs` | Generator v0: drawing to dimension table to BREPcode to exact STEP (details below). |
+| `run.mjs` | Generator v1: picture to feature table to BREPcode to exact STEP, self-checked, with candidates and a look-compare; also the editing track (details below). |
+| `lib/blueprint.mjs`, `lib/measurestep.mjs` | The app's blueprint of a candidate STEP (look-compare); measurements of an input STEP (editing). |
 | `score.mjs` | Runs cadgenbench's own `evaluate` against the practice GT, then prints the per-sample CAD Score with its shape / interface / topology breakdown. |
 | `lib/runcode.mjs`, `lib/validity.py`, `lib/tiles.py` | Child-process build of AI code, the evaluator's validity gate, and the drawing tiler. |
 
@@ -72,6 +73,40 @@ The code is built in a child process on the split engine (exact lane or
 refusal), centred, exported as exact STEP and checked by the evaluator's
 validity gate. On a syntax, build, mesh-lane or validity failure the AI gets
 the error back, for up to 3 attempts.
+
+## Generator v1 (default)
+
+v1 reads and checks with the app's own shared modules, the same code the
+chat runs when someone attaches a picture and asks for a model:
+
+| Module | Used by | What it does |
+|---|---|---|
+| `src/imageread.js` | chat + `run.mjs` | The reading rules for ANY picture (dimensioned drawing, hand sketch, photo, screenshot; an undimensioned picture asks for one size or marks its estimate "guessed"), the feature-table schema, the reply parser, the overview + zoomed tile plan, AI-requested zoom crops, and the fix / look-compare / candidate prompts. |
+| `src/selfcheck.js` | chat + `run.mjs` | Measures the built model off the exact kernel's faces (cylinder and cone axes, radii and extents fitted to each B-rep face; holes stacked with their counterbores and countersinks; through vs blind by a point-in-solid test; slot ends; bosses; flat faces) and diffs it against the table, trying three frame hypotheses so a frame mix-up is one note, not every feature wrong. |
+| `viewer/curved.js` | chat + `lib/blueprint.mjs` | The 3-view blueprint, now with the real plan view (replicad's `"bottom"`) and the real third-angle right view (`"left"`). |
+
+Per drawing sample: read + build (table, then code; build/validity errors go
+back, `--tries`), **self-check** against the table (one fix round on any
+disagreement), **candidates** (still disagreeing: `--candidates` - 1 fresh
+readings in parallel, kept by 0.6 x own self-check + 0.4 x agreement with the
+other candidates' tables), then **look-compare** (the kept model's blueprint
+next to the drawing; the answer is kept only if it still builds and
+self-checks no worse). `--no-check`, `--no-look` and `--candidates 1` turn
+the stages off.
+
+Per **editing** sample (`input.step` + `edit_description.txt`): the STEP is
+measured (`lib/measurestep.mjs`: holes, bosses, flat faces in its own frame)
+and read exactly by the Rust kernel (`importedSolid("input.step")`, IMPORT3D
+`stepText`). The AI writes the edit on top; it is built without centring and
+exported as exact STEP. The Rust kernel refuses some public STEPs (15 of 32
+on 2026-10-26, B-spline seams it cannot close) and fails some booleans on
+large imported solids; then the same code is built on the app's other exact
+lane, OpenCASCADE (`viewer/curved.js`, the curved STEP export). An edit that
+never builds falls back to the unedited input, logged as `fallback`.
+`practice/parts/e01-plate-edit.mjs` is a practice editing sample.
+
+`scripts/imageread-check.mjs` drives the same path through the app's chat in
+Chromium with a mocked AI (tiles, table card, self-check, fix, blueprint).
 
 ## Things learned building this
 

@@ -17306,7 +17306,7 @@ let SIMPLIFY_TARGET = 10000;
         + "align-items:center; justify-content:center; font:600 20px/1.5 system-ui;"
         + "color:#eaf3ff; text-align:center; pointer-events:none";
       overlay.innerHTML = `<div>Drop to open<div style="font:400 14px/1.6 system-ui; color:#bcd8f5; margin-top:6px">`
-        + `.bcode restores the editable model · .js / .scad / .py open as code · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
+        + `.bcode restores the editable model · .js / .scad / .py open as code · .stl / .3mf / .obj / .svg import as a mesh · .step imports as an exact solid</div></div>`;
       document.body.appendChild(overlay);
       const show = (on) => { overlay.style.display = on ? "flex" : "none"; };
 
@@ -18609,18 +18609,28 @@ let SIMPLIFY_TARGET = 10000;
         // Land it on the origin so editing (split/drill/stretch) works out of
         // the box. Skipped on huge meshes, where the full-vertex rewrite isn't
         // worth it and the triangle guard has usually already bailed.
-        const centered = (cleaned.text.match(/vertex/g)?.length ?? 0) <= MESH_HEAVY * 3
+        // A STEP stays where its file put it: "modify this STEP" means the
+        // edited part comes back in the same frame (see the exact import below).
+        const isStep = ext === "step" || ext === "stp";
+        const centered = !isStep && (cleaned.text.match(/vertex/g)?.length ?? 0) <= MESH_HEAVY * 3
           ? recenterStl(contents) : { text: contents, offset: [0, 0, 0] };
         contents = centered.text;
         const wasMoved = centered.offset.some((n) => Math.abs(n) > 0.5);
 
         logEvent("import", file.name, { mb: +(file.size / 1048576).toFixed(2), ext,
           repaired: !!repairNote, facets: (contents.match(/facet normal/g) || []).length });
-        dsl.registerImport(file.name, contents);
+        // A STEP comes in EXACT: importedSolid() hands the file itself to the
+        // Rust kernel (IMPORT3D stepText: true planes and cylinders, so a cut
+        // or a drill stays exact and the STEP export writes real surfaces),
+        // with the tessellation above as the fallback for a kernel that cannot
+        // read it. Everything else is a mesh, as before.
+        if (isStep) dsl.registerImport(file.name, new TextDecoder().decode(buf), { mesh: contents });
+        else dsl.registerImport(file.name, contents);
 
         // split: true → a multi-body file (assembly) imports as separate solids
         // you can move/edit independently; a single part stays one solid.
-        const call = `importedMesh(${JSON.stringify(file.name)}, { split: true })`;
+        const call = isStep ? `importedSolid(${JSON.stringify(file.name)})`
+          : `importedMesh(${JSON.stringify(file.name)}, { split: true })`;
         toggleCard(panel, openBtn, true);
         // Replace the editor contents outright: splicing the call into existing
         // code at the cursor produced `importedMesh(...)difference(` — two
@@ -22580,6 +22590,234 @@ let SIMPLIFY_TARGET = 10000;
       return true;
     }
 
+    // ---- a picture into a model: read, build, check -------------------------
+    //
+    // "Make this from the drawing" with a picture attached goes through the
+    // two-step reader the benchmark generator uses too (src/imageread.js):
+    // the AI writes a FEATURE TABLE (overall size, every hole, slot, boss with
+    // position, axis, diameter, depth) before the code. The table is shown
+    // here as an editable summary, and once the model builds it is MEASURED
+    // off the exact kernel's faces and diffed against the table
+    // (src/selfcheck.js). A disagreement goes back to the AI once; if it still
+    // disagrees, up to irCandidateCap() fresh readings are tried and the one
+    // that self-checks best is kept. Last, the app's own 3-view blueprint of
+    // the model goes back next to the picture for a look-compare pass. Each
+    // follow-up is visible in the chat as its own message, like a fix.
+    const IR_FIX_TEXT = "Check the model against your feature table and fix what disagrees.";
+    const IR_CAND_TEXT = "Read the picture again from scratch and build another candidate.";
+    const IR_LOOK_TEXT = "Compare the model's blueprint with my picture and correct any difference.";
+    const IR_REBUILD = /^Rebuild the model from my corrected feature table/;
+    const irInternal = (t) => t === IR_FIX_TEXT || t === IR_CAND_TEXT || t === IR_LOOK_TEXT || IR_REBUILD.test(t);
+    // 0 turns extra candidates off; brepcode-image-candidates in localStorage
+    const irCandidateCap = () => {
+      const v = localStorage.getItem("brepcode-image-candidates");
+      return v == null ? 2 : Math.max(0, Math.min(3, parseInt(v, 10) || 0));
+    };
+    let imageRead = null;   // { images, note, cands, candLeft, fixUsed, lookDone, phase, card, done }
+    let _ir = null, _sc = null;
+    const getImageRead = () => (_ir ??= import("../src/imageread.js"));
+    const getSelfCheck = () => (_sc ??= import("../src/selfcheck.js"));
+
+    const loadImg = (src) => new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => rej(new Error("image did not load"));
+      im.src = src;
+    });
+    // A crop of an image, scaled to fit the model's long edge, as base64 PNG.
+    function cropB64(im, r, edge = 1568) {
+      const s = Math.min(1, edge / Math.max(r.w, r.h));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(r.w * s)); c.height = Math.max(1, Math.round(r.h * s));
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(im, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+      return c.toDataURL("image/png").split(",")[1];
+    }
+    // The attached pictures plus zoomed tiles of any large one, so small
+    // dimension text stays readable (the same plan the benchmark uses).
+    async function irPrepareImages(pending) {
+      const IR = await getImageRead();
+      const images = [], notes = [];
+      for (const p of pending) {
+        images.push({ ext: p.ext, b64: p.b64, mediaType: p.mediaType, name: p.name });
+        try {
+          const im = await loadImg(p.dataUrl);
+          const rects = IR.tileRects(im.naturalWidth, im.naturalHeight).slice(1);
+          rects.forEach((r) => images.push({ ext: "png", b64: cropB64(im, r), mediaType: "image/png", name: `${p.name || "picture"} ${r.name}` }));
+          if (rects.length) notes.push(`${p.name || "the picture"}: ${IR.tilesNote([{}, ...rects])}`);
+        } catch { /* sent whole */ }
+      }
+      return { images, note: notes.join(" ") };
+    }
+
+    // Every B-rep face of the model as built: the worker's face records, or
+    // the local kernel's FACE meshes in world space.
+    function irFaceRecords() {
+      const out = [];
+      for (const s of lastSolids) {
+        if (Array.isArray(s?.faces)) {
+          for (const f of s.faces) {
+            if (!f?.positions) continue;
+            if (!f.matrix) { out.push(f); continue; }
+            const m = new THREE.Matrix4().fromArray(f.matrix), nm = new THREE.Matrix3().getNormalMatrix(m);
+            const P = Float32Array.from(f.positions), N = f.normals ? Float32Array.from(f.normals) : null, v = new THREE.Vector3();
+            for (let i = 0; i < P.length; i += 3) {
+              v.set(P[i], P[i + 1], P[i + 2]).applyMatrix4(m); P[i] = v.x; P[i + 1] = v.y; P[i + 2] = v.z;
+              if (N) { v.set(N[i], N[i + 1], N[i + 2]).applyMatrix3(nm).normalize(); N[i] = v.x; N[i + 1] = v.y; N[i + 2] = v.z; }
+            }
+            out.push({ positions: P, normals: N, index: f.index });
+          }
+        } else s?.traverse?.((o) => {
+          const pa = o?.geometry?.attributes?.position;
+          if (o.type !== "FACE" || !pa) return;
+          const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+          out.push({ positions: g.attributes.position.array, normals: g.attributes.normal?.array, index: g.index?.array });
+        });
+      }
+      return out;
+    }
+
+    async function irCheck(table) {
+      if (!table) return null;
+      const [SC, IR] = await Promise.all([getSelfCheck(), getImageRead()]);
+      const t = IR.normalizeTable(table).table;
+      const faces = irFaceRecords();
+      if (!t || !faces.length) return null;
+      return SC.diffTable(t, SC.measureFaces(faces));
+    }
+
+    // The table as a card under the reply: rows to read, the JSON to edit.
+    async function irShowTable(el, parsed) {
+      const IR = await getImageRead();
+      const rows = IR.tableRows(IR.normalizeTable(parsed.table).table);
+      const card = document.createElement("details");
+      card.className = "ir-card";
+      card.open = true;
+      card.style.cssText = "margin-top:8px; font-size:12px";
+      card.innerHTML = `<summary><span class="tw">▸</span>what I read off the picture (${rows.length} row${rows.length === 1 ? "" : "s"})</summary>`
+        + `<table style="border-collapse:collapse; margin:6px 0; width:100%">${rows.map((r) => `<tr>`
+          + `<td style="padding:1px 6px 1px 0; opacity:.7">${esc(r.id)}</td><td style="padding:1px 6px 1px 0">${esc(r.what)}</td>`
+          + `<td style="padding:1px 6px 1px 0">${esc(r.size)}</td><td style="padding:1px 6px 1px 0; opacity:.8">${esc(r.where)}</td>`
+          + `<td style="opacity:.7">${r.confidence && r.confidence !== "high" ? esc(r.confidence) : ""}</td></tr>`).join("")}</table>`
+        + (parsed.table?.guessed?.length ? `<div style="opacity:.8">guessed: ${esc(parsed.table.guessed.join("; "))}</div>` : "")
+        + `<div class="ir-check" style="margin-top:4px"></div>`;
+      const edit = document.createElement("button");
+      edit.className = "hist-btn";
+      edit.style.cssText = "font-size:11.5px; padding:2px 10px; margin-top:6px";
+      edit.textContent = "Edit the table";
+      edit.addEventListener("click", () => {
+        edit.remove();
+        const ta = document.createElement("textarea");
+        ta.value = parsed.tableText || JSON.stringify(parsed.table, null, 1);
+        ta.style.cssText = "width:100%; min-height:160px; font:11px monospace; margin-top:6px";
+        const go = document.createElement("button");
+        go.className = "hist-btn";
+        go.style.cssText = "font-size:11.5px; padding:2px 10px; margin-top:4px";
+        go.textContent = "Rebuild from this table";
+        go.addEventListener("click", () => {
+          go.disabled = true;
+          chatInput.value = `Rebuild the model from my corrected feature table. Keep everything else; change the code so it builds exactly this table:\n\`\`\`json\n${ta.value.trim()}\n\`\`\``;
+          sendChat();
+        });
+        card.append(ta, go);
+      });
+      card.appendChild(edit);
+      el.appendChild(card);
+      return card;
+    }
+
+    // The app's own blueprint of the model, as a PNG for the AI.
+    async function irBlueprintB64() {
+      if (!lastShape) return null;
+      const curved = await getCurved();
+      await curved.loadReplicad();
+      const bb = new THREE.Box3().setFromObject(modelGroup);
+      const dims = bb.isEmpty() ? null : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
+      const svg = await curved.curvedDrawingSVG(lastShape, { title: "as built", size: dims });
+      const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+      try {
+        const im = await loadImg(url);
+        const w = im.naturalWidth || 1000, h = im.naturalHeight || 700;
+        return cropB64(im, { x: 0, y: 0, w, h }, 1568);
+      } finally { URL.revokeObjectURL(url); }
+    }
+
+    // After an image-read build: self-check, then fix / candidates / look.
+    // True when it sent another request (the caller stops there).
+    async function imageReadAfterBuild(parsed, src, card, house) {
+      const st = imageRead;
+      if (!st || st.done) return false;
+      const IR = await getImageRead();
+      let diff = null;
+      try { diff = lastEngine?.engine === "exact" ? await irCheck(parsed?.table) : null; }
+      catch (e) { console.warn("[chat] self-check failed:", e); }
+      const SC = await getSelfCheck();
+      const box = card?.querySelector(".ir-check");
+      if (box) {
+        box.textContent = diff ? `self-check: ${SC.diffSummary(diff)}${diff.ok ? " ✓" : ""}`
+          : lastEngine?.engine === "exact" ? "self-check: nothing to compare" : "self-check: skipped (not an exact model)";
+        if (diff?.issues.length) {
+          const ul = document.createElement("ul");
+          ul.style.cssText = "margin:2px 0 0 16px; padding:0";
+          for (const i of diff.issues.slice(0, 10)) { const li = document.createElement("li"); li.textContent = i.msg; ul.appendChild(li); }
+          box.appendChild(ul);
+        }
+      }
+      st.cands.push({ code: src, tableText: parsed?.tableText, table: parsed?.table, score: diff ? diff.score : null, phase: st.phase });
+      const send = (detail, short, phase) => {
+        st.phase = phase;
+        chatLog.push({ role: "user", text: detail });
+        if (house) houseNext = house;
+        chatInput.value = short;
+        return sendChat().then(() => true);
+      };
+      const auto = maxAutoFix() > 0;
+      if (st.phase === "look") { st.done = true; return irFinish(st); }
+      if (diff && !diff.ok && auto && !st.fixUsed) {
+        st.fixUsed = true;
+        addMsg("bot", `The model and the table disagree in ${diff.issues.length} place${diff.issues.length === 1 ? "" : "s"}; asking for a fix…`);
+        return send(IR.fixPrompt(SC.issuesText(diff), { notes: diff.notes }), IR_FIX_TEXT, "fix");
+      }
+      if (diff && !diff.ok && auto && st.candLeft > 0) {
+        st.candLeft--;
+        const n = st.cands.length;
+        addMsg("bot", `Still disagreeing, so trying a fresh reading as another candidate (${irCandidateCap() - st.candLeft} of ${irCandidateCap()})…`);
+        return send(`${IR.candidateHint(n)} The picture is the one I attached at the start. Answer in the same format: the \`\`\`json feature table, then the complete \`\`\`js model.`, IR_CAND_TEXT, "cand");
+      }
+      // reading done: keep the candidate that checks best
+      const best = st.cands.reduce((a, b) => ((b.score ?? -1) > (a.score ?? -1) ? b : a));
+      if (best.code !== src) {
+        await applyGeneratedCode(best.code);
+        addMsg("bot", `Kept the candidate that agrees best with its table (${Math.round((best.score ?? 0) * 100)}% of checks).`);
+      }
+      // look-compare, on providers that take pictures
+      const vision = !house && !["local", "browser"].includes(aiProvider.value);
+      if (!st.lookDone && auto && vision) {
+        st.lookDone = true;
+        let bp = null;
+        try { bp = await irBlueprintB64(); } catch (e) { console.warn("[chat] blueprint for look-compare failed:", e); }
+        if (bp) {
+          st.extra = [{ ext: "png", b64: bp, mediaType: "image/png", name: "blueprint.png" }];
+          st.bestCode = best.code;
+          st.bestScore = best.score;
+          const sc = best.score != null ? `${Math.round(best.score * 100)}% of the measured checks agree with the table` : "";
+          return send(IR.lookPrompt({ selfCheck: sc }), IR_LOOK_TEXT, "look");
+        }
+      }
+      st.done = true;
+      return false;
+    }
+    async function irFinish(st) {
+      // the look pass may not undo a better-checking model
+      const last = st.cands.at(-1);
+      if (st.bestCode && last && (last.score ?? 0) < (st.bestScore ?? 0) - 0.05) {
+        await applyGeneratedCode(st.bestCode);
+        addMsg("bot", "The look-compare version checked worse against its table, so the previous model is back.");
+      }
+      return false;
+    }
+
     // ---- learning from this machine's own build history --------------------
     //
     // The loop worth closing: attempt 1 fails, the error goes back, attempt 2
@@ -22815,7 +23053,9 @@ let SIMPLIFY_TARGET = 10000;
         steerNotes.push(`not a command, left in the message: ${dir.unknown.join(" ")}`);
       }
 
-      if (text !== RETRY_TEXT && text !== EXACT_TEXT) {
+      if (text !== RETRY_TEXT && text !== EXACT_TEXT && !irInternal(text)) {
+        // a new request ends a picture read, unless that read asked a question
+        if (!imageRead?.awaitingAnswer) imageRead = null;
         exactTried = false;                        // ...and a fresh exact pass
         exactPass = null;
         autoFixTries = 0;                          // a real request, fresh budget
@@ -23164,13 +23404,27 @@ let SIMPLIFY_TARGET = 10000;
         // outranking the surrounding scaffolding.
         // A change to the model on screen ("add a hole for the charger"), not a
         // new design: the AI is told to edit, and to think briefly.
-        const quickEdit = withPicture || (text !== RETRY_TEXT && text !== EXACT_TEXT && !!code.value.trim()
-          && code.value.trim() !== code.defaultValue.trim() && !!CHAT?.isQuickEdit?.(text)) || !!anchor;
+        // "Make this from the picture": the two-step reader (see imageReadAfterBuild)
+        const irFirst = !irInternal(text) && text !== RETRY_TEXT && text !== EXACT_TEXT && pendingImgs.length > 0
+          && !house && !["local", "browser"].includes(aiProvider.value) && !!CHAT?.wantsModelFromImage?.(text);
+        if (irFirst) {
+          const prep = await irPrepareImages(pendingImgs);
+          imageRead = { images: prep.images, note: prep.note, cands: [], candLeft: irCandidateCap(), fixUsed: false, lookDone: false, phase: "first", done: false };
+          logLine(`picture -> model: feature table first${prep.images.length > pendingImgs.length ? `, with ${prep.images.length - pendingImgs.length} zoomed tiles` : ""}`);
+        } else if (imageRead && IR_REBUILD.test(text)) {
+          Object.assign(imageRead, { cands: [], candLeft: irCandidateCap(), fixUsed: false, lookDone: false, phase: "first", done: false });
+        }
+        const irCont = !!imageRead?.awaitingAnswer && !irFirst && !irInternal(text) && text !== RETRY_TEXT;
+        if (imageRead) imageRead.awaitingAnswer = false;
+        const readImage = !!imageRead && !imageRead.done && (irFirst || irCont || irInternal(text) || text === RETRY_TEXT);
+        // (a picture read is a new design, never a quick edit of what is on screen)
+        const quickEdit = !readImage && (withPicture || (text !== RETRY_TEXT && text !== EXACT_TEXT && !!code.value.trim()
+          && code.value.trim() !== code.defaultValue.trim() && !!CHAT?.isQuickEdit?.(text)) || !!anchor);
         if (quickEdit) logLine("quick edit of the model on screen: keep it, change only what was asked");
         // Attached pictures become geometry the app traced itself: the AI
         // places image("img-…") instead of redrawing a logo by eye.
         const imageNames = [];
-        for (const p of pendingImgs) {
+        for (const p of (readImage ? [] : pendingImgs)) {
           try { imageNames.push(await registerChatImage(p.dataUrl)); } catch (e) { logLine(`picture not traced: ${e.message}`); }
         }
         if (imageNames.length) logLine(`traced ${imageNames.length} picture${imageNames.length > 1 ? "s" : ""}: ${imageNames.join(", ")}`);
@@ -23191,6 +23445,7 @@ let SIMPLIFY_TARGET = 10000;
             + ` boss wrapped around the existing return. Do not rebuild, restyle or resize anything else. Think briefly:`
             + ` this is a small change, and the answer is the complete edited code.` : "")
           + imageNote
+          + (readImage && imageRead.note && text !== RETRY_TEXT ? `\n${imageRead.note}` : "")
           + (anchor ? `
 
 ${SC.describeSelectionContext(anchor)}` : "");
@@ -23211,7 +23466,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
         // being written while this searches, so the answer costs no waiting —
         // and a failed search costs nothing at all. Only fires when the request
         // names something recognisable, and only on a retry-free first ask.
-        if (text !== RETRY_TEXT && text !== EXACT_TEXT) maybeOfferPriorArt(text, cfg);
+        if (text !== RETRY_TEXT && text !== EXACT_TEXT && !irInternal(text)) maybeOfferPriorArt(text, cfg);
 
         // Pull in only the reference material this message is actually about.
         // A miss costs nothing and must never block the request, so a broken
@@ -23251,6 +23506,12 @@ ${SC.describeSelectionContext(anchor)}` : "");
         // Attached images ride on THIS message only.
         const imgs = pendingImgs.slice();
         clearPendingImg();
+        // a picture read sends its pictures (and tiles, and the blueprint on
+        // the look pass) with every follow-up, not just the first message
+        if (readImage && text !== RETRY_TEXT) {
+          imgs.splice(0, imgs.length, ...imageRead.images, ...(imageRead.extra || []));
+          imageRead.extra = null;
+        }
 
         // Show it the model. Only when one is actually built, only when the
         // user has not attached their own pictures (theirs are the subject;
@@ -23300,6 +23561,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
         // the follow-up message doesn't say "gear".
         const msgContext = {
           hasImage: imgs.length > 0,
+          readImage,
           text: context,
           // A reasoning model gets #deep instead of #speed — see AUTO_SECTIONS.
           deepModel: CHAT?.isDeepModel?.(cfg.model) ?? false,
@@ -23635,16 +23897,18 @@ ${SC.describeSelectionContext(anchor)}` : "");
           }
         }
 
-        let fence = answer.match(/```[\w]*\n([\s\S]*?)```/);
+        // a picture read answers with a ```json table first: take the code block
+        const irParsed = readImage ? CHAT.parseReply(answer) : null;
+        let fence = irParsed ? (irParsed.code ? [null, irParsed.code] : null) : answer.match(/```[\w]*\n([\s\S]*?)```/);
         // A reply cut off by the token limit has an OPENING fence and no closing
         // one. Without this the code never applied and the user just saw the
         // preamble stop dead mid-thought. Take what arrived and flag it.
         let truncated = false;
-        if (!fence) {
+        if (!fence && !irParsed) {
           const open = answer.match(/```[\w]*\n([\s\S]*)$/);
           if (open && open[1].trim()) { fence = open; truncated = true; }
         }
-        const prose = answer
+        const prose = irParsed ? irParsed.prose : answer
           .replace(/```[\w]*\n[\s\S]*?```/g, "")
           .replace(/```[\w]*\n[\s\S]*$/, "")
           .trim();
@@ -23669,6 +23933,18 @@ ${SC.describeSelectionContext(anchor)}` : "");
           replyEl.appendChild(tag);
         }
         chatLog.push({ role: "assistant", text: answer });
+        let irCard = null;
+        if (irParsed?.table && !unsafe) irCard = await irShowTable(replyEl, irParsed);
+        if (readImage && !fence && !unsafe) {
+          if (imageRead.phase === "look") {
+            imageRead.done = true;
+            if (/NO CHANGES/.test(answer)) addMsg("bot", "The blueprint of the model matches the picture.");
+            await irFinish(imageRead);
+            return;
+          }
+          // it asked a question (a size, usually): the answer continues this read
+          if (imageRead.phase === "first") imageRead.awaitingAnswer = true;
+        }
         if (fence && !unsafe) {
           let r = await applyGeneratedCode(fence[1].trim());
           // A MODULE STILL LOADING IS NOT A CODE ERROR.
@@ -23736,6 +24012,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
               ok: true, error: lessonFirstError,
               attempts: autoFixTries + 1, code: fence[1].trim(),
             });
+            if (readImage && await imageReadAfterBuild(irParsed, fence[1].trim(), irCard, house)) return;
             if (await exactFollowUp(r, fence[1].trim(), house)) return;
             // The sculptor's second pass, offered rather than automatic: at
             // in-browser token speeds an auto-polish would double every wait,

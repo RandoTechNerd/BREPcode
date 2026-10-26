@@ -23,7 +23,7 @@ export async function build(shape, { tolerance = 6, engine = process.env.BREPSCR
       if (!nk) throw new EngineRefusal("the NVIDIA kernel isn't built on this machine (native/nvidia-kernel)", "exact");
       const out = await runEngine(await ph.toJSON(), { rust: nk, manifold: loadManifoldNode });
       const solids = out.solids.map((s) => ({
-        type: "SOLID", name: s.name, exact: s.exact, handle: s.handle, faceNames: s.faces.map((f) => f.name),
+        type: "SOLID", name: s.name, exact: s.exact, handle: s.handle, faceNames: s.faces.map((f) => f.name), faces: s.faces,
         toSTL: (name) => solidsToSTL([{ ...s, name }], tolerance),
       }));
       return { partHistory: ph, solids, tolerance, engine: out.lane, kernel: "nvidia", stats: out.stats };
@@ -37,7 +37,7 @@ export async function build(shape, { tolerance = 6, engine = process.env.BREPSCR
       const rust = await loadRustKernel();
       const out = await runEngine(await ph.toJSON(), { rust, manifold: loadManifoldNode });
       const solids = out.solids.map((s) => ({
-        type: "SOLID", name: s.name, exact: s.exact, handle: s.handle, faceNames: s.faces.map((f) => f.name),
+        type: "SOLID", name: s.name, exact: s.exact, handle: s.handle, faceNames: s.faces.map((f) => f.name), faces: s.faces,
         toSTL: (name) => solidsToSTL([{ ...s, name }], tolerance),
       }));
       return { partHistory: ph, solids, tolerance, engine: out.lane, kernel: "rust", stats: out.stats, fallback };
