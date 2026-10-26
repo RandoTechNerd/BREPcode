@@ -13,17 +13,12 @@ import { exactSTEP } from "../../../src/stepexport.js";
 const [codePath, outPath] = process.argv.slice(2);
 const say = (o) => { process.stdout.write(JSON.stringify(o) + "\n"); process.exit(o.ok ? 0 : 1); };
 
-const names = Object.keys(api).filter((k) => /^[A-Za-z_$][\w$]*$/.test(k));
-export function compileCode(src) {
-  const body = /\breturn\b/.test(src) ? src : `return (${src.trim().replace(/;\s*$/, "")});`;
-  // own block: the code may declare a name the DSL also exports (const slot = ...)
-  return new Function(...names, `"use strict";\n{\n${body}\n}`);
-}
+import { runEditorCode } from "../../../src/runcode.js";
 
 let shape;
 try {
-  const src = readFileSync(codePath, "utf8");
-  shape = compileCode(src)(...names.map((k) => api[k]));
+  // the editor's own forgiveness: shadowed DSL words, a forgotten return
+  ({ shape } = runEditorCode(readFileSync(codePath, "utf8"), api));
   if (shape == null) throw new Error("the code returned nothing");
 } catch (e) { say({ ok: false, kind: "syntax", error: String(e?.message || e) }); }
 

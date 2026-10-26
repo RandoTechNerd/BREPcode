@@ -88,6 +88,15 @@ function buildOne(codeFile, stlFile) {
   try { return JSON.parse(line); } catch { return { ok: false, stage: "build", error: (r.stderr || r.stdout || "no output").slice(-600) }; }
 }
 
+// what a slicer would complain about, in words the AI can act on
+function printIssues(b) {
+  const out = [];
+  if (!b.watertight) out.push("the mesh is not watertight (open edges or self-intersections)");
+  if (!b.onBed) out.push(`${b.floating} separate bod${b.floating === 1 ? "y floats" : "ies float"} above z = 0; every part must rest on the bed`);
+  if (b.overhangPct > 5) out.push(`${b.overhangPct}% of the surface faces down steeper than 45 degrees; chamfer those undersides to 45 degrees, reorient the part, or make them short bridges`);
+  if (!b.fitsBed) out.push(`the layout is ${b.size.join(" x ")} mm; it must fit 256 x 256 x 256 mm`);
+  return out;
+}
 function score(b) {
   if (!b?.ok) return 0;
   let s = 40;                                              // it builds
@@ -116,7 +125,12 @@ async function photograph(url, id, code) {
     await new Promise((r) => ws.addEventListener("open", r));
     let seq = 0; const pending = new Map();
     ws.addEventListener("message", (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
-    const send = (method, params = {}) => new Promise((r) => { const n = ++seq; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
+    // every DevTools call gives up after 60 s: a page that hangs (a model the
+    // viewer chokes on) must cost one screenshot, not the whole run
+    const send = (method, params = {}) => Promise.race([
+      new Promise((r) => { const n = ++seq; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); }),
+      new Promise((_, no) => setTimeout(() => no(new Error(`${method} timed out`)), 60000)),
+    ]);
     const js = async (expr) => (await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true })).result?.result?.value;
     const shot = async (name) => {
       const r = await send("Page.captureScreenshot", { format: "png" });
@@ -164,24 +178,36 @@ for (const p of prompts) {
   log(`\n== ${p.id}: ${p.prompt}`);
   let reply = await ask(`${DOC}\n\n${EXACT_CORE}\n\n---\n\nWrite a BREPcode model for this request.\n\nRequest: ${p.prompt}\n\n${PRINT_RULES}\n\nReply with ONLY the complete editor code in one \`\`\`js block (named consts at the top, then \`return <shape>;\`).`);
   const tries = [];
-  let best = null, code = "", cost = reply.cost;
+  let best = null, bestCode = "", code = "", cost = reply.cost;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     if (reply.error && !reply.text) { tries.push({ attempt, error: `claude: ${reply.error}` }); break; }
     code = codeOf(reply.text);
     const codeFile = path.join(OUT, `${p.id}.js`), stlFile = path.join(OUT, `${p.id}.stl`);
     writeFileSync(codeFile, code);
     const b = buildOne(codeFile, stlFile);
-    tries.push({ attempt, ok: b.ok, error: b.error || null, ms: b.ms, aiMs: reply.ms });
+    tries.push({ attempt, ok: b.ok, error: b.error || null, ms: b.ms, aiMs: reply.ms, score: score(b) });
     log(`  try ${attempt}: ${b.ok ? `built on ${b.kernel} (${b.lane}) in ${b.ms} ms; watertight ${b.watertight}, on bed ${b.onBed}, overhang ${b.overhangPct}%` : `failed: ${String(b.error).slice(0, 160)}`}`);
-    best = b;
-    if (b.ok) break;
-    if (attempt < ATTEMPTS) {
-      reply = await ask(`${DOC}\n\n${EXACT_CORE}\n\n---\n\nThis BREPcode model for "${p.prompt}" failed to build:\n\n${b.error}\n\nThe code:\n\`\`\`js\n${code}\n\`\`\`\n\nFix it. ${PRINT_RULES}\n\nReply with ONLY the complete corrected code in one \`\`\`js block.`);
-      cost += reply.cost;
-    }
+    if (!best || score(b) > score(best)) { best = b; bestCode = code; }
+    const problems = b.ok ? printIssues(b) : [];
+    if (b.ok && !problems.length) break;
+    if (attempt >= ATTEMPTS) break;
+    const why = b.ok
+      // it builds but won't print well: hand the measured problems back
+      ? `builds, but a print check found:\n\n${problems.map((x) => `- ${x}`).join("\n")}\n\nFix those problems without losing any requested feature.`
+      : `failed to build:\n\n${b.error}\n\nFix it.`;
+    reply = await ask(`${DOC}\n\n${EXACT_CORE}\n\n---\n\nThis BREPcode model for "${p.prompt}" ${why}\n\nThe code:\n\`\`\`js\n${code}\n\`\`\`\n\n${PRINT_RULES}\n\nReply with ONLY the complete corrected code in one \`\`\`js block.`);
+    cost += reply.cost;
+  }
+  if (bestCode && bestCode !== code) {                       // a later try scored worse: keep the best
+    code = bestCode;
+    writeFileSync(path.join(OUT, `${p.id}.js`), code);
+    buildOne(path.join(OUT, `${p.id}.js`), path.join(OUT, `${p.id}.stl`));
   }
   const row = { ...p, score: score(best), attempts: tries.length, tries, build: best, costUsd: +cost.toFixed(3), codeLines: code.split("\n").length };
-  if (SHOTS && best?.ok) row.shots = await photograph(SHOTS, p.id, code);
+  if (SHOTS && best?.ok) {
+    // and the whole photo session is capped too
+    row.shots = await Promise.race([photograph(SHOTS, p.id, code), new Promise((r) => setTimeout(() => r([]), 6 * 60 * 1000))]);
+  }
   rows.push(row);
   writeFileSync(path.join(OUT, "scores.json"), JSON.stringify({ model: MODEL, engine: ENGINE, stamp, rows }, null, 1));
 }

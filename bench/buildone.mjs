@@ -6,8 +6,8 @@
 //   node bench/buildone.mjs model.js out.stl [engine]      engine: nvidia (default) | split | js
 
 import { readFileSync, writeFileSync } from "node:fs";
-import * as dsl from "../src/dsl.js";
-import { build, toSTL, fromOpenSCAD, looksLikeOpenSCAD } from "../index.js";
+import { build, toSTL } from "../index.js";
+import { runEditorCode } from "../src/runcode.js";
 import Module from "manifold-3d";
 
 const [file, outStl, engine = "nvidia"] = process.argv.slice(2);
@@ -18,10 +18,8 @@ let src = readFileSync(file, "utf8");
 const t0 = performance.now();
 let res;
 try {
-  if (looksLikeOpenSCAD(src)) src = fromOpenSCAD(src);
-  const names = Object.keys(dsl).filter((k) => typeof dsl[k] === "function" && k !== "compile");
-  let shape = new Function(...names, `"use strict";\n${src}`)(...names.map((n) => dsl[n]));
-  if (Array.isArray(shape)) shape = dsl.group(...shape);
+  // the editor's own forgiveness: shadowed DSL words, a forgotten return
+  const { shape } = runEditorCode(src);
   if (!shape) throw new Error("the code returned nothing (it needs `return <shape>`)");
   res = await build(shape, { engine });
 } catch (e) {
