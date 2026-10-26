@@ -1,0 +1,174 @@
+{
+ "id": "p09-standoff-plate",
+ "title": "STANDOFF PLATE",
+ "size": [
+  120,
+  90,
+  18
+ ],
+ "center": [
+  60,
+  45,
+  9
+ ],
+ "features": [
+  {
+   "kind": "boss",
+   "at": [
+    -40,
+    -30,
+    -3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 10,
+   "h": 12,
+   "bore": 3.2,
+   "noJig": false
+  },
+  {
+   "kind": "boss",
+   "at": [
+    40,
+    -30,
+    -3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 10,
+   "h": 12,
+   "bore": 3.2,
+   "noJig": false
+  },
+  {
+   "kind": "boss",
+   "at": [
+    -40,
+    30,
+    -3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 10,
+   "h": 12,
+   "bore": 3.2,
+   "noJig": false
+  },
+  {
+   "kind": "boss",
+   "at": [
+    40,
+    30,
+    -3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 10,
+   "h": 12,
+   "bore": 3.2,
+   "noJig": false
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -40,
+    -30,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    -1
+   ],
+   "d": 3.2,
+   "depth": 6,
+   "through": true,
+   "ctx": 2,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    40,
+    -30,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    -1
+   ],
+   "d": 3.2,
+   "depth": 6,
+   "through": true,
+   "ctx": 2,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -40,
+    30,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    -1
+   ],
+   "d": 3.2,
+   "depth": 6,
+   "through": true,
+   "ctx": 2,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    40,
+    30,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    -1
+   ],
+   "d": 3.2,
+   "depth": 6,
+   "through": true,
+   "ctx": 2,
+   "noPos": true
+  },
+  {
+   "kind": "pocket",
+   "at": [
+    0,
+    0,
+    -3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "l": 40,
+   "w": 20,
+   "depth": 6,
+   "r": 4,
+   "ctx": 3
+  }
+ ]
+}

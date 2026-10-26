@@ -1,0 +1,96 @@
+{
+ "id": "p13-spacer",
+ "title": "SPACER RING",
+ "size": [
+  80,
+  80,
+  25
+ ],
+ "center": [
+  0,
+  0,
+  12.5
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    1.83697019872103e-15,
+    30,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 10,
+    "angle": 90
+   },
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -25.980762113533157,
+    -15.000000000000004,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 10,
+    "angle": 90
+   },
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25.980762113533153,
+    -15.000000000000014,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 10,
+    "angle": 90
+   },
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    40,
+    0,
+    0
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ],
+   "d": 5,
+   "depth": 21,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}

@@ -1,0 +1,73 @@
+{
+ "id": "p17-gusset-angle",
+ "title": "HEAVY ANGLE",
+ "size": [
+  90,
+  70,
+  70
+ ],
+ "center": [
+  45,
+  35,
+  35
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    13,
+    -23
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 12,
+   "through": true,
+   "cbore": {
+    "d": 15,
+    "depth": 9
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    13,
+    -23
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 12,
+   "through": true,
+   "cbore": {
+    "d": 15,
+    "depth": 9
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    -35,
+    10
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 26,
+   "depth": 12,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}

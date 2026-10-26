@@ -1,0 +1,180 @@
+{
+ "id": "p06-motor-plate",
+ "title": "MOTOR PLATE",
+ "size": [
+  70,
+  70,
+  6
+ ],
+ "center": [
+  35,
+  35,
+  3
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    0,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 22.5,
+   "depth": 6,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -15.5,
+    -15.5,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 6,
+   "through": true,
+   "cbore": {
+    "d": 6.5,
+    "depth": 3.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    15.5,
+    -15.5,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 6,
+   "through": true,
+   "cbore": {
+    "d": 6.5,
+    "depth": 3.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -15.5,
+    15.5,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 6,
+   "through": true,
+   "cbore": {
+    "d": 6.5,
+    "depth": 3.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    15.5,
+    15.5,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 6,
+   "through": true,
+   "cbore": {
+    "d": 6.5,
+    "depth": 3.5
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -29,
+    -29,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 6,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    29,
+    -29,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 6,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -29,
+    29,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 6,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    29,
+    29,
+    3
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 5.5,
+   "depth": 6,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}

@@ -1,0 +1,372 @@
+{
+ "id": "p18-fixture-plate",
+ "title": "FIXTURE PLATE",
+ "size": [
+  160,
+  100,
+  15
+ ],
+ "center": [
+  80,
+  50,
+  7.5
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -50,
+    -25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -50,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -50,
+    25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    -25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -25,
+    25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    -25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    -25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    25,
+    25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    50,
+    -25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    50,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    50,
+    25,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 6.8,
+   "depth": 12,
+   "noPos": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -70,
+    -40,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 15,
+   "through": true,
+   "cbore": {
+    "d": 15,
+    "depth": 9
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    70,
+    -40,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 15,
+   "through": true,
+   "cbore": {
+    "d": 15,
+    "depth": 9
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -70,
+    40,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 15,
+   "through": true,
+   "cbore": {
+    "d": 15,
+    "depth": 9
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    70,
+    40,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 15,
+   "through": true,
+   "cbore": {
+    "d": 15,
+    "depth": 9
+   },
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -70,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 8,
+   "depth": 10,
+   "ctx": 3
+  },
+  {
+   "kind": "hole",
+   "at": [
+    70,
+    0,
+    7.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 8,
+   "depth": 10,
+   "ctx": 3
+  }
+ ]
+}

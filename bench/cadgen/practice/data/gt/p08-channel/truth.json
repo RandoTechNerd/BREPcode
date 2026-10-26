@@ -1,0 +1,98 @@
+{
+ "id": "p08-channel",
+ "title": "U-CHANNEL",
+ "size": [
+  140,
+  60,
+  45
+ ],
+ "center": [
+  70,
+  30,
+  22.5
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -45,
+    0,
+    -16.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 8.5,
+   "depth": 6,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    0,
+    -16.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 8.5,
+   "depth": 6,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    45,
+    0,
+    -16.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 8.5,
+   "depth": 6,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -35,
+    -30,
+    5.5
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 6.6,
+   "depth": 6,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    35,
+    -30,
+    5.5
+   ],
+   "dir": [
+    0,
+    -1,
+    0
+   ],
+   "d": 6.6,
+   "depth": 6,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}

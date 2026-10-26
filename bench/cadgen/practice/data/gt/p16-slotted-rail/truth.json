@@ -1,0 +1,116 @@
+{
+ "id": "p16-slotted-rail",
+ "title": "SLOTTED RAIL",
+ "size": [
+  200,
+  30,
+  12
+ ],
+ "center": [
+  100,
+  15,
+  6
+ ],
+ "features": [
+  {
+   "kind": "slot",
+   "at": [
+    -70,
+    0,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "w": 6.6,
+   "len": 14,
+   "depth": 12,
+   "through": true
+  },
+  {
+   "kind": "slot",
+   "at": [
+    -20,
+    0,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "w": 6.6,
+   "len": 14,
+   "depth": 12,
+   "through": true
+  },
+  {
+   "kind": "slot",
+   "at": [
+    30,
+    0,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "w": 6.6,
+   "len": 14,
+   "depth": 12,
+   "through": true
+  },
+  {
+   "kind": "slot",
+   "at": [
+    70,
+    0,
+    6
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "w": 6.6,
+   "len": 14,
+   "depth": 12,
+   "through": true
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -100,
+    0,
+    0
+   ],
+   "dir": [
+    -1,
+    0,
+    0
+   ],
+   "d": 4.2,
+   "depth": 15,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    100,
+    0,
+    0
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ],
+   "d": 4.2,
+   "depth": 15,
+   "ctx": 3
+  }
+ ]
+}

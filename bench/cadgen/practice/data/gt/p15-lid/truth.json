@@ -1,0 +1,113 @@
+{
+ "id": "p15-lid",
+ "title": "ENCLOSURE LID",
+ "size": [
+  120,
+  80,
+  25
+ ],
+ "center": [
+  60,
+  40,
+  12.5
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    -52,
+    -32,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 7,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    52,
+    -32,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 7,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -52,
+    32,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 7,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    52,
+    32,
+    12.5
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 3.4,
+   "depth": 25,
+   "through": true,
+   "csk": {
+    "d": 7,
+    "angle": 90
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    60,
+    0,
+    -0.5
+   ],
+   "dir": [
+    1,
+    0,
+    0
+   ],
+   "d": 16,
+   "depth": 3,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}

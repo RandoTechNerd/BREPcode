@@ -1,0 +1,104 @@
+{
+ "id": "p07-bearing-housing",
+ "title": "BEARING HOUSING",
+ "size": [
+  100,
+  100,
+  42
+ ],
+ "center": [
+  0,
+  0,
+  21
+ ],
+ "features": [
+  {
+   "kind": "hole",
+   "at": [
+    0,
+    0,
+    21
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 40,
+   "depth": 42,
+   "through": true,
+   "cbore": {
+    "d": 52,
+    "depth": 15
+   }
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -38,
+    -38,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 12,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    38,
+    -38,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 12,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    -38,
+    38,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 12,
+   "through": true,
+   "ctx": 2
+  },
+  {
+   "kind": "hole",
+   "at": [
+    38,
+    38,
+    -9
+   ],
+   "dir": [
+    0,
+    0,
+    1
+   ],
+   "d": 9,
+   "depth": 12,
+   "through": true,
+   "ctx": 2
+  }
+ ]
+}
