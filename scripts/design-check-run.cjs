@@ -51,10 +51,28 @@ module.exports = app.whenReady().then(async () => {
     fs.writeFileSync(file, img.toPNG());
     say(`  shot  ${file}`);
   };
-  const mouse = async (type, x, y) => {
-    win.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: "left", clickCount: 1 });
+  const mouse = async (type, x, y, { modifiers = [], clickCount = 1 } = {}) => {
+    win.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: "left", clickCount, modifiers });
     await wait(40);
   };
+  const key = async (keyCode) => {
+    win.webContents.focus();          // offscreen: keys go nowhere unfocused
+    for (const type of ["keyDown", "char", "keyUp"]) {
+      if (type === "char" && keyCode.length > 1) continue;
+      win.webContents.sendInputEvent({ type, keyCode });
+    }
+    await wait(60);
+  };
+  const dblclick = async (x, y) => {
+    await mouse("mouseMove", x, y);
+    await mouse("mouseDown", x, y); await mouse("mouseUp", x, y);
+    await mouse("mouseDown", x, y, { clickCount: 2 }); await mouse("mouseUp", x, y, { clickCount: 2 });
+  };
+  const codeText = () => run(`document.getElementById("code").value`);
+  // the selected cube's world box, from its meshes
+  const cubeBox = () => run(`(() => { const { THREE, modelGroup } = brepscript; const b = new THREE.Box3();
+    for (const m of modelGroup.children) if (m.userData.featureId === "P.CU1") b.expandByObject(m);
+    return [b.min.toArray(), b.max.toArray()]; })()`);
   const built = async (pred = "true", ms = 30000) => {
     for (let t = 0; t < ms; t += 250) {
       try { if (await run(`!!(window.brepscript?.featureSites?.() && (${pred}))`)) return true; } catch { /* still loading */ }
@@ -186,6 +204,90 @@ module.exports = app.whenReady().then(async () => {
     await wait(400);
     await run(`document.getElementById("panel").classList.contains("open") && document.getElementById("open-btn").click()`);
     await wait(500);
+
+    say("\nhandle gestures");
+    // select tool: no gizmo in the way of the dots and the body
+    await run(`document.querySelector('#dz-bar [data-tool="select"]').click()`);
+    await wait(300);
+    const reselect = async () => {
+      await run(`[...document.querySelectorAll(".dz-row")].find((b) => b.querySelector(".dz-name").textContent === "cube").click()`);
+      await wait(400);
+      await run(`document.getElementById("panel").classList.contains("open") && document.getElementById("open-btn").click()`);
+      await wait(500);
+    };
+    const backToPegs = async () => {
+      await setCode(PEGS);
+      await built(`document.getElementById("code").value.startsWith("const w = 60;") && brepscript.design().steps.length >= 7`);
+      await wait(500);
+      await reselect();
+    };
+
+    // double-click a face dot: its number, typed back
+    let px = (await handles()).filter((h) => h.kind === "face").sort((a, b) => b.x - a.x)[0];
+    await dblclick(px.x, px.y);
+    await wait(300);
+    let boxVals = await run(`brepscript.designNumberBox()`);
+    check("double-clicking the +X dot opens a box holding w's 60", JSON.stringify(boxVals) === `["60"]`, JSON.stringify(boxVals));
+    await shot("13-number-box");
+    await run(`(() => { const i = document.querySelector("#dz-num input"); i.value = "72"; i.focus(); })()`);
+    await key("Return");
+    check("Enter writes it at its exact range (const w = 72)", await built(`document.getElementById("code").value.startsWith("const w = 72;")`)
+      && (await codeText()).replace("const w = 72;", "const w = 60;") === PEGS);
+    check("…and the box closes", (await run(`brepscript.designNumberBox()`)) === null);
+    await wait(600);
+    await reselect();
+    px = (await handles()).filter((h) => h.kind === "face").sort((a, b) => b.x - a.x)[0];
+    await dblclick(px.x, px.y);
+    await wait(300);
+    const beforeEsc = await codeText();
+    await run(`document.querySelector("#dz-num input").value = "5"`);
+    await key("Escape");
+    await wait(300);
+    check("Esc cancels: box gone, code untouched", (await run(`brepscript.designNumberBox()`)) === null && (await codeText()) === beforeEsc);
+    await backToPegs();
+
+    // Alt-drag on the body: a free move in the screen plane, written by moveText
+    const [bx, by] = await toScreen(`(() => { const m = brepscript.modelGroup.children.find((x) => x.userData.faceName === "P.CU1_PZ");
+      const b = new THREE.Box3().setFromObject(m); return new THREE.Vector3(b.min.x + 16, b.min.y + 5, b.max.z); })()`);
+    await mouse("mouseMove", bx, by, { modifiers: ["alt"] });
+    await mouse("mouseDown", bx, by, { modifiers: ["alt"] });
+    for (let i = 1; i <= 6; i++) await mouse("mouseMove", bx + i * 8, by - i * 6, { modifiers: ["alt"] });
+    await mouse("mouseUp", bx + 48, by - 36, { modifiers: ["alt"] });
+    check("Alt-drag on the body rebuilt", await built(`/translate\\(\\[[^\\]]+\\], union\\(/.test(document.getElementById("code").value)`));
+    const free = /difference\(\n  translate\(\[(-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\], union\(/.exec(await codeText());
+    check("…as a free move: translate([dx, dy, dz], union(…)), not a resize", !!free && free.slice(1).filter((v) => +v !== 0).length >= 2
+      && (await codeText()).includes("cube([w, 40, 8]") && (await codeText()).startsWith("const w = 60;"), free?.[0]);
+    await backToPegs();
+
+    // Alt-drag a corner dot: all three sizes, the opposite corner held
+    const box0 = await cubeBox();
+    const corner = (await handles()).filter((h) => h.kind === "corner").sort((a, b) => (b.x - b.y) - (a.x - a.y))[0];
+    await mouse("mouseMove", corner.x, corner.y, { modifiers: ["alt"] });
+    await mouse("mouseDown", corner.x, corner.y, { modifiers: ["alt"] });
+    for (let i = 1; i <= 6; i++) await mouse("mouseMove", corner.x + i * 7, corner.y - i * 5, { modifiers: ["alt"] });
+    await wait(200);
+    const cornerLabel = await run(`document.getElementById("handle-drag-label")?.textContent || ""`);
+    check("Alt-dragging a corner shows the box's three sizes", /^[\d.]+ × [\d.]+ × [\d.]+ mm$/.test(cornerLabel), cornerLabel);
+    await shot("14-box-corner-alt-drag");
+    await mouse("mouseUp", corner.x + 42, corner.y - 30, { modifiers: ["alt"] });
+    check("the corner drag rebuilt", await built(`document.getElementById("code").value !== ${JSON.stringify(PEGS)}`));
+    await wait(800);
+    const after = await codeText();
+    const box1 = await cubeBox();
+    const moved = [0, 1, 2].map((a) => [Math.abs(box1[0][a] - box0[0][a]) > 0.05, Math.abs(box1[1][a] - box0[1][a]) > 0.05]);
+    // on every axis that changed, exactly one side moved: the far side held
+    const held = moved.every(([lo, hi]) => !(lo && hi));
+    check("the box resized on more than one axis", moved.filter(([lo, hi]) => lo || hi).length >= 2, JSON.stringify({ box0, box1 }));
+    check("…with the opposite corner where it was", held, JSON.stringify({ box0, box1 }));
+    check("…still one cube([…]) call, no freeform()", !/freeform/.test(after) && (after.match(/cube\(/g) || []).length === 1,
+      after.split("\n").slice(0, 6).join(" / "));
+    // sizes and the holding translate went in as ONE history step
+    await run(`document.getElementById("undo-btn").click()`);
+    await wait(300);
+    check("…as one undo step: one Back restores the code before the drag", (await codeText()) === PEGS);
+    await backToPegs();
+    await run(`document.querySelector('#dz-bar [data-tool="move"]').click()`);
+    await reselect();
 
     say("\nface pre-selection");
     const [hx, hy] = await toScreen(`(() => { const m = brepscript.modelGroup.children.find((x) => x.userData.faceName === "P.CU1_PZ");

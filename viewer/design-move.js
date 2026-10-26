@@ -16,7 +16,6 @@
 
 import { parseCode, offsetAt, callAt, runLineOffset } from "../src/codemap.js";
 
-const r1 = (n) => Math.round(n * 10) / 10;
 
 // ridersOf(span, { sites, trace, runText, editorText }) -> feature ids that a
 // move of `span` carries: every shape whose call sits inside it, AND every
@@ -40,7 +39,6 @@ export function ridersOf(span, { sites = {}, trace = [], runText = null, editorT
   return [...out];
 }
 // -0 prints as "0" but reads oddly in a vector some tools compare as text
-const tidy = (n) => (Object.is(r1(n), -0) ? 0 : r1(n));
 
 const WRAP_HEAD = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/;
 const DRILL_HEAD = /^drill\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/;
@@ -50,7 +48,10 @@ const DRILL_HEAD = /^drill\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)
 //   how:   "drill" | "fold" | "wrap" | "none" (a zero move writes nothing)
 //   start/end: where the moved span sits in `next`, so a caller can find the
 //   same shape again after the rebuild.
-export function moveText(text, span, delta) {
+// opts.step: the rounding (default 0.1 mm; a centred box's corner needs 0.05)
+export function moveText(text, span, delta, { step = 0.1 } = {}) {
+  const k = Math.round(1 / step);
+  const tidy = (n) => { const v = Math.round(n * k) / k; return Object.is(v, -0) ? 0 : v; };
   const d = [tidy(delta.x), tidy(delta.y), tidy(delta.z)];
   if (!d[0] && !d[1] && !d[2]) return { next: text, how: "none", start: span.start, end: span.end };
   const head = text.slice(0, span.start);

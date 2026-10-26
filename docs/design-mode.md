@@ -85,6 +85,34 @@ boolean, and the preview now carries every shape a helper builds from inside
 it too (`ridersOf()` reads the trace path), so `union(cube(…), peg(10))`
 previews the peg moving along, as the written code will.
 
+### Handles and gestures
+
+The selection's handles are dots of constant on-screen size (`viewer/handle-dots.js`):
+corners ~6 px light, faces ~5 px accent, a 20 px hit area. Hovering one rings
+it; resting on it (`mat.handleDwellMs`, default 600 ms) shows arrows for the
+ways it moves (a face both ways along its normal). A plain drag stays on those
+directions; a face drag shows a signed distance by the cursor.
+
+- **Alt-drag on a shape or a face dot** (Design mode) = free move in the screen
+  plane, written by `moveText()` like every move (fold into a `translate`, else
+  wrap). Code mode keeps Alt-drag on the model = resize the face under the cursor.
+- **Double-click a dot** = a small box per number behind it (a face: that side;
+  a box corner: x, y, z; a round shape's corner: its named sizes; a drill's aim
+  dot: its point). Enter writes the changed values at their exact ranges
+  (`design-edit.js writeNumbers`), Esc or a click away cancels. A size that is
+  a name (`const w = 60;`) is edited at its declaration; an expression has no box.
+- **Alt-drag on a box corner** = all three sizes change with the OPPOSITE corner
+  held: the call's own size numbers plus the translate that keeps the far
+  corner put (half the growth for `center: true`), written as one undo step
+  (`design-edit.js boxCornerText`). The box stays a `cube([…])`; it is never
+  converted to `freeform()`. Refused (with a hint) when a size is an
+  expression, or two sides share one name and are pulled apart. Like every
+  edit, it changes a pattern member's shared call. The drag is read on world axes:
+  a box inside a `rotate()` would take those as its own axes (Phase 2 should map them).
+
+A still click on a dot in Design mode does not re-select (it is half of a
+double-click, and re-selecting would pop the code panel over the dot).
+
 ### Toolbar
 
 A thin strip across the top; double-click it or press ▾ for the full ribbon

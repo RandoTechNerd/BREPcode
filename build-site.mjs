@@ -129,6 +129,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "design-shell.js", "design-tree.js", "design-timeline.js", "design-gizmo.js", "design-move.js",
   // the selection's drag handles, as screen-sized dots
   "handle-dots.js",
+  // what the handle gestures write (Alt box corner, double-click numbers)
+  "design-edit.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.

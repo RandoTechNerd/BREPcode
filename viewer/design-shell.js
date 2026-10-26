@@ -17,6 +17,7 @@
 import { buildTree, renderTree, primaryFid } from "./design-tree.js";
 import { linkFeatures, renderTimeline } from "./design-timeline.js";
 import { createMoveGizmo } from "./design-gizmo.js";
+import { parseTyped } from "./design-edit.js";
 
 const RIBBON_KEY = "brepcode.ribbon";
 const SNAPS = [1, 0.5, 0.1, 0];
@@ -115,6 +116,16 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 .dz-edge { border: 1px solid var(--border, #26314a); background: transparent; border-radius: 5px; padding: 2px 6px; cursor: pointer;
   font: 11px ui-monospace, "Cascadia Code", Consolas, monospace; max-width: 100%; text-align: left; overflow-wrap: anywhere; }
 .dz-edge:hover { border-color: #ffd166; color: #ffd166; }
+
+/* the number box a double-clicked dot opens */
+#dz-num { z-index: 40; padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
+#dz-num label { display: flex; align-items: center; gap: 8px; }
+#dz-num label span { width: 54px; color: var(--muted, #8ea0c0); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dz-num input { width: 80px; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--border, #26314a);
+  background: rgba(0, 0, 0, 0.25); color: inherit; font: 12px ui-monospace, "Cascadia Code", Consolas, monospace; }
+#dz-num input:focus { outline: 2px solid var(--accent, #1c66e5); outline-offset: 0; }
+#dz-num input.bad { border-color: #ff6b6b; }
+#dz-num small { color: var(--muted, #8ea0c0); font-size: 10.5px; }
 
 /* timeline */
 #dz-time { left: 172px; right: 340px; bottom: 14px; padding: 6px 8px; display: flex; align-items: center; gap: 8px; }
@@ -411,13 +422,22 @@ export function initDesignShell(host) {
     typingT = setTimeout(refresh, 250);
   });
 
+  // ---- the number box a double-clicked dot opens ----
+  let numBox = null;
+  function numAway(e) { if (numBox && !numBox.contains(e.target)) closeNumbers(); }
+  function closeNumbers() {
+    removeEventListener("pointerdown", numAway, true);
+    numBox?.remove();
+    numBox = null;
+  }
+
   // ---- what index.html calls ----
   let clearQueued = false;
   return {
     setActive(on) {
       active = !!on;
       if (active) refresh();
-      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); }
+      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
     onSelect(fid) {
@@ -459,6 +479,58 @@ export function initDesignShell(host) {
     wantsFaceHover() { return active && !gizmo.dragging; },
     hoverFace(mesh) { setHoverFace(active ? mesh : null); },
     gizmoOwnsPointer() { return active && gizmo.ownsPointer(); },
+    isActive() { return active; },
+    // a double-clicked dot: a small box per number behind it, beside the
+    // cursor. Enter writes them all (only the ones changed), Esc or a click
+    // away cancels. `against` is the code the ranges were read from.
+    editNumbers(fields, x, y, against) {
+      closeNumbers();
+      if (!active) return;
+      if (!fields.length) {
+        host.setHint("There is no plain number behind that dot to type (it is a name worked out from others, or an expression). Edit it in the code.");
+        return;
+      }
+      const box = document.createElement("form");
+      box.id = "dz-num";
+      box.className = "dz-ui";
+      box.setAttribute("aria-label", "Type exact values");
+      box.innerHTML = fields.map((f, i) => `<label><span>${esc(f.label)}</span>`
+        + `<input data-i="${i}" inputmode="decimal" autocomplete="off" spellcheck="false" value="${esc(String(f.value))}" /></label>`).join("")
+        + `<small>Enter to write · Esc to cancel</small>`;
+      box.style.left = `${Math.min(x + 14, innerWidth - 220)}px`;
+      box.style.top = `${Math.min(y + 10, innerHeight - 40 - fields.length * 30)}px`;
+      document.body.appendChild(box);
+      const inputs = [...box.querySelectorAll("input")];
+      inputs[0].focus();
+      inputs[0].select();
+      const done = () => closeNumbers();
+      box.addEventListener("keydown", (e) => {
+        e.stopPropagation();        // the editor's and the app's shortcuts are not for this box
+        if (e.key === "Escape") { e.preventDefault(); done(); }
+        // a form with several fields and no button does not submit on Enter
+        else if (e.key === "Enter") { e.preventDefault(); box.requestSubmit(); }
+      });
+      box.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const edits = [];
+        let bad = false;
+        inputs.forEach((inp, i) => {
+          const v = parseTyped(inp.value);
+          inp.classList.toggle("bad", v === null);
+          if (v === null) bad = true;
+          else if (v !== fields[i].value) edits.push({ numStart: fields[i].numStart, numEnd: fields[i].numEnd, value: v });
+        });
+        if (bad) return;
+        if (edits.length && !host.writeNumbers(edits, against)) {
+          host.setHint("The code changed since that box opened, so nothing was written. Double-click the dot again.");
+        }
+        done();
+      });
+      // a click anywhere else is a cancel
+      setTimeout(() => addEventListener("pointerdown", numAway, true), 0);
+      numBox = box;
+    },
+    get numberBox() { return numBox ? [...numBox.querySelectorAll("input")].map((i) => i.value) : null; },
     // for tests and the console
     debug: () => ({ active, tool, selectedFid, hoverFace: hoverMesh?.userData.faceName ?? null, face: face && { name: face.name, edges: face.edges.map((e) => e.name) },
       rows: tree.groups.flatMap((g) => g.rows.map((r) => ({ group: g.key, name: r.name, depth: r.depth, fids: r.fids, pattern: r.pattern?.count ?? null }))),

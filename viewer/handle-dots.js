@@ -153,7 +153,8 @@ export function createHandleDots(THREE) {
 
     // A small live readout beside the cursor while a handle drags, signed so
     // the direction is obvious: "+3.0 mm" grows, "-2.5 mm" shrinks.
-    label(clientX, clientY, mm) {
+    // (or, with `text`, that text: a box corner shows its three sizes)
+    label(clientX, clientY, mm, text = null) {
       if (!labelEl) {
         labelEl = document.createElement("div");
         labelEl.id = "handle-drag-label";
@@ -163,9 +164,9 @@ export function createHandleDots(THREE) {
           + "background:rgba(10,14,24,0.82);border:1px solid rgba(127,150,200,0.35);white-space:nowrap";
         document.body.appendChild(labelEl);
       }
-      const v = Math.round(mm * 10) / 10;
-      labelEl.textContent = `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(1)} mm`;
-      labelEl.style.color = v < 0 ? "#ffb35c" : "#9fd0ff";
+      const v = Math.round((mm ?? 0) * 10) / 10;
+      labelEl.textContent = text ?? `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(1)} mm`;
+      labelEl.style.color = text == null && v < 0 ? "#ffb35c" : "#9fd0ff";
       labelEl.style.left = `${clientX + 14}px`;
       labelEl.style.top = `${clientY + 12}px`;
       labelEl.style.display = "block";

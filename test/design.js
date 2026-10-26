@@ -112,6 +112,99 @@ console.log("\nresize handles edit the right number when a size is a name\n");
   check("plain literals unchanged", [0, 1, 2].map((a) => at(`return cube([ 20,  10 , 5 ]);`, a)).join() === "20,10,5");
 }
 
+console.log("\nhandle gestures: Alt free move, double-click numbers, Alt box corner\n");
+{
+  const { numberFieldsFor, writeNumbers, parseTyped, boxCornerText } = await import("../viewer/design-edit.js");
+  const siteOf = async (src, kind) => {
+    const b = await build(src);
+    const id = Object.keys(b.sites).find((k) => b.sites[k].kind === kind);
+    return { id, site: b.sites[id], b };
+  };
+  // the cube's box [min, max] as the kernel will build it
+  const boxOf = (ph, id) => {
+    const p = ph.features.find((f) => f.inputParams.id === id).inputParams;
+    const min = p.transform.position;
+    return { min, max: [min[0] + p.sizeX, min[1] + p.sizeY, min[2] + p.sizeZ] };
+  };
+
+  // 1. Alt-drag = free move: a 3D screen-plane delta, written by moveText
+  {
+    const src = `return translate([5, 0, 0], cube([10, 10, 10]));`;
+    const { site } = await siteOf(src, "cube");
+    const r = moveText(src, site, { x: 1.04, y: -2, z: 3.55 });
+    check("Alt free move writes all three axes, folded into the translate()", r.how === "fold"
+      && r.next === `return translate([6, -2, 3.6], cube([10, 10, 10]));`, r.next);
+  }
+
+  // 2. double-click: the numbers behind a dot, typed back at their exact ranges
+  {
+    const src = `const w = 60;\nreturn difference(cube([w, 40, 8]), translate([10, 10, -1], cylinder({ r: 3, h: 10 })));`;
+    const { site } = await siteOf(src, "cube");
+    const face = numberFieldsFor(src, site, { kind: "face", axis: 0 });
+    check("a face dot's box is that side's number (x of [w, 40, 8] is w's 60)",
+      face.length === 1 && face[0].value === 60 && src.slice(face[0].numStart, face[0].numEnd) === "60", JSON.stringify(face));
+    const corner = numberFieldsFor(src, site, { kind: "corner" });
+    check("a box corner's boxes are its three sizes", corner.map((f) => `${f.label}=${f.value}`).join() === "x=60,y=40,z=8");
+    const typed = writeNumbers(src, [{ ...corner[1], value: parseTyped(" 42.5 ") }, { ...corner[0], value: 64 }]);
+    check("typed values land at their exact ranges, nothing else changes",
+      typed === src.replace("const w = 60;", "const w = 64;").replace("[w, 40, 8]", "[w, 42.5, 8]"), typed);
+    const again = numberFieldsFor(typed, (await siteOf(typed, "cube")).site, { kind: "corner" });
+    check("…and read back the same (round trip)", again.map((f) => f.value).join() === "64,42.5,8");
+    const cyl = await siteOf(src, "cylinder");
+    check("a cylinder corner's boxes are its named sizes", numberFieldsFor(src, cyl.site, { kind: "corner" }).map((f) => `${f.label}=${f.value}`).join() === "r=3,h=10");
+    check("typed text that is not a number is refused", parseTyped("12mm") === null && parseTyped("") === null && parseTyped("-.5") === -0.5);
+    const after = await build(typed);
+    const cube = Object.keys(after.sites).find((k) => after.sites[k].kind === "cube");
+    check("the typed sizes build", near(boxOf(after.ph, cube).max, [64, 42.5, 8]));
+  }
+
+  // 3. Alt-drag a box corner: three sizes change, the OPPOSITE corner stays
+  {
+    const cases = [
+      { src: `return cube([20, 10, 6]);`, label: "a plain cube" },
+      { src: `return translate([5, 5, 0], cube([20, 10, 6]));`, label: "inside a translate()" },
+      { src: `return cube([20, 10, 6], { center: true });`, label: "a centred cube" },
+      { src: `const w = 20;\nreturn difference(cube([w, 10, 6]), translate([4, 4, -1], cylinder({ r: 1, h: 9 })));`, label: "a named size, as a boolean's main shape" },
+      { src: `return cube(10);`, label: "cube(10)" },
+    ];
+    for (const { src, label } of cases) {
+      const { id, site, b } = await siteOf(src, "cube");
+      const before = boxOf(b.ph, id);
+      let ok = true, detail = "";
+      for (const signs of [[1, 1, 1], [-1, -1, -1], [1, -1, 1], [-1, 1, -1]]) {
+        const delta = { x: 3 * signs[0], y: -2 * signs[1], z: 1.5 * signs[2] };   // grow x and z, shrink y
+        const r = boxCornerText(src, site, { signs, delta, centered: /center: true/.test(src) });
+        if (!r) { ok = false; detail = "refused"; break; }
+        const nb = await build(r.next);
+        const nid = Object.keys(nb.sites).find((k) => nb.sites[k].kind === "cube");
+        const after = boxOf(nb.ph, nid);
+        // the corner opposite the grabbed one, per axis
+        const fixedBefore = signs.map((s, a) => (s > 0 ? before.min[a] : before.max[a]));
+        const fixedAfter = signs.map((s, a) => (s > 0 ? after.min[a] : after.max[a]));
+        const movedAfter = signs.map((s, a) => (s > 0 ? after.max[a] : after.min[a]));
+        const movedWant = signs.map((s, a) => (s > 0 ? before.max[a] : before.min[a]) + [delta.x, delta.y, delta.z][a]);
+        if (!near(fixedAfter, fixedBefore) || !near(movedAfter, movedWant)) {
+          ok = false; detail = `${signs}: fixed ${fixedBefore} -> ${fixedAfter}, corner ${movedAfter} want ${movedWant} | ${r.next.replace(/\n/g, " ")}`; break;
+        }
+        if (/freeform/.test(r.next) || (r.next.match(/cube\(/g) || []).length !== 1) { ok = false; detail = `structure changed: ${r.next}`; break; }
+      }
+      check(`box corner on ${label}: the dragged corner follows, the opposite one stays`, ok, detail);
+    }
+    const src = `return cube([20, 10, 6]);`;
+    const { site } = await siteOf(src, "cube");
+    const r = boxCornerText(src, site, { signs: [1, 1, 1], delta: { x: 2, y: 0, z: 0 } });
+    check("only the sizes that changed are rewritten, no translate needed from the max corner",
+      r.next === `return cube([22, 10, 6]);`, r.next);
+    const shared = `const s = 10;\nreturn cube([s, s, 4]);`;
+    const ss = await siteOf(shared, "cube");
+    check("two sides sharing one name and pulled apart is refused, not mangled",
+      boxCornerText(shared, ss.site, { signs: [1, 1, 1], delta: { x: 2, y: 5, z: 0 } }) === null);
+    const expr = `return cube([4 * 5, 10, 6]);`;
+    const es = await siteOf(expr, "cube");
+    check("an expression size is refused", boxCornerText(expr, es.site, { signs: [1, 1, 1], delta: { x: 1, y: 1, z: 1 } }) === null);
+  }
+}
+
 console.log("\nwhat rides along: helpers called from inside a moved boolean\n");
 {
   const b = await build(PEGS);
@@ -212,7 +305,8 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
 {
   const html = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
   const build = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
-  const files = ["design-shell.js", "design-tree.js", "design-timeline.js", "design-gizmo.js", "design-move.js"];
+  const files = ["design-shell.js", "design-tree.js", "design-timeline.js", "design-gizmo.js", "design-move.js",
+    "handle-dots.js", "design-edit.js"];
   check("every design-*.js module is in VIEWER_JS", files.every((f) => build.includes(`"${f}"`)));
   check("every design-*.js module exists", files.every((f) => existsSync(new URL(`../viewer/${f}`, import.meta.url))));
   check("the body drag writes through moveText", /const moved = moveText\(text, drag\.span, drag\.delta\)/.test(html));
@@ -223,7 +317,7 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
   const shell = readFileSync(new URL("../viewer/design-shell.js", import.meta.url), "utf8");
   check("every shell element is hidden outside Design mode",
     /body:not\(\.design-mode\) \.dz-ui \{ display: none !important; \}/.test(shell)
-    && (shell.match(/className = "dz-ui"/g) || []).length === 3);
+    && (shell.match(/className = "dz-ui"/g) || []).length >= 3);
   const gizmo = readFileSync(new URL("../viewer/design-gizmo.js", import.meta.url), "utf8");
   check("TransformControls comes in as a three/addons import (the site build copies it)",
     /from "three\/addons\/controls\/TransformControls\.js"/.test(gizmo));

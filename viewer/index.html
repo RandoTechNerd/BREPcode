@@ -4406,6 +4406,7 @@
     import { moveText, ridersOf } from "./design-move.js";
     import { initDesignShell } from "./design-shell.js";
     import { createHandleDots } from "./handle-dots.js";
+    import { boxCornerText, numberFieldsFor, writeNumbers } from "./design-edit.js";
     import * as mgeom from "../src/measuregeom.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
@@ -12697,8 +12698,10 @@ ${joined}${SITE_TAIL}`), joined);
       if (drag && (!dragPointer || e.pointerId === dragPointer.id)) abandonDrag();
     });
 
+    let pressOnDot = false;   // this press began on a handle dot
     function pressOnStage(e) {
       downAt = [e.clientX, e.clientY];
+      pressOnDot = false;
       // Imported model: dragging ON the mesh slides it around the plate (cheap —
       // we just move the existing meshes, then bake one translate() on release,
       // never rebuilding mid-drag). Dragging empty space still orbits. Drill mode
@@ -12783,6 +12786,7 @@ ${joined}${SITE_TAIL}`), joined);
       // handles take priority over the model
       const hHit = raycaster.intersectObjects(handleGroup.children, false)[0];
       if (hHit) {
+        pressOnDot = true;
         const H = hHit.object.userData.handle;
         // freeform falls back to its own site, same as the click path: its
         // markers may not be in featureMap, and without this the handles spawn
@@ -12791,6 +12795,32 @@ ${joined}${SITE_TAIL}`), joined);
         if (hSite) {
           const fbb = new THREE.Box3();
           fbb.copy(featureBox(H.fid));
+          // Design mode, Alt on a dot: a box CORNER resizes on all three axes
+          // with the opposite corner held; any other dot is a free move.
+          if (e.altKey && designUI?.isActive()) {
+            const at = hHit.object.position.clone();
+            const c = fbb.getCenter(new THREE.Vector3());
+            if (H.kind === "corner" && (hSite.kind === "cube" || hSite.kind === "cuboid")
+              && !existingFreeformPoints(code.value, hSite)) {
+              const signs = [at.x >= c.x ? 1 : -1, at.y >= c.y ? 1 : -1, at.z >= c.z ? 1 : -1];
+              drag = {
+                mode: "boxCorner", fid: H.fid, site: hSite, signs,
+                centered: /\bcenter\s*:\s*true/.test(code.value.slice(hSite.start, hSite.end)),
+                start: at, camN: camera.getWorldDirection(new THREE.Vector3()).negate(),
+                // the corner that stays: opposite on every axis
+                fixed: new THREE.Vector3(signs[0] > 0 ? fbb.min.x : fbb.max.x, signs[1] > 0 ? fbb.min.y : fbb.max.y, signs[2] > 0 ? fbb.min.z : fbb.max.z),
+                size: fbb.getSize(new THREE.Vector3()),
+                meshes: modelGroup.children.filter((m) => patternIds(H.fid).includes(m.userData.featureId)),
+                dot: hHit.object, dotStart: at.clone(),
+                delta: new THREE.Vector3(), moved: false,
+              };
+              controls.enabled = false;
+              try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
+              return;
+            }
+            beginMove(H.fid, hSite, at, e, { free: true });
+            return;
+          }
           if (H.kind === "drillDia" || H.kind === "drillDepth" || H.kind === "drillAim") {
             const P = drillParts(code.value, hSite);
             if (P) {
@@ -12933,6 +12963,12 @@ ${joined}${SITE_TAIL}`), joined);
       if (site) {
         const fid = hit.object.userData.featureId;
 
+        // Design mode: Alt+drag is a FREE move in the screen plane (the dots
+        // do the resizing there). Code mode keeps Alt+drag = face resize.
+        if (e.altKey && designUI?.isActive()) {
+          beginMove(fid, site, hit.point, e, { free: true });
+          return;
+        }
         if (e.altKey) {
           // Alt+drag = grab a face and resize along its normal
           const n = hit.face?.normal ?? new THREE.Vector3(0, 0, 1);
@@ -12959,35 +12995,44 @@ ${joined}${SITE_TAIL}`), joined);
           }
         }
 
-        // plain drag = move. Grabbing the main shape of a boolean moves the
-        // whole thing — holes and cutters ride along.
-        const { span, isCutter, meshes: dragMeshes } = moveMembersOf(fid, site);
-        let ghosts = null;
-        if (isCutter) {
-          ghosts = [];
-          for (const m of dragMeshes) {
-            const g = new THREE.Mesh(m.geometry, cutterGhostMat);
-            g.position.copy(m.position);
-            g.quaternion.copy(m.quaternion);
-            g.scale.copy(m.scale);
-            g.renderOrder = 995;
-            ghostGroup.add(g);
-            ghosts.push(g);
-          }
-        }
-        drag = {
-          mode: "move", fid, site, span,
-          start: hit.point.clone(),
-          planeZ: hit.point.z,
-          meshes: ghosts ? [] : dragMeshes,   // the model itself stays put for a cutter
-          ghosts,
-          origins: ghosts ? ghosts.map((g) => g.position.clone()) : null,
-          delta: new THREE.Vector3(),
-          moved: false,
-        };
-        controls.enabled = false;
-        try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
+        beginMove(fid, site, hit.point, e);
       }
+    }
+
+    // A move drag of the shape fid, grabbed at `point`. Plain: in the plane
+    // of the grab (Shift = vertical). free: in the screen plane through the
+    // grab, so it can go any way the view allows (Design mode's Alt+drag).
+    function beginMove(fid, site, point, e, { free = false } = {}) {
+      // plain drag = move. Grabbing the main shape of a boolean moves the
+      // whole thing — holes and cutters ride along.
+      const { span, isCutter, meshes: dragMeshes } = moveMembersOf(fid, site);
+      let ghosts = null;
+      if (isCutter) {
+        ghosts = [];
+        for (const m of dragMeshes) {
+          const g = new THREE.Mesh(m.geometry, cutterGhostMat);
+          g.position.copy(m.position);
+          g.quaternion.copy(m.quaternion);
+          g.scale.copy(m.scale);
+          g.renderOrder = 995;
+          ghostGroup.add(g);
+          ghosts.push(g);
+        }
+      }
+      drag = {
+        mode: "move", fid, site, span,
+        start: point.clone(),
+        planeZ: point.z,
+        // the screen plane's normal, for a free move
+        free: free ? camera.getWorldDirection(new THREE.Vector3()).negate() : null,
+        meshes: ghosts ? [] : dragMeshes,   // the model itself stays put for a cutter
+        ghosts,
+        origins: ghosts ? ghosts.map((g) => g.position.clone()) : null,
+        delta: new THREE.Vector3(),
+        moved: false,
+      };
+      controls.enabled = false;
+      try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
     }
 
     // Hover over the stage, at most once a frame: the handle under the pointer
@@ -13002,6 +13047,19 @@ ${joined}${SITE_TAIL}`), joined);
       hoverEv = e;
     });
     renderer.domElement.addEventListener("pointerleave", hoverOff);
+    // Design mode: double-click a dot to type the exact number(s) behind it
+    renderer.domElement.addEventListener("dblclick", (e) => {
+      if (!designUI?.isActive() || !handleGroup.children.length) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ), camera);
+      const hit = raycaster.intersectObjects(handleGroup.children, false)[0];
+      if (!hit) return;
+      const H = hit.object.userData.handle;
+      const site = mapText === code.value ? featureMap?.[H.fid] : null;
+      designUI.editNumbers(numberFieldsFor(code.value, site, H), e.clientX, e.clientY, code.value);
+    });
     function hoverTick() {
       const e = hoverEv;
       hoverEv = null;
@@ -13194,6 +13252,27 @@ ${joined}${SITE_TAIL}`), joined);
         drag.moved = true;
         return;
       }
+      if (drag.mode === "boxCorner") {
+        const p = rayToFreePlane(e, drag.start, drag.camN);
+        if (!p) return;
+        drag.delta.copy(p).sub(drag.start);
+        if (drag.delta.length() > 0.2) drag.moved = true;
+        // stretch about the held corner; never through it
+        const f = [0, 1, 2].map((a) => {
+          const s0 = drag.size.getComponent(a);
+          return s0 > 1e-9 ? Math.max(s0 + drag.delta.getComponent(a) * drag.signs[a], 0.2) / s0 : 1;
+        });
+        for (const m of drag.meshes) {
+          m.scale.set(f[0], f[1], f[2]);
+          m.position.set(drag.fixed.x * (1 - f[0]), drag.fixed.y * (1 - f[1]), drag.fixed.z * (1 - f[2]));
+        }
+        drag.dot.position.copy(drag.dotStart).add(drag.delta);
+        const r = (v) => (Math.round(v * 10) / 10).toFixed(1);
+        const sz = [0, 1, 2].map((a) => r(drag.size.getComponent(a) * f[a]));
+        handleDots.label(e.clientX, e.clientY, null, `${sz.join(" × ")} mm`);
+        hint.innerHTML = `Box corner: <b>${sz.join(" × ")}</b> mm, the opposite corner stays put — release to write the sizes`;
+        return;
+      }
       if (drag.mode === "resize") {
         let amount;
         if (drag.axis === 2) {
@@ -13254,7 +13333,12 @@ ${joined}${SITE_TAIL}`), joined);
       }
 
       let delta;
-      if (e.shiftKey) {
+      if (drag.free) {
+        // free: wherever the cursor is on the screen plane through the grab
+        const p = rayToFreePlane(e, drag.start, drag.free);
+        if (!p) return;
+        delta = p.sub(drag.start);
+      } else if (e.shiftKey) {
         // vertical: move in Z only, from screen-Y motion
         const rect = renderer.domElement.getBoundingClientRect();
         const per = (downAt ? (downAt[1] - e.clientY) : 0) / rect.height;
@@ -13276,7 +13360,7 @@ ${joined}${SITE_TAIL}`), joined);
         });
       }
       const f = (n) => (Math.abs(n) < 0.05 ? "0" : n.toFixed(1));
-      hint.innerHTML = `Moving <b>${drag.span.label}</b>${drag.ghosts ? " (the cutout)" : ""} by [${f(delta.x)}, ${f(delta.y)}, ${f(delta.z)}] mm — release to write it into the code${e.shiftKey ? "" : " · hold <b>Shift</b> for vertical"}`;
+      hint.innerHTML = `Moving <b>${drag.span.label}</b>${drag.ghosts ? " (the cutout)" : ""} by [${f(delta.x)}, ${f(delta.y)}, ${f(delta.z)}] mm — release to write it into the code${drag.free ? " · free move (Alt)" : e.shiftKey ? "" : " · hold <b>Shift</b> for vertical"}`;
     });
 
     // Write the drag into the code: a move wraps/updates translate() around the
@@ -13532,6 +13616,16 @@ ${joined}${SITE_TAIL}`), joined);
           });
         }
         next = text.slice(0, span.start) + freeformCall(pts) + text.slice(span.end);
+      } else if (drag.mode === "boxCorner") {
+        // the box's own size numbers + the translate that holds the far
+        // corner, one edit (design-edit.js)
+        const r = boxCornerText(text, drag.site, { signs: drag.signs, delta: drag.delta, centered: drag.centered });
+        if (!r) {
+          hint.innerHTML = "That box's sizes are not all plain numbers (or two sides share one name), so a corner can't resize it here. Edit the numbers in the code.";
+          clearDragPreview();
+          return;
+        }
+        next = r.next;
       } else if (drag.mode === "scale") {
         next = rewriteNumbers(text, drag.targets, (v) => v * drag.factor);
       } else if (drag.mode === "resize") {
@@ -13634,6 +13728,9 @@ ${joined}${SITE_TAIL}`), joined);
         drag = null;   // no real movement: fall through to click-select
         clearDragPreview();             // a click is not a stretch — no build coming
         if (wasSplit) refreshSplit();   // nudged but not committed: snap back
+        // Design mode: a still click on a dot is half of a double-click (the
+        // number box), not a re-select that pops the code panel over the dot
+        if (pressOnDot && designUI?.isActive()) { downAt = null; return; }
       }
       if (!downAt) return;
       const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
@@ -21819,6 +21916,15 @@ let SIMPLIFY_TARGET = 10000;
         buildAfterToolEdit();
         return r;
       },
+      // typed values from a dot's number box, each at its exact range; only
+      // against the text they were read from (a stale range edits the wrong thing)
+      writeNumbers(edits, against) {
+        if (code.value !== against) return false;
+        code.value = writeNumbers(code.value, edits);
+        pushHistory();
+        buildAfterToolEdit();
+        return true;
+      },
       setHint: (html) => { hint.innerHTML = html; },
     });
     const modeSwitch = initModeSwitch({ onChange: (m) => designUI.setActive(m === "design") });
@@ -21827,6 +21933,8 @@ let SIMPLIFY_TARGET = 10000;
     // Design mode's state: tree rows, timeline steps and what they link to,
     // the selection, the picked face and its edges, the gizmo's shape
     window.brepscript.design = () => designUI.debug();
+    // the values in an open double-click number box, or null
+    window.brepscript.designNumberBox = () => designUI.numberBox;
     // The selection's handle dots as drawn: kind, on-screen position and size,
     // ring and arrow state (handle-dots.js)
     window.brepscript.handles = () => handleDots.describe(handleGroup, camera,
