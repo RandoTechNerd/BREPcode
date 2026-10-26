@@ -56,6 +56,7 @@ const CON_LABEL = { coincident: "Coincident", horizontal: "Horizontal", vertical
 const GLYPHS = { horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂", tangent: "⌒", equal: "=", fixed: "⏚", coincident: "●", onLine: "⏛", midpoint: "⋯" };
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const SNAP_PX = 9, PICK_PX = 7;
+const DRAG_TOOLS = new Set(["line", "rect", "circle"]);      // press-drag draws these too
 
 let cssDone = false;
 
@@ -501,6 +502,12 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     }
     const h = pickAt(e.clientX, e.clientY);
     if ((h?.point ?? -1) !== (S.hover?.point ?? -1) || (h?.curve ?? -1) !== (S.hover?.curve ?? -1)) { S.hover = h; draw(); }
+    // a press-drag being drawn: the rubber band from where it went down
+    if (S.downAt && (e.buttons & 1) && DRAG_TOOLS.has(S.tool) && !S.pending.length) {
+      const sp = snap(S.downAt[0], S.downAt[1], S.downAt[4]);
+      if (sp) { S.pending = [sp.uv]; rubber(e.clientX, e.clientY); S.pending = []; }
+      return;
+    }
     rubber(e.clientX, e.clientY);
   }
   function up(e) {
@@ -518,13 +525,28 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         return;
       }
     }
-    const [x0, y0] = S.downAt || [e.clientX, e.clientY];
-    if (Math.hypot(e.clientX - x0, e.clientY - y0) > 5) return;      // a pan, not a click
+    const [x0, y0, , , alt0] = S.downAt || [e.clientX, e.clientY];
+    S.downAt = null;
+    if (Math.hypot(e.clientX - x0, e.clientY - y0) > 5) {
+      // A press-drag with a drawing tool draws (a click where it went down, a
+      // click where it came up), as Fusion and SolidWorks take both; anything
+      // else that moved was a pan.
+      if (DRAG_TOOLS.has(S.tool) && !S.pending.length) {
+        click(x0, y0, { detail: 1, altKey: alt0 });
+        click(e.clientX, e.clientY, e);
+        if (S.tool === "line") { S.pending = []; drawRubber([]); }
+      }
+      return;
+    }
     click(e.clientX, e.clientY, e);
   }
   function key(e) {
     if (!S || dimBox) return false;
-    if (e.target?.closest?.("input, select, textarea") && e.key !== "Escape") return false;
+    // a field you are typing in keeps its keys; a hidden one (the code editor
+    // while its card is closed) does not
+    const el = e.target;
+    const typing = !!el?.closest?.("input, select, textarea, [contenteditable]") && el.getClientRects().length > 0;
+    if (typing && e.key !== "Escape") return false;
     const k = e.key.toUpperCase();
     if (e.key === "Escape") {
       if (S.pending.length) { if (S.tool === "spline") finishSpline(); S.pending = []; drawRubber([]); }

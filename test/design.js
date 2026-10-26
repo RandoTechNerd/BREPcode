@@ -652,6 +652,20 @@ console.log("\nPhase 3: sketch() builds, solved, on every kernel\n");
   let err = "";
   try { dsl.sketch({ points: [[0, 0], [10, 0], [10, 10]], curves: [["line", 0, 1], ["line", 1, 2]] }); } catch (e) { err = e.message; }
   check("an open chain is refused, saying so", /does not close/.test(err), err);
+  // exactly what Finish wrote on the default model in the Electron check
+  // (sketch on its top face, a rectangle and a circle, extruded and joined;
+  // the bare-expression model turned into a return)
+  const finished = `const sketch1 = sketch({
+  on: { origin: [0, 0, 12], normal: [0, 0, 1] },
+  points: [[6, 24.5], [24, 24.5], [24, 11.5], [6, 11.5], [4.5, 2.5]],
+  curves: [["line", 0, 1], ["line", 1, 2], ["line", 2, 3], ["line", 3, 0], ["circle", 4, 2.5]],
+  constraints: [["horizontal", 0, 1], ["vertical", 1, 2], ["horizontal", 2, 3], ["vertical", 3, 0]],
+});
+return union(difference(
+  cube([30, 30, 12]),
+  translate([15, 15, -1], cylinder({ r: 8, h: 14, $fn: 64 })),
+), linearExtrude({ h: 10 }, sketch1));`;
+  await onEveryKernel("the sketcher's Finish on the default model", finished, 30 * 30 * 12 - Math.PI * 64 * 12 + 18 * 13 * 10 + Math.PI * 6.25 * 10, 0.003);
 }
 
 console.log("\nPhase 3: the sketcher's model\n");

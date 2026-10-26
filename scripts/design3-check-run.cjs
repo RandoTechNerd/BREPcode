@@ -167,6 +167,51 @@ module.exports = app.whenReady().then(async () => {
     check("the call was rewritten in place (same declaration, new dim, nothing else added)",
       (after.match(/sketch\(\{/g) || []).length === 1 && /\["distance", \d+, \d+, 12\]/.test(after) && after.split("\n").at(-1) === before.split("\n").at(-1), after);
 
+    say("\nreview repro: the default model, R, then two clicks");
+    const DEFAULT = `difference(\n  cube([30, 30, 12]),\n  translate([15, 15, -1], cylinder({ r: 8, h: 14, $fn: 64 })),\n)`;
+    await setCode(DEFAULT);
+    await run(`document.querySelector('#dz-bar [data-tool="sketch"]').click()`);
+    await wait(800);
+    await click(await toScreen([15, 26, 12]));       // the top face, beside the hole
+    await wait(900);
+    check("the sketch opens on the top face", (await sk())?.on?.origin?.[2] === 12);
+    const key = async (keyCode) => { win.webContents.focus(); for (const type of ["keyDown", "char", "keyUp"]) win.webContents.sendInputEvent({ type, keyCode }); await wait(80); };
+    await key("R");
+    check("R picks the rectangle tool", (await sk()).tool === "rect", (await sk()).tool);
+    let n0 = (await sk()).sk.curves.length;
+    await click([640, 330]);
+    await click([960, 560]);
+    d = await sk();
+    check("two clicks draw the rectangle", d.sk.curves.length === n0 + 4 && d.sk.curves.slice(-4).every((c) => c.kind === "line"), JSON.stringify(d.sk.curves));
+    await shot("10-default-model-rect-two-clicks");
+    // a press-drag draws too (a circle, from its centre out)
+    await key("C");
+    n0 = d.sk.curves.length;
+    const [cx, cy] = await skScreen([4, 4]), [rx, ry] = await skScreen([4, 6.5]);
+    await mouse("mouseMove", cx, cy); await mouse("mouseDown", cx, cy);
+    for (let k = 1; k <= 6; k++) await mouse("mouseMove", cx + (rx - cx) * k / 6, cy + (ry - cy) * k / 6);
+    await mouse("mouseUp", rx, ry);
+    await wait(150);
+    d = await sk();
+    check("a press-drag draws a circle (centre where it went down)", d.sk.curves.length === n0 + 1 && d.sk.curves.at(-1).kind === "circle", JSON.stringify(d.sk.curves.at(-1)));
+    // a key that comes from the code editor while its card is closed is still the sketcher's
+    await run(`document.getElementById("code").dispatchEvent(new KeyboardEvent("keydown", { key: "l", bubbles: true, cancelable: true }))`);
+    check("a key from the hidden code editor still picks a tool (L: line)", (await sk()).tool === "line", (await sk()).tool);
+    check("…and typed nothing into the code", (await codeText()) === DEFAULT);
+    await run(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    d = await sk();
+    check("rectangle and circle make a closed profile", d.problem === null, d.problem);
+    await run(`document.querySelector("#dz-sk .ok").click()`);
+    await wait(800);
+    check("Finish builds", await builtOk());
+    const fin = await codeText();
+    check("Finish writes const sketch1 = sketch({…}) and the extrude joined to the body (the bare-expression model gets its return)",
+      /^const sketch1 = sketch\(\{\n  on: \{ origin: \[0, 0, 12\], normal: \[0, 0, 1\] \},/.test(fin) && /\nreturn union\(difference\(/.test(fin) && /linearExtrude\(\{ h: 10 \}, sketch1\)\)/.test(fin), fin);
+    fs.mkdirSync(OUT, { recursive: true });
+    fs.writeFileSync(path.join(OUT, "finished-default-model.bcode.js"), fin);
+    say(`  code  ${path.join(OUT, "finished-default-model.bcode.js")}`);
+    await shot("11-default-model-finished");
+
     say("\nrevolve a sketch about a construction line");
     await setCode(`return cube([4, 4, 4]);`);
     await run(`brepscript.openSketch()`);
