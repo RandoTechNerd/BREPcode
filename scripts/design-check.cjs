@@ -26,7 +26,9 @@ process.on("unhandledRejection", (e) => die("unhandled rejection", e));
 
 // --phase2 / --phase3 (or DESIGN_PHASE=2 / 3) run the phase 2 / 3 check (feature dialogs, press-pull,
 // rotate/scale): design2-check-run.cjs
-const RUN = process.env.DESIGN_PHASE === "3" || process.argv.includes("--phase3") ? "./design3-check-run.cjs"
+// --ask: "Ask about this…" (ask-check-run.cjs)
+const RUN = process.argv.includes("--ask") ? "./ask-check-run.cjs"
+  : process.env.DESIGN_PHASE === "3" || process.argv.includes("--phase3") ? "./design3-check-run.cjs"
   : process.env.DESIGN_PHASE === "2" || process.argv.includes("--phase2") ? "./design2-check-run.cjs" : "./design-check-run.cjs";
 try {
   const done = require(RUN);

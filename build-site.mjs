@@ -137,6 +137,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "design/features.js", "design/dialogs.js", "design/presspull.js",
   // phase 3: the sketcher and its model (lazy, on the Sketch tool)
   "design/sketcher.js", "design/sketch-model.js",
+  // "Ask about this…": the pinned spot every AI path reads (lazy, on first pin)
+  "selection-context.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.

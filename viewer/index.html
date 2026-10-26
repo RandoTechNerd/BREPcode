@@ -1653,6 +1653,23 @@
     #chat-img-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px;
       font-size: 12px; color: var(--muted3); }
     #chat-img-chip img { height: 26px; border-radius: 4px; }
+    /* "Ask about this…": the chip over the chat input and the pin on the model */
+    #chat-ask-chip { display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+      font-size: 12px; color: var(--muted3); border-top: 1px solid var(--border); }
+    #chat-ask-chip[hidden] { display: none; }
+    #chat-ask-chip b { color: var(--text); font-weight: 600; }
+    #chat-ask-chip button { margin-left: auto; background: none; border: none; color: var(--muted3);
+      cursor: pointer; font-size: 14px; padding: 0 3px; }
+    .pin-dot { width: 9px; height: 9px; border-radius: 50%; flex: none;
+      background: var(--accent); box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
+    #ask-pin { position: fixed; z-index: 30; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+      border-radius: 50%; background: var(--accent); pointer-events: none;
+      box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.5); }
+    #ask-pin::after { content: ""; position: absolute; inset: -8px; border-radius: 50%;
+      border: 2px solid var(--accent); opacity: .7; animation: ask-pin-ring 1.6s ease-out infinite; }
+    #ask-pin[hidden] { display: none; }
+    @keyframes ask-pin-ring { from { transform: scale(.5); opacity: .8; } to { transform: scale(1.4); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { #ask-pin::after { animation: none; } }
     #chat-img-chip button { background: none; border: none; color: var(--muted3);
       cursor: pointer; font-size: 14px; padding: 0 3px; }
 
@@ -2994,8 +3011,12 @@
     </div>
   </div>
 
+  <div id="ask-pin" hidden></div>
   <!-- right-click a shape to swap or colour it -->
   <div id="shape-menu">
+    <!-- the chat, anchored at the right-clicked spot (viewer/selection-context.js) -->
+    <button class="sm-item" id="sm-ask" title="Open the chat about this exact spot: the AI is told the point, the face, its edges and the call that made it">Ask about this…</button>
+    <div class="sm-sep"></div>
     <div id="sm-swap-block">
       <div class="sm-title">Change this shape to…</div>
       <div id="sm-swaps"></div>
@@ -3622,6 +3643,7 @@
           </div>
         </div>
       </div>
+      <div id="chat-ask-chip" hidden><span class="pin-dot"></span><span id="chat-ask-label"></span><button id="chat-ask-clear" title="Stop asking about that spot" aria-label="Stop asking about that spot">✕</button></div>
       <div id="chat-img-chip" style="display:none"></div>
       <div id="chat-input-row">
         <button id="chat-img-btn" title="Attach an image (a sketch, a photo of the part, a screenshot)">
@@ -7807,14 +7829,21 @@
     document.addEventListener("pointerdown", (e) => {
       if (!shapeMenu.contains(e.target)) shapeMenu.classList.remove("open");
     }, true);
+    // A right-DRAG pans the view: the menu is for a still right-click only, so
+    // a pan never ends in a menu (or a pin) at wherever the drag let go.
+    let rightDown = null;
+    stage.addEventListener("pointerdown", (e) => { if (e.button === 2) rightDown = [e.clientX, e.clientY]; }, true);
     stage.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      if (rightDown && Math.hypot(e.clientX - rightDown[0], e.clientY - rightDown[1]) > 6) { rightDown = null; return; }
+      rightDown = null;
       const rect = renderer.domElement.getBoundingClientRect();
       raycaster.setFromCamera(new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1), camera);
       const hit = pickModel(raycaster)[0];
       if (!hit?.object.userData.featureId) { shapeMenu.classList.remove("open"); return; }
+      askHit = { hit, ray: raycaster.ray.direction.clone() };
       shapeMenuFid = hit.object.userData.featureId;
       buildSwapChips(shapeMenuFid);
       shapeMenu.style.left = `${Math.min(e.clientX, innerWidth - 240)}px`;
@@ -7825,6 +7854,97 @@
       if (!$("sm-matblock").hidden) { fillShapeMaterials(); syncShapeMatUI(shapeMenuFid); }
       fitShapeMenu();
     });
+
+    // ------------------------------------------------- "Ask about this…"
+    // Right-click → Ask about this… pins a marker at the clicked point and
+    // opens the chat about it. The pinned spot is ONE object, selectionContext
+    // (viewer/selection-context.js): the face, the point and normal, the edges
+    // around the face, the call that made it and its body. Every AI path reads
+    // that same object: the built-in assistant (a hole or a round there), a
+    // connected AI (its prompt) and an agent over MCP (get_state.selection).
+    // It is a menu action, never a gesture: Alt-drag stays the free move and
+    // every drag and hold stays free for what Design mode does with them.
+    let askHit = null, selCtx = null, SC = null;
+    const askPin = $("ask-pin");
+    async function pinSelection(hit, ray = null) {
+      SC ??= await import("./selection-context.js");
+      const mesh = hit.object;
+      mesh.updateMatrixWorld(true);
+      // the normal of the triangle under the click (a curved face's own
+      // direction at that spot), turned to face the viewer: pickModel draws
+      // both sides, so a back-facing triangle can be what was hit
+      let normal = null;
+      if (hit.face) {
+        const n = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
+        if (ray && n.dot(ray) > 0) n.negate();
+        normal = [n.x, n.y, n.z];
+      }
+      const fid = mesh.userData.featureId ?? null;
+      const sites = featureMap && mapText === code.value ? featureMap : null;
+      const site = fid && sites?.[fid];
+      let body = null;
+      if (site) {
+        try {
+          const F = await import("./design/features.js");
+          body = F.bodySpan(code.value, fid, { sites, trace: lastTrace, runText: lastRunText });
+        } catch { body = null; }
+      }
+      selCtx = SC.makeSelectionContext({
+        mode: document.body.classList.contains("design-mode") ? "design" : "code",
+        text: code.value,
+        point: [hit.point.x, hit.point.y, hit.point.z], normal,
+        face: mesh.userData.faceName ?? null, solid: mesh.userData.solidName ?? null,
+        edges: edgesOfPickedFace(mesh), fid,
+        feature: site ? { start: site.start, end: site.end, name: site.kind } : null,
+        body,
+      });
+      paintAsk();
+      return selCtx;
+    }
+    function clearSelection() {
+      selCtx = null;
+      paintAsk();
+    }
+    // The chip over the chat input says what the next message is about; the
+    // pin follows the point as the view turns.
+    function paintAsk() {
+      const chip = $("chat-ask-chip");
+      chip.hidden = !selCtx;
+      if (selCtx) {
+        $("chat-ask-label").innerHTML = `Asking about <b>${esc(SC.selectionLabel(selCtx))}</b>`;
+        chatInput.dataset.placeholder ??= chatInput.placeholder;
+        chatInput.placeholder = "e.g. put a 5 mm hole here · round these edges 2 mm · what is this?";
+      } else if (chatInput.dataset.placeholder != null) {
+        chatInput.placeholder = chatInput.dataset.placeholder;
+      }
+      askPin.title = selCtx ? SC.selectionLabel(selCtx) : "";
+      if (selCtx) requestAnimationFrame(trackPin);
+      else askPin.hidden = true;
+    }
+    const pinV = new THREE.Vector3();
+    function trackPin() {
+      if (!selCtx?.point) { askPin.hidden = true; return; }
+      const rect = renderer.domElement.getBoundingClientRect();
+      pinV.set(...selCtx.point).project(camera);
+      const off = pinV.z > 1 || Math.abs(pinV.x) > 1.02 || Math.abs(pinV.y) > 1.02;
+      askPin.hidden = off || !rect.width;
+      if (!off) {
+        askPin.style.left = `${rect.left + (pinV.x + 1) / 2 * rect.width}px`;
+        askPin.style.top = `${rect.top + (1 - pinV.y) / 2 * rect.height}px`;
+      }
+      requestAnimationFrame(trackPin);
+    }
+    async function askAboutHit(hit, ray) {
+      await pinSelection(hit, ray);
+      if (!chatCard.classList.contains("open")) chatBtn.click();
+      await ensureChat();
+      chatInput.focus();
+    }
+    $("sm-ask").addEventListener("click", () => {
+      shapeMenu.classList.remove("open");
+      if (askHit) askAboutHit(askHit.hit, askHit.ray);
+    });
+    $("chat-ask-clear").addEventListener("click", () => { clearSelection(); chatInput.focus(); });
 
     // -------------------------------------------- view navigator (gizmo)
     // Rotates the camera around the model in 45° steps (Z-up aware): left/right
@@ -12702,6 +12822,10 @@ ${joined}${SITE_TAIL}`), joined);
       // …or a Design tool takes the press: a dialog picking faces or edges,
       // press-pull on a face, the sketcher (its own clicks and drags)
       if (designUI?.pressOwns(e)) { downAt = null; return; }
+      // The left button only: a right-drag is the camera's pan, and a still
+      // right-click is the shape menu (Ask about this…, swap, colour). Taking
+      // it here moved the part under a pan and wrote a translate() for it.
+      if (e.pointerType === "mouse" && e.button !== 0) { downAt = null; return; }
       if (drag && dragPointer && e.pointerId !== dragPointer.id) {
         // A second finger on a touch drag means PINCH: the first finger just
         // happened to land on the part. Drop the drag before it has edited
@@ -22020,6 +22144,16 @@ let SIMPLIFY_TARGET = 10000;
       raycaster.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1), camera);
       return pickModel(raycaster)[0] ?? null;
     }
+    // "Ask about this…" without the menu (tests, agents): pin the spot under
+    // client (x, y), open the chat on it; returns what get_state.selection shows
+    window.brepscript.askAbout = async (x, y) => {
+      const hit = pickModelAt(x, y);
+      if (!hit) return null;
+      await askAboutHit(hit, raycaster.ray.direction.clone());
+      return SC.forAgent(selCtx);
+    };
+    window.brepscript.selectionContext = () => (selCtx ? SC.forAgent(SC.relocate(selCtx, code.value)) : null);
+    window.brepscript.clearSelectionContext = () => clearSelection();
     // where a world point lands on screen (client px): for tests that click on geometry
     window.brepscript.toScreen = (p) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -22570,7 +22704,9 @@ let SIMPLIFY_TARGET = 10000;
       // sends the words to the connected AI. The chip under a catalog reply
       // sends exactly this.
       const AI_INSTEAD = /^(?:ask|use) the ai(?: instead)?[:,]?\s*/i;
-      const forceAI = AI_INSTEAD.test(text);
+      // A message about a pinned spot ("Ask about this…") goes past the
+      // catalog too: it is an edit of this model there, never a new design.
+      const forceAI = AI_INSTEAD.test(text) || !!selCtx;
       if (forceAI) text = text.replace(AI_INSTEAD, "").trim() || raw;
       // These two notes go in the request log, which does not exist until the
       // waiting bubble does (further down). Logging them here threw "cannot
@@ -22628,6 +22764,21 @@ let SIMPLIFY_TARGET = 10000;
       }
       chatLog.push({ role: "user", text });
       const { respond: botRespond, buildApiRequest, extractApiText, extractApiThinking } = await ensureChat();
+      // "Ask about this…": the pinned spot rides with the message, its spans
+      // moved to where that code is now (the user may have typed since)
+      const anchor = selCtx ? SC.relocate(selCtx, code.value) : null;
+      if (anchor) {
+        selCtx = anchor;
+        const where = SC.selectionLabel(anchor);
+        chatLog[chatLog.length - 1].text += `
+(pointing at the ${where}, ${SC.vec(anchor.point)})`;
+        if (userEl) {
+          const tag = document.createElement("div");
+          tag.style.cssText = "display:flex; align-items:center; gap:5px; margin-top:4px; font-size:11px; opacity:.8";
+          tag.innerHTML = `<span class="pin-dot"></span>${esc(where)}`;
+          userEl.appendChild(tag);
+        }
+      }
 
       // Name question? Answer directly, whatever the provider — the name lives
       // in settings and is only ever volunteered when actually asked for.
@@ -22700,7 +22851,18 @@ let SIMPLIFY_TARGET = 10000;
         || aiProvider.value === "browser"      // no key: the model runs in this tab
         || (aiProvider.value !== "builtin" && aiKey.value.trim());
       if (!useApi) {
+        // a spot is pinned: a hole there or a round of its edges is written
+        // into its body; anything else the rule engine cannot do is answered
+        // about that spot rather than with a shrug
+        const at = anchor && SC.selectionEdit(anchor, text, code.value);
+        if (at) {
+          const told = addMsg("bot", at.reply);
+          chatLog.push({ role: "assistant", text: at.reply });
+          if (at.code !== undefined) await applyHelperCode(text, at.code, "editor", null, told);
+          return;
+        }
         const r = botRespond(text, botState, code.value, modelDims);
+        if (anchor && r.cantDo && r.code === undefined) r.reply = SC.anchorHelp(anchor);
         if (r.pending) botState.pending = r.pending;
         if (r.clearPending) botState.pending = null;
         const said = addMsg("bot", r.reply);
@@ -22763,8 +22925,17 @@ let SIMPLIFY_TARGET = 10000;
       // actually handle this (it built code, or it's running a guided flow),
       // answer locally and save the API round-trip.
       if (!house && gemWantsLocalFirst()) {
+        // a pinned spot: a hole or a round there is the selection's own
+        // writer; anything else about it goes to the AI with the spot
+        const at = anchor && SC.selectionEdit(anchor, text, code.value);
+        if (at?.code !== undefined) {
+          const told = addMsg("bot", `${at.reply}  · handled locally`);
+          chatLog.push({ role: "assistant", text: at.reply });
+          await applyHelperCode(text, at.code, "editor", null, told);
+          return;
+        }
         const local = botRespond(text, botState, code.value, modelDims);
-        if (local.code !== undefined || local.pending) {
+        if (!anchor && (local.code !== undefined || local.pending)) {
           if (local.pending) botState.pending = local.pending;
           if (local.clearPending) botState.pending = null;
           const said = addMsg("bot", `${local.reply}  · handled locally`);
@@ -22905,7 +23076,7 @@ let SIMPLIFY_TARGET = 10000;
         // A change to the model on screen ("add a hole for the charger"), not a
         // new design: the AI is told to edit, and to think briefly.
         const quickEdit = withPicture || (text !== RETRY_TEXT && text !== EXACT_TEXT && !!code.value.trim()
-          && code.value.trim() !== code.defaultValue.trim() && !!CHAT?.isQuickEdit?.(text));
+          && code.value.trim() !== code.defaultValue.trim() && !!CHAT?.isQuickEdit?.(text)) || !!anchor;
         if (quickEdit) logLine("quick edit of the model on screen: keep it, change only what was asked");
         // Attached pictures become geometry the app traced itself: the AI
         // places image("img-…") instead of redrawing a logo by eye.
@@ -22930,7 +23101,11 @@ let SIMPLIFY_TARGET = 10000;
             + ` header and const dial) and make only the change asked for, usually one difference() cut or union()`
             + ` boss wrapped around the existing return. Do not rebuild, restyle or resize anything else. Think briefly:`
             + ` this is a small change, and the answer is the complete edited code.` : "")
-          + imageNote;
+          + imageNote
+          + (anchor ? `
+
+${SC.describeSelectionContext(anchor)}` : "");
+        if (anchor) logLine(`pointing at: ${SC.selectionLabel(anchor)} ${SC.vec(anchor.point)}`);
         const context = code.value.trim()
           ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\n${verbatim}`
           : (parts ? `${parts.trim()}\n\n${verbatim}` : verbatim);
@@ -24270,6 +24445,10 @@ let SIMPLIFY_TARGET = 10000;
             try { return (await import("../src/exactlane.js")).exactAdvice(lastEngine, code.value)?.ask || null; }
             catch { return null; }
           })(),
+          // The spot the user right-clicked and chose "Ask about this…" on
+          // (viewer/selection-context.js), or null. "Here" / "this" in what
+          // they say to you means this point, face and call.
+          selection: selCtx ? SC.forAgent(SC.relocate(selCtx, code.value)) : null,
         };
       },
 
@@ -24397,7 +24576,7 @@ let SIMPLIFY_TARGET = 10000;
       if (mc?.registerTool) {
         const S = { type: "string" };
         const tools = [
-          ["get_state", "What is in the BREPcode editor right now: the code, the model name, the build status and message, the model's size in mm, and the named parameters with their values. Call this first, and again after the user may have typed.", {}, [], true],
+          ["get_state", "What is in the BREPcode editor right now: the code, the model name, the build status and message, the model's size in mm, the named parameters with their values, and selection: the spot the user right-clicked to ask about (point, normal, face, edges, the call that made it and its body), or null. Call this first, and again after the user may have typed.", {}, [], true],
           ["set_code", "Replace the editor's contents and build it: the model on screen changes. Returns get_state's fields; status.kind 'err' means the build FAILED and status.text says why. Goes through the undo stack, so the user can Ctrl+Z it. Source can be BREPcode DSL, OpenSCAD or JSCAD, in millimetres.", { code: { ...S, description: "the complete new source" }, name: { ...S, description: "optional model name, used for exported filenames" } }, ["code"]],
           ["build", "Rebuild whatever is in the editor now, without changing it.", {}, []],
           ["set_param", "Turn one of the model's named parameters (the sliders the user sees) and rebuild. Cheaper than rewriting the source for a dimension change.", { name: { ...S, description: "the parameter name from get_state.params" }, value: { description: "the new value" } }, ["name", "value"]],

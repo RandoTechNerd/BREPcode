@@ -307,3 +307,55 @@ screenshots).
   the body and the sketch stays put.
 - The solver is the BREP.io one (iterative): a heavily over-constrained sketch
   settles where it can and says nothing more precise than "not satisfied".
+
+## Ask about this…
+
+Right-click the model (Code or Design mode) → **Ask about this…** pins a
+marker at the clicked point and opens the chat about it. The chip over the
+input says what the next message is about ("Asking about top face of cube,
+line 2"); ✕ takes the pin away. It is a menu item, not a gesture: Alt-drag
+stays the free move, and a right-DRAG is the camera's pan (the menu only
+opens on a still right-click, and the body drag is the left button's).
+
+| Piece | File | What it does |
+|---|---|---|
+| Context | `viewer/selection-context.js` | the pinned spot as one object, its prompt text, its JSON for agents, the built-in edits (no DOM) |
+| Viewer | `viewer/index.html` (`pinSelection`, `sendChat`) | fills it from the pick and the build's map, the pin, the chip, the message |
+
+`selectionContext` (version 1):
+
+```js
+{ version: 1, kind: "point", mode: "code" | "design",
+  point: [x, y, z], normal: [x, y, z],          // world mm; the normal points out
+  face: "P.CU1_PZ", solid: "P", edges: ["P.CU1_PX|P.CU1_PZ[0]", …],
+  fid, feature: { start, end, name, line, code }, // the call that made the face
+  body: { start, end, name, line, code },          // its body's outermost call (bodySpan)
+  sketchPlane: null, reference: null, scan: null } // later: a plane, a photo on a mat with its scale, a phone scan
+```
+
+Every AI path reads that one object:
+
+- **Built-in assistant**: "a 5 mm hole here", "M3 hole 8 mm deep", "counterbore
+  hole radius 2" write `drill(point, normal, { … })` into the body's
+  `difference()` (or wrap the body in one); "round / chamfer these edges 2 mm"
+  writes `fillet({ r, edges: [the face's edges] }, body)`. Anything else gets
+  an answer about the spot and what an AI could do.
+- **Connected AI** (Gemini, Claude, OpenAI, local, Claude Code): the message
+  carries `describeSelectionContext()` after the user's own words: the point,
+  normal, face, edges, the call with its line and text, the body, and how a
+  hole or a round there is written. The catalog does not answer a pinned
+  message (it is an edit here, never a new design).
+- **Agents over MCP / WebMCP**: `get_state.selection` (`forAgent()`), and the
+  MCP instructions say what "here" means.
+
+Spans are moved to where their code is now before each send (`relocate()`),
+so typing in between, or an earlier anchored edit that wrapped the body, does
+not point the AI at the wrong call. Hooks: `brepscript.askAbout(x, y)`,
+`brepscript.selectionContext()`, `brepscript.clearSelectionContext()`.
+Checks: `node test/selection.js` (in `npm test`), `npm run test:ask`
+(Electron, real right-clicks, a stubbed AI endpoint, screenshots).
+
+Known limits: a shape with no call behind it (an imported mesh) gets no menu;
+the pin stays at its point after an edit (a hole drilled there leaves the pin
+over the hole); the built-in assistant's words are a small set (holes, rounds,
+bevels).
