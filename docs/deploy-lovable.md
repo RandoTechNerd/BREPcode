@@ -69,9 +69,11 @@ Three files live on brepcode.com and never in the zip:
 
 - the Rust BREP kernel, `vendor/brep-kernel-rust/brep_kernel_bg.wasm`
   (14.5 MB, the split engine's exact lane and "Open as an exact solid"). Too big
-  for `/brep/` as well. Upload it to the asset store, then uncomment the
-  `window.__BREP_RUST_WASM_URL` line in `viewer/index.html` with its address and
-  rebuild the zip. Without it the site still works: the worker tries the wasm
+  for `/brep/` as well, so it sits in the asset store (uploaded 2026-10-27,
+  `/__l5e/assets-v1/34d5b7bb-03c8-4928-b642-cecc4a3ca36c/brep_kernel_bg.wasm`).
+  When the Rust kernel is rebuilt, upload the new file there and change the
+  `window.__BREP_RUST_WASM_URL` line in `viewer/index.html` to its address,
+  then rebuild the zip. Without it the site still works: the worker tries the wasm
   once per session, remembers that it failed, and every build runs on the JS
   kernel (the status line says "JS kernel (Rust unavailable)"), and the drop
   menu's exact-solid option reports that it can't load.

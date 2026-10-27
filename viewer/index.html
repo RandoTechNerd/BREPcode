@@ -121,10 +121,10 @@
     if (/(^|\.)brepcode\.com$/.test(location.hostname)) {
       window.__BREP_REPLICAD_WASM_URL = "/__l5e/assets-v1/8c128b71-bdc1-4582-ba91-70b8024c999b/replicad_single.wasm";
       // The 14.5 MB Rust kernel (vendor/brep-kernel-rust/brep_kernel_bg.wasm)
-      // is too big for /brep/ too. Upload it to the asset store and put its
-      // address here (docs/deploy-lovable.md). Until then brepcode.com builds
-      // on the JS kernel: the worker tries the wasm once and remembers it failed.
-      // window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/<id>/brep_kernel_bg.wasm";
+      // is too big for /brep/ too, so it sits in the asset store (uploaded
+      // 2026-10-27). A rebuilt Rust kernel has to be uploaded again and this
+      // address changed (docs/deploy-lovable.md).
+      window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/34d5b7bb-03c8-4928-b642-cecc4a3ca36c/brep_kernel_bg.wasm";
       // The SMLib kernel (vendor/brep-kernel-smlib/smlib.wasm, 4.4 MB) fits in
       // /brep/ and ships in the zip, so it needs nothing here. If it ever has
       // to move to the asset store, upload smlib.wasm there and set:
