@@ -79,8 +79,8 @@ Three files live on brepcode.com and never in the zip:
   menu's exact-solid option reports that it can't load.
 
 Not host-owned: the SMLib kernel as WebAssembly,
-`vendor/brep-kernel-smlib/smlib.wasm` (4.4 MB, Settings > Kernel > "SMLib
-(alpha), then Rust"). It fits in `/brep/`, so it ships in the zip and the
+`vendor/brep-kernel-smlib/smlib.wasm` (4.4 MB; the website's default kernel,
+Settings > Kernel > "SMLib (alpha), then Rust"). It fits in `/brep/`, so it ships in the zip and the
 service worker caches it like the rest of `vendor/`. Only if it ever has to
 move: upload it to the asset store and set `window.__BREP_SMLIB_WASM_URL` in
 `viewer/index.html` (the commented line beside the Rust one).

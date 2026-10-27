@@ -4547,11 +4547,15 @@
     // SMLib, the alpha build's default) or "rust". The desktop runs both as
     // native code (its kernel process falls back nvidia -> Rust -> this page's
     // JS kernel); the website runs them as WebAssembly in the build worker,
-    // SMLib's downloaded only once it is picked, with the same fallbacks.
+    // with the same fallbacks.
     const KERNELS = ["nvidia", "rust"];
     // the website's build of SMLib is WebAssembly, not the desktop's addon
     const SMLIB_NAME = window.brepcodeDesktop ? "NVIDIA" : "SMLib";
-    const KERNEL_DEFAULT = window.brepcodeDesktop?.kernelDefault === "nvidia" ? "nvidia" : "rust";
+    // The website starts on SMLib: a first visit gets a fast kernel after a
+    // 1.6 MB download rather than the Rust wasm's 5 MB (the Rust kernel still
+    // downloads behind it and builds whatever SMLib refuses). The desktop
+    // keeps its build's own default.
+    const KERNEL_DEFAULT = !window.brepcodeDesktop || window.brepcodeDesktop.kernelDefault === "nvidia" ? "nvidia" : "rust";
     function buildKernel() {
       const q = /[?&]kernel=(\w+)/.exec(location.search)?.[1];
       if (KERNELS.includes(q)) return q;
@@ -4576,7 +4580,7 @@
       if (e.engine === "exact") return " · Exact" + native + rounded;
       if (e.engine === "mesh") return " · Mesh" + native + rounded;
       if (!e.fallback) return "";
-      return e.fallbackKind === "loading" ? " · JS kernel (Rust still loading)"
+      return e.fallbackKind === "loading" ? ` · JS kernel (${buildKernel() === "nvidia" && !window.brepcodeDesktop ? "SMLib" : "Rust"} still loading)`
         : e.fallbackKind === "unavailable" ? " · JS kernel (Rust unavailable)"
         : " · JS kernel (Rust refused)";
     }
