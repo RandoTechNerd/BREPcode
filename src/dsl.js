@@ -53,17 +53,26 @@ let SITE_URL = null;
 let siteBudget = 0;
 export function captureSites(url, { budget = 20000 } = {}) { SITE_URL = url || null; siteBudget = budget; }
 const v8Frames = typeof Error.captureStackTrace === "function";
+// The innermost frame in the model's code is the site; the model-code frames
+// above it (`up`, outermost last) say which call of a helper made the shape,
+// so a Design edit can wrap that one call instead of the helper's body, which
+// every call shares.
 const pickFrame = (_, frames) => {
+  let site = null;
   for (const f of frames) {
-    if (f.getScriptNameOrSourceURL?.() === SITE_URL) return { line: f.getLineNumber(), col: f.getColumnNumber() };
+    if (f.getScriptNameOrSourceURL?.() !== SITE_URL) continue;
+    const at = { line: f.getLineNumber(), col: f.getColumnNumber() };
+    if (!site) site = at;
+    else (site.up ??= []).push(at);
   }
-  return null;
+  return site;
 };
 function callSite(above) {
   const lim = Error.stackTraceLimit;
   // The caller is normally the very next frame; a few more cover a native
-  // in between (`[1, 2].map(cube)` is called by Array.prototype.map).
-  Error.stackTraceLimit = 4;
+  // in between (`[1, 2].map(cube)` is called by Array.prototype.map) and the
+  // helper calls above it.
+  Error.stackTraceLimit = 10;
   try {
     if (v8Frames) {
       const prep = Error.prepareStackTrace;

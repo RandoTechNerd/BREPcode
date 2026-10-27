@@ -11,7 +11,7 @@ import { PartHistory } from "brep-io-kernel";
 import * as dsl from "../src/dsl.js";
 import * as codemap from "../src/codemap.js";
 import { dragSpanFor } from "../viewer/assist.js";
-import { moveText, ridersOf } from "../viewer/design-move.js";
+import { moveText, ridersOf, instanceSpan } from "../viewer/design-move.js";
 import { buildTree, primaryFid, rowForFid, callCategory } from "../viewer/design-tree.js";
 import { linkFeatures, referencedIds, stepLabel, failedSteps, deleteStepText } from "../viewer/design-timeline.js";
 import * as F from "../viewer/design/features.js";
@@ -298,7 +298,10 @@ console.log("\nmodel browser: one row per call, nested as written\n");
     && row(model, "fillet").category === "op" && row(model, "peg").category === "helper");
   const hc = row(helper, "cylinder");
   check("a helper's shape is ONE row marked ×2", hc.pattern?.count === 2 && hc.fids.length === 2);
-  check("each peg(…) call row selects what the helper builds", row(model, "peg", 1).fids.join() === hc.fids.join());
+  // per call, as traced by the build: peg(10) is one peg, peg(50) the other
+  const pr = [row(model, "peg", 0), row(model, "peg", 1)];
+  check("each peg(…) call row selects the peg that call built",
+    pr.every((r) => r.fids.length === 1 && hc.fids.includes(r.fids[0])) && pr[0].fids[0] !== pr[1].fids[0], JSON.stringify(pr.map((r) => r.fids)));
   check("the union holds the cube and both pegs, cube first",
     row(model, "union").fids.length === 3 && row(model, "union").fids[0] === row(model, "cube").ownFids[0],
     row(model, "union").fids.join());
@@ -863,6 +866,52 @@ console.log("\nPhase 3: wiring\n");
     /dsl\.useSketchSolver\(k\.ConstraintSolver\)/.test(html) && /\/\\bsketch\\s\*\\\(\/\.test\(src\) && !dsl\.hasSketchSolver\(\)/.test(html));
   check("so does the CLI / Node path", /useSketchSolver\(ConstraintSolver\)/.test(render));
   check("the site build ships the sketcher", /"design\/sketcher\.js", "design\/sketch-model\.js"/.test(build_) && /'"\.\.\/\.\.\/vendor\/'\)\.join\('"\.\.\/vendor\/'\)/.test(build_));
+}
+
+console.log("\nA shape made by a helper: the edit wraps that one call of it\n");
+{
+  // the phone stand's shape: one helper makes the body AND the window cut,
+  // and a scale of the window once went into the helper and scaled both
+  const STAND = `const across = (pts, h, y0) => translate([0, y0 + h, 0], rotate([90, 0, 0], linearExtrude({ h }, polygon(pts))));
+const win = [[10, 4], [30, 4], [30, 20]];
+const cuts = [];
+cuts.push(across(win, 42, -1));
+return difference(across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0), ...cuts);`;
+  const { sites } = await build(STAND);
+  const ids = Object.keys(sites);
+  const callOf = (id) => STAND.slice(sites[id].callers?.[0]?.start, sites[id].callers?.[0]?.end);
+  check("an arrow helper is named by its const", ids.length === 2 && ids.every((id) => sites[id].fn === "across"), JSON.stringify(sites));
+  check("each copy traces to its own call of the helper",
+    ids.map(callOf).sort().join(" | ") === "across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0) | across(win, 42, -1)", ids.map(callOf).join(" | "));
+  const winId = ids.find((id) => callOf(id) === "across(win, 42, -1)");
+  const inst = instanceSpan(sites[winId]);
+  check("instanceSpan is the window's helper call", STAND.slice(inst.start, inst.end) === "across(win, 42, -1)");
+  const r = F.scaleText(STAND, F.shapeSpan(STAND, inst), 0.5, [20, 20, 12]);
+  check("a scale of the window wraps only that call",
+    r.next.includes("cuts.push(scale(0.5, { about: [20, 20, 12] }, across(win, 42, -1)));") && r.next.startsWith("const across = (pts, h, y0) => translate("), r.next);
+  const m = moveText(STAND, inst, { x: 5, y: 0, z: 0 });
+  const m2 = moveText(m.next, { start: m.start, end: m.end }, { x: 5, y: 0, z: 0 });
+  check("a second move chains onto the span the first one handed back",
+    m2.how === "fold" && m2.next.includes("cuts.push(translate([10, 0, 0], across(win, 42, -1)));"), m2.next);
+  check("a shape in the open is not redirected", instanceSpan({ fn: null }) === null);
+  check("a helper that cannot be traced to one call is refused",
+    instanceSpan({ fn: "post", callers: [{ name: "map", fn: null, start: 0, end: 1 }] })?.shared === "post");
+  const RET = "const a = 1;\nreturn union(cube(1), sphere(2));";
+  const ret = codemap.parseCode(RET).ret;
+  check("the whole model is the return value", RET.slice(ret.start, ret.end) === "union(cube(1), sphere(2))");
+  const tree = buildTree(STAND, sites, words);
+  const rows = (tree.groups ?? tree).flatMap((g) => g.rows ?? []);
+  const at = STAND.indexOf("across(win");
+  const winRow = rows.find((x) => x.key === `${at}:${at + "across(win, 42, -1)".length}`);
+  check("the model browser's helper-call row selects only what that call made", winRow && winRow.fids.join() === winId, JSON.stringify(winRow?.fids));
+  const gz = readFileSync(new URL("../viewer/design-gizmo.js", import.meta.url), "utf8");
+  const shell = readFileSync(new URL("../viewer/design-shell.js", import.meta.url), "utf8");
+  check("a released change is held until its build lands",
+    /cur\.held = c\.matrix\.clone\(\)\.multiply\(cur\.held\)/.test(gz) && /userData\.designHeld/.test(gz) && /dropHolds/.test(shell));
+  check("a build landing mid-drag rebases the drag", /gizmo\.rebase\(m\)/.test(shell));
+  check("nothing picked: move / rotate / scale take the whole model", /const target = selectedFid \?\? MODEL/.test(shell));
+  check("the browser's selection has a draggable split and pops out to its own window",
+    /id="dz-split" role="separator"/.test(shell) && /function popSel\(out/.test(shell) && /#dz-selwin \{/.test(shell));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

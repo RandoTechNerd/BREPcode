@@ -96,8 +96,11 @@ export function buildTree(src, sites, words) {
   for (const g of groups.values()) {
     for (const r of g.rows) {
       if (!r.helper || r.fids.length) continue;
+      // the shapes this very call made, when the build traced them to it
+      const mine = entries.filter(([, s]) => s.callers?.some((c) => c.start === r.start && c.end === r.end)).map(([id]) => id);
       const def = groups.get(`fn:${r.helper}`);
-      if (def) r.fids = [...new Set(def.rows.flatMap((x) => x.fids))];
+      if (mine.length) r.fids = mine;
+      else if (def) r.fids = [...new Set(def.rows.flatMap((x) => x.fids))];
     }
   }
   // …and so does every row around a helper call: the union holding peg(10)

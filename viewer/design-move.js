@@ -42,6 +42,27 @@ export function ridersOf(span, { sites = {}, trace = [], runText = null, editorT
 
 // A wrapper right before a span is only folded into when the span is its
 // ONLY child: translate([1,0,0], a, b) moving `a` must not move `b` too.
+// instanceSpan(site) -> where to write an edit of a shape made inside a
+// helper function. The helper's body is shared by every call of it, so an
+// edit written there changes all of them (a scale of a stand's window cut
+// scaled the whole stand); the call of the helper that made THIS shape is
+// what to wrap. Follows the callers out (`across` called from the top level,
+// or from another helper called from there) and gives:
+//   null              the shape is written in the open: edit its own call
+//   { start, end }    the outermost helper call that made it
+//   { shared: name }  made in a function that cannot be traced to one call
+//                     (a .map callback, an unnamed function): edit nothing
+export function instanceSpan(site) {
+  if (!site?.fn) return null;
+  let fn = site.fn;
+  for (const c of site.callers || []) {
+    if (c.name !== fn) break;
+    if (!c.fn) return { start: c.start, end: c.end, label: `${c.name}(…)`, whole: false, instance: true };
+    fn = c.fn;
+  }
+  return { shared: site.fn };
+}
+
 export const soleChild = (text, end) => /^\s*,?\s*\)/.test(text.slice(end));
 const WRAP_HEAD = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/;
 const DRILL_HEAD = /^drill\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/;

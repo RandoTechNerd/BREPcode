@@ -153,6 +153,27 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 .dz-args { color: var(--muted, #8ea0c0); font: 11px ui-monospace, "Cascadia Code", Consolas, monospace; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #dz-sel { border-top: 1px solid var(--border, #26314a); padding: 8px 10px 10px; flex: none; max-height: 40%; overflow: auto; }
 #dz-sel:empty { display: none; }
+/* the bar between the shape list and the selection: drag it to give either
+   more room, double-click for the default; its button pops the selection out */
+#dz-split { flex: none; height: 9px; margin-top: -1px; cursor: row-resize; position: relative; touch-action: none;
+  display: flex; align-items: center; justify-content: center; }
+#dz-split::before { content: ""; width: 34px; height: 3px; border-radius: 2px; background: var(--border, #26314a); }
+#dz-split:hover::before, #dz-split:focus-visible::before, #dz-split.drag::before { background: #6ea8ff; }
+#dz-split:focus-visible { outline: none; }
+#dz-split:has(+ #dz-sel:empty), #dz-side.sel-out #dz-split { display: none; }
+#dz-split .dz-pop { position: absolute; right: 6px; top: -3px; border: 0; background: transparent; color: var(--muted, #8ea0c0);
+  cursor: pointer; font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+#dz-split .dz-pop:hover { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.16); }
+#dz-sel.sized { max-height: none; }
+#dz-selwin { top: 56px; left: 284px; width: 300px; height: 360px; min-width: 200px; min-height: 120px;
+  max-height: calc(100vh - 150px); display: flex; flex-direction: column; overflow: hidden; resize: both; }
+#dz-selwin:has(#dz-sel:empty) { display: none; }
+#dz-selwin .hd { display: flex; align-items: center; gap: 6px; padding: 7px 10px 6px; font-size: 12px; font-weight: 650;
+  border-bottom: 1px solid var(--border, #26314a); cursor: move; user-select: none; touch-action: none; }
+#dz-selwin .hd button { margin-left: auto; border: 0; background: transparent; color: var(--muted, #8ea0c0); cursor: pointer;
+  font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+#dz-selwin .hd button:hover { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.16); }
+#dz-selwin #dz-sel { border-top: 0; max-height: none; flex: 1 1 auto; height: auto !important; }
 #dz-sel .k { color: var(--muted, #8ea0c0); }
 #dz-sel .dz-line { margin: 2px 0; overflow-wrap: anywhere; }
 #dz-sel code { font: 11px ui-monospace, "Cascadia Code", Consolas, monospace; }
@@ -236,7 +257,10 @@ export function initDesignShell(host) {
   side.id = "dz-side";
   side.className = "dz-ui";
   side.innerHTML = `<h3><button type="button" class="dz-fold" title="Fold the browser" aria-expanded="true">▾</button>Browser<small></small></h3>`
-    + `<div id="dz-tree" role="tree" aria-label="Model browser"></div><div id="dz-sel" aria-live="polite"></div>`;
+    + `<div id="dz-tree" role="tree" aria-label="Model browser"></div>`
+    + `<div id="dz-split" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag to resize (double-click resets)">`
+    + `<button type="button" class="dz-pop" title="Pop the selection out into its own window">⇱</button></div>`
+    + `<div id="dz-sel" aria-live="polite"></div>`;
 
   const time = document.createElement("div");
   time.id = "dz-time";
@@ -245,6 +269,89 @@ export function initDesignShell(host) {
   document.body.append(bar, side, time);
   const treeEl = side.querySelector("#dz-tree"), selEl = side.querySelector("#dz-sel");
   const countEl = side.querySelector("h3 small"), stepsEl = time.querySelector("#dz-steps");
+
+  // ---- the selection's room: a draggable split, or a window of its own ----
+  const splitEl = side.querySelector("#dz-split");
+  const SEL_KEY = "brepcode.design.sel";
+  const selPrefs = (() => { try { return JSON.parse(localStorage.getItem(SEL_KEY)) || {}; } catch { return {}; } })();
+  const saveSel = () => { try { localStorage.setItem(SEL_KEY, JSON.stringify(selPrefs)); } catch { /* a preference only */ } };
+  const setSelHeight = (px) => {
+    if (px == null) { selEl.style.height = ""; selEl.classList.remove("sized"); delete selPrefs.h; }
+    else {
+      const room = side.getBoundingClientRect().height - 110;      // the header and some of the list stay
+      px = Math.round(Math.max(60, Math.min(room, px)));
+      selEl.style.height = `${px}px`; selEl.classList.add("sized"); selPrefs.h = px;
+    }
+    saveSel();
+  };
+  if (selPrefs.h) { selEl.style.height = `${selPrefs.h}px`; selEl.classList.add("sized"); }
+  splitEl.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target.closest(".dz-pop")) return;
+    e.preventDefault();
+    const y0 = e.clientY, h0 = selEl.getBoundingClientRect().height;
+    splitEl.setPointerCapture(e.pointerId);
+    splitEl.classList.add("drag");
+    const move = (ev) => setSelHeight(h0 - (ev.clientY - y0));
+    const up = () => { splitEl.classList.remove("drag"); splitEl.removeEventListener("pointermove", move); };
+    splitEl.addEventListener("pointermove", move);
+    splitEl.addEventListener("pointerup", up, { once: true });
+    splitEl.addEventListener("pointercancel", up, { once: true });
+  });
+  splitEl.addEventListener("dblclick", (e) => { if (!e.target.closest(".dz-pop")) setSelHeight(null); });
+  splitEl.addEventListener("keydown", (e) => {
+    const k = { ArrowUp: 24, ArrowDown: -24 }[e.key];
+    if (!k) return;
+    e.preventDefault(); e.stopPropagation();
+    setSelHeight(selEl.getBoundingClientRect().height + k);
+  });
+  let selWin = null;
+  function popSel(out, { save = true } = {}) {
+    if (out && !selWin) {
+      selWin = document.createElement("div");
+      selWin.id = "dz-selwin";
+      selWin.className = "dz-ui";
+      selWin.setAttribute("role", "dialog");
+      selWin.setAttribute("aria-label", "Selection");
+      selWin.innerHTML = `<div class="hd">Selection<button type="button" title="Put it back under the browser">⇲ Dock</button></div>`;
+      document.body.appendChild(selWin);
+      const p = selPrefs.win;
+      if (p) Object.assign(selWin.style, { left: `${p.x}px`, top: `${p.y}px`, width: `${p.w}px`, height: `${p.h}px` });
+      selWin.querySelector(".hd button").addEventListener("click", () => popSel(false));
+      // drag by the header; kept on screen
+      const hd = selWin.querySelector(".hd");
+      hd.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || e.target.closest("button")) return;
+        e.preventDefault();
+        const r = selWin.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+        hd.setPointerCapture(e.pointerId);
+        const move = (ev) => {
+          selWin.style.left = `${Math.max(0, Math.min(innerWidth - 80, ev.clientX - dx))}px`;
+          selWin.style.top = `${Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy))}px`;
+        };
+        const up = () => { hd.removeEventListener("pointermove", move); rememberWin(); };
+        hd.addEventListener("pointermove", move);
+        hd.addEventListener("pointerup", up, { once: true });
+      });
+      new ResizeObserver(() => rememberWin()).observe(selWin);
+      selWin.appendChild(selEl);
+      side.classList.add("sel-out");
+    } else if (!out && selWin) {
+      side.appendChild(selEl);
+      selWin.remove(); selWin = null;
+      side.classList.remove("sel-out");
+    }
+    selPrefs.out = !!out;
+    if (save) saveSel();
+  }
+  function rememberWin() {
+    if (!selWin || !selWin.isConnected) return;
+    const r = selWin.getBoundingClientRect();
+    if (!r.width) return;
+    selPrefs.win = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    saveSel();
+  }
+  splitEl.querySelector(".dz-pop").addEventListener("click", () => popSel(true));
+  if (selPrefs.out) popSel(true, { save: false });
 
   // ---- state ----
   let active = false;
@@ -296,37 +403,100 @@ export function initDesignShell(host) {
     onDragging(on) { overlay.visible = !on; if (on) setHoverFace(null); },
     // the live size while a scale handle drags, in the scale panel
     onScaling(k) { setScaleFields([k.x, k.y, k.z]); },
-    onRelease(fid, d) {
-      if (d.mode === "rotate" || d.mode === "scale") {
-        const m = host.moveMembers(fid);
-        if (!m) return;
-        const text = host.text();
-        const span = shapeSpan(text, m.span);
-        const about = [d.about.x, d.about.y, d.about.z];
-        const r = d.mode === "rotate" ? rotateText(text, span, d.axis, d.deg, about) : scaleText(text, span, d.factor, about);
-        if (r.how === "none") return;
-        host.commit(r.next);
-        host.setHint(d.mode === "rotate"
-          ? `Turned <b>${d.deg}°</b> about ${"XYZ"[d.axis]}: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>rotate(…, { about })</code>.`
-          : `Scaled <b>×${[d.factor].flat().join(" × ")}</b>: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>scale(…, { about })</code>.`);
-        return;
-      }
-      const r = host.commitMove(fid, d);
-      if (r?.how && r.how !== "none") {
-        host.setHint(`Moved by <b>[${[d.x, d.y, d.z].map((v) => Math.round(v * 10) / 10).join(", ")}]</b> mm: `
-          + (r.how === "drill" ? "the drill's point was rewritten." : r.how === "fold" ? "folded into its <code>translate()</code>." : "wrapped in <code>translate()</code>."));
-      }
-    },
+    onRelease(fid, d) { writeChange(fid, d); },
   });
 
+  // A gizmo change into the code. The preview holds it where it was dropped
+  // while the kernel builds (design-gizmo.js), so the shape can be dragged
+  // again before that build lands. Then the click map is still of the old
+  // text and its spans are off, so: the same shape changed the same way
+  // again goes onto the span the last writer handed back (it folds into the
+  // same translate / rotate / scale); anything else waits for the build and
+  // goes in from the fresh map (still held on screen meanwhile).
+  // With nothing picked, Move / Rotate / Scale take the WHOLE model, as a
+  // slicer does: the gizmo sits on all of it and the change wraps the
+  // model's return value. A click on a part narrows it to that part; a click
+  // on empty space (or Esc) widens it back. The return's span is read from
+  // the text as it is now, so a whole-model change never needs the click map.
+  const MODEL = "__model";
+  function members(fid) {
+    if (fid !== MODEL) return host.moveMembers(fid);
+    const ret = parseCode(host.text()).ret;
+    if (!ret) return null;
+    return { span: { ...ret, whole: true }, isCutter: false, fids: [],
+      meshes: host.modelMeshes().filter((m) => m.isMesh && m.visible) };
+  }
+  let chain = null;          // { fid, mode, text, span } of the last change written
+  let waiting = [];          // [{ fid, d }] released while the map was stale
+  function writeChange(fid, d) {
+    const mode = d.mode ?? "translate";
+    let span = null;
+    if (fid === MODEL) span = members(MODEL)?.span;
+    else if (!host.featureMap()) {
+      if (chain && chain.fid === fid && chain.mode === mode && chain.text === host.text()) span = chain.span;
+      else {
+        waiting.push({ fid, d });
+        host.setHint("Holding that change where you dropped it: it goes into the code when the build in progress finishes.");
+        return;
+      }
+    }
+    let r;
+    if (mode === "rotate" || mode === "scale") {
+      const m = span ? null : members(fid);
+      if (!span && !m?.span) return;
+      const text = host.text();
+      const at = shapeSpan(text, span ?? m.span);
+      const about = [d.about.x, d.about.y, d.about.z];
+      r = mode === "rotate" ? rotateText(text, at, d.axis, d.deg, about) : scaleText(text, at, d.factor, about);
+      if (r.how === "none") return;
+      host.commit(r.next);
+      host.setHint(mode === "rotate"
+        ? `Turned <b>${d.deg}°</b> about ${"XYZ"[d.axis]}: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>rotate(…, { about })</code>.`
+        : `Scaled <b>×${[d.factor].flat().join(" × ")}</b>: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>scale(…, { about })</code>.`);
+    } else {
+      r = host.commitMove(fid, d, span);
+      if (!r?.how || r.how === "none") return;
+      host.setHint(`Moved by <b>[${[d.x, d.y, d.z].map((v) => Math.round(v * 10) / 10).join(", ")}]</b> mm: `
+        + (r.how === "drill" ? "the drill's point was rewritten." : r.how === "fold" ? "folded into its <code>translate()</code>." : "wrapped in <code>translate()</code>."));
+    }
+    chain = { fid, mode, text: host.text(), span: { start: r.start, end: r.end } };
+  }
+  // a build landed with a fresh map: what waited goes in now, held on the
+  // new meshes until its own build lands
+  function flushWaiting() {
+    if (!waiting.length || !host.featureMap()) return;
+    const list = waiting;
+    waiting = [];
+    for (const { fid, d } of list) {
+      const m = members(fid);
+      if (m?.meshes.length) gizmo.hold(fid, m, d.matrix);
+      writeChange(fid, d);
+    }
+  }
+
+  let aimSaid = "";          // what the hint last said the gizmo is on
   const attachGizmo = () => {
-    if (gizmo.dragging) return;      // a rebuild mid-drag must not drop the drag
+    // a rebuild mid-drag must not drop the drag: the drag rides on the new meshes
+    if (gizmo.dragging) { const m = gizmo.fid && members(gizmo.fid); if (m?.meshes.length) gizmo.rebase(m); return; }
     host.handlesVisible?.(true);
-    if (!active || !GIZMO_MODE[tool] || !selectedFid || dialog || sketcher?.active) { gizmo.detach(); closeScalePanel(); return; }
+    const target = selectedFid ?? MODEL;
+    if (!active || !GIZMO_MODE[tool] || dialog || sketcher?.active) { gizmo.detach(); closeScalePanel(); return; }
     if (gizmo.mode !== GIZMO_MODE[tool]) gizmo.setMode(GIZMO_MODE[tool]);
-    const m = host.moveMembers(selectedFid);
+    const m = members(target);
+    if (m?.shared) {
+      gizmo.detach(); closeScalePanel();
+      host.setHint(`That shape is made inside <code>${esc(m.shared)}()</code> and cannot be traced to one call of it, so a change would hit every shape it makes. Change it in the code, or click empty space to ${tool} the whole model.`);
+      return;
+    }
     if (!m?.meshes.length) { gizmo.detach(); closeScalePanel(); return; }
-    gizmo.attach(selectedFid, m);
+    gizmo.attach(target, m);
+    if (aimSaid !== `${target}:${tool}`) {
+      aimSaid = `${target}:${tool}`;
+      const verb = { move: "Moving", rotate: "Turning", scale: "Scaling" }[tool] ?? "Changing";
+      host.setHint(target === MODEL
+        ? `${verb} the <b>whole model</b>. Click a part to change only that part.`
+        : `${verb} only this part. Click empty space (or press Esc) for the whole model.`);
+    }
     if (tool === "scale") showScalePanel(); else closeScalePanel();
     // rotate and scale have their own handles: the face dots and arrows would
     // be a second set on top (Move keeps them: they resize, the gizmo moves)
@@ -388,8 +558,8 @@ export function initDesignShell(host) {
     const f = scaleFactors().map((v) => Math.round(v * 1000) / 1000);
     const factor = f.every((v) => v === f[0]) ? f[0] : f;
     if (f.every((v) => Math.abs(v - 1) < 1e-6)) return;
-    const m = host.moveMembers(fid);
-    if (!m) return;
+    const m = members(fid);
+    if (!m?.span) return;
     const text = host.text();
     const r = scaleText(text, shapeSpan(text, m.span), factor, [about.x, about.y, about.z]);
     if (r.how === "none") return;
@@ -472,6 +642,7 @@ export function initDesignShell(host) {
     if (face && !face.mesh.parent) refindFace();
     draw();
     attachGizmo();
+    flushWaiting();
   };
 
   // ---- picking ----
@@ -740,9 +911,12 @@ export function initDesignShell(host) {
   }
 
   // ---- the sketcher (phase 3) ----
-  let sketcher = null;
-  async function loadSketcher() {
-    if (sketcher) return sketcher;
+  // Loaded once, by whoever asks first: Design mode asks as it opens (see
+  // preloadTools), so the first click on a face is not spent waiting for the
+  // module while the sketch panel is still being made.
+  let sketcher = null, sketcherLoading = null;
+  function loadSketcher() { return (sketcherLoading ??= makeSketcher()); }
+  async function makeSketcher() {
     const mod = await import("./design/sketcher.js");
     sketcher = mod.createSketcher({ host, THREE, scene, camera: host.camera, orbit: host.orbit, renderer: host.renderer });
     // the rubber band follows the pointer between clicks; keys are the sketcher's while it is open
@@ -767,6 +941,19 @@ export function initDesignShell(host) {
     sketcher.choose({ face: fp?.outline ? fp : null });
   }
 
+  // the tools' modules, fetched while the user is still looking at the model
+  let preloaded = false;
+  function preloadTools() {
+    if (preloaded) return;
+    preloaded = true;
+    const idle = window.requestIdleCallback ?? ((f) => setTimeout(f, 200));
+    idle(() => {
+      loadSketcher().catch(() => { sketcherLoading = null; });
+      loadPressPull().catch(() => { pressPullLoading = null; });
+      import("./design/dialogs.js").then((m) => { dialogsMod ??= m; }).catch(() => {});
+    });
+  }
+
   // ---- a failed build in the timeline ----
   function showFailure(f) {
     if (!f) { failure = null; return; }
@@ -776,8 +963,9 @@ export function initDesignShell(host) {
   }
 
   // ---- press-pull ----
-  async function loadPressPull() {
-    if (pressPull) return pressPull;
+  let pressPullLoading = null;
+  function loadPressPull() { return (pressPullLoading ??= makePressPull()); }
+  async function makePressPull() {
     const mod = await import("./design/presspull.js");
     pressPull = mod.createPressPull({ host, THREE, scene, camera: host.camera, orbit: host.orbit });
     // Esc mid-pull lets go without writing anything
@@ -833,6 +1021,12 @@ export function initDesignShell(host) {
     // every build's outcome (index.html fireBuilt)
     buildResult(ok, f) {
       if (ok) { if (failure) { failure = null; if (active) draw(); } return; }
+      // what was held for that build goes back to where the last good build put it
+      chain = null;
+      if (waiting.length || gizmo.holding()) {
+        waiting = [];
+        gizmo.dropHolds(host.modelMeshes());
+      }
       if (!dialog) showFailure(f);       // a dialog shows its own preview's failure
     },
     openFeature: (id) => openFeature(id),
@@ -842,7 +1036,7 @@ export function initDesignShell(host) {
     pressPull: () => pressPull,
     setActive(on) {
       active = !!on;
-      if (active) refresh();
+      if (active) { refresh(); preloadTools(); }
       else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); if (sketcher?.active || sketcher?.choosing) sketcher.cancel(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
@@ -859,8 +1053,7 @@ export function initDesignShell(host) {
             pickedRow = null;
             face = null;
             clearOverlay();
-            gizmo.detach();
-            if (active) draw();
+            if (active) { attachGizmo(); draw(); } else gizmo.detach();
           });
         }
         return;
@@ -890,6 +1083,8 @@ export function initDesignShell(host) {
     },
     gizmoOwnsPointer() { return active && gizmo.ownsPointer(); },
     isActive() { return active; },
+    // the toolbar's snap step in mm (0 = free), for the face dots' drags
+    snapStep() { return active ? SNAPS[snapIx] || 0 : 0; },
     sketching() { return !!sketcher?.active; },
     // a double-clicked dot: a small box per number behind it, beside the
     // cursor. Enter writes them all (only the ones changed), Esc or a click

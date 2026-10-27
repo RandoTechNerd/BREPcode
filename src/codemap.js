@@ -117,8 +117,10 @@ function parseUncached(src) {
   }
   const calls = [];
   const params = [];
+  let ret = null;           // the top-level return's value: the whole model
 
   for (const st of ast.body) {
+    if (st.type === "ReturnStatement" && st.argument) ret = { start: st.argument.start, end: st.argument.end };
     if (st.type !== "VariableDeclaration") continue;
     for (const d of st.declarations) {
       if (d.id.type !== "Identifier" || !d.init) continue;
@@ -140,7 +142,11 @@ function parseUncached(src) {
   const visit = (node) => {
     const isFn = /Function/.test(node.type) && node.body;
     if (isFn) {
-      fnStack.push(node.id?.name ?? null);
+      fnStack.push(node.id?.name ?? node.boundName ?? null);
+    }
+    // `const across = (…) => …`: the arrow is called by that name
+    if (node.type === "VariableDeclarator" && node.id?.type === "Identifier" && /Function/.test(node.init?.type ?? "")) {
+      node.init.boundName = node.id.name;
     }
     if (node.type === "CallExpression" || node.type === "NewExpression") {
       const cn = calleeName(node.callee);
@@ -176,7 +182,7 @@ function parseUncached(src) {
   visit(ast);
   calls.sort((a, b) => a.start - b.start || b.end - a.end);
   linkParents(calls);
-  return { ok: true, error: null, calls, params, lineStarts: starts };
+  return { ok: true, error: null, calls, params, ret, lineStarts: starts };
 }
 
 // A call's parent is the innermost call whose ARGUMENTS contain it (a call in
@@ -302,6 +308,19 @@ export function mapTraceSites(trace, runText, editorText, opts = {}) {
     if (!r || editorText.slice(r.start, r.end) !== runText.slice(c.start, c.end)) { unresolved.push(t.id); continue; }
     byId[t.id] = { kind: c.name, start: r.start, end: r.end, codes: [t.code], exact: true };
     if (t.name) byId[t.id].name = t.name;
+    // made inside a function: that function's name, and the calls above it
+    // that led there (innermost first), for an edit of this one instance
+    if (c.fn) {
+      byId[t.id].fn = c.fn;
+      const callers = [];
+      for (const u of s.up || []) {
+        const cc = callAt(run, offsetAt(run.lineStarts, u.line - lineOffset, u.col));
+        const rr = cc && toEditor(cc);
+        if (!rr) break;
+        callers.push({ name: cc.name, start: rr.start, end: rr.end, fn: cc.fn });
+      }
+      byId[t.id].callers = callers;
+    }
   }
 
   // Pattern groups: features that resolved to the same call.

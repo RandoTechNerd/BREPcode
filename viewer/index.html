@@ -4442,7 +4442,7 @@
     import * as codemap from "../src/codemap.js";
     import { faceEdges } from "./faceedges.js";
     import { initModeSwitch } from "./design.js";
-    import { moveText, ridersOf } from "./design-move.js";
+    import { moveText, ridersOf, instanceSpan } from "./design-move.js";
     import { initDesignShell } from "./design-shell.js";
     import { createHandleDots } from "./handle-dots.js";
     import { boxCornerText, numberFieldsFor, writeNumbers } from "./design-edit.js";
@@ -12942,8 +12942,16 @@ ${joined}${SITE_TAIL}`), joined);
     // edits (dragSpanFor), the shapes that ride with it, and whether it is a
     // cutter. Shared by the body drag and Design mode's gizmo.
     function moveMembersOf(fid, site = featureMap?.[fid]) {
-      const span = dragSpanFor(code.value, site);
-      const fids = span.whole
+      // made by a helper: the helper call that made it, not the helper's body
+      const inst = instanceSpan(site);
+      if (inst?.shared) {
+        return { site, span: null, fids: [fid], isCutter: false, shared: inst.shared,
+          meshes: modelGroup.children.filter((m) => m.userData.featureId === fid) };
+      }
+      const span = inst ?? dragSpanFor(code.value, site);
+      const fids = inst
+        ? Object.keys(featureMap).filter((id) => featureMap[id].callers?.some((c) => c.start === inst.start && c.end === inst.end))
+        : span.whole
         // everything inside the boolean, helpers called from in there included
         ? ridersOf(span, { sites: featureMap, trace: lastTrace, runText: lastRunText, editorText: code.value })
         // one call in a loop is every instance: the translate() the drag
@@ -12954,7 +12962,7 @@ ${joined}${SITE_TAIL}`), joined);
       // moving. Leave the model alone and drag a translucent ghost of the
       // cutter instead, which is honest about what the boolean will do
       // without re-running it every frame.
-      const encl = enclosingBooleanSpan(code.value, site.start);
+      const encl = enclosingBooleanSpan(code.value, (inst ?? site).start);
       const isCutter = !span.whole && !!encl && encl.op === "difference";
       const meshes = modelGroup.children.filter((m) => fids.includes(m.userData.featureId));
       return { site, span, fids, isCutter, meshes };
@@ -13302,7 +13310,12 @@ ${joined}${SITE_TAIL}`), joined);
     function beginMove(fid, site, point, e, { free = false } = {}) {
       // plain drag = move. Grabbing the main shape of a boolean moves the
       // whole thing — holes and cutters ride along.
-      const { span, isCutter, meshes: dragMeshes } = moveMembersOf(fid, site);
+      const mm = moveMembersOf(fid, site);
+      if (mm.shared) {
+        hint.innerHTML = `That shape is made inside <code>${mm.shared}()</code> and cannot be traced to one call of it, so a drag would move every shape it makes. Move it in the code.`;
+        return;
+      }
+      const { span, isCutter, meshes: dragMeshes } = mm;
       let ghosts = null;
       if (isCutter) {
         ghosts = [];
@@ -13600,6 +13613,13 @@ ${joined}${SITE_TAIL}`), joined);
           }
         }
         drag.amount = Math.max(amount, -(drag.target.value - 0.2));
+        // Design mode's snap (the toolbar's "1 mm") lands the SIZE on a step,
+        // as it does a gizmo move; Alt drags free
+        const step = designUI?.snapStep?.() || 0;
+        if (step && !e.altKey) {
+          const v = Math.max(step, Math.round((drag.target.value + drag.amount) / step) * step);
+          drag.amount = Math.round((v - drag.target.value) * 1e6) / 1e6;
+        }
         if (Math.abs(drag.amount) > 0.2) drag.moved = true;
         const factor = (drag.target.value + drag.amount) / drag.target.value;
         if (drag.uniformPreview) {
@@ -22221,10 +22241,13 @@ let SIMPLIFY_TARGET = 10000;
       clear: () => clearHandles(),
       edgesOfFace: (mesh) => edgesOfPickedFace(mesh),
       moveMembers: (fid) => (featureMap?.[fid] ? moveMembersOf(fid) : null),
-      // a move from the gizmo: the body drag's writer, history and rebuild
-      commitMove(fid, delta) {
-        const m = moveMembersOf(fid);
-        const r = moveText(code.value, m.span, delta);
+      // a move from the gizmo: the body drag's writer, history and rebuild.
+      // `span`: where the shape is in the text now, when the click map is of
+      // older text (the shell chains a second move onto the first one's span)
+      commitMove(fid, delta, span = null) {
+        const at = span ?? moveMembersOf(fid).span;
+        if (!at) return { how: "none" };
+        const r = moveText(code.value, at, delta);
         if (r.how === "none") return r;
         code.value = r.next;
         pushHistory();
@@ -22293,6 +22316,8 @@ let SIMPLIFY_TARGET = 10000;
     // Design mode's state: tree rows, timeline steps and what they link to,
     // the selection, the picked face and its edges, the gizmo's shape
     window.brepscript.design = () => designUI.debug();
+    // the move / rotate / scale gizmo, for scripted drags (tests, the console)
+    window.brepscript.designGizmo = () => designUI.gizmo;
     // phase 2, for tests and the console: open a feature dialog by id, and
     // the open dialog's controller (set(key, value), takePick(hit), ok(), cancel())
     window.brepscript.openFeature = (id) => designUI.openFeature(id);
@@ -22370,6 +22395,7 @@ let SIMPLIFY_TARGET = 10000;
       const out = {};
       for (const [id, s] of Object.entries(featureMap)) {
         out[id] = { kind: s.kind, start: s.start, end: s.end, exact: !!s.exact, name: s.name ?? null,
+          fn: s.fn ?? null, callers: s.callers ?? null,
           pattern: s.pattern ? { ids: s.pattern.ids, index: s.pattern.index, count: s.pattern.count } : null,
           text: code.value.slice(s.start, s.end) };
       }
