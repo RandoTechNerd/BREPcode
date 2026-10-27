@@ -584,6 +584,16 @@
     #app-settings .set-check > span { flex: 1 1 auto; }
     #app-settings .set-btns { display: flex; flex-wrap: wrap; gap: 6px; }
     #app-settings .set-btns .hist-btn { border: 1px solid var(--border); }
+    /* every press shows it landed: a small push-in */
+    .hist-btn:active:not(:disabled), .dz-ui button:active:not(:disabled) { transform: translateY(1px) scale(0.97); }
+    #app-toast { position: fixed; left: 50%; bottom: 72px; transform: translate(-50%, 8px); z-index: 200000; pointer-events: none;
+      max-width: min(520px, calc(100vw - 32px)); padding: 7px 14px; border-radius: 9px; font: 500 12.5px/1.35 system-ui, sans-serif;
+      background: rgba(12, 17, 28, 0.94); color: #dfe6f3; border: 1px solid rgba(127, 150, 200, 0.35);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity .18s, transform .18s; }
+    #app-toast.show { opacity: 1; transform: translate(-50%, 0); }
+    #app-toast.ok { border-color: rgba(61, 220, 151, 0.55); }
+    #app-toast.info { border-color: rgba(127, 150, 200, 0.45); }
+    #app-toast.err { border-color: rgba(255, 92, 92, 0.6); color: #ffc2c2; }
 
     /* deliberately quiet: small monotone icons, no fill until you touch them */
     #cheat-btn, #about-btn, #hist2-btn, #chat-btn {
@@ -8335,6 +8345,13 @@
     }
 
     function toggleCard(card, btn, on) {
+      // a button press on a window that is open but under another: bring it
+      // up rather than shut it (the second press, now that it is on top, shuts it)
+      if (on == null && card.classList.contains("open") && String(card.style.zIndex) !== String(cardZ)) {
+        card.style.zIndex = ++cardZ;
+        btn?.classList.add("active");
+        return true;
+      }
       const next = on ?? !card.classList.contains("open");
       if (!next && card.id === "panel" && card.classList.contains("open")) rememberEditorScroll();
       card.classList.toggle("open", next);
@@ -8356,6 +8373,7 @@
       if (next && !card.classList.contains("floating") && !card.classList.contains("expanded")) {
         placeHome(card);
       }
+      if (next) card.style.zIndex = ++cardZ;      // what you just opened is on top
       if (next && card.classList.contains("floating") && !card.classList.contains("maxed")
         && !card.dataset.placed) {
         placeCardClear(card);
@@ -8784,17 +8802,42 @@
       requestAnimationFrame(unstackDocked);
       windowsChanged();
     }
+    // -> how many open windows it actually moved (for the button's feedback)
     function rehomeWindows({ all = false } = {}) {
+      let moved = 0;
       for (const c of document.querySelectorAll(".card.open")) {
         if (c.classList.contains("expanded") || c.classList.contains("maxed")) continue;
         if (!all && !c.dataset.placed) continue;
+        const r0 = c.getBoundingClientRect();
         if (homeZone(c)) { c._preSnap = null; placeHome(c); }
         else if (c.dataset.placed || all) redockCard(c);
+        const r1 = c.getBoundingClientRect();
+        if (Math.abs(r1.left - r0.left) + Math.abs(r1.top - r0.top) + Math.abs(r1.width - r0.width) + Math.abs(r1.height - r0.height) > 2) moved++;
       }
       markDockShared();
       requestAnimationFrame(unstackDocked);
       windowsChanged();
+      return moved;
     }
+
+    // A short note near the bottom of the stage saying what a button just did:
+    // a button whose effect is off screen, or nothing at all, still answers.
+    let toastEl = null, toastT = 0;
+    function toast(text, kind = "ok") {
+      if (!toastEl) {
+        toastEl = document.createElement("div");
+        toastEl.id = "app-toast";
+        toastEl.setAttribute("role", "status");
+        toastEl.setAttribute("aria-live", "polite");
+        document.body.appendChild(toastEl);
+      }
+      toastEl.textContent = text;
+      toastEl.className = `show ${kind}`;
+      clearTimeout(toastT);
+      toastT = setTimeout(() => { toastEl.className = kind; }, 2200);
+    }
+    window.brepscript = window.brepscript || {};
+    window.brepscript.toast = toast;
     const setPref = (k, v) => { prefs[k] = v; savePrefs(); };
     $("set-orbit").addEventListener("change", (e) => { setPref("orbit", e.target.value); applyOrbitPref(); });
     $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
@@ -8816,13 +8859,19 @@
         rebuild();
       });
     }
-    $("set-tidy").addEventListener("click", () => rehomeWindows({ all: true }));
+    $("set-tidy").addEventListener("click", () => {
+      const n = rehomeWindows({ all: true });
+      toast(n ? `Tidied ${n} window${n === 1 ? "" : "s"} back to ${n === 1 ? "its spot" : "their spots"}.` : "Windows are already in their spots.", n ? "ok" : "info");
+    });
     $("set-lights").addEventListener("click", () => {
+      const was = ["ambient", "key", "fill", "rim", "exposure", "filmic"].some((k) => mat[k] !== MAT_DEFAULTS[k]);
       for (const k of ["ambient", "key", "fill", "rim", "exposure", "filmic"]) mat[k] = MAT_DEFAULTS[k];
       applyMaterial(); saveMat();             // also moves the sliders
+      toast(was ? "Lighting is back to the default studio setup." : "Lighting was already the default.", was ? "ok" : "info");
     });
     $("set-reset").addEventListener("click", () => {
       Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); syncSettingsUI(); rehomeWindows();
+      toast("Settings are back to how they ship.");
     });
     syncSettingsUI();
     $("about-docs-btn").addEventListener("click", () => {
@@ -22160,6 +22209,15 @@ let SIMPLIFY_TARGET = 10000;
       featureBox,
       select: (fid, range) => selectFeature(fid, { range }),
       selectRange: (r) => selectCodeRange(r),
+      // open the code card on a call (the timeline's "Show in code")
+      showCode(r) {
+        toggleCard(panel, openBtn, true);
+        code.focus();
+        code.setSelectionRange(r.start, r.end);
+        const line = code.value.slice(0, r.start).split("\n").length - 1;
+        code.scrollTop = Math.max(0, line * 21 - code.clientHeight / 2);
+      },
+      undo: () => { if (!undoBtn.disabled) undoBtn.click(); },
       clear: () => clearHandles(),
       edgesOfFace: (mesh) => edgesOfPickedFace(mesh),
       moveMembers: (fid) => (featureMap?.[fid] ? moveMembersOf(fid) : null),

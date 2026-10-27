@@ -3267,7 +3267,28 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
           const m = /^([^|]+)\|([^|[]+)(\[\d+\])?$/.exec(e);
           return m ? [m[1], m[2]].sort().join("|") + (m[3] ?? "") : e;
         };
-        n = { ...n, edges: n.edges.map(sorted) };
+        // A revolve's (or sweep's) end caps are named two ways by the kernel:
+        // as faces "R24:L100_START" (what a pick on the model reads) and, in
+        // its edge names, after the sketch it came from, "S23:PROFILE_START".
+        // A picked edge written with the face names is translated to the edge
+        // names: the sketch is the nearest S id below the feature's own.
+        const capAlias = (e) => {
+          if (have.has(e)) return e;
+          const m = /^([^|]+)\|([^|[]+)(\[\d+\])?$/.exec(e);
+          if (!m) return e;
+          const sketches = [...new Set([...have].flatMap((h) => h.split("|").map((t) => /^S(\d+):/.exec(t)?.[1]).filter(Boolean)))].map(Number);
+          const swap = (t) => {
+            const c = /^([A-Z]+)(\d+):L\d+_(START|END)$/.exec(t);
+            if (!c) return [t];
+            return sketches.filter((k) => k < +c[2]).sort((x, y) => y - x).map((k) => `S${k}:PROFILE_${c[3]}`);
+          };
+          for (const a of swap(m[1])) for (const b of swap(m[2])) {
+            const cand = sorted(`${a}|${b}${m[3] ?? ""}`);
+            if (have.has(cand) || (!m[3] && [...have].some((h) => bare(h) === cand))) return cand;
+          }
+          return e;
+        };
+        n = { ...n, edges: n.edges.map(sorted).map(capAlias) };
         const missing = n.edges.filter((e) => !have.has(e) && !(!/\[\d+\]$/.test(e) && [...have].some((h) => bare(h) === e)));
         if (missing.length) {
           throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): no edge ${missing.map((e) => JSON.stringify(e)).join(", ")} on this shape`

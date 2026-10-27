@@ -15,7 +15,8 @@
 // back to Code mode shows exactly what was done.
 
 import { buildTree, renderTree, primaryFid } from "./design-tree.js";
-import { linkFeatures, renderTimeline } from "./design-timeline.js";
+import { linkFeatures, renderTimeline, deleteStepText, stepLabel } from "./design-timeline.js";
+import { parseCode } from "../src/codemap.js";
 import { createMoveGizmo } from "./design-gizmo.js";
 import { parseTyped } from "./design-edit.js";
 import { rotateText, scaleText, shapeSpan } from "./design/features.js";
@@ -172,17 +173,24 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 #dz-num small { color: var(--muted, #8ea0c0); font-size: 10.5px; }
 
 /* timeline */
-#dz-time { left: 172px; right: 340px; bottom: 14px; padding: 6px 8px; display: flex; align-items: center; gap: 8px; }
-#dz-time .dz-tl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8ea0c0); flex: none; }
+#dz-time { left: 172px; right: 340px; bottom: 14px; padding: 2px 6px; display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+#dz-time .dz-tl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8ea0c0); flex: none; }
 #dz-steps { display: flex; align-items: center; overflow-x: auto; flex: 1 1 auto; scrollbar-width: thin; padding: 2px 0; }
-.dt-join { flex: none; width: 10px; height: 2px; background: var(--border, #26314a); }
+#dz-steps::-webkit-scrollbar { height: 4px; }
+.dt-join { flex: none; width: 7px; height: 1px; background: var(--border, #26314a); }
 .dt-step { flex: none; display: flex; align-items: center; gap: 5px; border: 1px solid var(--border, #26314a); background: transparent;
-  border-radius: 6px; padding: 3px 7px; cursor: pointer; white-space: nowrap; }
+  border-radius: 5px; padding: 1px 6px; cursor: pointer; white-space: nowrap; line-height: 1.35; }
 .dt-step:hover { border-color: var(--accent, #1c66e5); }
 .dt-step.on { background: color-mix(in srgb, var(--accent, #1c66e5) 30%, transparent); border-color: var(--accent, #1c66e5); }
 .dt-step.rel { border-color: color-mix(in srgb, var(--accent, #1c66e5) 60%, transparent); }
 .dt-step.dead { opacity: 0.55; }
-.dt-n { font-size: 10px; color: var(--muted, #8ea0c0); }
+.dt-n { font-size: 9px; color: var(--muted, #8ea0c0); }
+#dz-ctx { padding: 4px; display: flex; flex-direction: column; min-width: 190px; z-index: 100001; }
+#dz-ctx .h { padding: 4px 10px 5px; color: var(--muted, #8ea0c0); font-size: 11px; border-bottom: 1px solid var(--border, #26314a); margin-bottom: 3px; }
+#dz-ctx button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+#dz-ctx button:hover, #dz-ctx button:focus-visible { background: rgba(127, 150, 200, 0.16); outline: none; }
+#dz-ctx button:disabled { opacity: 0.45; cursor: default; background: transparent; }
+#dz-ctx button.danger { color: #ff9c9c; }
 .dt-step.fail { border-color: #ff5c5c; background: rgba(255, 92, 92, 0.16); color: #ffc2c2; }
 .dt-step.unbuilt { opacity: 0.4; border-style: dashed; }
 .dt-fail-note { flex: none; margin-left: 8px; color: #ff9c9c; font-size: 11.5px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -403,13 +411,13 @@ export function initDesignShell(host) {
     const shapes = fm ? Object.keys(fm).length : 0;
     countEl.textContent = fm ? `${shapes} shape${shapes === 1 ? "" : "s"}` : "building…";
     if (failure) {
-      renderTimeline(stepsEl, failure.steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, failed: failure.index });
+      renderTimeline(stepsEl, failure.steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, onMenu: stepMenu, failed: failure.index });
       const note = document.createElement("span");
       note.className = "dt-fail-note";
       note.textContent = `✕ ${failure.reason}`;
       note.title = failure.reason;
       stepsEl.appendChild(note);
-    } else renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep });
+    } else renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, onMenu: stepMenu });
     drawSelection();
   };
 
@@ -481,6 +489,67 @@ export function initDesignShell(host) {
     if (fid) host.select(fid, step.link ?? undefined);
     else if (step.link) host.selectRange(step.link);
     draw();
+  }
+
+  // right-click a timeline step: what can be done to it
+  let ctx = null;
+  const closeCtx = () => { ctx?.remove(); ctx = null; removeEventListener("pointerdown", ctxAway, true); };
+  function ctxAway(e) { if (ctx && !ctx.contains(e.target)) closeCtx(); }
+  function stepMenu(step, i, e) {
+    closeCtx();
+    const label = stepLabel(step, host.featureLabel);
+    const isSketch = /^S\d/.test(step.id ?? "") || /sketch/i.test(String(label));
+    const del = step.link ? deleteStepText(host.text(), step.link) : { error: "this step has no call in the code" };
+    const items = [
+      ["select", "Select in model", true],
+      ["code", "Show in code", !!step.link],
+      ...(isSketch ? [["sketch", "Edit sketch", !!step.link]] : []),
+      ["delete", del.error ? "Delete step (not possible here)" : del.how === "unwrap" ? `Delete step (keep what ${del.name}() wraps)` : "Delete step", !del.error, del.error],
+      ["undo", "Undo last change", true],
+    ];
+    ctx = document.createElement("div");
+    ctx.id = "dz-ctx";
+    ctx.className = "dz-ui";
+    ctx.setAttribute("role", "menu");
+    ctx.innerHTML = `<div class="h">${i + 1}. ${esc(label)}</div>`
+      + items.map(([k, l, on, why]) => `<button type="button" role="menuitem" data-k="${k}"${on ? "" : " disabled"}${why ? ` title="${esc(why)}"` : ""}`
+        + `${k === "delete" ? ' class="danger"' : ""}>${esc(l)}</button>`).join("");
+    document.body.appendChild(ctx);
+    const r = ctx.getBoundingClientRect();
+    ctx.style.left = `${Math.min(e.clientX, innerWidth - r.width - 8)}px`;
+    ctx.style.top = `${Math.max(8, e.clientY - r.height - 6)}px`;     // above the timeline
+    ctx.addEventListener("click", async (ev) => {
+      const k = ev.target.closest("button:not(:disabled)")?.dataset.k;
+      if (!k) return;
+      closeCtx();
+      if (k === "select") pickStep(step);
+      else if (k === "code") host.showCode(step.link);
+      else if (k === "undo") { host.undo(); host.setHint("Undid the last change."); }
+      else if (k === "sketch") { pickStep(step); await openSketchAt(step.link); }
+      else if (k === "delete") {
+        const d = deleteStepText(host.text(), step.link);
+        if (d.error) { host.setHint(`Could not delete it: ${esc(d.error)}.`); return; }
+        const res = await host.commit(d.next);
+        host.setHint(res.ok
+          ? `Deleted step ${i + 1} (<code>${esc(d.name)}()</code>${d.how === "unwrap" ? ", keeping what it wrapped" : ` from its <code>${esc(d.from)}()</code>`}). Ctrl+Z brings it back.`
+          : `Deleted step ${i + 1}, but the model no longer builds (see the timeline); Ctrl+Z brings it back.`);
+      }
+    });
+    ctx.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Escape") closeCtx(); });
+    ctx.querySelector("button:not(:disabled)")?.focus();
+    addEventListener("pointerdown", ctxAway, true);
+  }
+  // a sketch step: open the sketcher on that sketch() call
+  async function openSketchAt(link) {
+    await loadSketcher();
+    const text = host.text();
+    const calls = parseCode(text).calls ?? [];
+    const call = calls.find((c) => c.name === "sketch" && c.start === link.start && c.end === link.end)
+      ?? calls.find((c) => c.name === "sketch" && c.start >= link.start && c.end <= link.end);
+    if (!call) { host.setHint("That step is not a <code>sketch()</code> call the sketcher can open."); return; }
+    const name = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(text.slice(Math.max(0, call.start - 60), call.start))?.[1] ?? "sketch";
+    gizmo.detach();
+    sketcher.open({ sketchCall: { name, start: call.start, end: call.end }, name });
   }
 
   function showFace(mesh) {

@@ -220,5 +220,20 @@ const near3 = (a, b, tol = 0.02) => a.every((v, k) => Math.abs(v - b[k]) <= tol)
     `${res.kernel} ${res.fallback || ""}`);
 }
 
+// a revolve's end caps are faces "R4:L100_START" on the model but "S3:PROFILE_START"
+// in its edge names; an edge picked on the model (face names) still chamfers
+{
+  const rev = "revolve({ angle: 270 }, polygon([[0, 0], [8, 0], [8, 10], [0, 10]]))";
+  let ok = false, why = "";
+  try {
+    const res = await build(shape(`return chamfer({ d: 1, edges: ["R4:L100_END|R4:L100_START[0]"] }, union(cube(20), translate([30, 0, 0], ${rev})));`), { engine: "nvidia" });
+    // it resolves and builds (this concave axis edge is one the exact kernels
+    // decline to bevel, so the JS kernel may be the one that does it)
+    ok = res.solids.length > 0;
+    why = `${res.kernel} ${res.fallback || ""}`;
+  } catch (e) { why = String(e.message).slice(0, 160); }
+  check("a picked revolve-cap edge (face names) is found under its edge names and builds", ok, why);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

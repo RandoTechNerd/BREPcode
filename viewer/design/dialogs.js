@@ -311,7 +311,18 @@ function edgeSpec(kind, title, label, key) {
         return { error: "All the edges must be on one body." };
       }
       void key;
-      return F.edgeOpText(base, body, { kind, amount: s.amount, edges: s.edges.map((e) => e.name) });
+      const names = s.edges.map((e) => e.name);
+      const r = F.edgeOpText(base, body, { kind, amount: s.amount, edges: names });
+      // If the kernel cannot find the edge on the finished shape (a boolean
+      // renamed or split it), the same edges on the feature's OWN call, before
+      // anything is joined to it, usually still exist: try that next.
+      const own = env.shapeOf(fid);
+      if (own && (own.start !== body.start || own.end !== body.end) && s.edges.every((e) => e.fid === fid)) {
+        const what = (base.slice(own.start, own.end).match(/^[A-Za-z_$][\w$]*/) || ["that shape"])[0];
+        r.alts = [{ next: F.edgeOpText(base, own, { kind, amount: s.amount, edges: names }).next,
+          note: `The kernel lost that edge once the shapes were joined, so the ${kind} goes on the <code>${what}()</code> itself, before the join (the build order changed for you).` }];
+      }
+      return r;
     },
   };
 }
@@ -535,16 +546,27 @@ export function openDialog(id, ctx) {
       if (mine === seq) render();
       return;
     }
-    if (last?.text === r.next && last.ok != null) { render(); return; }
+    if (last?.from === r.next && last.ok != null) { render(); return; }
     setStatus("busy", "Building the preview…");
     last = { text: r.next, ok: null };
     render();
-    const res = await host.preview(r.next);
+    let res = await host.preview(r.next);
     if (closed || mine !== seq) return;
-    last = { text: r.next, ok: res.ok, failure: res.failure };
-    if (res.ok) setStatus("ok", "Preview built. OK keeps it (one undo step).");
+    last = { text: r.next, from: r.next, ok: res.ok, failure: res.failure };
+    // refused: the writer's other ways of saying the same thing, in order
+    for (const alt of res.ok ? [] : r.alts || []) {
+      setStatus("busy", "The kernel refused that; trying another build order…");
+      render();
+      const a = await host.preview(alt.next);
+      if (closed || mine !== seq) return;
+      if (a.ok) { res = a; last = { text: alt.next, from: r.next, ok: true, note: alt.note }; break; }
+    }
+    if (res.ok) setStatus("ok", (last.note ? `${last.note} ` : "") + "Preview built. OK keeps it (one undo step).");
     else {
-      setStatus("err", `The kernel refused it: ${esc(shortReason(res.failure?.reason))}`);
+      const lost = /no edge/i.test(String(res.failure?.reason || ""));
+      setStatus("err", lost
+        ? `The kernel could not find that edge${r.alts?.length ? ", on the joined shape or on the part before the join" : ""}: edge names change as shapes are combined. Pick it again after the model rebuilds, pick a neighbouring edge, or round it in the code before the union.`
+        : `The kernel refused it: ${esc(shortReason(res.failure?.reason))}`);
       // the timeline marks THIS feature red (it may never have become a step)
       ctx.markFailure?.({ ...res.failure, pending: { label: spec.title, link: diffSpan(base, r.next) } });
     }
@@ -614,7 +636,7 @@ export function openDialog(id, ctx) {
     // a field typed a moment ago has its preview still pending: build what the
     // fields say now, so OK never keeps the one before
     const r = spec.write(base, state, env);
-    if (!r.wait && !r.error && r.next !== last?.text) { clearTimeout(previewT); await runPreview(); }
+    if (!r.wait && !r.error && r.next !== last?.from) { clearTimeout(previewT); await runPreview(); }
     if (closed || !okReady()) return;
     const text = last.text;
     close();

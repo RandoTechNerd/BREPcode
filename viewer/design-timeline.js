@@ -127,13 +127,54 @@ export function stepLabel(step, featureLabel) {
   return SHORT[step.type] ?? (long ? long.replace(/ Feature$/i, "") : step.type);
 }
 
+// ------------------------------------------------------------ delete a step
+//
+// deleteStepText(text, link) -> { next, how } or { error }
+// The code is the model, so deleting a step is an edit of the call it links to:
+//   a wrapper (fillet, chamfer, a transform, ...) is unwrapped: what it wrapped stays;
+//   a shape among others in a union / group / difference is taken out of the list;
+//   the first shape of a difference (what the rest cut from) and a call that is
+//   not inside another (the whole model, a declaration others use) are refused.
+const UNWRAP = new Set(["fillet", "chamfer", "shell", "translate", "rotate", "scale", "mirror", "move",
+  "colorize", "color", "finish", "glass", "glow"]);
+const CUTS = new Set(["difference", "subtract", "cut"]);
+export function deleteStepText(text, link) {
+  const m = parseCode(text);
+  if (!m.ok) return { error: "the code does not parse right now" };
+  let c = m.calls.find((x) => x.start === link.start && x.end === link.end) ?? callAt(m, link.start);
+  if (!c) return { error: "there is no call there to delete" };
+  const stepName = c.name;
+  if (UNWRAP.has(c.name)) {
+    const inner = c.args[c.args.length - 1];
+    if (inner && inner.type !== "ObjectExpression" && inner.type !== "ArrayExpression") {
+      return { next: text.slice(0, c.start) + text.slice(inner.start, inner.end) + text.slice(c.end), how: "unwrap", name: c.name };
+    }
+  }
+  // a shape goes with the transforms that only carry it (translate(…, sphere())
+  // as a whole), or an empty translate() would be left behind
+  const shapeArgs = (k) => k.args.filter((a) => a.type !== "ObjectExpression" && a.type !== "ArrayExpression");
+  for (let up = c.parent == null ? null : m.calls[c.parent]; up && UNWRAP.has(up.name) && shapeArgs(up).length === 1; up = up.parent == null ? null : m.calls[up.parent]) c = up;
+  const p = c.parent == null ? null : m.calls[c.parent];
+  const shapes = p ? shapeArgs(p) : [];
+  if (p && shapes.length >= 2) {
+    const i = p.args.findIndex((a) => a.start <= c.start && a.end >= c.end);
+    if (CUTS.has(p.name) && p.args[i] === shapes[0]) {
+      return { error: `it is the shape the ${p.name}() cuts from; delete the ${p.name}() step instead` };
+    }
+    const a = p.args[i];
+    const [s0, s1] = i < p.args.length - 1 ? [a.start, p.args[i + 1].start] : [p.args[i - 1].end, a.end];
+    return { next: text.slice(0, s0) + text.slice(s1), how: "remove", name: stepName, from: p.name };
+  }
+  return { error: "it is not one of several shapes (it is the whole model, or a declaration other steps use); edit it in the code" };
+}
+
 // ------------------------------------------------------------------ the DOM
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const KIND = (s) => (s.type === "B" ? "bool" : /^P\./.test(s.type) ? "prim" : "op");
 
 // renderTimeline(el, steps, { selectedFid, featureLabel, onPick(step) })
-export function renderTimeline(el, steps, { selectedFid = null, featureLabel, onPick, failed = -1 } = {}) {
+export function renderTimeline(el, steps, { selectedFid = null, featureLabel, onPick, onMenu = null, failed = -1 } = {}) {
   el.textContent = "";
   if (!steps.length) {
     el.innerHTML = `<span class="dz-empty">The timeline fills in after a build.</span>`;
@@ -156,6 +197,7 @@ export function renderTimeline(el, steps, { selectedFid = null, featureLabel, on
       + (failed >= 0 && i === failed ? " · FAILED (the kernel's reason is beside the timeline)" : failed >= 0 && i > failed ? " · not built" : "");
     b.innerHTML = `<span class="dt-n">${i + 1}</span><span class="dt-l">${esc(label)}</span>`;
     b.addEventListener("click", () => onPick?.(s));
+    b.addEventListener("contextmenu", (e) => { if (!onMenu) return; e.preventDefault(); onMenu(s, i, e); });
     el.appendChild(b);
   });
 }

@@ -13,7 +13,7 @@ import * as codemap from "../src/codemap.js";
 import { dragSpanFor } from "../viewer/assist.js";
 import { moveText, ridersOf } from "../viewer/design-move.js";
 import { buildTree, primaryFid, rowForFid, callCategory } from "../viewer/design-tree.js";
-import { linkFeatures, referencedIds, stepLabel, failedSteps } from "../viewer/design-timeline.js";
+import { linkFeatures, referencedIds, stepLabel, failedSteps, deleteStepText } from "../viewer/design-timeline.js";
 import * as F from "../viewer/design/features.js";
 import { build as buildModel } from "../index.js";
 import { loadNvidiaKernel } from "../src/engine-node.js";
@@ -75,6 +75,18 @@ console.log("\nmoveText: the one writer behind the body drag and the gizmo\n");
   check("a per-axis scale writes scale([x, y, z], { about }, …)", vs.next.includes("scale([2, 1, 0.5], { about: [0, 0, 0] }, cube([10, 20, 30]))"));
   check("…equal factors write one number", F.scaleText(sv, ss, [1.5, 1.5, 1.5], [0, 0, 0]).next.includes("scale(1.5, "));
   check("…a zero or negative factor writes nothing", F.scaleText(sv, ss, [1, -1, 1], [0, 0, 0]).how === "none");
+  // the timeline's Delete step: an edit of the call the step links to
+  const dsrc = "return difference(union(cube(10), sphere(4)), chamfer({ d: 1, edges: \"z\" }, cylinder({ r: 2, h: 20 })));";
+  const spanOf = (s) => ({ start: dsrc.indexOf(s), end: dsrc.indexOf(s) + s.length });
+  const dSphere = deleteStepText(dsrc, spanOf("sphere(4)"));
+  check("deleting a shape among several takes it out of the list", dSphere.next === "return difference(union(cube(10)), chamfer({ d: 1, edges: \"z\" }, cylinder({ r: 2, h: 20 })));");
+  const dCh = deleteStepText(dsrc, spanOf("chamfer({ d: 1, edges: \"z\" }, cylinder({ r: 2, h: 20 }))"));
+  check("…deleting a wrapper (a chamfer) keeps what it wrapped", dCh.how === "unwrap" && dCh.next.includes("union(cube(10), sphere(4)), cylinder({ r: 2, h: 20 }))"));
+  const tsrc = "return union(cube(20), translate([25, 0, 0], sphere(6)));";
+  const tDel = deleteStepText(tsrc, { start: tsrc.indexOf("sphere(6)"), end: tsrc.indexOf("sphere(6)") + 9 });
+  check("…a shape goes with the translate() that only carries it", tDel.next === "return union(cube(20));");
+  check("…the shape a difference cuts from is refused", !!deleteStepText(dsrc, spanOf("union(cube(10), sphere(4))")).error);
+  check("…and so is the whole model", !!deleteStepText("return cube(10);", { start: 7, end: 15 }).error);
   // a closed spline: the last piece runs back into the first point (one loop, no loose end)
   const csk = { points: [], curves: [], constraints: [], dims: [] };
   const segs = SM.addSpline(csk, [[0, 0], [10, 0], [10, 10], [0, 10]], { closed: true });
