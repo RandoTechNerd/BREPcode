@@ -161,8 +161,8 @@ export const SPECS = [
   },
   {
     name: "material / filament", group: "Edit a part", sig: "finish(name, shape)",
-    snippet: 'finish("cc-golddust", cube([20, 20, 8]))', argStart: 7,
-    hint: "What this ONE piece is made of, when the model is not all one thing — the body in balsa, the screws in titanium, only the middle in glitter. Takes a Cookiecad spool (\"cc-golddust\", \"cc-fairyfloss\", \"cc-witchcraft\"…) or a material name from the Material panel (\"Titanium\", \"Balsa\", \"Brass\", \"Glass\"). Beats the model-wide Material panel for that piece and leaves every other piece following it. Right-click any piece → \"Material & pattern…\" to set the same thing by hand, including a surface pattern. Looks only — geometry and STL/3MF are unchanged, but it does travel into the GLB.",
+    snippet: 'finish("gold-flake", cube([20, 20, 8]))', argStart: 7,
+    hint: "What this ONE piece is made of, when the model is not all one thing — the body in balsa, the screws in titanium, only the middle in glitter. Takes a filament spool (\"gold-flake\", \"pastel-glitter\", \"tri-bbp\"…) or a material name from the Material panel (\"Titanium\", \"Balsa\", \"Brass\", \"Glass\"). Beats the model-wide Material panel for that piece and leaves every other piece following it. Right-click any piece → \"Material & pattern…\" to set the same thing by hand, including a surface pattern. Looks only — geometry and STL/3MF are unchanged, but it does travel into the GLB.",
   },
   {
     name: "surface texture", group: "Edit a part", sig: "texture({ pattern, depth, scale, faces }, model)",

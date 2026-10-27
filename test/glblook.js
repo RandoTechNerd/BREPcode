@@ -33,7 +33,7 @@ console.log("\ncolour goes out LINEAR\n");
 
 console.log("\none spool, one material\n");
 {
-  const ff = spool("cc-fairyfloss");
+  const ff = spool("pastel-glitter");
   const p = GL.physicalFromSpool(ff, FAMILY.TPU, [30, 30, 12]);
   check("transmission comes from the spool", p.transmission === ff.t, `${p.transmission}`);
   check("attenuation distance travels", p.attenuationDistance === ff.atten);
@@ -44,13 +44,13 @@ console.log("\none spool, one material\n");
   // Rainbow flake is thin-film; single-colour flake is not. Getting this
   // backwards turns Gold Dust pearly green at grazing angles.
   check("rainbow flake becomes iridescence", p.iridescence > 0, `${p.iridescence}`);
-  const gold = spool("cc-golddust");
+  const gold = spool("gold-flake");
   const pg = GL.physicalFromSpool(gold, FAMILY.TPU, [20, 20, 20]);
   check("single-colour flake does NOT", pg.iridescence === 0,
     "gold flake is metal, not a soap film");
   check("...but still gets the resin coat", pg.clearcoat > 0);
 
-  const plain = spool("cc-pinkombre");
+  const plain = spool("pink-ombre");
   const pp = GL.physicalFromSpool(plain, FAMILY.TPU, [20, 20, 20]);
   check("a spool with no flake gets no iridescence and no clearcoat",
     pp.iridescence === 0 && pp.clearcoat === 0);
@@ -104,7 +104,7 @@ console.log("\nflake at the size real flake is\n");
   // Density is CELLS PER MILLIMETRE. This is the number that decided whether
   // the viewer's shader read as glitter or as a pearl coat, and the same
   // number decides it here.
-  const ff = spool("cc-fairyfloss");
+  const ff = spool("pastel-glitter");
   const span = GL.tileSpanMm(ff.flake.density);
   check("a tile covers a sane span of the part", near(span, 24 / 2.8, 0.01), `${span.toFixed(2)}mm`);
   const speck = span / 24;

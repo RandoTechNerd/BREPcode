@@ -1,4 +1,4 @@
-// The named Cookiecad spools.
+// The named filament spools.
 //
 // These are shown to someone as "this is what that filament looks like", so
 // the data has to be internally honest: every colour parseable, every gradient
@@ -7,7 +7,7 @@
 // feeds is pure — and that mapping is where a wrong-looking swatch comes from.
 
 import {
-  SPOOLS, FAMILY, fxFor, hexToRgb, byFamily, CREDIT, LOOKS, LOOK_KEYS, lookFor,
+  SPOOLS, FAMILY, fxFor, hexToRgb, byFamily, LOOKS, LOOK_KEYS, lookFor,
   findSpool, spoolNames,
 } from "../viewer/filaments.js";
 import { readFileSync } from "node:fs";
@@ -22,18 +22,18 @@ const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s);
 
 console.log("\nthe line-up is what was agreed\n");
 {
-  check("nine Cookiecad spools and two tri-colours", SPOOLS.length === 11 && SPOOLS.filter((s) => s.id.startsWith("cc-")).length === 9, `${SPOOLS.length}`);
+  check("nine spools and two tri-colours", SPOOLS.length === 11 && SPOOLS.filter((s) => !s.group).length === 9, `${SPOOLS.length}`);
   const groups = byFamily();
   for (const g of groups) {
-    const cc = g.spools.filter((s) => s.id.startsWith("cc-"));
-    check(`${g.family} has three Cookiecad spools`, cc.length === 3, `${cc.length}`);
+    check(`${g.family} has its spools`, g.spools.length === (g.family === "Tri-colour silk" ? 2 : 3), `${g.spools.length}`);
   }
-  check("the families are PLA, PETG, TPU",
-    groups.map((g) => g.family).join(",") === "PLA,PETG,TPU");
+  check("the families are PLA, PETG, TPU, then the tri-colour silks",
+    groups.map((g) => g.family).join(",") === "PLA,PETG,TPU,Tri-colour silk");
   check("every id is unique", new Set(SPOOLS.map((s) => s.id)).size === SPOOLS.length);
   check("every spool is named for a real product",
     SPOOLS.every((s) => s.label && s.label.length > 3));
-  check("the credit names the source", /cookiecad/i.test(CREDIT));
+  check("no maker's name on any spool", SPOOLS.every((s) => !/cookie\s*cad|funfetti|witchcraft|fairy floss|gold dust|dark magic|mermaid|unicorn/i.test(`${s.id} ${s.label}`)));
+  check("the tri-colour silks are a picker group of their own", groups.some((g) => g.family === "Tri-colour silk" && g.spools.map((s) => s.id).join() === "tri-ryb,tri-bbp"));
 
   // The spread is the point: a demo of nine spools that all do one trick is a
   // demo of one trick.
@@ -208,10 +208,10 @@ console.log("\nevery spool brings lighting that suits it — and gives it back\n
     avg(clear, "opacity") < avg(solid, "opacity"),
     `${avg(clear, "opacity").toFixed(0)} vs ${avg(solid, "opacity").toFixed(0)}`);
 
-  const matte = LOOKS["cc-pinkombre"];
+  const matte = LOOKS["pink-ombre"];
   check("the mattest spool leans on FILL, not rim", matte.fill > matte.rim * 2,
     `fill ${matte.fill} rim ${matte.rim}`);
-  const dark = LOOKS["cc-darkmagic"];
+  const dark = LOOKS["smoky-violet"];
   check("the near-black spool is the brightest rig",
     dark.key >= Math.max(...Object.values(LOOKS).map((l) => l.key)),
     `${dark.key}`);
@@ -234,15 +234,17 @@ console.log("\nnaming a spool the way a person would\n");
   // "make a heart cutter in Witchcraft" reaches the code as filament("witchcraft"),
   // so the lookup has to survive every way a person or a model writes it.
   const cases = [
-    ["witchcraft", "cc-witchcraft"], ["Witchcraft", "cc-witchcraft"],
-    ["PETG Witchcraft", "cc-witchcraft"], ["Cookiecad Witchcraft", "cc-witchcraft"],
-    ["funfetti", "cc-funfetti"], ["Funfetti Clear", "cc-funfetti"],
-    ["unicorn", "cc-unicorn"], ["mermaid", "cc-mermaid"],
-    ["dark magic", "cc-darkmagic"], ["darkmagic", "cc-darkmagic"],
-    ["fairy floss", "cc-fairyfloss"], ["gold dust", "cc-golddust"],
-    ["ruby", "cc-ruby"], ["Ruby Red Elixir", "cc-ruby"],
-    ["pink ombre", "cc-pinkombre"], ["Pink Ombré", "cc-pinkombre"],
-    ["cc-unicorn", "cc-unicorn"],
+    // the names they have now
+    ["violet-flake", "violet-flake"], ["Violet Flake", "violet-flake"], ["PETG violet flake", "violet-flake"],
+    ["rainbow glitter", "rainbow-glitter"], ["gold flake", "gold-flake"], ["ruby red", "ruby-red"],
+    ["pink ombre", "pink-ombre"], ["Pink Ombré", "pink-ombre"], ["tri-bbp", "tri-bbp"],
+    // ...and the names saved models were written with before (aliases)
+    ["witchcraft", "violet-flake"], ["Witchcraft", "violet-flake"], ["cc-witchcraft", "violet-flake"],
+    ["funfetti", "rainbow-glitter"], ["cc-funfetti", "rainbow-glitter"],
+    ["unicorn", "pink-blue-gradient"], ["mermaid", "ocean-gradient"],
+    ["dark magic", "smoky-violet"], ["darkmagic", "smoky-violet"],
+    ["fairy floss", "pastel-glitter"], ["gold dust", "gold-flake"],
+    ["ruby", "ruby-red"], ["cc-unicorn", "pink-blue-gradient"], ["pinkombre", "pink-ombre"],
   ];
   for (const [q, want] of cases) {
     const got = findSpool(q);
@@ -259,15 +261,14 @@ console.log("\nnaming a spool the way a person would\n");
   // conclude the feature does not work, in front of the people who make the
   // filament.
   for (const [q, want] of [
-    ["witch's elixir", "cc-witchcraft"],
-    ["witch’s elixir", "cc-witchcraft"],        // the curly one a phone types
-    ["cookiecad's unicorn", "cc-unicorn"],
-    ["the mermaid's petg", "cc-mermaid"],
+    ["the violet's flake", "violet-flake"],
+    ["the violet’s flake", "violet-flake"],      // the curly one a phone types
+    ["the ocean's gradient", "ocean-gradient"],
   ]) {
     check(`a possessive does not break "${q}"`, findSpool(q)?.id === want, findSpool(q)?.id ?? "null");
   }
   check("...and it still matches without one",
-    findSpool("witch elixir")?.id === "cc-witchcraft");
+    findSpool("violet flake")?.id === "violet-flake");
 
   // Not-found must be NULL, never a near miss. Quietly demoing the wrong
   // filament to the people who make it is the failure that matters here.
@@ -302,8 +303,8 @@ console.log("\nfilament() is wired, and cannot change the geometry\n");
 
   // and the model must be TOLD about it, or it will never write it
   const bot = readFileSync(new URL("../viewer/chatbot.js", import.meta.url), "utf8");
-  check("the harness teaches filament()", /filament\("witchcraft"\)/.test(bot));
-  check("...with the nine names", spoolNames().every((n) => bot.includes(n)),
+  check("the harness teaches filament()", /filament\("violet-flake"\)/.test(bot));
+  check("...with every name", spoolNames().every((n) => bot.includes(n)),
     spoolNames().filter((n) => !bot.includes(n)).join(","));
   check("...and that it never changes the STL", /STL is identical whichever spool/.test(bot));
 }
@@ -329,7 +330,7 @@ console.log("\nthere is one button that puts EVERYTHING back\n");
     /back to the baseline/.test(HTML) && /colours in your <b>code<\/b> are untouched/.test(HTML));
 
   // The credit finally has somewhere to live.
-  check("Cookiecad is credited in the Material panel", /inspired by[\s\S]{0,80}cookiecad\.com/i.test(HTML));
+  check("no maker's name or link in the Material panel", !/cookiecad/i.test(HTML.replace(/\/\/[^\n]*/g, "")));
 }
 
 console.log("\nthe page can actually drive it\n");

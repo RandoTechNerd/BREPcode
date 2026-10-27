@@ -1,9 +1,9 @@
 // Real filament looks, as data.
 //
 // The existing filament setting is a physical model — transmission, IOR,
-// attenuation — with four generic entries. These are named spools you can
-// actually buy, from Cookiecad's PLA/PETG/TPU lines, and they need two things
-// that model has no way to express:
+// attenuation — with four generic entries. These are named spools in the
+// looks real filament comes in (PLA, PETG and TPU; gradients, glitter,
+// tri-colour silk), and they need things that model has no way to express:
 //
 //   GRADIENT   the colour changes along the spool, so it changes up the PRINT.
 //              Bottom to top in world Z, because that is the order the layers
@@ -73,50 +73,56 @@ export const FAMILY = {
 export const SPOOLS = [
   // ---------------------------------------------------------------- PLA
   {
-    id: "cc-funfetti",
+    id: "rainbow-glitter",
+    aliases: ["cc-funfetti", "funfetti"],   // names it had before, still accepted
     family: "PLA",
-    label: "Funfetti Clear · rainbow glitter",
+    label: "Rainbow Glitter · clear with rainbow flake",
     base: "#dfe7ec",
     t: 0.66, atten: 46, a: 0.60, rough: 0.30, env: 0.14,
     flake: { density: 2.4, size: 0.19, strength: 3.0, colour: "#ffffff", rainbow: true },
   },
   {
-    id: "cc-unicorn",
+    id: "pink-blue-gradient",
+    aliases: ["cc-unicorn", "unicorn"],   // names it had before, still accepted
     family: "PLA",
-    label: "Unicorn · pink → purple → blue",
+    label: "Gradient · pink → purple → blue",
     base: "#9b6ef3",
     t: 0.30, atten: 20, a: 0.90,
     grad: ["#ff6fb5", "#9b6ef3", "#4aa8ff"],
   },
   {
-    id: "cc-ruby",
+    id: "ruby-red",
+    aliases: ["cc-ruby", "ruby"],   // names it had before, still accepted
     family: "PLA",
-    label: "Ruby Red Elixir",
+    label: "Ruby Red · translucent",
     base: "#c0182c",
     t: 0.46, atten: 15, a: 0.78, rough: 0.32,
   },
 
   // --------------------------------------------------------------- PETG
   {
-    id: "cc-witchcraft",
+    id: "violet-flake",
+    aliases: ["cc-witchcraft", "witchcraft"],   // names it had before, still accepted
     family: "PETG",
-    label: "Witchcraft · violet with cyan flake",
+    label: "Violet Flake · violet with cyan flake",
     base: "#5326b8",
     t: 0.24, atten: 11, a: 0.94,
     flake: { density: 3.0, size: 0.16, strength: 2.8, colour: "#8fe8ff", rainbow: false },
   },
   {
-    id: "cc-mermaid",
+    id: "ocean-gradient",
+    aliases: ["cc-mermaid", "mermaid"],   // names it had before, still accepted
     family: "PETG",
-    label: "Mermaid · purple → blue → green",
+    label: "Ocean Gradient · purple → blue → green",
     base: "#2f7fe0",
     t: 0.34, atten: 22, a: 0.86,
     grad: ["#7b3fe4", "#2f7fe0", "#29c39a"],
   },
   {
-    id: "cc-darkmagic",
+    id: "smoky-violet",
+    aliases: ["cc-darkmagic", "darkmagic", "dark magic"],   // names it had before, still accepted
     family: "PETG",
-    label: "Dark Magic · near-black translucent",
+    label: "Smoky Violet · near-black translucent",
     base: "#241a3a",
     t: 0.40, atten: 9, a: 0.82,
     flake: { density: 3.6, size: 0.10, strength: 2.2, colour: "#b79bff", rainbow: false },
@@ -124,24 +130,27 @@ export const SPOOLS = [
 
   // ---------------------------------------------------------------- TPU
   {
-    id: "cc-fairyfloss",
+    id: "pastel-glitter",
+    aliases: ["cc-fairyfloss", "fairyfloss", "fairy floss"],   // names it had before, still accepted
     family: "TPU",
-    label: "Fairy Floss · pink → purple → blue, glittered",
+    label: "Pastel Glitter · pink → purple → blue, glittered",
     base: "#b98cf0",
     t: 0.28, atten: 24, a: 0.88,
     grad: ["#ff9ad5", "#b98cf0", "#7fc4ff"],
     flake: { density: 2.8, size: 0.15, strength: 2.4, colour: "#ffffff", rainbow: true },
   },
   {
-    id: "cc-golddust",
+    id: "gold-flake",
+    aliases: ["cc-golddust", "golddust", "gold dust"],   // names it had before, still accepted
     family: "TPU",
-    label: "Gold Dust · clear with gold flake",
+    label: "Gold Flake · clear with gold flake",
     base: "#e6ded0",
     t: 0.58, atten: 42, a: 0.64, env: 0.20,
     flake: { density: 2.2, size: 0.17, strength: 3.2, colour: "#ffc95e", rainbow: false },
   },
   {
-    id: "cc-pinkombre",
+    id: "pink-ombre",
+    aliases: ["cc-pinkombre", "pinkombre"],   // names it had before, still accepted
     family: "TPU",
     label: "Pink Ombré",
     base: "#ff7ab8",
@@ -152,6 +161,7 @@ export const SPOOLS = [
   // ------------------------------------------------- coextruded tri-colour
   {
     id: "tri-ryb",
+    group: "Tri-colour silk",
     family: "PLA",
     label: "Tri-colour Silk · red / yellow / blue",
     base: "#f2c21b",
@@ -160,6 +170,7 @@ export const SPOOLS = [
   },
   {
     id: "tri-bbp",
+    group: "Tri-colour silk",
     family: "PETG",
     label: "Tri-colour Silk · black / blue / purple",
     base: "#3b2a9e",
@@ -168,11 +179,10 @@ export const SPOOLS = [
   },
 ];
 
-export const CREDIT = "Colours inspired by Cookiecad filament (cookiecad.com).";
 
 // ---------------------------------------------------------------- lighting
 //
-// One lighting rig cannot flatter all nine. A near-clear glitter spool needs
+// One lighting rig cannot flatter them all. A near-clear glitter spool needs
 // light coming from BEHIND it — that is the only way transmission reads, and
 // the only angle at which flake flashes — while a matte TPU lit that way just
 // looks thin. A near-black translucent needs almost everything turned up or it
@@ -194,23 +204,23 @@ export const LOOKS = {
   // to white and left the coloured specks nowhere to read — the one spool whose
   // whole name is its glitter, and you could not see it. Backlight and exposure
   // pulled down to leave headroom for the flake.
-  "cc-funfetti": { key: 112, fill: 38, rim: 88, ambient: 34, exposure: 104, opacity: 88, bg: "#0a0d14" },
+  "rainbow-glitter": { key: 112, fill: 38, rim: 88, ambient: 34, exposure: 104, opacity: 88, bg: "#0a0d14" },
   // a ramp has to be READ, so light it evenly and do not blow out the top
-  "cc-unicorn": { key: 145, fill: 78, rim: 48, ambient: 66, exposure: 106, opacity: 100, bg: "#0d1018" },
+  "pink-blue-gradient": { key: 145, fill: 78, rim: 48, ambient: 66, exposure: 106, opacity: 100, bg: "#0d1018" },
   // jewel tone: it should glow from behind like held-up glass
-  "cc-ruby": { key: 132, fill: 46, rim: 115, ambient: 42, exposure: 116, opacity: 90, bg: "#0c0a0e" },
+  "ruby-red": { key: 132, fill: 46, rim: 115, ambient: 42, exposure: 116, opacity: 90, bg: "#0c0a0e" },
   // deep violet would crush to black without a strong key AND a rim
-  "cc-witchcraft": { key: 168, fill: 56, rim: 108, ambient: 44, exposure: 114, opacity: 96, bg: "#080a12" },
+  "violet-flake": { key: 168, fill: 56, rim: 108, ambient: 44, exposure: 114, opacity: 96, bg: "#080a12" },
   // glossy PETG: enough rim to throw the specular line that says "gloss"
-  "cc-mermaid": { key: 152, fill: 72, rim: 76, ambient: 58, exposure: 108, opacity: 96, bg: "#0a0f16" },
+  "ocean-gradient": { key: 152, fill: 72, rim: 76, ambient: 58, exposure: 108, opacity: 96, bg: "#0a0f16" },
   // the hardest one in the set — everything up, or it is a hole in the screen
-  "cc-darkmagic": { key: 178, fill: 62, rim: 140, ambient: 52, exposure: 128, opacity: 88, bg: "#0d0b14" },
+  "smoky-violet": { key: 178, fill: 62, rim: 140, ambient: 52, exposure: 128, opacity: 88, bg: "#0d0b14" },
   // pastel gradient on matte TPU: soft and open, no hard highlights
-  "cc-fairyfloss": { key: 136, fill: 82, rim: 72, ambient: 68, exposure: 107, opacity: 98, bg: "#0e1017" },
+  "pastel-glitter": { key: 136, fill: 82, rim: 72, ambient: 68, exposure: 107, opacity: 98, bg: "#0e1017" },
   // warm flake wants a warm backlight, or the gold reads grey
-  "cc-golddust": { key: 112, fill: 44, rim: 82, ambient: 34, exposure: 103, opacity: 86, rimcol: "#ffd9a0", bg: "#0a0a0d" },
+  "gold-flake": { key: 112, fill: 44, rim: 82, ambient: 34, exposure: 103, opacity: 86, rimcol: "#ffd9a0", bg: "#0a0a0d" },
   // matte needs FILL above all — lit like the others it looks dead flat
-  "cc-pinkombre": { key: 142, fill: 92, rim: 42, ambient: 74, exposure: 104, opacity: 100, bg: "#0f1016" },
+  "pink-ombre": { key: 142, fill: 92, rim: 42, ambient: 74, exposure: 104, opacity: 100, bg: "#0f1016" },
   // silk: a bright even key so all three colours read, and a rim for the sheen
   "tri-ryb": { key: 150, fill: 70, rim: 96, ambient: 52, exposure: 106, opacity: 100, bg: "#0b0e15" },
   // dark silk: the black third needs a strong rim and key or it is a hole;
@@ -222,15 +232,15 @@ export const lookFor = (id) => LOOKS[id] || null;
 
 // ------------------------------------------------------------ finding one
 //
-// Somebody says "use witchcraft" or "cookiecad funfetti" or "the pink ombre",
+// Somebody says "use violet flake" or "the pink ombre" or a spool's old name,
 // and the AI writes filament("witchcraft") from that. So the lookup has to be
 // forgiving about everything a person or a model will vary: case, the family
-// prefix, the word Cookiecad, accents on Ombré, and the marketing words
+// prefix, a maker's name in front, accents on Ombré, and the marketing words
 // (Elixir, Clear, glitter) that come and go.
 //
 // Deliberately NOT fuzzy-by-distance. A near-match that silently picks the
 // wrong spool is worse than not finding one — the caller can say so and the
-// user can pick from a list of nine.
+// user can pick from the list.
 const norm = (s) => String(s || "")
   .normalize("NFD").replace(/[̀-ͯ]/g, "")     // ombré -> ombre
   .toLowerCase()
@@ -246,16 +256,20 @@ const norm = (s) => String(s || "")
 export function findSpool(name) {
   const q = norm(name);
   if (!q) return null;
-  // exact id first, so filament("cc-unicorn") is never ambiguous
-  const byId = SPOOLS.find((s) => s.id === String(name).trim().toLowerCase());
+  // exact id first, so filament("pink-blue-gradient") is never ambiguous;
+  // then a name the spool had before (a model saved with it still loads)
+  const want = String(name).trim().toLowerCase();
+  const byId = SPOOLS.find((s) => s.id === want);
   if (byId) return byId;
+  const byAlias = SPOOLS.find((s) => (s.aliases || []).some((a) => a === want || norm(a) === q));
+  if (byAlias) return byAlias;
   // then the distinctive word in the label, e.g. "witchcraft", "golddust"
   const keyed = SPOOLS.find((s) => norm(s.id.replace(/^cc-/, "")) === q);
   if (keyed) return keyed;
   // ...then the product NAME — the part of the label before the dash, never the
   // description after it. Matching the description made "black pla" resolve to
   // Dark Magic, whose blurb says "near-black": Black PLA is a real spool they
-  // sell and we do not stock it, so the honest answer is "not one of the nine",
+  // sell and we do not stock it, so the honest answer is "not one of these",
   // not a silent substitution.
   const hits = SPOOLS.filter((s) => {
     const name = norm(s.label.split("·")[0]);
@@ -319,10 +333,15 @@ function mixHex(a, b, k) {
   return "#" + A.map((v, i) => to(v + (B[i] - v) * k)).join("");
 }
 
-// Grouped for the picker, in the order the families should appear.
+// Grouped for the picker: the families in order, then any spool with a
+// group of its own (the tri-colour silks), under that group's name.
 export function byFamily() {
-  return ["PLA", "PETG", "TPU"].map((family) => ({
+  const groups = ["PLA", "PETG", "TPU"].map((family) => ({
     family,
-    spools: SPOOLS.filter((s) => s.family === family),
+    spools: SPOOLS.filter((s) => s.family === family && !s.group),
   }));
+  for (const g of [...new Set(SPOOLS.map((s) => s.group).filter(Boolean))]) {
+    groups.push({ family: g, spools: SPOOLS.filter((s) => s.group === g) });
+  }
+  return groups;
 }

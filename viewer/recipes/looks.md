@@ -19,7 +19,7 @@ panel. It changes nothing about the geometry, the export or the print.
 
 ```js
 // what it is made of
-look({ filament: "cc-witchcraft", metal: 80, rough: 25 });
+look({ filament: "violet-flake", metal: 80, rough: 25 });
 
 // how it is lit
 look({ key: 170, fill: 45, rim: 120, exposure: 112, filmic: true });
@@ -43,8 +43,8 @@ file, before the model, where a reader will find them.
 | rubber / TPU | 0 | 95 | |
 | ceramic | 0 | 35 | |
 
-For a real filament instead, `filament:` takes any spool name (`cc-witchcraft`,
-`cc-golddust`, …) and paints the whole model in it — glitter, gradient and all.
+For a real filament instead, `filament:` takes any spool name (`violet-flake`,
+`gold-flake`, `tri-bbp`, …) and paints the whole model in it — glitter, gradient and all.
 
 ## Lighting that reads right
 

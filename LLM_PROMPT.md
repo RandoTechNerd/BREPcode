@@ -174,7 +174,7 @@ heightmap(...)                 freeform(...)         importedMesh("file.stl", { 
 colorize("#hex", shape)                              // one piece, one colour
 colorByHeight({ every: 10, colors: [...] }, shape)   // bands up the model, measured from its BOTTOM
 colorByHeight({ at: [8, 22], colors: [...] }, shape) // ...or name the cut heights
-finish("balsa" | "titanium" | "cc-fairyfloss", shape)  // what a piece is MADE of
+finish("balsa" | "titanium" | "pastel-glitter", shape)  // what a piece is MADE of
 glass(opacity, shape)          glow("#hex", intensity, shape)
 ```
 

@@ -1529,7 +1529,7 @@ export function colorByHeight(opts, ...children) {
 
 // What a piece is MADE OF, as opposed to what colour it is.
 //
-//   finish("cc-fairyfloss", body)        that piece prints in glitter
+//   finish("pastel-glitter", body)       that piece prints in glitter
 //   finish("balsa", wing)                ...and this one in balsa
 //   finish("titanium", screws)
 //
@@ -1544,14 +1544,14 @@ export function colorByHeight(opts, ...children) {
 // piece with no finish falls back to the model-wide one, so nothing changes
 // until somebody asks for it.
 //
-// The name is either a spool id from viewer/filaments.js (cc-fairyfloss,
-// cc-golddust…) or a free word for a material the viewer has no spool for
+// The name is either a spool id from viewer/filaments.js (pastel-glitter,
+// gold-flake…) or a free word for a material the viewer has no spool for
 // (balsa, titanium, brass) — those still travel into exports and the parts
 // list, where a name is what matters.
 export function finish(name, ...children) {
   const kids = collect(children);
   if (!kids.length) {
-    throw new Error('finish() needs a shape, e.g. finish("cc-golddust", cube([10, 10, 10]))');
+    throw new Error('finish() needs a shape, e.g. finish("gold-flake", cube([10, 10, 10]))');
   }
   const id = String(name || "").trim();
   if (!id) throw new Error('finish() needs a material name, e.g. finish("balsa", wing)');
@@ -1594,7 +1594,7 @@ export function glass(opacity, ...children) {
 // asked for "a brushed aluminium torch under warm light" could only shrug and
 // name a panel the user had to go and find.
 //
-//   look({ filament: "cc-witchcraft", metal: 80, rough: 25 })
+//   look({ filament: "violet-flake", metal: 80, rough: 25 })
 //   look({ key: 180, fill: 40, rim: 120, exposure: 115, filmic: true })
 //   look({ bg: "#0b0f16" }, myModel)      // wrapping is optional
 //

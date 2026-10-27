@@ -4207,10 +4207,6 @@
       </div>
       <div id="mat-foot">
         <button id="mat-reset" class="hist-btn">Reset to defaults</button>
-        <small style="display:block;margin-top:7px;opacity:.6;font-size:11px">
-          Named spool colours inspired by
-          <a href="https://cookiecad.com" target="_blank" rel="noopener">Cookiecad</a> filament.
-        </small>
       </div>
     </section>
 
@@ -5964,7 +5960,7 @@
         uTexKind: sharedFx.kind || sharedTex.kind, uTexDepth: sharedTex.depth, uTexScale: sharedTex.scale,
         uTexRot: sharedTex.rot, uTexOffset: sharedTex.offset,
         // ---- named-spool effects (see viewer/filaments.js) ----
-        // Every one of these defaults to OFF. Until somebody picks a Cookiecad
+        // Every one of these defaults to OFF. Until somebody picks a named
         // spool this adds a handful of uniforms and two dead branches, and
         // changes nothing about what is drawn.
         uFxGrad: sharedFx.grad, uFxGradA: sharedFx.gradA, uFxGradB: sharedFx.gradB,
@@ -7410,7 +7406,7 @@
       sharedFx.sparkle.value = mat.sparkle;
       saveMat();
     });
-    // ---- named spools (Cookiecad), loaded last ------------------------
+    // ---- named spools, loaded last ------------------------------------
     //
     // Deliberately the LAST thing this page fetches. Nobody should wait on a
     // colour swatch to start modelling, so the module is pulled in on idle
@@ -7458,7 +7454,7 @@
         if (!sel || sel.querySelector("optgroup")) return F;
         for (const { family, spools } of F.byFamily()) {
           const g = document.createElement("optgroup");
-          g.label = `${family} — Cookiecad`;
+          g.label = /^(PLA|PETG|TPU)$/.test(family) ? `Filament — ${family}` : family;
           for (const s of spools) {
             // Registered into FILAMENTS so applyFilament(), the hint text and
             // the saved-material round-trip all keep working unchanged.
@@ -7475,6 +7471,12 @@
           sel.appendChild(g);
         }
         // a spool restored from a previous session can be selected now
+        // a spool saved under a name it no longer has (cc-witchcraft is now
+        // violet-flake): the same spool, under its name now
+        if (mat.filament && !FILAMENTS[mat.filament]) {
+          const sp = F.findSpool(mat.filament);
+          if (sp && FILAMENTS[sp.id]) { mat.filament = sp.id; saveMat(); }
+        }
         if (mat.filament && FILAMENTS[mat.filament]) sel.value = mat.filament;
         applySpoolFx();
         return F;
