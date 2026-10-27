@@ -13318,6 +13318,8 @@ ${joined}${SITE_TAIL}`), joined);
       ), camera);
       const onHandle = handleGroup.children.length ? handleHit(raycaster) : null;
       handleDots.hover(onHandle?.object ?? null, mat.handleDwellMs ?? 600);
+      handleDots.hoverArrow(onHandle?.arrow ?? null);
+      renderer.domElement.style.cursor = onHandle?.arrow ? "grab" : "";
       if (designUI?.wantsFaceHover()) {
         const hit = onHandle || designUI.gizmoOwnsPointer() || measureArmed ? null : pickModel(raycaster)[0];
         designUI.hoverFace(hit?.object?.userData?.faceName ? hit.object : null);

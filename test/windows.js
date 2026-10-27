@@ -108,7 +108,7 @@ console.log("\n...but it never fights the hand on the mouse\n");
   check("touching the view marks it as yours",
     /controls\.addEventListener\("start", \(\) => \{ camGlide = null; autoPlaced = false; \}\)/.test(HTML));
   check("a view you set is left alone while it is clear",
-    /if \(clear && !autoPlaced\) return false/.test(HTML));
+    /if \(clear && \(!autoPlaced(?: \|\| designUI\?\.isActive\(\))?\)\) return false|if \(clear && !autoPlaced\) return false/.test(HTML));
   check("...and the app may still tidy its own placement",
     /autoPlaced = true;\s*\/\/ this position is the app's/.test(HTML));
   check("a few pixels off centre is not worth moving for",

@@ -85,12 +85,14 @@ export function addArc(sk, center, start, end) {
 }
 // through the clicked points: one cubic Bezier per stretch (Catmull-Rom), the
 // control points kept as construction-free inner points of each Bezier
-export function addSpline(sk, through) {
-  if (through.length < 2) return [];
-  const P = through;
+// closed: the last point runs smoothly back into the first (a loop, no ends)
+export function addSpline(sk, through, { closed = false } = {}) {
+  if (through.length < (closed ? 3 : 2)) return [];
+  const P = through, n = P.length;
+  const at = (i) => (closed ? P[(i + n) % n] : P[Math.max(0, Math.min(n - 1, i))]);
   const out = [];
-  for (let i = 0; i < P.length - 1; i++) {
-    const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
     const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
     const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
     const ids = [pointAt(sk, p1), -1, -1, pointAt(sk, p2)];

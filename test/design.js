@@ -75,6 +75,23 @@ console.log("\nmoveText: the one writer behind the body drag and the gizmo\n");
   check("a per-axis scale writes scale([x, y, z], { about }, …)", vs.next.includes("scale([2, 1, 0.5], { about: [0, 0, 0] }, cube([10, 20, 30]))"));
   check("…equal factors write one number", F.scaleText(sv, ss, [1.5, 1.5, 1.5], [0, 0, 0]).next.includes("scale(1.5, "));
   check("…a zero or negative factor writes nothing", F.scaleText(sv, ss, [1, -1, 1], [0, 0, 0]).how === "none");
+  // a closed spline: the last piece runs back into the first point (one loop, no loose end)
+  const csk = { points: [], curves: [], constraints: [], dims: [] };
+  const segs = SM.addSpline(csk, [[0, 0], [10, 0], [10, 10], [0, 10]], { closed: true });
+  const first = csk.curves[segs[0]].ids[0], last = csk.curves[segs[segs.length - 1]].ids[3];
+  check("a closed spline has one piece per point and ends where it began", segs.length === 4 && first === last);
+  check("…an open one still has one piece fewer than its points", SM.addSpline({ points: [], curves: [], constraints: [], dims: [] }, [[0, 0], [5, 5], [10, 0]]).length === 2);
+  const shellSrc = readFileSync(new URL("../viewer/design-shell.js", import.meta.url), "utf8");
+  check("toolbar tips name their key, and buttons with choices say hold",
+    /const KEYS = \{[^}]*presspull: "Q"/.test(shellSrc) && /hold for options/.test(shellSrc) && /title="\$\{esc\(tipFor\(t\)\)\}"/.test(shellSrc));
+  check("a held button opens its choices; a choice opens the dialog preset or the sketch tool",
+    /holdT = setTimeout\(\(\) => \{ heldOpen = true; openFly\(b\); \}, HOLD_MS\)/.test(shellSrc)
+    && /openFeature\(t\.id, sub\?\.preset\)/.test(shellSrc) && /openSketch\(sub\?\.sketchTool\)/.test(shellSrc)
+    && /Object\.assign\(spec\.init\(env\), ctx\.preset \|\| \{\}\)/.test(readFileSync(new URL("../viewer/design/dialogs.js", import.meta.url), "utf8")));
+  check("a dialog, a sketch, Esc or a second click ends Press-pull",
+    /\(t\.dialog \|\| t\.id === "sketch"\) && tool === "presspull"\) setTool\("select"\)/.test(shellSrc)
+    && /t\.id === "presspull" && tool === "presspull"\) \{ setTool\("select"\)/.test(shellSrc)
+    && /e\.key === "Escape" && tool === "presspull"/.test(shellSrc));
 }
 {
   const src = `return cube([10, 10, 10]);`;

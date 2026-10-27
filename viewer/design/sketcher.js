@@ -56,6 +56,7 @@ const CON_LABEL = { coincident: "Coincident", horizontal: "Horizontal", vertical
 const GLYPHS = { horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂", tangent: "⌒", equal: "=", fixed: "⏚", coincident: "●", onLine: "⏛", midpoint: "⋯" };
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const SNAP_PX = 9, PICK_PX = 7;
+const CLOSE_PX = 14;     // a click this near the chain's first point closes the loop
 const DRAG_TOOLS = new Set(["line", "rect", "circle"]);      // press-drag draws these too
 
 let cssDone = false;
@@ -78,6 +79,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     sel: new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false, transparent: true }),
     hover: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true }),
     rubber: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true, opacity: 0.85 }),
+    close: new THREE.LineBasicMaterial({ color: 0x3ddc97, depthTest: false }),
     // drawn over the face it lies in: depth-tested, the face hid it in patches
     grid: new THREE.LineBasicMaterial({ color: 0x3a4a6a, transparent: true, opacity: 0.35, depthTest: false }),
     gridMajor: new THREE.LineBasicMaterial({ color: 0x5a6f98, transparent: true, opacity: 0.55, depthTest: false }),
@@ -188,8 +190,10 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       const mat = selCurves.has(i) ? mats.sel : S.hover?.curve === i ? mats.hover : c.construction ? mats.cons : mats.curve;
       sketchGroup.add(polyline(curvePoints(c), mat));
     });
-    // points: the ends and centres curves use (Bezier handles too)
-    const used = new Set(sk.curves.flatMap((c) => c.ids));
+    // points: the ends and centres curves use; a spline's Bezier handles
+    // only while that curve is selected or under the pointer (a finished
+    // spline is a smooth line, not a cloud of squares)
+    const used = visiblePoints(selCurves);
     const fixed = new Set(sk.constraints.filter((c) => c.type === "fixed").flatMap((c) => c.ids));
     const buckets = { point: [], pointSel: [], pointFixed: [] };
     for (const i of used) (selPts.has(i) || S.hover?.point === i ? buckets.pointSel : fixed.has(i) ? buckets.pointFixed : buckets.point).push(toWorld(sk.points[i]));
@@ -201,9 +205,38 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     }
     drawLabels();
   }
-  function drawRubber(list) {
+  function visiblePoints(selCurves = new Set(S.sel.filter((s) => s.curve != null).map((s) => s.curve))) {
+    const out = new Set();
+    S.sk.curves.forEach((c, i) => {
+      const open = selCurves.has(i) || S.hover?.curve === i;
+      c.ids.forEach((id, k) => { if (c.kind !== "bezier" || k === 0 || k === 3 || open) out.add(id); });
+    });
+    return out;
+  }
+  // a spline through these points, as the polyline it will draw
+  function splinePreview(pts, closed = false) {
+    const tmp = { points: [], curves: [], constraints: [], dims: [] };
+    M.addSpline(tmp, pts, { closed });
+    return tmp.curves.flatMap((c, k) => curvePoints(c, tmp.points).slice(k ? 1 : 0));
+  }
+  // the first point of the chain being drawn, and whether (x, y) would close it
+  function chainStartUV() {
+    if (S.tool === "spline" && S.pending.length >= 3) return S.pending[0];
+    if (S.tool === "line" && S.pending.chainStart != null && S.sk.points[S.pending.chainStart]
+      && S.sk.curves.length && S.pending[0] !== S.sk.points[S.pending.chainStart]) return S.sk.points[S.pending.chainStart];
+    return null;
+  }
+  const nearStart = (x, y, uv) => { const [sx, sy] = toScreen(uv); return Math.hypot(sx - x, sy - y) < CLOSE_PX; };
+  function startRing(uv, hot) {
+    const r = (hot ? 9 : 6) * mmPerPx();
+    const ring = polyline(arcPts(uv, r, 0, Math.PI * 2, 32), hot ? mats.close : mats.rubber);
+    ring.renderOrder = 1003;
+    return ring;
+  }
+  function drawRubber(list, ring = null) {
     clearGroup(rubberGroup);
     for (const l of list || []) rubberGroup.add(polyline(l, mats.rubber));
+    if (ring) rubberGroup.add(startRing(ring.uv, ring.hot));
   }
 
   // dims and constraint glyphs, as DOM labels that follow the view
@@ -362,10 +395,13 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   function click(x, y, e) {
     const sk = S.sk;
     const hitSel = pickAt(x, y);
-    const sp = snap(x, y, e?.altKey);
+    let sp = snap(x, y, e?.altKey);
     if (!sp) return;
     const t = S.tool;
     if (t === "line") {
+      // near the chain's first point (a wider target than a snap): close on it
+      const st = chainStartUV();
+      if (st && nearStart(x, y, st)) sp = { uv: [...st], point: S.pending.chainStart };
       if (S.pending.length) {
         const ci = M.addLine(sk, S.pending[0], sp.uv);
         if (ci >= 0) { resolve(); if (sp.point != null && S.pending.chainStart != null && sp.point === S.pending.chainStart) { S.pending = []; drawRubber([]); return; } }
@@ -388,6 +424,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       S.pending.push(sp.uv);
       if (S.pending.length === 3) { M.addArc(sk, ...S.pending); S.pending = []; resolve(); }
     } else if (t === "spline") {
+      // back on the first point: the loop closes and the spline is done
+      if (S.pending.length >= 3 && nearStart(x, y, S.pending[0])) { finishSpline(true); return; }
       S.pending.push(sp.uv);
       if (e?.detail >= 2 && S.pending.length >= 2) finishSpline();
     } else if (t === "trim") {
@@ -432,8 +470,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     }
     rubber(x, y);
   }
-  function finishSpline() {
-    if (S.pending.length >= 2) { M.addSpline(S.sk, S.pending); resolve(); }
+  function finishSpline(closed = false) {
+    if (S.pending.length >= (closed ? 3 : 2)) { M.addSpline(S.sk, S.pending, { closed }); resolve(closed ? "Closed spline." : undefined); }
     S.pending = [];
     drawRubber([]);
   }
@@ -444,7 +482,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (!sp) return;
     const a = S.pending[0], b = sp.uv;
     const t = S.tool;
-    if (t === "line") drawRubber([[a, b]]);
+    const start = chainStartUV();
+    const hot = !!start && nearStart(x, y, start);
+    const ring = start ? { uv: start, hot } : null;
+    if (hot !== !!S.hotClose) { S.hotClose = hot; if (hot) setMsg("Click to close the loop."); }
+    if (t === "line") drawRubber([[a, hot ? start : b]], ring);
     else if (t === "rect") drawRubber([[a, [b[0], a[1]], b, [a[0], b[1]], a]]);
     else if (t === "circle") drawRubber([arcPts(a, Math.hypot(b[0] - a[0], b[1] - a[1]), 0, Math.PI * 2, 64)]);
     else if (t === "arc") {
@@ -456,13 +498,13 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         if (a1 <= a0) a1 += Math.PI * 2;
         drawRubber([arcPts(a, r, a0, a1, 48)]);
       }
-    } else if (t === "spline") drawRubber([[...S.pending, b]]);
+    } else if (t === "spline") drawRubber([hot ? splinePreview(S.pending, true) : splinePreview([...S.pending, b])], ring);
   }
   // the point or curve under the pointer
   function pickAt(x, y) {
     const sk = S.sk;
     let best = null, bd = Infinity;
-    const used = new Set(sk.curves.flatMap((c) => c.ids));
+    const used = visiblePoints();
     for (const i of used) {
       const [sx, sy] = toScreen(sk.points[i]);
       const d = Math.hypot(sx - x, sy - y);
@@ -714,9 +756,10 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     panel.addEventListener("click", onPanelClick);
     panel.addEventListener("change", onPanelChange);
     panel.addEventListener("keydown", (e) => e.stopPropagation());
-    setTool("line");
+    setTool(nextTool || "line");
+    nextTool = null;
     resolve(span ? "Editing the sketch. Finish rewrites its call." : undefined);
-    if (!span) setMsg("Draw. " + "Click points; each click ends a line and starts the next. Esc ends the chain.");
+    if (!span && S.tool === "line") setMsg("Draw. " + "Click points; each click ends a line and starts the next. Esc ends the chain.");
     orbit.addEventListener?.("change", onView);
     orbit.spinGate = offPad;
     return api;
@@ -778,6 +821,12 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
 
   // ---- where to sketch: a world plane, a flat face clicked, or a sketch() to edit ----
   let chooser = null;
+  // the tool a new sketch starts with (a held Sketch button's choice)
+  let nextTool = null;
+  function preferTool(t) {
+    if (!M.TOOLS.includes(t)) return;
+    if (S) { setTool(t); renderPanel(); } else nextTool = t;
+  }
   function choose({ face = null } = {}) {
     close();
     endChoose();
@@ -834,6 +883,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     get active() { return !!S; },
     get choosing() { return !!chooser; },
     chooserClick,
+    preferTool,
     down, move, up, key,
     // for tests: work in plane coordinates
     tool: (t) => { setTool(t); renderPanel(); },

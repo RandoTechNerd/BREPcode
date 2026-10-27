@@ -397,7 +397,8 @@ export function openDialog(id, ctx) {
       return b && !b.isEmpty() ? { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] } : null;
     },
   };
-  const state = spec.init(env);
+  // a choice made on the way in (held toolbar button): Cut, Counterbore, ...
+  const state = Object.assign(spec.init(env), ctx.preset || {});
   // the model's faces as the dialog found them: anything else on screen later
   // is the preview's own
   const baseFaces = new Set(host.modelMeshes().map((m) => m.userData.faceName).filter(Boolean));

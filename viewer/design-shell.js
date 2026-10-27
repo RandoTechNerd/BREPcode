@@ -53,6 +53,22 @@ const TOOLS = [
   ] },
 ];
 const GIZMO_MODE = { move: "translate", rotate: "rotate", scale: "scale" };
+// Design-mode keys (only while Design is on and nothing is being typed in),
+// shown in each button's tooltip. Close to Fusion's where Code mode's own keys
+// allow: S sketch, E extrude, Q press-pull, F fillet, H hole, M move.
+const KEYS = { select: "V", move: "M", rotate: "R", scale: "Shift+S", sketch: "S", extrude: "E", hole: "H",
+  presspull: "Q", fillet: "F", chamfer: "Shift+F", combine: "B" };
+// Press and hold a button for these: straight into a sketch tool, or a
+// dialog opened on that choice.
+const SUBS = {
+  sketch: [["line", "Line"], ["rect", "Rectangle"], ["circle", "Circle"], ["arc", "Arc"], ["spline", "Spline"]].map(([v, l]) => ({ label: l, sketchTool: v })),
+  extrude: [["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
+  revolve: [["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
+  hole: [["simple", "Simple"], ["counterbore", "Counterbore"], ["countersink", "Countersink"]].map(([v, l]) => ({ label: l, preset: { kind: v } })),
+  combine: [["union", "Join"], ["difference", "Cut"], ["intersection", "Intersect"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
+};
+const HOLD_MS = 350;
+const tipFor = (t) => `${t.tip ?? t.label}${KEYS[t.id] ? ` (${KEYS[t.id]})` : ""}${SUBS[t.id] ? " · hold for options" : ""}`;
 
 const CSS = `
 body:not(.design-mode) .dz-ui { display: none !important; }
@@ -98,6 +114,12 @@ body.dz-ribbon #dz-scale { top: 104px; }
 #dz-bar .dz-t:hover { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.12); }
 #dz-bar .dz-t[aria-pressed="true"] { background: var(--accent, #1c66e5); color: #fff; }
 #dz-bar .dz-t.p2 { opacity: 0.55; }
+#dz-bar .dz-t.has-subs { position: relative; }
+#dz-bar .dz-t.has-subs::after { content: ""; position: absolute; right: 3px; bottom: 3px; border: 3px solid transparent;
+  border-right-color: currentColor; border-bottom-color: currentColor; opacity: 0.55; }
+#dz-fly { padding: 4px; display: flex; flex-direction: column; min-width: 130px; z-index: 100001; }
+#dz-fly button { border: 0; background: transparent; text-align: left; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+#dz-fly button:hover, #dz-fly button:focus-visible { background: rgba(127, 150, 200, 0.16); outline: none; }
 #dz-bar .dz-snap { border: 0; background: transparent; color: var(--muted, #8ea0c0); cursor: pointer; padding: 5px 8px; border-radius: 999px; white-space: nowrap; }
 #dz-bar .dz-snap:hover { color: var(--text, #dfe6f3); }
 #dz-bar .dz-more { border: 0; background: transparent; color: var(--muted, #8ea0c0); cursor: pointer; padding: 5px 8px; border-radius: 999px; }
@@ -196,7 +218,7 @@ export function initDesignShell(host) {
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Design tools");
   bar.innerHTML = TOOLS.map((g) => `<div class="dz-g"><div class="dz-gl">${g.group}</div><div class="dz-gi">`
-      + g.items.map((t) => `<button type="button" class="dz-t" data-tool="${t.id}" title="${esc(t.tip ?? t.label)}"`
+      + g.items.map((t) => `<button type="button" class="dz-t${SUBS[t.id] ? " has-subs" : ""}" data-tool="${t.id}" title="${esc(tipFor(t))}"`
         + `${t.dialog ? "" : ` aria-pressed="false"`}>${svg(t.icon)}<span>${t.label}</span></button>`).join("")
       + `</div></div>`).join("")
     + `<div class="dz-g"><div class="dz-gl">Snap</div><div class="dz-gi"><button type="button" class="dz-snap" title="Move snap (click to change)">1 mm</button></div></div>`
@@ -497,6 +519,7 @@ export function initDesignShell(host) {
 
   // ---- toolbar ----
   const setTool = (t) => {
+    if (t !== "presspull") pressPull?.cancel();      // its hover arrows and any half pull go
     tool = t;
     for (const b of bar.querySelectorAll(".dz-t[aria-pressed]")) b.setAttribute("aria-pressed", String(b.dataset.tool === tool));
     attachGizmo();
@@ -524,15 +547,82 @@ export function initDesignShell(host) {
     }
     const b = e.target.closest(".dz-t");
     if (!b) return;
-    const t = TOOLS.flatMap((g) => g.items).find((x) => x.id === b.dataset.tool);
-    if (t.dialog) { openFeature(t.id); return; }
-    if (t.id === "sketch") { openSketch(); return; }
+    if (heldOpen) { heldOpen = false; return; }      // the hold opened the flyout: not a click
+    runTool(b.dataset.tool);
+  });
+  // what a button (or its key, or a flyout choice) does
+  function runTool(id, sub = null) {
+    const t = TOOLS.flatMap((g) => g.items).find((x) => x.id === id);
+    if (!t) return;
+    // a dialog or a sketch is one-off work: press-pull (a pointer mode) ends
+    if ((t.dialog || t.id === "sketch") && tool === "presspull") setTool("select");
+    if (t.dialog) { openFeature(t.id, sub?.preset); return; }
+    if (t.id === "sketch") { openSketch(sub?.sketchTool); return; }
+    // press-pull again: off, back to Select
+    if (t.id === "presspull" && tool === "presspull") { setTool("select"); host.setHint(""); return; }
     setTool(t.id);
     if (t.id === "presspull") {
       loadPressPull();
       host.setHint("<b>Press-pull</b>: drag any flat face (or a round side) along its normal. Out grows, in shrinks; pushed past the shape it cuts on through. Esc or another tool to stop.");
     }
+  }
+
+  // press and hold a button with choices: a small flyout under it
+  let holdT = 0, heldOpen = false, fly = null;
+  const closeFly = () => { fly?.remove(); fly = null; removeEventListener("pointerdown", flyAway, true); };
+  function flyAway(e) { if (fly && !fly.contains(e.target)) closeFly(); }
+  function openFly(b) {
+    closeFly();
+    const subs = SUBS[b.dataset.tool];
+    fly = document.createElement("div");
+    fly.id = "dz-fly";
+    fly.className = "dz-ui";
+    fly.setAttribute("role", "menu");
+    fly.innerHTML = subs.map((s, i) => `<button type="button" role="menuitem" data-i="${i}">${esc(s.label)}</button>`).join("");
+    const r = b.getBoundingClientRect();
+    fly.style.left = `${Math.round(r.left)}px`;
+    fly.style.top = `${Math.round(r.bottom + 6)}px`;
+    document.body.appendChild(fly);
+    fly.addEventListener("click", (e) => {
+      const i = e.target.closest("[data-i]")?.dataset.i;
+      if (i == null) return;
+      const id = b.dataset.tool;
+      closeFly();
+      runTool(id, subs[+i]);
+    });
+    fly.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") closeFly(); });
+    fly.querySelector("button")?.focus();
+    addEventListener("pointerdown", flyAway, true);
+  }
+  bar.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest(".dz-t.has-subs");
+    clearTimeout(holdT);
+    heldOpen = false;
+    if (!b || e.button !== 0) return;
+    holdT = setTimeout(() => { heldOpen = true; openFly(b); }, HOLD_MS);
   });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) bar.addEventListener(ev, () => clearTimeout(holdT));
+  bar.addEventListener("contextmenu", (e) => {       // right-click: the same choices
+    const b = e.target.closest(".dz-t.has-subs");
+    if (!b) return;
+    e.preventDefault();
+    openFly(b);
+  });
+
+  // Design keys (KEYS): not while typing, not while the sketcher has the keys
+  addEventListener("keydown", (e) => {
+    if (!active || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const el = document.activeElement;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+    if (sketcher?.active) return;
+    if (e.key === "Escape" && tool === "presspull" && !pressPull?.dragging) { setTool("select"); host.setHint(""); return; }
+    const k = (e.shiftKey ? "Shift+" : "") + (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    const id = Object.keys(KEYS).find((x) => KEYS[x] === k);
+    if (!id) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();      // Code mode's own E / M / H must not fire too
+    runTool(id);
+  }, true);
   bar.addEventListener("dblclick", (e) => { if (!e.target.closest(".dz-t, .dz-snap, .dz-more")) setRibbon(!ribbon); });
   side.querySelector(".dz-fold").addEventListener("click", (e) => {
     const folded = side.classList.toggle("folded");
@@ -561,7 +651,7 @@ export function initDesignShell(host) {
 
   // ---- feature dialogs ----
   let dialogsMod = null;
-  async function openFeature(id) {
+  async function openFeature(id, preset = null) {
     dialogsMod ??= await import("./design/dialogs.js");
     if (dialog) await dialog.cancel();
     // one tool at a time: a dialog over an open sketch could not take its picks
@@ -573,7 +663,7 @@ export function initDesignShell(host) {
     }
     gizmo.detach();
     dialog = dialogsMod.openDialog(id, {
-      host, THREE, scene, sel,
+      host, THREE, scene, sel, preset,
       onClose: () => { dialog = null; attachGizmo(); },
       markFailure: (f) => showFailure(f),
     });
@@ -594,8 +684,9 @@ export function initDesignShell(host) {
     }, true);
     return sketcher;
   }
-  async function openSketch() {
+  async function openSketch(startTool = null) {
     await loadSketcher();
+    if (startTool) sketcher.preferTool(startTool);
     if (dialog) await dialog.cancel();
     gizmo.detach();
     let fp = null;
@@ -661,7 +752,8 @@ export function initDesignShell(host) {
       } else if (dialog) {
         press = { x: e.clientX, y: e.clientY };
       } else if (tool === "presspull" && pressPull) {
-        const hit = host.pickAt(e.clientX, e.clientY);
+        // an arrow is a handle on its face: pressing it pulls that face
+        const hit = pressPull.arrowAt(e.clientX, e.clientY) ?? host.pickAt(e.clientX, e.clientY);
         if (!hit || !pressPull.down(e, hit)) return false;
         press = { x: e.clientX, y: e.clientY, pp: true };
       } else return false;

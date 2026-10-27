@@ -18,6 +18,7 @@ import * as F from "./features.js";
 import { facePick } from "./dialogs.js";
 import { worldToPlane, planeFrame } from "../../src/dsl.js";
 import { findResizeTarget } from "../assist.js";
+import { makeSolidArrow } from "../handle-dots.js";
 
 const BOX = new Set(["cube", "cuboid"]);
 
@@ -39,10 +40,15 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
   // the hover arrows
   const arrowGroup = new THREE.Group();
   scene.add(arrowGroup);
-  let arrowFace = null;
+  let arrowFace = null, hot = null;
+  const sleeveMat = new THREE.MeshBasicMaterial({ visible: false });
+  const hotArrow = (a) => { if (a === hot) return; hot?.userData.setHot?.(false); hot = a; hot?.userData.setHot?.(true); host.renderer.domElement.style.cursor = a ? "grab" : ""; };
+  // the arrow under the pointer lights up (an arrow can stick out past its face)
+  host.renderer.domElement.addEventListener("pointermove", (e) => { if (!drag && arrowGroup.children.length) api.arrowAt(e.clientX, e.clientY); });
   const hideArrows = () => {
     arrowFace = null;
-    for (const a of [...arrowGroup.children]) { arrowGroup.remove(a); a.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+    hotArrow(null);
+    for (const a of [...arrowGroup.children]) { arrowGroup.remove(a); a.traverse((o) => { o.geometry?.dispose?.(); if (o.material !== sleeveMat) o.material?.dispose?.(); }); }
   };
   const clearGhost = () => { for (const c of [...ghostGroup.children]) { ghostGroup.remove(c); c.geometry.dispose(); } };
 
@@ -72,7 +78,7 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
     return { site, body, target, axis, sign, radial, centered: centered && !radial, siteSpan: { start: site.start, end: site.end } };
   }
 
-  return {
+  const api = {
     get dragging() { return !!drag; },
     // a press on the model with the Press-pull tool; false = not a face it can pull
     down(e, hit) {
@@ -160,6 +166,7 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
     // the tool says what a drag will do before it starts
     hover(mesh) {
       if (drag) return;
+      if (!mesh && hot) return;        // off the face but on its arrow: keep it
       if (mesh === arrowFace) return;
       hideArrows();
       arrowFace = mesh;
@@ -175,11 +182,28 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
       const h = host.renderer.domElement.clientHeight || 600;
       const wpp = (2 * Math.max(depth, 1e-6) * Math.tan(((camera.fov ?? 45) * Math.PI) / 360)) / (camera.zoom || 1) / h;
       for (const [d, col] of [[n, 0x3ddc97], [n.clone().negate(), 0xff7a5c]]) {
-        const a = new THREE.ArrowHelper(d, p.clone().addScaledVector(d, wpp * 6), wpp * 48, col, wpp * 14, wpp * 10);
-        for (const o of [a.line, a.cone]) { o.material.depthTest = false; o.material.transparent = true; o.renderOrder = 1001; }
-        a.line.material.linewidth = 2;
+        const a = makeSolidArrow(THREE, d, { gap: wpp * 8, shaft: wpp * 34, head: wpp * 16, r: wpp * 2, headR: wpp * 7, sleeveR: wpp * 11, color: col, hitMat: sleeveMat });
+        a.position.copy(p);
+        a.userData.out = d === n;
         arrowGroup.add(a);
       }
+      arrowGroup.userData.mesh = mesh;
+      arrowGroup.userData.at = p;
+    },
+    // the arrow under client (x, y): { mesh, point, out } to press on, or null;
+    // it lights up while the pointer is on it
+    arrowAt(x, y) {
+      if (!arrowGroup.children.length) { hotArrow(null); return null; }
+      const rect = host.renderer.domElement.getBoundingClientRect();
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1), camera);
+      const sleeves = [];
+      arrowGroup.traverse((o) => { if (o.userData.arrowHit) sleeves.push(o); });
+      const hit = rc.intersectObjects(sleeves, false)[0];
+      let a = hit?.object;
+      while (a && !a.userData.solidArrow) a = a.parent;
+      hotArrow(a ?? null);
+      return a ? { object: arrowGroup.userData.mesh, point: arrowGroup.userData.at.clone(), out: a.userData.out } : null;
     },
     cancel() {
       hideArrows();
@@ -190,4 +214,5 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
     },
     debug: () => ({ dragging: !!drag, d: drag?.d ?? null, last: lastWrite }),
   };
+  return api;
 }

@@ -27,6 +27,31 @@ export const DOT_PX = { corner: 6, face: 5 };
 export const RING_PX = 16;
 export const DWELL_MS = 600;
 
+// A solid push/pull arrow along d: a shaft, a cone head, a white outline
+// that shows while the pointer is on it (setHot), and an invisible fat sleeve
+// over shaft AND head that is what a pick hits. Sizes are in the caller's
+// units (handle units here, world mm in press-pull).
+export function makeSolidArrow(THREE, d, { gap, shaft, head, r, headR, sleeveR, color, hitMat }) {
+  const a = new THREE.Group();
+  const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+  const o = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false, side: THREE.BackSide });
+  const part = (geo, y, mat, order) => { const x = new THREE.Mesh(geo, mat); x.position.y = y; x.renderOrder = order; return x; };
+  const s = part(new THREE.CylinderGeometry(r, r, shaft, 10), gap + shaft / 2, m, 1002);
+  const c = part(new THREE.ConeGeometry(headR, head, 20), gap + shaft + head / 2, m, 1002);
+  const k = 1.6;
+  const so = part(new THREE.CylinderGeometry(r * 2.6, r * 2.6, shaft, 10), gap + shaft / 2, o, 1001);
+  const co = part(new THREE.ConeGeometry(headR * k, head * k, 20), gap + shaft + head / 2, o, 1001);
+  so.visible = co.visible = false;
+  const sleeve = part(new THREE.CylinderGeometry(sleeveR, sleeveR, shaft + head * 1.2, 8), gap + (shaft + head * 1.2) / 2, hitMat, 0);
+  sleeve.userData.arrowHit = true;
+  a.add(so, co, s, c, sleeve);
+  a.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize());
+  a.userData.solidArrow = true;
+  a.userData.setHot = (on) => { so.visible = co.visible = on; a.scale.setScalar(on ? 1.25 : 1); };
+  return a;
+}
+const arrowOf = (o) => { while (o && !o.userData.solidArrow) o = o.parent; return o; };
+
 function discTexture(THREE, draw) {
   const c = document.createElement("canvas");
   c.width = c.height = 64;
@@ -63,7 +88,7 @@ export function createHandleDots(THREE) {
   const hitGeo = new THREE.SphereGeometry(1, 12, 8);
   let accent = 0x3b9dff;
 
-  let hovered = null, dwellTimer = 0;
+  let hovered = null, dwellTimer = 0, hotArrow = null;
   let labelEl = null;
 
   const kit = {
@@ -163,12 +188,22 @@ export function createHandleDots(THREE) {
       if (!hit) return null;
       let h = hit.object;
       while (h && !h.userData.handle) h = h.parent;
-      return h ? { object: h, distance: hit.distance, point: h.position.clone() } : null;
+      return h ? { object: h, arrow: arrowOf(hit.object), distance: hit.distance, point: h.position.clone() } : null;
     },
+    // the arrow under the pointer (or none) gets its outline: you are on it,
+    // press and hold to pull
+    hoverArrow(a) {
+      if (a === hotArrow) return;
+      hotArrow?.userData.setHot?.(false);
+      hotArrow = a?.parent ? a : null;
+      hotArrow?.userData.setHot?.(true);
+    },
+    get hotArrow() { return hotArrow; },
     hideArrows(h) {
       for (const c of [...(h?.children ?? [])]) {
         if (c.userData.dotPart !== "arrows") continue;
-        c.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+        c.traverse((o) => { o.geometry?.dispose?.(); if (o.material !== hitMat) o.material?.dispose?.(); });
+        if (hotArrow && c.children.includes(hotArrow)) hotArrow = null;
         h.remove(c);
       }
     },
@@ -215,27 +250,19 @@ export function createHandleDots(THREE) {
           hitPx, dotPx: hitPx * (DOT_PX[h.userData.dot.look] / HIT_PX),
           ring: h.children.some((c) => c.userData.dotPart === "ring" && c.visible),
           arrows: h.children.filter((c) => c.userData.dotPart === "arrows").reduce((n, g) => n + g.children.length, 0),
+          hotArrow: !!hotArrow && h.children.some((c) => c.userData.dotPart === "arrows" && c.children.includes(hotArrow)),
+          // where each arrow's head is on screen (tests aim at it)
+          heads: h.children.filter((c) => c.userData.dotPart === "arrows").flatMap((g) => g.children).map((a) => {
+            const p = new THREE.Vector3(); a.children[3]?.getWorldPosition(p); const q = p.project(camera);
+            return [(q.x + 1) / 2 * widthPx, (1 - q.y) / 2 * heightPx];
+          }),
         };
       });
     },
   };
-  const Y = new THREE.Vector3(0, 1, 0);
-  function solidArrow(d) {
-    const a = new THREE.Group();
-    const m = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
-    const gap = px(9), shaft = px(30), head = px(14);
-    const s = new THREE.Mesh(new THREE.CylinderGeometry(px(1.6), px(1.6), shaft, 8), m);
-    s.position.y = gap + shaft / 2;
-    const c = new THREE.Mesh(new THREE.ConeGeometry(px(6), head, 16), m);
-    c.position.y = gap + shaft + head / 2;
-    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(px(9), px(9), shaft + head, 8), hitMat);
-    sleeve.position.y = gap + (shaft + head) / 2;
-    sleeve.userData.arrowHit = true;
-    for (const o of [s, c]) o.renderOrder = 1001;
-    a.add(s, c, sleeve);
-    a.quaternion.setFromUnitVectors(Y, d);
-    return a;
-  }
+  const solidArrow = (d) => makeSolidArrow(THREE, d, {
+    gap: px(9), shaft: px(30), head: px(14), r: px(1.6), headR: px(6), sleeveR: px(10), color: accent, hitMat,
+  });
   function setRing(h, on) {
     for (const c of h.children) if (c.userData.dotPart === "ring") c.visible = on;
   }
