@@ -10735,6 +10735,14 @@ ${joined}${SITE_TAIL}`), joined);
         const c0 = performance.now();
         let lastPaint = c0;
         const earlyParts = [];
+        // fillet(r, part) / chamfer(d, part) need the part's face names mid-compile:
+        // asked of the worker's fast kernel (engine "split": a refusal comes
+        // straight back, and compile falls back to the JS kernel itself)
+        const faceNames = getBuildWorker() ? async (json) => {
+          if (mine !== token) return null;
+          const r = await workerCall({ op: "build", key: "probe", json, engine: "split", kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+          return (r.solids || []).map((s) => ({ name: s.name, faces: (s.faces || []).map((f) => f.name) }));
+        } : null;
         dsl.setPartHook(async (name, stl) => {
           if (mine !== token) return;
           const now = performance.now();
@@ -10747,7 +10755,7 @@ ${joined}${SITE_TAIL}`), joined);
             await new Promise((r) => { const t = setTimeout(r, 50); requestAnimationFrame(() => { clearTimeout(t); setTimeout(r, 0); }); });
           }
         });
-        try { await dsl.compile(shape, ph, trace); }
+        try { await dsl.compile(shape, ph, trace, { faceNames }); }
         finally { dsl.setPartHook(null); }
         if (mine !== token) return;
 

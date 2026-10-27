@@ -3142,15 +3142,37 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     }).map((e) => e.name);
   }
 
+  // opts.faceNames(featureListJson) -> [{ name, faces: [faceName, ...] }]:
+  // the solids a FAST kernel makes of the history so far (the viewer asks its
+  // worker: NVIDIA or Rust, a fraction of a second). Without it, or when that
+  // kernel refuses, the JS kernel replays the whole history here, which cost
+  // the mini Snapmaker ~10 s per chamfer, on the page's own thread.
+  async function fastFaceNames(childId) {
+    if (typeof opts.faceNames !== "function") return null;
+    try {
+      const solids = await opts.faceNames(await partHistory.toJSON());
+      if (!Array.isArray(solids) || !solids.length) return null;
+      const s = solids.find((x) => x.name === childId)
+        || solids.find((x) => x.faces.some((f) => String(f).startsWith(childId)))
+        || solids[solids.length - 1];
+      // mesh-lane faces have no exact names to round
+      const faces = s.faces.filter((f) => f && !String(f).endsWith("_MESH"));
+      return faces.length ? faces : null;
+    } catch { return null; }
+  }
+
   async function childFaceNames(childId, filter) {
-    await runKeepingImports(partHistory);
-    const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
-    let solid = solids.find((s) => s.name === childId)
-      || solids.find((s) => { let hit = false; s.traverse((f) => { if (f.type === "FACE" && String(f.name || "").startsWith(childId)) hit = true; }); return hit; })
-      || solids[solids.length - 1];
-    if (!solid) return [];
-    const names = [];
-    solid.traverse((f) => { if (f.type === "FACE" && f.name) names.push(f.name); });
+    let names = await fastFaceNames(childId);
+    if (!names) {
+      await runKeepingImports(partHistory);
+      const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
+      const solid = solids.find((s) => s.name === childId)
+        || solids.find((s) => { let hit = false; s.traverse((f) => { if (f.type === "FACE" && String(f.name || "").startsWith(childId)) hit = true; }); return hit; })
+        || solids[solids.length - 1];
+      if (!solid) return [];
+      names = [];
+      solid.traverse((f) => { if (f.type === "FACE" && f.name) names.push(f.name); });
+    }
     if (filter === "all" || !filter) return names;
     const want = (Array.isArray(filter) ? filter : [filter]).flatMap(
       (w) => (w === "sides" ? ["_PX", "_NX", "_PY", "_NY"] : [SIDE_ALIASES[w] || w]));
