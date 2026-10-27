@@ -22306,10 +22306,42 @@ let SIMPLIFY_TARGET = 10000;
       handlesVisible: (on) => { handleGroup.visible = on; },
       featureId: (mesh) => mesh?.userData?.featureId ?? null,
     });
+    // Code mode's windows stay where they were. Design moves them out of its
+    // panels' way; leaving Design puts back every window the user did not
+    // move while in it (the chat used to land on the left).
+    let codeLayout = null;
+    const spot = (c) => ["left", "top", "right", "bottom", "width", "height"].map((k) => c.style[k]).join("|");
+    function rememberCodeLayout() {
+      codeLayout = new Map();
+      for (const c of document.querySelectorAll(".card.open")) {
+        codeLayout.set(c, { css: c.style.cssText, cls: c.className, placed: c.dataset.placed ?? null, after: null });
+      }
+    }
+    function noteDesignLayout() { for (const [c, s] of codeLayout ?? []) s.after = spot(c); }
+    function restoreCodeLayout() {
+      if (!codeLayout) { relayoutForDesign(); return; }
+      for (const [c, s] of codeLayout) {
+        if (!c.classList.contains("open")) continue;                 // closed in Design: stays closed
+        if (s.after != null && spot(c) !== s.after) continue;          // the user moved it there: theirs
+        const z = c.style.zIndex;
+        c.style.cssText = s.css;
+        if (z) c.style.zIndex = z;                                     // keep what was raised on top
+        c.className = s.cls;
+        if (s.placed == null) delete c.dataset.placed; else c.dataset.placed = s.placed;
+      }
+      codeLayout = null;
+      markDockShared();
+      requestAnimationFrame(unstackDocked);
+      windowsChanged();
+    }
     const modeSwitch = initModeSwitch({ onChange: (m) => {
+      if (m === "design") rememberCodeLayout();
       designUI.setActive(m === "design");
       // after the Design panels have appeared (or gone), so they can be measured
-      requestAnimationFrame(() => requestAnimationFrame(relayoutForDesign));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (m === "design") { relayoutForDesign(); noteDesignLayout(); }
+        else restoreCodeLayout();
+      }));
     } });
     window.brepscript.mode = () => modeSwitch.mode;
     window.brepscript.setMode = (m) => modeSwitch.setMode(m);
