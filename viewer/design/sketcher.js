@@ -78,8 +78,9 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     sel: new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false, transparent: true }),
     hover: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true }),
     rubber: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true, opacity: 0.85 }),
-    grid: new THREE.LineBasicMaterial({ color: 0x3a4a6a, transparent: true, opacity: 0.35, depthTest: true }),
-    gridMajor: new THREE.LineBasicMaterial({ color: 0x5a6f98, transparent: true, opacity: 0.55, depthTest: true }),
+    // drawn over the face it lies in: depth-tested, the face hid it in patches
+    grid: new THREE.LineBasicMaterial({ color: 0x3a4a6a, transparent: true, opacity: 0.35, depthTest: false }),
+    gridMajor: new THREE.LineBasicMaterial({ color: 0x5a6f98, transparent: true, opacity: 0.55, depthTest: false }),
     axis: new THREE.LineBasicMaterial({ color: 0x8aa2d8, transparent: true, opacity: 0.8, depthTest: false }),
     point: new THREE.PointsMaterial({ color: 0xffffff, size: 6, sizeAttenuation: false, depthTest: false, transparent: true }),
     pointSel: new THREE.PointsMaterial({ color: 0xffd166, size: 9, sizeAttenuation: false, depthTest: false, transparent: true }),
@@ -166,9 +167,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
 
   function drawGrid() {
     clearGroup(gridGroup);
-    const ext = 150, major = 10;
+    // the pad covers the whole model flattened onto the plane (S.ext, from
+    // lookSquare); a big pad steps its grid up so it stays a few thousand lines
+    const ext = S.ext || 150, step = ext > 300 ? 5 : 1, major = ext > 300 ? 50 : 10;
     const minor = [], maj = [];
-    for (let v = -ext; v <= ext; v += 1) {
+    for (let v = -ext; v <= ext; v += step) {
       const list = v % major === 0 ? maj : minor;
       list.push(toWorld([v, -ext]), toWorld([v, ext]), toWorld([-ext, v]), toWorld([ext, v]));
     }
@@ -331,7 +334,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         + axes.map(([, i], n) => `<option value="${i}"${String(S.axis) === String(i) ? " selected" : ""}>construction line ${n + 1}</option>`).join("") + `</select></label>`
         + `<label class="f"><span>Angle</span><input type="number" data-k="angle" step="15" value="${S.angle}" /></label>` : "")
       + (S.feat !== "none" ? `<label class="f"><span>Operation</span><select data-k="op">${[["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => `<option value="${v}"${S.op === v ? " selected" : ""}${!S.body && v !== "new" ? " disabled" : ""}>${l}</option>`).join("")}</select></label>` : "")
-      + `</div><div class="ft"><button type="button" class="cancel">Cancel</button><button type="button" class="ok"${S.feat !== "none" && p ? " disabled title=\"" + esc(p) + "\"" : ""}>Finish</button></div>`;
+      + `</div><div class="ft"><button type="button" class="look" title="Square on to the sketch again">Look at</button><button type="button" class="cancel">Cancel</button><button type="button" class="ok"${S.feat !== "none" && p ? " disabled title=\"" + esc(p) + "\"" : ""}>Finish</button></div>`;
   }
   const planeLabel = (on) => (typeof on === "string" ? `${on} plane` : "on a face");
 
@@ -572,7 +575,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   // Square on to the plane, framing the model and the sketch: the model's box
   // (and the sketch's points) flattened onto the plane, fitted to the view.
   function lookSquare(center) {
-    S.savedCam = { pos: camera.position.clone(), up: camera.up.clone(), target: orbit.target.clone(), rotate: orbit.enableRotate };
+    S.lookCenter = center;
+    if (!S.savedCam) S.savedCam = { pos: camera.position.clone(), up: camera.up.clone(), target: orbit.target.clone(), rotate: orbit.enableRotate };
     const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
     const add = ([u, v]) => { lo[0] = Math.min(lo[0], u); lo[1] = Math.min(lo[1], v); hi[0] = Math.max(hi[0], u); hi[1] = Math.max(hi[1], v); };
     const box = new THREE.Box3();
@@ -585,6 +589,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     }
     for (const p of S.sk.points) add(p);
     add(center);
+    S.ext = Math.max(150, Math.ceil((Math.max(...lo.map(Math.abs), ...hi.map(Math.abs)) + 20) / 10) * 10);
     const mid = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
     const span = Math.max(40, hi[0] - lo[0], (hi[1] - lo[1]) * camera.aspect);
     const c = toWorld(mid);
@@ -595,6 +600,15 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     orbit.target.copy(c);
     orbit.enableRotate = false;      // a sketch is drawn flat on; pan and zoom stay
     orbit.update();
+  }
+  const squareOn = () => { if (S) { lookSquare(S.lookCenter); drawLabels(); } };
+  // a drag that starts ON the pad draws and never turns the view; off the pad
+  // it may orbit (Look at squares it up again). The viewer's model-spin
+  // handler asks this before it starts a spin.
+  function offPad(e) {
+    if (!S) return true;
+    const uv = fromScreen(e.clientX, e.clientY);
+    return !uv || Math.abs(uv[0]) > S.ext || Math.abs(uv[1]) > S.ext;
   }
   function restoreCam() {
     const s = S?.savedCam;
@@ -704,6 +718,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     resolve(span ? "Editing the sketch. Finish rewrites its call." : undefined);
     if (!span) setMsg("Draw. " + "Click points; each click ends a line and starts the next. Esc ends the chain.");
     orbit.addEventListener?.("change", onView);
+    orbit.spinGate = offPad;
     return api;
   }
   const onView = () => { if (S) drawLabels(); };
@@ -722,6 +737,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       return;
     }
     if (e.target.closest(".cancel")) { cancel(); return; }
+    if (e.target.closest(".look")) { squareOn(); return; }
     if (e.target.closest(".ok")) finish();
   }
   function onPanelChange(e) {
@@ -750,6 +766,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (!S) return;
     closeDimBox();
     restoreCam();
+    if (orbit.spinGate === offPad) orbit.spinGate = null;
+    if (drag) { drag = null; orbit.enabled = true; }     // closed mid point-drag
     clearGroup(sketchGroup); clearGroup(gridGroup); clearGroup(rubberGroup);
     for (const el of labels.splice(0)) el.remove();
     panel?.remove();

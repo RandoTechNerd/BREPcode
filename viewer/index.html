@@ -5028,6 +5028,9 @@
       if (spinPointers.size > 1) { spin = null; return; }   // two fingers: pinch/pan
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.shiftKey || e.ctrlKey || e.metaKey) return;    // modifier + drag pans
+      // a tool that owns this drag (the sketch pad) says no; enableRotate is
+      // not that switch here, because model-spin keeps it off all the time
+      if (controls.spinGate && !controls.spinGate(e)) return;
       spin = { id: e.pointerId, x: e.clientX, y: e.clientY, started: false, pivot: null };
     });
     addEventListener("pointermove", (e) => {
@@ -5463,6 +5466,7 @@
 
     (function loop() {
       requestAnimationFrame(loop);
+      if (camGlide && designUI?.sketching?.()) camGlide = null;   // a sketch squared the view on
       if (camGlide) camGlide(performance.now());
       controls.update();
       fadeAxisLabels();
@@ -5508,7 +5512,10 @@
       // track the size, and the clearance below keeps its safety net: a model
       // typed right out of view is still rescued, because keepModelClear only
       // stands down for a user-held camera when the model is genuinely clear.
-      if (!autoPlaced) {
+      // Design mode edits the model under a camera the user has set up (a
+      // push, a move, a dialog preview, a sketch squared on): once it is
+      // framed, a rebuild leaves the view alone, like a user-held camera.
+      if (!autoPlaced || (designUI?.isActive() && framedRadius)) {
         camera.near = Math.max(radius / 1000, 0.001);
         camera.far = Math.max(radius * 1000, 100);
         camera.updateProjectionMatrix();
@@ -5705,6 +5712,7 @@
 
     // Is the part behind a window? Then move it out — and no more than that.
     function keepModelClear({ animate = true } = {}) {
+      if (designUI?.sketching?.()) return false;      // the sketch owns the view
       const free = stageFreeRect();
       if (!free) return false;
       const g = previewGroup.children.length ? previewGroup : modelGroup;
@@ -5719,7 +5727,7 @@
       const seen = modelScreenBox();
       const clear = seen && seen.left >= free.l && seen.right <= free.r
         && seen.top >= free.t && seen.bottom <= free.b;
-      if (clear && !autoPlaced) return false;
+      if (clear && (!autoPlaced || designUI?.isActive())) return false;
       if (clear && seen) {
         // Centred enough already — moving a few pixels reads as drift.
         const offX = Math.abs((seen.left + seen.right) / 2 - (free.l + free.r) / 2);
@@ -11261,6 +11269,10 @@ ${joined}${SITE_TAIL}`), joined);
       handleGroup.add(h);
     }
 
+    // a handle under the ray: its dot, or one of its push/pull arrows
+    const handleHit = (rc) => (handleGroup.visible
+      ? rc.intersectObjects(handleGroup.children, false)[0] ?? handleDots.pickArrow(rc, handleGroup) : null);
+
     function clearHandles() {
       selected = null;
       designUI?.onSelect(null);
@@ -12968,7 +12980,7 @@ ${joined}${SITE_TAIL}`), joined);
         // an imported mesh IS a feature, so exclude it by name — otherwise
         // this would swallow the very case the branch exists for
         const grabbedShape = !!grabbedSite && !/import/i.test(String(grabbedSite.kind || ""));
-        if (raycaster.intersectObjects(handleGroup.children, false).length
+        if (handleHit(raycaster)
           || raycaster.intersectObjects(splitGroup.children, false).length
           || negGrab || grabbedShape) {
           // fall through to the widget/shape handling below
@@ -13020,7 +13032,7 @@ ${joined}${SITE_TAIL}`), joined);
       }
 
       // handles take priority over the model
-      const hHit = raycaster.intersectObjects(handleGroup.children, false)[0];
+      const hHit = handleHit(raycaster);
       if (hHit) {
         pressOnDot = true;
         const H = hHit.object.userData.handle;
@@ -13290,7 +13302,7 @@ ${joined}${SITE_TAIL}`), joined);
       raycaster.setFromCamera(new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1,
       ), camera);
-      const hit = raycaster.intersectObjects(handleGroup.children, false)[0];
+      const hit = handleHit(raycaster);
       if (!hit) return;
       const H = hit.object.userData.handle;
       const site = mapText === code.value ? featureMap?.[H.fid] : null;
@@ -13304,7 +13316,7 @@ ${joined}${SITE_TAIL}`), joined);
       raycaster.setFromCamera(new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1,
       ), camera);
-      const onHandle = handleGroup.children.length ? raycaster.intersectObjects(handleGroup.children, false)[0] : null;
+      const onHandle = handleGroup.children.length ? handleHit(raycaster) : null;
       handleDots.hover(onHandle?.object ?? null, mat.handleDwellMs ?? 600);
       if (designUI?.wantsFaceHover()) {
         const hit = onHandle || designUI.gizmoOwnsPointer() || measureArmed ? null : pickModel(raycaster)[0];
@@ -22207,6 +22219,8 @@ let SIMPLIFY_TARGET = 10000;
       lastFailure: () => lastBuildFailure,
       modelMeshes: () => modelGroup.children,
       clearSelection: () => clearHandles(),
+      // hidden handles are not picked either (a hidden dot is not a target)
+      handlesVisible: (on) => { handleGroup.visible = on; },
       featureId: (mesh) => mesh?.userData?.featureId ?? null,
     });
     const modeSwitch = initModeSwitch({ onChange: (m) => {

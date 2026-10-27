@@ -8,8 +8,10 @@
 //   an invisible sphere, HIT_PX across on screen    what the raycaster hits
 //   a dot (corners ~6 px light, faces ~5 px accent)  what you see
 //   a thin ring (~16 px) while the pointer is on it
-//   thin arrows, after a short dwell, for the directions that handle moves
-//     (a face both ways along its normal: out grows, in shrinks)
+//   arrows for the directions that handle moves (a face both ways along its
+//     normal: out grows, in shrinks). A FACE handle shows them as soon as it
+//     exists, solid and big enough to grab (dragging an arrow drags its
+//     handle); a corner shows its thin ones after a short dwell.
 //   a signed distance label by the cursor while it drags
 //
 // The sphere is the handle the viewer has always had (userData.handle, its
@@ -87,6 +89,9 @@ export function createHandleDots(THREE) {
       ring.visible = false;
       ring.userData.dotPart = "ring";
       h.add(ring);
+      // a face's push/pull arrows are always there: hidden behind a dwell on a
+      // 5 px dot they were never found
+      if (look === "face" && dirs.length) { h.userData.dot.always = true; kit.showArrows(h); }
       return h;
     },
 
@@ -119,11 +124,11 @@ export function createHandleDots(THREE) {
     hover(h, dwellMs = DWELL_MS) {
       if (h === hovered) return;
       clearTimeout(dwellTimer);
-      if (hovered) { setRing(hovered, false); kit.hideArrows(hovered); }
+      if (hovered) { setRing(hovered, false); if (!hovered.userData.dot?.always) kit.hideArrows(hovered); }
       hovered = h;
       if (!h) return;
       setRing(h, true);
-      dwellTimer = setTimeout(() => { if (hovered === h && h.parent) kit.showArrows(h); }, Math.max(0, dwellMs));
+      if (!h.userData.dot?.always) dwellTimer = setTimeout(() => { if (hovered === h && h.parent) kit.showArrows(h); }, Math.max(0, dwellMs));
     },
     get hovered() { return hovered; },
 
@@ -131,6 +136,12 @@ export function createHandleDots(THREE) {
       kit.hideArrows(h);
       const arrows = new THREE.Group();
       arrows.userData.dotPart = "arrows";
+      if (h.userData.dot?.always) {
+        // solid arrows, ~50 px, with a fat invisible sleeve to grab
+        for (const d of h.userData.dot.dirs) arrows.add(solidArrow(d));
+        h.add(arrows);
+        return arrows.children.length;
+      }
       for (const d of h.userData.dot?.dirs ?? []) {
         const a = new THREE.ArrowHelper(d, d.clone().multiplyScalar(px(10)), px(30), accent, px(8), px(5));
         for (const o of [a.line, a.cone]) {
@@ -142,6 +153,17 @@ export function createHandleDots(THREE) {
       }
       h.add(arrows);
       return arrows.children.length;
+    },
+    // the handle whose arrow is under the ray (arrows are children of the hit
+    // sphere, so the non-recursive handle pick never sees them)
+    pickArrow(raycaster, group) {
+      const sleeves = [];
+      for (const h of group.children) h.traverse((o) => { if (o.userData.arrowHit) sleeves.push(o); });
+      const hit = sleeves.length ? raycaster.intersectObjects(sleeves, false)[0] : null;
+      if (!hit) return null;
+      let h = hit.object;
+      while (h && !h.userData.handle) h = h.parent;
+      return h ? { object: h, distance: hit.distance, point: h.position.clone() } : null;
     },
     hideArrows(h) {
       for (const c of [...(h?.children ?? [])]) {
@@ -197,6 +219,23 @@ export function createHandleDots(THREE) {
       });
     },
   };
+  const Y = new THREE.Vector3(0, 1, 0);
+  function solidArrow(d) {
+    const a = new THREE.Group();
+    const m = new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
+    const gap = px(9), shaft = px(30), head = px(14);
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(px(1.6), px(1.6), shaft, 8), m);
+    s.position.y = gap + shaft / 2;
+    const c = new THREE.Mesh(new THREE.ConeGeometry(px(6), head, 16), m);
+    c.position.y = gap + shaft + head / 2;
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(px(9), px(9), shaft + head, 8), hitMat);
+    sleeve.position.y = gap + (shaft + head) / 2;
+    sleeve.userData.arrowHit = true;
+    for (const o of [s, c]) o.renderOrder = 1001;
+    a.add(s, c, sleeve);
+    a.quaternion.setFromUnitVectors(Y, d);
+    return a;
+  }
   function setRing(h, on) {
     for (const c of h.children) if (c.userData.dotPart === "ring") c.visible = on;
   }

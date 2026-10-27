@@ -14,6 +14,7 @@
 //   cutter) wraps that call and the transforms around it.
 
 import { parseCode, offsetAt, callAt, runLineOffset } from "../../src/codemap.js";
+import { soleChild } from "../design-move.js";
 
 // words that hold several bodies side by side rather than making one
 const ASSEMBLY = new Set(["group", "layout", "look"]);
@@ -193,7 +194,7 @@ export function rotateText(text, span, axis, deg, about) {
   if (!d) return { next: text, how: "none", start: span.start, end: span.end };
   const child = childOf(text, span, "rotate");
   const head = text.slice(0, child.start);
-  const w = ROT_HEAD.exec(head);
+  const w = soleChild(text, child.end) ? ROT_HEAD.exec(head) : null;
   if (w) {
     const angles = [+w[1], +w[2], +w[3]], at = [+w[4], +w[5], +w[6]];
     const same = at.every((v, i) => Math.abs(v - round(about[i], 100)) < 1e-6);
@@ -214,11 +215,23 @@ export function rotateText(text, span, axis, deg, about) {
 }
 const SCALE_HEAD = /scale\(\s*(-?[\d.]+)\s*,\s*\{\s*about\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*\}\s*,\s*$/;
 export function scaleText(text, span, k, about) {
+  // k: one factor, or [x, y, z] per axis (one number again when they agree)
+  if (Array.isArray(k)) {
+    const v = k.map((x) => round(x, 1000));
+    if (!v.every((x) => x > 0)) return { next: text, how: "none", start: span.start, end: span.end };
+    if (v.some((x) => x !== v[0])) {
+      if (v.every((x) => Math.abs(x - 1) < 1e-9)) return { next: text, how: "none", start: span.start, end: span.end };
+      const lead = `scale([${v.join(", ")}], { about: ${vec(about, 100)} }, `;
+      const r = wrapText(text, span, lead);
+      return { next: r.next, how: "wrap", start: r.start + lead.length, end: r.start + lead.length + span.end - span.start };
+    }
+    k = v[0];
+  }
   const f = round(k, 1000);
   if (!(f > 0) || Math.abs(f - 1) < 1e-9) return { next: text, how: "none", start: span.start, end: span.end };
   const inner = childOf(text, span, "scale");
   const head = text.slice(0, inner.start);
-  const w = SCALE_HEAD.exec(head);
+  const w = soleChild(text, inner.end) ? SCALE_HEAD.exec(head) : null;
   if (w && [+w[2], +w[3], +w[4]].every((v, i) => Math.abs(v - round(about[i], 100)) < 1e-6)) {
     const lead = `scale(${round(+w[1] * f, 1000)}, { about: ${vec([+w[2], +w[3], +w[4]], 100)} }, `;
     const start = w.index + lead.length;
@@ -418,7 +431,7 @@ export function pressPullText(text, { body, outline, target = null, sign = 1, ax
       const v = [0, 0, 0];
       v[axis] = round(comp, 100);
       const head = next.slice(0, span.start);
-      const w = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/.exec(head);
+      const w = soleChild(next, span.end) ? /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/.exec(head) : null;
       if (w) {
         const nv = [+w[1] + v[0], +w[2] + v[1], +w[3] + v[2]];
         next = head.slice(0, w.index) + `translate(${vec(nv, 100)}, ` + next.slice(span.start);

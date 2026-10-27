@@ -12,14 +12,18 @@
 // The stock gizmo is trimmed to match the handle dots: arrows along each axis
 // (no coloured plane squares at the centre; Alt-drag is the free move), one
 // ring per axis for rotate (a turn about one axis is one number in
-// rotate([…])), and only the centre dot for scale (uniform: scale(k, …)).
+// rotate([…])), and for scale the centre dot (uniform: scale(k, …)) plus one
+// handle per axis (scale([x, y, z], …)), as a slicer does. A scale never goes
+// below MIN_SCALE: dragging through the centre used to turn the factor
+// negative and the preview flipped inside out.
 
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 
-const DROP = { translate: ["XY", "YZ", "XZ", "XYZ"], rotate: ["E", "XYZE"], scale: ["X", "Y", "Z", "XY", "YZ", "XZ"] };
+const DROP = { translate: ["XY", "YZ", "XZ", "XYZ"], rotate: ["E", "XYZE"], scale: ["XY", "YZ", "XZ"] };
+const MIN_SCALE = 0.02, MAX_SCALE = 50;
 const ROT_SNAP = 5;    // degrees, when the toolbar's snap is on
 
-export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelease, onDragging }) {
+export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelease, onDragging, onScaling }) {
   const tc = new TransformControls(camera, renderer.domElement);
   tc.setMode("translate");
   tc.setSpace("world");
@@ -63,12 +67,17 @@ export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelea
     if (!cur) return null;
     if (mode === "translate") return { mode, delta: proxy.position.clone().sub(cur.origin) };
     if (mode === "rotate") {
-      const e = new THREE.Euler().setFromQuaternion(proxy.quaternion, "XYZ");
-      const a = [e.x, e.y, e.z].map((v) => THREE.MathUtils.radToDeg(v));
+      // the signed turn about each axis, read as axis-angle: an Euler read
+      // wrote a 120 degree turn about Y as 60 (x=180, y=60, z=180)
+      const q = proxy.quaternion;
+      const a = [q.x, q.y, q.z].map((v) => THREE.MathUtils.radToDeg(2 * Math.atan2(v, q.w)));
       const ax = { X: 0, Y: 1, Z: 2 }[lastAxis] ?? a.reduce((b, v, i) => (Math.abs(v) > Math.abs(a[b]) ? i : b), 0);
-      return { mode, axis: ax, deg: Math.round(a[ax] * 100) / 100, about: cur.origin.clone() };
+      let deg = a[ax];
+      if (deg > 180) deg -= 360; else if (deg < -180) deg += 360;
+      return { mode, axis: ax, deg: Math.round(deg * 100) / 100, about: cur.origin.clone() };
     }
-    return { mode, factor: Math.round(proxy.scale.x * 1000) / 1000, about: cur.origin.clone() };
+    const f = [proxy.scale.x, proxy.scale.y, proxy.scale.z].map((v) => Math.round(v * 1000) / 1000);
+    return { mode, factor: f.every((v) => v === f[0]) ? f[0] : f, about: cur.origin.clone() };
   };
   // the preview: meshes (or ghosts) moved, turned or scaled about the centre
   const place = () => {
@@ -78,8 +87,8 @@ export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelea
     if (dragging) {
       if (mode === "translate") m.makeTranslation(proxy.position.x - o.x, proxy.position.y - o.y, proxy.position.z - o.z);
       else {
-        const k = proxy.scale.x;
-        const inner = mode === "rotate" ? new THREE.Matrix4().makeRotationFromQuaternion(proxy.quaternion) : new THREE.Matrix4().makeScale(k, k, k);
+        const inner = mode === "rotate" ? new THREE.Matrix4().makeRotationFromQuaternion(proxy.quaternion)
+          : new THREE.Matrix4().makeScale(proxy.scale.x, proxy.scale.y, proxy.scale.z);
         m.makeTranslation(o.x, o.y, o.z).multiply(inner).multiply(new THREE.Matrix4().makeTranslation(-o.x, -o.y, -o.z));
       }
     }
@@ -107,10 +116,19 @@ export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelea
     place();             // not dragging: back where the code says, until the rebuild
     reset();
     if (!c) return;
-    const moved = c.mode === "translate" ? c.delta.lengthSq() > 1e-8 : c.mode === "rotate" ? Math.abs(c.deg) > 1e-6 : Math.abs(c.factor - 1) > 1e-6;
+    const moved = c.mode === "translate" ? c.delta.lengthSq() > 1e-8 : c.mode === "rotate" ? Math.abs(c.deg) > 1e-6
+      : [c.factor].flat().some((v) => Math.abs(v - 1) > 1e-6);
     if (moved) onRelease?.(cur.fid, c.mode === "translate" ? c.delta : c);
   });
-  tc.addEventListener("objectChange", () => { if (dragging) place(); });
+  tc.addEventListener("objectChange", () => {
+    if (!dragging) return;
+    if (mode === "scale") {
+      // never through zero (a flip) and never absurd; the live size goes out
+      for (const k of ["x", "y", "z"]) proxy.scale[k] = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.abs(proxy.scale[k])));
+      onScaling?.(proxy.scale.clone(), cur?.size?.clone().multiply(proxy.scale));
+    }
+    place();
+  });
 
   return {
     // attach(fid, { meshes, isCutter }) puts the gizmo on those meshes' centre
@@ -135,7 +153,7 @@ export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelea
         });
         ghostGroup.visible = false;      // only while dragging
       }
-      cur = { fid, origin, meshes, ghosts };
+      cur = { fid, origin, meshes, ghosts, size: box.getSize(new THREE.Vector3()) };
       tc.attach(proxy);
       this.setSnap(snap);
       return true;
@@ -153,6 +171,9 @@ export function createMoveGizmo({ THREE, scene, camera, renderer, orbit, onRelea
       reset();
     },
     get mode() { return mode; },
+    // the attached shape's size (mm) and centre, for the scale panel
+    get size() { return cur?.size?.clone() ?? null; },
+    get origin() { return cur?.origin?.clone() ?? null; },
     get fid() { return cur?.fid ?? null; },
     get dragging() { return dragging; },
     // true while the pointer is over a gizmo handle or dragging one: the

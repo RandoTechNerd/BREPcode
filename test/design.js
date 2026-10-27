@@ -61,6 +61,22 @@ return fillet({ r: 1, edges: "z" }, difference(
 
 console.log("\nmoveText: the one writer behind the body drag and the gizmo\n");
 {
+  // folding into a wrapper that holds a sibling would move the sibling too
+  const src = "return translate([1, 0, 0], cube(5), sphere(3));";
+  const at = src.indexOf("cube(5)");
+  const r = moveText(src, { start: at, end: at + 7 }, { x: 2, y: 0, z: 0 });
+  check("a move does not fold into a wrapper that has other children", r.how === "wrap" && r.next.includes("translate([1, 0, 0], translate([2, 0, 0], cube(5)), sphere(3))"));
+  const one = "return translate([1, 0, 0], cube(5));";
+  const o = moveText(one, { start: one.indexOf("cube(5)"), end: one.indexOf("cube(5)") + 7 }, { x: 2, y: 0, z: 0 });
+  check("…but still folds into a sole-child translate", o.how === "fold" && o.next.includes("translate([3, 0, 0], cube(5))"));
+  const sv = "return cube([10, 20, 30]);";
+  const ss = { start: sv.indexOf("cube"), end: sv.indexOf("cube") + "cube([10, 20, 30])".length };
+  const vs = F.scaleText(sv, ss, [2, 1, 0.5], [0, 0, 0]);
+  check("a per-axis scale writes scale([x, y, z], { about }, …)", vs.next.includes("scale([2, 1, 0.5], { about: [0, 0, 0] }, cube([10, 20, 30]))"));
+  check("…equal factors write one number", F.scaleText(sv, ss, [1.5, 1.5, 1.5], [0, 0, 0]).next.includes("scale(1.5, "));
+  check("…a zero or negative factor writes nothing", F.scaleText(sv, ss, [1, -1, 1], [0, 0, 0]).how === "none");
+}
+{
   const src = `return cube([10, 10, 10]);`;
   const span = { start: 7, end: 25 };
   let r = moveText(src, span, { x: 5, y: -2.04, z: 0 });
@@ -351,7 +367,18 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
     /\{ kind: "face", axis, sign, fid \}, \[out, out\.clone\(\)\.negate\(\)\]\)/.test(html) && /if \(boxy\) return \[new THREE\.Vector3\(Math\.sign\(x - c\.x\)/.test(html));
   check("the dwell is a setting (mat.handleDwellMs, default 600)",
     /handleDwellMs: 600/.test(html) && /id="mat-dwell"/.test(html) && /handleDots\.hover\(onHandle\?\.object \?\? null, mat\.handleDwellMs \?\? 600\)/.test(html));
-  check("Design mode pre-highlights the face under the pointer", /designUI\.hoverFace\(/.test(html) && /hoverFace\(mesh\) \{ setHoverFace/.test(shell));
+  check("Design mode pre-highlights the face under the pointer", /designUI\.hoverFace\(/.test(html) && /hoverFace\(mesh\) \{\s*setHoverFace/.test(shell));
+  // the 2026-10-26 Design review
+  const sk = readFileSync(new URL("../viewer/design/sketcher.js", import.meta.url), "utf8");
+  check("a drag on the sketch pad never spins the view (the model-spin handler asks the sketch)",
+    /controls\.spinGate && !controls\.spinGate\(e\)/.test(html) && /orbit\.spinGate = offPad/.test(sk) && /orbit\.spinGate = null/.test(sk));
+  check("the sketch pad covers the whole model, not a fixed 300 mm", /S\.ext = Math\.max\(150/.test(sk) && /const ext = S\.ext/.test(sk));
+  check("Design mode holds the camera across rebuilds and while sketching",
+    /designUI\?\.isActive\(\) && framedRadius/.test(html) && /if \(designUI\?\.sketching\?\.\(\)\) return false/.test(html));
+  check("scale never goes through zero (no flip) and has per-axis handles",
+    /MIN_SCALE = 0\.02/.test(gizmo) && /scale: \["XY", "YZ", "XZ"\]/.test(gizmo));
+  check("a face's push/pull arrows show without a dwell and can be grabbed",
+    /dot\.always = true/.test(dots) && /pickArrow\(raycaster, group\)/.test(dots) && /handleDots\.pickArrow\(rc, handleGroup\)/.test(html));
   check("a resize drag shows a signed distance label, gone on release and on abandon",
     /handleDots\.label\(e\.clientX, e\.clientY, drag\.amount\)/.test(html)
     && (html.match(/handleDots\.hideLabel\(\)/g) || []).length >= 2 && /v > 0 \? "\+"/.test(dots));

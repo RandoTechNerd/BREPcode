@@ -40,6 +40,9 @@ export function ridersOf(span, { sites = {}, trace = [], runText = null, editorT
 }
 // -0 prints as "0" but reads oddly in a vector some tools compare as text
 
+// A wrapper right before a span is only folded into when the span is its
+// ONLY child: translate([1,0,0], a, b) moving `a` must not move `b` too.
+export const soleChild = (text, end) => /^\s*,?\s*\)/.test(text.slice(end));
 const WRAP_HEAD = /translate\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*$/;
 const DRILL_HEAD = /^drill\(\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]/;
 
@@ -66,7 +69,7 @@ export function moveText(text, span, delta, { step = 0.1 } = {}) {
     const moved = `drill([${p.join(", ")}]` + body.slice(bore[0].length);
     return { next: head + moved + text.slice(span.end), how: "drill", start: span.start, end: span.start + moved.length };
   }
-  const wrap = WRAP_HEAD.exec(head);
+  const wrap = soleChild(text, span.end) ? WRAP_HEAD.exec(head) : null;
   if (wrap) {
     const nv = [tidy(+wrap[1] + d[0]), tidy(+wrap[2] + d[1]), tidy(+wrap[3] + d[2])];
     const lead = `translate([${nv.join(", ")}], `;

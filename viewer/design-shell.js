@@ -31,7 +31,7 @@ const TOOLS = [
     { id: "select", label: "Select", tip: "Pick a shape or a face, no gizmo", icon: `<path d="M4 2l9 5-4 1.2L7.5 13z"/>` },
     { id: "move", label: "Move", tip: "Move the selected shape with arrows; the move is written into the code", icon: `<path d="M8 1.5v13M1.5 8h13M8 1.5 6 3.5M8 1.5l2 2M14.5 8l-2-2M14.5 8l-2 2M8 14.5l-2-2M8 14.5l2-2M1.5 8l2-2M1.5 8l2 2"/>` },
     { id: "rotate", label: "Rotate", tip: "Turn the selected shape about its centre, one axis at a time; writes rotate([…], { about }, …)", icon: `<path d="M12.5 5.5A5 5 0 1 0 13 9"/><path d="M13 2.5v3h-3"/>` },
-    { id: "scale", label: "Scale", tip: "Scale the selected shape evenly about its centre (drag the centre dot); writes scale(k, { about }, …)", icon: `<rect x="2.5" y="6.5" width="7" height="7"/><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5"/>` },
+    { id: "scale", label: "Scale", tip: "Scale the selected shape: the centre dot evenly, an axis handle along that axis, or type the size in mm or %; writes scale(…, { about }, …)", icon: `<rect x="2.5" y="6.5" width="7" height="7"/><path d="M8 2.5h5.5V8M13.5 2.5 8.5 7.5"/>` },
   ] },
   { group: "Create", items: [
     { id: "sketch", label: "Sketch", tip: "Sketch on a plane or a flat face: lines, arcs, circles, splines, constraints and dimensions", icon: `<path d="M2.5 13.5h11M3 11l7.5-7.5 2 2L5 13H3z"/>` },
@@ -66,6 +66,18 @@ body:not(.design-mode) .dz-ui { display: none !important; }
 .dz-ui button { font: inherit; color: inherit; }
 .dz-empty { color: var(--muted, #8ea0c0); padding: 8px 10px; }
 .dz-empty small { display: block; margin-top: 3px; }
+
+/* scale panel: sizes in mm or %, a slicer's scale box */
+#dz-scale { top: 56px; right: calc(12px + var(--dz-rcol, 0px)); width: 262px; padding: 8px 12px 10px; z-index: 100000; }
+body.dz-ribbon #dz-scale { top: 104px; }
+#dz-scale .hd { font-weight: 650; margin-bottom: 6px; }
+#dz-scale label { display: flex; align-items: center; gap: 5px; margin: 4px 0; color: var(--muted, #8ea0c0); }
+#dz-scale label > span { width: 14px; color: var(--text, #dfe6f3); font-weight: 600; }
+#dz-scale input[type=number] { width: 72px; min-width: 0; padding: 3px 5px; border-radius: 6px; border: 1px solid var(--border, #26314a);
+  background: var(--bg, #0c111c); color: var(--text, #dfe6f3); font: inherit; }
+#dz-scale .ft { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+#dz-scale .ft button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border, #26314a); background: transparent; cursor: pointer; }
+#dz-scale .ft .ok { background: var(--accent, #3b6ef5); border-color: transparent; color: #fff; }
 
 /* toolbar / ribbon */
 #dz-bar { top: 12px; left: 168px; right: 12px; max-width: max-content; display: flex; align-items: stretch;
@@ -252,6 +264,8 @@ export function initDesignShell(host) {
     THREE, scene, camera: host.camera, renderer: host.renderer, orbit: host.orbit,
     // the face tint marks where the face WAS; it would only mislead mid-drag
     onDragging(on) { overlay.visible = !on; if (on) setHoverFace(null); },
+    // the live size while a scale handle drags, in the scale panel
+    onScaling(k) { setScaleFields([k.x, k.y, k.z]); },
     onRelease(fid, d) {
       if (d.mode === "rotate" || d.mode === "scale") {
         const m = host.moveMembers(fid);
@@ -264,7 +278,7 @@ export function initDesignShell(host) {
         host.commit(r.next);
         host.setHint(d.mode === "rotate"
           ? `Turned <b>${d.deg}°</b> about ${"XYZ"[d.axis]}: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>rotate(…, { about })</code>.`
-          : `Scaled <b>×${d.factor}</b>: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>scale(…, { about })</code>.`);
+          : `Scaled <b>×${[d.factor].flat().join(" × ")}</b>: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>scale(…, { about })</code>.`);
         return;
       }
       const r = host.commitMove(fid, d);
@@ -276,12 +290,82 @@ export function initDesignShell(host) {
   });
 
   const attachGizmo = () => {
-    if (!active || !GIZMO_MODE[tool] || !selectedFid || dialog || sketcher?.active) { gizmo.detach(); return; }
+    if (gizmo.dragging) return;      // a rebuild mid-drag must not drop the drag
+    host.handlesVisible?.(true);
+    if (!active || !GIZMO_MODE[tool] || !selectedFid || dialog || sketcher?.active) { gizmo.detach(); closeScalePanel(); return; }
     if (gizmo.mode !== GIZMO_MODE[tool]) gizmo.setMode(GIZMO_MODE[tool]);
     const m = host.moveMembers(selectedFid);
-    if (!m?.meshes.length) { gizmo.detach(); return; }
+    if (!m?.meshes.length) { gizmo.detach(); closeScalePanel(); return; }
     gizmo.attach(selectedFid, m);
+    if (tool === "scale") showScalePanel(); else closeScalePanel();
+    // rotate and scale have their own handles: the face dots and arrows would
+    // be a second set on top (Move keeps them: they resize, the gizmo moves)
+    host.handlesVisible?.(tool === "move");
   };
+
+  // ---- scale panel: type the size in mm or %, proportions locked or not ----
+  let scaleEl = null, scaleLock = true;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  function closeScalePanel() { scaleEl?.remove(); scaleEl = null; }
+  function showScalePanel() {
+    const size = gizmo.size;
+    if (!size) { closeScalePanel(); return; }
+    if (!scaleEl) {
+      scaleEl = document.createElement("form");
+      scaleEl.id = "dz-scale";
+      scaleEl.className = "dz-ui";
+      scaleEl.setAttribute("aria-label", "Scale");
+      scaleEl.addEventListener("keydown", (e) => e.stopPropagation());
+      scaleEl.addEventListener("input", onScaleInput);
+      scaleEl.addEventListener("submit", (e) => { e.preventDefault(); applyScale(); });
+      scaleEl.addEventListener("click", (e) => { if (e.target.closest(".rs")) setScaleFields([1, 1, 1]); });
+      document.body.appendChild(scaleEl);
+    }
+    scaleEl.dataset.s0 = [size.x, size.y, size.z].join(",");
+    scaleEl.innerHTML = `<div class="hd">Scale</div>`
+      + ["X", "Y", "Z"].map((a, i) => `<label><span>${a}</span><input type="number" step="any" min="0.01" name="mm${i}" aria-label="${a} size, mm"> mm`
+        + `<input type="number" step="any" min="1" name="pc${i}" aria-label="${a} scale, percent"> %</label>`).join("")
+      + `<label><input type="checkbox" name="lock"${scaleLock ? " checked" : ""}> Keep proportions</label>`
+      + `<div class="ft"><button type="button" class="rs">Reset</button><button type="submit" class="ok">Apply</button></div>`;
+    setScaleFields([1, 1, 1]);
+  }
+  // fill every field from per-axis factors (except the one being typed in)
+  function setScaleFields(k) {
+    if (!scaleEl) return;
+    const s0 = scaleEl.dataset.s0.split(",").map(Number);
+    for (let i = 0; i < 3; i++) {
+      for (const [name, v] of [[`mm${i}`, r2(s0[i] * k[i])], [`pc${i}`, r2(k[i] * 100)]]) {
+        const el = scaleEl.elements[name];
+        if (el && el !== document.activeElement) el.value = v;
+      }
+    }
+  }
+  const scaleFactors = () => [0, 1, 2].map((i) => (parseFloat(scaleEl.elements[`pc${i}`].value) || 100) / 100);
+  function onScaleInput(e) {
+    const n = e.target.name;
+    if (n === "lock") { scaleLock = e.target.checked; return; }
+    const v = parseFloat(e.target.value);
+    if (!(v > 0) || !/^(mm|pc)\d$/.test(n)) return;
+    const i = +n[2], s0 = scaleEl.dataset.s0.split(",").map(Number);
+    const k = n.startsWith("mm") ? v / s0[i] : v / 100;
+    const f = scaleFactors();
+    if (scaleLock) f.fill(k); else f[i] = k;
+    setScaleFields(f);
+  }
+  function applyScale() {
+    const fid = gizmo.fid, about = gizmo.origin;
+    if (!fid || !about) return;
+    const f = scaleFactors().map((v) => Math.round(v * 1000) / 1000);
+    const factor = f.every((v) => v === f[0]) ? f[0] : f;
+    if (f.every((v) => Math.abs(v - 1) < 1e-6)) return;
+    const m = host.moveMembers(fid);
+    if (!m) return;
+    const text = host.text();
+    const r = scaleText(text, shapeSpan(text, m.span), factor, [about.x, about.y, about.z]);
+    if (r.how === "none") return;
+    host.commit(r.next);
+    host.setHint(`Scaled <b>×${f.join(" × ")}</b>: ${r.how === "fold" ? "folded into its" : "wrapped in"} <code>scale(…, { about })</code>.`);
+  }
 
   // ---- rendering ----
   const draw = () => {
@@ -536,6 +620,10 @@ export function initDesignShell(host) {
     if (pressPull) return pressPull;
     const mod = await import("./design/presspull.js");
     pressPull = mod.createPressPull({ host, THREE, scene, camera: host.camera, orbit: host.orbit });
+    // Esc mid-pull lets go without writing anything
+    addEventListener("keydown", (e) => {
+      if (active && e.key === "Escape" && pressPull.dragging) { e.preventDefault(); e.stopPropagation(); pressPull.cancel(); host.setHint("Press-pull cancelled."); }
+    }, true);
     return pressPull;
   }
 
@@ -634,10 +722,14 @@ export function initDesignShell(host) {
     },
     refresh() { if (active) refresh(); setHoverFace(null); },
     // index.html's hover tick: should it look for a face, and here it is
-    wantsFaceHover() { return active && !gizmo.dragging && !pressPull?.dragging; },
-    hoverFace(mesh) { setHoverFace(active ? mesh : null); },
+    wantsFaceHover() { return active && !gizmo.dragging && !pressPull?.dragging && !sketcher?.active; },
+    hoverFace(mesh) {
+      setHoverFace(active && !sketcher?.active ? mesh : null);
+      pressPull?.hover(active && tool === "presspull" ? mesh : null);
+    },
     gizmoOwnsPointer() { return active && gizmo.ownsPointer(); },
     isActive() { return active; },
+    sketching() { return !!sketcher?.active; },
     // a double-clicked dot: a small box per number behind it, beside the
     // cursor. Enter writes them all (only the ones changed), Esc or a click
     // away cancels. `against` is the code the ranges were read from.

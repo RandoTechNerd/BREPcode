@@ -36,6 +36,14 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
   let drag = null;      // { fp, n, origin, base, ctx, d, x0, y0, pxPerMm, dir }
   let lastWrite = null;
 
+  // the hover arrows
+  const arrowGroup = new THREE.Group();
+  scene.add(arrowGroup);
+  let arrowFace = null;
+  const hideArrows = () => {
+    arrowFace = null;
+    for (const a of [...arrowGroup.children]) { arrowGroup.remove(a); a.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+  };
   const clearGhost = () => { for (const c of [...ghostGroup.children]) { ghostGroup.remove(c); c.geometry.dispose(); } };
 
   // what the face is to the code: the size number behind it, if any
@@ -90,9 +98,16 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
       const a = toPx(origin), b = toPx(origin.clone().addScaledVector(new THREE.Vector3(...n), 1));
       const dir = [b[0] - a[0], b[1] - a[1]];
       const pxPerMm = Math.hypot(...dir);
-      if (pxPerMm < 0.05) { host.setHint("That face points straight at you: turn the view a little to pull it."); return false; }
+      // a face square on to the view has no screen direction to drag along:
+      // then up the screen is out, at the scale of the view there
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const sidePx = Math.hypot(...[0, 1].map((k) => toPx(origin.clone().add(right))[k] - a[k]));
+      const faceOn = pxPerMm < sidePx * 0.25;
       orbit.enabled = false;
-      drag = { fp, n, origin, base: text, ctx, d: 0, x0: e.clientX, y0: e.clientY, pxPerMm, dir: [dir[0] / pxPerMm, dir[1] / pxPerMm] };
+      hideArrows();
+      drag = faceOn
+        ? { fp, n, origin, base: text, ctx, d: 0, x0: e.clientX, y0: e.clientY, pxPerMm: sidePx, dir: [0, -1] }
+        : { fp, n, origin, base: text, ctx, d: 0, x0: e.clientX, y0: e.clientY, pxPerMm, dir: [dir[0] / pxPerMm, dir[1] / pxPerMm] };
       return true;
     },
     move(e) {
@@ -141,7 +156,33 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
         + ({ size: "its size number was changed.", join: "the face's outline was extruded and joined.", cut: "the face's outline cuts in." }[r.how])
         + (res.ok ? "" : ` <b style="color:#ff9c9c">The kernel refused it</b> (see the timeline); Ctrl+Z takes it back.`));
     },
+    // the face under the pointer gets its two arrows (out grows, in cuts), so
+    // the tool says what a drag will do before it starts
+    hover(mesh) {
+      if (drag) return;
+      if (mesh === arrowFace) return;
+      hideArrows();
+      arrowFace = mesh;
+      if (!mesh) return;
+      const fp = facePick({ object: mesh, point: new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3()) }, THREE);
+      if (!fp?.outline || !fp.normal) return;
+      const n = new THREE.Vector3(...fp.normal).normalize();
+      const at = new THREE.Vector3(...F.facePlane(fp.outline).origin ?? fp.point);
+      const c = new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3());
+      const p = c.clone().sub(n.clone().multiplyScalar(c.clone().sub(at).dot(n)));
+      // ~50 px long wherever the face is
+      const depth = -p.clone().applyMatrix4(camera.matrixWorldInverse).z;
+      const h = host.renderer.domElement.clientHeight || 600;
+      const wpp = (2 * Math.max(depth, 1e-6) * Math.tan(((camera.fov ?? 45) * Math.PI) / 360)) / (camera.zoom || 1) / h;
+      for (const [d, col] of [[n, 0x3ddc97], [n.clone().negate(), 0xff7a5c]]) {
+        const a = new THREE.ArrowHelper(d, p.clone().addScaledVector(d, wpp * 6), wpp * 48, col, wpp * 14, wpp * 10);
+        for (const o of [a.line, a.cone]) { o.material.depthTest = false; o.material.transparent = true; o.renderOrder = 1001; }
+        a.line.material.linewidth = 2;
+        arrowGroup.add(a);
+      }
+    },
     cancel() {
+      hideArrows();
       if (drag) orbit.enabled = true;
       drag = null;
       label.hidden = true;
