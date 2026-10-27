@@ -93,7 +93,7 @@ console.log("\nthe viewer applies it, once, after a successful compile\n");
 {
   const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
   check("the build clears any previous request first",
-    /dsl\.resetSceneLook\(\);[\s\S]{0,3000}?await dsl\.compile\(shape, ph, trace(?:, \{ faceNames \})?\);/.test(HTML),
+    /dsl\.resetSceneLook\(\);[\s\S]{0,3000}?await dsl\.compile\(shape, ph, trace(?:, \{ faceNames(?:, edgeNames)? \})?\);/.test(HTML),
     "a stale look from the last build must not leak into this one");
   check("...and applies it only after the compile succeeded",
     /const want = dsl\.takeSceneLook\(\);[\s\S]{0,200}?Object\.assign\(mat, want\)/.test(HTML),
