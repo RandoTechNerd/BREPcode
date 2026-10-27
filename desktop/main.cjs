@@ -113,10 +113,16 @@ nativeTheme.themeSource = "dark";
 if (process.platform === "win32") app.setAppUserModelId("com.randotechnerd.brepcode");
 
 function serveBundle() {
-  protocol.handle("app", (req) => {
+  protocol.handle("app", async (req) => {
     const file = resolveRequest(req.url);
     if (!file) return new Response("Forbidden", { status: 403 });
-    return net.fetch(pathToFileURL(file).toString());
+    // no-cache: a reload must read the bundle as it is on disk. Without it the
+    // window kept modules from before a rebuild (a new spool missing after
+    // Ctrl+R); revalidating a local file costs nothing
+    const res = await net.fetch(pathToFileURL(file).toString());
+    const headers = new Headers(res.headers);
+    headers.set("Cache-Control", "no-cache");
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
   });
 }
 

@@ -431,7 +431,7 @@
 
     #hint-corner {
       position: absolute; left: 20px; bottom: 20px; z-index: 5;
-      color: var(--muted7); font: 12px system-ui, sans-serif; pointer-events: none;
+      color: var(--muted7); font: 10.5px system-ui, sans-serif; pointer-events: none;
     }
     /* tiny, inconspicuous corner of a box: up on top, left/right below */
     #viewnav {
@@ -5916,12 +5916,14 @@
         uFxSparkle: sharedFx.sparkle,
       });
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;")
+        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;\nvarying vec3 vFxNormalW;")
         // WORLD position, not object position: the gradient runs bottom-to-top
         // through the finished part, and a solid that was translate()d has an
         // object origin nowhere near the bed.
         .replace("#include <begin_vertex>",
-          "#include <begin_vertex>\nvTexPos = position;\nvFxWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+          "#include <begin_vertex>\nvTexPos = position;\nvFxWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;"
+          // the way the surface faces in the WORLD, for tri-colour filament
+          + "\nvFxNormalW = normalize(mat3(modelMatrix) * objectNormal);");
 
       const HELPERS = `
         uniform int uTexKind; uniform float uTexDepth; uniform float uTexScale;
@@ -5979,6 +5981,24 @@
         uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow, uFxSparkle;
         uniform vec3 uFxFlakeC;
         varying vec3 vFxWorld;
+        varying vec3 vFxNormalW;
+
+        // Tri-colour (coextruded) filament: the colour is the side of the
+        // strand that faces out, so it follows which way the wall faces about
+        // Z. Three sectors, each blending into the next over its last third.
+        // Tops and bottoms face no way round: they take the direction from
+        // the part's centre line instead, so a lid shows all three in wedges.
+        vec3 fxTri() {
+          vec3 n = normalize(vFxNormalW);
+          vec2 d = length(n.xy) > 0.25 ? n.xy : vFxWorld.xy;
+          float u = fract(atan(d.y, d.x) / 6.28318 + 1.0) * 3.0;
+          float k = floor(u), f = u - k;
+          vec3 a = k < 0.5 ? uFxGradA : k < 1.5 ? uFxGradB : uFxGradC;
+          vec3 b = k < 0.5 ? uFxGradB : k < 1.5 ? uFxGradC : uFxGradA;
+          // the spool's colours are screen (sRGB) values; the shader works in
+          // linear light, and taken as linear they wash out to pastels
+          return pow(mix(a, b, smoothstep(0.62, 1.0, f)), vec3(2.2));
+        }
 
         // Three stops up the part. Two-stop ombres arrive here already widened
         // to three by fxFor(), so there is nothing to branch on.
@@ -6165,7 +6185,8 @@
             diffuseColor.rgb *= tTint(tCoord(vTexPos));
           // A gradient spool REPLACES the part colour — on the real thing the
           // filament is the colour, and mixing the two just makes mud.
-          if (uFxGrad > 0.5) diffuseColor.rgb = fxGradient();`)
+          if (uFxGrad > 1.5) diffuseColor.rgb = fxTri();
+          else if (uFxGrad > 0.5) diffuseColor.rgb = fxGradient();`)
         // Flake is emissive, not diffuse: a speck that only reflects the key
         // light disappears the moment it faces away, and real glitter does the
         // opposite — it is brightest at the angle nothing else is.

@@ -588,15 +588,51 @@ export function initDesignShell(host) {
       note.title = failure.reason;
       stepsEl.appendChild(note);
     } else renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, onMenu: stepMenu });
+    keepTimelineInView();
     drawSelection();
   };
+
+  // The timeline opens on its NEWEST step (the end of the history is what was
+  // just done) and stays there across rebuilds, unless the user scrolled back
+  // to look at something: then it stays where they put it. A selected step is
+  // brought into view either way.
+  let tlFollow = true, tlLen = 0;
+  stepsEl.addEventListener("scroll", () => {
+    tlFollow = stepsEl.scrollLeft + stepsEl.clientWidth >= stepsEl.scrollWidth - 8;
+  }, { passive: true });
+  function keepTimelineInView() {
+    const n = stepsEl.querySelectorAll(".dt-step").length;
+    if (n !== tlLen) { tlFollow = tlFollow || n > tlLen; tlLen = n; }
+    const on = stepsEl.querySelector(".dt-step.on, .dt-step.fail");
+    if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+    else if (tlFollow) stepsEl.scrollLeft = stepsEl.scrollWidth;
+  }
+  // a press on the timeline brings it up over any window lying across it
+  time.addEventListener("pointerdown", () => {
+    const top = Math.max(24, ...[...document.querySelectorAll(".card.open")].map((c) => +getComputedStyle(c).zIndex || 0));
+    if ((+time.style.zIndex || 24) <= top) time.style.zIndex = String(top + 1);
+  }, true);
+  // As wide as the stage allows: from the corner hint to the dock buttons,
+  // measured, so it never runs under either.
+  function fitTimeline() {
+    if (!active) return;
+    if (matchMedia("(max-width: 760px)").matches) { time.style.left = ""; time.style.right = ""; return; }
+    const hintR = document.getElementById("hint-corner")?.getBoundingClientRect();
+    const btnL = document.getElementById("buttons")?.getBoundingClientRect();
+    const left = hintR?.width ? Math.round(hintR.right + 12) : 172;
+    const right = btnL?.width ? Math.round(innerWidth - btnL.left + 12) : 340;
+    if (innerWidth - left - right < 260) { time.style.left = ""; time.style.right = ""; return; }
+    time.style.left = `${left}px`;
+    time.style.right = `${right}px`;
+  }
+  addEventListener("resize", () => requestAnimationFrame(fitTimeline));
 
   const drawSelection = () => {
     if (!selectedFid) { selEl.textContent = ""; return; }
     const fm = host.featureMap();
     const site = fm?.[selectedFid];
     const m = host.moveMembers(selectedFid);
-    const many = m && !m.span.whole && m.fids.length > 1;
+    const many = m?.span && !m.span.whole && m.fids.length > 1;
     let html = `<div class="dz-line"><span class="k">Feature</span> <b>${esc(site?.kind ?? "?")}</b>`
       + (site?.name ? ` <span class="dz-id">${esc(site.name)}</span>` : "") + ` <code>${esc(selectedFid)}</code></div>`;
     if (m?.span.whole) html += `<div class="dz-line"><span class="k">Moves</span> the whole <code>${esc(m.span.label)}</code> (it is its main shape)</div>`;
@@ -1036,7 +1072,7 @@ export function initDesignShell(host) {
     pressPull: () => pressPull,
     setActive(on) {
       active = !!on;
-      if (active) { refresh(); preloadTools(); }
+      if (active) { refresh(); preloadTools(); requestAnimationFrame(fitTimeline); }
       else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); if (sketcher?.active || sketcher?.choosing) sketcher.cancel(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)

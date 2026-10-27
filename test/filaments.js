@@ -22,14 +22,15 @@ const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s);
 
 console.log("\nthe line-up is what was agreed\n");
 {
-  check("nine spools", SPOOLS.length === 9, `${SPOOLS.length}`);
+  check("nine Cookiecad spools and a tri-colour", SPOOLS.length === 10 && SPOOLS.filter((s) => s.id.startsWith("cc-")).length === 9, `${SPOOLS.length}`);
   const groups = byFamily();
   for (const g of groups) {
-    check(`${g.family} has three`, g.spools.length === 3, `${g.spools.length}`);
+    const cc = g.spools.filter((s) => s.id.startsWith("cc-"));
+    check(`${g.family} has three Cookiecad spools`, cc.length === 3, `${cc.length}`);
   }
   check("the families are PLA, PETG, TPU",
     groups.map((g) => g.family).join(",") === "PLA,PETG,TPU");
-  check("every id is unique", new Set(SPOOLS.map((s) => s.id)).size === 9);
+  check("every id is unique", new Set(SPOOLS.map((s) => s.id)).size === SPOOLS.length);
   check("every spool is named for a real product",
     SPOOLS.every((s) => s.label && s.label.length > 3));
   check("the credit names the source", /cookiecad/i.test(CREDIT));
@@ -276,7 +277,7 @@ console.log("\nnaming a spool the way a person would\n");
   }
   check("every spool is reachable by its own short name",
     spoolNames().every((n) => findSpool(n)), spoolNames().filter((n) => !findSpool(n)).join(","));
-  check("...and there are nine names to offer", spoolNames().length === 9);
+  check("...and there are ten names to offer", spoolNames().length === 10);
 }
 
 console.log("\nfilament() is wired, and cannot change the geometry\n");

@@ -61,6 +61,12 @@ export const FAMILY = {
 // belongs around 2-4. Nothing else about the shader mattered until this was
 // right.
 //
+// tri   three colours SIDE BY SIDE in the strand (coextruded "tri-colour
+//       silk"). The colour you see depends on which way the wall FACES, not
+//       on height: a cylinder is red on one side, yellow and blue round the
+//       others, and every twist or flute trades them. Colours in order round
+//       the part (by the world-space normal's direction about Z).
+//
 // size is the fraction of cells that hold a speck, so it is coverage, not a
 // dimension. Below about 0.08 the surface looks clean; above 0.25 the specks
 // touch and it goes back to being a coat of paint.
@@ -142,6 +148,16 @@ export const SPOOLS = [
     t: 0.22, atten: 18, a: 0.92,
     grad: ["#ffd8ea", "#ff5fa2"],
   },
+
+  // ------------------------------------------------- coextruded tri-colour
+  {
+    id: "tri-ryb",
+    family: "PLA",
+    label: "Tri-colour Silk · red / yellow / blue",
+    base: "#f2c21b",
+    t: 0.0, atten: 6, a: 1, rough: 0.26,
+    tri: ["#d6202a", "#f4c417", "#1d58d0"],
+  },
 ];
 
 export const CREDIT = "Colours inspired by Cookiecad filament (cookiecad.com).";
@@ -187,6 +203,8 @@ export const LOOKS = {
   "cc-golddust": { key: 112, fill: 44, rim: 82, ambient: 34, exposure: 103, opacity: 86, rimcol: "#ffd9a0", bg: "#0a0a0d" },
   // matte needs FILL above all — lit like the others it looks dead flat
   "cc-pinkombre": { key: 142, fill: 92, rim: 42, ambient: 74, exposure: 104, opacity: 100, bg: "#0f1016" },
+  // silk: a bright even key so all three colours read, and a rim for the sheen
+  "tri-ryb": { key: 150, fill: 70, rim: 96, ambient: 52, exposure: 106, opacity: 100, bg: "#0b0e15" },
 };
 
 export const lookFor = (id) => LOOKS[id] || null;
@@ -255,14 +273,15 @@ export const hexToRgb = (hex) => {
 export function fxFor(spool) {
   if (!spool) return { grad: 0, flake: 0 };
   const fam = FAMILY[spool.family] || FAMILY.PLA;
-  const stops = spool.grad
+  // grad 2 = tri-colour: the same three colour slots, read by facing instead of height
+  const stops = spool.tri ? spool.tri.slice(0, 3) : spool.grad
     ? (spool.grad.length >= 3
       ? [spool.grad[0], spool.grad[1], spool.grad[2]]
       : [spool.grad[0], mixHex(spool.grad[0], spool.grad[1], 0.5), spool.grad[1]])
     : null;
   const f = spool.flake;
   return {
-    grad: stops ? 1 : 0,
+    grad: spool.tri ? 2 : stops ? 1 : 0,
     gradA: hexToRgb(stops ? stops[0] : "#ffffff"),
     gradB: hexToRgb(stops ? stops[1] : "#ffffff"),
     gradC: hexToRgb(stops ? stops[2] : "#ffffff"),
