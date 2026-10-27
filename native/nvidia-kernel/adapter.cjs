@@ -49,6 +49,9 @@ function load() {
 }
 
 const DEG = Math.PI / 180;
+// a twisted solid's longest drawn edge: a 60th of its diagonal, 1 to 6 mm
+// (a 20 mm twisted square then draws within 0.2% of its exact volume)
+const twistMaxEdge = (b) => Math.min(6, Math.max(1, Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) / 60));
 const MATCH_TOL = 1e-3;
 
 function wrap(nk) {
@@ -282,6 +285,24 @@ function wrap(nk) {
     return own(h, faceNames);
   }
 
+  // linearExtrude({ twist, scale }): an IMPORT3D whose recipe (src/twist.js)
+  // the addon skins exactly. The caps are named START and END by which end
+  // they sit at along the placed extrude axis, the walls SW0, SW1, ...
+  function twisted(f) {
+    const p = f.inputParams, t = p.twistExtrude;
+    const h = nk.twistExtrude(t.segs, t.h, t.twist, t.scale, t.profiles, t.matrix);
+    const m = t.matrix, o = [m[12], m[13], m[14]];
+    const zl = Math.hypot(m[8], m[9], m[10]) || 1, zu = [m[8] / zl, m[9] / zl, m[10] / zl];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let k = 0;
+    const faceNames = faceInfo(h).map(({ p: q, n }) => {
+      if (Math.abs(dot(n, zu)) < 0.99) return `${p.id}:TWIST:SW${k++}`;
+      const along = dot([q[0] - o[0], q[1] - o[1], q[2] - o[2]], zu) / zl;
+      return `${p.id}:TWIST:${along < t.h / 2 ? "START" : "END"}`;
+    });
+    return own(h, faceNames);
+  }
+
   function revolve(f) {
     const p = f.inputParams;
     const sk = sketches.get(p.profile);
@@ -444,7 +465,9 @@ function wrap(nk) {
   }
 
   // ---------------------------------------------------------- the history
-  function execute(json) {
+  // onFeature(result): called after each feature, with the solids it added
+  // (live handles) and the names it used up; the live build preview's feed
+  function execute(json, onFeature) {
     freeAll();
     sketches.clear();
     const doc = typeof json === "string" ? JSON.parse(json) : json;
@@ -469,7 +492,9 @@ function wrap(nk) {
         else if (f.type === "B") { const o = boolean(f, live); drop(o.removed); add(o.resultName, o.handle); }
         else if (f.type === "F" || f.type === "CH") { const o = blend(f, live); drop(o.removed); add(o.resultName, o.handle); }
         else if (f.type === "XFORM") for (const o of xform(f, live)) { drop(o.removed); add(o.resultName, o.handle); }
+        else if (f.type === "IMPORT3D" && p.twistExtrude) add(p.id, twisted(f));
         else throw new Error(`feature ${f.type} isn't supported on the NVIDIA kernel yet`);
+        if (onFeature && f.type !== "P" && f.type !== "S") onFeature(r);
       } catch (e) {
         r.error = `NVIDIA kernel: ${e?.message || e}`;
         break;
@@ -483,8 +508,13 @@ function wrap(nk) {
     info: nk.info(),
     execute_history_json: execute,
     tessellate_handle(handle, tol) {
-      // 8 degrees: at 15 a cylinder came out 0.65% light (24 facets round)
-      const m = nk.tessellate(handle, Math.max(+tol || 0.05, 1e-4), 8);
+      // 8 degrees: at 15 a cylinder came out 0.65% light (24 facets round).
+      // A solid with twisted walls also gets a longest edge SMLib draws a twisted wall as slivers otherwise (a twisted
+      // square drew 3% light while its exact volume was right to 0.003%)
+      const twisted = (names.get(handle) || []).some((n) => n.includes(":TWIST:SW"));
+      const m = twisted
+        ? nk.tessellate(handle, Math.max(+tol || 0.05, 1e-4), 8, twistMaxEdge(nk.bbox(handle)))
+        : nk.tessellate(handle, Math.max(+tol || 0.05, 1e-4), 8);
       return {
         take_positions: () => m.positions,
         take_normals: () => m.normals,

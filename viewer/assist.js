@@ -31,7 +31,7 @@ export const SPECS = [
   {
     name: "linearExtrude", group: "Shapes", sig: "linearExtrude({ h }, polygon([...]))",
     snippet: "linearExtrude({ h: 10 }, polygon([[0, 0], [20, 0], [10, 15]]))", argStart: 14,
-    hint: "Extrudes a flat outline up the Z axis. Points are [x, y] pairs in mm.",
+    hint: "Extrudes a flat outline up the Z axis. Points are [x, y] pairs in mm. Add twist (degrees) and scale (the top's size) for a twisted or tapered solid; either can be a list of values up the height for a swell, a pinch or a twist that speeds up.",
   },
 
   // --- smoothing & lathe --------------------------------------------------

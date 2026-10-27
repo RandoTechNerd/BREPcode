@@ -158,6 +158,14 @@ export const SPOOLS = [
     t: 0.0, atten: 6, a: 1, rough: 0.26,
     tri: ["#d6202a", "#f4c417", "#1d58d0"],
   },
+  {
+    id: "tri-bbp",
+    family: "PETG",
+    label: "Tri-colour Silk · black / blue / purple",
+    base: "#3b2a9e",
+    t: 0.0, atten: 6, a: 1, rough: 0.25,
+    tri: ["#101018", "#1f56e8", "#8a2fe0"],
+  },
 ];
 
 export const CREDIT = "Colours inspired by Cookiecad filament (cookiecad.com).";
@@ -205,6 +213,9 @@ export const LOOKS = {
   "cc-pinkombre": { key: 142, fill: 92, rim: 42, ambient: 74, exposure: 104, opacity: 100, bg: "#0f1016" },
   // silk: a bright even key so all three colours read, and a rim for the sheen
   "tri-ryb": { key: 150, fill: 70, rim: 96, ambient: 52, exposure: 106, opacity: 100, bg: "#0b0e15" },
+  // dark silk: the black third needs a strong rim and key or it is a hole;
+  // the sheen IS the look, so the rim leads
+  "tri-bbp": { key: 165, fill: 66, rim: 132, ambient: 48, exposure: 112, opacity: 100, bg: "#0a0b12" },
 };
 
 export const lookFor = (id) => LOOKS[id] || null;

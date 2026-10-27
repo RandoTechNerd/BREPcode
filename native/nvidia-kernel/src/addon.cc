@@ -277,6 +277,103 @@ Napi::Value Extrude(const Napi::CallbackInfo& info) {
   return Napi::Number::New(info.Env(), id);
 }
 
+// A profile (z = 0) as it stands at one height of a twisted extrude: turned
+// `deg` about +Z, scaled by `s` about the origin, lifted to `z`. Lines and
+// Beziers move point by point; an arc keeps its exact form (its centre moves,
+// its radius scales, its angles turn).
+void profileCurvesAt(const Napi::CallbackInfo& info, size_t i, double deg, double s, double z, SmTArray<SmCurve*>& out) {
+  const double a = deg * 3.14159265358979323846 / 180.0, c = std::cos(a), sn = std::sin(a);
+  auto px = [&](double x, double y) { return s * (x * c - y * sn); };
+  auto py = [&](double x, double y) { return s * (x * sn + y * c); };
+  Napi::Array segs = info[i].As<Napi::Array>();
+  for (uint32_t k = 0; k < segs.Length(); k++) {
+    Napi::Array g = segs.Get(k).As<Napi::Array>();
+    auto at = [&](uint32_t j) { return g.Get(j).As<Napi::Number>().DoubleValue(); };
+    int kind = (int)at(0);
+    if (kind == 0) {
+      SmLine* l = nullptr;
+      CHECK(info.Env(), SmApiCreateLineSegment(SmPoint3d(px(at(1), at(2)), py(at(1), at(2)), z),
+                                               SmPoint3d(px(at(4), at(5)), py(at(4), at(5)), z), l), "line segment");
+      out.Add(l);
+    } else if (kind == 2) {
+      // SmApiCreateArc takes angles within [-360, 360] (status 1007 past
+      // that): turned, the start is brought back to [-180, 180) and, if the
+      // end then runs past 360, both drop a turn
+      const double sweep = at(6) - at(5);
+      double a0 = std::fmod(at(5) + deg, 360.0);
+      if (a0 >= 180.0) a0 -= 360.0;
+      if (a0 < -180.0) a0 += 360.0;
+      if (a0 + sweep > 360.0) a0 -= 360.0;
+      SmBSplineCurve* cv = nullptr;
+      CHECK(info.Env(), SmApiCreateArc(SmPoint3d(px(at(1), at(2)), py(at(1), at(2)), z), s * at(4), a0, a0 + sweep, cv), "arc");
+      out.Add(cv);
+    } else {
+      SmTArray<SmPoint3d> pts;
+      for (int p = 0; p < 4; p++) {
+        double x = at(1 + 3 * p), y = at(2 + 3 * p);
+        pts.Add(SmPoint3d(px(x, y), py(x, y), z));
+      }
+      SmTArray<double> knots; knots.Add(0.0); knots.Add(1.0);
+      SmTArray<ULONG> mult; mult.Add(4); mult.Add(4);
+      SmBSplineCurve* cv = nullptr;
+      CHECK(info.Env(), SmApiCreateCanonicalCurve(pts, knots, mult, nullptr, 3, SM_CF_POLYLINE_FORM, cv), "bezier");
+      out.Add(cv);
+    }
+  }
+}
+
+// (segments, h, twistDeg | [deg per profile], topScale | [scale per profile], profiles, matrix16)
+// A twisted (and/or tapered) extrude: the profile copied `profiles` times up
+// the height, each turned and scaled its share, and a solid skinned through
+// them (cubic in the loft direction, capped flat at both ends). matrix16 is
+// three.js's column-major 4x4, applied afterwards: column i is where axis i
+// goes, which is exactly SmBrep::Transform's row i.
+Napi::Value TwistExtrude(const Napi::CallbackInfo& info) {
+  const double h = num(info, 1);
+  const ULONG n = (ULONG)info[4].As<Napi::Number>().Uint32Value();
+  // a number spreads evenly up the height; a list gives each profile its own
+  // (src/twist.js works out curved ones)
+  auto per = [&](size_t arg, ULONG k, bool scale) -> double {
+    const double u = (double)k / (double)(n - 1);
+    if (info[arg].IsArray()) {
+      Napi::Array a = info[arg].As<Napi::Array>();
+      if (a.Length() != n) throw Napi::Error::New(info.Env(), "twist extrude: one value per profile");
+      return a.Get(k).As<Napi::Number>().DoubleValue();
+    }
+    const double v = num(info, arg);
+    return scale ? 1.0 + (v - 1.0) * u : v * u;
+  };
+  if (!(h > 0) || n < 2) throw Napi::Error::New(info.Env(), "twist extrude: bad height or profile count");
+  for (ULONG k = 0; k < n; k++) if (!(per(3, k, true) > 0)) throw Napi::Error::New(info.Env(), "twist extrude: a scale must be above 0");
+  SmTArray<SmCurve*> curves;
+  SmTArray<ULONG> counts;
+  try {
+    for (ULONG k = 0; k < n; k++) {
+      const double u = (double)k / (double)(n - 1);
+      const ULONG before = curves.GetSize();
+      profileCurvesAt(info, 0, per(2, k, false), per(3, k, true), h * u, curves);
+      counts.Add(curves.GetSize() - before);
+    }
+  } catch (...) { freeCurves(curves); throw; }
+  SmTArray<const SmCurve*> view;
+  for (ULONG k = 0; k < curves.GetSize(); k++) view.Add(curves[k]);
+  SmBrep* b = nullptr;
+  long s = SmApiCreateSkinPrimitive(counts, view, n >= 4 ? 3 : 1, TRUE, b, nullptr, nullptr, nullptr);
+  freeCurves(curves);
+  if (s != SM_SUCCESS || !b) fail(info.Env(), "twist extrude", s);
+  uint32_t id = keep(b);
+  Napi::Array m = info[5].As<Napi::Array>();
+  double t[4][4];
+  bool identity = true;
+  for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) {
+    t[r][c] = m.Get(4 * r + c).As<Napi::Number>().DoubleValue();
+    if (std::fabs(t[r][c] - (r == c ? 1.0 : 0.0)) > 1e-12) identity = false;
+  }
+  if (!identity) CHECK(info.Env(), b->Transform(t, TRUE), "twist extrude placement");
+  checkSolid(info.Env(), b, "twist extrude");
+  return Napi::Number::New(info.Env(), id);
+}
+
 // (segments, px, py, pz, ax, ay, az, degrees)
 Napi::Value Revolve(const Napi::CallbackInfo& info) {
   SmTArray<SmCurve*> curves;
@@ -459,6 +556,12 @@ Napi::Value Tessellate(const Napi::CallbackInfo& info) {
   params.dChordHeightTol = num(info, 1);
   params.dCurveAngleTolDeg = num(info, 2);
   params.dSurfaceAngleTolDeg = num(info, 2);
+  // optional: a longest edge (world units), and a worst aspect ratio. A
+  // twisted wall is curved across its width as well as up it, and without an
+  // edge limit the tessellator draws it as slivers that cut through the curve
+  // (the aspect limit alone changed nothing, measured)
+  if (info.Length() > 3 && info[3].IsNumber()) params.dMaxEdgeLength = num(info, 3);
+  if (info.Length() > 4 && info[4].IsNumber()) params.dMaxAspectRatio = num(info, 4);
   SmPolyBrep* pb = nullptr;
   CHECK(info.Env(), SmApiTessellate(b, pb, params), "tessellate");
 
@@ -557,6 +660,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   fn("scale", Scale);
   fn("boolean", Boolean);
   fn("extrude", Extrude);
+  fn("twistExtrude", TwistExtrude);
   fn("revolve", Revolve);
   fn("fillet", Fillet);
   fn("faces", Faces);

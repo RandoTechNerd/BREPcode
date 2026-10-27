@@ -12,6 +12,8 @@
 //                     { id, op: "stl2step", stl, options, name }
 //                     { id, op: "info" }
 // Replies:            { id, ok: true, ... } | { id, ok: false, error, refusal?, lane? }
+// While a long build runs: { id, progress: true, set, remove, done, total }
+//                     (the partial model, see engine.js progressReporter)
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -50,14 +52,15 @@ let queue = Promise.resolve();
 // msg.kernel "nvidia": NVIDIA's kernel first; a refusal there goes on to the
 // Rust kernel, and only a Rust refusal goes back to the worker (which then
 // builds on the JS kernel). Anything else: the Rust kernel, as always.
-async function build(msg) {
+async function build(msg, post) {
   const { runEngine, EngineRefusal } = await engineP;
   const t0 = performance.now();
   const tolerance = msg.tolerance ?? 0.05;
+  const onProgress = msg.progress && post ? (u) => post({ id: msg.id, progress: true, ...u }) : null;
   let out = null, used = "rust", nvidiaRefused = null;
   if (msg.kernel === "nvidia" && nvidia) {
     try {
-      out = await runEngine(msg.json, { rust: nvidia, manifold: loadManifold, tolerance });
+      out = await runEngine(msg.json, { rust: nvidia, manifold: loadManifold, tolerance, onProgress });
       used = "nvidia";
     } catch (e) {
       if (!(e instanceof EngineRefusal)) console.warn("[kernel] NVIDIA kernel failed:", e);
@@ -68,7 +71,7 @@ async function build(msg) {
   }
   if (!out) {
     if (!kernel) throw new Error(`native kernel unavailable: ${native.load.error}`);
-    out = await runEngine(msg.json, { rust: kernel, manifold: loadManifold, tolerance });
+    out = await runEngine(msg.json, { rust: kernel, manifold: loadManifold, tolerance, onProgress });
   }
   const ms = performance.now() - t0;
   // Copied, not transferred: Electron's MessagePortMain only transfers ports,
@@ -92,7 +95,7 @@ function serve(port) {
       try {
         if (!kernel && !(op === "build" && nvidia) && op !== "info") throw new Error(`native kernel unavailable: ${native.load.error}`);
         let r;
-        if (op === "build") r = await build(data);
+        if (op === "build") r = await build(data, (m) => port.postMessage(m));
         else if (op === "stl2step") r = stl2step(data);
         else if (op === "info") r = { ok: true, info: kernel?.info, nvidia: nvidia ? nvidia.info : null };
         else throw new Error(`unknown op "${op}"`);

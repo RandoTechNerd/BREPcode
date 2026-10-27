@@ -69,6 +69,8 @@ function setNativePort(port) {
   port.onmessage = ({ data }) => {
     const p = nativePending.get(data?.id);
     if (!p) return;
+    // a long build's partial model, on its way (not the reply)
+    if (data.progress) { p.onProgress?.(data); return; }
     nativePending.delete(data.id);
     if (data.ok) p.resolve(data);
     // fromHost: the kernel answered "no" (or panicked and caught it); the
@@ -97,10 +99,10 @@ function nativeKernel() {
     setTimeout(() => { if (!nativePort && !nativeDown) dropNative("the native kernel didn't connect in time"); }, 5000);
   });
 }
-function nativeCall(msg, transfer = []) {
+function nativeCall(msg, transfer = [], onProgress = null) {
   const id = ++nativeSeq;
   return new Promise((resolve, reject) => {
-    nativePending.set(id, { resolve, reject });
+    nativePending.set(id, { resolve, reject, onProgress });
     try { nativePort.postMessage({ ...msg, id }, transfer); }
     catch (e) { nativePending.delete(id); reject(e); }
   });
@@ -285,7 +287,13 @@ self.onmessage = async ({ data, ports }) => {
       let nativeRefused = false;
       if (engine !== "js" && await nativeKernel()) {
         try {
-          const r = await nativeCall({ op: "build", json: data.json, kernel: data.kernel });
+          // the partial model goes to the page as it grows ({ progressOf },
+          // never { id }: that would settle the build early)
+          const r = await nativeCall({ op: "build", json: data.json, kernel: data.kernel, progress: !!data.progress }, [],
+            (u) => {
+              const transfer = u.set.flatMap((s) => [s.positions.buffer, s.indices.buffer]);
+              self.postMessage({ progressOf: id, set: u.set, remove: u.remove, done: u.done, total: u.total }, transfer);
+            });
           trace(`native engine: ${r.lane} (${r.stats.exactMs} ms exact, ${r.stats.meshMs} ms mesh)`);
           postSplit({ lane: r.lane, solids: r.solids, stats: r.stats });
           return;

@@ -69,6 +69,22 @@ const CASES = [
   ["union that needs the other order", `const rect = (x0, y0, x1, y1) => polygon([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
     return union(linearExtrude({ h: 10 }, rect(-13.2, 10.2, 13.2, 13.2)), linearExtrude({ h: 10 }, rect(-13.2, -5, -10.2, 10.209999999999999)));`,
     1248, ["E3:S2:G100_SW", "E6:S5:G100_SW"]],
+  // linearExtrude({ twist, scale }): skinned exact through turned copies of
+  // the profile (src/twist.js). A twist keeps every cross-section's area, so
+  // the volume is area x height; a taper is a frustum, A h (1 + s + s^2) / 3
+  ["twisted square", "return linearExtrude({ h: 40, twist: 90 }, polygon([[-10, -10], [10, -10], [10, 10], [-10, 10]]));",
+    16000, ["IMPORT3D1:TWIST:START", "IMPORT3D1:TWIST:END", "IMPORT3D1:TWIST:SW0"], 0.01],
+  ["tapered square", "return linearExtrude({ h: 40, scale: 0.5 }, polygon([[-10, -10], [10, -10], [10, 10], [-10, 10]]));",
+    400 * 40 * 1.75 / 3, ["IMPORT3D1:TWIST:START", "IMPORT3D1:TWIST:END"], 0.005],
+  ["twisted circle off centre (arcs), placed", "return translate([5, 0, 3], rotate([20, 0, 0], linearExtrude({ h: 30, twist: 270 }, circle2d({ r: 6, center: [8, 0] }))));",
+    PI * 36 * 30, ["IMPORT3D1:TWIST:START", "IMPORT3D1:TWIST:END"], 0.01],
+  // twist and scale as lists of values up the height, joined smoothly: a
+  // twist that speeds up keeps the area (so the volume) of a plain twist
+  ["twist as a curve", "return linearExtrude({ h: 40, twist: [0, 10, 80, 90] }, polygon([[-10, -10], [10, -10], [10, 10], [-10, 10]]));",
+    16000, ["IMPORT3D1:TWIST:START", "IMPORT3D1:TWIST:END"], 0.01],
+  ["twisted and flared vase, hollowed", `const o = (r) => circle2d({ r, center: [6, 0] });
+    return difference(linearExtrude({ h: 40, twist: 180, scale: 1.2 }, o(10)), translate([0, 0, 2], rotate([0, 0, 9], scale(1.01, linearExtrude({ h: 40 / 1.01, twist: 180, scale: 1.19 / 1.01 }, o(8))))));`,
+    null, []],
 ];
 
 console.log("\nNVIDIA kernel\n");
@@ -78,7 +94,8 @@ for (const [label, src, want, faces, tol = 0.005] of CASES) {
   catch (e) { check(`${label}: builds`, false, String(e.message || e).slice(0, 200)); continue; }
   check(`${label}: builds`, res.kernel === "nvidia");
   const v = volumeOf(res);
-  check(`${label}: volume ${v.toFixed(1)} ~ ${want.toFixed(1)}`, Math.abs(v - want) / want < tol);
+  if (want != null) check(`${label}: volume ${v.toFixed(1)} ~ ${want.toFixed(1)}`, Math.abs(v - want) / want < tol);
+  else check(`${label}: built exact (volume ${v.toFixed(1)})`, res.engine === "exact" && v > 0, res.engine);
   const got = new Set(res.solids.flatMap((s) => s.faceNames || []));
   for (const f of faces) check(`${label}: face ${f}`, got.has(f), [...got].slice(0, 12).join(" "));
 }
@@ -233,6 +250,24 @@ const near3 = (a, b, tol = 0.02) => a.every((v, k) => Math.abs(v - b[k]) <= tol)
     why = `${res.kernel} ${res.fallback || ""}`;
   } catch (e) { why = String(e.message).slice(0, 160); }
   check("a picked revolve-cap edge (face names) is found under its edge names and builds", ok, why);
+}
+
+// the same twisted square on the Rust kernel, which cannot skin: it builds
+// the fine mesh the feature also carries, at the same volume
+{
+  const src = "return linearExtrude({ h: 40, twist: 90 }, polygon([[-10, -10], [10, -10], [10, 10], [-10, 10]]));";
+  const res = await build(shape(src), { engine: "split" });
+  const v = volumeOf(res);
+  check(`twisted square on the Rust kernel: the mesh, volume ${v.toFixed(1)} ~ 16000`, res.engine === "mesh" && Math.abs(v - 16000) / 16000 < 0.002, res.engine);
+}
+
+// a swell (scale as a curve): NVIDIA's exact skin and the Rust kernel's mesh
+// agree on the volume
+{
+  const src = "return linearExtrude({ h: 60, twist: [0, 30, 120, 150], scale: [1, 1.3, 0.85, 1.05] }, circle2d({ r: 6, center: [10, 0] }));";
+  const a = volumeOf(await build(shape(src), { engine: "nvidia-split" }));
+  const b = volumeOf(await build(shape(src), { engine: "split" }));
+  check(`a swelling twist: exact ${a.toFixed(0)} and mesh ${b.toFixed(0)} agree`, Math.abs(a - b) / a < 0.01);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

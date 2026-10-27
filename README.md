@@ -570,11 +570,16 @@ linear_extrude(height=8)
 ```
 
 BrepScript: `linearExtrude({ h: 10, center: true }, polygon([[0,0], [20,0], [10,15]]))`, winding is
-normalised automatically. JSCAD: `extrudeLinear({ height }, subtract(rectangle(...), circle(...)))`
+normalised automatically. `twist` (degrees, counter-clockwise looking down) and `scale` (the top's
+size against the bottom's) make a twisted or tapered solid, and either can be a list of values at
+evenly spaced heights, joined smoothly: `linearExtrude({ h: 150, twist: [0, 20, 90, 110], scale:
+[1, 1.3, 0.85, 1] }, outline)` swells, pinches and turns faster through the middle. NVIDIA's kernel
+skins it exactly (smooth walls, STEP-clean); the other kernels build a fine mesh of it. JSCAD: `extrudeLinear({ height }, subtract(rectangle(...), circle(...)))`
 plus `polygon`/`rectangle`/`circle`, including via `require('@jscad/modeling/src/operations/extrusions')`.
 
 2D transforms (`translate`/`rotate`/`scale`/`mirror`) bake straight into the outline points.
-Deliberately not supported, each with a clear error: `twist`, extrusion `scale`, `rotate_extrude`,
+Not translated yet, each with a clear error: `twist`, extrusion `scale` (write them with BrepScript's
+`linearExtrude` above), `rotate_extrude`,
 `polygon()` hole paths (use `difference()`), `offset`, and mixing 2D with 3D in one boolean.
 
 ### OpenSCAD libraries (BOSL2, MCAD, …)

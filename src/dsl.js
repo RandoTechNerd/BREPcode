@@ -14,6 +14,7 @@ import { remeshForTexture } from "./texmesh.js";
 // exact twins of hull()/minkowski() habits; calls back into this module only
 // when a model runs, so the import cycle is safe (as with parts.js)
 import { exactHull, exactMinkowski } from "./exactshapes.js";
+import { twistMesh, twistRecipe } from "./twist.js";
 
 const DEG = Math.PI / 180;
 
@@ -218,6 +219,13 @@ export function feature(code, params = {}) {
 // references files by name so the model stays readable.
 const IMPORTS = new Map();
 let hullSeq = 0;          // unique names for hull() result meshes
+// The live build preview's feed from compile() (the viewer sets it around a
+// build). Some shapes cost their time HERE, before any kernel runs: each
+// hull() builds its children and takes their hull, so a model of 180 hulls
+// spent 17 of its 18 seconds in compile. Each one that has its triangles
+// reports them: partHook(name, stlText), awaited, so the page can paint.
+let partHook = null;
+export function setPartHook(fn) { partHook = typeof fn === "function" ? fn : null; }
 // The exact hull's cost grows with its face count, the mesh hull's barely
 // does (measured on the split engine, exact vs mesh): 10 faces 0.2 s vs
 // 0.2 s, a rounded box's 54 faces 0.19 s vs 0.09 s, 106 faces 1.2 s vs
@@ -312,6 +320,7 @@ export function estimateBuild(root) {
       return;
     }
     if (n.kind === "prism") { tris += 4 * (n.pts?.length || 8); return; }
+    if (n.kind === "twist") { tris += 2 * (n.pts?.length || 8) * 60; return; }
     if (n.kind === "revolve") { tris += 2 * (n.pts?.length || 8) * 32; return; }
     if (n.kind === "import") {
       const text = IMPORTS.get(n.name);
@@ -927,8 +936,21 @@ export function linearExtrude(opts, profile) {
   const ordered = area < 0 ? [...pts].reverse() : pts;
   const segs = profile.segs ? (area < 0 ? reverseSegs(profile.segs) : profile.segs) : null;
   const holes = clockwiseHoles(profile.holes);
-  const n = node({ kind: "prism", pts: ordered, segs, ...(holes?.length ? { holes } : {}), ...(profile.rules ? { rules: profile.rules } : {}), h, fix: IDENTITY });
   const o = typeof opts === "object" ? opts : {};
+  // twist (degrees, CCW looking down) and scale (the top's size against the
+  // bottom's): a twisted or tapered extrude, built exact on NVIDIA's kernel
+  // and as a fine mesh elsewhere (src/twist.js)
+  // ...or lists of values at evenly spaced heights, bottom to top, joined
+  // smoothly (src/twist.js): a swell, a pinch, a twist that speeds up
+  const list = (v) => Array.isArray(v) && v.length >= 2 && v.every((x) => Number.isFinite(+x));
+  const twist = list(o.twist) ? o.twist.map(Number) : Number(o.twist) || 0;
+  const top = o.scale == null ? 1 : list(o.scale) ? o.scale.map(Number) : Number(o.scale);
+  if (Array.isArray(top) ? !top.every((x) => x > 0) : !(top > 0)) {
+    throw new TypeError("linearExtrude(): scale is the top's size against the bottom's, a number above 0 (or a list of them, bottom to top)");
+  }
+  const n = Array.isArray(twist) || Array.isArray(top) || twist || top !== 1
+    ? node({ kind: "twist", pts: ordered, segs, ...(holes?.length ? { holes } : {}), h, twist, top, fix: IDENTITY })
+    : node({ kind: "prism", pts: ordered, segs, ...(holes?.length ? { holes } : {}), ...(profile.rules ? { rules: profile.rules } : {}), h, fix: IDENTITY });
   // Where along its own +Z the prism sits: [0, h] by default, centred on the
   // plane (center), or [-h, 0] under it (reverse: a cut into a face), plus
   // `proud` mm past the plane on the other side, so a cutter starting on a
@@ -3731,6 +3753,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         if (exact && exact.faces <= HULL_EXACT_MAX_FACES) {
           await ensureImportClonePatch(partHistory);
           IMPORTS.set(name, wstl);
+          if (partHook) await partHook(name, wstl);
           const f = await partHistory.newFeature("IMPORT3D");
           f.inputParams.fileToImport = wstl;
           f.inputParams.stepText = exact.step;
@@ -3756,6 +3779,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       let data = stl;
       if (!world.equals(IDENTITY)) data = transformedImport(name, data, world);
       IMPORTS.set(name, data);
+      if (partHook) await partHook(name, data);
       const f = await partHistory.newFeature("IMPORT3D");
       f.inputParams.fileToImport = data;
       f.inputParams.meshRepairLevel = "NONE";
@@ -3765,6 +3789,27 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // put freeform()'s corner handles nowhere near the solid they belong to.
       f.inputParams.centerMesh = false;
       trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
+      return f.inputParams.id;
+    }
+
+    if (n.kind === "twist") {
+      // One IMPORT3D carrying both builds (src/twist.js): the fine mesh for
+      // the Rust and JS kernels, and the recipe NVIDIA's kernel skins exactly
+      // (engine.js sends it to the exact lane there, and back to the mesh
+      // lane if the skin is refused).
+      const world = new Matrix4().multiplyMatrices(matrix, n.fix);
+      const name = `__twist${hullSeq++}`;
+      const stl = twistMesh(n, world, name);
+      await ensureImportClonePatch(partHistory);
+      IMPORTS.set(name, stl);
+      if (partHook) await partHook(name, stl);
+      const f = await partHistory.newFeature("IMPORT3D");
+      f.inputParams.fileToImport = stl;
+      f.inputParams.meshRepairLevel = "NONE";
+      f.inputParams.centerMesh = false;
+      const recipe = twistRecipe(n, world);
+      if (recipe) f.inputParams.twistExtrude = recipe;
+      trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", twist: true, color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
     }
 

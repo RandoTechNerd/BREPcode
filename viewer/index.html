@@ -4643,6 +4643,11 @@
             for (const q of queued) postToWorker(q);
             return;
           }
+          // a long build's partial model (not its reply): only while that build is wanted
+          if (data?.progressOf != null) {
+            if (workerPending.has(data.progressOf)) showBuildProgress(data);
+            return;
+          }
           const p = workerPending.get(data?.id);
           if (!p) return;                       // a reply to a cancelled build
           workerPending.delete(data.id);
@@ -4922,6 +4927,59 @@
     // this group, and a const read inside its temporal dead zone throws.
     const modelGroup = new THREE.Group();
     scene.add(modelGroup);
+
+    // ---- the live build preview ----
+    // A long build shows its partial model as it grows: the kernel reports
+    // each solid it makes (engine.js progressReporter, only past 0.4 s), the
+    // worker passes it on as { progressOf }, and it is drawn here as a pale
+    // ghost, keyed by solid name, so a boolean that uses up its tools takes
+    // them away again. The model from before steps aside while the ghost is
+    // up, and comes back if the build fails; the finished model replaces both.
+    const buildGhost = new THREE.Group();
+    buildGhost.name = "build-progress";
+    scene.add(buildGhost);
+    const ghostParts = new Map();
+    let ghostMat = null, ghostHid = false;
+    function showBuildProgress(u) {
+      ghostMat ??= new THREE.MeshStandardMaterial({ color: 0x7fb2ff, roughness: 0.5, metalness: 0.05,
+        transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+      // the kernel's first report replaces what compile drew (its own names
+      // for the same shapes: __hull3 there, IMPORT3D5 here)
+      const remove = [...(u.remove || [])];
+      if (u.total) for (const name of ghostParts.keys()) if (name.startsWith("__")) remove.push(name);
+      for (const name of remove) {
+        const m = ghostParts.get(name);
+        if (m) { m.geometry.dispose(); buildGhost.remove(m); ghostParts.delete(name); }
+      }
+      for (const s of u.set || []) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(s.positions, 3));
+        g.setIndex(new THREE.BufferAttribute(s.indices, 1));
+        g.computeVertexNormals();
+        const old = ghostParts.get(s.name);
+        if (old) { old.geometry.dispose(); old.geometry = g; continue; }
+        const m = new THREE.Mesh(g, ghostMat);
+        m.renderOrder = 2;
+        buildGhost.add(m);
+        ghostParts.set(s.name, m);
+      }
+      if (ghostParts.size && !ghostHid) { ghostHid = true; modelGroup.visible = false; }
+      if (u.total) setStatus("busy", `Building… step ${Math.min(u.done, u.total)} of ${u.total}`);
+    }
+    // an ASCII STL's triangles as a preview part
+    function stlPart(name, stl) {
+      const v = [];
+      for (const m of stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) v.push(+m[1], +m[2], +m[3]);
+      const positions = new Float32Array(v);
+      const indices = new Uint32Array(positions.length / 3).map((_, i) => i);
+      return { name, positions, indices };
+    }
+    function clearBuildProgress() {
+      for (const m of ghostParts.values()) m.geometry.dispose();
+      ghostParts.clear();
+      buildGhost.clear();
+      if (ghostHid) { ghostHid = false; modelGroup.visible = true; }
+    }
 
     // ORBIT AROUND THE PART, NOT AROUND WHEREVER THE PIVOT DRIFTED TO.
     //
@@ -10471,6 +10529,7 @@ ${joined}${SITE_TAIL}`), joined);
     // successful build at 7.5s — three and a half of those seconds spent
     // looking at an empty stage.
     function fireBuilt(ok = true) {
+      clearBuildProgress();         // a failed build hands the old model back
       designUI?.buildResult?.(ok, ok ? null : lastBuildFailure);
       if (!builtOnce.size) return;
       const fns = [...builtOnce];
@@ -10553,6 +10612,7 @@ ${joined}${SITE_TAIL}`), joined);
       // user edited the code and moved on. A Build button offering to build
       // something that is no longer in the editor is worse than no button.
       clearHeavyHold();
+      clearBuildProgress();           // a new build drops the last one's partial model
       // Every route that changes the code ends up here — typing, undo, the
       // assistant, opening a file, a recipe. One call keeps the dials honest
       // for all of them instead of a hook on each.
@@ -10667,7 +10727,26 @@ ${joined}${SITE_TAIL}`), joined);
         // half is runHistory(), and that is what goes to the worker.
         attempt = { ph, trace };
         dsl.resetSceneLook();
-        await dsl.compile(shape, ph, trace);
+        // the live build preview, fed while compile works out shapes that cost
+        // their time here (hulls): past 0.4 s each one that lands is drawn,
+        // and every 60 ms the page gets a frame to paint it
+        const c0 = performance.now();
+        let lastPaint = c0;
+        const earlyParts = [];
+        dsl.setPartHook(async (name, stl) => {
+          if (mine !== token) return;
+          const now = performance.now();
+          if (now - c0 < 400) { earlyParts.push([name, stl]); return; }
+          for (const [n2, s2] of earlyParts.splice(0)) showBuildProgress({ set: [stlPart(n2, s2)] });
+          showBuildProgress({ set: [stlPart(name, stl)] });
+          // a frame to paint it (a hidden window has no frames: the timer goes on)
+          if (now - lastPaint > 60) {
+            lastPaint = now;
+            await new Promise((r) => { const t = setTimeout(r, 50); requestAnimationFrame(() => { clearTimeout(t); setTimeout(r, 0); }); });
+          }
+        });
+        try { await dsl.compile(shape, ph, trace); }
+        finally { dsl.setPartHook(null); }
         if (mine !== token) return;
 
         // look() in the code sets the SCENE's material and lighting — the half
@@ -10705,7 +10784,7 @@ ${joined}${SITE_TAIL}`), joined);
         cancelWorkerBuild();
         if (json && getBuildWorker()) {
           try {
-            const r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+            const r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL, progress: true });
             if (mine !== token) return;
             solids = r.solids;
             fromWorker = true;
@@ -10789,6 +10868,7 @@ ${joined}${SITE_TAIL}`), joined);
         // The committed geometry is on stage — retire the drag preview in the
         // same frame, so a stretch hands over without a flicker.
         clearDragPreview();
+        clearBuildProgress();
         seatGrid();
         frameModel();
         lastShape = shape;

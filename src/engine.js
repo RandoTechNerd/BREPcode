@@ -71,6 +71,9 @@ export function toRustDialect(doc) {
     // IMPORT3D's STEP lane: Rust reads `stepText` and refuses a feature
     // carrying two sources; `fileToImport` is the JS kernel's copy.
     if (f.type === "IMPORT3D" && typeof p.stepText === "string") delete p.fileToImport;
+    // a twisted extrude in the exact lane is built from its recipe; its mesh
+    // (a few MB of STL text) is only for the kernels that cannot skin
+    if (f.type === "IMPORT3D" && p.twistExtrude) delete p.fileToImport;
     // 2. Extrude direction: JS sends `distanceBack` along +normal, Rust
     //    sends `distance` that way.
     if (f.type === "E") {
@@ -197,7 +200,9 @@ const edgeOwners = (f, names) => {
   return [...names].filter((n) => edges.some((e) => typeof e === "string" && (e === n || e.startsWith(`${n}_`))));
 };
 
-export function planLanes(features) {
+// exactTwist: the exact kernel can skin a twisted extrude (NVIDIA's can; the
+// Rust one cannot, so there it stays the mesh it also carries)
+export function planLanes(features, { exactTwist = false } = {}) {
   const meshNames = new Set();
   const meshFeatures = new Set();
   for (const f of features) {
@@ -206,6 +211,7 @@ export function planLanes(features) {
       // An exact import (STEP text, e.g. an STL converted on drop) is exact
       // geometry like any primitive; only a mesh import starts the mesh lane.
       if (typeof f.inputParams?.stepText === "string") continue;
+      if (exactTwist && f.inputParams?.twistExtrude) continue;
       meshFeatures.add(id);
       meshNames.add(id);
       continue;
@@ -372,6 +378,57 @@ function meshFaces(solid, sourceOf) {
 // model as meshes built in half a second. So a refusal in a model with exact
 // hulls is retried once with every hull as its mesh, before anyone falls back
 // to the JS kernel: an exact hull can only ever make a build better.
+// ------------------------------------------------------- live build preview
+//
+// opts.onProgress({ set, remove, done, total }) shows a long build taking
+// shape: the partial model's solids by name, coarsely tessellated, as the
+// features run. `set` is [{ name, positions: Float32Array, indices:
+// Uint32Array }] for solids made or changed since the last report, `remove`
+// the names that went away (a tool a boolean used up). Quiet for the first
+// PROGRESS_AFTER_MS, so a quick build pays nothing, and then at most one
+// report per PROGRESS_EVERY_MS; each report tessellates only what changed.
+export const PROGRESS_AFTER_MS = 400;
+export const PROGRESS_EVERY_MS = 150;
+function progressReporter(onProgress, total) {
+  if (typeof onProgress !== "function") return null;
+  const t0 = performance.now();
+  let last = 0, done = 0;
+  const dirty = new Map();          // name -> () => { positions, indices } | null
+  const gone = new Set();
+  const flush = (force = false) => {
+    const now = performance.now();
+    if (!force && (now - t0 < PROGRESS_AFTER_MS || now - last < PROGRESS_EVERY_MS)) return;
+    if (!dirty.size && !gone.size) return;
+    last = now;
+    const set = [];
+    for (const [name, mesh] of dirty) {
+      try { const m = mesh(); if (m?.indices?.length) set.push({ name, ...m }); } catch { /* a preview must never fail a build */ }
+    }
+    const remove = [...gone];
+    dirty.clear(); gone.clear();
+    try { onProgress({ set, remove, done, total }); } catch { /* the caller's problem, not the build's */ }
+  };
+  return {
+    // a solid now exists (or changed) under `name`; mesh() tessellates it when a report goes out
+    put(name, mesh) { gone.delete(name); dirty.set(name, mesh); },
+    drop(name) { dirty.delete(name); gone.add(name); },
+    step() { done++; flush(); },
+  };
+}
+// coarse triangles for the preview, from either lane
+const COARSE = 4;                   // x the build's own tolerance
+function handleMesh(rk, handle, tolerance) {
+  const m = rk.tessellate_handle(handle, tolerance * COARSE);
+  return { positions: Float32Array.from(m.take_positions()), indices: Uint32Array.from(m.take_indices()) };
+}
+function manifoldMesh(solid) {
+  const m = solid.getMesh();
+  const np = m.numProp, V = m.vertProperties, n = V.length / np;
+  const positions = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { positions[3 * i] = V[i * np]; positions[3 * i + 1] = V[i * np + 1]; positions[3 * i + 2] = V[i * np + 2]; }
+  return { positions, indices: Uint32Array.from(m.triVerts) };
+}
+
 export async function runEngine(json, opts = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
   // A fillet/chamfer marked `shrink` (the chat's "round the edges", which
@@ -404,8 +461,9 @@ const SHRINK_BUDGET_MS = 8000;
 const SHRINK_WHY = /too large|setbacks consume|could not co-blend|of the \d+ selected edges|no edge within tolerance/;
 
 async function runEngineHulls(src, opts) {
-  const hulls = (src.features || []).filter((f) => f.type === "IMPORT3D" && f.inputParams?.exactHull
-    && typeof f.inputParams.stepText === "string" && typeof f.inputParams.fileToImport === "string");
+  // exact hulls and twisted extrudes both carry a mesh to fall back on
+  const hulls = (src.features || []).filter((f) => f.type === "IMPORT3D" && typeof f.inputParams?.fileToImport === "string"
+    && ((f.inputParams.exactHull && typeof f.inputParams.stepText === "string") || f.inputParams.twistExtrude));
   try {
     return await runEngineOnce(src, opts);
   } catch (e) {
@@ -413,6 +471,7 @@ async function runEngineHulls(src, opts) {
     const asMesh = structuredClone(src);
     for (const f of asMesh.features) {
       if (f.type === "IMPORT3D" && f.inputParams?.exactHull) delete f.inputParams.stepText;
+      if (f.type === "IMPORT3D") delete f.inputParams?.twistExtrude;
     }
     const out = await runEngineOnce(asMesh, opts);
     out.stats = { ...out.stats, hullsAsMesh: hulls.length, exactRefusal: String(e.message || e).slice(0, 200) };
@@ -420,17 +479,25 @@ async function runEngineHulls(src, opts) {
   }
 }
 
-async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null } = {}) {
+async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null, onProgress = null } = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
   const features = src.features || [];
-  const { meshFeatures } = planLanes(features);
+  const progress = progressReporter(onProgress, features.length);
+  const { meshFeatures } = planLanes(features, { exactTwist: !!rk?.nvidia });
 
   // EXACT lane: everything that never reads a mesh.
   const t0 = performance.now();
   const exactDoc = { ...src, features: features.filter((f) => !meshFeatures.has(f.inputParams?.id)) };
   const { doc, rename, rounded } = toRustDialect(structuredClone(exactDoc));
   let res;
-  try { res = JSON.parse(rk.execute_history_json(JSON.stringify(doc))); }
+  // a kernel that reports each feature as it goes (the NVIDIA adapter) feeds
+  // the preview; the Rust kernel takes one argument and runs the lot at once
+  const onFeature = progress ? (r) => {
+    for (const n of r.removed || []) progress.drop(n);
+    for (const a of r.added || []) progress.put(a.name, () => handleMesh(rk, a.handle, tolerance));
+    progress.step();
+  } : undefined;
+  try { res = JSON.parse(rk.execute_history_json(JSON.stringify(doc), onFeature)); }
   catch (e) { throw new EngineRefusal(`Rust kernel: ${e?.message || e}`, "exact"); }
   const live = new Map();
   for (const r of res.results) {
@@ -465,9 +532,23 @@ async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, track
       sourceOf.set(solid.originalID(), name);
       return solid;
     };
+    // what each mesh step changed, for the preview (and the solids it took
+    // from the exact lane, which leave it under their own names)
+    const before = progress ? new Map() : null;
+    let lastYield = performance.now();
+    const noteMeshStep = () => {
+      if (!progress) return;
+      for (const [name, solid] of meshes) if (before.get(name) !== solid) progress.put(name, () => manifoldMesh(solid));
+      for (const name of before.keys()) if (!meshes.has(name)) progress.drop(name);
+      before.clear();
+      for (const [name, solid] of meshes) before.set(name, solid);
+      progress.step();
+    };
     for (const f of features) {
       const p = f.inputParams || {};
       if (!meshFeatures.has(p.id)) continue;
+      // yield now and then, so a long mesh lane lets the preview's messages go
+      if (progress && performance.now() - lastYield > 50) { await new Promise((r) => setTimeout(r, 0)); lastYield = performance.now(); }
       if (f.type === "IMPORT3D") {
         const data = p.fileToImport;
         if (typeof data !== "string" || !/^\s*solid/.test(data)) {
@@ -508,6 +589,7 @@ async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, track
           meshes.set(p.copy ? `${s}_${p.id}` : s, own(solid.transform(trsMatrix(p.translate, p.rotateEulerDeg, p.scale, pivot))));
         }
       }
+      noteMeshStep();
     }
     const meshMs = performance.now() - t1;
 

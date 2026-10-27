@@ -22,7 +22,7 @@ const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s);
 
 console.log("\nthe line-up is what was agreed\n");
 {
-  check("nine Cookiecad spools and a tri-colour", SPOOLS.length === 10 && SPOOLS.filter((s) => s.id.startsWith("cc-")).length === 9, `${SPOOLS.length}`);
+  check("nine Cookiecad spools and two tri-colours", SPOOLS.length === 11 && SPOOLS.filter((s) => s.id.startsWith("cc-")).length === 9, `${SPOOLS.length}`);
   const groups = byFamily();
   for (const g of groups) {
     const cc = g.spools.filter((s) => s.id.startsWith("cc-"));
@@ -277,7 +277,7 @@ console.log("\nnaming a spool the way a person would\n");
   }
   check("every spool is reachable by its own short name",
     spoolNames().every((n) => findSpool(n)), spoolNames().filter((n) => !findSpool(n)).join(","));
-  check("...and there are ten names to offer", spoolNames().length === 10);
+  check("...and there are eleven names to offer", spoolNames().length === 11);
 }
 
 console.log("\nfilament() is wired, and cannot change the geometry\n");
