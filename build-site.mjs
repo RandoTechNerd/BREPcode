@@ -76,6 +76,10 @@ const rewrites = [
   // (a module worker has no import map). After the import-map pair above.
   ["/node_modules/manifold-3d/manifold.js", "./vendor/manifold/manifold.js"],
   ["/vendor/brep-kernel-rust/", "./vendor/brep-kernel-rust/"],
+  // SMLib as WebAssembly, and the desktop's adapter it runs behind (copied
+  // beside it, so the vendor cache keeps the two together)
+  ["/vendor/brep-kernel-smlib/", "./vendor/brep-kernel-smlib/"],
+  ["/native/nvidia-kernel/adapter.cjs", "./vendor/brep-kernel-smlib/adapter.cjs"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -287,6 +291,18 @@ mkdirSync(join(OUT, "vendor", "brep-kernel-rust"), { recursive: true });
 for (const f of ["brep_kernel.js", "brep_kernel_bg.wasm", "LICENSE.md"]) {
   cpSync(`vendor/brep-kernel-rust/${f}`, join(OUT, "vendor/brep-kernel-rust", f));
 }
+
+// ---- vendor: SMLib as WebAssembly (the kernel picker's "nvidia", lazy) ----
+// From NVIDIA's open-source usd-brep, built in github.com/RandoTechNerd/
+// smlib-wasm and staged by build-smlib-wasm.mjs. 4.4 MB, so unlike the Rust
+// wasm it fits in brepcode.com's /brep/ folder; window.__BREP_SMLIB_WASM_URL
+// in index.html moves it elsewhere if it has to. The worker runs it behind
+// native/nvidia-kernel/adapter.cjs, copied in beside it.
+mkdirSync(join(OUT, "vendor", "brep-kernel-smlib"), { recursive: true });
+for (const f of ["api.mjs", "smlib.mjs", "smlib.wasm", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md"]) {
+  cpSync(`vendor/brep-kernel-smlib/${f}`, join(OUT, "vendor/brep-kernel-smlib", f));
+}
+cpSync("native/nvidia-kernel/adapter.cjs", join(OUT, "vendor/brep-kernel-smlib/adapter.cjs"));
 
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });

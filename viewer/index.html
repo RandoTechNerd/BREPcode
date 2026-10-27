@@ -125,6 +125,10 @@
       // address here (docs/deploy-lovable.md). Until then brepcode.com builds
       // on the JS kernel: the worker tries the wasm once and remembers it failed.
       // window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/<id>/brep_kernel_bg.wasm";
+      // The SMLib kernel (vendor/brep-kernel-smlib/smlib.wasm, 4.4 MB) fits in
+      // /brep/ and ships in the zip, so it needs nothing here. If it ever has
+      // to move to the asset store, upload smlib.wasm there and set:
+      // window.__BREP_SMLIB_WASM_URL = "/__l5e/assets-v1/<id>/smlib.wasm";
     }
   </script>
   <!--
@@ -4539,11 +4543,14 @@
       try { const v = localStorage.getItem("brepcode.engine"); if (ENGINES.includes(v)) return v; } catch { /* private mode */ }
       return "auto";
     }
-    // Which native B-rep kernel the desktop app tries first: "nvidia" (NVIDIA's
-    // SMLib, the alpha build's default) or "rust". The kernel process falls
-    // back nvidia -> Rust -> (this page) JS kernel. The website has neither
-    // native kernel, so there it is always the Rust wasm.
+    // Which B-rep kernel the split engine tries first: "nvidia" (NVIDIA's
+    // SMLib, the alpha build's default) or "rust". The desktop runs both as
+    // native code (its kernel process falls back nvidia -> Rust -> this page's
+    // JS kernel); the website runs them as WebAssembly in the build worker,
+    // SMLib's downloaded only once it is picked, with the same fallbacks.
     const KERNELS = ["nvidia", "rust"];
+    // the website's build of SMLib is WebAssembly, not the desktop's addon
+    const SMLIB_NAME = window.brepcodeDesktop ? "NVIDIA" : "SMLib";
     const KERNEL_DEFAULT = window.brepcodeDesktop?.kernelDefault === "nvidia" ? "nvidia" : "rust";
     function buildKernel() {
       const q = /[?&]kernel=(\w+)/.exec(location.search)?.[1];
@@ -4561,8 +4568,10 @@
       const n = e.stats?.roundedCurves || 0;
       const rounded = n ? ` (${n} faceted $fn curve${n === 1 ? "" : "s"} made true)` : "";
       // desktop: built by the Rust kernel as native code, not its wasm
-      const native = e.stats?.kernel === "nvidia" ? " (NVIDIA)"
-        : e.stats?.nvidiaRefused && buildKernel() === "nvidia" ? " (Rust; NVIDIA refused)"
+      const native = e.stats?.kernel === "nvidia" ? ` (${e.stats?.wasm ? "SMLib" : "NVIDIA"})`
+        : e.stats?.smlibLoading && buildKernel() === "nvidia" ? " (Rust; SMLib still loading)"
+        : e.stats?.smlibUnavailable && buildKernel() === "nvidia" ? " (Rust; SMLib unavailable)"
+        : e.stats?.nvidiaRefused && buildKernel() === "nvidia" ? ` (Rust; ${SMLIB_NAME} refused)`
         : e.stats?.native ? " (native)" : "";
       if (e.engine === "exact") return " · Exact" + native + rounded;
       if (e.engine === "mesh") return " · Mesh" + native + rounded;
@@ -4624,11 +4633,18 @@
         // mid-download), so it needs the engine and the wasm's URL up front.
         url.searchParams.set("engine", buildEngine());
         if (window.__BREP_RUST_WASM_URL) url.searchParams.set("rust", window.__BREP_RUST_WASM_URL);
+        // and SMLib's, when it is the kernel picked
+        url.searchParams.set("kernel", buildKernel());
+        if (window.__BREP_SMLIB_WASM_URL) url.searchParams.set("smlib", window.__BREP_SMLIB_WASM_URL);
         if (NATIVE_KERNEL) url.searchParams.set("native", "1");
         kernelWorker = new Worker(url, { type: "module" });
         kernelWorker.onmessage = ({ data }) => {
           if (data?.rustReady) {                // the Rust kernel finished downloading
             if (lastEngine?.fallbackKind === "loading") scheduleBuild();
+            return;
+          }
+          if (data?.smlibReady) {               // SMLib finished downloading: build on it now
+            if (lastEngine?.stats?.smlibLoading || (lastEngine?.fallbackKind === "loading" && buildKernel() === "nvidia")) scheduleBuild();
             return;
           }
           if (data?.ready) {                    // the handshake — safe to post now
@@ -8935,11 +8951,16 @@
     $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
     $("set-chat-home").addEventListener("change", (e) => { setPref("chatHome", e.target.value); rehomeWindows(); });
     $("set-snap").addEventListener("change", (e) => setPref("snapZones", e.target.checked));
-    // Kernel: shown only where NVIDIA's kernel ships (the desktop alpha).
-    // "js" is the engine switch (JS kernel only); the other two pick the
-    // native kernel the split engine runs on.
-    if (window.brepcodeDesktop?.kernelChoice) {
+    // Kernel: shown where SMLib ships, the desktop alpha (natively) and the
+    // website (as WebAssembly), not in the standard desktop build. "js" is the
+    // engine switch (JS kernel only); the other two pick the kernel the split
+    // engine runs on.
+    if (window.brepcodeDesktop?.kernelChoice || !window.brepcodeDesktop) {
       $("set-kernel-row").hidden = false;
+      if (!window.brepcodeDesktop) {
+        $("set-kernel").querySelector('option[value="nvidia"]').textContent = "SMLib (alpha), then Rust";
+        $("set-kernel").title = "SMLib: the B-rep kernel from NVIDIA's open-source usd-brep, as WebAssembly (a 1.2 MB download the first time you pick it). What it can't build goes to the Rust kernel.";
+      }
       const shown = () => (buildEngine() === "js" ? "js" : buildKernel());
       $("set-kernel").value = shown();
       $("set-kernel").addEventListener("change", (e) => {

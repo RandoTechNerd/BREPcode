@@ -17,6 +17,13 @@ Build it with `npm run build:nvidia` (about 10 minutes the first time), then
 `node test/nvidia.js`. `node src/cli.js model.js --engine nvidia-split` builds
 a model on SMLib alone; `--engine nvidia` lets it fall back.
 
+The website runs the same kernel as WebAssembly: the same sources compiled
+with Emscripten in [RandoTechNerd/smlib-wasm](https://github.com/RandoTechNerd/smlib-wasm),
+whose JS API is `src/addon.cc`'s function for function. `node build-smlib-wasm.mjs`
+stages it in `vendor/brep-kernel-smlib/`, and `viewer/kernel-worker.js` runs it
+behind this folder's `adapter.cjs` (its `wrap()`), so a change to the adapter
+reaches both. `node test/smlibwasm.js` checks that build.
+
 ## What it covers today
 
 Box, cylinder, cone, sphere and torus (full or part) primitives, sketches on XY

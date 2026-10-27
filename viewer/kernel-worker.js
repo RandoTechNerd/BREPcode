@@ -46,6 +46,103 @@ function loadRust(wasmUrl) {
   });
   return rustKernel;
 }
+// SMLib (from NVIDIA's open-source usd-brep) as WebAssembly: the kernel the
+// desktop alpha runs as a native addon, here for the website. The kernel
+// picker's "nvidia" asks for it, and only then is it downloaded (4.4 MB, 1.2
+// MB brotli; vendor/brep-kernel-smlib, staged by build-smlib-wasm.mjs). It
+// runs behind the desktop's own adapter (native/nvidia-kernel/adapter.cjs),
+// so it names faces exactly as the desktop does, and whatever it refuses goes
+// on to the Rust kernel, as in desktop/kernel-host.cjs.
+//
+// wasm memory grows and never shrinks, so after a heavy model (a few hundred
+// MB of heap) the instance is dropped and the next build starts a fresh one
+// from the module already compiled. That is safe between builds: the engine
+// keeps no SMLib handles once a build's triangles are out, and the adapter
+// frees the last run's solids at the start of the next. Builds go through it
+// one at a time for the same reason (the adapter's handles are per instance).
+// NB build-site.mjs rewrites both paths below for the static site.
+const SMLIB_RECYCLE_BYTES = 768 * 1024 * 1024;
+let smlibModule = null;     // the compiled WebAssembly.Module, kept across instances
+let smlibWrap = null;       // adapter.cjs's wrap()
+let smlibLoad = null;       // the load promise of the current instance
+let smlibKernel = null;     // { kernel, raw } once loaded
+let smlibFailure = null;    // set when it failed to load: not retried this session
+let smlibPoisoned = false;  // the instance trapped: never reuse it
+let smlibQueue = Promise.resolve();
+// adapter.cjs is CommonJS for Node and Electron; here it gets the two things
+// its loader asks for. Only wrap() is used, so its addon search never runs.
+async function smlibAdapter() {
+  const src = await (await fetch(new URL("/native/nvidia-kernel/adapter.cjs", self.location.href))).text();
+  const module = { exports: {} };
+  const path = { join: (...p) => p.join("/") };
+  const require = (id) => {
+    if (id === "node:path" || id === "path") return path;
+    throw new Error(`adapter.cjs asked for ${id}, which the browser hasn't got`);
+  };
+  new Function("module", "exports", "require", "__dirname", "process", src)(module, module.exports, require, "", {});
+  return module.exports.wrap;
+}
+function loadSmlib(wasmUrl) {
+  if (smlibFailure) return Promise.reject(smlibFailure);
+  smlibLoad ??= (async () => {
+    const url = wasmUrl || PARAMS.get("smlib") || new URL("/vendor/brep-kernel-smlib/smlib.wasm", self.location.href).href;
+    const [{ default: loadApi }, wrap, module] = await Promise.all([
+      import("/vendor/brep-kernel-smlib/api.mjs"),
+      smlibWrap || smlibAdapter(),
+      smlibModule || (async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`the SMLib wasm didn't download (HTTP ${res.status})`);
+        return WebAssembly.compile(await res.arrayBuffer());
+      })(),
+    ]);
+    smlibWrap = wrap;
+    smlibModule = module;
+    const raw = await loadApi({
+      instantiateWasm: (imports, done) => { WebAssembly.instantiate(module, imports).then((inst) => done(inst, module)); return {}; },
+    });
+    // a trap (out of memory, a kernel bug) leaves the instance in an unknown
+    // state: note it, so the instance is dropped after this build
+    const guarded = {};
+    for (const [k, f] of Object.entries(raw)) {
+      guarded[k] = (...a) => {
+        try { return f(...a); }
+        catch (e) { if (e instanceof WebAssembly.RuntimeError) smlibPoisoned = true; throw e; }
+      };
+    }
+    smlibPoisoned = false;
+    smlibKernel = { kernel: wrap(guarded), raw };
+    self.postMessage({ smlibReady: true });
+    return smlibKernel;
+  })().catch((e) => {
+    smlibFailure = e instanceof Error ? e : new Error(String(e));
+    smlibLoad = null;
+    console.warn("[kw] SMLib kernel unavailable for this session; the Rust kernel builds instead:", smlibFailure.message);
+    throw smlibFailure;
+  });
+  return smlibLoad;
+}
+// One SMLib build at a time; the instance is dropped afterwards if it grew
+// past SMLIB_RECYCLE_BYTES or trapped.
+function runSmlib(json, wasmUrl) {
+  const run = smlibQueue.then(async () => {
+    const { kernel, raw } = await loadSmlib(wasmUrl);
+    try {
+      const out = await runEngine(json, { rust: kernel, manifold: loadManifold });
+      return { ...out, stats: { ...out.stats, kernel: "nvidia", wasm: true } };
+    } finally {
+      let heap = 0;
+      try { heap = raw.heapBytes(); } catch { smlibPoisoned = true; }
+      if (smlibPoisoned || heap > SMLIB_RECYCLE_BYTES) {
+        trace(`SMLib instance dropped (${smlibPoisoned ? "it trapped" : `heap ${Math.round(heap / 1048576)} MB`}); the next build starts a fresh one`);
+        smlibKernel = null;
+        smlibLoad = null;
+      }
+    }
+  });
+  smlibQueue = run.catch(() => {});
+  return run;
+}
+
 // The desktop app's NATIVE Rust kernel (desktop/kernel-host.cjs, a separate
 // process running the same engine on the kernel compiled to machine code). The
 // page passes this worker a MessagePort to it; ?native=1 says one is coming.
@@ -111,6 +208,8 @@ function nativeCall(msg, transfer = [], onProgress = null) {
 // Start the download now, while the page is still booting, unless the page
 // asked for the JS kernel only or the native kernel is coming.
 if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) loadRust().catch(() => { /* recorded in rustFailure */ });
+// and SMLib's, when the kernel picker says so (the Rust one is its fallback)
+if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED && PARAMS.get("kernel") === "nvidia") loadSmlib().catch(() => { /* recorded in smlibFailure */ });
 let manifoldWasm = null;
 function loadManifold() {
   manifoldWasm ??= (async () => {
@@ -311,6 +410,30 @@ self.onmessage = async ({ data, ports }) => {
           // gets its own try, as it did before there was a native one
         }
       }
+      // The website (or a desktop whose native kernel went away): "nvidia"
+      // is SMLib's WebAssembly build, then the Rust kernel for what it
+      // refuses. auto doesn't wait for its download (the Rust kernel builds
+      // meanwhile and the page rebuilds when it lands); split does.
+      let smlibNote = null;
+      if (!nativeRefused && engine !== "js" && data.kernel === "nvidia" && !nativePort) {
+        if (engine === "auto" && !smlibKernel && !smlibFailure) {
+          loadSmlib(data.smlibWasmUrl).catch(() => {});
+          smlibNote = { smlibLoading: true };
+        } else if (smlibFailure) {
+          smlibNote = { nvidiaRefused: `the SMLib kernel didn't load: ${smlibFailure.message}`.slice(0, 300), smlibUnavailable: true };
+        } else {
+          try {
+            const out = await runSmlib(data.json, data.smlibWasmUrl);
+            trace(`SMLib engine: ${out.lane} (${out.stats.exactMs} ms exact, ${out.stats.meshMs} ms mesh)`);
+            postSplit(out);
+            return;
+          } catch (e) {
+            if (!(e instanceof EngineRefusal) && e !== smlibFailure) console.warn("[kw] SMLib kernel failed, using the Rust kernel:", e);
+            smlibNote = { nvidiaRefused: String(e?.message || e).slice(0, 300), smlibUnavailable: e === smlibFailure || undefined };
+            trace(`SMLib engine refused: ${smlibNote.nvidiaRefused}`);
+          }
+        }
+      }
       // auto never waits for the kernel download: until it lands, the JS
       // kernel builds (and the badge says so). split waits, by definition.
       const rustPending = engine === "auto" && !rustModule && !rustFailure;
@@ -325,6 +448,7 @@ self.onmessage = async ({ data, ports }) => {
           const rust = await loadRust(data.rustWasmUrl);
           const out = await runEngine(data.json, { rust, manifold: loadManifold });
           trace(`split engine: ${out.lane} (${out.stats.exactMs} ms exact, ${out.stats.meshMs} ms mesh)`);
+          if (smlibNote) out.stats = { ...out.stats, ...smlibNote };
           postSplit(out);
           return;
         } catch (e) {

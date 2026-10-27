@@ -76,6 +76,13 @@ Three files live on brepcode.com and never in the zip:
   kernel (the status line says "JS kernel (Rust unavailable)"), and the drop
   menu's exact-solid option reports that it can't load.
 
+Not host-owned: the SMLib kernel as WebAssembly,
+`vendor/brep-kernel-smlib/smlib.wasm` (4.4 MB, Settings > Kernel > "SMLib
+(alpha), then Rust"). It fits in `/brep/`, so it ships in the zip and the
+service worker caches it like the rest of `vendor/`. Only if it ever has to
+move: upload it to the asset store and set `window.__BREP_SMLIB_WASM_URL` in
+`viewer/index.html` (the commented line beside the Rust one).
+
 These used to be patched into the live `index.html`, `welcome.js` and
 `curved.js` by hand (the `?example=` links, the example note, the wasm
 address). They are in the source now, so a new zip no longer wipes them.

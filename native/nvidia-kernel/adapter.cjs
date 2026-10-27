@@ -541,4 +541,6 @@ function wrap(nk) {
   };
 }
 
-module.exports = { load };
+// wrap: the same dressing over any object with the addon's functions, such as
+// the SMLib WebAssembly build the website runs (viewer/kernel-worker.js)
+module.exports = { load, wrap };
