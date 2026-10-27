@@ -315,7 +315,7 @@ console.log("\nthe view turns around the model\n");
   // underneath. Measured fixed: camera byte-identical through drag + commit
   // + rebuild, model 66px along on screen.
   check("a user-held camera is never re-framed by a rebuild",
-    /if \(!autoPlaced\) \{[\s\S]{0,700}?windowsChanged\(\);[\s\S]{0,40}?return;/.test(V),
+    /if \(!autoPlaced(?: \|\| \(designUI\?\.isActive\(\) && framedRadius\))?\) \{[\s\S]{0,700}?windowsChanged\(\);[\s\S]{0,40}?return;/.test(V),
     "near/far still track the size, and the clearance safety net still runs");
   has("autoPlaced = false;\n          controls.enabled = false;",
     "...and dragging the model claims the camera for the user",
