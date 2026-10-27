@@ -270,5 +270,16 @@ const near3 = (a, b, tol = 0.02) => a.every((v, k) => Math.abs(v - b[k]) <= tol)
   check(`a swelling twist: exact ${a.toFixed(0)} and mesh ${b.toFixed(0)} agree`, Math.abs(a - b) / a < 0.01);
 }
 
+// chamfer(1, part) names its edges by FACE ("P.CU1_NX": every edge round
+// that face); NVIDIA used to refuse that form, and the mini Snapmaker with it
+{
+  const src = "return chamfer(1, union(cube([20, 10, 10]), translate([30, 0, 0], cube([10, 10, 10]))));";
+  let a = null, why = "";
+  try { const res = await build(shape(src), { engine: "nvidia-split" }); a = volumeOf(res); why = res.kernel; }
+  catch (e) { why = String(e.message).slice(0, 160); }
+  const b = volumeOf(await build(shape(src), { engine: "split" }));
+  check(`a chamfer by face names builds on NVIDIA (${a?.toFixed(1)} vs Rust ${b.toFixed(1)})`, a != null && Math.abs(a - b) / b < 0.005, why);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

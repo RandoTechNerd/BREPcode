@@ -398,28 +398,39 @@ function wrap(nk) {
   function blend(f, live) {
     const p = f.inputParams;
     const edges = Array.isArray(p.edges) ? p.edges : [];
+    // an edge by the two faces it joins (FACE|FACE[n]), or a bare FACE name:
+    // every edge round that face, as the Rust kernel reads it
     const parsed = edges.map((e) => {
       const m = /^(.*)\|(.*)\[(\d+)\]$/.exec(String(e));
-      if (!m) throw new Error(`${f.type} ${p.id}: edge "${e}" isn't in the FACE|FACE[n] form`);
-      return { name: e, a: m[1], b: m[2], k: +m[3] };
+      if (m) return { name: e, a: m[1], b: m[2], k: +m[3] };
+      if (String(e).includes("|")) throw new Error(`${f.type} ${p.id}: edge "${e}" isn't in the FACE|FACE[n] form`);
+      return { name: e, face: String(e) };
     });
     if (!parsed.length) throw new Error(`${f.type} ${p.id}: no edges`);
+    const facesOf = (e) => (e.face ? [e.face] : [e.a, e.b]);
     let owner = null;
     for (const [n, s] of live) {
       const fn = names.get(s.h) || [];
-      if (fn.includes(parsed[0].a) && fn.includes(parsed[0].b)) { owner = { n, h: s.h, fn }; break; }
+      if (facesOf(parsed[0]).every((x) => fn.includes(x))) { owner = { n, h: s.h, fn }; break; }
     }
-    if (!owner) throw new Error(`${f.type} ${p.id}: no solid has faces ${parsed[0].a} and ${parsed[0].b}`);
+    if (!owner) throw new Error(`${f.type} ${p.id}: no solid has faces ${facesOf(parsed[0]).join(" and ")}`);
     const info = edgeInfo(owner.h);
-    const picks = parsed.map((e) => {
+    const picks = [];
+    const taken = new Set();
+    for (const e of parsed) {
       const hits = [];
       info.forEach((ed, i) => {
         const pair = [owner.fn[ed.fa], owner.fn[ed.fb]];
-        if ((pair[0] === e.a && pair[1] === e.b) || (pair[0] === e.b && pair[1] === e.a)) hits.push(i);
+        if (e.face ? pair.includes(e.face)
+          : (pair[0] === e.a && pair[1] === e.b) || (pair[0] === e.b && pair[1] === e.a)) hits.push(i);
       });
-      if (hits.length <= e.k) throw new Error(`${f.type} ${p.id}: edge ${e.name} not found`);
-      return { ...e, index: hits[e.k], mid: info[hits[e.k]].mid };
-    });
+      if (e.face ? !hits.length : hits.length <= e.k) throw new Error(`${f.type} ${p.id}: edge ${e.name} not found`);
+      for (const i of e.face ? hits : [hits[e.k]]) {
+        if (taken.has(i)) continue;
+        taken.add(i);
+        picks.push({ ...e, index: i, mid: info[i].mid });
+      }
+    }
     const before = { h: nk.copy(owner.h), names: owner.fn };
     try {
       const size = f.type === "F" ? +p.radius : +p.distance;

@@ -3073,6 +3073,24 @@ export function revolve(opts, profile) {
 // solids — the viewer's "show negatives" overlay builds its dashed outlines
 // from that pass. Trace entries for subtracted shapes get negative: true in
 // every pass.
+// Runs the history so far (fillet and chamfer need real face and edge names
+// mid-compile) WITHOUT losing the imports' mesh text. The JS kernel empties an
+// IMPORT3D's fileToImport once it has loaded it (consumeFileInput, to save
+// memory), so every import before a fillet came out of compile empty: the
+// worker's mesh lane then refused the whole model ("only ASCII STL text") and
+// it fell to the slow JS kernel. The mini Snapmaker took 124 s that way.
+async function runKeepingImports(partHistory) {
+  const kept = [];
+  for (const f of partHistory.features || []) {
+    const d = f.type === "IMPORT3D" ? f.inputParams?.fileToImport : null;
+    if (typeof d === "string" && d) kept.push([f, d]);
+  }
+  try { await partHistory.runHistory({ throwOnFeatureError: true }); }
+  finally {
+    for (const [f, d] of kept) if (!f.inputParams.fileToImport) f.inputParams.fileToImport = d;
+  }
+}
+
 export async function compile(root, partHistory, trace = null, opts = {}) {
   if (!isNode(root)) throw new TypeError("compile() expects a shape built with the BrepScript DSL");
 
@@ -3088,7 +3106,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // "top" / "bottom" mean the shape's own axes where the fillet is written,
   // so a rounded part stays rounded the same way after a rotate() around it.
   async function childEdgeNames(childId, spec, matrix = IDENTITY) {
-    await partHistory.runHistory({ throwOnFeatureError: true });
+    await runKeepingImports(partHistory);
     const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
     const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
     if (!solid) return [];
@@ -3125,7 +3143,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   }
 
   async function childFaceNames(childId, filter) {
-    await partHistory.runHistory({ throwOnFeatureError: true });
+    await runKeepingImports(partHistory);
     const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
     let solid = solids.find((s) => s.name === childId)
       || solids.find((s) => { let hit = false; s.traverse((f) => { if (f.type === "FACE" && String(f.name || "").startsWith(childId)) hit = true; }); return hit; })
