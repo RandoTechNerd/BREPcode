@@ -47,6 +47,7 @@ viewer/locked-key.js
 # the LAST matching rule wins.
 /*.mjs
 !/build-site.mjs
+!/build-smlib-wasm.mjs
 
 # Scratch stashes of model code saved while iterating on an example. The
 # example itself lives in examples/; these are the drafts.
