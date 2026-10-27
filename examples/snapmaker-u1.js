@@ -29,9 +29,11 @@ const WELL_D = 15;                              // how deep the top well is
 // cylinders, NOT roundedGrow(): the offset rounds all twelve edges and costs a
 // heavy mesh that then has to survive four booleans — 44 s and 18.5k triangles,
 // against 5 s here, for a silhouette nobody can tell apart from outside.
+// exact: four equal upright cylinders hull into a true rounded box (a prism
+// with filleted corners), so the whole enclosure stays an exact B-rep.
 const CORNER = 6;
 const corner = (x, y) => translate([x, y, 0], cylinder({ r: CORNER, h: H, $fn: 16 }));
-const box = hull(
+const box = hull({ exact: true },
   corner(X0 + CORNER, FRONT_Y + CORNER), corner(X1 - CORNER, FRONT_Y + CORNER),
   corner(X0 + CORNER, REAR_Y - CORNER), corner(X1 - CORNER, REAR_Y - CORNER),
 );

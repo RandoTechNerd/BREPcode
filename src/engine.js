@@ -387,7 +387,7 @@ function meshFaces(solid, sourceOf) {
 // the names that went away (a tool a boolean used up). Quiet for the first
 // PROGRESS_AFTER_MS, so a quick build pays nothing, and then at most one
 // report per PROGRESS_EVERY_MS; each report tessellates only what changed.
-export const PROGRESS_AFTER_MS = 400;
+export const PROGRESS_AFTER_MS = 1200;     // a 2 s build would only flash
 export const PROGRESS_EVERY_MS = 150;
 function progressReporter(onProgress, total) {
   if (typeof onProgress !== "function") return null;

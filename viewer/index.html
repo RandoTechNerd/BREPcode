@@ -4926,7 +4926,7 @@
 
     // ---- the live build preview ----
     // A long build shows its partial model as it grows: the kernel reports
-    // each solid it makes (engine.js progressReporter, only past 0.4 s), the
+    // each solid it makes (engine.js progressReporter, only past 1.2 s), the
     // worker passes it on as { progressOf }, and it is drawn here as a pale
     // ghost, keyed by solid name, so a boolean that uses up its tools takes
     // them away again. The model from before steps aside while the ghost is
@@ -4947,7 +4947,18 @@
         const m = ghostParts.get(name);
         if (m) { m.geometry.dispose(); buildGhost.remove(m); ghostParts.delete(name); }
       }
+      // Big cutters (a 400 mm box that trims a flat) are solids too until the
+      // boolean uses them up; drawn, they flash huge and then "shrink". Skip
+      // anything far bigger than the model on screen.
+      const room = (() => {
+        const b = new THREE.Box3().setFromObject(modelGroup);
+        return b.isEmpty() ? Infinity : Math.max(...b.getSize(new THREE.Vector3()).toArray()) * 2.5;
+      })();
       for (const s of u.set || []) {
+        const P = s.positions;
+        let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+        for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], P[i + k]); hi[k] = Math.max(hi[k], P[i + k]); }
+        if (Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) > room) continue;
         const g = new THREE.BufferGeometry();
         g.setAttribute("position", new THREE.BufferAttribute(s.positions, 3));
         g.setIndex(new THREE.BufferAttribute(s.indices, 1));
@@ -10730,7 +10741,7 @@ ${joined}${SITE_TAIL}`), joined);
         attempt = { ph, trace };
         dsl.resetSceneLook();
         // the live build preview, fed while compile works out shapes that cost
-        // their time here (hulls): past 0.4 s each one that lands is drawn,
+        // their time here (hulls): past 1.2 s each one that lands is drawn,
         // and every 60 ms the page gets a frame to paint it
         const c0 = performance.now();
         let lastPaint = c0;
@@ -10746,7 +10757,7 @@ ${joined}${SITE_TAIL}`), joined);
         dsl.setPartHook(async (name, stl) => {
           if (mine !== token) return;
           const now = performance.now();
-          if (now - c0 < 400) { earlyParts.push([name, stl]); return; }
+          if (now - c0 < 1200) { earlyParts.push([name, stl]); return; }
           for (const [n2, s2] of earlyParts.splice(0)) showBuildProgress({ set: [stlPart(n2, s2)] });
           showBuildProgress({ set: [stlPart(name, stl)] });
           // a frame to paint it (a hidden window has no frames: the timer goes on)
