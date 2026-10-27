@@ -365,6 +365,15 @@ self.onmessage = async ({ data, ports }) => {
   const { id, op } = data || {};
   trace(`message: ${op} #${id}`);
   try {
+    // compile's edge lookup (fillet/chamfer edges: "z", "top", ...): the
+    // partial history on the wasm Rust kernel, every solid's named edges with
+    // points along them. Never the native kernels: neither lists its edges.
+    if (op === "edges") {
+      const rust = await loadRust(data.rustWasmUrl);
+      const out = await runEngine(data.json, { rust, manifold: loadManifold, edges: true });
+      self.postMessage({ id, ok: true, solids: out.solids.map((s) => ({ name: s.name, faces: s.faces.map((f) => f.name), edges: s.edges ?? null })) });
+      return;
+    }
     if (op === "build") {
       trace("build start");
       const key = data.key || "model";

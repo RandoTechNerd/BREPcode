@@ -3106,19 +3106,23 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // "top" / "bottom" mean the shape's own axes where the fillet is written,
   // so a rounded part stays rounded the same way after a rotate() around it.
   async function childEdgeNames(childId, spec, matrix = IDENTITY) {
-    await runKeepingImports(partHistory);
-    const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
-    const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
-    if (!solid) return [];
-    const edges = [];
-    solid.traverse((o) => {
-      if (o.type !== "EDGE" || !String(o.name || "").includes("|") || typeof o.points !== "function") return;
-      let pts;
-      try { pts = o.points().map((p) => (Array.isArray(p) ? p : [p.x, p.y, p.z])); } catch { return; }
-      if (pts.length >= 2) edges.push({ name: o.name, pts });
-    });
+    // "convex" reads the faces' geometry, which only the JS solid has
+    let edges = spec === "convex" ? null : await fastEdges(childId);
+    if (!edges) {
+      await runKeepingImports(partHistory);
+      const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
+      const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
+      if (!solid) return [];
+      edges = [];
+      solid.traverse((o) => {
+        if (o.type !== "EDGE" || !String(o.name || "").includes("|") || typeof o.points !== "function") return;
+        let pts;
+        try { pts = o.points().map((p) => (Array.isArray(p) ? p : [p.x, p.y, p.z])); } catch { return; }
+        if (pts.length >= 2) edges.push({ name: o.name, pts });
+      });
+      if (spec === "convex") return convexEdgeNames(solid, edges);
+    }
     if (spec === "all") return edges.map((e) => e.name);
-    if (spec === "convex") return convexEdgeNames(solid, edges);
     const axis = (v) => { const a = new Vector3(...v).transformDirection(matrix); return [a.x, a.y, a.z]; };
     const along = (p, u) => p[0] * u[0] + p[1] * u[1] + p[2] * u[2];
     if (spec === "top" || spec === "bottom") {
@@ -3147,17 +3151,33 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // worker: NVIDIA or Rust, a fraction of a second). Without it, or when that
   // kernel refuses, the JS kernel replays the whole history here, which cost
   // the mini Snapmaker ~10 s per chamfer, on the page's own thread.
+  const fastSolid = (solids, childId) => solids.find((x) => x.name === childId)
+    || solids.find((x) => x.faces.some((f) => String(f).startsWith(childId)))
+    || solids[solids.length - 1];
   async function fastFaceNames(childId) {
     if (typeof opts.faceNames !== "function") return null;
     try {
       const solids = await opts.faceNames(await partHistory.toJSON());
       if (!Array.isArray(solids) || !solids.length) return null;
-      const s = solids.find((x) => x.name === childId)
-        || solids.find((x) => x.faces.some((f) => String(f).startsWith(childId)))
-        || solids[solids.length - 1];
       // mesh-lane faces have no exact names to round
-      const faces = s.faces.filter((f) => f && !String(f).endsWith("_MESH"));
+      const faces = fastSolid(solids, childId).faces.filter((f) => f && !String(f).endsWith("_MESH"));
       return faces.length ? faces : null;
+    } catch { return null; }
+  }
+
+  // opts.edgeNames(featureListJson) -> [{ name, faces, edges: [{ name, pts }] }]:
+  // the same for EDGES, with points along each one (the Rust kernel's own
+  // topology, engine.js solidEdges). The JS replay it spares runs everything
+  // built so far on the slow kernel: the mini Snapmaker's lettering alone is
+  // 23 s there and a second on Rust. null (a mesh-lane solid, a kernel that
+  // can't list edges, a refusal) means the JS replay after all.
+  async function fastEdges(childId) {
+    if (typeof opts.edgeNames !== "function") return null;
+    try {
+      const solids = await opts.edgeNames(await partHistory.toJSON());
+      if (!Array.isArray(solids) || !solids.length) return null;
+      const edges = fastSolid(solids, childId).edges;
+      return Array.isArray(edges) && edges.length ? edges : null;
     } catch { return null; }
   }
 

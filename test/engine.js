@@ -193,6 +193,48 @@ await check("fillet on a texture is refused", fillet({ r: 1 }, texture({ pattern
   console.log(`${pass ? "ok   " : "FAIL "} mesh lane frees its manifolds: ${made.length} made, ${live.length} still alive`);
 }
 
+// fillet/chamfer edges by spec ("z", "top", ...) read from the Rust kernel's
+// own topology (compile's opts.edgeNames, engine.js solidEdges) pick the same
+// edges the JS kernel's replay picks, without that replay. A cylinder's seam,
+// an edge only the Rust kernel has, is never one of them.
+{
+  let asked = 0;
+  const edgeNames = async (json) => {
+    asked++;
+    const out = await runEngine(json, { rust, manifold: loadManifoldNode, edges: true });
+    return out.solids.map((s) => ({ name: s.name, faces: s.faces.map((f) => f.name), edges: s.edges }));
+  };
+  const picked = async (shape, opts) => {
+    const ph = new PartHistory();
+    await d.compile(shape, ph, null, opts);
+    return JSON.stringify(ph.features.filter((f) => f.type === "F" || f.type === "CH").map((f) => [...f.inputParams.edges].sort()));
+  };
+  const holed = () => difference(cube([20, 14, 10]), translate([10, 7, -1], cylinder({ r: 3, h: 12 })));
+  const cases = {
+    z: fillet({ r: 1, edges: "z" }, holed()),
+    x: chamfer({ d: 0.5, edges: "x" }, holed()),
+    top: fillet({ r: 1, edges: "top" }, holed()),
+    bottom: chamfer({ d: 0.5, edges: "bottom" }, holed()),
+    all: fillet({ r: 0.5, edges: "all" }, holed()),
+    "z after a rotate": fillet({ r: 1, edges: "z" }, rotate([90, 0, 0], cube([10, 6, 4]))),
+    "an extrusion's z": fillet({ r: 1, edges: "z" }, linearExtrude({ height: 5 }, polygon([[0, 0], [20, 0], [20, 10], [8, 14], [0, 10]]))),
+    "the second part": union(translate([30, 0, 0], cube(5)), fillet({ r: 1, edges: "z" }, holed())),
+  };
+  for (const [k, shape] of Object.entries(cases)) {
+    asked = 0;
+    const js = await picked(shape, {}), fast = await picked(shape, { edgeNames });
+    const pass = js === fast && asked === 1;
+    if (!pass) fails++;
+    console.log(`${pass ? "ok   " : "FAIL "} edges "${k}" from the Rust kernel = the JS replay's: ${fast}${pass ? "" : ` vs js ${js} (asked ${asked}x)`}`);
+  }
+  // a kernel that can't list edges (the NVIDIA adapter) answers null, and
+  // compile replays on the JS kernel as before
+  const none = async (json) => (await edgeNames(json)).map((s) => ({ ...s, edges: null }));
+  const js = await picked(cases.z, {}), back = await picked(cases.z, { edgeNames: none });
+  if (js !== back) fails++;
+  console.log(`${js === back ? "ok   " : "FAIL "} no edges from the kernel: the JS replay picks them instead`);
+}
+
 if (process.argv.includes("--examples")) {
   const ex = (f) => new URL(`../examples/${f}`, import.meta.url);
   for (const f of ["bracket.js", "coin-dish.js", "knob.scad", "screwdriver-holder.scad", "elephant.scad", "orca-bobble.scad", "ltt-collar.js", "mini-centrifuge.js"]) {

@@ -12,8 +12,22 @@ useSketchSolver(ConstraintSolver);
 // meshes, see src/engine.js) and falls back to the JS kernel when it refuses;
 // "split" refuses instead of falling back; "js" is the JS kernel only.
 export async function build(shape, { tolerance = 6, engine = process.env.BREPSCRIPT_ENGINE || "auto" } = {}) {
-  const ph = new PartHistory();
-  await compile(shape, ph);
+  let ph = new PartHistory();
+  // fillet/chamfer read the part's face or edge names mid-compile: asked of a
+  // fast kernel (the one this build runs on for faces; Rust for edges, which
+  // the NVIDIA adapter can't list), or the JS kernel replays the history so
+  // far: 27 of the mini Snapmaker's 29 s
+  let asked = false;
+  const probe = engine === "js" ? null : async (json, rk, edges = false) => {
+    const out = await runEngine(json, { rust: await rk(), manifold: loadManifoldNode, edges });
+    asked = true;
+    return out.solids.map((s) => ({ name: s.name, faces: s.faces.map((f) => f.name), edges: s.edges ?? null }));
+  };
+  const faceKernel = engine === "nvidia" || engine === "nvidia-split" ? () => loadNvidiaKernel() || loadRustKernel() : loadRustKernel;
+  await compile(shape, ph, null, probe ? {
+    faceNames: (json) => probe(json, faceKernel),
+    edgeNames: (json) => probe(json, loadRustKernel, true),
+  } : {});
   let fallback = null;
   // "nvidia": NVIDIA's kernel first, then the Rust one, then the JS kernel.
   // "nvidia-split": NVIDIA's kernel or nothing (to see what it refuses).
@@ -50,6 +64,10 @@ export async function build(shape, { tolerance = 6, engine = process.env.BREPSCR
       fallback = String(e?.message || e);
     }
   }
+  // Those names are the fast kernel's, and the JS kernel names some edges
+  // differently (a circle's rim is one edge there, two halves on Rust); an
+  // edge it can't find it silently leaves sharp. So it gets its own names.
+  if (asked) { ph = new PartHistory(); await compile(shape, ph); }
   await ph.runHistory({ throwOnFeatureError: true });
 
   const solids = (ph.scene?.children || []).filter(

@@ -10754,7 +10754,7 @@ ${joined}${SITE_TAIL}`), joined);
         });
         if (mine !== token) return;
         const { PartHistory } = await getKernel();
-        const ph = new PartHistory();
+        let ph = new PartHistory();
         const trace = [];
         // compile() only builds the feature list — cheap, and it's what produces
         // the trace the click-map and the colours are keyed to. The expensive
@@ -10773,8 +10773,18 @@ ${joined}${SITE_TAIL}`), joined);
         const faceNames = getBuildWorker() ? async (json) => {
           if (mine !== token) return null;
           const r = await workerCall({ op: "build", key: "probe", json, engine: "split", kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+          fastNamed = true;
           return (r.solids || []).map((s) => ({ name: s.name, faces: (s.faces || []).map((f) => f.name) }));
         } : null;
+        // ...and edges picked by direction or height, with points along them
+        // (the worker's wasm Rust kernel; the native ones can't list edges)
+        const edgeNames = getBuildWorker() ? async (json) => {
+          if (mine !== token) return null;
+          const r = await workerCall({ op: "edges", json, rustWasmUrl: window.__BREP_RUST_WASM_URL });
+          fastNamed = true;
+          return r.solids;
+        } : null;
+        let fastNamed = false;
         dsl.setPartHook(async (name, stl) => {
           if (mine !== token) return;
           const now = performance.now();
@@ -10787,7 +10797,7 @@ ${joined}${SITE_TAIL}`), joined);
             await new Promise((r) => { const t = setTimeout(r, 50); requestAnimationFrame(() => { clearTimeout(t); setTimeout(r, 0); }); });
           }
         });
-        try { await dsl.compile(shape, ph, trace, { faceNames }); }
+        try { await dsl.compile(shape, ph, trace, { faceNames, edgeNames }); }
         finally { dsl.setPartHook(null); }
         if (mine !== token) return;
 
@@ -10826,8 +10836,22 @@ ${joined}${SITE_TAIL}`), joined);
         cancelWorkerBuild();
         if (json && getBuildWorker()) {
           try {
-            const r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL, progress: true });
+            let r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL, progress: true });
             if (mine !== token) return;
+            // The JS kernel built it, with the names a fast kernel gave the
+            // fillets: an edge it names differently (a circle's rim is one edge
+            // there, two halves on Rust) it silently leaves sharp. So compile
+            // again with its own names, and build that.
+            if (fastNamed && (r.engine || "js") === "js") {
+              ph = new PartHistory();
+              trace.length = 0;
+              attempt = { ph, trace };
+              await dsl.compile(shape, ph, trace);
+              if (mine !== token) return;
+              json = await ph.toJSON();
+              r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL, progress: true });
+              if (mine !== token) return;
+            }
             solids = r.solids;
             fromWorker = true;
             lastEngine = { engine: r.engine || "js", fallback: r.fallback || null, fallbackKind: r.fallbackKind || null, stats: r.stats || null };

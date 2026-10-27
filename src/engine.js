@@ -332,6 +332,98 @@ function exactFaces(rk, handle, tol) {
   return faces;
 }
 
+// A solid's named edges as [{ name, pts }], points sampled along each curve:
+// what compile() needs to pick edges by direction or height ("z", "top", ...)
+// without replaying the history on the JS kernel. The Rust kernel hands its
+// topology over as one flat buffer (BREP_kernel src/brep/solid_codec.rs):
+//   header  [1.0, id, genus, nV, nE, nShells] (1.1 adds a kind after genus)
+//   vertex  [id, x, y, z]
+//   edge    [id, t0, t1, v0, v1, degenerate] curve
+//   shell   [id, nFaces] face*
+//   face    [id, sameSense] surface [nLoops] loop*
+//   loop    [id, nCoedges] coedge*
+//   coedge  [id, edgeId, forward] pcurve
+//   curve   [degree, nKnots, knots..., nCtrl, (x w, y w, z w, w)...]
+//   surface [degU, degV, nKnotsU, knots..., nKnotsV, knots..., rows, cols, 4 x rows x cols]
+// A seam (a cylinder's side meeting itself, "P.CY2_S|BOUNDARY[0]") has both
+// its coedges on one face. The JS kernel has no such edge, and rounding one
+// is meaningless, so seams are left out. null from a kernel without that
+// buffer (the NVIDIA adapter, the desktop's native Rust).
+export function solidEdges(rk, handle) {
+  if (typeof rk?.solid_handle_to_buffer !== "function") return null;
+  const buf = rk.solid_handle_to_buffer(handle);
+  let d, names;
+  try { names = JSON.parse(buf.names_json()).edges || {}; d = buf.take_data(); }
+  finally { buf.free?.(); }
+  let i = d[0] === 1.1 ? 4 : 3;
+  const nV = d[i++], nE = d[i++], nS = d[i++];
+  i += 4 * nV;
+  const curve = () => {
+    const c = { p: d[i], knots: d.subarray(i + 2, i + 2 + d[i + 1]) };
+    i += 2 + d[i + 1];
+    c.nc = d[i]; c.ctrl = d.subarray(i + 1, i + 1 + 4 * c.nc);
+    i += 1 + 4 * c.nc;
+    return c;
+  };
+  const records = [];
+  for (let e = 0; e < nE; e++) {
+    const id = d[i], t0 = d[i + 1], t1 = d[i + 2], degenerate = d[i + 5] === 1;
+    i += 6;
+    records.push({ id, t0, t1, degenerate, c: curve() });
+  }
+  // which faces each edge's coedges lie on
+  const facesOf = new Map();
+  for (let s = 0; s < nS; s++) {
+    const nF = d[i + 1];
+    i += 2;
+    for (let f = 0; f < nF; f++) {
+      const face = d[i];
+      i += 2;
+      i += 3 + d[i + 2];                    // degrees, U knots
+      i += 1 + d[i];                        // V knots
+      i += 2 + 4 * d[i] * d[i + 1];         // control net
+      const nL = d[i++];
+      for (let l = 0; l < nL; l++) {
+        const nC = d[i + 1];
+        i += 2;
+        for (let k = 0; k < nC; k++) {
+          const edge = d[i + 1];
+          i += 3;
+          curve();
+          if (!facesOf.has(edge)) facesOf.set(edge, []);
+          facesOf.get(edge).push(face);
+        }
+      }
+    }
+  }
+  const edges = [];
+  for (const { id, t0, t1, degenerate, c } of records) {
+    const name = names[id], on = facesOf.get(id) || [];
+    if (degenerate || !name || !name.includes("|")) continue;
+    if (on.length > 1 && on.every((f) => f === on[0])) continue;      // a seam
+    const n = c.p === 1 && c.nc === 2 ? 1 : 16;
+    edges.push({ name, pts: Array.from({ length: n + 1 }, (_, k) => nurbsPoint(c.p, c.knots, c.ctrl, c.nc, t0 + (t1 - t0) * (k / n))) });
+  }
+  return edges;
+}
+
+// de Boor on homogeneous control points (x w, y w, z w, w)
+function nurbsPoint(p, U, P, nc, t) {
+  let s = p;
+  while (s < nc - 1 && t >= U[s + 1]) s++;
+  const dw = [];
+  for (let j = 0; j <= p; j++) dw.push([P[4 * (s - p + j)], P[4 * (s - p + j) + 1], P[4 * (s - p + j) + 2], P[4 * (s - p + j) + 3]]);
+  for (let r = 1; r <= p; r++) {
+    for (let j = p; j >= r; j--) {
+      const k = s - p + j, den = U[k + p - r + 1] - U[k];
+      const a = den > 0 ? (t - U[k]) / den : 0;
+      for (let c = 0; c < 4; c++) dw[j][c] = (1 - a) * dw[j - 1][c] + a * dw[j][c];
+    }
+  }
+  const [x, y, z, w] = dw[p];
+  return [x / w, y / w, z / w];
+}
+
 // Manifold -> one flat-shaded face per SOURCE solid, using manifold's run
 // provenance, so a box with a textured sphere cut out of it still colours as
 // the box where it is the box.
@@ -479,7 +571,7 @@ async function runEngineHulls(src, opts) {
   }
 }
 
-async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null, onProgress = null } = {}) {
+async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null, onProgress = null, edges = false } = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
   const features = src.features || [];
   const progress = progressReporter(onProgress, features.length);
@@ -598,7 +690,10 @@ async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, track
     for (const [from, to] of rename) jsName.set(to, from);
     const solids = [];
     for (const a of live.values()) {
-      solids.push({ name: jsName.get(a.name) || a.name, exact: true, handle: a.handle, faces: exactFaces(rk, a.handle, tolerance) });
+      const s = { name: jsName.get(a.name) || a.name, exact: true, handle: a.handle, faces: exactFaces(rk, a.handle, tolerance) };
+      // opts.edges: each exact solid's named edges too (solidEdges)
+      if (edges) s.edges = solidEdges(rk, a.handle);
+      solids.push(s);
     }
     for (const [name, solid] of meshes) {
       solids.push({ name, exact: false, faces: meshFaces(solid, sourceOf) });
