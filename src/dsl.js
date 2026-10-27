@@ -4120,3 +4120,7 @@ export * from "./joinery.js";
 // are pure numbers: a machine's axle positions and ratio come out of them, so
 // they cannot disagree with the teeth that were actually cut.
 export * from "./gears.js";
+
+// Casefinity cases, bins, lids and separator frames (casefinity.net spec), and
+// caseKit(), the plated print set the case builder writes. Same re-export reasoning.
+export * from "./casefinity.js";

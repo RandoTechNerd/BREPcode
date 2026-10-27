@@ -124,6 +124,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "welcome.js",
   // the quick door (/make): one question over the loading cube
   "make.js",
+  // the case builder (/case and the Toolbox): a Casefinity case painted on a grid
+  "casebuilder.js",
   // the line icons those cards and the drop menu share
   "icons.js",
   // Design mode: the Code | Design switch, and edge names for a picked face
@@ -212,6 +214,14 @@ bounce("tour", "tour=1", "BREPcode — guided tour",
 bounce("make", "make=1", "BREPcode: what do you want to 3D print?",
   "Say what you want to 3D print, in plain words. BREPcode makes a tested, printable model you can resize with sliders and download as an STL. Free, no account, no AI key.",
   "Opening BREPcode");
+// ---- /case : the case builder --------------------------------------------
+// Type a case's size, paint its Casefinity grid with boxes, lidded boxes and
+// separators, and get every part laid out to print (viewer/casebuilder.js,
+// started by ?case=1). The grid system is Chris Agocs's Casefinity, built on
+// the Unemployed Architect's Gridfinity for Hardcases; the builder credits both.
+bounce("case", "case=1", "BREPcode case builder: a printable case with a Casefinity grid",
+  "Size a 3D-printable hinged case, paint its grid with boxes, lidded boxes and separators, and download every part laid out to print as 3MF or STL. Grid: Casefinity by Chris Agocs, on Gridfinity for Hardcases by the Unemployed Architect.",
+  "Opening the case builder");
 // ---- /rtn2026 : the premium door -----------------------------------------
 // The app with the house AI as the chat's AI, when locked-key.js says
 // mode: "premium" (see docs/house-ai.md). Without that file in the build it

@@ -1,0 +1,635 @@
+// The case builder: brepcode.com/case, and "Case builder" in the Toolbox.
+//
+// Type the case's size, and the grid inside it appears: one square per 15 mm
+// Casefinity module. Paint it like a minesweeper board: drag across squares
+// to mark an area as a box, a box with a lid, or separators, as one big piece
+// or one per square. Start from a ready layout if you would rather. Build
+// writes a caseKit() call into the editor, which lays every printable part
+// side by side; Export then saves them as 3MF (one plate per file) or STL.
+//
+// The grid system is Chris Agocs's Casefinity spec (casefinity.net), built on
+// "Gridfinity for Hardcases" by the Unemployed Architect. The credits sit in
+// the builder's footer and in the code it writes, on purpose: people who meet
+// the system here should know whose it is.
+//
+// Like make.js this is an overlay inside the app, and everything that touches
+// the model goes through the hooks passed to showCaseBuilder(), so it can be
+// read on its own. The pure parts (fit, presets, the code it writes and reads
+// back) are exported for test/casebuilder.js.
+
+import { casefinityFit, CASEKIT_COLORS } from "../src/casefinity.js";
+
+export const CREDITS = Object.freeze({
+  casefinity: "https://casefinity.net",
+  spec: "https://casefinity.net/casefinity-spec",
+  github: "https://github.com/agocs/casefinity",
+  hardcases: "https://www.patreon.com/UnemployedArchitect/posts/gridfinity-for-162320687",
+  patreon: "https://www.patreon.com/cw/UnemployedArchitect",
+  video: "https://www.youtube.com/watch?v=YSqm821ekR4",
+});
+
+const KINDS = ["box", "lidbox", "frame"];
+const LABEL = { box: "Box", lidbox: "Box + lid", frame: "Separators", erase: "Erase" };
+const STORE = "brepcode-casebuilder";
+export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true });
+
+// Does this address ask for the case builder? ?case=1 is what the /case
+// bounce sends; #case is for a link typed by hand; /case is the tidy path.
+// /m/case would be a MODEL called "case", and is not ours.
+export function isCaseUrl({ search = "", hash = "", pathname = "" } = {}) {
+  return /[?&]case=1(&|$)/.test(search)
+    || /^#case$/i.test(hash)
+    || (/(^|\/)case\/?(index\.html)?$/i.test(pathname) && !/(^|\/)m\/case\/?$/i.test(pathname));
+}
+
+// ------------------------------------------------------------------ layouts
+
+const overlaps = (a, b) => a.c < b.c + b.w && b.c < a.c + a.w && a.r < b.r + b.h && b.r < a.r + a.h;
+const inGrid = (g, cols, rows) => g.c >= 0 && g.r >= 0 && g.c + g.w <= cols && g.r + g.h <= rows;
+
+// Tile tw x th pieces across an area, with narrower pieces filling the
+// leftover edge, so a preset always covers the whole grid.
+function tile(c0, r0, w, h, tw, th, kind, split = false) {
+  const out = [];
+  for (let r = r0; r < r0 + h; r += th) {
+    for (let c = c0; c < c0 + w; c += tw) {
+      out.push({ c, r, w: Math.min(tw, c0 + w - c), h: Math.min(th, r0 + h - r), kind, split });
+    }
+  }
+  return out;
+}
+
+// The ready layouts. Each is a function of the grid, so it fits any case.
+export const PRESETS = [
+  { id: "small", label: "Small boxes", blurb: "one box per square", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "box", split: true }] },
+  { id: "two", label: "2 × 2 boxes", blurb: "30 mm boxes", make: (C, R) => tile(0, 0, C, R, 2, 2, "box") },
+  { id: "mixed", label: "Big + small", blurb: "a long tray, small boxes beside it", make: (C, R) => {
+    const big = Math.max(1, Math.ceil(C / 3));
+    return [{ c: 0, r: 0, w: big, h: R, kind: "box", split: false },
+      ...(C > big ? [{ c: big, r: 0, w: C - big, h: R, kind: "box", split: true }] : [])];
+  } },
+  { id: "rows", label: "Trays", blurb: "long trays, front to back", make: (C, R) => tile(0, 0, C, R, C, 2, "box") },
+  { id: "lidded", label: "Lidded parts", blurb: "2 × 2 boxes with lids", make: (C, R) => tile(0, 0, C, R, 2, 2, "lidbox") },
+  { id: "dividers", label: "Separators", blurb: "a wall on every line", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "frame", split: true }] },
+  { id: "clear", label: "Empty", blurb: "start from nothing", make: () => [] },
+];
+
+// Count what a layout prints: the parts list Build will produce.
+export function tally(regions, cols, rows, includeCase = true) {
+  const t = { box: 0, lidbox: 0, lids: 0, frame: 0, covered: 0, pieces: 0 };
+  for (const g of regions) {
+    if (!inGrid(g, cols, rows)) continue;
+    t.covered += g.w * g.h;
+    const n = g.kind !== "frame" && g.split ? g.w * g.h : 1;
+    t[g.kind] += n;
+    if (g.kind === "lidbox") t.lids += n;
+  }
+  t.empty = Math.max(0, cols * rows - t.covered);
+  t.pieces = t.box + t.lidbox + t.lids + t.frame + (includeCase ? 2 : 0);
+  return t;
+}
+
+// --------------------------------------------------------------- the code
+
+// What Build writes into the editor. Plain, commented and editable: width,
+// depth and height are sliders, and the layout list is something a person or
+// an AI can change by hand ("make the left column lidded").
+export function kitCode(state) {
+  const s = { ...DEFAULTS, ...state };
+  const fit = casefinityFit(s.width, s.depth, s.height, { inside: !!s.inside });
+  const regions = (s.regions || []).filter((g) => inGrid(g, fit.cols, fit.rows));
+  const row = (g) => `  { at: [${g.c}, ${g.r}], size: [${g.w}, ${g.h}], kind: "${g.kind}"${g.split ? ", split: true" : ""} },`;
+  return `// A Casefinity case and everything inside it, laid out for printing.
+// Made with the BREPcode case builder: brepcode.com/case
+//
+// The grid is Casefinity (casefinity.net/casefinity-spec) by Chris Agocs,
+// built on "Gridfinity for Hardcases" by the Unemployed Architect
+// (patreon.com/cw/UnemployedArchitect). Support him if you print this.
+//
+// ${s.inside ? "INSIDE" : "Outside"} size in mm. The grid is whole 15 mm modules: ${fit.cols} x ${fit.rows} at this size.
+const width = ${+s.width};   // [60:600] ${s.inside ? "inside" : "outside"} width (mm)
+const depth = ${+s.depth};   // [60:600] ${s.inside ? "inside" : "outside"} depth (mm)
+const height = ${+s.height};  // [${s.inside ? 15 : 35}:300] ${s.inside ? "inside depth of the body" : "outside height, lid closed"} (mm)
+const includeCase = ${s.includeCase !== false};   // false: only the pieces that go in the grid
+
+// What goes where. at: [column, row] from the front-left module; size in modules.
+//   kind "box"     a bin              split: true = one 1 x 1 box per module
+//   kind "lidbox"  a bin with a lid   split: true = one per module
+//   kind "frame"   separators, no floor   split: true = a wall on every module line
+const pieces = [
+${regions.map(row).join("\n")}
+];
+
+return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, layout: pieces });
+`;
+}
+
+// Read a builder's own code back, so the Toolbox can reopen the grid it came
+// from. Tolerant on purpose (hand edits, reordered keys); returns null when
+// the code is not a caseKit() model.
+export function parseKitCode(src = "") {
+  const text = String(src);
+  if (!/\bcaseKit\s*\(/.test(text)) return null;
+  const n = (name) => {
+    const m = new RegExp(`\\bconst\\s+${name}\\s*=\\s*(-?[\\d.]+)`).exec(text);
+    return m ? +m[1] : undefined;
+  };
+  const state = { ...DEFAULTS };
+  for (const k of ["width", "depth", "height"]) if (n(k) != null) state[k] = n(k);
+  const ic = /\bconst\s+includeCase\s*=\s*(true|false)/.exec(text);
+  if (ic) state.includeCase = ic[1] === "true";
+  state.inside = /\binside\s*:\s*true\b/.test(text);
+  state.regions = [];
+  const re = /\{\s*at\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*size\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*kind\s*:\s*["'](\w+)["']\s*(?:,\s*split\s*:\s*(true|false))?/g;
+  for (const m of text.matchAll(re)) {
+    if (!KINDS.includes(m[5])) continue;
+    state.regions.push({ c: +m[1], r: +m[2], w: +m[3], h: +m[4], kind: m[5], split: m[6] === "true" });
+  }
+  return state;
+}
+
+// Paint a rectangle onto a layout: whatever it overlaps goes, and (unless
+// erasing) the new piece takes its place. Returns a new list.
+export function paintRegion(regions, rect, brush, split) {
+  const kept = regions.filter((g) => !overlaps(g, rect));
+  if (brush === "erase") return kept;
+  return [...kept, { ...rect, kind: brush, split: !!split }];
+}
+
+// --------------------------------------------------------------- styling
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+let styled = false;
+function style() {
+  if (styled) return;
+  styled = true;
+  const css = document.createElement("style");
+  css.textContent = `
+  #cb { position: fixed; inset: 0; z-index: 9500; overflow: auto; -webkit-overflow-scrolling: touch;
+    background: var(--bg, #0b0f16); color: var(--text, #dfe6f3);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; box-sizing: border-box;
+    transition: opacity .3s ease; }
+  #cb.gone { opacity: 0; pointer-events: none; }
+  #cb *, #cb *::before, #cb *::after { box-sizing: border-box; }
+  .cb-wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .cb-head { display: flex; align-items: center; gap: 12px; }
+  .cb-head h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+  .cb-head .cb-sub { color: var(--muted, #8ea0c0); font-size: 13px; }
+  .cb-head .cb-sp { flex: 1; }
+  .cb-x { background: none; border: 1px solid var(--border, #26314a); color: var(--muted, #8ea0c0); border-radius: 10px;
+    width: 34px; height: 34px; font-size: 20px; line-height: 1; cursor: pointer; }
+  .cb-x:hover { color: var(--text, #dfe6f3); border-color: var(--accent, #1c66e5); }
+  .cb-cols { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+  .cb-side, .cb-main { background: var(--card, #121826); border: 1px solid var(--border-soft, #1c2437); border-radius: 14px; padding: 14px; }
+  .cb-side h3 { margin: 14px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted2, #6f83a6); font-weight: 600; }
+  .cb-side h3:first-child { margin-top: 0; }
+  .cb-seg { display: flex; border: 1px solid var(--border, #26314a); border-radius: 9px; overflow: hidden; }
+  .cb-seg button { flex: 1 1 0; background: var(--input-bg, #0d1320); color: var(--text2, #d8e2f5); border: 0;
+    border-left: 1px solid var(--border, #26314a); padding: 7px 6px; font: 13px system-ui, sans-serif; cursor: pointer; min-width: 0; }
+  .cb-seg button:first-child { border-left: 0; }
+  .cb-seg button.on { background: var(--accent, #1c66e5); color: #fff; }
+  .cb-dims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .cb-dims label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted, #8ea0c0); }
+  .cb-dims input { width: 100%; background: var(--input-bg, #0d1320); color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a);
+    border-radius: 8px; padding: 7px 8px; font: 14px ui-monospace, Consolas, monospace; }
+  .cb-dims input:focus { outline: none; border-color: var(--accent, #1c66e5); }
+  .cb-read { margin-top: 8px; font-size: 12.5px; color: var(--muted, #8ea0c0); }
+  .cb-read b { color: var(--text, #dfe6f3); }
+  .cb-warn { color: #ffb86b; }
+  .cb-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .cb-presets button { text-align: left; background: var(--input-bg, #0d1320); border: 1px solid var(--border, #26314a); color: var(--text2, #d8e2f5);
+    border-radius: 9px; padding: 6px 9px; cursor: pointer; font: 13px system-ui, sans-serif; min-width: 0; }
+  .cb-presets button small { display: block; color: var(--muted2, #6f83a6); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cb-presets button:hover { border-color: var(--accent, #1c66e5); }
+  .cb-brushes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .cb-brushes button { display: flex; align-items: center; gap: 8px; background: var(--input-bg, #0d1320); border: 1px solid var(--border, #26314a);
+    color: var(--text2, #d8e2f5); border-radius: 9px; padding: 7px 9px; cursor: pointer; font: 13px system-ui, sans-serif; }
+  .cb-brushes button.on { border-color: var(--text, #dfe6f3); box-shadow: 0 0 0 1px var(--text, #dfe6f3) inset; }
+  .cb-sw { flex: none; display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,.25); }
+  .cb-sw.erase { background: repeating-linear-gradient(45deg, #3a4560 0 3px, transparent 3px 6px); }
+  .cb-sw.frame { background: repeating-linear-gradient(45deg, var(--k) 0 3px, transparent 3px 6px); }
+  .cb-hint { font-size: 12px; color: var(--muted2, #6f83a6); margin: 8px 0 0; }
+  .cb-build { width: 100%; margin-top: 10px; border: 0; border-radius: 12px; background: var(--accent, #1c66e5); color: #fff;
+    font: 600 15px system-ui, sans-serif; padding: 12px; cursor: pointer; }
+  .cb-build:hover { background: var(--accent-hover, #2e76f2); }
+  .cb-build[disabled] { opacity: .5; cursor: default; }
+  .cb-sum { margin-top: 8px; font-size: 12.5px; color: var(--muted, #8ea0c0); }
+  .cb-main { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+  .cb-edge { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2, #6f83a6); }
+  .cb-board { position: relative; padding: 10px; border-radius: 16px; background: var(--input-bg, #0d1320);
+    border: 2px solid var(--border, #26314a); max-width: 100%; overflow: auto; }
+  #cb-grid { position: relative; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none;
+    background-color: #161d2c;
+    background-image: linear-gradient(to right, #26314a 1px, transparent 1px), linear-gradient(to bottom, #26314a 1px, transparent 1px); }
+  .cb-reg { position: absolute; border-radius: 5px; border: 2px solid var(--k); background-color: color-mix(in srgb, var(--k) 55%, transparent);
+    display: grid; place-items: center; overflow: hidden; pointer-events: none; }
+  .cb-reg.split { background-image: linear-gradient(to right, color-mix(in srgb, var(--k), #000 35%) 2px, transparent 2px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--k), #000 35%) 2px, transparent 2px);
+    background-size: var(--cs) var(--cs); background-position: -1px -1px; }
+  .cb-reg.frame { background-color: transparent;
+    background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--k) 45%, transparent) 0 4px, transparent 4px 9px); }
+  .cb-reg.frame.split { background-image: linear-gradient(to right, var(--k) 2px, transparent 2px), linear-gradient(to bottom, var(--k) 2px, transparent 2px),
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--k) 35%, transparent) 0 4px, transparent 4px 9px);
+    background-size: var(--cs) var(--cs), var(--cs) var(--cs), auto; background-position: -1px -1px, -1px -1px, 0 0; }
+  .cb-reg span { font: 600 11px system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); padding: 0 3px;
+    max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cb-ghost { position: absolute; border: 2px dashed #fff; border-radius: 5px; pointer-events: none; background: rgba(255,255,255,.12); }
+  .cb-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
+  .cb-row button { background: var(--input-bg, #0d1320); border: 1px solid var(--border, #26314a); color: var(--text2, #d8e2f5);
+    border-radius: 8px; padding: 5px 12px; cursor: pointer; font: 13px system-ui, sans-serif; }
+  .cb-row button:hover:not([disabled]) { border-color: var(--accent, #1c66e5); }
+  .cb-row button[disabled] { opacity: .45; cursor: default; }
+  .cb-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 12px; color: var(--muted, #8ea0c0); }
+  .cb-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .cb-credit { font-size: 12.5px; color: var(--muted, #8ea0c0); text-align: center; line-height: 1.6; padding: 4px 8px 12px; }
+  .cb-credit a { color: var(--accent-soft2, #7fb0ff); text-decoration: none; }
+  .cb-credit a:hover { text-decoration: underline; }
+  @media (max-width: 860px) {
+    .cb-cols { grid-template-columns: 1fr; }
+    .cb-main { order: -1; }
+  }
+  /* after Build: a small card over the plate with the downloads and the way
+     back. Bottom-left, above the view cube: the Params card opens on the right */
+  #cb-done { position: fixed; z-index: 900; left: 16px; bottom: 110px; width: min(340px, calc(100vw - 32px));
+    background: var(--card, #121826); color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a); border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.4); padding: 12px 14px; font: 13px/1.45 system-ui, sans-serif; }
+  #cb-done b { display: block; font-size: 14px; margin-bottom: 2px; padding-right: 20px; }
+  #cb-done p { margin: 0 0 10px; color: var(--muted, #8ea0c0); }
+  #cb-done .cb-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  #cb-done button { border: 1px solid var(--border, #26314a); background: var(--input-bg, #0d1320); color: var(--text2, #d8e2f5);
+    border-radius: 9px; padding: 6px 10px; cursor: pointer; font: 13px system-ui, sans-serif; }
+  #cb-done button.pri { background: var(--accent, #1c66e5); border-color: var(--accent, #1c66e5); color: #fff; }
+  #cb-done .cb-x2 { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 18px; color: var(--muted, #8ea0c0); padding: 2px 6px; }
+  #cb-done small { display: block; margin-top: 8px; color: var(--muted2, #6f83a6); font-size: 11.5px; }
+  #cb-done small a { color: var(--accent-soft2, #7fb0ff); }`;
+  document.head.appendChild(css);
+}
+
+function creditHTML() {
+  return `Grid system: <a href="${CREDITS.casefinity}" target="_blank" rel="noopener">Casefinity</a>
+    (<a href="${CREDITS.spec}" target="_blank" rel="noopener">spec</a>,
+    <a href="${CREDITS.github}" target="_blank" rel="noopener">source</a>) by Chris Agocs, built on
+    <a href="${CREDITS.hardcases}" target="_blank" rel="noopener">Gridfinity for Hardcases</a> by the
+    <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>.
+    If this saves you time, <a href="${CREDITS.patreon}" target="_blank" rel="noopener">support him on Patreon</a>.
+    <br />The case, the bins and their lids here are BREPcode's own designs, made to the Casefinity spec so they fit its grid.`;
+}
+
+function load() {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORE) || "{}") }; } catch { return { ...DEFAULTS }; }
+}
+function save(s) {
+  try { localStorage.setItem(STORE, JSON.stringify(s)); } catch { /* private window: it just will not remember */ }
+}
+
+// ------------------------------------------------------------------- show
+
+/**
+ * Show the case builder.
+ * hooks: {
+ *   build(code)    put the code in the editor and build it; resolves { ok } (required)
+ *   exportParts()  open Export on "3MF - parts laid out on the plate"
+ *   exportStl()    open Export on STL
+ *   currentCode()  the editor's text, to reopen a builder model where it was
+ *   plate()        the printer's bed { x, y } in mm, or null
+ *   onClose()      called once, however it closes
+ * }
+ */
+export function showCaseBuilder(hooks = {}) {
+  style();
+  document.getElementById("cb")?.remove();
+  document.getElementById("cb-done")?.remove();
+
+  // the editor's own caseKit() model wins over the remembered one: it is
+  // what is on screen, and reopening should pick up exactly that
+  const fromCode = parseKitCode(hooks.currentCode?.() || "");
+  const S = fromCode || load();
+  if (!Array.isArray(S.regions)) {
+    const f = casefinityFit(S.width, S.depth, S.height, { inside: S.inside });
+    S.regions = PRESETS.find((p) => p.id === "mixed").make(f.cols, f.rows);
+  }
+  let brush = "box", split = false;
+  const undo = [];
+
+  const el = document.createElement("div");
+  el.id = "cb";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-labelledby", "cb-h");
+  el.innerHTML = `
+    <div class="cb-wrap">
+      <div class="cb-head">
+        <div><h1 id="cb-h">Case builder</h1><div class="cb-sub">Size the case, paint its grid, print the parts.</div></div>
+        <span class="cb-sp"></span>
+        <button type="button" class="cb-x" title="Close" aria-label="Close">&times;</button>
+      </div>
+      <div class="cb-cols">
+        <section class="cb-side" aria-label="Settings">
+          <h3>1 · Your case</h3>
+          <div class="cb-seg" id="cb-inside" role="radiogroup" aria-label="What the size means">
+            <button type="button" data-v="0">Outside size</button><button type="button" data-v="1">Inside space</button>
+          </div>
+          <div class="cb-dims">
+            <label>Width<input id="cb-w" type="number" min="30" max="600" step="1" inputmode="decimal" /></label>
+            <label>Depth<input id="cb-d" type="number" min="30" max="600" step="1" inputmode="decimal" /></label>
+            <label>Height<input id="cb-hh" type="number" min="15" max="300" step="1" inputmode="decimal" /></label>
+          </div>
+          <div class="cb-read" id="cb-read" aria-live="polite"></div>
+          <h3>2 · Start from a layout</h3>
+          <div class="cb-presets" id="cb-presets"></div>
+          <h3>3 · Paint the grid</h3>
+          <div class="cb-brushes" id="cb-brushes" role="radiogroup" aria-label="What to paint"></div>
+          <div class="cb-seg" id="cb-split" role="radiogroup" aria-label="One piece or one per square" style="margin-top:8px">
+            <button type="button" data-v="0"></button><button type="button" data-v="1"></button>
+          </div>
+          <p class="cb-hint">Drag across squares to mark an area, or click one square. Painting over a piece replaces it.</p>
+          <h3>4 · Build</h3>
+          <div class="cb-seg" id="cb-case" role="radiogroup" aria-label="What to print">
+            <button type="button" data-v="1">Case + grid pieces</button><button type="button" data-v="0">Grid pieces only</button>
+          </div>
+          <button type="button" class="cb-build" id="cb-build">Build printable parts</button>
+          <div class="cb-sum" id="cb-sum" aria-live="polite"></div>
+        </section>
+        <section class="cb-main" aria-label="The grid">
+          <div class="cb-edge">Back · hinge</div>
+          <div class="cb-board"><div id="cb-grid" role="application" aria-label="Case grid: drag to paint"></div></div>
+          <div class="cb-edge">Front · latch</div>
+          <div class="cb-row">
+            <button type="button" id="cb-undo">Undo</button>
+            <button type="button" id="cb-clear">Clear the grid</button>
+          </div>
+          <div class="cb-legend" id="cb-legend"></div>
+        </section>
+      </div>
+      <footer class="cb-credit">${creditHTML()}</footer>
+    </div>`;
+  document.body.appendChild(el);
+
+  const $ = (id) => el.querySelector(`#${id}`);
+  const grid = $("cb-grid");
+
+  // The app behind has single-letter shortcuts and a "lift the loading screen
+  // on any input" listener; keys and taps in here are the builder's own.
+  for (const ev of ["keydown", "keyup", "pointerdown", "wheel"]) {
+    el.addEventListener(ev, (e) => {
+      if (ev === "keydown") onKey(e);
+      e.stopPropagation();
+    }, { passive: ev !== "keydown" });
+  }
+
+  let closed = false;
+  const onResize = () => { if (!closed) paint(); };
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    save(S);
+    removeEventListener("resize", onResize);
+    el.classList.add("gone");
+    setTimeout(() => el.remove(), 320);
+    try { hooks.onClose?.(); } catch { /* closed either way */ }
+  };
+  el.querySelector(".cb-x").addEventListener("click", close);
+
+  // ---- size
+  const fitNow = () => casefinityFit(S.width, S.depth, S.height, { inside: !!S.inside });
+  $("cb-w").value = S.width; $("cb-d").value = S.depth; $("cb-hh").value = S.height;
+  const seg = (id, v) => { for (const b of $(id).querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === String(v)); };
+  seg("cb-inside", S.inside ? 1 : 0);
+  seg("cb-case", S.includeCase === false ? 0 : 1);
+  $("cb-inside").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const inside = b.dataset.v === "1";
+    if (inside === !!S.inside) return;
+    // the same physical case either way: convert the numbers, do not reinterpret them
+    const f = fitNow();
+    if (inside) { S.width = +(f.width - 8).toFixed(1); S.depth = +(f.depth - 8).toFixed(1); S.height = +(f.bodyHeight - 2).toFixed(1); }
+    else { S.width = +f.width.toFixed(1); S.depth = +f.depth.toFixed(1); S.height = +f.height.toFixed(1); }
+    S.inside = inside;
+    $("cb-w").value = S.width; $("cb-d").value = S.depth; $("cb-hh").value = S.height;
+    seg("cb-inside", inside ? 1 : 0);
+    paint();
+  });
+  $("cb-case").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.includeCase = b.dataset.v === "1"; seg("cb-case", b.dataset.v); paint();
+  });
+  for (const [id, k] of [["cb-w", "width"], ["cb-d", "depth"], ["cb-hh", "height"]]) {
+    $(id).addEventListener("input", () => {
+      const v = +$(id).value;
+      if (Number.isFinite(v) && v > 0) { S[k] = v; paint(); }
+    });
+  }
+
+  // ---- presets
+  for (const p of PRESETS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.preset = p.id;
+    b.innerHTML = `${esc(p.label)}<small>${esc(p.blurb)}</small>`;
+    b.addEventListener("click", () => {
+      const f = fitNow();
+      undo.push(S.regions);
+      S.regions = p.make(f.cols, f.rows);
+      paint();
+    });
+    $("cb-presets").appendChild(b);
+  }
+
+  // ---- brushes
+  const brushes = ["box", "lidbox", "frame", "erase"];
+  const swatch = (k) => `<span class="cb-sw ${k === "erase" ? "erase" : k === "frame" ? "frame" : ""}" style="--k:${CASEKIT_COLORS[k] || "#555"};${k !== "erase" && k !== "frame" ? `background:${CASEKIT_COLORS[k]}` : ""}"></span>`;
+  for (const k of brushes) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.k = k;
+    b.setAttribute("role", "radio");
+    b.title = `${LABEL[k]} (key ${brushes.indexOf(k) + 1})`;
+    b.innerHTML = `${swatch(k)}${LABEL[k]}`;
+    b.addEventListener("click", () => { brush = k; paintTools(); });
+    $("cb-brushes").appendChild(b);
+  }
+  $("cb-split").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    split = b.dataset.v === "1"; paintTools();
+  });
+  function paintTools() {
+    for (const b of $("cb-brushes").querySelectorAll("button")) {
+      b.classList.toggle("on", b.dataset.k === brush);
+      b.setAttribute("aria-checked", String(b.dataset.k === brush));
+    }
+    const [a, b] = $("cb-split").querySelectorAll("button");
+    if (brush === "frame") { a.textContent = "Open space"; b.textContent = "Wall every square"; }
+    else { a.textContent = "One big piece"; b.textContent = "One per square"; }
+    seg("cb-split", split ? 1 : 0);
+    $("cb-split").style.opacity = brush === "erase" ? ".4" : "";
+    $("cb-split").style.pointerEvents = brush === "erase" ? "none" : "";
+  }
+
+  // ---- legend
+  $("cb-legend").innerHTML = [["box", "Box"], ["lidbox", "Box + lid"], ["frame", "Separators (no floor)"]]
+    .map(([k, t]) => `<span>${swatch(k)}${t}</span>`).join("")
+    + `<span><span class="cb-sw" style="background:#161d2c"></span>Empty</span>`;
+
+  // ---- the grid
+  let cs = 32, cols = 0, rows = 0;
+  let drag = null;
+  const ghost = document.createElement("div");
+  ghost.className = "cb-ghost";
+  ghost.hidden = true;
+
+  const cellAt = (e) => {
+    const r = grid.getBoundingClientRect();
+    const c = Math.max(0, Math.min(cols - 1, Math.floor((e.clientX - r.left) / cs)));
+    const sy = Math.max(0, Math.min(rows - 1, Math.floor((e.clientY - r.top) / cs)));
+    return { c, r: rows - 1 - sy };   // row 0 is the FRONT, drawn at the bottom
+  };
+  const rectOf = (a, b) => ({ c: Math.min(a.c, b.c), r: Math.min(a.r, b.r), w: Math.abs(a.c - b.c) + 1, h: Math.abs(a.r - b.r) + 1 });
+  const place = (node, g) => {
+    node.style.left = `${g.c * cs + 1}px`;
+    node.style.top = `${(rows - g.r - g.h) * cs + 1}px`;
+    node.style.width = `${g.w * cs - 1}px`;
+    node.style.height = `${g.h * cs - 1}px`;
+  };
+  grid.addEventListener("pointerdown", (e) => {
+    if (!cols || !rows) return;
+    e.preventDefault();
+    try { grid.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capture */ }
+    const a = cellAt(e);
+    drag = { a, b: a };
+    ghost.hidden = false;
+    place(ghost, rectOf(a, a));
+  });
+  grid.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    drag.b = cellAt(e);
+    place(ghost, rectOf(drag.a, drag.b));
+  });
+  grid.addEventListener("pointerup", () => {
+    if (!drag) return;
+    const rect = rectOf(drag.a, drag.b);
+    drag = null;
+    ghost.hidden = true;
+    undo.push(S.regions);
+    S.regions = paintRegion(S.regions, rect, brush, split);
+    paint();
+  });
+  grid.addEventListener("pointercancel", () => { drag = null; ghost.hidden = true; });
+
+  $("cb-undo").addEventListener("click", () => { if (undo.length) { S.regions = undo.pop(); paint(); } });
+  $("cb-clear").addEventListener("click", () => { undo.push(S.regions); S.regions = []; paint(); });
+
+  function onKey(e) {
+    if (e.target.matches?.("input")) return;
+    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); $("cb-undo").click(); return; }
+    const i = ["1", "2", "3", "4"].indexOf(e.key);
+    if (i >= 0) { brush = brushes[i]; paintTools(); }
+    if (e.key.toLowerCase() === "s") { split = !split; paintTools(); }
+  }
+
+  // ---- paint everything from S
+  function paint() {
+    const f = fitNow();
+    cols = f.cols; rows = f.rows;
+    const availW = Math.max(160, (el.querySelector(".cb-main").clientWidth || 600) - 52);
+    const availH = Math.max(200, innerHeight * (innerWidth < 860 ? 0.5 : 0.66));
+    cs = cols && rows ? Math.max(12, Math.min(44, Math.floor(Math.min(availW / cols, availH / rows)))) : 32;
+    grid.style.width = `${cols * cs + 1}px`;
+    grid.style.height = `${rows * cs + 1}px`;
+    grid.style.backgroundSize = `${cs}px ${cs}px`;
+    grid.style.setProperty("--cs", `${cs}px`);
+    grid.textContent = "";
+    for (const g of S.regions) {
+      if (!inGrid(g, cols, rows)) continue;
+      const d = document.createElement("div");
+      d.className = `cb-reg${g.kind === "frame" ? " frame" : ""}${g.split ? " split" : ""}`;
+      d.style.setProperty("--k", CASEKIT_COLORS[g.kind]);
+      place(d, g);
+      if (g.w * cs >= 52 && g.h * cs >= 18) {
+        const t = document.createElement("span");
+        const what = g.kind === "frame" ? (g.split ? "walls" : "open") : g.kind === "lidbox" ? "lid" : "box";
+        t.textContent = g.split && g.kind !== "frame" ? `${g.w * g.h} × 1×1 ${what}` : `${g.w}×${g.h} ${what}`;
+        d.appendChild(t);
+      }
+      grid.appendChild(d);
+    }
+    grid.appendChild(ghost);
+
+    // the readout: what this size gives you, in the numbers that decide it
+    const t = tally(S.regions, cols, rows, S.includeCase !== false);
+    const plate = hooks.plate?.() || null;
+    const warn = [];
+    if (!f.fits) warn.push("Too small for a single 15 mm square. Make it bigger.");
+    if (plate && S.includeCase !== false
+      && (Math.max(f.width, f.depth) > Math.max(plate.x, plate.y) || Math.min(f.width, f.depth) > Math.min(plate.x, plate.y))) {
+      warn.push(`The case (${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} mm) is bigger than your ${plate.x} × ${plate.y} mm plate.`);
+    }
+    $("cb-read").innerHTML = (f.fits
+      ? `<b>${cols} × ${rows}</b> squares of 15 mm · outside <b>${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} × ${+f.height.toFixed(1)}</b> mm`
+        + `<br />Grid ${f.inner[0]} × ${f.inner[1]} mm, ${+f.inner[2].toFixed(1)} deep · boxes ${f.binHeight} mm tall`
+        + (f.headroom >= 5 ? ", with pull tabs" : "")
+      : "")
+      + (warn.length ? `${f.fits ? "<br />" : ""}<span class="cb-warn">${warn.map(esc).join("<br />")}</span>` : "");
+    const bits = [];
+    if (t.box) bits.push(`${t.box} box${t.box === 1 ? "" : "es"}`);
+    if (t.lidbox) bits.push(`${t.lidbox} lidded box${t.lidbox === 1 ? "" : "es"}`);
+    if (t.frame) bits.push(`${t.frame} separator frame${t.frame === 1 ? "" : "s"}`);
+    if (S.includeCase !== false) bits.push("the case and its lid");
+    $("cb-sum").innerHTML = t.pieces
+      ? `<b>${t.pieces} piece${t.pieces === 1 ? "" : "s"}</b> to print: ${esc(bits.join(", "))}.`
+        + (t.empty ? ` ${t.empty} square${t.empty === 1 ? "" : "s"} left empty.` : "")
+      : "Paint something on the grid, or include the case.";
+    $("cb-build").disabled = !f.fits || !t.pieces;
+    $("cb-undo").disabled = !undo.length;
+    save(S);
+  }
+
+  // ---- build
+  $("cb-build").addEventListener("click", async () => {
+    const f = fitNow();
+    if (!f.fits) return;
+    const code = kitCode(S);
+    close();
+    let ok = false;
+    try { ok = !!(await hooks.build?.(code))?.ok; } catch { ok = false; }
+    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, S.includeCase !== false));
+  });
+
+  paintTools();
+  paint();
+  addEventListener("resize", onResize);
+  requestAnimationFrame(() => { try { $("cb-w").focus({ preventScroll: true }); } catch { /* fine */ } });
+  return { el, close };
+}
+
+// After Build: the parts are on the plate. Two downloads, the way back to the
+// grid, and the credit again, small.
+function showDone(hooks, t) {
+  style();
+  document.getElementById("cb-done")?.remove();
+  const el = document.createElement("div");
+  el.id = "cb-done";
+  el.setAttribute("role", "complementary");
+  el.setAttribute("aria-label", "Your case parts");
+  el.innerHTML = `
+    <button type="button" class="cb-x2" title="Close" aria-label="Close">&times;</button>
+    <b>${t.pieces} parts, laid out to print</b>
+    <p>Download them as 3MF (every part separate, one file per plate) or STL. The sliders resize the case.</p>
+    <div class="cb-acts">
+      <button type="button" class="pri" data-a="3mf">Download 3MF</button>
+      <button type="button" data-a="stl">STL</button>
+      <button type="button" data-a="grid">Back to the grid</button>
+    </div>
+    <small>Grid: <a href="${CREDITS.casefinity}" target="_blank" rel="noopener">Casefinity</a> by Chris Agocs, on
+      <a href="${CREDITS.hardcases}" target="_blank" rel="noopener">Gridfinity for Hardcases</a> by the
+      <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>.</small>`;
+  document.body.appendChild(el);
+  el.querySelector(".cb-x2").addEventListener("click", () => el.remove());
+  el.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-a]")?.dataset.a;
+    if (a === "3mf") hooks.exportParts?.();
+    else if (a === "stl") hooks.exportStl?.();
+    else if (a === "grid") { el.remove(); showCaseBuilder(hooks); }
+  });
+}

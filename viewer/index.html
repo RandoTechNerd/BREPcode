@@ -3254,6 +3254,18 @@
             </svg>
             <span><b>Gridfinity grid</b><small>drag out a bin or a baseplate</small></span>
           </button>
+          <!-- The case builder (viewer/casebuilder.js, also brepcode.com/case):
+               a whole hinged case and the Casefinity bins, lids and
+               separators inside it, painted on a grid and laid out to print. -->
+          <button id="case-row">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.5" y="3.5" width="13" height="10" rx="1.6" />
+              <path d="M1.5 6.5h13M6 6.5v7M10.3 6.5v7M6 10h4.3" />
+              <path d="M6 3.5V2.4h4v1.1" />
+            </svg>
+            <span><b>Case builder <small class="beta">new</small></b><small>size a case, paint its grid of boxes and separators</small></span>
+          </button>
           <!-- Cookie cutter. Last of the actions, and the only one with a
                submenu: what it can offer depends on whether there is already
                an outline to cut around, so the row asks the editor before it
@@ -3715,6 +3727,8 @@
         </button>
         <button id="tour-btn" class="hist-btn" title="Guided tour of every control, then the three pasted languages">Tour</button>
         <button id="about-docs-btn" class="hist-btn" title="What can it do?">Docs</button>
+        <!-- Site-managed: opens the BREPcode blog (articles on code-CAD) in a new tab. -->
+        <button id="about-blog-btn" class="hist-btn" title="Articles: what is BREP, code-CAD, OpenSCAD, JSCAD, Build123d" onclick="window.open('/blog','_blank')">Blog</button>
         <button class="close-btn" data-close="about" title="Close">&times;</button>
       </header>
       <div class="card-body" id="about-body">
@@ -17957,6 +17971,44 @@ let SIMPLIFY_TARGET = 10000;
       for (const b of el.querySelectorAll(".xn-later, .xn-x")) b.addEventListener("click", () => el.remove());
       document.body.appendChild(el);
     }
+    // brepcode.com/case (a folder bouncing to ?case=1), ?case=1 or #case: the
+    // case builder, at once. Same rules as the quick door above: the flag
+    // comes off the address, and /m/case is a model, not this.
+    function caseRequested() {
+      let hit = false;
+      for (const L of hostLocations()) {
+        if (!/[?&]case=1(&|$)/.test(L.search) && !/^#case$/i.test(L.hash)
+            && !(/(^|\/)case\/?(index\.html)?$/i.test(L.pathname) && !/(^|\/)m\/case\/?$/i.test(L.pathname))) continue;
+        hit = true;
+        try {
+          const u = new URL(L.href);
+          u.searchParams.delete("case");
+          if (/^#case$/i.test(u.hash)) u.hash = "";
+          (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
+        } catch { /* cross-origin frame */ }
+      }
+      return hit;
+    }
+    // The case builder (viewer/casebuilder.js): from the Toolbox, from /case,
+    // and from its own "Back to the grid". Build puts a caseKit() model in the
+    // editor, undoable like any other change, with the size sliders forward.
+    async function openCaseBuilder() {
+      let C;
+      try { C = await import("./casebuilder.js"); } catch (e) {
+        setStatus("err", `Couldn't open the case builder: ${e?.message || e}`);
+        return;
+      }
+      C.showCaseBuilder({
+        build: async (src) => {
+          pushHistory(code.value);
+          return applyGeneratedCode(src, { show: "params" });
+        },
+        exportParts: () => { $("export-btn").click(); expShow("3mf-parts"); },
+        exportStl: () => { $("export-btn").click(); expShow("stl"); },
+        currentCode: () => code.value,
+        plate: () => { try { return currentPlate() ?? null; } catch { return null; } },
+      });
+    }
     // W is welcome.js or a promise of it: the door does not wait for it.
     // offerTour: the desktop app's first launch, where the door IS the welcome
     // and the tour is offered once their model is on screen.
@@ -20480,6 +20532,12 @@ let SIMPLIFY_TARGET = 10000;
       for (const id of ["gfin-dw", "gfin-dd"]) {
         $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fit(); } });
       }
+
+      $("case-row").addEventListener("click", (e) => {
+        e.stopPropagation();
+        toolsMenu.classList.remove("open");
+        openCaseBuilder();
+      });
 
       $("gfin-row").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -24655,6 +24713,9 @@ ${SC.describeSelectionContext(anchor)}` : "");
       try { return !localStorage.getItem("brepcode-welcomed"); } catch { return false; }
     })()) {
       openMakeDoor(import("./welcome.js"), { offerTour: true });
+    } else if (!urlCarriesModel() && caseRequested()) {
+      // brepcode.com/case: the builder is the front door for this visitor
+      openCaseBuilder();
     } else if (!urlCarriesModel() && makeRequested()) {
       // The quick door: at once, not after the welcome card's 700 ms. It is
       // the first thing this visitor sees, and on brepcode.com/make the host
