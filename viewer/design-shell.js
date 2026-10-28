@@ -97,9 +97,9 @@ body.dz-ribbon #dz-scale { top: 104px; }
 #dz-scale .ft .ok { background: var(--accent, #3b6ef5); border-color: transparent; color: #fff; }
 
 /* toolbar / ribbon */
-#dz-bar { top: 12px; left: 168px; right: 12px; max-width: max-content; display: flex; align-items: stretch;
-  padding: 3px; gap: 2px; border-radius: 999px; user-select: none; overflow-x: auto; scrollbar-width: none; }
-#dz-bar.ribbon { border-radius: 10px; padding: 6px; gap: 8px; }
+#dz-bar { top: 12px; left: 168px; right: calc(var(--ar-right, 12px) + 48px); max-width: max-content; display: flex; align-items: stretch;
+  padding: 3px; gap: 2px; border-radius: 999px; user-select: none; overflow: hidden; }
+#dz-bar.ribbon { border-radius: 10px; padding: 6px; gap: 8px; overflow-x: auto; scrollbar-width: none; }
 #dz-bar .dz-g { display: flex; gap: 2px; align-items: stretch; }
 #dz-bar .dz-g + .dz-g { border-left: 1px solid var(--border, #26314a); padding-left: 4px; }
 #dz-bar.ribbon .dz-g { flex-direction: column; gap: 4px; }
@@ -244,14 +244,19 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 #dz-pmenu button:hover, #dz-pmenu button:focus-visible { background: rgba(127, 150, 200, 0.16); outline: none; }
 #dz-pmenu button[aria-pressed="true"] { background: var(--accent, #1c66e5); }
 #dz-pmenu button[aria-pressed="true"] svg { color: #fff; }
+/* at any width, tools that do not fit go into the same menu: the toolbar never
+   scrolls or runs under anything (fitBar() decides, .dz-over hides) */
+#dz-bar .dz-over { display: none !important; }
+#dz-bar.dz-overflow .dz-pmore { display: flex; align-items: center; border: 0; background: transparent; color: var(--muted, #8ea0c0);
+  cursor: pointer; padding: 5px 8px; border-radius: 999px; flex: none; }
+#dz-bar .dz-pmore.on { color: #fff; background: var(--accent, #1c66e5); }
+#dz-bar .dz-pmore[aria-expanded="true"] { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.18); }
+body.design-mode #dz-pmenu.open { display: grid; }
 @media (max-width: 700px) {
-  html body.design-mode #dz-bar { left: auto; right: calc(54px + env(safe-area-inset-right, 0px)); max-width: calc(100vw - 200px); }
+  html body.design-mode #dz-bar { left: auto; right: calc(var(--ar-right, 12px) + 42px + env(safe-area-inset-right, 0px)); max-width: calc(100vw - 200px); }
   #dz-bar .dz-g:not(:first-child), #dz-bar .dz-more { display: none; }
   #dz-bar .dz-pmore { display: flex; align-items: center; border: 0; background: transparent; color: var(--muted, #8ea0c0);
-    cursor: pointer; padding: 5px 8px; border-radius: 999px; }
-  #dz-bar .dz-pmore.on { color: #fff; background: var(--accent, #1c66e5); }
-  #dz-bar .dz-pmore[aria-expanded="true"] { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.18); }
-  body.design-mode #dz-pmenu.open { display: grid; }
+    cursor: pointer; padding: 5px 8px; border-radius: 999px; flex: none; }
 }
 
 /* phones: no timeline bar (it had no room beside the browser); a button left
@@ -334,24 +339,30 @@ export function initDesignShell(host) {
   timeBtn.addEventListener("click", () => setTimeOpen(!document.body.classList.contains("dz-tl-open")));
   phone.addEventListener("change", () => { if (!phone.matches) setTimeOpen(false); });
 
-  // the phone toolbar's "more" menu: every tool past the first group, and the
-  // snap. Each entry presses the real (hidden) toolbar button, so the tools
-  // behave exactly as they do on a wide screen.
+  // The toolbar's "more" menu: whatever the bar is not showing right now (on
+  // a phone everything past the first group; on a wider screen what did not
+  // fit beside a window or the corner cube), and the snap with it. Each entry
+  // presses the real (hidden) toolbar button, so the tools behave the same.
   const pmore = bar.querySelector(".dz-pmore");
   const pmenu = document.createElement("div");
   pmenu.id = "dz-pmenu";
   pmenu.className = "dz-ui";
   pmenu.setAttribute("role", "menu");
   pmenu.setAttribute("aria-label", "More tools");
-  pmenu.innerHTML = TOOLS.slice(1).map((g) => `<div class="pm-gl">${g.group}</div>`
-      + g.items.map((t) => `<button type="button" role="menuitem" data-tool="${t.id}" title="${esc(t.tip)}"`
-        + `${t.dialog ? "" : ` aria-pressed="false"`}>${svg(t.icon)}${t.label}</button>`).join("")).join("")
-    + `<div class="pm-gl">Snap</div><button type="button" role="menuitem" class="pm-snap"></button>`;
   document.body.append(pmenu);
-  const pmSnap = pmenu.querySelector(".pm-snap");
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  const paintPmenu = () => {
+    const snapHidden = !shown(bar.querySelector(".dz-snap"));
+    pmenu.innerHTML = TOOLS.map((g) => {
+      const items = g.items.filter((t) => !shown(bar.querySelector(`.dz-t[data-tool="${t.id}"]`)));
+      return items.length ? `<div class="pm-gl">${g.group}</div>` + items.map((t) => `<button type="button" role="menuitem" data-tool="${t.id}" title="${esc(t.tip)}"`
+        + `${t.dialog ? "" : ` aria-pressed="${t.id === tool}"`}>${svg(t.icon)}${t.label}</button>`).join("") : "";
+    }).join("")
+      + (snapHidden ? `<div class="pm-gl">Snap</div><button type="button" role="menuitem" class="pm-snap">Move snap: ${esc(bar.querySelector(".dz-snap").textContent)}</button>` : "");
+  };
   const setPmenu = (on) => {
     if (on) {
-      pmSnap.textContent = `Move snap: ${bar.querySelector(".dz-snap").textContent}`;
+      paintPmenu();
       const r = bar.getBoundingClientRect();
       pmenu.style.top = `${Math.round(r.bottom + 6)}px`;
       pmenu.style.right = `${Math.max(10, Math.round(innerWidth - r.right))}px`;
@@ -363,9 +374,9 @@ export function initDesignShell(host) {
   pmenu.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    if (b === pmSnap) {
+    if (b.classList.contains("pm-snap")) {
       bar.querySelector(".dz-snap").click();
-      pmSnap.textContent = `Move snap: ${bar.querySelector(".dz-snap").textContent}`;
+      b.textContent = `Move snap: ${bar.querySelector(".dz-snap").textContent}`;
       return;                                          // stays open: it is a cycle
     }
     setPmenu(false);
@@ -376,7 +387,36 @@ export function initDesignShell(host) {
   }, true);
   addEventListener("keydown", (e) => { if (e.key === "Escape" && pmenu.classList.contains("open")) setPmenu(false); });
   phone.addEventListener("change", () => { if (!phone.matches) setPmenu(false); });
-  const OVERFLOW = new Set(TOOLS.slice(1).flatMap((g) => g.items.map((t) => t.id)));
+
+  // Fit the thin toolbar to the room it has: tools come off the END into the
+  // menu (snap first, then the last tool, and so on; the Select group always
+  // stays) until the rest fits. Re-run whenever that room can change.
+  function fitBar() {
+    for (const el of bar.querySelectorAll(".dz-over")) el.classList.remove("dz-over");
+    bar.classList.remove("dz-overflow");
+    if (!active || ribbon || phone.matches) { bar.classList.toggle("dz-overflow", phone.matches); markPmore(); return; }
+    if (bar.scrollWidth <= bar.clientWidth + 1) { markPmore(); return; }
+    bar.classList.add("dz-overflow");
+    const groups = [...bar.querySelectorAll(".dz-g")];
+    const queue = [groups[groups.length - 1], ...groups.slice(1, -1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse()];
+    for (const el of queue) {
+      if (bar.scrollWidth <= bar.clientWidth + 1) break;
+      el.classList.add("dz-over");
+      const g = el.closest(".dz-g");          // a group with nothing left goes too (its divider with it)
+      if (g && el !== g && !g.querySelector(".dz-t:not(.dz-over)")) g.classList.add("dz-over");
+    }
+    markPmore();
+  }
+  // the menu's button lights when the tool in use is one it holds
+  function markPmore() {
+    const b = bar.querySelector(`.dz-t[data-tool="${tool}"]`);
+    pmore.classList.toggle("on", !!b && !shown(b) && shown(pmore));
+  }
+  let fitQueued = false;
+  const queueFit = () => { if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitBar(); }); } };
+  addEventListener("resize", queueFit);
+  // the corner cube moving (a window in the top-right corner) changes the room
+  new MutationObserver(queueFit).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   const treeEl = side.querySelector("#dz-tree"), selEl = side.querySelector("#dz-sel");
   const countEl = side.querySelector("h3 small"), stepsEl = time.querySelector("#dz-steps");
 
@@ -946,7 +986,7 @@ export function initDesignShell(host) {
     tool = t;
     for (const b of bar.querySelectorAll(".dz-t[aria-pressed]")) b.setAttribute("aria-pressed", String(b.dataset.tool === tool));
     for (const b of pmenu.querySelectorAll("[aria-pressed]")) b.setAttribute("aria-pressed", String(b.dataset.tool === tool));
-    pmore.classList.toggle("on", OVERFLOW.has(tool));   // a tool from the menu is on: say so on its button
+    markPmore();                       // a tool from the menu is on: say so on its button
     attachGizmo();
   };
   let ribbon = false;
@@ -960,6 +1000,7 @@ export function initDesignShell(host) {
     more.setAttribute("aria-expanded", String(on));
     more.title = on ? "Back to the thin toolbar" : "Show the full ribbon (or double-click the toolbar)";
     try { localStorage.setItem(RIBBON_KEY, on ? "1" : "0"); } catch { /* not remembered */ }
+    queueFit();
   };
   bar.addEventListener("click", (e) => {
     if (e.target.closest(".dz-more")) { setRibbon(!ribbon); return; }
@@ -1245,7 +1286,7 @@ export function initDesignShell(host) {
     pressPull: () => pressPull,
     setActive(on) {
       active = !!on;
-      if (active) { refresh(); preloadTools(); requestAnimationFrame(fitTimeline); }
+      if (active) { refresh(); preloadTools(); requestAnimationFrame(fitTimeline); queueFit(); }
       else { setTimeOpen(false); setPmenu(false); gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); if (sketcher?.active || sketcher?.choosing) sketcher.cancel(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
