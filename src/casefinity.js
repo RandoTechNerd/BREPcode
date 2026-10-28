@@ -33,7 +33,7 @@
 
 import {
   cube, cylinder, translate, rotate, difference, union, group,
-  polygon, linearExtrude, fillet, colorize,
+  polygon, linearExtrude, fillet, chamfer, colorize,
 } from "./dsl.js";
 
 export const CASEFINITY = Object.freeze({
@@ -46,9 +46,16 @@ export const CASEFINITY = Object.freeze({
 const CASE = Object.freeze({
   wall: 4, floor: 2, lidHeight: 18, corner: 6,
   tongue: 2, shoulder: 1.8, lidFit: 0.2,
-  pin: 1.75, pinClear: 0.15, knuckle: 6.5, knuckles: 5, hingeGap: 0.4,
-  latchWidth: 20, latchThick: 1.8, latchDrop: 9, latchCatch: 1.3,
+  pin: 1.75, pinClear: 0.15, knuckle: 5.4, knuckles: 5, hingeGap: 0.4,
+  // the snap tab: 1.3 thick flexing 0.9 over a 9 mm lever is ~2 % strain,
+  // inside PLA's limit (the first cut, 1.8 x 1.3 over 8 mm, was ~5 %)
+  latchWidth: 20, latchThick: 1.3, latchDrop: 10, latchCatch: 0.9,
   topClear: 0.5,
+  leadIn: 0.6,    // chamfer on the tongue top and the lid skirt's mouth: the lid finds its own way on
+  footChamfer: 0.5, // on the body's base and the lid's top (both bed-side edges): no elephant foot
+  // the optional gasket: a ridge along the tongue top, a trench in the lid
+  // groove's ceiling. Rigid labyrinth, 0.15 a side, not a squashed bead.
+  crest: 0.8, crestHeight: 0.8, trenchClear: 0.15, trenchDepth: 1.0,
 });
 
 const num = (v, name, d) => {
@@ -232,10 +239,15 @@ function caseDims(opts) {
   if (H < c.floor + 12) throw new Error(`casefinity: height ${fit.height} leaves a ${H} mm body under an ${c.lidHeight} mm lid`);
   const tongueT = c.wall - c.shoulder;
   const R = Math.min(c.corner, c.shoulder * 3.3, Math.min(L, W) / 4);
+  // the tongue (and the lid's groove for it) follow the body's rounded
+  // corners, one shoulder in. A square tongue inside a round corner left the
+  // lid skirt with no wall at all at each corner.
+  const rT = Math.max(0.6, R - c.shoulder);
   const kr = c.knuckle / 2, axisOff = c.hingeGap + kr;
   const hingeLen = L - 2 * R - 6;
   const segLen = (hingeLen - (c.knuckles - 1) * c.hingeGap) / c.knuckles;
-  return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen };
+  return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, rT, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen,
+    gasket: opts.gasket === true };
 }
 
 const roundedBlock = (L, W, h, r, z = 0) =>
@@ -250,8 +262,27 @@ function hull2(pts) {
   for (const q of p.reverse()) { while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
   return lo.slice(0, -1).concat(hi.slice(0, -1));
 }
-// A knuckle (with its 45-degree gusset back to the wall) as one flat-sided
-// extrusion along X. `up` = the lid's (gusset above the parting line).
+// Clip a convex polygon of [y, z] points to the half-plane sgn * (z - z0) >= 0.
+function clipZ(pts, z0, sgn) {
+  const out = [];
+  const inside = (p) => sgn * (p[1] - z0) >= -1e-9;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    if (inside(a)) out.push(a);
+    if (inside(a) !== inside(b)) {
+      const t = (z0 - a[1]) / (b[1] - a[1]);
+      out.push([a[0] + t * (b[0] - a[0]), z0]);
+    }
+  }
+  return out;
+}
+
+// A knuckle: the ring about the axis, plus an arm back to its own wall. The
+// arm stays on its owner's side of the parting line (0.2 clear of it): the
+// lid's back-bottom edge swings on a circle just outside the ring, and an arm
+// that crossed the line (the first cut's plain convex hull did, by 0.6 mm)
+// both collides with the other part when closed and stops the lid opening.
+// Two flat-sided extrusions along X per segment.
 function knuckles(d, owner) {
   const { c, kr, axisY, H, W, axisOff } = d;
   const ring = Array.from({ length: 24 }, (_, i) => {
@@ -259,13 +290,17 @@ function knuckles(d, owner) {
     return [axisY + kr * Math.cos(a), H + kr * Math.sin(a)];
   });
   const sgn = owner === "lid" ? 1 : -1;
-  const wallPts = [[W / 2 - 1, H + sgn * 0.5], [W / 2 - 1, H + sgn * (kr + axisOff)]];
-  // profile in (y, z); extruded along +Z then turned so +Z runs along +X
-  const prof = hull2([...ring, ...wallPts]).map(([yy, zz]) => [-zz, yy]);
+  const zArm = H + sgn * 0.2;
+  const wallPts = [[W / 2 - 1, zArm], [W / 2 - 1, H + sgn * (kr + axisOff)]];
+  const arm = clipZ(hull2([...ring, ...wallPts]), zArm, sgn);
+  // profiles in (y, z); extruded along +Z then turned so +Z runs along +X
+  const flip = (pts) => pts.map(([yy, zz]) => [-zz, yy]);
+  const ringProf = flip(ring), armProf = flip(arm);
   const out = [];
   for (let k = owner === "lid" ? 1 : 0; k < c.knuckles; k += 2) {
     const x0 = -d.hingeLen / 2 + k * (d.segLen + c.hingeGap);
-    out.push(translate([x0, 0, 0], rotate([0, 90, 0], linearExtrude({ h: d.segLen }, polygon(prof)))));
+    const seg = (prof) => translate([x0, 0, 0], rotate([0, 90, 0], linearExtrude({ h: d.segLen }, polygon(prof))));
+    out.push(seg(ringProf), seg(armProf));
   }
   return out;
 }
@@ -286,9 +321,10 @@ export function casefinityCase(opts = {}) {
   const { o, c, Lin, Win, L, W, H, tongueT } = d;
   const top = H + c.tongue;
   const cw = c.latchWidth - 8, z0 = H - c.latchDrop + 1.8;
-  // wedge: flat underside the tab hooks under, ramp on top it rides over
+  // wedge: flat underside the tab hooks under, a long ramp on top it rides
+  // over (2.5x the catch depth, so the tab bends gently rather than snagging)
   const fy = -W / 2, out = fy - c.latchCatch;
-  const catchProf = [[z0, fy + 0.4], [z0, out], [z0 + 0.6, out], [z0 + 0.6 + c.latchCatch * 1.4, fy + 0.4]]
+  const catchProf = [[z0, fy + 0.4], [z0, out], [z0 + 0.6, out], [z0 + 0.6 + c.latchCatch * 2.5, fy + 0.4]]
     .map(([zz, yy]) => [-zz, yy]);
   const latchCatch = translate([-cw / 2, 0, 0], rotate([0, 90, 0], linearExtrude({ h: cw }, polygon(catchProf))));
   // The cavity, exactly N*P, as one outline: liner ribs on -Y and +X are
@@ -298,14 +334,26 @@ export function casefinityCase(opts = {}) {
   const groove = (at) => ({ at, width: o.rib, depth: o.bump, out: 1 });
   const xs = centres(d.cols, o.pitch), ys = centres(d.rows, o.pitch);
   const cavity = featuredOutline(Lin, Win, { front: rib(xs), right: rib(ys), back: groove(xs), left: groove(ys) }, o.draft);
+  const Lt = Lin + 2 * tongueT, Wt = Win + 2 * tongueT;
+  const adds = [
+    // the body, its base edge chamfered against elephant foot
+    chamfer({ d: c.footChamfer, edges: "bottom" }, roundedBlock(L, W, H, d.R)),
+    // the seal tongue: the inner part of the wall, standing above the rim,
+    // rounded with the corners, its top edge chamfered as a lead-in
+    chamfer({ d: c.leadIn, edges: "top" }, roundedBlock(Lt, Wt, c.tongue + 0.4, d.rT, H - 0.4)),
+    ...knuckles(d, "body"),
+    latchCatch,
+  ];
+  if (d.gasket) {
+    // the crest: a ridge along the tongue's centre line, clear of the lead-in
+    const inset = (tongueT - c.crest) / 2;
+    adds.push(difference(
+      roundedBlock(Lt - 2 * inset, Wt - 2 * inset, c.crestHeight + 0.2, Math.max(0.3, d.rT - inset), top - 0.2),
+      roundedBlock(Lt - 2 * (inset + c.crest), Wt - 2 * (inset + c.crest), c.crestHeight + 1, Math.max(0.3, d.rT - inset - c.crest), top - 0.6),
+    ));
+  }
   return difference(
-    union(
-      roundedBlock(L, W, H, d.R),
-      // the seal tongue: the inner part of the wall, standing above the rim
-      translate([-Lin / 2 - tongueT, -Win / 2 - tongueT, H - 0.4], cube([Lin + 2 * tongueT, Win + 2 * tongueT, c.tongue + 0.4])),
-      ...knuckles(d, "body"),
-      latchCatch,
-    ),
+    union(...adds),
     prism(cavity, c.floor, top - c.floor + 1),
     pinHole(d),
   );
@@ -319,17 +367,38 @@ export function casefinityCaseLid(opts = {}) {
   const gap = 0.3, y0 = -W / 2 - gap - c.latchThick, zb = H - c.latchDrop, lh = c.lidHeight;
   const tab = difference(
     union(
-      translate([-c.latchWidth / 2, y0, zb], cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6])),
+      // the blade, its free bottom edge chamfered so it rides the catch's ramp
+      translate([-c.latchWidth / 2, y0, zb],
+        chamfer({ d: Math.min(c.leadIn, c.latchThick * 0.45), edges: "bottom" }, cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6]))),
       translate([-c.latchWidth / 2, y0, H + 1], cube([c.latchWidth, c.latchThick + gap + 1.4, lh * 0.6 - 1])),
     ),
     translate([-(c.latchWidth - 6) / 2, y0 - 1, zb + 1.6], cube([c.latchWidth - 6, c.latchThick + 2, c.latchDrop - 2.6])),
   );
-  const lid = difference(
-    union(roundedBlock(L, W, lh, d.R, H), ...knuckles(d, "lid"), tab),
+  // the groove for the tongue: rounded with it, with a flared mouth (a cutter
+  // that is leadIn wider at the parting line and tapers to the groove above
+  // it) so the skirt steers itself onto the tongue
+  const Lg = Lin + 2 * (tongueT + c.lidFit), Wg = Win + 2 * (tongueT + c.lidFit), rg = d.rT + c.lidFit;
+  const cuts = [
     translate([-Lin / 2, -Win / 2, H - 1], cube([Lin, Win, lh - c.floor + 1])),
-    translate([-Lin / 2 - tongueT - c.lidFit, -Win / 2 - tongueT - c.lidFit, H - 1],
-      cube([Lin + 2 * (tongueT + c.lidFit), Win + 2 * (tongueT + c.lidFit), c.tongue + c.lidFit + 1])),
+    roundedBlock(Lg, Wg, c.tongue + c.lidFit + 1, rg, H - 1),
+    chamfer({ d: c.leadIn, edges: "top" }, roundedBlock(Lg + 2 * c.leadIn, Wg + 2 * c.leadIn, 1 + c.leadIn + 0.1, rg + c.leadIn, H - 1)),
     pinHole(d),
+  ];
+  if (d.gasket) {
+    // the trench the body's crest drops into, in the groove's ceiling
+    const tw = c.crest + 2 * c.trenchClear, inset = (tongueT - tw) / 2, zc = H + c.tongue + c.lidFit;
+    const Lt = Lin + 2 * tongueT, Wt = Win + 2 * tongueT;
+    cuts.push(difference(
+      roundedBlock(Lt - 2 * inset, Wt - 2 * inset, c.trenchDepth + 0.5, Math.max(0.3, d.rT - inset), zc - 0.5),
+      roundedBlock(Lt - 2 * (inset + tw), Wt - 2 * (inset + tw), c.trenchDepth + 1.5, Math.max(0.3, d.rT - inset - tw), zc - 1),
+    ));
+  }
+  const lid = difference(
+    union(
+      // the lid, its top edge (the bed side once printed) chamfered against elephant foot
+      chamfer({ d: c.footChamfer, edges: "top" }, roundedBlock(L, W, lh, d.R, H)),
+      ...knuckles(d, "lid"), tab),
+    ...cuts,
   );
   if (!opts.print) return lid;
   return translate([0, 0, H + lh], rotate([180, 0, 0], lid));

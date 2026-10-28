@@ -110,6 +110,46 @@ console.log("\nthe case and its lid build exact\n");
   check("nothing to print says so", /nothing to print/.test(threw), threw);
 }
 
+console.log("\nthe lid closes: rounded tongue, clear corners, optional gasket\n");
+{
+  const overlap = async (a, b) => {
+    const [va, vb, vu] = await Promise.all([measure(a), measure(b), measure(dsl.union(a, b))]);
+    return va.vol + vb.vol - vu.vol;
+  };
+  const size = { width: 53, depth: 38, height: 35 };
+  const body = casefinityCase(size), lid = casefinityCaseLid(size);
+  // 53 x 38 outside: body 17 tall, corners R = 5.94, the skirt 1.6 thick
+  // radially at a corner (groove radius R - 1.6, concentric). A 0.3 mm rod
+  // along the corner diagonal, from 1 outside the lid to 3 in, from 0.8
+  // above the parting line (over the lead-in flare) to 1.1 above the groove
+  // ceiling, meets 1.6 x 0.3 x 1.4 of skirt plus 3 x 0.3 x 1.1 of the wall
+  // above: about 1.66 mm³. The square groove left only the wall: 0.99.
+  // (Measured as an intersection, which stays exact because the rod always
+  // meets the wall; volume differences are too noisy at a rounded corner.)
+  const R = 5.94, cx = 53 / 2 - R, cy = 38 / 2 - R;
+  const rod = dsl.translate([cx + R / Math.SQRT2, cy + R / Math.SQRT2, 0],
+    dsl.rotate([0, 0, 45], dsl.translate([-3, -0.15, 17.8], dsl.cube([4, 0.3, 2.5]))));
+  const skirt = (await measure(dsl.intersection(lid, rod))).vol;
+  check("the lid skirt has a wall at the corners", skirt > 1.45 && skirt < 1.9, `${skirt.toFixed(3)} mm³ (1.66 expected, 0.99 without a skirt)`);
+  // volumes of ~15 000 mm³ parts differ by about 1 mm³ between tessellations,
+  // so "no overlap" is < 2 here; a real clash (the old hinge arms) read 7
+  const closed = await overlap(body, lid);
+  check("closed lid and body do not intersect", closed < 2, `${closed.toFixed(2)} mm³`);
+  const bm = await measure(body), lm = await measure(lid);
+  check("body and lid build exact", /Exact/i.test(bm.engine) && /Exact/i.test(lm.engine), `${bm.engine} / ${lm.engine}`);
+  check("the hinge stands 5.8 proud of the back wall", near(bm.y.max, 38 / 2 + 0.4 + 5.4, 0.05), `${bm.y.max}`);
+  // the gasket is opt-in: off adds nothing (the knuckle ring, 2.7 above the
+  // parting line, is the body's top), on adds a crest and clears its trench
+  const gBody = casefinityCase({ ...size, gasket: true }), gLid = casefinityCaseLid({ ...size, gasket: true });
+  const gbm = await measure(gBody);
+  check("gasket off by default: no crest", near(bm.z.max, 17 + 2.7, 0.01), `${bm.z.max}`);
+  check("gasket on: the crest stands 0.8 above the tongue", near(gbm.z.max, 17 + 2 + 0.8, 0.01), `${gbm.z.max}`);
+  const gClosed = await overlap(gBody, gLid);
+  check("gasket crest sits in its trench without touching", gClosed < 2, `${gClosed.toFixed(2)} mm³`);
+  const mixed = await overlap(gBody, lid);
+  check("a gasket body under a plain lid collides (the pair must match)", mixed > 5, `${mixed.toFixed(2)} mm³`);
+}
+
 console.log("\nthe builder: routes, painting, the code it writes\n");
 {
   check("/case, ?case=1 and #case open it", isCaseUrl({ pathname: "/case" }) && isCaseUrl({ search: "?case=1" }) && isCaseUrl({ hash: "#case" }));
@@ -145,6 +185,9 @@ console.log("\nthe builder: routes, painting, the code it writes\n");
   check("the code reads back to the same layout", back && back.regions.length === 2 && back.includeCase === false
     && back.regions[1].kind === "frame" && back.regions[1].split === true && back.width === 200, JSON.stringify(back));
   check("non-builder code is not mistaken for it", parseKitCode("return cube(10);") === null);
+  check("the gasket is off unless asked for", /const gasket = false;/.test(code) && back.gasket === false);
+  const gCode = kitCode({ ...state, gasket: true });
+  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
 
   // the written code runs through the real vocabulary, the way the editor runs it
   const body = code.replace(/^\s*\/\/.*$/gm, "");
