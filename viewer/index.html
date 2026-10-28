@@ -15347,22 +15347,39 @@ ${joined}${SITE_TAIL}`), joined);
     let _ar;
     const getAR = () => (_ar ??= import("./ar.js"));
     async function seeOnDesk() {
+      // the model as a .bcode, the same text the share links carry
+      const shareText = async () => {
+        const src = code.value.trim();
+        if (!src) throw new Error("the editor is empty");
+        const exp = await getExporters();
+        return exp.bcodeFile(src, {
+          name: modelName || "brepcode-model", scene: currentScene(), history: [],
+          meshes: await packUsedMeshes(exp, src),
+        });
+      };
       try {
-        const ar = await getAR();
+        const [ar, cl] = await Promise.all([getAR(), getCloud()]);
         await ar.showAR({
           name: modelName,
           glb: () => modelToGLB({ scale: 0.001, lights: false }),
-          shareUrl: async () => {
-            const src = code.value.trim();
-            if (!src) throw new Error("the editor is empty");
-            const exp = await getExporters();
-            const text = exp.bcodeFile(src, {
-              name: modelName || "brepcode-model", scene: currentScene(), history: [],
-              meshes: await packUsedMeshes(exp, src),
-            });
-            const frag = await exp.shareFragment(text);
+          longUrl: async () => {
+            const frag = await (await getExporters()).shareFragment(await shareText());
             return frag ? shareBase() + frag : null;
           },
+          // the QR code asks for a short link first: a whole model in the
+          // link is a dense code and a slow page on the phone
+          short: (cl.cloudReady() && !cl.originProblem()) ? {
+            name: cl.slugify(modelName && modelName !== "brepcode-model" ? modelName : "my-part") || "my-part",
+            slugify: cl.slugify,
+            check: (slug) => cl.checkName(slug),
+            suggest: (slug) => cl.suggestFreeName(slug),
+            save: async (slug) => {
+              await cl.saveShort({ slug, text: await shareText(), name: modelName || slug });
+              // the #s= form, not bestShortUrl(): /m/name answers with a redirect
+              // whose own fragment would drop the "ar=1" the QR code needs
+              return cl.shortUrl(shareBase(), slug);
+            },
+          } : null,
         });
       } catch (e) {
         setStatus("err", `See it on your desk did not open — ${e?.message || e}`);
@@ -15372,6 +15389,8 @@ ${joined}${SITE_TAIL}`), joined);
     async function openSharedModel() {
       const shortName = /[#&]s=/.test(location.hash) || PRETTY_PATH.test(location.pathname);
       if (!/[#&]m=/.test(location.hash) && !shortName) return false;
+      // off a QR code: fetch the camera viewer while the model builds
+      if (/[#&]ar=1(&|$)/.test(location.hash)) getAR().then((ar) => ar.preloadAR()).catch(() => {});
       shareLoading(true);
       // Held until the model is actually ON THE PLATE, not merely decoded: the
       // kernel build is the long half, and dropping the glow at the end of the
@@ -15466,7 +15485,7 @@ ${joined}${SITE_TAIL}`), joined);
         // Scanned off a QR code: go straight to the desk view, on a phone that
         // has one (on a computer the landing card's button is enough).
         if (/[#&]ar=1(&|$)/.test(location.hash)) {
-          getAR().then(async (ar) => { if (await ar.arMode()) seeOnDesk(); }).catch(() => {});
+          getAR().then(async (ar) => { if (await ar.arMode() || ar.touchDevice()) seeOnDesk(); }).catch(() => {});
         }
         return true;
       } catch { bootDismiss(); return false; }

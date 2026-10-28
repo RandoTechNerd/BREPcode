@@ -8,9 +8,16 @@
 // the model itself, so it needs a file hosted on the web, and this one never
 // leaves the phone.
 //
-// On a computer the sheet is a QR code instead. It is the share link with
-// "ar=1" on the end: the model rides inside it, the phone builds it locally
-// and lands straight on this sheet. Nothing is uploaded either way.
+// On a computer the sheet is a QR code instead. It asks for a short link
+// first: a whole model in the link makes a code too dense to scan comfortably
+// and a slow page to open, while #s=<name> is a handful of characters. The
+// long link (nothing uploaded) is still one click away. Either way "ar=1" on
+// the end lands the phone straight on this sheet.
+//
+// brepcode.com shows the app inside an iframe that is not allowed the camera
+// (no xr-spatial-tracking), and Quick Look will not open from a frame either.
+// So a phone inside a frame first moves itself to the app's own page, with
+// the model in the address, and the sheet opens there.
 //
 // Everything that touches the model comes in through the hooks passed to
 // showAR(), so this file can be read on its own. Loaded only when the button
@@ -75,6 +82,20 @@ const CSS = `
     border-radius: 8px; padding: 0 12px; font: inherit; font-size: 13px; cursor: pointer; }
   .ar-link button:hover { border-color: var(--accent, #1c66e5); }
   .ar-warn { color: var(--warn, #e5a05a); font-size: 13px; }
+  .ar-short, .ar-done { display: flex; flex-direction: column; gap: 12px; }
+  #ar [hidden] { display: none !important; }
+  .ar-name { display: flex; gap: 8px; }
+  .ar-name input { flex: 1; min-width: 0; font: 14px ui-monospace, monospace; background: var(--panel, #121826);
+    color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a); border-radius: 10px; padding: 9px 10px; }
+  .ar-name input:focus { outline: none; border-color: var(--accent, #1c66e5); }
+  .ar-make { flex: none; border: 0; border-radius: 10px; background: var(--accent, #1c66e5); color: #fff;
+    font: 600 14px/1.2 inherit; padding: 0 14px; cursor: pointer; }
+  .ar-make:hover { background: var(--accent-hover, #2e76f2); }
+  .ar-make[disabled] { opacity: .6; cursor: default; }
+  .ar-msg:empty { display: none; }
+  .ar-long { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--muted, #8ea0c0);
+    font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+  .ar-long:hover { color: var(--text, #dfe6f3); }
 `;
 
 const ICON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -84,8 +105,20 @@ const ICON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const mm = (m) => { const v = m * 1000; return v >= 100 ? Math.round(v) : Math.round(v * 10) / 10; };
 
+// jsDelivr first: the same pinned file, and far quicker than unpkg to a phone.
+const MV_FAST = MV_CDN.replace("https://unpkg.com/", "https://cdn.jsdelivr.net/npm/");
 let mvLoad = null;
-const loadModelViewer = () => (mvLoad ??= import(/* @vite-ignore */ MV_CDN).catch((e) => { mvLoad = null; throw e; }));
+const loadModelViewer = () => (mvLoad ??= import(/* @vite-ignore */ MV_FAST)
+  .catch(() => import(/* @vite-ignore */ MV_CDN))
+  .catch((e) => { mvLoad = null; throw e; }));
+// Started the moment a QR link arrives, so it downloads while the model builds.
+export const preloadAR = () => { loadModelViewer().catch(() => {}); };
+
+const inFrame = () => { try { return window.top !== window; } catch { return true; } };
+// A phone or tablet, whether or not this browser can do AR: such a device
+// gets the phone sheet (or a reason), never a QR code to scan with itself.
+export const touchDevice = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 let bwipLoad = null;
 const loadBwip = () => (bwipLoad ??= import("/node_modules/bwip-js/dist/bwip-js.mjs").catch((e) => { bwipLoad = null; throw e; }));
 
@@ -105,13 +138,27 @@ let open = null;
 export function closeAR() { open?.(); }
 
 // hooks: {
-//   name:     the model's name, for the heading
-//   glb():    the model as a GLB ArrayBuffer, in METRES (AR is real size)
-//   shareUrl(): the share link for this model, or null when it is too big
+//   name:      the model's name, for the heading
+//   glb():     the model as a GLB ArrayBuffer, in METRES (AR is real size)
+//   longUrl(): the long share link for this model, or null when it is too big
+//   short:     null when short links are not available here, else {
+//     name:          a suggested name
+//     slugify(text): what a typed name becomes in the link
+//     check(slug):   cloudlink's checkName() answer
+//     suggest(slug): a free variant of a taken name, or null
+//     save(slug):    stores the model under that name, returns its link
+//   }
 // }
 export async function showAR(hooks) {
   closeAR();
   const mode = await arMode();
+  const phone = !!mode || touchDevice();
+  if (phone && inFrame()) {
+    try {
+      const u = await hooks.longUrl();
+      if (u) { window.top.location.href = withAR(u); return; }
+    } catch { /* open it here and hope */ }
+  }
   if (!document.getElementById("ar-css")) {
     const st = document.createElement("style");
     st.id = "ar-css";
@@ -141,7 +188,7 @@ export async function showAR(hooks) {
     <span class="ar-sp"></span><button class="ar-x" type="button" aria-label="Close">&times;</button></div>`;
   document.body.append(root);
 
-  if (mode) {
+  if (phone) {
     card.innerHTML = head(esc(hooks.name || "Your model") + ", at its real size")
       + `<div class="ar-stage"><div class="ar-note" style="padding:16px">Getting it ready…</div></div>`
       + `<button class="ar-go" type="button" disabled>${ICON}<span>Place it on your desk</span></button>`
@@ -173,7 +220,16 @@ export async function showAR(hooks) {
       stage.replaceChildren(mv);
       mv.addEventListener("load", () => {
         const d = mv.getDimensions?.();
-        if (d) note.innerHTML = `Real size <b>${mm(d.x)} × ${mm(d.z)} × ${mm(d.y)} mm</b>. ` + note.innerHTML;
+        const size = d ? `Real size <b>${mm(d.x)} × ${mm(d.z)} × ${mm(d.y)} mm</b>. ` : "";
+        if (!mode) {
+          // a phone whose browser cannot do it: say why, rather than a dead button
+          note.innerHTML = size + `<span class="ar-warn">This browser cannot open the camera view. `
+            + (/Android/i.test(navigator.userAgent)
+              ? `Open this page in Chrome, and install Google Play Services for AR from the Play Store.`
+              : `Open this page in Safari.`) + `</span>`;
+          return;
+        }
+        note.innerHTML = size + note.innerHTML;
         go.disabled = false;
       }, { once: true });
       mv.addEventListener("ar-status", (e) => {
@@ -182,47 +238,127 @@ export async function showAR(hooks) {
             + `and Google Play Services for AR; on an iPhone, Safari or any browser works.</span>`;
         }
       });
-      go.onclick = () => mv.activateAR();
+      go.onclick = () => {
+        if (mv.canActivateAR === false) {
+          note.innerHTML = `<span class="ar-warn">This browser will not open the camera view here. `
+            + `On Android it needs Chrome and Google Play Services for AR; on an iPhone, Safari.</span>`;
+          return;
+        }
+        mv.activateAR();
+      };
     } catch (e) {
       stage.innerHTML = `<div class="ar-warn" style="padding:16px">Could not get the model ready: ${esc(e?.message || e)}</div>`;
     }
     return;
   }
 
-  // A computer: the QR code.
+
+  // A computer: the QR code, behind a short link when there can be one.
   card.innerHTML = head("Scan it with your phone")
-    + `<div class="ar-qr"><div class="ar-note" style="padding:40px 30px;color:#555">Making the code…</div></div>`
+    + `<div class="ar-short" hidden>`
+    + `<div class="ar-note"><b>First, give it a short link.</b> It keeps the code small, so it scans in a `
+    + `moment and opens fast. The model is saved on brepcode.com under this name, and anyone with the link can open it.</div>`
+    + `<div class="ar-name"><input type="text" spellcheck="false" maxlength="48" aria-label="Short link name">`
+    + `<button type="button" class="ar-make">Make the code</button></div>`
+    + `<div class="ar-msg ar-note"></div>`
+    + `<button type="button" class="ar-long">Use the long link instead (nothing uploaded)</button>`
+    + `</div>`
+    + `<div class="ar-done" hidden>`
+    + `<div class="ar-qr"></div>`
     + `<ol class="ar-steps"><li>Open your phone's camera and point it at the code.</li>`
     + `<li>Tap the link. Your phone builds this exact model, sizes and all.</li>`
     + `<li>Tap <b>Place it on your desk</b> and aim at a table.</li></ol>`
-    + `<div class="ar-note">The model travels inside the code. Nothing is uploaded.</div>`
-    + `<div class="ar-link"><input readonly aria-label="Link"><button type="button">Copy link</button></div>`;
+    + `<div class="ar-note ar-how"></div>`
+    + `<div class="ar-link"><input readonly aria-label="Link"><button type="button">Copy link</button></div>`
+    + `</div>`;
   card.querySelector(".ar-x").onclick = close;
-  const box = card.querySelector(".ar-qr"), input = card.querySelector(".ar-link input"), copy = card.querySelector(".ar-link button");
-  try {
-    const share = await hooks.shareUrl();
-    if (open !== close) return;
-    if (!share) throw new Error("too-big");
-    const link = withAR(share);
+  const $q = (s) => card.querySelector(s);
+  const shortBox = $q(".ar-short"), done = $q(".ar-done"), nameIn = $q(".ar-name input"),
+    make = $q(".ar-make"), msg = $q(".ar-msg"), longBtn = $q(".ar-long"),
+    box = $q(".ar-qr"), how = $q(".ar-how"), input = $q(".ar-link input"), copy = $q(".ar-link button");
+  const say = (html, warn) => { msg.innerHTML = html.charAt(0).toUpperCase() + html.slice(1); msg.classList.toggle("ar-warn", !!warn); };
+
+  // The code for a finished link, or a sentence saying why there is none.
+  const showCode = async (link, note) => {
+    const cv = await qrCanvas(link);
+    if (open !== close) return false;
+    if (!cv) return false;
     input.value = link;
     input.onfocus = () => input.select();
     copy.onclick = async () => {
       try { await navigator.clipboard.writeText(link); copy.textContent = "Copied"; }
       catch { input.focus(); input.select(); }
     };
-    const cv = await qrCanvas(link);
-    if (open !== close) return;
-    if (!cv) throw new Error("too-big");
+    how.innerHTML = note;
     box.replaceChildren(cv);
-  } catch (e) {
-    const big = e?.message === "too-big";
-    box.replaceWith(Object.assign(document.createElement("div"), {
-      className: "ar-warn",
-      innerHTML: big
-        ? `This model holds too much to fit in a QR code. Export it as <b>Share link</b> with a short `
-          + `name, open that on your phone, and tap the cube button there.`
-        : `Could not make the code: ${esc(e?.message || e)}`,
-    }));
-    if (big && !input.value) card.querySelector(".ar-link").remove();
+    shortBox.hidden = true;
+    done.hidden = false;
+    return true;
+  };
+  const useLong = async () => {
+    longBtn.disabled = true;
+    try {
+      const u = await hooks.longUrl();
+      if (open !== close) return;
+      if (u && await showCode(withAR(u), "The model travels inside the code. Nothing is uploaded.")) return;
+      say(hooks.short
+        ? `This model is too big for a code on its own. Use a short link above.`
+        : `This model is too big to fit in a QR code.`, true);
+      longBtn.hidden = true;
+    } catch (e) {
+      say(`Could not make the code: ${esc(e?.message || e)}`, true);
+    } finally { longBtn.disabled = false; }
+  };
+  longBtn.onclick = useLong;
+
+  const sh = hooks.short;
+  if (!sh) {
+    // no link server here: straight to the long link
+    shortBox.hidden = false;
+    for (const el of [shortBox.firstElementChild, $q(".ar-name"), longBtn]) el.hidden = true;
+    say("Making the code…");
+    return useLong();
   }
+  shortBox.hidden = false;
+  nameIn.value = sh.name;
+  // Offer a name that is actually free, rather than one that fails on press.
+  (async () => {
+    try {
+      const r = await sh.check(sh.slugify(nameIn.value));
+      if (open !== close || nameIn.value !== sh.name) return;
+      if (r.offline) { say(`${esc(r.reason)}. The long link still works.`, true); return; }
+      if (!r.ok && r.free === false) {
+        const alt = await sh.suggest(sh.slugify(nameIn.value));
+        if (alt && open === close && nameIn.value === sh.name) nameIn.value = alt;
+      }
+    } catch { /* checked again on press */ }
+  })();
+  nameIn.addEventListener("keydown", (e) => { if (e.key === "Enter") make.click(); });
+  nameIn.addEventListener("input", () => say(""));
+  make.onclick = async () => {
+    const slug = sh.slugify(nameIn.value);
+    if (slug !== nameIn.value) nameIn.value = slug;
+    make.disabled = true;
+    say("Checking the name…");
+    try {
+      const r = await sh.check(slug);
+      if (open !== close) return;
+      if (r.offline) { say(`${esc(r.reason)}. Use the long link instead.`, true); return; }
+      if (!r.ok) {
+        const alt = r.free === false ? await sh.suggest(slug) : null;
+        if (alt) { nameIn.value = alt; say(`"${esc(slug)}" is taken. <b>${esc(alt)}</b> is free: press Make the code.`); }
+        else say(esc(r.reason), true);
+        return;
+      }
+      say("Saving…");
+      const url = await sh.save(slug);
+      if (open !== close) return;
+      if (!await showCode(withAR(url), `Saved as <b>${esc(slug)}</b>. Anyone with this link can open the model.`)) {
+        say("Could not make the code.", true);
+      }
+    } catch (e) {
+      say(`${esc(e?.message || e)}`, true);
+    } finally { make.disabled = false; }
+  };
+  setTimeout(() => { try { nameIn.focus(); nameIn.select(); } catch { /* gone */ } }, 0);
 }
