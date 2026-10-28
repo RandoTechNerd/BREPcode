@@ -600,7 +600,7 @@
     #app-toast.err { border-color: rgba(255, 92, 92, 0.6); color: #ffc2c2; }
 
     /* deliberately quiet: small monotone icons, no fill until you touch them */
-    #cheat-btn, #about-btn, #hist2-btn, #chat-btn, #dz-time-btn {
+    #cheat-btn, #about-btn, #hist2-btn, #chat-btn, #dz-time-btn, #ar-btn {
       display: grid; place-items: center; padding: 0;
       width: 30px; height: 30px; align-self: center;
       background: transparent; border: 0; border-radius: 8px;
@@ -608,7 +608,7 @@
       transition: color .12s ease, background .12s ease;
       font: 600 14px/1 system-ui, sans-serif;
     }
-    #cheat-btn:hover, #about-btn:hover, #hist2-btn:hover, #chat-btn:hover, #dz-time-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); transform: none; }
+    #cheat-btn:hover, #about-btn:hover, #hist2-btn:hover, #chat-btn:hover, #dz-time-btn:hover, #ar-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); transform: none; }
     #cheat-btn.active, #about-btn.active, #hist2-btn.active, #chat-btn.active, #dz-time-btn.active { color: var(--icon-active); background: rgba(255,255,255,.10); }
 
     .card {
@@ -4393,6 +4393,7 @@
         <div id="landing-acts">
           <button id="landing-export" class="dock-btn">Download it
             <small>STL, STEP, 3MF, SVG drawing, G-code</small></button>
+          <button id="landing-ar" class="hist-btn">See it on your desk</button>
           <button id="landing-edit" class="hist-btn">Edit the code</button>
           <button id="landing-own" class="hist-btn">Start your own</button>
         </div>
@@ -4418,6 +4419,13 @@
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none"
              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M2.5 3.5h11v7h-6l-3 2.8v-2.8h-2z" />
+        </svg>
+      </button>
+      <button id="ar-btn" title="See it on your desk (real size, through your phone's camera)" aria-label="See it on your desk">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3 4.5 7v8L12 19l7.5-4V7z" /><path d="M4.5 7 12 11l7.5-4M12 11v8" />
+          <path d="M2.5 21.5h19" opacity=".6" />
         </svg>
       </button>
       <button id="about-btn" title="Settings, about and links" aria-label="Settings and about">
@@ -14989,6 +14997,8 @@ ${joined}${SITE_TAIL}`), joined);
 
       // model-viewer is Y-up; our scene is Z-up — rotate so it sits upright.
       grp.rotateX(-Math.PI / 2);
+      // AR places a glTF at its true size, and glTF is in metres
+      if (opts.scale) grp.scale.setScalar(opts.scale);
       const glb = await new GLTFExporter().parseAsync(grp, { binary: true, onlyVisible: false });
       return glb;   // ArrayBuffer
     }
@@ -15309,6 +15319,34 @@ ${joined}${SITE_TAIL}`), joined);
         || PRETTY_PATH.test(location.pathname);
     }
 
+    // "See it on your desk" (ar.js). On a phone it opens the camera view; on a
+    // computer it shows the share link as a QR code, with ar=1 on the end so
+    // the phone lands straight back here.
+    let _ar;
+    const getAR = () => (_ar ??= import("./ar.js"));
+    async function seeOnDesk() {
+      try {
+        const ar = await getAR();
+        await ar.showAR({
+          name: modelName,
+          glb: () => modelToGLB({ scale: 0.001, lights: false }),
+          shareUrl: async () => {
+            const src = code.value.trim();
+            if (!src) throw new Error("the editor is empty");
+            const exp = await getExporters();
+            const text = exp.bcodeFile(src, {
+              name: modelName || "brepcode-model", scene: currentScene(), history: [],
+              meshes: await packUsedMeshes(exp, src),
+            });
+            const frag = await exp.shareFragment(text);
+            return frag ? shareBase() + frag : null;
+          },
+        });
+      } catch (e) {
+        setStatus("err", `See it on your desk did not open — ${e?.message || e}`);
+      }
+    }
+
     async function openSharedModel() {
       const shortName = /[#&]s=/.test(location.hash) || PRETTY_PATH.test(location.pathname);
       if (!/[#&]m=/.test(location.hash) && !shortName) return false;
@@ -15403,6 +15441,11 @@ ${joined}${SITE_TAIL}`), joined);
         frameForLanding();
         hint.innerHTML = `Opened a <b>shared model</b> — it travelled inside the link, nothing was `
           + `uploaded. It is fully editable: change it, drill it, export it, or save your own copy.`;
+        // Scanned off a QR code: go straight to the desk view, on a phone that
+        // has one (on a computer the landing card's button is enough).
+        if (/[#&]ar=1(&|$)/.test(location.hash)) {
+          getAR().then(async (ar) => { if (await ar.arMode()) seeOnDesk(); }).catch(() => {});
+        }
         return true;
       } catch { bootDismiss(); return false; }
     }
@@ -17345,6 +17388,8 @@ ${joined}${SITE_TAIL}`), joined);
     // in the editor header behind an overflow menu, which a visitor who has
     // never opened the editor will never find.
     $("landing-export")?.addEventListener("click", () => $("export-btn").click());
+    $("landing-ar")?.addEventListener("click", () => seeOnDesk());
+    $("ar-btn")?.addEventListener("click", () => seeOnDesk());
     $("landing-edit")?.addEventListener("click", () => {
       toggleCard($("landing"), null, false);
       toggleCard(panel, openBtn, true);
