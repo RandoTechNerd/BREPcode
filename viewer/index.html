@@ -600,7 +600,7 @@
     #app-toast.err { border-color: rgba(255, 92, 92, 0.6); color: #ffc2c2; }
 
     /* deliberately quiet: small monotone icons, no fill until you touch them */
-    #cheat-btn, #about-btn, #hist2-btn, #chat-btn {
+    #cheat-btn, #about-btn, #hist2-btn, #chat-btn, #dz-time-btn {
       display: grid; place-items: center; padding: 0;
       width: 30px; height: 30px; align-self: center;
       background: transparent; border: 0; border-radius: 8px;
@@ -608,8 +608,8 @@
       transition: color .12s ease, background .12s ease;
       font: 600 14px/1 system-ui, sans-serif;
     }
-    #cheat-btn:hover, #about-btn:hover, #hist2-btn:hover, #chat-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); transform: none; }
-    #cheat-btn.active, #about-btn.active, #hist2-btn.active, #chat-btn.active { color: var(--icon-active); background: rgba(255,255,255,.10); }
+    #cheat-btn:hover, #about-btn:hover, #hist2-btn:hover, #chat-btn:hover, #dz-time-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); transform: none; }
+    #cheat-btn.active, #about-btn.active, #hist2-btn.active, #chat-btn.active, #dz-time-btn.active { color: var(--icon-active); background: rgba(255,255,255,.10); }
 
     .card {
       width: min(560px, calc(100vw - 40px));
@@ -4577,6 +4577,10 @@
       return KERNEL_DEFAULT;
     }
     let lastEngine = null;
+    // SMLib finished downloading. Kept, because it can land while the first
+    // build (on the JS kernel meanwhile) is still running, and then that
+    // build's reply is the moment to rebuild on it, not the smlibReady.
+    let smlibArrived = false;
     // " · Exact" (Rust kernel, STEP-able), " · Mesh" (has textures/imports),
     // " · JS kernel (...)" when the split engine refused and the JS kernel built it.
     function engineNote(e) {
@@ -4662,6 +4666,7 @@
             return;
           }
           if (data?.smlibReady) {               // SMLib finished downloading: build on it now
+            smlibArrived = true;
             if (lastEngine?.stats?.smlibLoading || (lastEngine?.fallbackKind === "loading" && buildKernel() === "nvidia")) scheduleBuild();
             return;
           }
@@ -10873,6 +10878,7 @@ ${joined}${SITE_TAIL}`), joined);
             solids = r.solids;
             fromWorker = true;
             lastEngine = { engine: r.engine || "js", fallback: r.fallback || null, fallbackKind: r.fallbackKind || null, stats: r.stats || null };
+            if (r.stats?.smlibLoading && smlibArrived) setTimeout(scheduleBuild, 0);
             // How much of the model actually had to be rebuilt. Worth showing:
             // it is the difference between "this edit was cheap" and "this edit
             // threw the cache away", and without it an incremental build that

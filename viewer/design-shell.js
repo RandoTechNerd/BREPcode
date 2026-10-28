@@ -226,6 +226,25 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
   #dz-side { width: 200px; max-height: 40vh; }
   #dz-time { left: 12px; right: 12px; bottom: auto; top: 56px; margin-left: 212px; }
 }
+
+/* phones: no timeline bar (it had no room beside the browser); a button left
+   of the Editor pill opens it upward as a list, newest step at the bottom */
+#dz-time-btn { display: none; }
+@media (max-width: 700px) {
+  body.design-mode #dz-time-btn { display: grid; }
+  html body.design-mode #dz-time { display: none; }
+  html body.design-mode.dz-tl-open #dz-time {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+    top: auto; margin-left: 0; padding: 8px;
+    left: calc(10px + env(safe-area-inset-left, 0px)) !important; right: auto !important;
+    width: min(300px, calc(100vw - 20px));
+    bottom: calc(66px + env(safe-area-inset-bottom, 0px)); max-height: 50dvh;
+  }
+  body.dz-tl-open #dz-steps { flex-direction: column; align-items: stretch; overflow: hidden auto; min-height: 0; }
+  body.dz-tl-open .dt-join { width: 1px; height: 5px; margin-left: 14px; }
+  body.dz-tl-open .dt-step { padding: 7px 10px; font-size: 13px; white-space: normal; }
+  body.dz-tl-open .dt-fail-note { white-space: normal; margin: 6px 0 0; max-width: none; }
+}
 `;
 
 const svg = (body) => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${body}</svg>`;
@@ -267,6 +286,24 @@ export function initDesignShell(host) {
   time.className = "dz-ui";
   time.innerHTML = `<span class="dz-tl">Timeline</span><div id="dz-steps" role="list" aria-label="Feature timeline"></div>`;
   document.body.append(bar, side, time);
+  const timeBtn = document.createElement("button");
+  timeBtn.id = "dz-time-btn";
+  timeBtn.type = "button";
+  timeBtn.title = "Timeline";
+  timeBtn.setAttribute("aria-label", "Timeline");
+  timeBtn.setAttribute("aria-expanded", "false");
+  timeBtn.innerHTML = `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">`
+    + `<path d="M2 8h12"/><circle cx="4" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="12" cy="8" r="1.6"/></svg>`;
+  document.getElementById("buttons")?.prepend(timeBtn);
+  const phone = matchMedia("(max-width: 700px)");
+  const setTimeOpen = (on) => {
+    document.body.classList.toggle("dz-tl-open", on);
+    timeBtn.classList.toggle("active", on);
+    timeBtn.setAttribute("aria-expanded", String(on));
+    if (on) { tlFollow = true; keepTimelineInView(); }
+  };
+  timeBtn.addEventListener("click", () => setTimeOpen(!document.body.classList.contains("dz-tl-open")));
+  phone.addEventListener("change", () => { if (!phone.matches) setTimeOpen(false); });
   const treeEl = side.querySelector("#dz-tree"), selEl = side.querySelector("#dz-sel");
   const countEl = side.querySelector("h3 small"), stepsEl = time.querySelector("#dz-steps");
 
@@ -605,7 +642,7 @@ export function initDesignShell(host) {
     if (n !== tlLen) { tlFollow = tlFollow || n > tlLen; tlLen = n; }
     const on = stepsEl.querySelector(".dt-step.on, .dt-step.fail");
     if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
-    else if (tlFollow) stepsEl.scrollLeft = stepsEl.scrollWidth;
+    else if (tlFollow) { stepsEl.scrollLeft = stepsEl.scrollWidth; stepsEl.scrollTop = stepsEl.scrollHeight; }
   }
   // a press on the timeline brings it up over any window lying across it
   time.addEventListener("pointerdown", () => {
@@ -691,6 +728,7 @@ export function initDesignShell(host) {
   }
   function pickStep(step) {
     pickedRow = null;
+    if (phone.matches) setTimeOpen(false);           // the phone list closes onto the model
     const fm = host.featureMap();
     const fid = fm?.[step.id] ? step.id : step.refs.find((r) => fm?.[r]) ?? null;
     if (fid) host.select(fid, step.link ?? undefined);
@@ -1073,7 +1111,7 @@ export function initDesignShell(host) {
     setActive(on) {
       active = !!on;
       if (active) { refresh(); preloadTools(); requestAnimationFrame(fitTimeline); }
-      else { gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); if (sketcher?.active || sketcher?.choosing) sketcher.cancel(); }
+      else { setTimeOpen(false); gizmo.detach(); clearOverlay(); face = null; setHoverFace(null); closeNumbers(); dialog?.cancel(); pressPull?.cancel(); if (sketcher?.active || sketcher?.choosing) sketcher.cancel(); }
     },
     // the viewer's selection changed (spawnHandles / clearHandles)
     onSelect(fid) {

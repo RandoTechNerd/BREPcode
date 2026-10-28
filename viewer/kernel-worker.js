@@ -14,7 +14,6 @@
 //
 // NB build-site.mjs rewrites the /node_modules path below for the static
 // site, exactly as it does for every other viewer file.
-import { PartHistory } from "/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js";
 import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 
@@ -25,6 +24,13 @@ import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 // point the Rust wasm elsewhere (rustWasmUrl) on a host that can't serve 13 MB
 // from the app folder, as brepcode.com already does for replicad.
 const PARAMS = new URLSearchParams(self.location?.search || "");
+// The JS kernel (9 MB of script) is imported, not a static import: as one,
+// nothing in this file ran until it had downloaded and parsed, so the wasm
+// kernels' downloads below waited a second or more behind it on a first visit.
+let partHistoryLoad = null;
+const getPartHistory = () => (partHistoryLoad ??= import("/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js")
+  .then((m) => m.PartHistory)
+  .catch((e) => { partHistoryLoad = null; throw e; }));
 let rustKernel = null;         // the load promise, once started
 let rustModule = null;         // set when the load has finished
 let rustFailure = null;        // set when it failed: not retried this session
@@ -62,6 +68,7 @@ function loadRust(wasmUrl) {
 // one at a time for the same reason (the adapter's handles are per instance).
 // NB build-site.mjs rewrites both paths below for the static site.
 const SMLIB_RECYCLE_BYTES = 768 * 1024 * 1024;
+const SMLIB_FIRST_WAIT_MS = 1200;
 let smlibModule = null;     // the compiled WebAssembly.Module, kept across instances
 let smlibWrap = null;       // adapter.cjs's wrap()
 let smlibLoad = null;       // the load promise of the current instance
@@ -92,6 +99,11 @@ function loadSmlib(wasmUrl) {
       smlibModule || (async () => {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`the SMLib wasm didn't download (HTTP ${res.status})`);
+        // compiled AS it downloads; a host that serves it without the wasm
+        // content type gets the old download-then-compile
+        if (WebAssembly.compileStreaming && /application\/wasm/i.test(res.headers.get("content-type") || "")) {
+          try { return await WebAssembly.compileStreaming(res.clone()); } catch { /* below */ }
+        }
         return WebAssembly.compile(await res.arrayBuffer());
       })(),
     ]);
@@ -207,9 +219,26 @@ function nativeCall(msg, transfer = [], onProgress = null) {
 
 // Start the download now, while the page is still booting, unless the page
 // asked for the JS kernel only or the native kernel is coming.
-if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) loadRust().catch(() => { /* recorded in rustFailure */ });
-// and SMLib's, when the kernel picker says so (the Rust one is its fallback)
-if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED && PARAMS.get("kernel") === "nvidia") loadSmlib().catch(() => { /* recorded in smlibFailure */ });
+// When SMLib is the kernel picked, it downloads FIRST and the Rust kernel (its
+// fallback, 5 MB gzipped against SMLib's 1.6) only once it is in: started
+// together they split the line, and SMLib took three times as long to land.
+// Anything that needs the Rust kernel sooner (a refusal, an edge lookup)
+// still starts it on the spot.
+if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) {
+  if (PARAMS.get("kernel") === "nvidia") {
+    loadSmlib().catch(() => { /* recorded in smlibFailure */ })
+      .finally(() => {
+        loadRust().catch(() => { /* recorded in rustFailure */ });
+        getPartHistory().catch(() => { /* the build that needs it reports it */ });
+      });
+  } else loadRust().catch(() => { /* recorded in rustFailure */ });
+}
+// The JS kernel too, but after SMLib when SMLib is coming: parsing its 9 MB
+// holds this thread for most of a second, which is exactly when SMLib wants it
+// to finish setting up. A build that needs it sooner asks for it itself.
+if (PARAMS.get("kernel") !== "nvidia" || PARAMS.get("engine") === "js" || NATIVE_EXPECTED) {
+  getPartHistory().catch(() => { /* the build that needs it reports it */ });
+}
 let manifoldWasm = null;
 function loadManifold() {
   manifoldWasm ??= (async () => {
@@ -256,7 +285,7 @@ async function ensureImportClonePatch() {
   if (clonePatchState) return clonePatchState;
   clonePatchState = (async () => {
     try {
-      const scratch = new PartHistory();
+      const scratch = new (await getPartHistory())();
       const f = await scratch.newFeature("IMPORT3D");
       f.inputParams.fileToImport = TETRA_STL;
       f.inputParams.centerMesh = false;
@@ -355,7 +384,7 @@ async function loadGenerateSTEP() {
 // the only way to see which stage it stopped at.
 const DEBUG = /(^|[?&])debug=1/.test(self.location?.search || "");
 const trace = (s) => { if (DEBUG) console.log(`[kw] ${s}`); };
-trace(`module evaluated, kernel present: ${typeof PartHistory}`);
+trace("module evaluated");
 
 // Announce readiness rather than letting the page post blind. A message sent in
 // the same tick as `new Worker(...)` can be dropped on the floor — no error, no
@@ -425,6 +454,14 @@ self.onmessage = async ({ data, ports }) => {
       // meanwhile and the page rebuilds when it lands); split does.
       let smlibNote = null;
       if (!nativeRefused && engine !== "js" && data.kernel === "nvidia" && !nativePort) {
+        // A first build that arrives while SMLib is still landing waits a
+        // moment for it: a build on the JS kernel meanwhile costs a second and
+        // a half on this thread and pushes SMLib's own model later still.
+        // Under the page's cancel threshold (CANCEL_WORTH_IT_MS), so an edit
+        // made meanwhile never kills the worker over it.
+        if (engine === "auto" && !smlibKernel && !smlibFailure && smlibLoad) {
+          await Promise.race([smlibLoad.catch(() => {}), new Promise((r) => setTimeout(r, SMLIB_FIRST_WAIT_MS))]);
+        }
         if (engine === "auto" && !smlibKernel && !smlibFailure) {
           loadSmlib(data.smlibWasmUrl).catch(() => {});
           smlibNote = { smlibLoading: true };
@@ -449,7 +486,9 @@ self.onmessage = async ({ data, ports }) => {
       if (nativeRefused) {
         // decided above: the JS kernel below builds it
       } else if (engine !== "js" && rustPending) {
-        loadRust(data.rustWasmUrl).catch(() => {});
+        // SMLib still downloading: the Rust kernel waits its turn (see the
+        // start-up loads), and this build runs on the JS kernel meanwhile
+        if (!smlibNote?.smlibLoading) loadRust(data.rustWasmUrl).catch(() => {});
         fallback = "the Rust kernel is still downloading";
         fallbackKind = "loading";
       } else if (engine !== "js") {
@@ -480,7 +519,7 @@ self.onmessage = async ({ data, ports }) => {
       const prev = builds.get(key);
       const stampsBefore = featureTimestamps(prev?.ph);
       const r = await adoptHistory({
-        prev: prev?.ph, prevPlan: prev?.plan, json: data.json, PartHistory,
+        prev: prev?.ph, prevPlan: prev?.plan, json: data.json, PartHistory: await getPartHistory(),
       });
       const ph = r.ph;
       trace(r.incremental
@@ -536,7 +575,7 @@ self.onmessage = async ({ data, ports }) => {
         // recommendations). Until it can, STEP comes from the JS kernel, built
         // once on demand from the same history.
         if (!b.ph) {
-          const ph = new PartHistory();
+          const ph = new (await getPartHistory())();
           await ph.fromJSON(b.json);
           if ((ph.features || []).some((f) => f?.type === "IMPORT3D")) await ensureImportClonePatch();
           await ph.runHistory({ throwOnFeatureError: true });

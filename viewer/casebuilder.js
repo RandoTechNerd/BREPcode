@@ -166,7 +166,7 @@ function style() {
   styled = true;
   const css = document.createElement("style");
   css.textContent = `
-  #cb { position: fixed; inset: 0; z-index: 9500; overflow: auto; -webkit-overflow-scrolling: touch;
+  #cb { position: fixed; inset: 0; z-index: 150000; overflow: auto; -webkit-overflow-scrolling: touch;
     background: var(--bg, #0b0f16); color: var(--text, #dfe6f3);
     font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; box-sizing: border-box;
     transition: opacity .3s ease; }
@@ -251,7 +251,7 @@ function style() {
   }
   /* after Build: a small card over the plate with the downloads and the way
      back. Bottom-left, above the view cube: the Params card opens on the right */
-  #cb-done { position: fixed; z-index: 900; left: 16px; bottom: 110px; width: min(340px, calc(100vw - 32px));
+  #cb-done { position: fixed; z-index: 150000; left: 16px; bottom: 110px; width: min(340px, calc(100vw - 32px));
     background: var(--card, #121826); color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a); border-radius: 14px;
     box-shadow: 0 18px 50px rgba(0,0,0,.4); padding: 12px 14px; font: 13px/1.45 system-ui, sans-serif; }
   #cb-done b { display: block; font-size: 14px; margin-bottom: 2px; padding-right: 20px; }
