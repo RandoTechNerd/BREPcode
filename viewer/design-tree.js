@@ -201,7 +201,7 @@ const svgIcon = (row) => `<svg viewBox="0 0 16 16" width="14" height="14" fill="
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 
 // renderTree(el, tree, { selectedFid, stale, onPick(row) })
-export function renderTree(el, tree, { selectedFid = null, stale = false, onPick } = {}) {
+export function renderTree(el, tree, { selectedFid = null, stale = false, onPick, onMenu = null } = {}) {
   el.textContent = "";
   if (!tree.ok) {
     el.innerHTML = `<div class="dz-empty">The code does not parse as BREPcode JavaScript, so there is no tree to show.`
@@ -240,6 +240,7 @@ export function renderTree(el, tree, { selectedFid = null, stale = false, onPick
         + (r.pattern ? `<span class="dz-pat" title="${r.pattern.count} shapes come from this one call">×${r.pattern.count}</span>` : "")
         + (r.args ? `<span class="dz-args">${esc(r.args)}</span>` : "");
       b.addEventListener("click", () => onPick?.(r));
+      b.addEventListener("contextmenu", (e) => { if (!onMenu) return; e.preventDefault(); onMenu(r, e); });
       el.appendChild(b);
     }
   }

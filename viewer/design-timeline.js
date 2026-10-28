@@ -168,6 +168,92 @@ export function deleteStepText(text, link) {
   return { error: "it is not one of several shapes (it is the whole model, or a declaration other steps use); edit it in the code" };
 }
 
+// ---------------------------------------------------- the edit history
+//
+// In Design mode the timeline is what you DID, one step per edit (every move,
+// fillet or resize), so going back is a click. Each step is named from the
+// difference between the code before and after it: the smallest call that
+// holds the whole change says what kind of edit it was.
+const VERB = { translate: "Move", move: "Move", rotate: "Rotate", scale: "Scale", resize: "Resize", mirror: "Mirror",
+  fillet: "Fillet", chamfer: "Chamfer", shell: "Shell", difference: "Cut", subtract: "Cut", cut: "Cut",
+  union: "Join", add: "Join", intersection: "Intersect", intersect: "Intersect", hole: "Hole",
+  extrude: "Extrude", revolve: "Revolve", sketch: "Sketch", color: "Colour", colorize: "Colour" };
+const NOUN = { cube: "box", cylinder: "cylinder", sphere: "sphere", cone: "cone", torus: "torus" };
+const noun = (c) => NOUN[c?.name] ?? c?.name ?? "";
+// the shape a wrapper call holds: its last argument that is itself a call
+function heldShape(map, c) {
+  const inner = map.calls.filter((k) => k.parent != null && map.calls[k.parent] === c);
+  return inner.length ? inner[inner.length - 1] : null;
+}
+
+export function editLabel(prev, next) {
+  if (prev == null) return "Start";
+  if (prev === next) return "No change";
+  let p = 0;
+  const max = Math.min(prev.length, next.length);
+  while (p < max && prev[p] === next[p]) p++;
+  let s = 0;
+  while (s < max - p && prev[prev.length - 1 - s] === next[next.length - 1 - s]) s++;
+  const [nA, nB] = [p, next.length - s], [oA, oB] = [p, prev.length - s];
+  const removed = nB <= nA;
+  const text = removed ? prev : next;
+  const [a, b] = removed ? [oA, oB] : [nA, nB];
+  const map = parseCode(text);
+  if (!map.ok) return "Edit code";
+  // a named value: the slider for it, or its number typed
+  const param = map.params.find((q) => a >= q.valueStart && b <= q.valueEnd);
+  if (param) return `Set ${param.name}`;
+  // the smallest call holding the whole change
+  let c = null;
+  for (const k of map.calls) if (k.start <= a && k.end >= b && (!c || k.end - k.start < c.end - c.start)) c = k;
+  if (!c) return removed ? "Delete" : "Edit code";
+  // a whole call added or taken out: the longer text, less that one call,
+  // is the shorter one (spaces and the comma that went with it aside)
+  const flat = (t) => t.replace(/\s+/g, "").replace(/,+/g, ",").replace(/\(,/g, "(").replace(/,\)/g, ")").replace(/,\]/g, "]");
+  const [long, short] = next.length >= prev.length ? [next, prev] : [prev, next];
+  const lmap = long === text ? map : parseCode(long);
+  if (lmap.ok) {
+    const want = flat(short);
+    const whole = lmap.calls.find((k) => flat(long.slice(0, k.start) + long.slice(k.end)) === want);
+    if (whole) {
+      // outermost wins: translate(…, sphere()) added is "Add sphere", not "Add translate"
+      let top = whole;
+      for (let up = top.parent == null ? null : lmap.calls[top.parent]; up && flat(long.slice(0, up.start) + long.slice(up.end)) === want; up = up.parent == null ? null : lmap.calls[up.parent]) top = up;
+      const shown = VERB[top.name] && heldShape(lmap, top) ? heldShape(lmap, top) : top;
+      return `${long === next ? "Add" : "Delete"} ${noun(shown)}`;
+    }
+  }
+  if (VERB[c.name]) {
+    const held = /^(Move|Rotate|Scale|Resize|Mirror|Fillet|Chamfer|Shell|Colour)$/.test(VERB[c.name]) ? heldShape(map, c) : null;
+    return held ? `${VERB[c.name]} ${noun(held)}` : VERB[c.name];
+  }
+  return `Change ${noun(c)}`;
+}
+
+// renderHistory(el, labels, current, { onPick(i) }): one step per edit, the
+// current one lit, the ones after it greyed (still there to step forward to,
+// until a new edit replaces them).
+export function renderHistory(el, labels, current, { onPick } = {}) {
+  el.textContent = "";
+  labels.forEach((label, i) => {
+    if (i) {
+      const tick = document.createElement("span");
+      tick.className = "dt-join" + (i > current ? " future" : "");
+      el.appendChild(tick);
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "dt-step dt-edit" + (i === current ? " on" : i > current ? " future" : "");
+    b.dataset.i = String(i);
+    b.title = i === current ? `${i + 1}. ${label} (where you are now)`
+      : i < current ? `${i + 1}. ${label}: click to go back to here`
+      : `${i + 1}. ${label}: undone. Click to bring it back; a new edit replaces it`;
+    b.innerHTML = `<span class="dt-n">${i + 1}</span><span class="dt-l">${esc(label)}</span>`;
+    b.addEventListener("click", () => onPick?.(i));
+    el.appendChild(b);
+  });
+}
+
 // ------------------------------------------------------------------ the DOM
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));

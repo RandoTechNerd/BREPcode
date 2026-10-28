@@ -13,7 +13,7 @@ import * as codemap from "../src/codemap.js";
 import { dragSpanFor } from "../viewer/assist.js";
 import { moveText, ridersOf, instanceSpan } from "../viewer/design-move.js";
 import { buildTree, primaryFid, rowForFid, callCategory } from "../viewer/design-tree.js";
-import { linkFeatures, referencedIds, stepLabel, failedSteps, deleteStepText } from "../viewer/design-timeline.js";
+import { linkFeatures, referencedIds, stepLabel, failedSteps, deleteStepText, editLabel } from "../viewer/design-timeline.js";
 import * as F from "../viewer/design/features.js";
 import { build as buildModel } from "../index.js";
 import { loadNvidiaKernel } from "../src/engine-node.js";
@@ -913,6 +913,25 @@ return difference(across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0), ...cuts);
   check("nothing picked: move / rotate / scale take the whole model", /const target = selectedFid \?\? MODEL/.test(shell));
   check("the browser's selection has a draggable split and pops out to its own window",
     /id="dz-split" role="separator"/.test(shell) && /function popSel\(out/.test(shell) && /#dz-selwin \{/.test(shell));
+}
+
+{
+  // the timeline is the edit history; each step is named from its diff
+  const A = `difference(\n  cube([30, 30, 12]),\n  translate([15, 15, -1], cylinder({ r: 8, h: 14, $fn: 64 })),\n)`;
+  const withSphere = A.replace("  cube([30, 30, 12]),", "  cube([30, 30, 12]),\n  sphere(4),");
+  const cases = [
+    [null, A, "Start"],
+    [A, A.replace("[15, 15, -1]", "[10, 15, -1]"), "Move cylinder"],
+    [A, A.replace("cube([30, 30, 12])", "cube([40, 30, 12])"), "Change box"],
+    [A, A.replace("  cube([30, 30, 12]),", "  cube([30, 30, 12]),\n  translate([30, 20, 0], sphere(4)),"), "Add sphere"],
+    [A, withSphere, "Add sphere"],
+    [withSphere, A, "Delete sphere"],
+    [A, A.replace("cube([30, 30, 12])", "fillet({ r: 2, edges: \"z\" }, cube([30, 30, 12]))"), "Fillet box"],
+    [A, A.replace("cube([30, 30, 12])", "translate([5, 0, 0], cube([30, 30, 12]))"), "Move box"],
+    ["const width = 30;\nreturn cube([width, 10, 10]);", "const width = 42;\nreturn cube([width, 10, 10]);", "Set width"],
+    [A, A + " oops(", "Edit code"],
+  ];
+  for (const [p, n, want] of cases) check(`timeline step named "${want}"`, editLabel(p, n) === want, editLabel(p, n));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

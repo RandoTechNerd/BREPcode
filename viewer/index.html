@@ -22540,6 +22540,9 @@ let SIMPLIFY_TARGET = 10000;
         code.scrollTop = Math.max(0, line * 21 - code.clientHeight / 2);
       },
       undo: () => { if (!undoBtn.disabled) undoBtn.click(); },
+      // the timeline is the edit history: every snapshot, and where we are in it
+      history: () => ({ stack: hist.stack, i: hist.i }),
+      goHistory: (i) => restoreHistoryTo(i),
       clear: () => clearHandles(),
       edgesOfFace: (mesh) => edgesOfPickedFace(mesh),
       moveMembers: (fid) => (featureMap?.[fid] ? moveMembersOf(fid) : null),

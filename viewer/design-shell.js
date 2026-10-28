@@ -15,7 +15,7 @@
 // back to Code mode shows exactly what was done.
 
 import { buildTree, renderTree, primaryFid } from "./design-tree.js";
-import { linkFeatures, renderTimeline, deleteStepText, stepLabel } from "./design-timeline.js";
+import { linkFeatures, renderTimeline, deleteStepText, stepLabel, editLabel, renderHistory } from "./design-timeline.js";
 import { parseCode } from "../src/codemap.js";
 import { createMoveGizmo } from "./design-gizmo.js";
 import { parseTyped } from "./design-edit.js";
@@ -205,6 +205,9 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 .dt-step.on { background: color-mix(in srgb, var(--accent, #1c66e5) 30%, transparent); border-color: var(--accent, #1c66e5); }
 .dt-step.rel { border-color: color-mix(in srgb, var(--accent, #1c66e5) 60%, transparent); }
 .dt-step.dead { opacity: 0.55; }
+.dt-step.future { opacity: 0.4; border-style: dashed; }
+.dt-step.future:hover { opacity: 0.75; }
+.dt-join.future { opacity: 0.4; }
 .dt-n { font-size: 9px; color: var(--muted, #8ea0c0); }
 #dz-ctx { padding: 4px; display: flex; flex-direction: column; min-width: 190px; z-index: 100001; }
 #dz-ctx .h { padding: 4px 10px 5px; color: var(--muted, #8ea0c0); font-size: 11px; border-bottom: 1px solid var(--border, #26314a); margin-bottom: 3px; }
@@ -310,7 +313,7 @@ export function initDesignShell(host) {
   const time = document.createElement("div");
   time.id = "dz-time";
   time.className = "dz-ui";
-  time.innerHTML = `<span class="dz-tl">Timeline</span><div id="dz-steps" role="list" aria-label="Feature timeline"></div>`;
+  time.innerHTML = `<span class="dz-tl">Timeline</span><div id="dz-steps" role="list" aria-label="Edit timeline"></div>`;
   document.body.append(bar, side, time);
   const timeBtn = document.createElement("button");
   timeBtn.id = "dz-time-btn";
@@ -677,7 +680,7 @@ export function initDesignShell(host) {
   // ---- rendering ----
   const draw = () => {
     const fm = host.featureMap();
-    renderTree(treeEl, tree, { selectedFid, stale: !fm, onPick: pickRow });
+    renderTree(treeEl, tree, { selectedFid, stale: !fm, onPick: pickRow, onMenu: rowMenu });
     if (pickedRow && selectedFid) {
       const el = treeEl.querySelector(`[data-key="${pickedRow}"]`);
       if (el?.dataset.fids?.split(" ").includes(selectedFid)) {
@@ -694,7 +697,7 @@ export function initDesignShell(host) {
       note.textContent = `✕ ${failure.reason}`;
       note.title = failure.reason;
       stepsEl.appendChild(note);
-    } else renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, onMenu: stepMenu });
+    } else drawHistory();
     keepTimelineInView();
     drawSelection();
   };
@@ -788,6 +791,35 @@ export function initDesignShell(host) {
     flushWaiting();
   };
 
+  // ---- the timeline: the edit history ----
+  // Labels are worked out once per edit (a diff and a parse), keyed by the
+  // code the edit produced and the length of what it came from.
+  const labelCache = new Map();
+  function historyLabels() {
+    const h = host.history?.();
+    if (!h) return null;
+    const out = h.stack.map((snap, i) => {
+      const prev = i ? h.stack[i - 1] : null;
+      const key = `${prev?.length ?? -1}|${snap}`;
+      let l = labelCache.get(key);
+      if (l == null) { l = editLabel(prev, snap); labelCache.set(key, l); }
+      return l;
+    });
+    if (labelCache.size > 600) labelCache.clear();
+    return { labels: out, current: h.i };
+  }
+  function drawHistory() {
+    const h = historyLabels();
+    if (!h) { renderTimeline(stepsEl, steps, { selectedFid, featureLabel: host.featureLabel, onPick: pickStep, onMenu: stepMenu }); return; }
+    renderHistory(stepsEl, h.labels, h.current, { onPick: goHistory });
+  }
+  function goHistory(i) {
+    if (phone.matches) setTimeOpen(false);
+    host.goHistory(i);
+    drawHistory();
+    keepTimelineInView();
+  }
+
   // ---- picking ----
   function pickRow(row) {
     const fid = primaryFid(row);
@@ -810,6 +842,12 @@ export function initDesignShell(host) {
   let ctx = null;
   const closeCtx = () => { ctx?.remove(); ctx = null; removeEventListener("pointerdown", ctxAway, true); };
   function ctxAway(e) { if (ctx && !ctx.contains(e.target)) closeCtx(); }
+  // right-click a browser row: the same menu, for the call that row is
+  function rowMenu(row, e) {
+    pickRow(row);
+    const step = { id: primaryFid(row), type: row.name, label: row.name, link: { start: row.start, end: row.end }, refs: row.fids };
+    stepMenu(step, -1, e);
+  }
   function stepMenu(step, i, e) {
     closeCtx();
     const label = stepLabel(step, host.featureLabel);
@@ -826,13 +864,14 @@ export function initDesignShell(host) {
     ctx.id = "dz-ctx";
     ctx.className = "dz-ui";
     ctx.setAttribute("role", "menu");
-    ctx.innerHTML = `<div class="h">${i + 1}. ${esc(label)}</div>`
+    ctx.innerHTML = `<div class="h">${i >= 0 ? `${i + 1}. ` : ""}${esc(label)}</div>`
       + items.map(([k, l, on, why]) => `<button type="button" role="menuitem" data-k="${k}"${on ? "" : " disabled"}${why ? ` title="${esc(why)}"` : ""}`
         + `${k === "delete" ? ' class="danger"' : ""}>${esc(l)}</button>`).join("");
     document.body.appendChild(ctx);
     const r = ctx.getBoundingClientRect();
     ctx.style.left = `${Math.min(e.clientX, innerWidth - r.width - 8)}px`;
-    ctx.style.top = `${Math.max(8, e.clientY - r.height - 6)}px`;     // above the timeline
+    // above the timeline; below the pointer in the browser
+    ctx.style.top = i >= 0 ? `${Math.max(8, e.clientY - r.height - 6)}px` : `${Math.min(e.clientY + 4, innerHeight - r.height - 8)}px`;
     ctx.addEventListener("click", async (ev) => {
       const k = ev.target.closest("button:not(:disabled)")?.dataset.k;
       if (!k) return;
@@ -846,8 +885,8 @@ export function initDesignShell(host) {
         if (d.error) { host.setHint(`Could not delete it: ${esc(d.error)}.`); return; }
         const res = await host.commit(d.next);
         host.setHint(res.ok
-          ? `Deleted step ${i + 1} (<code>${esc(d.name)}()</code>${d.how === "unwrap" ? ", keeping what it wrapped" : ` from its <code>${esc(d.from)}()</code>`}). Ctrl+Z brings it back.`
-          : `Deleted step ${i + 1}, but the model no longer builds (see the timeline); Ctrl+Z brings it back.`);
+          ? `Deleted ${i >= 0 ? `step ${i + 1} ` : ""}(<code>${esc(d.name)}()</code>${d.how === "unwrap" ? ", keeping what it wrapped" : ` from its <code>${esc(d.from)}()</code>`}). The timeline's step before it brings it back.`
+          : `Deleted it, but the model no longer builds (see the timeline); the step before it brings it back.`);
       }
     });
     ctx.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Escape") closeCtx(); });
@@ -994,6 +1033,30 @@ export function initDesignShell(host) {
     e.preventDefault();
     openFly(b);
   });
+
+  // With a row of the browser picked, the arrow keys walk the browser (up and
+  // down the rows, left to the call holding it, right into the first one it
+  // holds) instead of turning the view. With nothing picked they turn it.
+  addEventListener("keydown", (e) => {
+    if (!active || e.ctrlKey || e.metaKey || e.altKey || !/^Arrow(Up|Down|Left|Right)$/.test(e.key)) return;
+    const el = document.activeElement;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+    if (sketcher?.active || dialog) return;
+    const rows = [...treeEl.querySelectorAll(".dz-row")];
+    const at = rows.findIndex((r) => r.classList.contains("on"));
+    if (at < 0) return;
+    const depth = (r) => +r.style.getPropertyValue("--depth") || 0;
+    let to = null;
+    if (e.key === "ArrowDown") to = rows[at + 1];
+    else if (e.key === "ArrowUp") to = rows[at - 1];
+    else if (e.key === "ArrowRight") to = rows[at + 1] && depth(rows[at + 1]) > depth(rows[at]) ? rows[at + 1] : null;
+    else for (let k = at - 1; k >= 0; k--) if (depth(rows[k]) < depth(rows[at])) { to = rows[k]; break; }
+    e.preventDefault();
+    e.stopImmediatePropagation();        // not the view snap
+    if (!to) return;
+    to.click();
+    treeEl.querySelector(".dz-row.on")?.scrollIntoView({ block: "nearest" });
+  }, true);
 
   // Design keys (KEYS): not while typing, not while the sketcher has the keys
   addEventListener("keydown", (e) => {
