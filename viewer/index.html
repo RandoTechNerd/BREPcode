@@ -604,7 +604,9 @@
        thing on the Design toolbar's row. A window open in that corner pushes
        it left (--ar-right, set by placeArTop()) rather than covering it. */
     #ar-top {
-      display: grid; place-items: center; position: fixed; z-index: 100000;
+      /* above every window and panel (the case builder is 150000), under
+         only its own sheet (160000): it can always be pressed */
+      display: grid; place-items: center; position: fixed; z-index: 155000;
       top: calc(12px + env(safe-area-inset-top, 0px));
       right: calc(var(--ar-right, 12px) + env(safe-area-inset-right, 0px));
       width: 36px; height: 36px; border-radius: 999px; cursor: pointer; padding: 0;
@@ -1269,7 +1271,9 @@
 
     /* ---------- export dialog ---------- */
     #export-modal {
-      position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+      /* above the Design panels (100000), which otherwise sat over its top;
+         still under the corner cube (155000), which stays pressable */
+      position: fixed; inset: 0; z-index: 100500; display: grid; place-items: center;
       background: rgba(0, 0, 0, .45);
     }
     #export-modal[hidden] { display: none; }
@@ -1279,7 +1283,7 @@
       background: var(--header); border: 1px solid var(--border); border-radius: 12px;
       box-shadow: 0 12px 44px rgba(0,0,0,.6); overflow: hidden;
       /* drag the corner — a long option list is easier to read taller */
-      resize: both; min-width: 380px; min-height: 320px;
+      resize: both; min-width: min(380px, calc(100vw - 24px)); min-height: 320px;
     }
     #exp-list { flex: 0 0 218px; overflow-y: auto; border-right: 1px solid var(--border); padding-bottom: 8px; }
     #exp-list button {
@@ -15357,6 +15361,8 @@ ${joined}${SITE_TAIL}`), joined);
           meshes: await packUsedMeshes(exp, src),
         });
       };
+      // an answer on the tap itself: the rest can take a moment on a phone
+      toast("Opening the desk view…", "info");
       try {
         const [ar, cl] = await Promise.all([getAR(), getCloud()]);
         await ar.showAR({
@@ -15382,7 +15388,8 @@ ${joined}${SITE_TAIL}`), joined);
           } : null,
         });
       } catch (e) {
-        setStatus("err", `See it on your desk did not open — ${e?.message || e}`);
+        setStatus("err", `See it on your desk did not open: ${e?.message || e}`);
+        toast(`See it on your desk did not open: ${e?.message || e}`, "err");
       }
     }
 

@@ -394,11 +394,16 @@ export function initDesignShell(host) {
   function fitBar() {
     for (const el of bar.querySelectorAll(".dz-over")) el.classList.remove("dz-over");
     bar.classList.remove("dz-overflow");
-    if (!active || ribbon || phone.matches) { bar.classList.toggle("dz-overflow", phone.matches); markPmore(); return; }
+    if (!active || ribbon) { markPmore(); return; }
+    // a phone always has the menu (everything past the first group is in it);
+    // on a thin one the first group gives up its last tools too
+    if (phone.matches) bar.classList.add("dz-overflow");
     if (bar.scrollWidth <= bar.clientWidth + 1) { markPmore(); return; }
     bar.classList.add("dz-overflow");
     const groups = [...bar.querySelectorAll(".dz-g")];
-    const queue = [groups[groups.length - 1], ...groups.slice(1, -1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse()];
+    const queue = phone.matches
+      ? [...groups[0].querySelectorAll(".dz-t")].slice(1).reverse()
+      : [groups[groups.length - 1], ...groups.slice(1, -1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse()];
     for (const el of queue) {
       if (bar.scrollWidth <= bar.clientWidth + 1) break;
       el.classList.add("dz-over");
@@ -413,10 +418,28 @@ export function initDesignShell(host) {
     pmore.classList.toggle("on", !!b && !shown(b) && shown(pmore));
   }
   let fitQueued = false;
-  const queueFit = () => { if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitBar(); }); } };
+  // A frame or a short timer, whichever comes first: frames can stall while a
+  // page is loading or hidden, and a fit that never runs leaves a tool clipped.
+  const queueFit = () => {
+    if (fitQueued) return;
+    fitQueued = true;
+    const run = () => { if (!fitQueued) return; fitQueued = false; fitBar(); };
+    requestAnimationFrame(run);
+    setTimeout(run, 120);
+  };
   addEventListener("resize", queueFit);
   // the corner cube moving (a window in the top-right corner) changes the room
   new MutationObserver(queueFit).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+  // ...and so does the page's own layout settling: design mode switching on
+  // (the bar is laid out only then), the web font landing, and the bar's
+  // neighbours changing size. Measured too early, the last tool was clipped.
+  new MutationObserver(queueFit).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  document.fonts?.ready.then(queueFit).catch(() => {});
+  new ResizeObserver(queueFit).observe(document.body);
+  // The bar's own box is capped, so its CONTENTS growing (icons and labels
+  // laying out late) shows only on the groups inside it. A refit gives the
+  // same sizes again, so this settles rather than loops.
+  { const ro = new ResizeObserver(queueFit); ro.observe(bar); for (const g of bar.querySelectorAll(".dz-g")) ro.observe(g); }
   const treeEl = side.querySelector("#dz-tree"), selEl = side.querySelector("#dz-sel");
   const countEl = side.querySelector("h3 small"), stepsEl = time.querySelector("#dz-steps");
 

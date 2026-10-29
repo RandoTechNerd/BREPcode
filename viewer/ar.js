@@ -32,6 +32,11 @@ export const QR_MAX = 2300;
 // Can THIS device put a model in the room? "quick-look" (iPhone, iPad),
 // "webxr" (Android Chrome), or null (a computer, or a browser without it).
 export async function arMode() {
+  // isSessionSupported can sit unanswered for a long time on a phone (asking
+  // ARCore, or inside a frame without permission): never wait on it forever
+  return Promise.race([arModeNow(), new Promise((r) => setTimeout(() => r(null), 2500))]);
+}
+async function arModeNow() {
   try {
     const a = document.createElement("a");
     if (a.relList?.supports?.("ar")) return "quick-look";
@@ -151,14 +156,16 @@ export function closeAR() { open?.(); }
 // }
 export async function showAR(hooks) {
   closeAR();
-  const mode = await arMode();
-  const phone = !!mode || touchDevice();
-  if (phone && inFrame()) {
+  // A phone inside brepcode.com's frame leaves it FIRST, before asking the
+  // browser anything: the frame is not allowed the camera at all.
+  if (inFrame() && touchDevice()) {
     try {
       const u = await hooks.longUrl();
       if (u) { window.top.location.href = withAR(u); return; }
     } catch { /* open it here and hope */ }
   }
+  const mode = await arMode();
+  const phone = !!mode || touchDevice();
   if (!document.getElementById("ar-css")) {
     const st = document.createElement("style");
     st.id = "ar-css";
@@ -244,7 +251,26 @@ export async function showAR(hooks) {
             + `On Android it needs Chrome and Google Play Services for AR; on an iPhone, Safari.</span>`;
           return;
         }
-        mv.activateAR();
+        go.disabled = true;
+        let started = false;
+        const onStatus = (e) => {
+          const st = e.detail?.status;
+          if (st === "session-started" || st === "object-placed") started = true;
+          if (st === "not-presenting" || st === "failed") go.disabled = false;
+        };
+        mv.addEventListener("ar-status", onStatus);
+        // Quick Look leaves the page, so it never reports back; WebXR does
+        setTimeout(() => {
+          go.disabled = false;
+          if (!started && mode === "webxr" && document.visibilityState === "visible") {
+            note.innerHTML = `<span class="ar-warn">The camera view did not start. Check that Chrome may use the `
+              + `camera, and that Google Play Services for AR is installed and up to date, then try again.</span>`;
+          }
+        }, 6000);
+        Promise.resolve(mv.activateAR()).catch((e) => {
+          go.disabled = false;
+          note.innerHTML = `<span class="ar-warn">The camera view did not start: ${esc(e?.message || e)}</span>`;
+        });
       };
     } catch (e) {
       stage.innerHTML = `<div class="ar-warn" style="padding:16px">Could not get the model ready: ${esc(e?.message || e)}</div>`;
