@@ -133,6 +133,14 @@ with the loading screen gone in 1.3 s instead of 3.1 s.
 - `?nosw` on the app's address skips it, for comparing.
 - A new zip with changed vendor files ships a new hash: the browser picks up
   the new `sw.js` on the next visit and drops the old cache.
+- Since 2026-10-29 it also caches the app's own files (modules, recipes,
+  fonts, icons) in a second cache named for a hash of exactly those files;
+  `index.html` carries that hash in `<meta name="brep-app">`. A page from a
+  newer build switches the old worker's app cache off until the new worker
+  takes over, so a publish never serves old modules under a new page. A
+  return visit now fetches the page, `version.json`, `quicksave.js` and
+  `sw.js`, nothing else of the app. The page itself stays on the network on
+  purpose: it is how a visitor learns which build they are on.
 - To retire it, ship an `sw.js` that only unregisters itself
   (`self.addEventListener("install", () => self.registration.unregister())`).
   Deleting the file is not enough: a registered worker outlives a 404.
