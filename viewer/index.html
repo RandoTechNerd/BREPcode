@@ -1840,6 +1840,7 @@
        absolute positioning was quietly wrong here even before the clipping. */
     #shape-menu {
       position: fixed; z-index: 40; display: none; padding: 8px;
+      font: 12.5px system-ui, sans-serif; color: var(--text);
       touch-action: pan-y; overscroll-behavior: contain;
       background: var(--header); border: 1px solid var(--border); border-radius: 10px;
       box-shadow: 0 8px 30px rgba(0,0,0,.55); min-width: 180px;
@@ -1863,12 +1864,15 @@
     #shape-menu .sm-sep { height: 1px; background: var(--border); margin: 7px 2px; }
     #shape-menu .sm-row {
       display: flex; align-items: center; gap: 8px;
-      padding: 4px 8px; font-size: 12px; color: var(--fg);
+      padding: 4px 8px; font-size: 12px; color: var(--text);
     }
     #shape-menu .sm-row > span { flex: none; width: 58px; color: var(--muted2); }
+    /* --text, not --fg: --fg was never defined, so the Material and Pattern
+       pickers drew their text in the browser's default black on the dark
+       menu and read as disabled. */
     #shape-menu .sm-row select {
       flex: 1; min-width: 0; font: inherit; font-size: 11px; padding: 3px 4px;
-      background: var(--input-bg, var(--bg)); color: var(--fg);
+      background: var(--input-bg, var(--bg)); color: var(--text);
       border: 1px solid var(--border); border-radius: 5px;
     }
     #shape-menu .sm-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
@@ -3092,9 +3096,9 @@
         </select>
       </label>
       <label class="sm-row"><span>Opacity</span>
-        <input type="range" id="sm-clear" min="20" max="100" step="5" value="100"
+        <input type="range" id="sm-opacity" min="20" max="100" step="5" value="100"
                title="How see-through this one piece is. 100% is solid." />
-        <output id="sm-clear-out" class="sm-out">Solid</output>
+        <output id="sm-opacity-out" class="sm-out">Solid</output>
       </label>
       <div class="sm-hint" id="sm-mat-hint">Applies to this piece only.</div>
       <button class="sm-item" id="sm-matclear">Clear this piece's material</button>
@@ -7904,8 +7908,8 @@
       // finish does: a slider reading "Solid" over a see-through piece is a lie.
       const cl = featureClear[fid] ?? codeClear[fid];
       const clPct = cl == null ? 100 : Math.round(cl * 100);
-      $("sm-clear").value = String(Math.min(100, Math.max(20, clPct)));
-      $("sm-clear-out").textContent = clPct >= 100 ? "Solid" : `${clPct}%`;
+      $("sm-opacity").value = String(Math.min(100, Math.max(20, clPct)));
+      $("sm-opacity-out").textContent = clPct >= 100 ? "Solid" : `${clPct}%`;
       const fromCode = !(fid in featureFinish) && !!codeFinish[fid];
       $("sm-mat-hint").textContent = fromCode
         ? `Set by finish("${codeFinish[fid]}") in the code — changing it here overrides that.`
@@ -7929,10 +7933,12 @@
     // Live while dragging: "input" not "change". Transparency is judged by eye
     // against the piece behind it, and a slider that only lands when released
     // makes that a guessing game.
-    $("sm-clear").addEventListener("input", () => {
+    // Its own id: this slider used to share "sm-clear" with the clear-colour
+    // button, so $() found the button and the slider was never wired.
+    $("sm-opacity").addEventListener("input", () => {
       if (!shapeMenuFid) return;
-      const pct = +$("sm-clear").value;
-      $("sm-clear-out").textContent = pct >= 100 ? "Solid" : `${pct}%`;
+      const pct = +$("sm-opacity").value;
+      $("sm-opacity-out").textContent = pct >= 100 ? "Solid" : `${pct}%`;
       // 100 means "no override" rather than "opaque override", so a piece put
       // back to solid follows the panel again instead of being pinned at 1.0
       // and ignoring the global opacity slider forever after.

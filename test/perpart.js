@@ -255,8 +255,12 @@ console.log("\none piece can be see-through on its own\n");
   has("featureClear[fid] ?? codeClear[fid]",
     "a hand-set opacity beats glass() in the code",
     "same precedence colour and finish already use");
-  has('id="sm-clear"', "the shape menu has an opacity slider");
-  has('$("sm-clear").addEventListener("input"',
+  has('id="sm-opacity"', "the shape menu has an opacity slider");
+  // its own id: it once shared "sm-clear" with the clear-colour button, so
+  // $() found the button and the slider was never wired
+  check("...with an id no other control shares", (V.match(/id="sm-opacity"/g) || []).length === 1
+    && (V.match(/id="sm-clear"/g) || []).length === 1);
+  has('$("sm-opacity").addEventListener("input"',
     "...that updates while dragging, not on release",
     "transparency is judged by eye against the piece behind it");
   has("delete featureClear[shapeMenuFid]",
