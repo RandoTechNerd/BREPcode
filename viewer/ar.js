@@ -237,7 +237,9 @@ export async function showAR(hooks) {
           return;
         }
         note.innerHTML = size + note.innerHTML;
+        ready = note.innerHTML;
         go.disabled = false;
+        if (mode === "webxr") askFirst();
       }, { once: true });
       mv.addEventListener("ar-status", (e) => {
         if (e.detail?.status === "failed") {
@@ -245,7 +247,41 @@ export async function showAR(hooks) {
             + `and Google Play Services for AR; on an iPhone, Safari or any browser works.</span>`;
         }
       });
+      // Android's camera view needs camera permission, and Chrome refuses
+      // SILENTLY when it was blocked once. So the camera is asked for as its
+      // own step, with its own tap (the prompt can outlast the tap that
+      // starts AR), and a block is explained rather than swallowed.
+      const label = go.querySelector("span");
+      let ready = note.innerHTML, camOK = mode !== "webxr";
+      const BLOCKED = `<span class="ar-warn">The camera is blocked for this site. Tap the icon left of the `
+        + `address bar, then <b>Permissions</b>, turn <b>Camera</b> on, and tap the button again.</span>`;
+      const camAllowed = () => {
+        camOK = true;
+        label.textContent = "Place it on your desk";
+        note.innerHTML = ready;
+      };
+      async function askFirst() {
+        let state = "prompt";
+        try { state = (await navigator.permissions.query({ name: "camera" })).state; } catch { /* not supported: ask */ }
+        if (state === "granted") return camAllowed();
+        label.textContent = "Allow the camera";
+        note.innerHTML = state === "denied" ? BLOCKED
+          : `${ready.replace(/Point the camera[\s\S]*$/, "")}Your phone will ask to use the camera. It stays on this `
+            + `phone: nothing is recorded or sent anywhere.`;
+      }
+      async function askCamera() {
+        go.disabled = true;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          for (const t of stream.getTracks()) t.stop();
+          camAllowed();
+        } catch (e) {
+          note.innerHTML = e?.name === "NotAllowedError" || e?.name === "SecurityError" ? BLOCKED
+            : `<span class="ar-warn">Could not reach the camera: ${esc(e?.message || e?.name || e)}</span>`;
+        } finally { go.disabled = false; }
+      }
       go.onclick = () => {
+        if (!camOK) { askCamera(); return; }
         if (mv.canActivateAR === false) {
           note.innerHTML = `<span class="ar-warn">This browser will not open the camera view here. `
             + `On Android it needs Chrome and Google Play Services for AR; on an iPhone, Safari.</span>`;
