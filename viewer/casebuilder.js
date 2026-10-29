@@ -339,14 +339,12 @@ export function showCaseBuilder(hooks = {}) {
   const S = fromCode || load();
   // the gasket is never pre-ticked: only code on screen that asks for it
   if (!fromCode) S.gasket = false;
-  // First visit: the case with plain separators. It used to open on "Big +
+  // First visit: the empty case, nothing painted. It used to open on "Big +
   // small", a tray and 65 small boxes on the default case, and the first
-  // Build was a long wait for a layout nobody had asked for. Open frames
-  // are the quickest layout there is; the others are a click away.
-  if (!Array.isArray(S.regions)) {
-    const f = casefinityFit(S.width, S.depth, S.height, { inside: S.inside });
-    S.regions = PRESETS.find((p) => p.id === "dividers").make(f.cols, f.rows);
-  }
+  // Build was a long wait for inserts nobody had asked for. The case and
+  // its lid alone are the quickest build there is, and every insert is a
+  // choice: a preset is one click, a brush a drag.
+  if (!Array.isArray(S.regions)) S.regions = [];
   let brush = "box", split = false;
   const undo = [];
 
