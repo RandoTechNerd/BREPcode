@@ -33,7 +33,7 @@ const LABEL = { box: "Box", lidbox: "Box + lid", frame: "Separators", erase: "Er
 const STORE = "brepcode-casebuilder";
 // gasket is opt-in every time: it is never remembered, only read back from
 // code that already asks for it
-export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false });
+export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", lidFit: 0.3 });
 
 // Does this address ask for the case builder? ?case=1 is what the /case
 // bounce sends; #case is for a link typed by hand; /case is the tidy path.
@@ -114,6 +114,8 @@ const depth = ${+s.depth};   // [60:600] ${s.inside ? "inside" : "outside"} dept
 const height = ${+s.height};  // [${s.inside ? 15 : 35}:300] ${s.inside ? "inside depth of the body" : "outside height, lid closed"} (mm)
 const includeCase = ${s.includeCase !== false};   // false: only the pieces that go in the grid
 const gasket = ${s.gasket === true};   // true: a sealing ridge along the rim and a matching trench in the lid (dust seal)
+const latch = "${s.latch === "round" ? "round" : "hook"}";   // "hook": a windowed blade hooks under a wedge. "round": a round lip rolls over a round bead, no supports
+const lidFit = ${+s.lidFit || 0.3};   // [0.1:0.6] clearance between the lid and the body, per side (mm)
 
 // What goes where. at: [column, row] from the front-left module; size in modules.
 //   kind "box"     a bin              split: true = one 1 x 1 box per module
@@ -123,7 +125,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gasket, layout: pieces });
+return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gasket, latch, lidFit, layout: pieces });
 `;
 }
 
@@ -143,6 +145,8 @@ export function parseKitCode(src = "") {
   if (ic) state.includeCase = ic[1] === "true";
   const gk = /\bconst\s+gasket\s*=\s*(true|false)/.exec(text);
   state.gasket = gk ? gk[1] === "true" : /\bgasket\s*:\s*true\b/.test(text);
+  state.latch = /\b(?:const\s+latch\s*=|latch\s*:)\s*["']round["']/.test(text) ? "round" : "hook";
+  if (n("lidFit") != null) state.lidFit = n("lidFit");
   state.inside = /\binside\s*:\s*true\b/.test(text);
   state.regions = [];
   const re = /\{\s*at\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*size\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*kind\s*:\s*["'](\w+)["']\s*(?:,\s*split\s*:\s*(true|false))?/g;
@@ -218,6 +222,8 @@ function style() {
   .cb-check { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; font: 13px system-ui, sans-serif; color: var(--text2, #d8e2f5); cursor: pointer; }
   .cb-check input { margin: 3px 0 0; accent-color: var(--accent, #1c66e5); flex: none; }
   .cb-check small { display: block; color: var(--muted2, #6f83a6); font-size: 11.5px; line-height: 1.35; }
+  .cb-latch { margin-top: 10px; }
+  .cb-latch small { display: block; margin-top: 5px; color: var(--muted2, #6f83a6); font: 11.5px/1.35 system-ui, sans-serif; }
   .cb-build { width: 100%; margin-top: 10px; border: 0; border-radius: 12px; background: var(--accent, #1c66e5); color: #fff;
     font: 600 15px system-ui, sans-serif; padding: 12px; cursor: pointer; }
   .cb-build:hover { background: var(--accent-hover, #2e76f2); }
@@ -359,6 +365,12 @@ export function showCaseBuilder(hooks = {}) {
             <button type="button" data-v="1">Case + grid pieces</button><button type="button" data-v="0">Grid pieces only</button>
           </div>
           <label class="cb-check" id="cb-gasket-row"><input type="checkbox" id="cb-gasket" /><span>Gasket bead<small>A sealing ridge along the rim drops into a trench in the lid. Dust seal, firmer close.</small></span></label>
+          <div class="cb-latch" id="cb-latch-row">
+            <div class="cb-seg" id="cb-latch" role="radiogroup" aria-label="Clasp">
+              <button type="button" data-v="hook">Hook clasp</button><button type="button" data-v="round">Round clasp</button>
+            </div>
+            <small id="cb-latch-hint"></small>
+          </div>
           <button type="button" class="cb-build" id="cb-build">Build printable parts</button>
           <div class="cb-sum" id="cb-sum" aria-live="polite"></div>
         </section>
@@ -410,6 +422,16 @@ export function showCaseBuilder(hooks = {}) {
   seg("cb-case", S.includeCase === false ? 0 : 1);
   $("cb-gasket").checked = S.gasket === true;
   $("cb-gasket").addEventListener("change", (e) => { S.gasket = !!e.target.checked; paint(); });
+  const LATCH_HINT = {
+    hook: "A windowed blade on the lid hooks under a wedge on the body. Firm click; the wedge's flat underside is a 0.9 mm overhang.",
+    round: "A round lip on a solid blade rolls over a round bead on the body. Nothing to support, opens as smoothly as it closes.",
+  };
+  seg("cb-latch", S.latch === "round" ? "round" : "hook");
+  $("cb-latch").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.latch = b.dataset.v === "round" ? "round" : "hook";
+    seg("cb-latch", S.latch); paint();
+  });
   $("cb-inside").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     const inside = b.dataset.v === "1";
@@ -588,9 +610,13 @@ export function showCaseBuilder(hooks = {}) {
     if (t.box) bits.push(`${t.box} box${t.box === 1 ? "" : "es"}`);
     if (t.lidbox) bits.push(`${t.lidbox} lidded box${t.lidbox === 1 ? "" : "es"}`);
     if (t.frame) bits.push(`${t.frame} separator frame${t.frame === 1 ? "" : "s"}`);
-    if (S.includeCase !== false) bits.push(S.gasket === true ? "the case and its lid, with a gasket bead" : "the case and its lid");
+    if (S.includeCase !== false) bits.push((S.gasket === true ? "the case and its lid, with a gasket bead" : "the case and its lid")
+      + (S.latch === "round" ? " and a round clasp" : ""));
     $("cb-gasket").disabled = S.includeCase === false;
     $("cb-gasket-row").style.opacity = S.includeCase === false ? ".5" : "";
+    for (const b of $("cb-latch").querySelectorAll("button")) b.disabled = S.includeCase === false;
+    $("cb-latch-row").style.opacity = S.includeCase === false ? ".5" : "";
+    $("cb-latch-hint").textContent = LATCH_HINT[S.latch === "round" ? "round" : "hook"];
     $("cb-sum").innerHTML = t.pieces
       ? `<b>${t.pieces} piece${t.pieces === 1 ? "" : "s"}</b> to print: ${esc(bits.join(", "))}.`
         + (t.empty ? ` ${t.empty} square${t.empty === 1 ? "" : "s"} left empty.` : "")

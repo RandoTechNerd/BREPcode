@@ -45,12 +45,25 @@ export const CASEFINITY = Object.freeze({
 // Case defaults (mm). Everything a person types into the builder.
 const CASE = Object.freeze({
   wall: 4, floor: 2, lidHeight: 18, corner: 6,
-  tongue: 2, shoulder: 1.8, lidFit: 0.2,
+  // lid-to-body clearance per side. 0.2 printed tight on the smallest case
+  tongue: 2, shoulder: 1.8, lidFit: 0.3,
   pin: 1.75, pinClear: 0.15, knuckle: 5.4, knuckles: 5, hingeGap: 0.4,
-  // the snap tab: 1.3 thick flexing 0.9 over a 9 mm lever is ~2 % strain,
-  // inside PLA's limit (the first cut, 1.8 x 1.3 over 8 mm, was ~5 %)
-  latchWidth: 20, latchThick: 1.3, latchDrop: 10, latchCatch: 0.9,
+  // the "hook" clasp: a blade on the lid with a window, its bottom bar hooking
+  // under a wedge on the body. 1.6 thick flexing 0.6 over 11 mm is ~1.2 %
+  // strain (PLA holds to ~2.5 %); the first cut's 1.3 x 1.6 bar on 3 mm legs
+  // snapped off, so the legs are 4 and the bar 2.4
+  latchWidth: 20, latchThick: 1.6, latchDrop: 11, latchCatch: 0.9, latchGap: 0.3,
+  latchLeg: 4, latchBar: 2.4,
+  // the "round" clasp: a round bead along the body's front rolls over a round
+  // lip on a SOLID blade. No window, no flat underside anywhere: nothing to
+  // support. The blade stands roundGap off the wall; the lip (radius roundLip,
+  // mostly buried in the blade) stands roundLipOut in from it, 0.1 clear of
+  // the wall at rest; the bead stands roundBead out, just touching the blade.
+  // Passing costs roundBead + roundLipOut - roundGap = 0.6 of flex (~1.2 %),
+  // and the lip sits 0.6 under the bead when closed
+  roundBead: 0.7, roundLip: 0.9, roundLipOut: 0.6, roundGap: 0.7,
   topClear: 0.5,
+  tabLean: 1.2,   // the bin's pull tab leans this far in off the front face, clear of the lid's wall
   leadIn: 0.6,    // chamfer on the tongue top and the lid skirt's mouth: the lid finds its own way on
   footChamfer: 0.5, // on the body's base and the lid's top (both bed-side edges): no elephant foot
   // the optional gasket: a ridge along the tongue top, a trench in the lid
@@ -190,13 +203,19 @@ export function casefinityBin(opts = {}) {
   }
   if (tab) {
     // the pull tab stands on the front wall in pieces, leaving the sockets
-    // open above the rim so a taller neighbour's rib still slides past
-    const tw = Math.min(bw - 4, 16);
+    // open above the rim so a taller neighbour's rib still slides past. It
+    // leans IN at 45° for its first tabLean, then rises straight: flush with
+    // the bin's front face it sat 0.1 from the case lid's inner wall and
+    // jammed the lid; set in, the lid passes it with room
+    const tw = Math.min(bw - 4, 16), lean = CASE.tabLean, y1 = -bd / 2;
     let spans = [[-tw / 2, tw / 2]];
     for (const xx of xs) {
       spans = spans.flatMap(([a, b]) => [[a, Math.min(b, xx - s / 2 - 0.2)], [Math.max(a, xx + s / 2 + 0.2), b]]).filter(([a, b]) => b - a >= 2);
     }
-    for (const [a, b] of spans) adds.push(translate([a, -bd / 2, h - 0.4], cube([b - a, wall, tabH + 0.4])));
+    const prof = [[y1, h - 0.4], [y1 + wall, h - 0.4], [y1 + wall, h], [y1 + wall + lean, h + lean],
+      [y1 + wall + lean, h + tabH], [y1 + lean, h + tabH], [y1 + lean, h + lean], [y1, h]];
+    const flip = prof.map(([yy, zz]) => [-zz, yy]);
+    for (const [a, b] of spans) adds.push(translate([a, 0, 0], rotate([0, 90, 0], linearExtrude({ h: b - a }, polygon(flip)))));
   }
   return adds.length ? union(body, ...adds) : body;
 }
@@ -246,8 +265,12 @@ function caseDims(opts) {
   const kr = c.knuckle / 2, axisOff = c.hingeGap + kr;
   const hingeLen = L - 2 * R - 6;
   const segLen = (hingeLen - (c.knuckles - 1) * c.hingeGap) / c.knuckles;
+  const latch = opts.latch === "round" ? "round" : "hook";
+  // how far the clasp stands off the front wall, body side and lid side
+  const latchOut = latch === "round" ? c.roundBead : c.latchCatch;
+  const lidOut = (latch === "round" ? c.roundGap : c.latchGap) + c.latchThick;
   return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, rT, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen,
-    gasket: opts.gasket === true };
+    gasket: opts.gasket === true, latch, latchOut, lidOut };
 }
 
 const roundedBlock = (L, W, h, r, z = 0) =>
@@ -320,13 +343,23 @@ export function casefinityCase(opts = {}) {
   const d = caseDims(opts);
   const { o, c, Lin, Win, L, W, H, tongueT } = d;
   const top = H + c.tongue;
-  const cw = c.latchWidth - 8, z0 = H - c.latchDrop + 1.8;
-  // wedge: flat underside the tab hooks under, a long ramp on top it rides
-  // over (2.5x the catch depth, so the tab bends gently rather than snagging)
-  const fy = -W / 2, out = fy - c.latchCatch;
-  const catchProf = [[z0, fy + 0.4], [z0, out], [z0 + 0.6, out], [z0 + 0.6 + c.latchCatch * 2.5, fy + 0.4]]
-    .map(([zz, yy]) => [-zz, yy]);
-  const latchCatch = translate([-cw / 2, 0, 0], rotate([0, 90, 0], linearExtrude({ h: cw }, polygon(catchProf))));
+  const fy = -W / 2;
+  let latchCatch;
+  if (d.latch === "round") {
+    // a round bead along the front, half buried in the wall, sitting just
+    // above where the lid blade's lip comes to rest (0.15 play)
+    const bw = c.latchWidth - 4, zc = H - c.latchDrop + 2 * c.roundLip + c.roundBead + 0.15;
+    latchCatch = translate([-bw / 2, fy, zc], rotate([0, 90, 0], cylinder({ r: c.roundBead, h: bw })));
+  } else {
+    // wedge: flat underside the blade's bar hooks under, a long ramp on top it
+    // rides over (2.5x the catch depth, so the blade bends gently rather than
+    // snagging). Narrower than the blade's window by 1 a side
+    const cw = c.latchWidth - 2 * c.latchLeg - 2, z0 = H - c.latchDrop + c.latchBar + 0.2;
+    const out = fy - c.latchCatch;
+    const catchProf = [[z0, fy + 0.4], [z0, out], [z0 + 0.6, out], [z0 + 0.6 + c.latchCatch * 2.5, fy + 0.4]]
+      .map(([zz, yy]) => [-zz, yy]);
+    latchCatch = translate([-cw / 2, 0, 0], rotate([0, 90, 0], linearExtrude({ h: cw }, polygon(catchProf))));
+  }
   // The cavity, exactly N*P, as one outline: liner ribs on -Y and +X are
   // notched IN (the wall keeps them), line-to-line grooves on +Y and -X stand
   // OUT (the cut takes them). One cut makes every registration feature.
@@ -364,16 +397,31 @@ export function casefinityCase(opts = {}) {
 export function casefinityCaseLid(opts = {}) {
   const d = caseDims(opts);
   const { c, Lin, Win, L, W, H, tongueT } = d;
-  const gap = 0.3, y0 = -W / 2 - gap - c.latchThick, zb = H - c.latchDrop, lh = c.lidHeight;
-  const tab = difference(
-    union(
-      // the blade, its free bottom edge chamfered so it rides the catch's ramp
-      translate([-c.latchWidth / 2, y0, zb],
-        chamfer({ d: Math.min(c.leadIn, c.latchThick * 0.45), edges: "bottom" }, cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6]))),
-      translate([-c.latchWidth / 2, y0, H + 1], cube([c.latchWidth, c.latchThick + gap + 1.4, lh * 0.6 - 1])),
-    ),
-    translate([-(c.latchWidth - 6) / 2, y0 - 1, zb + 1.6], cube([c.latchWidth - 6, c.latchThick + 2, c.latchDrop - 2.6])),
-  );
+  const gap = d.latch === "round" ? c.roundGap : c.latchGap;
+  const y0 = -W / 2 - gap - c.latchThick, zb = H - c.latchDrop, lh = c.lidHeight;
+  // the blade hangs from a block let into the lid's front wall
+  const root = translate([-c.latchWidth / 2, y0, H + 1], cube([c.latchWidth, c.latchThick + gap + 1.4, lh * 0.6 - 1]));
+  let tab;
+  if (d.latch === "round") {
+    // a solid blade with a round lip along its inner bottom edge: it rolls
+    // over the body's bead and sits under it. Round both ways, so it prints
+    // without supports and opens as smoothly as it closes
+    const blade = translate([-c.latchWidth / 2, y0, zb], cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6]));
+    const lip = translate([-c.latchWidth / 2 + 1, y0 + c.latchThick - (c.roundLip - c.roundLipOut), zb + c.roundLip],
+      rotate([0, 90, 0], cylinder({ r: c.roundLip, h: c.latchWidth - 2 })));
+    tab = union(blade, lip, root);
+  } else {
+    tab = difference(
+      union(
+        // the blade, its free bottom edge chamfered so it rides the catch's ramp
+        translate([-c.latchWidth / 2, y0, zb],
+          chamfer({ d: Math.min(c.leadIn, c.latchThick * 0.45), edges: "bottom" }, cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6]))),
+        root,
+      ),
+      // the window the body's wedge pokes through; what is left under it is the bar that hooks
+      translate([-(c.latchWidth - 2 * c.latchLeg) / 2, y0 - 1, zb + c.latchBar], cube([c.latchWidth - 2 * c.latchLeg, c.latchThick + 2, c.latchDrop - c.latchBar - 1])),
+    );
+  }
   // the groove for the tongue: rounded with it, with a flared mouth (a cutter
   // that is leadIn wider at the parting line and tapers to the groove above
   // it) so the skirt steers itself onto the tongue
@@ -448,8 +496,8 @@ export function caseKit(opts = {}) {
     } else addBin(w, h, kind, kind === "frame" ? !!r.split : false);
   }
   if (opts.includeCase !== false) {
-    const back = d.axisY + d.kr, front = d.W / 2 + d.c.latchCatch;
-    const lidFront = d.W / 2 + 0.3 + d.c.latchThick;
+    const back = d.axisY + d.kr, front = d.W / 2 + d.latchOut;
+    const lidFront = d.W / 2 + d.lidOut;
     parts.unshift([colorize(CASEKIT_COLORS.lid, casefinityCaseLid({ ...opts, print: true })), -d.L / 2, d.L / 2, -back, lidFront]);
     parts.unshift([colorize(CASEKIT_COLORS.case, casefinityCase(opts)), -d.L / 2, d.L / 2, -front, back]);
   }

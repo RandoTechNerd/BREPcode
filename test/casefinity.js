@@ -57,6 +57,13 @@ console.log("\na bin is n*P - 2c, ribs b proud on -X and +Y\n");
   check("30 tall, on the bed", near(m.z.min, 0) && near(m.z.max, 30));
   const tabbed = await measure(casefinityBin({ x: 2, y: 2, h: 30, tab: true }));
   check("the pull tab stands 5 above the rim", near(tabbed.z.max, 35));
+  // the tab leans in 1.2 off the front face: flush with it, it sat 0.1 from
+  // the case lid's inner wall and jammed the lid. A slab over the front rim,
+  // above the lean, meets only the tab, and the tab starts 1.2 in
+  const bd = 2 * P - 2 * c;
+  const tabOnly = await measure(dsl.intersection(casefinityBin({ x: 2, y: 2, h: 30, tab: true }),
+    dsl.translate([-20, -bd / 2 - 1, 31.5], dsl.cube([40, 4, 5]))));
+  check("the pull tab stands 1.2 in from the bin's front face", near(tabOnly.y.min, -bd / 2 + 1.2, 0.02) && tabOnly.vol > 20, `${tabOnly.y.min} vs ${-bd / 2 + 1.2}, ${tabOnly.vol.toFixed(1)} mm³`);
   const frame = await measure(casefinityBin({ x: 2, y: 2, h: 30, bottom: false }));
   const box = await measure(casefinityBin({ x: 2, y: 2, h: 30 }));
   check("a frame has no floor (less plastic than the box)", frame.vol < box.vol - 300, `${frame.vol.toFixed(0)} vs ${box.vol.toFixed(0)}`);
@@ -148,6 +155,27 @@ console.log("\nthe lid closes: rounded tongue, clear corners, optional gasket\n"
   check("gasket crest sits in its trench without touching", gClosed < 2, `${gClosed.toFixed(2)} mm³`);
   const mixed = await overlap(gBody, lid);
   check("a gasket body under a plain lid collides (the pair must match)", mixed > 5, `${mixed.toFixed(2)} mm³`);
+  // the lid stands 0.3 a side off the tongue now (0.2 printed tight)
+  check("lidFit is 0.3 a side", near(lm.z.min, 17 - 11, 0.01) && near(lm.y.min, -(38 / 2 + 0.3 + 1.6), 0.01), `${lm.y.min}`);
+  // the hook clasp: the wedge stands 0.9 proud, the blade 1.6 thick on a 0.3
+  // gap, the bar under its window 2.4 tall on 4 mm legs; closed, no contact
+  check("hook clasp: the wedge stands 0.9 proud of the front", near(bm.y.min, -(38 / 2 + 0.9), 0.01), `${bm.y.min}`);
+  const bar = await measure(dsl.intersection(lid, dsl.translate([-12, -38 / 2 - 3, 17 - 11 - 0.5], dsl.cube([24, 3, 2.9]))));
+  check("hook clasp: a 2.4 bar, 1.6 thick, across the blade", bar.vol > 60 && bar.vol < 78, `${bar.vol.toFixed(1)} mm³ (76.8 before its chamfers; the old 1.3 x 1.6 bar was 41.6)`);
+  // the round clasp: a solid blade with a round lip under a round bead on the
+  // body. Closed they do not touch; the bead stands 0.7 proud, the blade on a
+  // 0.7 gap, and the lip's crown comes 0.1 short of the wall
+  const rBody = casefinityCase({ ...size, latch: "round" }), rLid = casefinityCaseLid({ ...size, latch: "round" });
+  const [rbm, rlm] = await Promise.all([measure(rBody), measure(rLid)]);
+  check("round clasp: body and lid build exact", /Exact/i.test(rbm.engine) && /Exact/i.test(rlm.engine), `${rbm.engine} / ${rlm.engine}`);
+  check("round clasp: the bead stands 0.7 proud of the front", near(rbm.y.min, -(38 / 2 + 0.7), 0.01), `${rbm.y.min}`);
+  check("round clasp: the blade stands on a 0.7 gap", near(rlm.y.min, -(38 / 2 + 0.7 + 1.6), 0.01), `${rlm.y.min}`);
+  const lipSlab = await measure(dsl.intersection(rLid, dsl.translate([-12, -38 / 2 - 0.7, 17 - 11 - 0.5], dsl.cube([24, 2, 2.9]))));
+  check("round clasp: the lip stops 0.1 short of the body wall", near(lipSlab.y.max, -38 / 2 - 0.1, 0.02), `${lipSlab.y.max}`);
+  const rClosed = await overlap(rBody, rLid);
+  check("round clasp: closed lid and body do not intersect", rClosed < 2, `${rClosed.toFixed(2)} mm³`);
+  const solidBlade = await measure(dsl.intersection(rLid, dsl.translate([-12, -38 / 2 - 3, 17 - 11 + 3], dsl.cube([24, 3, 5]))));
+  check("round clasp: the blade has no window", near(solidBlade.vol, 20 * 1.6 * 5, 2), `${solidBlade.vol.toFixed(1)} mm³ (160 solid; 32 with the hook's window)`);
 }
 
 console.log("\nthe builder: routes, painting, the code it writes\n");
@@ -187,7 +215,11 @@ console.log("\nthe builder: routes, painting, the code it writes\n");
   check("non-builder code is not mistaken for it", parseKitCode("return cube(10);") === null);
   check("the gasket is off unless asked for", /const gasket = false;/.test(code) && back.gasket === false);
   const gCode = kitCode({ ...state, gasket: true });
-  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
+  check("the hook clasp and a 0.3 fit are the defaults", /const latch = "hook";/.test(code) && /const lidFit = 0.3;/.test(code) && back.latch === "hook" && back.lidFit === 0.3);
+  const rCode = kitCode({ ...state, latch: "round", lidFit: 0.4 });
+  check("latch and lidFit are written and read back", /const latch = "round";/.test(rCode) && /const lidFit = 0.4;/.test(rCode)
+    && parseKitCode(rCode).latch === "round" && parseKitCode(rCode).lidFit === 0.4);
+  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, latch, lidFit, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
 
   // the written code runs through the real vocabulary, the way the editor runs it
   const body = code.replace(/^\s*\/\/.*$/gm, "");
