@@ -16072,14 +16072,21 @@ ${joined}${SITE_TAIL}`), joined);
             gap: 8, scene: currentScene(), history: hist.stack,
           });
           if (!files.length) throw new Error("no printable geometry");
-          size = 0;
-          for (const f of files) size += download(`${base}${f.suffix}.3mf`, f.bytes, "model/3mf");
-          const totalParts = files.reduce((n, f) => n + f.parts, 0);
+          // One file for every plate. It used to be a file per plate, and
+          // browsers allow one download per click — a three-plate job
+          // arrived as "-plate1" alone, and the user asked where the rest was.
+          const [f] = files;
+          size = download(`${base}${f.suffix}.3mf`, f.bytes, "model/3mf");
+          const totalParts = f.parts;
+          const nPlates = f.plates;
           const plateTxt = plate ?? exp.DEFAULT_PLATE;
           fixnote.innerHTML = `<span style="color:var(--muted3)">${totalParts} part${totalParts === 1 ? "" : "s"} `
-            + `laid out on ${files.length} plate${files.length === 1 ? "" : "s"} of ${plateTxt.x} × ${plateTxt.y} mm `
+            + `laid out on ${nPlates} plate${nPlates === 1 ? "" : "s"} of ${plateTxt.x} × ${plateTxt.y} mm `
             + `(size under <b>Plate</b> in this menu), 8&thinsp;mm apart, every piece standing on the bed. `
-            + (files.length > 1 ? `Each plate is its own .3mf file. ` : "")
+            + (nPlates > 1
+              ? `All ${nPlates} plates are in this one file: Bambu Studio and OrcaSlicer open it with a tab per plate; `
+                + `PrusaSlicer and Cura have no plates, so the overflow sits beside the bed for their arrange button. `
+              : "")
             + `Parts are separate objects in the slicer, so they can still be moved one by one.</span>`;
         } else if (fmt === "step-curved") {
           // real analytic B-rep: the DSL tree re-built in OCCT (replicad),

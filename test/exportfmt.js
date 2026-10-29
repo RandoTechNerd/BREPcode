@@ -3,7 +3,7 @@
 
 import { cube, cylinder, difference, translate, build, toSTL } from "../index.js";
 import {
-  stlToObj, stlTo3MF, colored3MF, splitConnectedParts, layoutOnPlates, partsPlate3MF,
+  stlToObj, stlTo3MF, colored3MF, splitConnectedParts, layoutOnPlates, partsPlate3MF, plateOrigin,
   embedPage, MV_CDN,
 } from "../viewer/exporters.js";
 import JSZip from "jszip";
@@ -186,17 +186,41 @@ const tetra = (ox, oy, oz, color) => ({
   void mid;
 }
 {
-  // parts that cannot share a plate spill onto plate 2, as separate files
+  // parts that cannot share a plate spill onto plate 2 and 3 — inside the
+  // SAME file. A browser allows one download per click, so a file per plate
+  // lost every plate but the first.
   const big = (ox) => tetra(ox, 0, 0, "#00aa00");
   // 150mm footprints on a 200mm plate: one per plate, no two ways about it
   const files = partsPlate3MF(
     [big(0), big(100), big(200)].map((t) => ({ ...t, verts: t.verts.map(([x, y, z]) => [x * 15, y * 15, z]) })),
     "wide", { plate: { x: 200, y: 200 }, gap: 8 });
-  check("oversized batch spills onto more plates", files.length > 1, String(files.length));
-  check("...with numbered suffixes", files[0].suffix === "-plate1" && files[1].suffix === "-plate2",
-    files.map((f) => f.suffix).join(" "));
-  const total = files.reduce((n, f) => n + f.parts, 0);
-  check("...and no part is lost in the split", total === 3, String(total));
+  check("oversized batch spills onto more plates", files[0]?.plates === 3, String(files[0]?.plates));
+  check("...all in one file, with no suffix", files.length === 1 && files[0].suffix === "",
+    `${files.length} file(s) ${files.map((f) => JSON.stringify(f.suffix)).join(" ")}`);
+  check("...and no part is lost in the split", files[0]?.parts === 3, String(files[0]?.parts));
+  // The plate list Bambu Studio / OrcaSlicer read: a <plate> per plate, each
+  // naming the objects on it. Checked against Bambu Studio 2.7 by round-trip:
+  // it opens with three plate tabs, one part on each.
+  const zip = await JSZip.loadAsync(files[0].bytes);
+  const config = await zip.file("Metadata/model_settings.config").async("string");
+  const plateBlocks = config.split("<plate>").slice(1);
+  check("the slicer config lists every plate", plateBlocks.length === 3, String(plateBlocks.length));
+  check("...numbered from 1", /plater_id" value="1"/.test(plateBlocks[0]) && /plater_id" value="3"/.test(plateBlocks[2]));
+  const perPlate = plateBlocks.map((b) => (b.match(/<model_instance>/g) || []).length);
+  check("...with one part on each", perPlate.join() === "1,1,1", perPlate.join());
+  const named = plateBlocks.flatMap((b) => [...b.matchAll(/object_id" value="(\d+)"/g)].map((m) => m[1]));
+  const built = [...(await modelOf(files[0].bytes)).matchAll(/<item objectid="(\d+)"/g)].map((m) => m[1]);
+  check("...naming exactly the build items", named.sort().join() === built.sort().join(),
+    `${named.join()} vs ${built.join()}`);
+  // and the coordinates agree with the list: plate 2 sits beside plate 1,
+  // plate 3 in the row behind, so a slicer with no plate list still shows
+  // the spill-over grouped, not stacked on plate 1
+  const [o1, o2, o3] = [0, 1, 2].map((i) => plateOrigin(i, 3, { x: 200, y: 200 }));
+  check("plate 2 is to the right of plate 1, plate 3 in front of it",
+    o1[0] === 0 && o2[0] > 200 && o2[1] === 0 && o3[0] === 0 && o3[1] < -200, `${o2} / ${o3}`);
+  const b = boundsOfModel(await modelOf(files[0].bytes));
+  check("the file's footprint spans more than one plate",
+    b.size[0] > 200 && b.size[1] > 200, `size ${b.size.join(",")}`);
 }
 
 console.log("\nthe shared page is a way IN, not a dead end\n");

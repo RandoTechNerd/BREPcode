@@ -510,10 +510,44 @@ export function layoutOnPlates(parts, plate = DEFAULT_PLATE, gap = 8) {
   return plates.map((pl) => pl.placed.map(({ part, dx, dy, dz }) => ({ part, dx, dy, dz })));
 }
 
-// The laid-out export itself: one 3MF PER PLATE, each part its own object (its
-// colours as sub-objects referenced by a per-part assembly), so the slicer
-// sees N movable parts, each already standing where it should print. Returns
-// [{ suffix, bytes }] — one entry per plate.
+// Where a slicer draws plate N. Bambu Studio and OrcaSlicer tile their plates
+// in a grid, ceil(sqrt(n)) wide, stepping one plate plus a tenth of a plate
+// to the right for each column and the same toward the front (-y) for each
+// row. Parts on plate 2 are therefore written at world coordinates that
+// already sit on plate 2, so the file opens with every piece where the
+// slicer would have put it, rather than the slicer discovering the plate
+// list and then finding its parts stacked on plate 1.
+export const PLATE_GAP = 0.1;
+export function plateOrigin(index, count, plate = DEFAULT_PLATE) {
+  const px = Number(plate?.x) > 0 ? Number(plate.x) : DEFAULT_PLATE.x;
+  const py = Number(plate?.y) > 0 ? Number(plate.y) : DEFAULT_PLATE.y;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, count))));
+  const col = index % cols, row = Math.floor(index / cols);
+  return [col * px * (1 + PLATE_GAP), -row * py * (1 + PLATE_GAP), 0];
+}
+
+// The laid-out export itself: ONE 3MF carrying every plate, each part its own
+// object (its colours as sub-objects referenced by a per-part assembly), so the
+// slicer sees N movable parts, each already standing where it should print.
+//
+// It used to be one file per plate, and that lost plates: a browser lets a
+// page start ONE download on a click and quietly blocks the rest, so a
+// three-plate job arrived as "-plate1" alone. One file cannot be lost.
+//
+// Which plate a part is on is said twice, in the two ways slicers listen:
+//   Metadata/model_settings.config   a <plate> per plate naming its objects —
+//                                    the Bambu Studio / OrcaSlicer plate list,
+//                                    so the file opens with plate tabs
+//   the coordinates themselves       plate 2's parts are written beside plate
+//                                    1's (see plateOrigin), so a slicer with no
+//                                    plate concept (PrusaSlicer, Cura) still
+//                                    shows every part, grouped, the spill-over
+//                                    standing off the bed to the right where
+//                                    its own arrange button can bring it in
+//
+// Returns [{ suffix, parts, plates, bytes }] — one entry, kept as a list so
+// callers written for the per-plate days still loop. `layout` is the per-plate
+// placement for anyone wanting to tell the user what went where.
 export function partsPlate3MF(groups, name = "brepcode-model", opts = {}) {
   const parts = splitConnectedParts(groups);
   if (!parts.length) return [];
@@ -521,23 +555,27 @@ export function partsPlate3MF(groups, name = "brepcode-model", opts = {}) {
   const plates = layoutOnPlates(parts, plate, opts.gap ?? 8);
   const M = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02";
 
-  return plates.map((placed, pi) => {
-    const palette = [];
-    for (const { part } of placed) for (const g of part.groups) {
-      const hex = (g.color || "#cccccc").toUpperCase();
-      if (!palette.includes(hex)) palette.push(hex);
-    }
-    const COLOURS_ID = 1;
-    let nextId = 2;
-    const objects = [], items = [], settings = [];
-    placed.forEach(({ part, dx, dy, dz }, idx) => {
+  const palette = [];
+  for (const placed of plates) for (const { part } of placed) for (const g of part.groups) {
+    const hex = (g.color || "#cccccc").toUpperCase();
+    if (!palette.includes(hex)) palette.push(hex);
+  }
+  const COLOURS_ID = 1;
+  let nextId = 2;
+  const objects = [], items = [], settings = [], plateXml = [];
+  let partNo = 0;
+  plates.forEach((placed, pi) => {
+    const [ox, oy] = plateOrigin(pi, plates.length, plate);
+    const onPlate = [];
+    placed.forEach(({ part, dx, dy, dz }) => {
+      const idx = partNo++;
       const colourIds = part.groups.map((g) => {
         const hex = (g.color || "#cccccc").toUpperCase();
         const id = nextId++;
         objects.push(`  <object id="${id}" type="model" name="${name} — part ${idx + 1} — ${hex}" pid="${COLOURS_ID}" pindex="${palette.indexOf(hex)}">
    <mesh>
     <vertices>
-${g.verts.map((v) => `     <vertex x="${+(+v[0] + dx).toFixed(5)}" y="${+(+v[1] + dy).toFixed(5)}" z="${+(+v[2] + dz).toFixed(5)}"/>`).join("\n")}
+${g.verts.map((v) => `     <vertex x="${+(+v[0] + dx + ox).toFixed(5)}" y="${+(+v[1] + dy + oy).toFixed(5)}" z="${+(+v[2] + dz).toFixed(5)}"/>`).join("\n")}
     </vertices>
     <triangles>
 ${g.tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join("\n")}
@@ -561,9 +599,23 @@ ${colourIds.map(({ id, hex }) => `    <part id="${id}" subtype="normal_part">
       <metadata key="extruder" value="${palette.indexOf(hex) + 1}"/>
     </part>`).join("\n")}
   </object>`);
+      onPlate.push(partId);
     });
+    // The plate list. plater_id is 1-based; identify_id is any number unique
+    // in the file, and the object's own id is the obvious one.
+    plateXml.push(`  <plate>
+    <metadata key="plater_id" value="${pi + 1}"/>
+    <metadata key="plater_name" value=""/>
+    <metadata key="locked" value="false"/>
+${onPlate.map((id) => `    <model_instance>
+      <metadata key="object_id" value="${id}"/>
+      <metadata key="instance_id" value="0"/>
+      <metadata key="identify_id" value="${id}"/>
+    </model_instance>`).join("\n")}
+  </plate>`);
+  });
 
-    const model = `<?xml version="1.0" encoding="UTF-8"?>
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
  <metadata name="Application">BREPcode-${APP_VERSION}</metadata>
  <metadata name="Title">${name}</metadata>
@@ -578,17 +630,18 @@ ${items.join("\n")}
  </build>
 </model>
 `;
-    const config = `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${settings.join("\n")}\n</config>\n`;
-    const project = projectPart(opts, palette);
-    return {
-      suffix: plates.length > 1 ? `-plate${pi + 1}` : "",
-      parts: placed.length,
-      bytes: threeMfPackage(model, name, opts, [
-        ["Metadata/model_settings.config", config],
-        ...(project ? [["Metadata/project_settings.config", project]] : []),
-      ]),
-    };
-  });
+  const config = `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${settings.join("\n")}\n${plateXml.join("\n")}\n</config>\n`;
+  const project = projectPart(opts, palette);
+  return [{
+    suffix: "",
+    parts: partNo,
+    plates: plates.length,
+    layout: plates.map((placed) => placed.length),
+    bytes: threeMfPackage(model, name, opts, [
+      ["Metadata/model_settings.config", config],
+      ...(project ? [["Metadata/project_settings.config", project]] : []),
+    ]),
+  }];
 }
 
 // ----------------------------------------------------------- printer presets
