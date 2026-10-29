@@ -15345,17 +15345,40 @@ ${joined}${SITE_TAIL}`), joined);
         || PRETTY_PATH.test(location.pathname);
     }
 
-    // "See it on your desk" (ar.js). On a phone it opens the camera view; on a
-    // computer it shows the share link as a QR code, with ar=1 on the end so
-    // the phone lands straight back here.
+    // A lazily loaded module that must not fail for want of a second try.
+    //
+    // A phone reported "failed to fetch dynamically imported module" for the
+    // desk view, and again for the retry at a fresh address, while the same
+    // file loaded everywhere else. So the last resort does not go through the
+    // module loader at all: fetch the text, point its relative imports at
+    // absolute addresses (the same URLs the app uses, so the same module
+    // instances), and import it from a blob. If even the fetch fails, the
+    // error says how (status, type, network), which is what a phone report needs.
+    // A failure is never cached: Chrome keeps a failed module for the life of
+    // the page, and caching the rejection made the cube fail until a reload.
+    async function lazyModule(rel) {
+      let first;
+      try { return await import(/* @vite-ignore */ rel); } catch (e) { first = e; }
+      const url = new URL(rel, import.meta.url);
+      let res;
+      try { res = await fetch(url, { cache: "no-store" }); }
+      catch (e) { throw new Error(`${rel} could not be downloaded (${e?.message || e})`); }
+      const type = res.headers.get("content-type") || "no type";
+      if (!res.ok) throw new Error(`${rel} came back ${res.status} (${type})`);
+      const base = new URL("./", url).href;
+      const src = (await res.text())
+        .replace(/(\bfrom\s*|\bimport\s*\(\s*)(["'])\.\//g, (m, head, q) => head + q + base);
+      const blob = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+      try { return await import(/* @vite-ignore */ blob); }
+      catch (e) { throw new Error(`${rel}: ${e?.message || e} (first try: ${first?.message || first})`); }
+    }
+
+    // "See it on your desk" (deskview.js; not "ar.js", a name content filters
+    // block). On a phone it opens the camera view; on a computer it shows the
+    // share link as a QR code, with ar=1 on the end so the phone lands
+    // straight back here.
     let _ar;
-    // A failed download is retried, not remembered: Chrome keeps a failed
-    // module in its map for the life of the page (so the retry needs a fresh
-    // address), and a phone's first try can land mid-deploy or on a dropped
-    // connection. Caching the rejection made the cube fail until a reload.
-    const getAR = () => (_ar ??= import("./ar.js")
-      .catch(() => import(/* @vite-ignore */ `./ar.js?retry=${Date.now()}`))
-      .catch((e) => { _ar = null; throw e; }));
+    const getAR = () => (_ar ??= lazyModule("./deskview.js").catch((e) => { _ar = null; throw e; }));
     // The short link this model already lives at, if any: opened from one, or
     // saved as one here. While the code is unchanged, the desk view's QR code
     // reuses it rather than asking for a new name.
@@ -15436,7 +15459,9 @@ ${joined}${SITE_TAIL}`), joined);
           const cl = await getCloud();
           const slug = openedSlug = cl.shortSlugIn(location);
           try {
-            ({ text } = await cl.resolveShort(slug));
+            let found;
+            ({ text, slug: found } = await cl.resolveShort(slug));
+            openedSlug = found || slug;
           } catch (e) {
             // A dead short link is a blank screen unless it says otherwise —
             // and unlike a long link, there is nothing in the URL to recover
@@ -15664,9 +15689,8 @@ ${joined}${SITE_TAIL}`), joined);
     // configured never fetches it, and neither does anyone who only ever uses
     // the long link.
     let _cloud;
-    const getCloud = () => (_cloud ??= import("./cloudlink.js")
-      .catch(() => import(/* @vite-ignore */ `./cloudlink.js?retry=${Date.now()}`))
-      .catch((e) => { _cloud = null; throw e; }));     // as getAR(): retried, not remembered
+    const getCloud = () => (_cloud ??= lazyModule("./cloudlink.js")
+      .catch((e) => { _cloud = null; throw e; }));     // as getAR(): a fallback, never remembered
 
     // Ask the server whether a name is free, but only after the typing stops
     // and only for the LAST thing typed — a request per keystroke would answer

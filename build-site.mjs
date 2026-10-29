@@ -126,7 +126,7 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "make.js",
   // the case builder (/case and the Toolbox): a Casefinity case painted on a grid
   "casebuilder.js",
-  "ar.js",
+  "deskview.js",
   // the line icons those cards and the drop menu share
   "icons.js",
   // Design mode: the Code | Design switch, and edge names for a picked face

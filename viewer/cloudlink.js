@@ -253,12 +253,20 @@ async function createShort({ slug, text, name }) {
 // The other end: a fragment comes in, the model text comes back.
 export async function resolveShort(slug) {
   if (!cloudReady()) throw new Error("short links are not set up on this copy");
+  // Names are stored the way slugify() writes them (dashes, lower case), and
+  // the server refuses anything else as invalid. A hand-typed or pasted
+  // "#s=Basic_Cube" means basic-cube, so it is asked for as that first.
+  const canon = slugify(slug);
+  if (canon && canon !== slug) {
+    try { return await resolveShort(canon); } catch { /* fall through: try it as written */ }
+  }
   const r = await api({ method: "GET", slug });
   if (r.status === 404) throw new Error(`there is no model called "${slug}"`);
   if (!r.ok) throw new Error(await errorFrom(r, `could not fetch that link (${r.status})`));
   const row = await r.json();
   if (!row || !row.payload) throw new Error(`"${slug}" came back empty`);
-  return { text: row.payload, name: row.name };
+  // slug: the name it was actually found under, which is the link to reuse
+  return { text: row.payload, name: row.name, slug };
 }
 
 // Pull the name out of a link. Same shape as the #m= reader so the loader
