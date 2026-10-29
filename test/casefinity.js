@@ -8,7 +8,7 @@
 
 import * as dsl from "../src/dsl.js";
 import { build, toSTL } from "../index.js";
-import { casefinityFit, casefinityBin, casefinityBinLid, casefinityCase, casefinityCaseLid, caseKit, CASEFINITY } from "../src/casefinity.js";
+import { casefinityFit, casefinityBin, casefinityBinLid, casefinityCase, casefinityCaseLid, casefinitySwingLatch, caseKit, CASEFINITY } from "../src/casefinity.js";
 import { isCaseUrl, kitCode, parseKitCode, paintRegion, tally, PRESETS } from "../viewer/casebuilder.js";
 
 let pass = 0, fail = 0;
@@ -178,6 +178,39 @@ console.log("\nthe lid closes: rounded tongue, clear corners, optional gasket\n"
   check("round clasp: the blade has no window", near(solidBlade.vol, 20 * 1.6 * 5, 2), `${solidBlade.vol.toFixed(1)} mm³ (160 solid; 32 with the hook's window)`);
 }
 
+console.log("\nthe Koch Box: ribbed walls, a swing latch on a pin\n");
+{
+  const overlap = async (a, b) => {
+    const [va, vb, vu] = await Promise.all([measure(a), measure(b), measure(dsl.union(a, b))]);
+    return va.vol + vb.vol - vu.vol;
+  };
+  const size = { width: 53, depth: 38, height: 35, style: "koch" };
+  const body = casefinityCase(size), lid = casefinityCaseLid(size), latch = casefinitySwingLatch(size);
+  const [bm, lm, tm] = await Promise.all([measure(body), measure(lid), measure(latch)]);
+  check("Koch body, lid and latch build exact", [bm, lm, tm].every((m) => /Exact/i.test(m.engine)), `${bm.engine} / ${lm.engine} / ${tm.engine}`);
+  check("ribs stand 3 proud of the sides", near(bm.x.max, 53 / 2 + 3, 0.01) && near(lm.x.max, 53 / 2 + 3, 0.01), `${bm.x.max} / ${lm.x.max}`);
+  check("the latch pad is flush with the front ribs", near(bm.y.min, -(38 / 2 + 3), 0.01), `${bm.y.min}`);
+  check("the hinge still stands 5.8 proud of the back", near(bm.y.max, 38 / 2 + 0.4 + 5.4, 0.05), `${bm.y.max}`);
+  check("the lid's lugs reach 8 out", near(lm.y.min, -(38 / 2 + 8), 0.02), `${lm.y.min}`);
+  // the latch hangs from 8 above the parting line (17) to its lip 6.9 below,
+  // its boss 8.2 out from the wall and its lip reaching back to 1.0 out
+  check("the latch spans boss to lip", near(tm.z.max, 17 + 11, 0.01) && near(tm.z.min, 17 - 6.9, 0.01), `${tm.z.min}..${tm.z.max}`);
+  check("the latch reaches 8.2 out and its lip 1.0 off the wall", near(tm.y.min, -(19 + 8.2), 0.01) && near(tm.y.max, -(19 + 1.0), 0.01), `${tm.y.min}..${tm.y.max}`);
+  const [bl, bt, lt] = await Promise.all([overlap(body, lid), overlap(body, latch), overlap(lid, latch)]);
+  check("closed: body and lid do not touch", bl < 2, `${bl.toFixed(2)} mm³`);
+  check("closed: the latch sits in its pocket without touching the body", bt < 2, `${bt.toFixed(2)} mm³`);
+  check("closed: the latch swings clear of the lid's lugs", lt < 2, `${lt.toFixed(2)} mm³`);
+  // the lip really is inside the pocket: a slab through the pocket meets lip material
+  const inPocket = await measure(dsl.intersection(latch, dsl.translate([-10, -19 - 3.2, 17 - 7], dsl.cube([20, 2.2, 4]))));
+  check("the lip fills the pocket 0.1 a side", near(inPocket.vol, 8 * 2.2 * 3.8 - 2.9, 1.5), `${inPocket.vol.toFixed(1)} mm³ (66.9 less two 0.6 lead-in chamfers = 64.0)`);
+  const pm = await measure(casefinitySwingLatch({ ...size, print: true }));
+  check("the latch prints on its side, 8 tall", near(pm.z.min, 0) && near(pm.z.max, 8, 0.01), `${pm.z.min}..${pm.z.max}`);
+  const kit = await measure(caseKit({ ...size, layout: [{ at: [0, 0], size: [3, 2], kind: "frame", split: true }] }));
+  check("a Koch kit is body, lid, latch and the frame", kit.solids === 4 && near(kit.z.min, 0), `${kit.solids} solids`);
+  const small = await measure(casefinityCase({ width: 38, depth: 23, height: 32, style: "koch" }));
+  check("the smallest case takes the Koch ribs (pulled inboard of its corners)", /Exact/i.test(small.engine) && near(small.x.max, 19 + 3, 0.01), `${small.engine} ${small.x.max}`);
+}
+
 console.log("\nthe builder: routes, painting, the code it writes\n");
 {
   check("/case, ?case=1 and #case open it", isCaseUrl({ pathname: "/case" }) && isCaseUrl({ search: "?case=1" }) && isCaseUrl({ hash: "#case" }));
@@ -219,7 +252,12 @@ console.log("\nthe builder: routes, painting, the code it writes\n");
   const rCode = kitCode({ ...state, latch: "round", lidFit: 0.4 });
   check("latch and lidFit are written and read back", /const latch = "round";/.test(rCode) && /const lidFit = 0.4;/.test(rCode)
     && parseKitCode(rCode).latch === "round" && parseKitCode(rCode).lidFit === 0.4);
-  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, latch, lidFit, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
+  check("smooth walls are the default", /const style = "smooth";/.test(code) && back.style === "smooth" && !/Luca Koch/.test(code));
+  const kCode = kitCode({ ...state, style: "koch" });
+  check("the Koch Box is written, credited and read back", /const style = "koch";/.test(kCode) && /Luca Koch/.test(kCode) && /printables\.com\/model\/1517296/.test(kCode)
+    && parseKitCode(kCode).style === "koch" && /style, latch, lidFit, layout/.test(kCode));
+  check("a Koch kit counts its latch", tally([{ c: 0, r: 0, w: 1, h: 1, kind: "box" }], 2, 1, true, true).pieces === 4);
+  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, style, latch, lidFit, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
 
   // the written code runs through the real vocabulary, the way the editor runs it
   const body = code.replace(/^\s*\/\/.*$/gm, "");

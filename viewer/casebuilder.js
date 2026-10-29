@@ -26,6 +26,8 @@ export const CREDITS = Object.freeze({
   hardcases: "https://www.patreon.com/UnemployedArchitect/posts/gridfinity-for-162320687",
   patreon: "https://www.patreon.com/cw/UnemployedArchitect",
   video: "https://www.youtube.com/watch?v=YSqm821ekR4",
+  // the Koch Box style follows Luca Koch's Parametric Hinged Storage Box
+  koch: "https://www.printables.com/model/1517296-parametric-hinged-storage-box-with-snap-fit-lid-cu",
 });
 
 const KINDS = ["box", "lidbox", "frame"];
@@ -33,7 +35,7 @@ const LABEL = { box: "Box", lidbox: "Box + lid", frame: "Separators", erase: "Er
 const STORE = "brepcode-casebuilder";
 // gasket is opt-in every time: it is never remembered, only read back from
 // code that already asks for it
-export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", lidFit: 0.3 });
+export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", lidFit: 0.3, style: "smooth" });
 
 // Does this address ask for the case builder? ?case=1 is what the /case
 // bounce sends; #case is for a link typed by hand; /case is the tidy path.
@@ -77,7 +79,7 @@ export const PRESETS = [
 ];
 
 // Count what a layout prints: the parts list Build will produce.
-export function tally(regions, cols, rows, includeCase = true) {
+export function tally(regions, cols, rows, includeCase = true, koch = false) {
   const t = { box: 0, lidbox: 0, lids: 0, frame: 0, covered: 0, pieces: 0 };
   for (const g of regions) {
     if (!inGrid(g, cols, rows)) continue;
@@ -87,7 +89,8 @@ export function tally(regions, cols, rows, includeCase = true) {
     if (g.kind === "lidbox") t.lids += n;
   }
   t.empty = Math.max(0, cols * rows - t.covered);
-  t.pieces = t.box + t.lidbox + t.lids + t.frame + (includeCase ? 2 : 0);
+  // the case is a body and a lid; the Koch Box adds its swing latch
+  t.pieces = t.box + t.lidbox + t.lids + t.frame + (includeCase ? (koch ? 3 : 2) : 0);
   return t;
 }
 
@@ -101,19 +104,23 @@ export function kitCode(state) {
   const fit = casefinityFit(s.width, s.depth, s.height, { inside: !!s.inside });
   const regions = (s.regions || []).filter((g) => inGrid(g, fit.cols, fit.rows));
   const row = (g) => `  { at: [${g.c}, ${g.r}], size: [${g.w}, ${g.h}], kind: "${g.kind}"${g.split ? ", split: true" : ""} },`;
+  const koch = s.style === "koch";
   return `// A Casefinity case and everything inside it, laid out for printing.
 // Made with the BREPcode case builder: brepcode.com/case
 //
 // The grid is Casefinity (casefinity.net/casefinity-spec) by Chris Agocs,
 // built on "Gridfinity for Hardcases" by the Unemployed Architect
 // (patreon.com/cw/UnemployedArchitect). Support him if you print this.
-//
+${koch ? `// The Koch Box styling (ribbed walls, swing latch on a filament pin) follows
+// Luca Koch's Parametric Hinged Storage Box: ${CREDITS.koch}
+` : ""}//
 // ${s.inside ? "INSIDE" : "Outside"} size in mm. The grid is whole 15 mm modules: ${fit.cols} x ${fit.rows} at this size.
 const width = ${+s.width};   // [60:600] ${s.inside ? "inside" : "outside"} width (mm)
 const depth = ${+s.depth};   // [60:600] ${s.inside ? "inside" : "outside"} depth (mm)
 const height = ${+s.height};  // [${s.inside ? 15 : 35}:300] ${s.inside ? "inside depth of the body" : "outside height, lid closed"} (mm)
 const includeCase = ${s.includeCase !== false};   // false: only the pieces that go in the grid
 const gasket = ${s.gasket === true};   // true: a sealing ridge along the rim and a matching trench in the lid (dust seal)
+const style = "${koch ? "koch" : "smooth"}";   // "smooth": plain walls and the clasp below. "koch": the Koch Box, ribbed walls and a swing latch on a filament pin
 const latch = "${s.latch === "round" ? "round" : "hook"}";   // "hook": a windowed blade hooks under a wedge. "round": a round lip rolls over a round bead, no supports
 const lidFit = ${+s.lidFit || 0.3};   // [0.1:0.6] clearance between the lid and the body, per side (mm)
 
@@ -125,7 +132,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gasket, latch, lidFit, layout: pieces });
+return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gasket, style, latch, lidFit, layout: pieces });
 `;
 }
 
@@ -146,6 +153,7 @@ export function parseKitCode(src = "") {
   const gk = /\bconst\s+gasket\s*=\s*(true|false)/.exec(text);
   state.gasket = gk ? gk[1] === "true" : /\bgasket\s*:\s*true\b/.test(text);
   state.latch = /\b(?:const\s+latch\s*=|latch\s*:)\s*["']round["']/.test(text) ? "round" : "hook";
+  state.style = /\b(?:const\s+style\s*=|style\s*:)\s*["']koch["']/.test(text) ? "koch" : "smooth";
   if (n("lidFit") != null) state.lidFit = n("lidFit");
   state.inside = /\binside\s*:\s*true\b/.test(text);
   state.regions = [];
@@ -224,6 +232,7 @@ function style() {
   .cb-check small { display: block; color: var(--muted2, #6f83a6); font-size: 11.5px; line-height: 1.35; }
   .cb-latch { margin-top: 10px; }
   .cb-latch small { display: block; margin-top: 5px; color: var(--muted2, #6f83a6); font: 11.5px/1.35 system-ui, sans-serif; }
+  .cb-latch small a { color: var(--accent-soft2, #7fb0ff); }
   .cb-build { width: 100%; margin-top: 10px; border: 0; border-radius: 12px; background: var(--accent, #1c66e5); color: #fff;
     font: 600 15px system-ui, sans-serif; padding: 12px; cursor: pointer; }
   .cb-build:hover { background: var(--accent-hover, #2e76f2); }
@@ -287,7 +296,9 @@ function creditHTML() {
     <a href="${CREDITS.hardcases}" target="_blank" rel="noopener">Gridfinity for Hardcases</a> by the
     <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>.
     If this saves you time, <a href="${CREDITS.patreon}" target="_blank" rel="noopener">support him on Patreon</a>.
-    <br />The case, the bins and their lids here are BREPcode's own designs, made to the Casefinity spec so they fit its grid.`;
+    <br />The case, the bins and their lids here are BREPcode's own designs, made to the Casefinity spec so they fit its grid.
+    The Koch Box style (ribbed walls, swing latch) follows
+    <a href="${CREDITS.koch}" target="_blank" rel="noopener">Parametric Hinged Storage Box</a> by Luca Koch on Printables.`;
 }
 
 function load() {
@@ -365,6 +376,12 @@ export function showCaseBuilder(hooks = {}) {
             <button type="button" data-v="1">Case + grid pieces</button><button type="button" data-v="0">Grid pieces only</button>
           </div>
           <label class="cb-check" id="cb-gasket-row"><input type="checkbox" id="cb-gasket" /><span>Gasket bead<small>A sealing ridge along the rim drops into a trench in the lid. Dust seal, firmer close.</small></span></label>
+          <div class="cb-latch" id="cb-style-row">
+            <div class="cb-seg" id="cb-style" role="radiogroup" aria-label="Walls">
+              <button type="button" data-v="smooth">Smooth walls</button><button type="button" data-v="koch">Koch Box</button>
+            </div>
+            <small id="cb-style-hint"></small>
+          </div>
           <div class="cb-latch" id="cb-latch-row">
             <div class="cb-seg" id="cb-latch" role="radiogroup" aria-label="Clasp">
               <button type="button" data-v="hook">Hook clasp</button><button type="button" data-v="round">Round clasp</button>
@@ -431,6 +448,16 @@ export function showCaseBuilder(hooks = {}) {
     const b = e.target.closest("button"); if (!b) return;
     S.latch = b.dataset.v === "round" ? "round" : "hook";
     seg("cb-latch", S.latch); paint();
+  });
+  const STYLE_HINT = {
+    smooth: "Plain rounded walls with the clasp below.",
+    koch: `Eight chamfered ribs and a swing latch on a filament pin, after <a href="${CREDITS.koch}" target="_blank" rel="noopener">Luca Koch's Parametric Hinged Storage Box</a>. Prints an extra latch part; the clasp below is not used.`,
+  };
+  seg("cb-style", S.style === "koch" ? "koch" : "smooth");
+  $("cb-style").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.style = b.dataset.v === "koch" ? "koch" : "smooth";
+    seg("cb-style", S.style); paint();
   });
   $("cb-inside").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
@@ -592,7 +619,7 @@ export function showCaseBuilder(hooks = {}) {
     grid.appendChild(ghost);
 
     // the readout: what this size gives you, in the numbers that decide it
-    const t = tally(S.regions, cols, rows, S.includeCase !== false);
+    const t = tally(S.regions, cols, rows, S.includeCase !== false, S.style === "koch");
     const plate = hooks.plate?.() || null;
     const warn = [];
     if (!f.fits) warn.push("Too small for a single 15 mm square. Make it bigger.");
@@ -610,12 +637,16 @@ export function showCaseBuilder(hooks = {}) {
     if (t.box) bits.push(`${t.box} box${t.box === 1 ? "" : "es"}`);
     if (t.lidbox) bits.push(`${t.lidbox} lidded box${t.lidbox === 1 ? "" : "es"}`);
     if (t.frame) bits.push(`${t.frame} separator frame${t.frame === 1 ? "" : "s"}`);
+    const koch = S.style === "koch";
     if (S.includeCase !== false) bits.push((S.gasket === true ? "the case and its lid, with a gasket bead" : "the case and its lid")
-      + (S.latch === "round" ? " and a round clasp" : ""));
+      + (koch ? " and its swing latch (Koch Box)" : S.latch === "round" ? " and a round clasp" : ""));
     $("cb-gasket").disabled = S.includeCase === false;
     $("cb-gasket-row").style.opacity = S.includeCase === false ? ".5" : "";
-    for (const b of $("cb-latch").querySelectorAll("button")) b.disabled = S.includeCase === false;
-    $("cb-latch-row").style.opacity = S.includeCase === false ? ".5" : "";
+    for (const b of $("cb-style").querySelectorAll("button")) b.disabled = S.includeCase === false;
+    $("cb-style-row").style.opacity = S.includeCase === false ? ".5" : "";
+    $("cb-style-hint").innerHTML = STYLE_HINT[koch ? "koch" : "smooth"];
+    for (const b of $("cb-latch").querySelectorAll("button")) b.disabled = S.includeCase === false || koch;
+    $("cb-latch-row").style.opacity = S.includeCase === false || koch ? ".5" : "";
     $("cb-latch-hint").textContent = LATCH_HINT[S.latch === "round" ? "round" : "hook"];
     $("cb-sum").innerHTML = t.pieces
       ? `<b>${t.pieces} piece${t.pieces === 1 ? "" : "s"}</b> to print: ${esc(bits.join(", "))}.`
@@ -634,7 +665,7 @@ export function showCaseBuilder(hooks = {}) {
     close();
     let ok = false;
     try { ok = !!(await hooks.build?.(code))?.ok; } catch { ok = false; }
-    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, S.includeCase !== false));
+    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, S.includeCase !== false, S.style === "koch"));
   });
 
   paintTools();
