@@ -65,6 +65,14 @@ function tile(c0, r0, w, h, tw, th, kind, split = false) {
 
 // The ready layouts. Each is a function of the grid, so it fits any case.
 export const PRESETS = [
+  // Separators first: it is the first-visit default. Open 3 x 3 frames (45 mm
+  // compartments), each a plain rim with no inner walls, so the whole kit
+  // builds in a couple of seconds. The fine grid below is one frame with a
+  // wall on every 15 mm line, and every wall is a boolean the kernel pays
+  // for: on the default case that is 20 walls and the slowest layout here,
+  // slower than 65 small boxes.
+  { id: "dividers", label: "Separators", blurb: "open 45 mm compartments", make: (C, R) => tile(0, 0, C, R, 3, 3, "frame") },
+  { id: "fine", label: "Fine grid", blurb: "a wall on every 15 mm line", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "frame", split: true }] },
   { id: "small", label: "Small boxes", blurb: "one box per square", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "box", split: true }] },
   { id: "two", label: "2 × 2 boxes", blurb: "30 mm boxes", make: (C, R) => tile(0, 0, C, R, 2, 2, "box") },
   { id: "mixed", label: "Big + small", blurb: "a long tray, small boxes beside it", make: (C, R) => {
@@ -74,7 +82,6 @@ export const PRESETS = [
   } },
   { id: "rows", label: "Trays", blurb: "long trays, front to back", make: (C, R) => tile(0, 0, C, R, C, 2, "box") },
   { id: "lidded", label: "Lidded parts", blurb: "2 × 2 boxes with lids", make: (C, R) => tile(0, 0, C, R, 2, 2, "lidbox") },
-  { id: "dividers", label: "Separators", blurb: "a wall on every line", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "frame", split: true }] },
   { id: "clear", label: "Empty", blurb: "start from nothing", make: () => [] },
 ];
 
@@ -332,9 +339,13 @@ export function showCaseBuilder(hooks = {}) {
   const S = fromCode || load();
   // the gasket is never pre-ticked: only code on screen that asks for it
   if (!fromCode) S.gasket = false;
+  // First visit: the case with plain separators. It used to open on "Big +
+  // small", a tray and 65 small boxes on the default case, and the first
+  // Build was a long wait for a layout nobody had asked for. Open frames
+  // are the quickest layout there is; the others are a click away.
   if (!Array.isArray(S.regions)) {
     const f = casefinityFit(S.width, S.depth, S.height, { inside: S.inside });
-    S.regions = PRESETS.find((p) => p.id === "mixed").make(f.cols, f.rows);
+    S.regions = PRESETS.find((p) => p.id === "dividers").make(f.cols, f.rows);
   }
   let brush = "box", split = false;
   const undo = [];
@@ -687,7 +698,7 @@ function showDone(hooks, t) {
   el.innerHTML = `
     <button type="button" class="cb-x2" title="Close" aria-label="Close">&times;</button>
     <b>${t.pieces} parts, laid out to print</b>
-    <p>Download them as 3MF (every part separate, one file per plate) or STL. The sliders resize the case.</p>
+    <p>Download them as 3MF (every part separate, every plate in the one file) or STL. The sliders resize the case.</p>
     <div class="cb-acts">
       <button type="button" class="pri" data-a="3mf">Download 3MF</button>
       <button type="button" data-a="stl">STL</button>
