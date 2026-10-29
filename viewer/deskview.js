@@ -4,7 +4,8 @@
 // On a phone that can do it, the sheet shows the part spinning with one big
 // button that drops it into the camera view. iPhones use Quick Look (the USDZ
 // it needs is made from the GLB on the spot); Android uses Chrome's WebXR
-// inside the page. Google's Scene Viewer is left out on purpose: it fetches
+// inside the page, through deskxr.js: a grid finds the table, a tap puts the
+// part on it, then pinch and twist resize and spin it. Google's Scene Viewer is left out on purpose: it fetches
 // the model itself, so it needs a file hosted on the web, and this one never
 // leaves the phone.
 //
@@ -24,6 +25,7 @@
 // is pressed: model-viewer is a few hundred KB nobody needs on a first visit.
 
 import { MV_CDN } from "./exporters.js";
+import { prepareDeskXR } from "./deskxr.js";
 
 // The QR code is the share link, and a code past ~2,300 bytes is too dense for
 // a phone camera to read off a monitor, even though the format goes to 2,953.
@@ -41,6 +43,11 @@ async function arModeNow() {
     const a = document.createElement("a");
     if (a.relList?.supports?.("ar")) return "quick-look";
   } catch { /* old browser */ }
+  // Android Chrome is NOT asked: asking is what makes Chrome fetch its AR
+  // component, a download prompt before the sheet had even opened. The tap on
+  // "Place it on your desk" starts the camera view, and Chrome asks for
+  // whatever it needs then; a phone without it gets the reason at that point.
+  if (navigator.xr && /Android/i.test(navigator.userAgent)) return "webxr";
   try {
     if (navigator.xr && await navigator.xr.isSessionSupported("immersive-ar")) return "webxr";
   } catch { /* not allowed here */ }
@@ -201,13 +208,29 @@ export async function showAR(hooks) {
     card.innerHTML = head(esc(hooks.name || "Your model") + ", at its real size")
       + `<div class="ar-stage"><div class="ar-note" style="padding:16px">Getting it ready…</div></div>`
       + `<button class="ar-go" type="button" disabled>${ICON}<span>Place it on your desk</span></button>`
-      + `<div class="ar-note">Point the camera at a table and move the phone slowly until the part appears. `
-      + `It stays its true size, so you can check it fits before you print it.</div>`;
+      + `<div class="ar-note">Point the camera at a table and move the phone slowly until a grid appears on it, `
+      + `then tap to put the part down. It starts at its true size, so you can check it fits before you print it.</div>`;
     card.querySelector(".ar-x").onclick = close;
     const stage = card.querySelector(".ar-stage"), go = card.querySelector(".ar-go"), note = card.querySelectorAll(".ar-note")[1];
     try {
       const [glb] = await Promise.all([hooks.glb(), loadModelViewer()]);
       if (open !== close) return;
+      // Android: the part is loaded for the camera view now, so the tap can
+      // start it at once (the browser only allows that straight from a tap)
+      let xr = null;
+      if (mode === "webxr") {
+        xr = await prepareDeskXR({
+          glb: glb.slice(0),
+          onEnd: () => { go.disabled = false; note.innerHTML = ready; },
+          onError: (e) => {
+            go.disabled = false;
+            note.innerHTML = e?.name === "NotAllowedError" || e?.name === "SecurityError" ? BLOCKED
+              : `<span class="ar-warn">The camera view did not start: ${esc(e?.message || e?.name || e)}. `
+                + `It needs Chrome and Google Play Services for AR, up to date.</span>`;
+          },
+        });
+        if (open !== close) return;
+      }
       const url = URL.createObjectURL(new Blob([glb], { type: "model/gltf-binary" }));
       urls.push(url);
       const mv = document.createElement("model-viewer");
@@ -216,10 +239,11 @@ export async function showAR(hooks) {
       mv.setAttribute("camera-controls", "");
       mv.setAttribute("auto-rotate", "");
       mv.setAttribute("shadow-intensity", "1");
-      mv.setAttribute("ar", "");
-      mv.setAttribute("ar-modes", "webxr quick-look");
-      mv.setAttribute("ar-scale", "fixed");               // real size is the whole point
-      mv.setAttribute("ar-placement", "floor");
+      if (mode === "quick-look") {
+        mv.setAttribute("ar", "");
+        mv.setAttribute("ar-modes", "quick-look");
+        mv.setAttribute("ar-scale", "fixed");             // real size is the whole point
+      }
       // model-viewer's own AR button is never shown; ours drives it, so the
       // tap that starts AR is the user's own (both modes insist on that)
       const hidden = document.createElement("span");
@@ -241,7 +265,6 @@ export async function showAR(hooks) {
         note.innerHTML = size + note.innerHTML;
         ready = note.innerHTML;
         go.disabled = false;
-        if (mode === "webxr") askFirst();
       }, { once: true });
       mv.addEventListener("ar-status", (e) => {
         if (e.detail?.status === "failed") {
@@ -249,41 +272,17 @@ export async function showAR(hooks) {
             + `and Google Play Services for AR; on an iPhone, Safari or any browser works.</span>`;
         }
       });
-      // Android's camera view needs camera permission, and Chrome refuses
-      // SILENTLY when it was blocked once. So the camera is asked for as its
-      // own step, with its own tap (the prompt can outlast the tap that
-      // starts AR), and a block is explained rather than swallowed.
-      const label = go.querySelector("span");
-      let ready = note.innerHTML, camOK = mode !== "webxr";
+      // No camera question of our own: Chrome asks when the camera view starts,
+      // and asking first as well meant two prompts. A block is explained.
+      let ready = note.innerHTML;
       const BLOCKED = `<span class="ar-warn">The camera is blocked for this site. Tap the icon left of the `
-        + `address bar, then <b>Permissions</b>, turn <b>Camera</b> on, and tap the button again.</span>`;
-      const camAllowed = () => {
-        camOK = true;
-        label.textContent = "Place it on your desk";
-        note.innerHTML = ready;
-      };
-      async function askFirst() {
-        let state = "prompt";
-        try { state = (await navigator.permissions.query({ name: "camera" })).state; } catch { /* not supported: ask */ }
-        if (state === "granted") return camAllowed();
-        label.textContent = "Allow the camera";
-        note.innerHTML = state === "denied" ? BLOCKED
-          : `${ready.replace(/Point the camera[\s\S]*$/, "")}Your phone will ask to use the camera. It stays on this `
-            + `phone: nothing is recorded or sent anywhere.`;
-      }
-      async function askCamera() {
-        go.disabled = true;
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-          for (const t of stream.getTracks()) t.stop();
-          camAllowed();
-        } catch (e) {
-          note.innerHTML = e?.name === "NotAllowedError" || e?.name === "SecurityError" ? BLOCKED
-            : `<span class="ar-warn">Could not reach the camera: ${esc(e?.message || e?.name || e)}</span>`;
-        } finally { go.disabled = false; }
-      }
+        + `address bar, then <b>Permissions</b>, allow <b>Camera</b> (and <b>AR</b> if listed), and tap the button again.</span>`;
       go.onclick = () => {
-        if (!camOK) { askCamera(); return; }
+        if (xr) {
+          go.disabled = true;
+          xr.start();
+          return;
+        }
         if (mv.canActivateAR === false) {
           note.innerHTML = `<span class="ar-warn">This browser will not open the camera view here. `
             + `On Android it needs Chrome and Google Play Services for AR; on an iPhone, Safari.</span>`;

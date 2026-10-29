@@ -9950,7 +9950,7 @@
       input.setSelectionRange(input.value.length, input.value.length);
 
       const lock = (keep) => {
-        if (keep) modelName = input.value.trim().slice(0, 60);
+        if (keep) { modelName = input.value.trim().slice(0, 60); ownName(modelName); }
         const span = document.createElement("span");
         span.className = "sub";
         span.id = "model-name";
@@ -9974,6 +9974,20 @@
     // so an unnamed model still exports with a sensible name.
     const safeModelName = () =>
       (modelName.replace(/[^\w .-]+/g, "").trim() || "brepcode-model");
+
+    // The name to OFFER for a new short link. Only a name this user gave the
+    // model (typed, or a file they opened) counts: opening someone's link
+    // names the model after theirs, and offering that back put every new link
+    // after it (each new model was "snapmaker-u1-micro"). Else the catalog
+    // id, else "my-part".
+    const ownName = (n) => { try { localStorage.setItem("brepcode-modelname-own", n); } catch { /* private */ } };
+    const linkNameSeed = () => {
+      let own = null;
+      try { own = localStorage.getItem("brepcode-modelname-own"); } catch { /* private */ }
+      const mine = modelName && modelName !== "brepcode-model" && modelName === own ? modelName : "";
+      const cat = /From the BREPcode catalog:\s*([\w-]+)/.exec(code.value)?.[1];
+      return mine || cat || "my-part";
+    };
 
     // How many calls the caret sits inside — i.e. unclosed "(" to its left.
     // String bodies are blanked first so a bracket in "part(1).stl" can't skew it.
@@ -15417,7 +15431,7 @@ ${joined}${SITE_TAIL}`), joined);
           short: (cl.cloudReady() && !cl.originProblem()) ? {
             // a link of this browser's own is offered again: saving updates it
             name: (linkedShort && cl.ownerTokenFor(linkedShort.slug)) ? linkedShort.slug
-              : cl.slugify(modelName && modelName !== "brepcode-model" ? modelName : "my-part") || "my-part",
+              : cl.slugify(linkNameSeed()) || "my-part",
             // the one name of this browser's own that may be saved over without
             // asking: this model's own link. Any other is another model.
             reuse: (linkedShort && cl.ownerTokenFor(linkedShort.slug)) ? linkedShort.slug : null,
@@ -15539,7 +15553,7 @@ ${joined}${SITE_TAIL}`), joined);
         // Scanned off a QR code: go straight to the desk view, on a phone that
         // has one (on a computer the landing card's button is enough).
         if (/[#&]ar=1(&|$)/.test(location.hash)) {
-          getAR().then(async (ar) => { if (await ar.arMode() || ar.touchDevice()) seeOnDesk(); }).catch(() => {});
+          getAR().then(async (ar) => { if (ar.touchDevice() || await ar.arMode()) seeOnDesk(); }).catch(() => {});
         }
         return true;
       } catch { bootDismiss(); return false; }
@@ -15858,7 +15872,7 @@ ${joined}${SITE_TAIL}`), joined);
       on.addEventListener("change", async () => {
         wrap.hidden = !on.checked;
         if (!on.checked) return;
-        if (!box.value.trim()) box.value = safeModelName();
+        if (!box.value.trim()) box.value = linkNameSeed();
         paintShortStatus();
       });
       box.addEventListener("input", () => {
@@ -17777,7 +17791,7 @@ let SIMPLIFY_TARGET = 10000;
       if (text.length > 2_000_000) { setStatus("err", `${file.name} is too big to be a model script.`); return; }
       const name = file.name.replace(/\.[^.]+$/, "");
       code.value = text;
-      modelName = name.slice(0, 60); paintName();
+      modelName = name.slice(0, 60); ownName(modelName); paintName();
       pushHistory(text);
       updateHint();
       if (!panel.classList.contains("open")) openBtn.click();
@@ -18366,6 +18380,7 @@ let SIMPLIFY_TARGET = 10000;
       if (stem) {
         modelName = stem;
         localStorage.setItem("brepcode-modelname", modelName);
+        ownName(modelName);
         paintName();
       }
 
@@ -25127,7 +25142,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
         code.value = src;
         pushHistory();                              // so the user can undo us
         if (typeof name === "string" && name.trim()) {
-          modelName = name.trim().slice(0, 60); paintName();
+          modelName = name.trim().slice(0, 60); ownName(modelName); paintName();
         }
         // Opening the editor card matters: a model changing under a collapsed
         // panel looks like the app did it by itself.
