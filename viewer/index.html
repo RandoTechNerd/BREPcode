@@ -29,8 +29,11 @@
     //
     // Guards, because an auto-navigating page that gets this wrong is far worse
     // than a stale one:
-    //   - one attempt per session, recorded BEFORE navigating, so a
-    //     misconfigured host can never put it in a reload loop
+    //   - one attempt per BUILD, recorded BEFORE navigating, so a
+    //     misconfigured host can never put it in a reload loop. Per build,
+    //     not per tab: a tab that refreshed to one build and then outlived
+    //     the next publish stayed on the old one for good, and exported
+    //     files a release behind the site.
     //   - any failure at all (offline, 404 on a dev server, malformed json)
     //     is silent and changes nothing
     //   - the model in the editor is untouched; autosave has already stored it
@@ -39,6 +42,11 @@
     (function () {
       var S = (window.__bcStale = { step: "start" });
       try {
+        // The address as it ARRIVED. The app takes its one-shot flags off the
+        // bar as it acts on them (?case=1, ?make=1, #tour), and this check's
+        // fetch lands after that, so a refresh built from location.href then
+        // lost them: brepcode.com/case refreshed into the plain app.
+        var arrived = location.href;
         var meta = document.querySelector('meta[name="brepcode-build"]');
         var here = meta && meta.content;
         S.here = here;
@@ -47,17 +55,30 @@
         // which is trivially true, so the check bailed on every load and the
         // whole thing silently did nothing.
         if (!here || here === "BUILD" + "STAMP") { S.step = "unstamped (dev build)"; return; }
-        if (sessionStorage.getItem("bc-freshened")) { S.step = "already refreshed once"; return; }
         S.step = "fetching";
         fetch("version.json", { cache: "no-store" })
           .then(function (r) { S.status = r.status; return r.ok ? r.json() : null; })
           .then(function (v) {
             S.server = v && v.build;
             if (!v || !v.build) { S.step = "no version.json"; return; }
-            if (v.build === here) { S.step = "up to date"; return; }
+            if (v.build === here) {
+              S.step = "up to date";
+              // The ?b= that fetched this copy has done its job. Off the
+              // bar, so an address copied from it is not a dated one.
+              try {
+                var c = new URL(location.href);
+                if (c.searchParams.has("b")) {
+                  c.searchParams.delete("b");
+                  history.replaceState(null, "", c.pathname + c.search + c.hash);
+                  S.step = "up to date (b removed)";
+                }
+              } catch (e) { /* the address stays as it is */ }
+              return;
+            }
+            if (sessionStorage.getItem("bc-freshened") === v.build) { S.step = "already refreshed to this build"; return; }
             S.step = "stale — refreshing";
             sessionStorage.setItem("bc-freshened", v.build);
-            var u = new URL(location.href);
+            var u = new URL(arrived);
             u.searchParams.set("b", String(v.build).replace(/[^\w.-]+/g, "-"));
             location.replace(u.toString());
           })
@@ -16484,7 +16505,7 @@ ${joined}${SITE_TAIL}`), joined);
       stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange - geometry only, so any colours are dropped." },
       obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "plate-row"] },
-      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Spills onto numbered files when one plate is not enough.", opts: ["mesh-variant-row", "plate-row"] },
+      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Every plate in the one file: Bambu Studio and OrcaSlicer open it with a tab per plate.", opts: ["mesh-variant-row", "plate-row"] },
       gcode: { kind: "slice", desc: "BETA - check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer - what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid - opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
@@ -16549,7 +16570,7 @@ ${joined}${SITE_TAIL}`), joined);
       if (fmt === "gcode") { el.innerHTML = `Saves <b>${esc(base)}.gcode</b>`; return; }
       const ext = spec?.ext || "";
       if (!ext) { el.textContent = ""; return; }
-      const many = fmt === "3mf-parts" ? "  (numbered, if it needs more than one plate)" : "";
+      const many = fmt === "3mf-parts" ? "  (every plate in the one file)" : "";
       el.innerHTML = `Saves <b>${esc(base + ext)}</b>${esc(many)}`;
     }
     let expSel = localStorage.getItem("brepcode-export-fmt") || "3mf";
@@ -17189,7 +17210,7 @@ ${joined}${SITE_TAIL}`), joined);
           line.userData.ownGeometry = true; line.userData.ownMaterial = true;
           holder.add(line);
           tag.textContent = plates.length > 1
-            ? `${parts.length} parts — plate 1 of ${plates.length} shown`
+            ? `${parts.length} parts on ${plates.length} plates, all in the one file — plate 1 shown`
             : `${parts.length} part${parts.length === 1 ? "" : "s"} on the plate, each on the bed`;
         } catch {
           tag.textContent = "preview unavailable — the export itself still works";
