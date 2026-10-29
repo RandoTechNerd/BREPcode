@@ -440,8 +440,36 @@ cpSync("viewer/vendor/kernel/node-module-shim.js", join(OUT, "vendor/kernel/node
   };
   walk(join(OUT, "vendor"));
   const vendorHash = h.digest("hex").slice(0, 12);
-  writeFileSync(join(OUT, "sw.js"), readFileSync("viewer/sw.js", "utf8").split("__VENDOR_HASH__").join(vendorHash));
-  console.log(`  sw.js: vendor cache brep-vendor-${vendorHash}`);
+
+  // The app's own files, for the second cache: everything the page loads
+  // that is not vendor/ and not the page itself. HTML (the page, the bounce
+  // folders), version.json, sw.js and the docs stay out: they are either how
+  // a visitor learns the build, or never fetched by the app. The list is
+  // written into the worker, so a file the host serves beside the app
+  // (quicksave.js) is never cached by a build that did not ship it.
+  const ha = createHash("sha256");
+  const appFiles = [];
+  const walkApp = (dir) => {
+    for (const entry of readdirSync(dir).sort()) {
+      const p = join(dir, entry);
+      const rel = relative(OUT, p).split(sep).join("/");
+      if (statSync(p).isDirectory()) { if (rel !== "vendor") walkApp(p); continue; }
+      if (/\.(html|md|txt)$/i.test(rel) || rel === "sw.js" || rel === "version.json") continue;
+      appFiles.push(rel);
+      ha.update(rel).update(readFileSync(p));
+    }
+  };
+  walkApp(OUT);
+  const appHash = ha.digest("hex").slice(0, 12);
+  writeFileSync(join(OUT, "sw.js"), readFileSync("viewer/sw.js", "utf8")
+    .split("__VENDOR_HASH__").join(vendorHash)
+    .split("__APP_HASH__").join(appHash)
+    .split("__APP_FILES__").join(JSON.stringify(appFiles)));
+  // the page names its build, so the worker can tell a page from another build
+  const page = readFileSync(join(OUT, "index.html"), "utf8");
+  if (!page.includes("<head>")) throw new Error("index.html has no <head> to mark the build in");
+  writeFileSync(join(OUT, "index.html"), page.replace("<head>", `<head>\n  <meta name="brep-app" content="${appHash}">`));
+  console.log(`  sw.js: vendor cache brep-vendor-${vendorHash}, app cache brep-app-${appHash} (${appFiles.length} files)`);
 }
 
 // ---- zip --------------------------------------------------------------
