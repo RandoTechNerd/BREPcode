@@ -291,7 +291,7 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
       // one exception, the AR QR code: /m/name redirects to a fragment of its
       // own, which would drop the "ar=1" riding on the end
       && (HTML.match(/cl\.shortUrl\(shareBase\(\)/g) || []).length === 1
-      && /would drop the "ar=1" the QR code needs\s+return cl\.shortUrl\(shareBase\(\), slug\);/.test(HTML),
+      && /would drop the "ar=1" the QR code needs\s+const deskLink = \(slug\) => cl\.shortUrl\(shareBase\(\), slug\);/.test(HTML),
     `${(HTML.match(/cl\.bestShortUrl\(shareBase\(\),/g) || []).length} of 3`);
   check("...and so is the published page's edit link",
     /if \(frag\) editUrl = shareBase\(\) \+ frag;/.test(HTML));

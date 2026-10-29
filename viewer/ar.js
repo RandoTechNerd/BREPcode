@@ -146,6 +146,8 @@ export function closeAR() { open?.(); }
 //   name:      the model's name, for the heading
 //   glb():     the model as a GLB ArrayBuffer, in METRES (AR is real size)
 //   longUrl(): the long share link for this model, or null when it is too big
+//   existing:  { slug, url } when the model already lives at a short link
+//              and has not changed since, else null: the code uses it as is
 //   short:     null when short links are not available here, else {
 //     name:          a suggested name
 //     slugify(text): what a typed name becomes in the link
@@ -373,6 +375,12 @@ export async function showAR(hooks) {
   };
   longBtn.onclick = useLong;
 
+  if (hooks.existing) {
+    shortBox.hidden = true;
+    const ok = await showCode(withAR(hooks.existing.url),
+      `This model already has a short link, <b>${esc(hooks.existing.slug)}</b>, so the code uses it.`);
+    if (ok || open !== close) return;
+  }
   const sh = hooks.short;
   if (!sh) {
     // no link server here: straight to the long link
@@ -382,21 +390,41 @@ export async function showAR(hooks) {
     return useLong();
   }
   shortBox.hidden = false;
-  nameIn.value = sh.name;
-  // Offer a name that is actually free, rather than one that fails on press.
+  // Only ever OFFER a name that is free, or this model's own link (saving
+  // updates it). A name this browser made for ANOTHER model counts as taken:
+  // saving over it would replace that model. The box stays empty until the
+  // server has answered, rather than showing a name that is not available.
+  nameIn.value = "";
+  nameIn.placeholder = "finding a free name…";
+  make.disabled = true;
   (async () => {
+    let pick = sh.slugify(sh.name), note = "";
     try {
-      const r = await sh.check(sh.slugify(nameIn.value));
-      if (open !== close || nameIn.value !== sh.name) return;
-      if (r.offline) { say(`${esc(r.reason)}. The long link still works.`, true); return; }
-      if (!r.ok && r.free === false) {
-        const alt = await sh.suggest(sh.slugify(nameIn.value));
-        if (alt && open === close && nameIn.value === sh.name) nameIn.value = alt;
+      const r = await sh.check(pick);
+      if (open !== close) return;
+      if (r.offline) { say(`${esc(r.reason)}. The long link still works.`, true); pick = ""; }
+      else if (r.ok && r.mine && pick === sh.reuse) note = `<b>${esc(pick)}</b> is this model's link: saving updates it.`;
+      else if (!(r.ok && r.free)) {
+        pick = (await sh.suggest(pick)) || "";
+        // every simple variant taken: a random tail is as good as certain to be free
+        for (let i = 0; !pick && i < 3; i++) {
+          const c = `${sh.slugify(sh.name).slice(0, 40)}-${Math.random().toString(36).slice(2, 6)}`;
+          const rc = await sh.check(c);
+          if (rc.offline) break;
+          if (rc.ok && rc.free) pick = c;
+        }
       }
-    } catch { /* checked again on press */ }
+    } catch { pick = ""; }
+    if (open !== close || nameIn.value) return;          // the user typed one meanwhile
+    nameIn.placeholder = "name for the link";
+    nameIn.value = pick;
+    make.disabled = false;
+    if (note) say(note);
+    try { nameIn.focus(); nameIn.select(); } catch { /* gone */ }
   })();
+  let confirmReplace = null;
   nameIn.addEventListener("keydown", (e) => { if (e.key === "Enter") make.click(); });
-  nameIn.addEventListener("input", () => say(""));
+  nameIn.addEventListener("input", () => { say(""); confirmReplace = null; });
   make.onclick = async () => {
     const slug = sh.slugify(nameIn.value);
     if (slug !== nameIn.value) nameIn.value = slug;
@@ -406,6 +434,12 @@ export async function showAR(hooks) {
       const r = await sh.check(slug);
       if (open !== close) return;
       if (r.offline) { say(`${esc(r.reason)}. Use the long link instead.`, true); return; }
+      if (r.ok && r.mine && slug !== sh.reuse && confirmReplace !== slug) {
+        confirmReplace = slug;
+        say(`<b>${esc(slug)}</b> is a link you made for another model. Press again to replace that `
+          + `model with this one, or pick a new name.`, true);
+        return;
+      }
       if (!r.ok) {
         const alt = r.free === false ? await sh.suggest(slug) : null;
         if (alt) { nameIn.value = alt; say(`"${esc(slug)}" is taken. <b>${esc(alt)}</b> is free: press Make the code.`); }
@@ -422,5 +456,4 @@ export async function showAR(hooks) {
       say(`${esc(e?.message || e)}`, true);
     } finally { make.disabled = false; }
   };
-  setTimeout(() => { try { nameIn.focus(); nameIn.select(); } catch { /* gone */ } }, 0);
 }

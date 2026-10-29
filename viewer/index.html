@@ -15349,7 +15349,18 @@ ${joined}${SITE_TAIL}`), joined);
     // computer it shows the share link as a QR code, with ar=1 on the end so
     // the phone lands straight back here.
     let _ar;
-    const getAR = () => (_ar ??= import("./ar.js"));
+    // A failed download is retried, not remembered: Chrome keeps a failed
+    // module in its map for the life of the page (so the retry needs a fresh
+    // address), and a phone's first try can land mid-deploy or on a dropped
+    // connection. Caching the rejection made the cube fail until a reload.
+    const getAR = () => (_ar ??= import("./ar.js")
+      .catch(() => import(/* @vite-ignore */ `./ar.js?retry=${Date.now()}`))
+      .catch((e) => { _ar = null; throw e; }));
+    // The short link this model already lives at, if any: opened from one, or
+    // saved as one here. While the code is unchanged, the desk view's QR code
+    // reuses it rather than asking for a new name.
+    let linkedShort = null;            // { slug, src }
+    const noteShort = (slug) => { linkedShort = { slug, src: code.value.trim() }; };
     async function seeOnDesk() {
       // the model as a .bcode, the same text the share links carry
       const shareText = async () => {
@@ -15365,6 +15376,9 @@ ${joined}${SITE_TAIL}`), joined);
       toast("Opening the desk view…", "info");
       try {
         const [ar, cl] = await Promise.all([getAR(), getCloud()]);
+        // the #s= form, not bestShortUrl(): /m/name answers with a redirect
+        // whose own fragment would drop the "ar=1" the QR code needs
+        const deskLink = (slug) => cl.shortUrl(shareBase(), slug);
         await ar.showAR({
           name: modelName,
           glb: () => modelToGLB({ scale: 0.001, lights: false }),
@@ -15374,16 +15388,23 @@ ${joined}${SITE_TAIL}`), joined);
           },
           // the QR code asks for a short link first: a whole model in the
           // link is a dense code and a slow page on the phone
+          // already on a short link, unchanged: that link IS the code
+          existing: linkedShort && linkedShort.src === code.value.trim()
+            ? { slug: linkedShort.slug, url: deskLink(linkedShort.slug) } : null,
           short: (cl.cloudReady() && !cl.originProblem()) ? {
-            name: cl.slugify(modelName && modelName !== "brepcode-model" ? modelName : "my-part") || "my-part",
+            // a link of this browser's own is offered again: saving updates it
+            name: (linkedShort && cl.ownerTokenFor(linkedShort.slug)) ? linkedShort.slug
+              : cl.slugify(modelName && modelName !== "brepcode-model" ? modelName : "my-part") || "my-part",
+            // the one name of this browser's own that may be saved over without
+            // asking: this model's own link. Any other is another model.
+            reuse: (linkedShort && cl.ownerTokenFor(linkedShort.slug)) ? linkedShort.slug : null,
             slugify: cl.slugify,
             check: (slug) => cl.checkName(slug),
             suggest: (slug) => cl.suggestFreeName(slug),
             save: async (slug) => {
               await cl.saveShort({ slug, text: await shareText(), name: modelName || slug });
-              // the #s= form, not bestShortUrl(): /m/name answers with a redirect
-              // whose own fragment would drop the "ar=1" the QR code needs
-              return cl.shortUrl(shareBase(), slug);
+              noteShort(slug);
+              return deskLink(slug);
             },
           } : null,
         });
@@ -15410,10 +15431,10 @@ ${joined}${SITE_TAIL}`), joined);
         // A short link is the same model with a lookup in front of it: fetch
         // the text, then fall into exactly the same path the long link takes.
         // Everything below this line cannot tell which kind it was.
-        let text;
+        let text, openedSlug = null;
         if (shortName) {
           const cl = await getCloud();
-          const slug = cl.shortSlugIn(location);
+          const slug = openedSlug = cl.shortSlugIn(location);
           try {
             ({ text } = await cl.resolveShort(slug));
           } catch (e) {
@@ -15450,6 +15471,7 @@ ${joined}${SITE_TAIL}`), joined);
         // first pass — the same ordering the .bcode drop-load depends on.
         await registerPackedMeshes(exp, meshes);
         code.value = source;
+        if (openedSlug) noteShort(openedSlug);
         pushHistory();
         if (scene?.material) { Object.assign(mat, scene.material); applyMaterial?.(); }
         if (Array.isArray(scene?.camera) && Array.isArray(scene?.target)) {
@@ -15642,7 +15664,9 @@ ${joined}${SITE_TAIL}`), joined);
     // configured never fetches it, and neither does anyone who only ever uses
     // the long link.
     let _cloud;
-    const getCloud = () => (_cloud ??= import("./cloudlink.js"));
+    const getCloud = () => (_cloud ??= import("./cloudlink.js")
+      .catch(() => import(/* @vite-ignore */ `./cloudlink.js?retry=${Date.now()}`))
+      .catch((e) => { _cloud = null; throw e; }));     // as getAR(): retried, not remembered
 
     // Ask the server whether a name is free, but only after the typing stops
     // and only for the LAST thing typed — a request per keystroke would answer
@@ -15777,6 +15801,7 @@ ${joined}${SITE_TAIL}`), joined);
         const text = await (await getExporters()).readShareFragment(location.hash);
         if (!text) throw new Error("this link does not carry a model");
         await cl.saveShort({ slug, text, name: modelName || slug });
+        noteShort(slug);
       } catch (e) {
         claimPanel({ tone: "warn", icon: "warn", head: "Could not save the short link",
           sub: `${e?.message || e}. The link you already have still works.`,
@@ -16181,6 +16206,7 @@ ${joined}${SITE_TAIL}`), joined);
             } else {
               try {
                 await cl.saveShort({ slug, text, name: base });
+                noteShort(slug);
                 url = await cl.bestShortUrl(shareBase(), slug);
                 shortNote = `Hosted as <b>${slug}</b>. `;
               } catch (e) {
