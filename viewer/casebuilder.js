@@ -408,6 +408,11 @@ export function showCaseBuilder(hooks = {}) {
   if (!Array.isArray(S.regions)) S.regions = [];
   if (S.container !== "kuggis") S.container = "case";
   S.kuggis = { ...defaultKuggis(), ...(S.kuggis || {}) };
+  // A remembered KUGGIS size takes the table's CURRENT numbers: the table
+  // improves as boxes get measured, and a stale copy under a size's name
+  // would quietly print to last month's estimate. Hand-typed numbers are
+  // "custom" and stay exactly as typed.
+  if (S.kuggis.size && S.kuggis.size !== "custom" && !fromCode) S.kuggis = { ...defaultKuggis(S.kuggis.size), lock: S.kuggis.lock === true };
   let brush = "box", split = false;
   const undo = [];
 
