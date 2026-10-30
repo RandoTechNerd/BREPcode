@@ -86,15 +86,44 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   check("a lidded region prints as a box here", (await measure(kuggisKit({ ...e, layout: [{ at: [0, 0], size: [1, 1], kind: "lidbox" }] }))).solids === 1);
 }
 
+console.log("\nthe Casefinity lock: ribs and sockets between pieces, nothing against the wall\n");
+{
+  const e = kuggisEstimate([180, 260, 80]);
+  const P = 15, b = 1.5, cl = 0.15;
+  // a 2 x 2 box in the middle of the grid, locked
+  const mid = await measure(kuggisKit({ ...e, lock: true, layout: [{ at: [2, 3], size: [2, 2], kind: "box" }] }));
+  const w = 2 * P - 2 * cl;
+  check("a locked inside piece is n*P - 2c across its faces, plus a rib on -X",
+    near(mid.x.max - mid.x.min, w + b, 0.05), `${(mid.x.max - mid.x.min).toFixed(2)} vs ${w + b}`);
+  check("...and a rib on +Y", near(mid.y.max - mid.y.min, w + b, 0.05), `${(mid.y.max - mid.y.min).toFixed(2)}`);
+  check("one solid still", mid.solids === 1);
+  // the same piece smooth, for comparison
+  const plain = await measure(kuggisKit({ ...e, lock: false, layout: [{ at: [2, 3], size: [2, 2], kind: "box" }] }));
+  check("smooth is narrower: no ribs, 0.3 between", near(plain.x.max - plain.x.min, 2 * P - 0.3, 0.05), `${(plain.x.max - plain.x.min).toFixed(2)}`);
+  // the front-left corner piece: its wall faces stay the liner's slope
+  const corner = await measure(kuggisKit({ ...e, lock: true, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  const cornerPlain = await measure(kuggisKit({ ...e, lock: false, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  // front-left: the wall faces (-X, -Y) stay the liner, the +X face takes
+  // sockets (cut in, no wider), the +Y face a rib (b proud)
+  check("a corner piece is as wide as its smooth twin: nothing on the wall face, sockets cut in",
+    near(corner.at(corner.z.max, 0), cornerPlain.at(cornerPlain.z.max, 0), 0.05),
+    `${corner.at(corner.z.max, 0).toFixed(2)} vs ${cornerPlain.at(cornerPlain.z.max, 0).toFixed(2)}`);
+  check("...and a rib deep on its back face", near(corner.at(corner.z.max, 1), cornerPlain.at(cornerPlain.z.max, 1) + b, 0.05),
+    `${corner.at(corner.z.max, 1).toFixed(2)} vs ${cornerPlain.at(cornerPlain.z.max, 1).toFixed(2)}`);
+  check("a locked frame builds", (await measure(kuggisKit({ ...e, lock: true, layout: [{ at: [2, 2], size: [3, 3], kind: "frame", split: true }] }))).solids === 1);
+}
+
 console.log("\nthe builder's code\n");
 {
-  const s = { container: "kuggis", kuggis: defaultKuggis("18x26x15"), regions: [{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox" }, { c: 2, r: 0, w: 3, h: 3, kind: "frame", split: true }] };
+  const s = { container: "kuggis", kuggis: { ...defaultKuggis("18x26x15"), lock: true }, regions: [{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox" }, { c: 2, r: 0, w: 3, h: 3, kind: "frame", split: true }] };
   const code = kitCode(s);
+  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, layout: pieces/.test(code));
   check("it calls kuggisKit, not caseKit", /return kuggisKit\(/.test(code) && !/caseKit\(/.test(code));
   check("the box's inside is sliders", /const rimW = [\d.]+;\s+\/\/ \[/.test(code) && /const taper = /.test(code) && /const taperD = /.test(code) && /const clear = /.test(code));
   check("it says the numbers are estimates to measure over", /estimate/i.test(code) && /Measure your box/.test(code));
   const back = parseKitCode(code);
   check("it reads back as the KUGGIS container", back?.container === "kuggis");
+  check("...locked", back?.kuggis?.lock === true && parseKitCode(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] }))?.kuggis?.lock === false);
   check("...to the same size", back?.kuggis?.size === "18x26x15" && back.kuggis.rimW === s.kuggis.rimW && back.kuggis.lidIn === s.kuggis.lidIn, JSON.stringify(back?.kuggis));
   check("...and the same layout, lids dropped", back?.regions.length === 2 && back.regions[0].kind === "box" && back.regions[1].split === true);
   const typed = parseKitCode(code.replace(/const rimW = [\d.]+/, "const rimW = 170.5"));

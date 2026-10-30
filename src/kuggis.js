@@ -35,12 +35,17 @@
 import {
   cube, translate, difference, union, intersection, hull, fillet, colorize, group,
 } from "./dsl.js";
-import { CASEFINITY, CASEKIT_COLORS, shelfPack } from "./casefinity.js";
+import { CASEFINITY, CASEKIT_COLORS, shelfPack, featuredOutline, prism as outlinePrism } from "./casefinity.js";
 
 export const KUGGIS = Object.freeze({
   pitch: 15,            // the Casefinity module, so the builder's grid is the same grid
   wall: 1.2, floor: 1.2,
   between: 0.3,         // air between two neighbouring pieces, on diameter
+  // the "Casefinity lock" style: the spec's ribs and sockets on the upright
+  // faces between pieces (never on a face against the box wall), so a kit
+  // holds together as one block. The spec's clearance knob at 0.15 a face:
+  // the tight end of its 0.10 to 0.20, a little room for a fat first layer
+  lockClear: 0.15,
   clear: 1.0,           // fit gap to the box wall, per side
   // The KUGGIS lid is a plug: on the 26x35x15 it is 12 mm tall and 8.8 mm
   // of that drops INSIDE the rim (measured). So the rim is measured lidIn
@@ -134,7 +139,8 @@ function boxDims(opts) {
   const wall = num(opts.wall, "wall", KUGGIS.wall), floor = num(opts.floor, "floor", KUGGIS.floor);
   const topClear = num(opts.topClear, "topClear", KUGGIS.topClear);
   const pieceH = span - topClear;
-  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH };
+  const lock = opts.lock === true;
+  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock };
 }
 
 // The module grid a box holds: whole 15 mm squares across the FLOOR inside,
@@ -196,7 +202,7 @@ function liners(b) {
 function piece(b, fit, g, kind, divide, L) {
   const P = fit.pitch, BIG = 500;
   const gx0 = -fit.inner[0] / 2, gy0 = -fit.inner[1] / 2;
-  const half = KUGGIS.between / 2;
+  const half = b.lock ? KUGGIS.lockClear : KUGGIS.between / 2;
   // the prism's walls: at the grid edge, out past the box; inside, half a gap in
   const edgeL = g.c === 0, edgeR = g.c + g.w === fit.cols, edgeF = g.r === 0, edgeB = g.r + g.h === fit.rows;
   const x0 = edgeL ? -BIG : gx0 + g.c * P + half, x1 = edgeR ? BIG : gx0 + (g.c + g.w) * P - half;
@@ -207,9 +213,36 @@ function piece(b, fit, g, kind, divide, L) {
   const bottom = kind !== "frame";
   const zc = bottom ? b.floor : -1;
   const w = b.wall;
-  // an inside piece is a plain upright box: two cubes and one cut
-  const outerPrism = prism(x0, x1, y0, y1, 0, H);
-  const cavityPrism = prism(edgeL ? -BIG : x0 + w, edgeR ? BIG : x1 - w, edgeF ? -BIG : y0 + w, edgeB ? BIG : y1 - w, zc, H + 1);
+  // an inside piece is a plain upright box: two cubes and one cut. In the
+  // lock style the two prisms are Casefinity outlines instead: sockets cut
+  // into the front (-Y) and right (+X) faces, ribs standing on the back and
+  // left, one per module centre, and a boss inside behind each socket where
+  // the wall is thinner than the socket is deep (REQ-4.4). A face against
+  // the box wall gets nothing: the liner's slope is that side.
+  const cx0 = edgeL ? -BIG : x0 + w, cx1 = edgeR ? BIG : x1 - w, cy0 = edgeF ? -BIG : y0 + w, cy1 = edgeB ? BIG : y1 - w;
+  let outerPrism, cavityPrism;
+  if (b.lock) {
+    const rib = CASEFINITY.rib, bump = CASEFINITY.bump, cl = KUGGIS.lockClear, s = rib + 2 * cl;
+    const featured = (ax0, ax1, ay0, ay1, make, z0, z1) => {
+      const mx = (ax0 + ax1) / 2, my = (ay0 + ay1) / 2;
+      const xs = Array.from({ length: g.w }, (_, i) => gx0 + (g.c + i + 0.5) * P - mx);
+      const ys = Array.from({ length: g.h }, (_, j) => gy0 + (g.r + j + 0.5) * P - my);
+      const sides = {};
+      if (!edgeF && make.front) sides.front = make.front(xs);
+      if (!edgeR && make.right) sides.right = make.right(ys);
+      if (!edgeB && make.back) sides.back = make.back(xs);
+      if (!edgeL && make.left) sides.left = make.left(ys);
+      return translate([mx, my, 0], outlinePrism(featuredOutline(ax1 - ax0, ay1 - ay0, sides, CASEFINITY.draft), z0, z1 - z0));
+    };
+    const sock = (at) => ({ at, width: s, depth: bump, out: -1 });
+    const ribs = (at) => ({ at, width: rib, depth: bump, out: 1 });
+    const boss = (at) => ({ at, width: s + 2 * rib, depth: bump, out: -1, taper: false });
+    outerPrism = featured(x0, x1, y0, y1, { front: sock, right: sock, back: ribs, left: ribs }, 0, H);
+    cavityPrism = featured(cx0, cx1, cy0, cy1, w < 2 * bump ? { front: boss, right: boss } : {}, zc, H + 1);
+  } else {
+    outerPrism = prism(x0, x1, y0, y1, 0, H);
+    cavityPrism = prism(cx0, cx1, cy0, cy1, zc, H + 1);
+  }
   const outer = onWall ? intersection(L.outer, outerPrism) : outerPrism;
   const cavity = onWall ? intersection(bottom ? L.inner : L.innerOpen, cavityPrism) : cavityPrism;
   let shape = difference(outer, cavity);
@@ -232,7 +265,9 @@ function piece(b, fit, g, kind, divide, L) {
   }
   // where the piece really reaches: the rim size at the top on an edge side
   const topHalfW = (b.floorW + 2 * H * tanD(b.taper)) / 2 - b.clear, topHalfD = (b.floorD + 2 * H * tanD(b.taperD)) / 2 - b.clear;
-  const bounds = [edgeL ? -topHalfW : x0, edgeR ? topHalfW : x1, edgeF ? -topHalfD : y0, edgeB ? topHalfD : y1];
+  // ribs stand proud of the left and back faces in the lock style
+  const proud = b.lock ? CASEFINITY.bump : 0;
+  const bounds = [edgeL ? -topHalfW : x0 - proud, edgeR ? topHalfW : x1, edgeF ? -topHalfD : y0, edgeB ? topHalfD : y1 + proud];
   return { shape, bounds };
 }
 

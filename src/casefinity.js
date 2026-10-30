@@ -132,7 +132,7 @@ export function casefinityFit(width, depth, height, opts = {}) {
 // out +1 stands the feature proud of the outline, -1 notches it in. A tapered
 // feature is `width` at the outline and narrows by 2*tan(draft) per mm of
 // depth (REQ-4.5); an untapered one (a boss) is square.
-function featuredOutline(w, d, sides, draft) {
+export function featuredOutline(w, d, sides, draft) {
   const t = tanD(draft), hw = w / 2, hd = d / 2;
   const S = [
     { k: "front", start: [-hw, -hd], dir: [1, 0], n: [0, -1], u: (c) => c + hw },
@@ -153,7 +153,7 @@ function featuredOutline(w, d, sides, draft) {
   }
   return polygon(pts);
 }
-const prism = (outline, z0, h) => translate([0, 0, z0], linearExtrude({ h }, outline));
+export const prism = (outline, z0, h) => translate([0, 0, z0], linearExtrude({ h }, outline));
 const spec = (opts) => ({
   pitch: num(opts.pitch, "pitch", CASEFINITY.pitch),
   rib: CASEFINITY.rib,

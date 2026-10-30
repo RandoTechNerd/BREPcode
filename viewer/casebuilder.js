@@ -177,6 +177,7 @@ const taperD = ${+(k.taperD || 0)};   // [0:15] the long-side walls, if they lea
 const corner = ${+k.corner};   // [1:40] the vertical corners' radius inside (mm)
 const floorRound = ${+k.floorRound};   // [0:15] the rounding where the floor meets the walls (mm)
 const clear = ${+k.clear};   // [0:3] fit gap to the box wall, per side (mm)
+const lock = ${k.lock === true};   // true: Casefinity ribs and sockets on the faces between pieces, so the kit holds together. false: smooth sides
 
 // What goes where. at: [column, row] from the front-left square; size in squares.
 //   kind "box"    a bin                   split: true = one 1 x 1 box per square
@@ -185,7 +186,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lock, layout: pieces });
 `;
 }
 
@@ -205,6 +206,7 @@ export function parseKitCode(src = "") {
     state.container = "kuggis";
     const k = defaultKuggis();
     for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "taperD", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
+    k.lock = /\b(?:const\s+lock\s*=|lock\s*:)\s*true\b/.test(text);
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
@@ -484,7 +486,13 @@ export function showCaseBuilder(hooks = {}) {
             <small id="cb-latch-hint"></small>
           </div>
           </div>
-          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid, no connectors. Pieces stop under the KUGGIS lid's plug, so the lid still closes.</p>
+          <div class="cb-latch" id="cb-klock-row" hidden>
+            <div class="cb-seg" id="cb-klock" role="radiogroup" aria-label="Piece sides">
+              <button type="button" data-v="0">Smooth sides</button><button type="button" data-v="1">Casefinity lock</button>
+            </div>
+            <small id="cb-klock-hint"></small>
+          </div>
+          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid. Pieces stop under the KUGGIS lid's plug, so the lid still closes.</p>
           <button type="button" class="cb-build" id="cb-build">Build printable parts</button>
           <div class="cb-sum" id="cb-sum" aria-live="polite"></div>
         </section>
@@ -552,7 +560,7 @@ export function showCaseBuilder(hooks = {}) {
   paintKuggisFields();
   ksize.addEventListener("change", () => {
     if (ksize.value === "custom") { S.kuggis.size = "custom"; paint(); return; }
-    S.kuggis = defaultKuggis(ksize.value);
+    S.kuggis = { ...defaultKuggis(ksize.value), lock: S.kuggis.lock === true };
     paintKuggisFields(); paint();
   });
   for (const [id, key] of KFIELDS) {
@@ -566,6 +574,16 @@ export function showCaseBuilder(hooks = {}) {
       paint();
     });
   }
+  const KLOCK_HINT = {
+    smooth: "Plain upright faces between pieces, 0.3 mm apart. Each piece lifts out on its own.",
+    lock: "Casefinity ribs and sockets (casefinity.net) on the faces between pieces, 0.15 mm a face, so the kit holds together as one block. Faces against the box wall stay smooth and sloped.",
+  };
+  seg("cb-klock", S.kuggis.lock ? 1 : 0);
+  $("cb-klock").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.kuggis.lock = b.dataset.v === "1";
+    seg("cb-klock", S.kuggis.lock ? 1 : 0); paint();
+  });
   seg("cb-container", S.container);
   $("cb-container").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
@@ -775,6 +793,8 @@ export function showCaseBuilder(hooks = {}) {
     $("cb-kuggis").hidden = !kug;
     $("cb-caseopts").hidden = kug;
     $("cb-kbuild").hidden = !kug;
+    $("cb-klock-row").hidden = !kug;
+    $("cb-klock-hint").textContent = KLOCK_HINT[S.kuggis.lock ? "lock" : "smooth"];
     $("cb-edge-back").textContent = kug ? "Back of the box" : "Back · hinge";
     $("cb-edge-front").textContent = kug ? "Front of the box" : "Front · latch";
     if (kug) {
