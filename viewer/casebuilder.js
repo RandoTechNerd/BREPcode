@@ -18,6 +18,7 @@
 // back) are exported for test/casebuilder.js.
 
 import { casefinityFit, CASEKIT_COLORS } from "../src/casefinity.js";
+import { kuggisFit, kuggisEstimate, KUGGIS_SIZES } from "../src/kuggis.js";
 
 export const CREDITS = Object.freeze({
   casefinity: "https://casefinity.net",
@@ -35,7 +36,15 @@ const LABEL = { box: "Box", lidbox: "Box + lid", frame: "Separators", erase: "Er
 const STORE = "brepcode-casebuilder";
 // gasket is opt-in every time: it is never remembered, only read back from
 // code that already asks for it
-export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", lidFit: 0.3, style: "smooth" });
+export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", lidFit: 0.3, style: "smooth", container: "case" });
+// The other container: an IKEA KUGGIS box, its inside as the builder knows
+// it. Starts as the 26 x 35 x 15 estimated from its outside size; every
+// number is the user's to measure and correct.
+export const KUGGIS_DEFAULT_SIZE = "26x35x15";
+export function defaultKuggis(sizeId = KUGGIS_DEFAULT_SIZE) {
+  const sz = KUGGIS_SIZES.find((k) => k.id === sizeId) || KUGGIS_SIZES[3];
+  return { size: sz.id, ...kuggisEstimate(sz.outer) };
+}
 
 // Does this address ask for the case builder? ?case=1 is what the /case
 // bounce sends; #case is for a link typed by hand; /case is the tidy path.
@@ -108,6 +117,7 @@ export function tally(regions, cols, rows, includeCase = true, koch = false) {
 // an AI can change by hand ("make the left column lidded").
 export function kitCode(state) {
   const s = { ...DEFAULTS, ...state };
+  if (s.container === "kuggis") return kuggisCode(s);
   const fit = casefinityFit(s.width, s.depth, s.height, { inside: !!s.inside });
   const regions = (s.regions || []).filter((g) => inGrid(g, fit.cols, fit.rows));
   const row = (g) => `  { at: [${g.c}, ${g.r}], size: [${g.w}, ${g.h}], kind: "${g.kind}"${g.split ? ", split: true" : ""} },`;
@@ -143,17 +153,61 @@ return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gaske
 `;
 }
 
+// The KUGGIS version: the box's inside as sliders, then the same pieces list.
+function kuggisCode(s) {
+  const k = { ...defaultKuggis(), ...(s.kuggis || {}) };
+  const fit = kuggisFit(k);
+  const regions = (s.regions || []).filter((g) => inGrid(g, fit.cols, fit.rows));
+  const row = (g) => `  { at: [${g.c}, ${g.r}], size: [${g.w}, ${g.h}], kind: "${g.kind === "lidbox" ? "box" : g.kind}"${g.split ? ", split: true" : ""} },`;
+  const sz = KUGGIS_SIZES.find((x) => x.id === k.size);
+  return `// Inserts for an IKEA KUGGIS box${sz ? ` (${sz.label})` : ""}, laid out for printing.
+// Made with the BREPcode case builder: brepcode.com/case
+//
+// The pieces are cut from the box's INSIDE: a piece against a wall leans and
+// rounds with it, the faces between pieces stay upright. The grid is whole
+// 15 mm squares across the floor inside: ${fit.cols} x ${fit.rows} at these numbers.
+// IKEA publishes outside sizes only, so the inside below started as an
+// estimate. Measure your box and correct it: the pieces follow the sliders.
+const rimW = ${+k.rimW};   // [60:600] inside width at the rim (mm)
+const rimD = ${+k.rimD};   // [60:600] inside depth at the rim (mm)
+const height = ${+k.height};   // [20:300] inside depth, floor to rim (mm)
+const taper = ${+k.taper};   // [0:15] how far each wall leans out, floor to rim (degrees)
+const corner = ${+k.corner};   // [1:40] the vertical corners' radius inside (mm)
+const floorRound = ${+k.floorRound};   // [0:15] the rounding where the floor meets the walls (mm)
+const clear = ${+k.clear};   // [0:3] fit gap to the box wall, per side (mm)
+
+// What goes where. at: [column, row] from the front-left square; size in squares.
+//   kind "box"    a bin                   split: true = one 1 x 1 box per square
+//   kind "frame"  separators, no floor    split: true = a wall on every square line
+const pieces = [
+${regions.map(row).join("\n")}
+];
+
+return kuggisKit({ rimW, rimD, height, taper, corner, floorRound, clear, layout: pieces });
+`;
+}
+
 // Read a builder's own code back, so the Toolbox can reopen the grid it came
 // from. Tolerant on purpose (hand edits, reordered keys); returns null when
-// the code is not a caseKit() model.
+// the code is not a caseKit() or kuggisKit() model.
 export function parseKitCode(src = "") {
   const text = String(src);
-  if (!/\bcaseKit\s*\(/.test(text)) return null;
+  const kuggis = /\bkuggisKit\s*\(/.test(text);
+  if (!kuggis && !/\bcaseKit\s*\(/.test(text)) return null;
   const n = (name) => {
     const m = new RegExp(`\\bconst\\s+${name}\\s*=\\s*(-?[\\d.]+)`).exec(text);
     return m ? +m[1] : undefined;
   };
   const state = { ...DEFAULTS };
+  if (kuggis) {
+    state.container = "kuggis";
+    const k = defaultKuggis();
+    for (const key of ["rimW", "rimD", "height", "taper", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
+    // the size whose estimate these numbers still are, if any; else "custom"
+    const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz.outer); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
+    k.size = match ? match.id : "custom";
+    state.kuggis = k;
+  }
   for (const k of ["width", "depth", "height"]) if (n(k) != null) state[k] = n(k);
   const ic = /\bconst\s+includeCase\s*=\s*(true|false)/.exec(text);
   if (ic) state.includeCase = ic[1] === "true";
@@ -214,6 +268,9 @@ function style() {
   .cb-seg button:first-child { border-left: 0; }
   .cb-seg button.on { background: var(--accent, #1c66e5); color: #fff; }
   .cb-dims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .cb-dims4 { grid-template-columns: repeat(4, 1fr); }
+  .cb-select { width: 100%; background: var(--input-bg, #0d1320); color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a);
+    border-radius: 8px; padding: 7px 8px; font: 13px system-ui, sans-serif; }
   .cb-dims label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted, #8ea0c0); }
   .cb-dims input { width: 100%; background: var(--input-bg, #0d1320); color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a);
     border-radius: 8px; padding: 7px 8px; font: 14px ui-monospace, Consolas, monospace; }
@@ -345,6 +402,8 @@ export function showCaseBuilder(hooks = {}) {
   // its lid alone are the quickest build there is, and every insert is a
   // choice: a preset is one click, a brush a drag.
   if (!Array.isArray(S.regions)) S.regions = [];
+  if (S.container !== "kuggis") S.container = "case";
+  S.kuggis = { ...defaultKuggis(), ...(S.kuggis || {}) };
   let brush = "box", split = false;
   const undo = [];
 
@@ -356,20 +415,43 @@ export function showCaseBuilder(hooks = {}) {
   el.innerHTML = `
     <div class="cb-wrap">
       <div class="cb-head">
-        <div><h1 id="cb-h">Case builder</h1><div class="cb-sub">Size the case, paint its grid, print the parts.</div></div>
+        <div><h1 id="cb-h">Case builder</h1><div class="cb-sub">Size the case, or pick your KUGGIS box; paint its grid; print the parts.</div></div>
         <span class="cb-sp"></span>
         <button type="button" class="cb-x" title="Close" aria-label="Close">&times;</button>
       </div>
       <div class="cb-cols">
         <section class="cb-side" aria-label="Settings">
           <h3>1 · Your case</h3>
-          <div class="cb-seg" id="cb-inside" role="radiogroup" aria-label="What the size means">
-            <button type="button" data-v="0">Outside size</button><button type="button" data-v="1">Inside space</button>
+          <div class="cb-seg" id="cb-container" role="radiogroup" aria-label="What holds the pieces">
+            <button type="button" data-v="case">Printed case</button><button type="button" data-v="kuggis">IKEA KUGGIS box</button>
           </div>
-          <div class="cb-dims">
-            <label>Width<input id="cb-w" type="number" min="30" max="600" step="1" inputmode="decimal" /></label>
-            <label>Depth<input id="cb-d" type="number" min="30" max="600" step="1" inputmode="decimal" /></label>
-            <label>Height<input id="cb-hh" type="number" min="15" max="300" step="1" inputmode="decimal" /></label>
+          <div id="cb-casedims">
+            <div class="cb-seg" id="cb-inside" role="radiogroup" aria-label="What the size means" style="margin-top:8px">
+              <button type="button" data-v="0">Outside size</button><button type="button" data-v="1">Inside space</button>
+            </div>
+            <div class="cb-dims">
+              <label>Width<input id="cb-w" type="number" min="30" max="600" step="1" inputmode="decimal" /></label>
+              <label>Depth<input id="cb-d" type="number" min="30" max="600" step="1" inputmode="decimal" /></label>
+              <label>Height<input id="cb-hh" type="number" min="15" max="300" step="1" inputmode="decimal" /></label>
+            </div>
+          </div>
+          <!-- The KUGGIS: its inside, as the pieces need it. IKEA publishes the
+               outside sizes only, so picking a size fills in an ESTIMATE and
+               says so; the fields are there to be measured and typed over. -->
+          <div id="cb-kuggis" hidden>
+            <select id="cb-ksize" class="cb-select" aria-label="KUGGIS size" style="margin-top:8px"></select>
+            <div class="cb-dims">
+              <label title="Measured inside the box at the rim, across the short side">Rim width<input id="cb-krw" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
+              <label title="Measured inside the box at the rim, along the long side">Rim depth<input id="cb-krd" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
+              <label title="Floor to rim, inside">Depth<input id="cb-kh" type="number" min="20" max="300" step="0.5" inputmode="decimal" /></label>
+            </div>
+            <div class="cb-dims cb-dims4">
+              <label title="How far each wall leans out from floor to rim, in degrees. 7° is 17 mm over a 142 mm wall">Taper °<input id="cb-kt" type="number" min="0" max="15" step="0.5" inputmode="decimal" /></label>
+              <label title="The radius of the box's vertical corners, inside">Corner<input id="cb-kc" type="number" min="1" max="40" step="0.5" inputmode="decimal" /></label>
+              <label title="The rounding where the floor meets the walls, inside">Floor round<input id="cb-kf" type="number" min="0" max="15" step="0.5" inputmode="decimal" /></label>
+              <label title="Air between a piece and the box wall, per side. 1 mm lifts out with a finger; 0.5 sits snug">Fit gap<input id="cb-kg" type="number" min="0" max="3" step="0.1" inputmode="decimal" /></label>
+            </div>
+            <p class="cb-hint" id="cb-khint"></p>
           </div>
           <div class="cb-read" id="cb-read" aria-live="polite"></div>
           <h3>2 · Start from a layout</h3>
@@ -381,6 +463,7 @@ export function showCaseBuilder(hooks = {}) {
           </div>
           <p class="cb-hint">Drag across squares to mark an area, or click one square. Painting over a piece replaces it.</p>
           <h3>4 · Build</h3>
+          <div id="cb-caseopts">
           <div class="cb-seg" id="cb-case" role="radiogroup" aria-label="What to print">
             <button type="button" data-v="1">Case + grid pieces</button><button type="button" data-v="0">Grid pieces only</button>
           </div>
@@ -397,13 +480,15 @@ export function showCaseBuilder(hooks = {}) {
             </div>
             <small id="cb-latch-hint"></small>
           </div>
+          </div>
+          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid, no connectors. Pieces stop 3 mm under the rim, so the KUGGIS lid still closes.</p>
           <button type="button" class="cb-build" id="cb-build">Build printable parts</button>
           <div class="cb-sum" id="cb-sum" aria-live="polite"></div>
         </section>
         <section class="cb-main" aria-label="The grid">
-          <div class="cb-edge">Back · hinge</div>
+          <div class="cb-edge" id="cb-edge-back">Back · hinge</div>
           <div class="cb-board"><div id="cb-grid" role="application" aria-label="Case grid: drag to paint"></div></div>
-          <div class="cb-edge">Front · latch</div>
+          <div class="cb-edge" id="cb-edge-front">Front · latch</div>
           <div class="cb-row">
             <button type="button" id="cb-undo">Undo</button>
             <button type="button" id="cb-clear">Clear the grid</button>
@@ -441,9 +526,56 @@ export function showCaseBuilder(hooks = {}) {
   el.querySelector(".cb-x").addEventListener("click", close);
 
   // ---- size
-  const fitNow = () => casefinityFit(S.width, S.depth, S.height, { inside: !!S.inside });
+  const isKuggis = () => S.container === "kuggis";
+  const fitNow = () => isKuggis() ? kuggisFit(S.kuggis) : casefinityFit(S.width, S.depth, S.height, { inside: !!S.inside });
   $("cb-w").value = S.width; $("cb-d").value = S.depth; $("cb-hh").value = S.height;
   const seg = (id, v) => { for (const b of $(id).querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === String(v)); };
+  // the KUGGIS: a size list that fills in the estimate, and the fields it fills
+  const KFIELDS = [["cb-krw", "rimW"], ["cb-krd", "rimD"], ["cb-kh", "height"], ["cb-kt", "taper"], ["cb-kc", "corner"], ["cb-kf", "floorRound"], ["cb-kg", "clear"]];
+  const ksize = $("cb-ksize");
+  for (const sz of KUGGIS_SIZES) {
+    const o = document.createElement("option");
+    o.value = sz.id; o.textContent = `KUGGIS ${sz.label}`;
+    ksize.appendChild(o);
+  }
+  const custom = document.createElement("option");
+  custom.value = "custom"; custom.textContent = "Measured by hand (numbers below)";
+  ksize.appendChild(custom);
+  const paintKuggisFields = () => {
+    ksize.value = S.kuggis.size || "custom";
+    if (!ksize.value) ksize.value = "custom";
+    for (const [id, key] of KFIELDS) $(id).value = S.kuggis[key];
+  };
+  paintKuggisFields();
+  ksize.addEventListener("change", () => {
+    if (ksize.value === "custom") { S.kuggis.size = "custom"; paint(); return; }
+    S.kuggis = defaultKuggis(ksize.value);
+    paintKuggisFields(); paint();
+  });
+  for (const [id, key] of KFIELDS) {
+    $(id).addEventListener("input", () => {
+      const v = +$(id).value;
+      if (!Number.isFinite(v) || v < 0) return;
+      S.kuggis[key] = v;
+      S.kuggis.size = "custom";       // typed over: no longer the estimate
+      ksize.value = "custom";
+      paint();
+    });
+  }
+  seg("cb-container", S.container);
+  $("cb-container").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const to = b.dataset.v === "kuggis" ? "kuggis" : "case";
+    if (to === S.container) return;
+    S.container = to;
+    seg("cb-container", to);
+    if (to === "kuggis") {
+      // the KUGGIS lid covers every piece, so a lidded box is just a box there
+      S.regions = S.regions.map((g) => g.kind === "lidbox" ? { ...g, kind: "box" } : g);
+      if (brush === "lidbox") brush = "box";
+    }
+    paintTools(); paint();
+  });
   seg("cb-inside", S.inside ? 1 : 0);
   seg("cb-case", S.includeCase === false ? 0 : 1);
   $("cb-gasket").checked = S.gasket === true;
@@ -528,7 +660,10 @@ export function showCaseBuilder(hooks = {}) {
     for (const b of $("cb-brushes").querySelectorAll("button")) {
       b.classList.toggle("on", b.dataset.k === brush);
       b.setAttribute("aria-checked", String(b.dataset.k === brush));
+      if (b.dataset.k === "lidbox") b.hidden = isKuggis();
     }
+    for (const b of $("cb-presets").querySelectorAll("button")) if (b.dataset.preset === "lidded") b.hidden = isKuggis();
+    paintLegend();
     const [a, b] = $("cb-split").querySelectorAll("button");
     if (brush === "frame") { a.textContent = "Open space"; b.textContent = "Wall every square"; }
     else { a.textContent = "One big piece"; b.textContent = "One per square"; }
@@ -538,9 +673,12 @@ export function showCaseBuilder(hooks = {}) {
   }
 
   // ---- legend
-  $("cb-legend").innerHTML = [["box", "Box"], ["lidbox", "Box + lid"], ["frame", "Separators (no floor)"]]
-    .map(([k, t]) => `<span>${swatch(k)}${t}</span>`).join("")
-    + `<span><span class="cb-sw" style="background:#161d2c"></span>Empty</span>`;
+  const paintLegend = () => {
+    $("cb-legend").innerHTML = [["box", "Box"], ["lidbox", "Box + lid"], ["frame", "Separators (no floor)"]]
+      .filter(([k]) => k !== "lidbox" || !isKuggis())
+      .map(([k, t]) => `<span>${swatch(k)}${t}</span>`).join("")
+      + `<span><span class="cb-sw" style="background:#161d2c"></span>Empty</span>`;
+  };
 
   // ---- the grid
   let cs = 32, cols = 0, rows = 0;
@@ -628,18 +766,39 @@ export function showCaseBuilder(hooks = {}) {
     grid.appendChild(ghost);
 
     // the readout: what this size gives you, in the numbers that decide it
-    const t = tally(S.regions, cols, rows, S.includeCase !== false, S.style === "koch");
+    const kug = isKuggis();
+    $("cb-casedims").hidden = kug;
+    $("cb-kuggis").hidden = !kug;
+    $("cb-caseopts").hidden = kug;
+    $("cb-kbuild").hidden = !kug;
+    $("cb-edge-back").textContent = kug ? "Back of the box" : "Back · hinge";
+    $("cb-edge-front").textContent = kug ? "Front of the box" : "Front · latch";
+    if (kug) {
+      const sz = KUGGIS_SIZES.find((x) => x.id === S.kuggis.size);
+      $("cb-khint").innerHTML = sz
+        ? `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm). Measure your box inside at the rim and the floor, and type over them.`
+        : "Your own measurements. Rim and depth are inside the box; the taper is how far each wall leans out from floor to rim.";
+    }
+    const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, S.style === "koch");
     const plate = hooks.plate?.() || null;
     const warn = [];
-    if (!f.fits) warn.push("Too small for a single 15 mm square. Make it bigger.");
-    if (plate && S.includeCase !== false
+    if (!f.fits) warn.push(kug ? "No whole 15 mm square fits the floor at these numbers. Check the rim size, depth and taper." : "Too small for a single 15 mm square. Make it bigger.");
+    if (plate && !kug && S.includeCase !== false
       && (Math.max(f.width, f.depth) > Math.max(plate.x, plate.y) || Math.min(f.width, f.depth) > Math.min(plate.x, plate.y))) {
       warn.push(`The case (${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} mm) is bigger than your ${plate.x} × ${plate.y} mm plate.`);
     }
+    if (plate && kug && f.fits) {
+      // a piece along a wall reaches the rim size; one spanning the whole grid is the rim
+      const big = S.regions.some((g) => inGrid(g, cols, rows) && !(g.split && g.kind !== "frame") && (g.w * 15 + 40 > Math.min(plate.x, plate.y) || g.h * 15 + 40 > Math.min(plate.x, plate.y)));
+      if (big) warn.push(`A long piece against the wall grows to the rim size at its top; check it fits your ${plate.x} × ${plate.y} mm plate, or split it.`);
+    }
     $("cb-read").innerHTML = (f.fits
-      ? `<b>${cols} × ${rows}</b> squares of 15 mm · outside <b>${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} × ${+f.height.toFixed(1)}</b> mm`
-        + `<br />Grid ${f.inner[0]} × ${f.inner[1]} mm, ${+f.inner[2].toFixed(1)} deep · boxes ${f.binHeight} mm tall`
-        + (f.headroom >= 5 ? ", with pull tabs" : "")
+      ? kug
+        ? `<b>${cols} × ${rows}</b> squares of 15 mm on the floor · floor inside <b>${f.floor[0]} × ${f.floor[1]}</b>, rim <b>${f.rim[0]} × ${f.rim[1]}</b> mm`
+          + `<br />Pieces ${f.pieceHeight} mm tall (3 under the rim), lean ${S.kuggis.taper}° with the walls, ${S.kuggis.clear} mm off them`
+        : `<b>${cols} × ${rows}</b> squares of 15 mm · outside <b>${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} × ${+f.height.toFixed(1)}</b> mm`
+          + `<br />Grid ${f.inner[0]} × ${f.inner[1]} mm, ${+f.inner[2].toFixed(1)} deep · boxes ${f.binHeight} mm tall`
+          + (f.headroom >= 5 ? ", with pull tabs" : "")
       : "")
       + (warn.length ? `${f.fits ? "<br />" : ""}<span class="cb-warn">${warn.map(esc).join("<br />")}</span>` : "");
     const bits = [];
@@ -647,7 +806,7 @@ export function showCaseBuilder(hooks = {}) {
     if (t.lidbox) bits.push(`${t.lidbox} lidded box${t.lidbox === 1 ? "" : "es"}`);
     if (t.frame) bits.push(`${t.frame} separator frame${t.frame === 1 ? "" : "s"}`);
     const koch = S.style === "koch";
-    if (S.includeCase !== false) bits.push((S.gasket === true ? "the case and its lid, with a gasket bead" : "the case and its lid")
+    if (!kug && S.includeCase !== false) bits.push((S.gasket === true ? "the case and its lid, with a gasket bead" : "the case and its lid")
       + (koch ? " and its swing latch (Koch Box)" : S.latch === "round" ? " and a round clasp" : ""));
     $("cb-gasket").disabled = S.includeCase === false;
     $("cb-gasket-row").style.opacity = S.includeCase === false ? ".5" : "";
@@ -660,7 +819,7 @@ export function showCaseBuilder(hooks = {}) {
     $("cb-sum").innerHTML = t.pieces
       ? `<b>${t.pieces} piece${t.pieces === 1 ? "" : "s"}</b> to print: ${esc(bits.join(", "))}.`
         + (t.empty ? ` ${t.empty} square${t.empty === 1 ? "" : "s"} left empty.` : "")
-      : "Paint something on the grid, or include the case.";
+      : kug ? "Paint boxes or separators onto the grid." : "Paint something on the grid, or include the case.";
     $("cb-build").disabled = !f.fits || !t.pieces;
     $("cb-undo").disabled = !undo.length;
     save(S);
@@ -674,7 +833,7 @@ export function showCaseBuilder(hooks = {}) {
     close();
     let ok = false;
     try { ok = !!(await hooks.build?.(code))?.ok; } catch { ok = false; }
-    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, S.includeCase !== false, S.style === "koch"));
+    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, !isKuggis() && S.includeCase !== false, S.style === "koch"));
   });
 
   paintTools();

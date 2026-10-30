@@ -4124,3 +4124,7 @@ export * from "./gears.js";
 // Casefinity cases, bins, lids and separator frames (casefinity.net spec), and
 // caseKit(), the plated print set the case builder writes. Same re-export reasoning.
 export * from "./casefinity.js";
+
+// Inserts for IKEA KUGGIS boxes: the case builder's other container. Tapered,
+// rounded pieces cut from the box's inside; kuggisKit() plates them.
+export { KUGGIS, KUGGIS_SIZES, kuggisEstimate, kuggisFit, kuggisKit } from "./kuggis.js";

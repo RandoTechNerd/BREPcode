@@ -604,8 +604,13 @@ export function caseKit(opts = {}) {
     parts.unshift([colorize(CASEKIT_COLORS.case, casefinityCase(opts)), -side, side, -front, back]);
   }
   if (!parts.length) throw new Error("casefinity: nothing to print: add a box or a frame to the grid, or include the case");
-  // shelf-pack in rows, front to back; the 3MF export repacks onto the
-  // printer's own plates, so this only has to read well on screen
+  return group(...shelfPack(parts, gap));
+}
+
+// Shelf-pack [shape, minX, maxX, minY, maxY] parts in rows, front to back,
+// `gap` apart; the 3MF export repacks onto the printer's own plates, so this
+// only has to read well on screen. Shared with the KUGGIS kit.
+export function shelfPack(parts, gap = 6) {
   const rowW = Math.max(240, ...parts.map((p) => p[2] - p[1]));
   const placed = [];
   let x = 0, y = 0, rowD = 0;
@@ -615,5 +620,5 @@ export function caseKit(opts = {}) {
     placed.push(translate([x - x0, y - y0, 0], shape));
     x += w + gap; rowD = Math.max(rowD, dd);
   }
-  return group(...placed);
+  return placed;
 }
