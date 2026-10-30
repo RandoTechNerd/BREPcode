@@ -36,7 +36,10 @@ const LABEL = { box: "Box", lidbox: "Box + lid", frame: "Separators", erase: "Er
 const STORE = "brepcode-casebuilder";
 // gasket is opt-in every time: it is never remembered, only read back from
 // code that already asks for it
-export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", lidFit: 0.3, style: "smooth", container: "case" });
+export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, inside: false, includeCase: true, gasket: false, latch: "hook", kochLatch: "swingpip", lidFit: 0.3, style: "smooth", container: "case",
+  // advanced: the case's own walls and fits (mm)
+  wall: 4, floor: 2, binWall: 1.2, pinFit: 0.1 });
+export const KOCH_LATCHES = ["swing", "swingpip", "toggle"];
 // The other container: an IKEA KUGGIS box, its inside as the builder knows
 // it. Starts as the 26 x 35 x 15 estimated from its outside size; every
 // number is the user's to measure and correct.
@@ -95,7 +98,7 @@ export const PRESETS = [
 ];
 
 // Count what a layout prints: the parts list Build will produce.
-export function tally(regions, cols, rows, includeCase = true, koch = false) {
+export function tally(regions, cols, rows, includeCase = true, separateLatch = false) {
   const t = { box: 0, lidbox: 0, lids: 0, frame: 0, covered: 0, pieces: 0 };
   for (const g of regions) {
     if (!inGrid(g, cols, rows)) continue;
@@ -105,8 +108,8 @@ export function tally(regions, cols, rows, includeCase = true, koch = false) {
     if (g.kind === "lidbox") t.lids += n;
   }
   t.empty = Math.max(0, cols * rows - t.covered);
-  // the case is a body and a lid; the Koch Box adds its swing latch
-  t.pieces = t.box + t.lidbox + t.lids + t.frame + (includeCase ? (koch ? 3 : 2) : 0);
+  // the case is a body and a lid; a swing latch on a filament pin is a third part
+  t.pieces = t.box + t.lidbox + t.lids + t.frame + (includeCase ? (separateLatch ? 3 : 2) : 0);
   return t;
 }
 
@@ -118,10 +121,11 @@ export function tally(regions, cols, rows, includeCase = true, koch = false) {
 export function kitCode(state) {
   const s = { ...DEFAULTS, ...state };
   if (s.container === "kuggis") return kuggisCode(s);
-  const fit = casefinityFit(s.width, s.depth, s.height, { inside: !!s.inside });
+  const fit = casefinityFit(s.width, s.depth, s.height, { inside: !!s.inside, wall: s.wall, floor: s.floor });
   const regions = (s.regions || []).filter((g) => inGrid(g, fit.cols, fit.rows));
   const row = (g) => `  { at: [${g.c}, ${g.r}], size: [${g.w}, ${g.h}], kind: "${g.kind}"${g.split ? ", split: true" : ""} },`;
   const koch = s.style === "koch";
+  const latch = koch ? (KOCH_LATCHES.includes(s.kochLatch) ? s.kochLatch : "swingpip") : s.latch === "round" ? "round" : "hook";
   return `// A Casefinity case and everything inside it, laid out for printing.
 // Made with the BREPcode case builder: brepcode.com/case
 //
@@ -138,8 +142,13 @@ const height = ${+s.height};  // [${s.inside ? 15 : 35}:300] ${s.inside ? "insid
 const includeCase = ${s.includeCase !== false};   // false: only the pieces that go in the grid
 const gasket = ${s.gasket === true};   // true: a sealing ridge along the rim and a matching trench in the lid (dust seal)
 const style = "${koch ? "koch" : "smooth"}";   // "smooth": plain walls and the clasp below. "koch": the Koch Box, ribbed walls and a swing latch on a filament pin
-const latch = "${s.latch === "round" ? "round" : "hook"}";   // "hook": a windowed blade hooks under a wedge. "round": a round lip rolls over a round bead, no supports
+const latch = "${latch}";   // smooth walls: "hook" (a windowed blade hooks under a wedge) or "round" (a round lip rolls over a round bead, no supports).
+                       // Koch Box: "swing" (swing latch on a filament pin, printed separately), "swingpip" (the same latch printed in place on the lid), "toggle" (folding over-centre latch, printed in place, fold the bail after printing)
 const lidFit = ${+s.lidFit || 0.3};   // [0.1:0.6] clearance between the lid and the body, per side (mm)
+const pinFit = ${+s.pinFit || 0};   // [0:0.4] extra room in every filament pin hole (mm). 0 is the tight fit as measured; 0.1 goes in and out by hand
+const wall = ${+s.wall || 4};   // [2:8] the case's wall thickness (mm)
+const floor = ${+s.floor || 2};   // [1:5] the body's floor and the lid's top (mm)
+const binWall = ${+s.binWall || 1.2};   // [0.8:3] the bins' and frames' wall thickness (mm)
 
 // What goes where. at: [column, row] from the front-left module; size in modules.
 //   kind "box"     a bin              split: true = one 1 x 1 box per module
@@ -149,7 +158,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gasket, style, latch, lidFit, layout: pieces });
+return caseKit({ width, depth, height, inside: ${!!s.inside}, includeCase, gasket, style, latch, lidFit, pinFit, wall, floor, binWall, layout: pieces });
 `;
 }
 
@@ -217,9 +226,12 @@ export function parseKitCode(src = "") {
   if (ic) state.includeCase = ic[1] === "true";
   const gk = /\bconst\s+gasket\s*=\s*(true|false)/.exec(text);
   state.gasket = gk ? gk[1] === "true" : /\bgasket\s*:\s*true\b/.test(text);
-  state.latch = /\b(?:const\s+latch\s*=|latch\s*:)\s*["']round["']/.test(text) ? "round" : "hook";
   state.style = /\b(?:const\s+style\s*=|style\s*:)\s*["']koch["']/.test(text) ? "koch" : "smooth";
-  if (n("lidFit") != null) state.lidFit = n("lidFit");
+  const lm = /\b(?:const\s+latch\s*=|latch\s*:)\s*["'](\w+)["']/.exec(text);
+  const lv = lm ? lm[1] : "hook";
+  if (KOCH_LATCHES.includes(lv)) state.kochLatch = lv;
+  else state.latch = lv === "round" ? "round" : "hook";
+  for (const k of ["lidFit", "pinFit", "wall", "floor", "binWall"]) if (n(k) != null) state[k] = n(k);
   state.inside = /\binside\s*:\s*true\b/.test(text);
   state.regions = [];
   const re = /\{\s*at\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*size\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*kind\s*:\s*["'](\w+)["']\s*(?:,\s*split\s*:\s*(true|false))?/g;
@@ -273,6 +285,9 @@ function style() {
   .cb-seg button.on { background: var(--accent, #1c66e5); color: #fff; }
   .cb-dims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
   .cb-dims4 { grid-template-columns: repeat(4, 1fr); }
+  .cb-adv { margin-top: 10px; }
+  .cb-adv summary { cursor: pointer; font-size: 12.5px; color: var(--muted, #8ea0c0); }
+  .cb-adv summary:hover { color: var(--text, #dfe6f3); }
   .cb-select { width: 100%; background: var(--input-bg, #0d1320); color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a);
     border-radius: 8px; padding: 7px 8px; font: 13px system-ui, sans-serif; }
   .cb-dims label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted, #8ea0c0); }
@@ -488,8 +503,21 @@ export function showCaseBuilder(hooks = {}) {
             <div class="cb-seg" id="cb-latch" role="radiogroup" aria-label="Clasp">
               <button type="button" data-v="hook">Hook clasp</button><button type="button" data-v="round">Round clasp</button>
             </div>
+            <div class="cb-seg" id="cb-klatch" role="radiogroup" aria-label="Koch Box latch" hidden>
+              <button type="button" data-v="swingpip">Swing, in place</button><button type="button" data-v="swing">Swing, pin</button><button type="button" data-v="toggle">Folding toggle</button>
+            </div>
             <small id="cb-latch-hint"></small>
           </div>
+          <details class="cb-adv" id="cb-adv">
+            <summary>Advanced: walls and fits</summary>
+            <div class="cb-dims cb-dims4">
+              <label title="The case's wall thickness">Wall<input id="cb-wall" type="number" min="2" max="8" step="0.5" inputmode="decimal" /></label>
+              <label title="The body's floor and the lid's top">Floor / top<input id="cb-floor" type="number" min="1" max="5" step="0.2" inputmode="decimal" /></label>
+              <label title="The bins' and separator frames' wall thickness">Bin wall<input id="cb-binwall" type="number" min="0.8" max="3" step="0.1" inputmode="decimal" /></label>
+              <label title="Clearance between the lid and the body, per side">Lid fit<input id="cb-lidfit" type="number" min="0.1" max="0.6" step="0.05" inputmode="decimal" /></label>
+              <label title="Extra room in every filament pin hole: the lid hinge and the swing latch's pivot. 0 is the tight fit as measured; 0.1 goes in and out by hand">Pin fit<input id="cb-pinfit" type="number" min="0" max="0.4" step="0.05" inputmode="decimal" /></label>
+            </div>
+          </details>
           </div>
           <div class="cb-latch" id="cb-klock-row" hidden>
             <div class="cb-seg" id="cb-klock" role="radiogroup" aria-label="Piece sides">
@@ -543,7 +571,7 @@ export function showCaseBuilder(hooks = {}) {
 
   // ---- size
   const isKuggis = () => S.container === "kuggis";
-  const fitNow = () => isKuggis() ? kuggisFit(S.kuggis) : casefinityFit(S.width, S.depth, S.height, { inside: !!S.inside });
+  const fitNow = () => isKuggis() ? kuggisFit(S.kuggis) : casefinityFit(S.width, S.depth, S.height, { inside: !!S.inside, wall: S.wall, floor: S.floor });
   $("cb-w").value = S.width; $("cb-d").value = S.depth; $("cb-hh").value = S.height;
   const seg = (id, v) => { for (const b of $(id).querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === String(v)); };
   // the KUGGIS: a size list that fills in the estimate, and the fields it fills
@@ -617,6 +645,27 @@ export function showCaseBuilder(hooks = {}) {
     S.latch = b.dataset.v === "round" ? "round" : "hook";
     seg("cb-latch", S.latch); paint();
   });
+  const KLATCH_HINT = {
+    swingpip: "The swing latch printed in place on the lid's lugs, swinging on a printed pin with 0.35 mm of room. A round bar on the body clicks into a groove in the latch, so it holds pressed in; the lip under the roof takes the load.",
+    swing: "The swing latch as a separate part on a filament pin through the lid's lugs, with the same click bar. Pin fit (Advanced) sets how freely the pin goes in.",
+    toggle: "A folding over-centre latch, like a tool case: a lever on a printed pin, a bail on a thin living hinge you fold after printing, hooking a round bar on the body and pulling tight past centre.",
+  };
+  seg("cb-klatch", KOCH_LATCHES.includes(S.kochLatch) ? S.kochLatch : "swingpip");
+  $("cb-klatch").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.kochLatch = KOCH_LATCHES.includes(b.dataset.v) ? b.dataset.v : "swingpip";
+    seg("cb-klatch", S.kochLatch); paint();
+  });
+  // advanced: the case's own walls and fits
+  const ADV = [["cb-wall", "wall", 4], ["cb-floor", "floor", 2], ["cb-binwall", "binWall", 1.2], ["cb-lidfit", "lidFit", 0.3], ["cb-pinfit", "pinFit", 0.1]];
+  for (const [id, key, dflt] of ADV) {
+    $(id).value = S[key] ?? dflt;
+    $(id).addEventListener("input", () => {
+      const v = +$(id).value;
+      if (!Number.isFinite(v) || v < 0) return;
+      S[key] = v; paint();
+    });
+  }
   const STYLE_HINT = {
     smooth: "Plain rounded walls with the clasp below.",
     koch: `Eight chamfered ribs and a swing latch on a filament pin, after <a href="${CREDITS.koch}" target="_blank" rel="noopener">Luca Koch's Parametric Hinged Storage Box</a>. Prints an extra latch part; the clasp below is not used.`,
@@ -810,7 +859,8 @@ export function showCaseBuilder(hooks = {}) {
           : `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm), scaled from a measured 26 × 35. Measure your box inside ${S.kuggis.lidIn} mm down (where the lid's plug ends) and at the floor, and type over them.`
         : `Your own measurements, inside the box: the rim ${S.kuggis.lidIn} mm down where the lid's plug ends, the depth floor to top, the taper as how far each wall leans out.`;
     }
-    const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, S.style === "koch");
+    const separateLatch = S.style === "koch" && S.kochLatch === "swing";
+    const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, separateLatch);
     const plate = hooks.plate?.() || null;
     const warn = [];
     if (!f.fits) warn.push(kug ? "No whole 15 mm square fits the floor at these numbers. Check the rim size, depth and taper." : "Too small for a single 15 mm square. Make it bigger.");
@@ -838,15 +888,19 @@ export function showCaseBuilder(hooks = {}) {
     if (t.frame) bits.push(`${t.frame} separator frame${t.frame === 1 ? "" : "s"}`);
     const koch = S.style === "koch";
     if (!kug && S.includeCase !== false) bits.push((S.gasket === true ? "the case and its lid, with a gasket bead" : "the case and its lid")
-      + (koch ? " and its swing latch (Koch Box)" : S.latch === "round" ? " and a round clasp" : ""));
+      + (koch ? (S.kochLatch === "swing" ? " and its swing latch (Koch Box)" : S.kochLatch === "toggle" ? " with a folding toggle latch (Koch Box)" : " with a swing latch printed in place (Koch Box)") : S.latch === "round" ? " and a round clasp" : ""));
     $("cb-gasket").disabled = S.includeCase === false;
     $("cb-gasket-row").style.opacity = S.includeCase === false ? ".5" : "";
     for (const b of $("cb-style").querySelectorAll("button")) b.disabled = S.includeCase === false;
     $("cb-style-row").style.opacity = S.includeCase === false ? ".5" : "";
     $("cb-style-hint").innerHTML = STYLE_HINT[koch ? "koch" : "smooth"];
-    for (const b of $("cb-latch").querySelectorAll("button")) b.disabled = S.includeCase === false || koch;
-    $("cb-latch-row").style.opacity = S.includeCase === false || koch ? ".5" : "";
-    $("cb-latch-hint").textContent = LATCH_HINT[S.latch === "round" ? "round" : "hook"];
+    $("cb-latch").hidden = koch;
+    $("cb-klatch").hidden = !koch;
+    for (const b of $("cb-latch").querySelectorAll("button")) b.disabled = S.includeCase === false;
+    for (const b of $("cb-klatch").querySelectorAll("button")) b.disabled = S.includeCase === false;
+    $("cb-latch-row").style.opacity = S.includeCase === false ? ".5" : "";
+    $("cb-latch-hint").textContent = koch ? KLATCH_HINT[KOCH_LATCHES.includes(S.kochLatch) ? S.kochLatch : "swingpip"] : LATCH_HINT[S.latch === "round" ? "round" : "hook"];
+    $("cb-adv").style.opacity = S.includeCase === false ? ".5" : "";
     $("cb-sum").innerHTML = t.pieces
       ? `<b>${t.pieces} piece${t.pieces === 1 ? "" : "s"}</b> to print: ${esc(bits.join(", "))}.`
         + (t.empty ? ` ${t.empty} square${t.empty === 1 ? "" : "s"} left empty.` : "")
@@ -864,7 +918,7 @@ export function showCaseBuilder(hooks = {}) {
     close();
     let ok = false;
     try { ok = !!(await hooks.build?.(code))?.ok; } catch { ok = false; }
-    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, !isKuggis() && S.includeCase !== false, S.style === "koch"));
+    if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, !isKuggis() && S.includeCase !== false, S.style === "koch" && S.kochLatch === "swing"));
   });
 
   paintTools();

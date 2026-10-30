@@ -48,6 +48,11 @@ const CASE = Object.freeze({
   // lid-to-body clearance per side. 0.2 printed tight on the smallest case
   tongue: 2, shoulder: 1.8, lidFit: 0.3,
   pin: 1.75, pinClear: 0.15, knuckle: 5.4, knuckles: 5, hingeGap: 0.4,
+  // pinFit rides on top of pinClear for EVERY filament pin (the lid hinge,
+  // the swing latch's pivot). 0 is the measured tight fit: it held, but the
+  // filament had to be forced in and would not come back out. 0.1 is the
+  // default: in and out by hand.
+  pinFit: 0.1,
   // the "hook" clasp: a blade on the lid with a window, its bottom bar hooking
   // under a wedge on the body. 1.6 thick flexing 0.6 over 11 mm is ~1.2 %
   // strain (PLA holds to ~2.5 %); the first cut's 1.3 x 1.6 bar on 3 mm legs
@@ -74,6 +79,23 @@ const CASE = Object.freeze({
   ribDepth: 3, ribMin: 4, ribChamfer: 2.5,
   swingThick: 2, swingBoss: 5, swingLipIn: 2.2, swingGap: 0.2, swingPinOut: 5.5, swingPinUp: 8,
   lugWidth: 4, lugHalf: 5, lugR: 2.5, padDrop: 10, padRoof: 3, pocketH: 4, pocketDepth: 2.2,
+  // print-in-place pivots: a printed pin (radius pipPin) through a hole
+  // pipClear bigger, the moving part pipGap off whatever it swings past and
+  // pipLug off the lugs either side. Printed with the lid upside down, so
+  // the pin is a horizontal cylinder in a horizontal hole: the standard
+  // print-in-place hinge
+  pipPin: 1.5, pipClear: 0.35, pipGap: 0.5, pipLug: 0.4,
+  // the snap: a round bar across the pad face, standing beadBite further out
+  // than the plate's resting gap, with a matching groove in the plate. The
+  // plate flexes beadBite outward on the way in and clicks into the groove
+  // at closed, so the latch holds pressed to the pad instead of hanging;
+  // the lip under the roof still takes the lifting load
+  beadBite: 0.3, beadDrop: 1.0,
+  // the folding toggle latch (see toggleLatch): a lever on a print-in-place
+  // pin, a bail on a living hinge you fold after printing, a round catch
+  // bar on the body's pad. Over-centre by toggleStretch of bail tension
+  toggleUp: 10, leverLen: 12, leverThick: 2, living: 0.6, livingLen: 3,
+  bailArm: 2.2, bailThick: 1.6, bailBar: 1.2, catchBar: 1.5, catchOut: 3, catchDrop: 5.3, toggleStretch: 0.25,
   leadIn: 0.6,    // chamfer on the tongue top and the lid skirt's mouth: the lid finds its own way on
   footChamfer: 0.5, // on the body's base and the lid's top (both bed-side edges): no elephant foot
   // the optional gasket: a ridge along the tongue top, a trench in the lid
@@ -284,12 +306,20 @@ function caseDims(opts) {
   // the hinge sits between the back ribs in the Koch style
   const hingeLen = koch ? 2 * (ribX - ribW / 2) - 2 * c.hingeGap : L - 2 * R - 6;
   const segLen = (hingeLen - (c.knuckles - 1) * c.hingeGap) / c.knuckles;
-  const latch = koch ? "swing" : opts.latch === "round" ? "round" : "hook";
+  // the Koch style's latch: "swing" on a filament pin (a separate part),
+  // "swingpip" the same latch printed in place on the lid, "toggle" the
+  // folding over-centre latch. The smooth style keeps its hook and round clasps.
+  const latch = koch
+    ? (["swing", "swingpip", "toggle"].includes(opts.latch) ? opts.latch : "swingpip")
+    : opts.latch === "round" ? "round" : "hook";
+  const toggle = latch === "toggle";
   // how far the front hardware stands off the front wall, body side and lid side
-  const latchOut = koch ? c.ribDepth : latch === "round" ? c.roundBead : c.latchCatch;
-  const lidOut = koch ? c.swingPinOut + c.lugR : (latch === "round" ? c.roundGap : c.latchGap) + c.latchThick;
+  const latchOut = koch ? c.ribDepth + (toggle ? c.catchOut + c.catchBar : 0) : latch === "round" ? c.roundBead : c.latchCatch;
+  const lidOut = koch ? (toggle ? c.ribDepth + c.pipGap + c.leverThick / 2 + c.lugR : c.swingPinOut + c.lugR) : (latch === "round" ? c.roundGap : c.latchGap) + c.latchThick;
+  // every filament pin hole: the pin, the measured clearance, the fit slider
+  const pinR = c.pin / 2 + c.pinClear + c.pinFit;
   return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, rT, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen,
-    gasket: opts.gasket === true, latch, latchOut, lidOut, koch, ribW, ribX, ribY, lw };
+    gasket: opts.gasket === true, latch, toggle, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
 }
 
 const roundedBlock = (L, W, h, r, z = 0) =>
@@ -347,7 +377,7 @@ function knuckles(d, owner) {
   return out;
 }
 function pinHole(d) {
-  const r = d.c.pin / 2 + d.c.pinClear;
+  const r = d.pinR;
   const ring = Array.from({ length: 12 }, (_, i) => {
     const a = (i / 12) * 2 * Math.PI;
     return [-(d.H + r * Math.sin(a)), d.axisY + r * Math.cos(a)];
@@ -383,22 +413,73 @@ function swingPin(d, r, x0, len) {
   return translate([x0, -W / 2 - c.swingPinOut, H + c.swingPinUp], rotate([0, 90, 0], cylinder({ r, h: len })));
 }
 
+// The Koch Box's back ribs stand right at the ends of the hinge, and the
+// filament goes in along the axis from outside them: a rib in the way made
+// the pin a blind push. Each back rib is notched round the axis to the
+// knuckle's radius plus half a millimetre (body and lid alike), so the
+// filament has a clear run into the first knuckle. The notch stops 0.1
+// short of the knuckle itself.
+function hingeNotches(d) {
+  const { c, kr, axisY, H } = d, rw = d.ribW;
+  const r = kr + 0.5, len = rw + 2 * (c.hingeGap - 0.1);
+  return [-1, 1].map((sx) => translate([sx * d.ribX - len / 2, axisY, H], rotate([0, 90, 0], cylinder({ r, h: len }))));
+}
+
+// The folding toggle latch, closed, in case coordinates, as it prints: the
+// lever hanging from its pin, the living hinge below it, the bail straight
+// below that (you fold it round to hook the catch). Over-centre: the pin P
+// sits on the lever's centre line, the catch bar B stands further out, so
+// the lever locked against the pad is inboard of the line P-B and the
+// bail is a hair short of reaching B along it; passing dead centre
+// stretches the bail by toggleStretch, then it snaps home pressing on the
+// pad. The bail's length comes out of that geometry, not a guess.
+function toggleLatch(d) {
+  const { c, W, H, lw } = d;
+  const fy = -W / 2, rd = c.ribDepth;
+  const yP = fy - rd - c.pipGap - c.leverThick / 2, zP = H + c.toggleUp;
+  const yB = fy - rd - c.catchOut, zB = H - c.catchDrop - c.catchBar - c.bailBar;   // the bail bar's centre, hooked
+  const zQ = zP - c.leverLen, zHinge = zQ - c.livingLen / 2;
+  const D = Math.hypot(yB - yP, zB - zP);
+  const Lb = Math.max(4, D + c.toggleStretch - (zP - zHinge));      // living hinge to bail bar centre
+  const zBar = zHinge - Lb;
+  const along = (y, z, r, x0, len) => translate([x0, y, z], rotate([0, 90, 0], cylinder({ r, h: len })));
+  const box = (x0, x1, y0, y1, z0, z1) => translate([x0, y0, z0], cube([x1 - x0, y1 - y0, z1 - z0]));
+  const hole = c.pipPin + c.pipClear;
+  const lever = difference(
+    union(
+      along(yP, zP, hole + 1.4, -lw / 2, lw),                                          // the boss
+      box(-lw / 2, lw / 2, yP - c.leverThick / 2, yP + c.leverThick / 2, zQ, zP),       // the plate
+    ),
+    along(yP, zP, hole, -lw / 2 - 1, lw + 2));
+  const strip = box(-lw / 2, lw / 2, yP - c.living / 2, yP + c.living / 2, zQ - c.livingLen, zQ + 0.2);
+  const arm = (x0) => box(x0, x0 + c.bailArm, yP - c.bailThick / 2, yP + c.bailThick / 2, zBar, zQ - c.livingLen + 0.2);
+  const bar = along(yP, zBar, c.bailBar, -lw / 2, lw);
+  return union(lever, strip, arm(-lw / 2), arm(lw / 2 - c.bailArm), bar);
+}
+
 // The swing latch itself, closed, in case coordinates: a plate hanging from a
 // boss round the pin, ending in a lip that sits in the body's pocket. One
 // extrusion along X, lw wide, with the pin hole through the boss.
 export function casefinitySwingLatch(opts = {}) {
   const d = caseDims({ ...opts, style: "koch" });
   const { c, W, H, lw } = d;
-  const fy = -W / 2, yi = fy - c.ribDepth - c.swingGap, yo = yi - c.swingThick, yb = yi - c.swingBoss;
+  // printed in place it swings pipGap off the pad (0.2 would fuse to the
+  // lid), and its lip's overhanging face gets a bigger chamfer to print
+  const pip = d.latch !== "swing";
+  const fy = -W / 2, yi = fy - c.ribDepth - (pip ? c.pipGap : c.swingGap), yo = yi - c.swingThick, yb = yi - c.swingBoss;
   const zp = H + c.swingPinUp, zl0 = H - c.padRoof - c.pocketH + 0.1, zl1 = H - c.padRoof - 0.1;
-  const li = yi + c.swingLipIn, e = 0.6;
+  const li = yi + c.swingLipIn, e = pip ? 1.1 : 0.6;
+  const beadR = (pip ? c.pipGap : c.swingGap) + c.beadBite, zBead = H - c.beadDrop;
   const prof = [
     [li - e, zl0], [li, zl0 + e], [li, zl1 - e], [li - e, zl1],   // the lip, chamfered to lead in
     [yi, zl1], [yi, zp + 3],                                     // the inner face, straight to the boss top
     [yb + 1.5, zp + 3], [yb, zp + 1.5], [yb, zp - 3],              // the boss, its outer top corner eased
     [yo, zp - 3], [yo, zl0],                                     // the plate's outer face
   ];
-  const latch = difference(alongX(prof, -lw / 2, lw), swingPin(d, c.pin / 2 + 0.2, -lw / 2 - 1, lw + 2));
+  const latch = difference(alongX(prof, -lw / 2, lw),
+    swingPin(d, pip ? c.pipPin + c.pipClear : c.pin / 2 + 0.2 + c.pinFit, -lw / 2 - 1, lw + 2),
+    // the detent groove in the inner face, where the pad's bead sits at closed
+    translate([-lw / 2 - 1, yi, zBead], rotate([0, 90, 0], cylinder({ r: beadR + 0.1, h: lw + 2 }))));
   if (!opts.print) return latch;
   // printed on its side: the flat end face down, so the pin hole stands
   // vertical and the profile prints true
@@ -415,14 +496,28 @@ export function casefinityCase(opts = {}) {
   const fy = -W / 2;
   const extraCuts = [];
   let latchCatch;
+  let bead = null;
   if (d.koch) {
     // the latch pad: flush with the ribs, with the lip's pocket let into its
     // outer face under a roof padRoof thick (a short bridge when printed)
     const padW = d.lw + 8, rd = c.ribDepth;
-    latchCatch = union(
-      translate([-padW / 2, fy - rd, H - c.padDrop], cube([padW, rd + 0.5, c.padDrop])),
-      ...kochRibs(d, "body"));
-    extraCuts.push(translate([-(d.lw + 0.6) / 2, fy - rd - 1, H - c.padRoof - c.pocketH], cube([d.lw + 0.6, c.pocketDepth + 1, c.pocketH])));
+    const padParts = [translate([-padW / 2, fy - rd, H - c.padDrop], cube([padW, rd + 0.5, c.padDrop]))];
+    if (d.toggle) {
+      // the catch: a round bar on a block out from the pad, long enough for
+      // the bail's arms to straddle, that the bail hooks under
+      const bl = d.lw + 6, zc = H - c.catchDrop;
+      padParts.push(
+        translate([-bl / 2, fy - rd - c.catchOut, zc - c.catchBar], cube([bl, c.catchOut + 0.5, 2 * c.catchBar])),
+        translate([-bl / 2, fy - rd - c.catchOut, zc], rotate([0, 90, 0], cylinder({ r: c.catchBar, h: bl }))));
+    } else {
+      extraCuts.push(translate([-(d.lw + 0.6) / 2, fy - rd - 1, H - c.padRoof - c.pocketH], cube([d.lw + 0.6, c.pocketDepth + 1, c.pocketH])));
+      // the snap bar across the pad face, half buried, standing beadBite into
+      // the plate's path; the plate's groove drops over it at closed
+      const beadR = (d.latch === "swing" ? c.swingGap : c.pipGap) + c.beadBite;
+      bead = translate([-(d.lw + 0.6) / 2, fy - rd, H - c.beadDrop], rotate([0, 90, 0], cylinder({ r: beadR, h: d.lw + 0.6 })));
+    }
+    latchCatch = union(...padParts, ...kochRibs(d, "body"));
+    extraCuts.push(...hingeNotches(d));
   } else if (d.latch === "round") {
     // a round bead along the front, half buried in the wall, sitting just
     // above where the lid blade's lip comes to rest (0.15 play)
@@ -463,12 +558,13 @@ export function casefinityCase(opts = {}) {
       roundedBlock(Lt - 2 * (inset + c.crest), Wt - 2 * (inset + c.crest), c.crestHeight + 1, Math.max(0.3, d.rT - inset - c.crest), top - 0.6),
     ));
   }
-  return difference(
+  const body = difference(
     union(...adds),
     prism(cavity, c.floor, top - c.floor + 1),
     pinHole(d),
     ...extraCuts,
   );
+  return bead ? union(body, bead) : body;
 }
 
 // The lid, modelled CLOSED in case coordinates (z from the body height up).
@@ -484,18 +580,32 @@ export function casefinityCaseLid(opts = {}) {
   let tab;
   if (d.koch) {
     // two lugs either side of the latch, each a gusset from the front wall
-    // to a round boss about the pin; the pin hole runs through both
-    const { lw } = d, yp = -W / 2 - c.swingPinOut, zp = H + c.swingPinUp;
+    // to a round boss about the pin. On a filament pin the hole runs
+    // through both; printed in place the pin is solid between them and the
+    // latch hangs on it, part of the lid
+    const { lw } = d, pip = d.latch !== "swing";
+    const yp = d.toggle ? -W / 2 - c.ribDepth - c.pipGap - c.leverThick / 2 : -W / 2 - c.swingPinOut;
+    const zp = d.toggle ? H + c.toggleUp : H + c.swingPinUp;
+    const lg = pip ? c.pipLug : 0.3;
     const ring = Array.from({ length: 24 }, (_, i) => {
       const a = (i / 24) * 2 * Math.PI;
       return [yp + c.lugR * Math.cos(a), zp + c.lugR * Math.sin(a)];
     });
     const prof = hull2([...ring, [-W / 2 + 1, zp - c.lugHalf], [-W / 2 + 1, zp + c.lugHalf]]);
-    tab = union(
-      alongX(prof, -(lw / 2 + 0.3 + c.lugWidth), c.lugWidth),
-      alongX(prof, lw / 2 + 0.3, c.lugWidth),
-      ...kochRibs(d, "lid"));
-    extraCuts.push(swingPin(d, c.pin / 2 + c.pinClear, -(lw / 2 + 0.3 + c.lugWidth + 1), lw + 2 * (0.3 + c.lugWidth) + 2));
+    const pinAt = (r, x0, len) => translate([x0, yp, zp], rotate([0, 90, 0], cylinder({ r, h: len })));
+    const parts = [
+      alongX(prof, -(lw / 2 + lg + c.lugWidth), c.lugWidth),
+      alongX(prof, lw / 2 + lg, c.lugWidth),
+      ...kochRibs(d, "lid"),
+    ];
+    if (pip) {
+      parts.push(pinAt(c.pipPin, -(lw / 2 + lg + c.lugWidth) + 0.5, lw + 2 * lg + 2 * c.lugWidth - 1));
+      parts.push(d.toggle ? toggleLatch(d) : casefinitySwingLatch(opts));
+    } else {
+      extraCuts.push(pinAt(d.pinR, -(lw / 2 + lg + c.lugWidth + 1), lw + 2 * (lg + c.lugWidth) + 2));
+    }
+    tab = union(...parts);
+    extraCuts.push(...hingeNotches(d));
   } else if (d.latch === "round") {
     // a solid blade with a round lip along its inner bottom edge: it rolls
     // over the body's bead and sits under it. Round both ways, so it prints
@@ -594,7 +704,7 @@ export function caseKit(opts = {}) {
   if (opts.includeCase !== false) {
     const back = d.axisY + d.kr, front = d.W / 2 + d.latchOut;
     const lidFront = d.W / 2 + d.lidOut, side = d.L / 2 + (d.koch ? d.c.ribDepth : 0);
-    if (d.koch) {
+    if (d.koch && d.latch === "swing") {
       // the swing latch on its side: its profile's z runs along -X once turned
       const zTop = d.H + d.c.swingPinUp + 3, zBot = d.H - d.c.padRoof - d.c.pocketH;
       parts.unshift([colorize(CASEKIT_COLORS.latch, casefinitySwingLatch({ ...opts, print: true })),

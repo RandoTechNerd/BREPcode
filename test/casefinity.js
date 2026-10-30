@@ -185,11 +185,14 @@ console.log("\nthe Koch Box: ribbed walls, a swing latch on a pin\n");
     return va.vol + vb.vol - vu.vol;
   };
   const size = { width: 53, depth: 38, height: 35, style: "koch" };
+  // the filament-pin swing latch: the original Koch arrangement, a separate part
+  size.latch = "swing";
   const body = casefinityCase(size), lid = casefinityCaseLid(size), latch = casefinitySwingLatch(size);
   const [bm, lm, tm] = await Promise.all([measure(body), measure(lid), measure(latch)]);
   check("Koch body, lid and latch build exact", [bm, lm, tm].every((m) => /Exact/i.test(m.engine)), `${bm.engine} / ${lm.engine} / ${tm.engine}`);
   check("ribs stand 3 proud of the sides", near(bm.x.max, 53 / 2 + 3, 0.01) && near(lm.x.max, 53 / 2 + 3, 0.01), `${bm.x.max} / ${lm.x.max}`);
-  check("the latch pad is flush with the front ribs", near(bm.y.min, -(38 / 2 + 3), 0.01), `${bm.y.min}`);
+  // the pad is flush with the ribs; the click bar stands swingGap + 0.3 = 0.5 proud of it
+  check("the click bar stands 0.5 proud of the latch pad", near(bm.y.min, -(38 / 2 + 3 + 0.5), 0.01), `${bm.y.min}`);
   check("the hinge still stands 5.8 proud of the back", near(bm.y.max, 38 / 2 + 0.4 + 5.4, 0.05), `${bm.y.max}`);
   check("the lid's lugs reach 8 out", near(lm.y.min, -(38 / 2 + 8), 0.02), `${lm.y.min}`);
   // the latch hangs from 8 above the parting line (17) to its lip 6.9 below,
@@ -209,6 +212,36 @@ console.log("\nthe Koch Box: ribbed walls, a swing latch on a pin\n");
   check("a Koch kit is body, lid, latch and the frame", kit.solids === 4 && near(kit.z.min, 0), `${kit.solids} solids`);
   const small = await measure(casefinityCase({ width: 38, depth: 23, height: 32, style: "koch" }));
   check("the smallest case takes the Koch ribs (pulled inboard of its corners)", /Exact/i.test(small.engine) && near(small.x.max, 19 + 3, 0.01), `${small.engine} ${small.x.max}`);
+}
+
+console.log("\nKoch latches printed in place, the click bar, the pin fit\n");
+{
+  const size = { width: 60, depth: 38, height: 35, style: "koch" };
+  // the default Koch latch is the swing latch printed in place: body + lid only
+  const kit = await measure(caseKit({ ...size, layout: [] }));
+  check("a Koch kit with the in-place latch is body and lid, two solids", kit.solids === 2 && /Exact/i.test(kit.engine), `${kit.solids} / ${kit.engine}`);
+  const lid = await measure(casefinityCaseLid({ ...size, print: true }));
+  check("printed, the lid stands taller than its 18: the latch rises from the pin", lid.z.max > 18 + 10 && near(lid.z.min, 0), `${lid.z.min}..${lid.z.max}`);
+  // the in-place latch alone: its boss hole fits the printed pin with 0.35 of room
+  const pipLatch = casefinitySwingLatch({ ...size, latch: "swingpip" });
+  const hole = await measure(dsl.intersection(
+    dsl.translate([-4, -(19 + 5.5), 17 + 8], dsl.rotate([0, 90, 0], dsl.cylinder({ r: 1.84, h: 8 }))), pipLatch));
+  check("the in-place latch's boss hole clears a 1.5 pin by 0.35", hole.vol < 1, `${hole.vol.toFixed(2)} mm³ of latch inside the hole`);
+  // above the lip (which reaches into the pocket by design), the plate stays 0.5 off the pad
+  const lipGap = await measure(dsl.intersection(pipLatch, dsl.translate([-10, -(19 + 3 + 0.5), 17 - 2], dsl.cube([20, 0.5, 6]))));
+  check("...and its plate swings 0.5 off the pad, not 0.2", lipGap.vol < 1, `${lipGap.vol.toFixed(2)} mm³ within 0.5 of the pad`);
+  // the toggle latch: one lid solid, standing tall, with the catch bar on the body
+  const tkit = await measure(caseKit({ ...size, latch: "toggle", layout: [] }));
+  check("a toggle kit is body and lid, two solids, exact", tkit.solids === 2 && /Exact/i.test(tkit.engine), `${tkit.solids} / ${tkit.engine}`);
+  const tbody = await measure(casefinityCase({ ...size, latch: "toggle" }));
+  check("the toggle's catch bar reaches 4.5 out from the pad face", near(tbody.y.min, -(19 + 3 + 3 + 1.5), 0.01), `${tbody.y.min}`);
+  // pin fit: a bigger hinge hole takes more out of the body
+  const tight = await measure(casefinityCase({ ...size, pinFit: 0 })), loose = await measure(casefinityCase({ ...size, pinFit: 0.3 }));
+  check("pin fit 0.3 leaves less body than pin fit 0: the hinge hole grew", tight.vol > loose.vol + 5, `${tight.vol.toFixed(0)} vs ${loose.vol.toFixed(0)}`);
+  // the back ribs are notched round the hinge axis so the filament has a run in
+  // the back rib sits at x = 16..20 on this case; the knuckles end 0.4 before it
+  const notch = await measure(dsl.intersection(casefinityCase(size), dsl.translate([16.1, 19 + 3.1, 17], dsl.rotate([0, 90, 0], dsl.cylinder({ r: 2.9, h: 3.8 })))));
+  check("the back ribs are clear round the hinge axis to the knuckle radius", notch.vol < 1, `${notch.vol.toFixed(2)} mm³ of rib on the axis`);
 }
 
 console.log("\nthe builder: routes, painting, the code it writes\n");
@@ -255,9 +288,9 @@ console.log("\nthe builder: routes, painting, the code it writes\n");
   check("smooth walls are the default", /const style = "smooth";/.test(code) && back.style === "smooth" && !/Luca Koch/.test(code));
   const kCode = kitCode({ ...state, style: "koch" });
   check("the Koch Box is written, credited and read back", /const style = "koch";/.test(kCode) && /Luca Koch/.test(kCode) && /printables\.com\/model\/1517296/.test(kCode)
-    && parseKitCode(kCode).style === "koch" && /style, latch, lidFit, layout/.test(kCode));
+    && parseKitCode(kCode).style === "koch" && /style, latch, lidFit, pinFit, wall, floor, binWall, layout/.test(kCode));
   check("a Koch kit counts its latch", tally([{ c: 0, r: 0, w: 1, h: 1, kind: "box" }], 2, 1, true, true).pieces === 4);
-  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, style, latch, lidFit, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
+  check("gasket: true is written and read back", /const gasket = true;/.test(gCode) && /gasket, style, latch, lidFit, pinFit, wall, floor, binWall, layout/.test(gCode) && parseKitCode(gCode).gasket === true);
 
   // the written code runs through the real vocabulary, the way the editor runs it
   const body = code.replace(/^\s*\/\/.*$/gm, "");
