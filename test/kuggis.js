@@ -30,12 +30,13 @@ async function measure(shape) {
   const at = (zq, i) => { const s = v.filter((p) => Math.abs(p[2] - zq) <= 0.5); return s.length ? Math.max(...s.map((p) => p[i])) - Math.min(...s.map((p) => p[i])) : NaN; };
   // how many vertices sit at exactly this height (a feature that ends there)
   const atZ = (zq) => v.filter((p) => Math.abs(p[2] - zq) < 0.02).length;
+  const vertsBetween = (z0, z1) => v.filter((p) => p[2] > z0 && p[2] < z1).length;
   let vol = 0;
   for (let i = 0; i + 2 < v.length; i += 3) {
     const [a, b, c] = [v[i], v[i + 1], v[i + 2]];
     vol += (a[0] * (b[1] * c[2] - c[1] * b[2]) - a[1] * (b[0] * c[2] - c[0] * b[2]) + a[2] * (b[0] * c[1] - c[0] * b[1])) / 6;
   }
-  return { x: ax(0), y: ax(1), z: ax(2), solids: out.solids.length, engine: out.engine, at, atZ, vol: Math.abs(vol) };
+  return { x: ax(0), y: ax(1), z: ax(2), solids: out.solids.length, engine: out.engine, at, atZ, vertsBetween, vol: Math.abs(vol) };
 }
 
 console.log("\nthe box as numbers\n");
@@ -71,8 +72,10 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   const e = kuggisEstimate([180, 260, 80]);
   const f = kuggisFit(e);
   const t = Math.tan((e.taper * Math.PI) / 180);
-  // the front-left corner box, 2 x 2 squares
-  const corner = await measure(kuggisKit({ ...e, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  // the front-left corner box, 2 x 2 squares. Built UPRIGHT here (flip:
+  // false) so the shape reads floor-up; the printing orientation is its own
+  // block below
+  const corner = await measure(kuggisKit({ ...e, flip: false, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
   check("one solid", corner.solids === 1, `${corner.solids}`);
   check("its height is the piece height", near(corner.z.max - corner.z.min, f.pieceHeight, 0.05), `${corner.z.max - corner.z.min}`);
   const low = corner.at(e.floorRound, 0), top = corner.at(corner.z.max, 0);
@@ -88,7 +91,7 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   // inside (the cavity's slot is grown by the wall), so those are the only
   // heights with vertices between the floor and the top; the same piece
   // with lug 0 has nothing there, and the same outline everywhere else
-  const noSlot = await measure(kuggisKit({ ...e, lug: 0, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  const noSlot = await measure(kuggisKit({ ...e, flip: false, lug: 0, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
   check("a corner piece has a slot for the box's corner rib, as tall as the rib",
     corner.atZ(e.lugH) >= 4 && corner.atZ(e.lugH + KUGGIS.wall) >= 4 && noSlot.atZ(e.lugH) === 0,
     `${corner.atZ(e.lugH)} / ${corner.atZ(e.lugH + KUGGIS.wall)} vertices at ${e.lugH} / ${e.lugH + KUGGIS.wall}; without: ${noSlot.atZ(e.lugH)}`);
@@ -100,6 +103,28 @@ console.log("\na piece against the wall leans with it; one inside stands upright
     && near(corner.x.min, noSlot.x.min, 0.02) && near(corner.y.min, noSlot.y.min, 0.02) && near(corner.x.max, noSlot.x.max, 0.02),
     `${corner.x.min}/${noSlot.x.min} ${corner.y.min}/${noSlot.y.min}`);
   check("an inside piece never has one", (await measure(kuggisKit({ ...e, layout: [{ at: [2, 3], size: [2, 2], kind: "box" }] }))).atZ(e.lugH) === 0);
+  // the slot's end is a 45 degree ramp, not a flat roof: the outer cutter
+  // leaves the piece a sloped face from the slot's end up and out toward
+  // the corner, so there are vertices between lugH and lugH + reach, and
+  // none of those faces is horizontal (no vertex band thicker than the
+  // ramp's own steps)
+  const ramp = corner.vertsBetween(e.lugH + 0.5, e.lugH + e.lug - 1);
+  check("the slot climbs out at 45 degrees (vertices along the ramp)", ramp >= 2, `${ramp} vertices on the ramp`);
+
+  // PRINTING ORIENTATION: by default the same corner box comes top down
+  // (open side on the bed), so its widest outline is at the bed and the
+  // floor rounding closes in at the top
+  const flipped = await measure(kuggisKit({ ...e, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  check("a small corner box prints top down: widest at the bed", flipped.at(0, 0) > flipped.at(flipped.z.max - e.floorRound, 0) + 2, `${flipped.at(0, 0).toFixed(2)} at the bed vs ${flipped.at(flipped.z.max - e.floorRound, 0).toFixed(2)} below the top`);
+  check("...rounding in at the top", flipped.at(flipped.z.max, 0) < flipped.at(flipped.z.max - e.floorRound, 0) - 2);
+  check("...same height, still on the bed", near(flipped.z.min, 0, 0.01) && near(flipped.z.max, corner.z.max, 0.01));
+  check("...and it is the upright piece turned over", near(flipped.at(0, 0), top, 0.05) && near(flipped.at(flipped.z.max, 0), corner.at(0, 0), 0.05), `${flipped.at(0, 0).toFixed(2)} vs ${top.toFixed(2)}`);
+  // a big box would have to bridge its whole floor: it stays upright
+  const big = await measure(kuggisKit({ ...e, layout: [{ at: [0, 0], size: [5, 5], kind: "box" }] }));
+  check("a box wider than the floor can bridge prints upright", big.at(big.z.max, 0) > big.at(0, 0) + 2, `${big.at(0, 0).toFixed(2)} -> ${big.at(big.z.max, 0).toFixed(2)}`);
+  check("...unless told to flip", (await measure(kuggisKit({ ...e, flip: true, layout: [{ at: [0, 0], size: [5, 5], kind: "box" }] }))).at(0, 0) > big.at(0, 0) + 2);
+  check("the flip is a const in the code and reads back", /const flip = undefined/.test(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] }))
+    && parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), flip: false }, regions: [] })).kuggis.flip === false);
 
   // a box in the middle of the grid: upright and plain
   const mid = await measure(kuggisKit({ ...e, layout: [{ at: [2, 3], size: [2, 2], kind: "box" }] }));
@@ -144,7 +169,7 @@ console.log("\nthe builder's code\n");
 {
   const s = { container: "kuggis", kuggis: { ...defaultKuggis("18x26x15"), lock: true }, regions: [{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox" }, { c: 2, r: 0, w: 3, h: 3, kind: "frame", split: true }] };
   const code = kitCode(s);
-  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, layout: pieces/.test(code));
+  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, layout: pieces/.test(code));
   check("it calls kuggisKit, not caseKit", /return kuggisKit\(/.test(code) && !/caseKit\(/.test(code));
   check("the box's inside is sliders", /const rimW = [\d.]+;\s+\/\/ \[/.test(code) && /const taper = /.test(code) && /const taperD = /.test(code) && /const clear = /.test(code));
   check("it says the numbers are estimates to measure over", /estimate/i.test(code) && /Measure your box/.test(code));

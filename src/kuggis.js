@@ -45,7 +45,7 @@
 // way the published dividers are made, so a piece lifts out with a finger.
 
 import {
-  cube, translate, rotate, difference, union, intersection, hull, fillet, colorize, group,
+  cube, translate, rotate, difference, union, intersection, hull, fillet, colorize, group, polygon, linearExtrude,
 } from "./dsl.js";
 import { CASEFINITY, CASEKIT_COLORS, shelfPack, featuredOutline, outlinePrism } from "./casefinity.js";
 
@@ -94,6 +94,15 @@ export const KUGGIS = Object.freeze({
   // and stands lugFrac of the inside depth, no less than lugMin (25 mm on
   // the 72 mm deep 13x18x8). 0 for lug = no slot.
   lugOver: 4, lugW: 4, lugFrac: 0.3, lugMin: 20,
+  // PRINTING. A piece against a wall carries the box's floor rounding on
+  // its wall side, and that rounding starts horizontal at the floor: on the
+  // bed it is an overhang no printer likes. So wall pieces print TOP DOWN
+  // (the open top on the bed, the rounding closing in at the top) when
+  // their cavity is narrow enough for the floor to bridge over it: up to
+  // flipMax across. A bigger box prints upright, floor on the bed. Inside
+  // pieces are plain prisms and never need flipping. The slot ends are 45
+  // degree ramps, so they print in either orientation without support.
+  flipMax: 50,
 });
 
 // IKEA's five sizes. width x depth x height as IKEA lists them (width is the
@@ -177,7 +186,10 @@ function boxDims(opts) {
   const lug = Math.max(0, Math.min(num(opts.lug, "lug", 0), Math.min(floorW, floorD) / 4));
   const lugW = Math.max(0.5, num(opts.lugW, "lugW", KUGGIS.lugW));
   const lugH = Math.max(0, Math.min(num(opts.lugH, "lugH", KUGGIS.lugMin), height));
-  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock, lug, lugW, lugH };
+  // flip: true = every wall piece top down, false = all upright, absent =
+  // wall pieces whose cavity bridges (flipMax) top down
+  const flip = opts.flip === true ? true : opts.flip === false ? false : "auto";
+  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock, lug, lugW, lugH, flip };
 }
 
 // The module grid a box holds: whole 15 mm squares across the FLOOR inside,
@@ -225,9 +237,17 @@ function liner(b, inset, z0, z1, floorRound, grow = 0, lugTop = b.lugH) {
   if (!(b.lug > 0) || lugTop <= z0) return body;
   // a slot along each corner's diagonal: from `reach` in from the box's
   // sharp inside corner at the floor, out past the corner (the walls lean
-  // out above the floor, so the slot only gets roomier higher up)
+  // out above the floor, so the slot only gets roomier higher up). Its end
+  // is not a flat roof but a 45 degree ramp climbing back out toward the
+  // corner, so the slot prints without support whichever way up the piece
+  // goes: the profile in the diagonal's vertical plane is drawn as a
+  // polygon and extruded across the slot's width.
   const reach = b.lug + grow, w = b.lugW + 2 * grow, out = 30 + b.height * Math.max(t, tD);
-  const cutter = translate([-out, -w / 2, z0 - 1], cube([reach + out, w, lugTop - z0 + 1]));
+  const zb = z0 - 1, zt = lugTop;
+  const profile = polygon([[-out, zb], [reach, zb], [reach, zt], [-out, zt + reach + out]]);
+  // drawn in x/y, stood up: rotate about x turns +y into +z and the
+  // extrusion (0..w along z) into -w..0 along y, so centre it on the diagonal
+  const cutter = translate([0, w / 2, 0], rotate([90, 0, 0], linearExtrude({ h: w }, profile)));
   const slots = [[-1, -1, 45], [1, -1, 135], [1, 1, 225], [-1, 1, 315]].map(([sx, sy, ang]) =>
     translate([sx * b.floorW / 2, sy * b.floorD / 2, 0], rotate([0, 0, ang], cutter)));
   return difference(body, ...slots);
@@ -316,14 +336,25 @@ function piece(b, fit, g, kind, divide, L) {
   const topHalfW = (b.floorW + 2 * H * tanD(b.taper)) / 2 - b.clear, topHalfD = (b.floorD + 2 * H * tanD(b.taperD)) / 2 - b.clear;
   // ribs stand proud of the left and back faces in the lock style
   const proud = b.lock ? CASEFINITY.bump : 0;
-  const bounds = [edgeL ? -topHalfW : x0 - proud, edgeR ? topHalfW : x1, edgeF ? -topHalfD : y0, edgeB ? topHalfD : y1 + proud];
-  return { shape, bounds };
+  let bounds = [edgeL ? -topHalfW : x0 - proud, edgeR ? topHalfW : x1, edgeF ? -topHalfD : y0, edgeB ? topHalfD : y1 + proud];
+  // top down? Only a wall piece gains from it (the floor rounding), and a
+  // box only when its floor can bridge the cavity at the top of the print;
+  // a frame has no floor and always can. Turned over about X and set back
+  // on the bed, so the bounds' Y side swaps.
+  const cavitySpan = Math.min(g.w, g.h) * P - 2 * w;
+  const flipped = onWall && (b.flip === true || (b.flip === "auto" && (kind === "frame" || cavitySpan <= KUGGIS.flipMax)));
+  if (flipped) {
+    shape = translate([0, 0, H], rotate([180, 0, 0], shape));
+    bounds = [bounds[0], bounds[1], -bounds[3], -bounds[2]];
+  }
+  return { shape, bounds, flipped };
 }
 
 // Everything to print for a box and its layout, laid out flat. `layout` as
 // caseKit's: { at: [col, row], size: [cols, rows], kind: "box" | "frame", split }.
 // A lidded box is printed as a plain box here: the pieces stop under the
-// rim, and the KUGGIS lid covers them all.
+// rim, and the KUGGIS lid covers them all. `flip` (see KUGGIS.flipMax):
+// true / false / absent for auto.
 export function kuggisKit(opts = {}) {
   const b = boxDims(opts);
   const fit = kuggisFit(opts);

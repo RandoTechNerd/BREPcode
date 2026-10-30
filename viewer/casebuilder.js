@@ -191,6 +191,9 @@ const lug = ${+k.lug};   // [0:40] how far the slot reaches in from the box's sh
 const lugW = ${+k.lugW};   // [1:12] the slot's width (mm)
 const lugH = ${+k.lugH};   // [0:150] the slot's height above the floor (mm)
 const lock = ${k.lock === true};   // true: Casefinity ribs and sockets on the faces between pieces, so the kit holds together. false: smooth sides
+// Wall pieces print top down (open top on the bed) when the floor can bridge the cavity, up to 3 squares across;
+// bigger boxes print upright. flip: true forces top down, false forces upright.
+const flip = ${k.flip === true ? "true" : k.flip === false ? "false" : "undefined"};
 
 // What goes where. at: [column, row] from the front-left square; size in squares.
 //   kind "box"    a bin                   split: true = one 1 x 1 box per square
@@ -199,7 +202,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, layout: pieces });
 `;
 }
 
@@ -220,6 +223,8 @@ export function parseKitCode(src = "") {
     const k = defaultKuggis();
     for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "taperD", "corner", "floorRound", "clear", "lug", "lugW", "lugH"]) if (n(key) != null) k[key] = n(key);
     k.lock = /\b(?:const\s+lock\s*=|lock\s*:)\s*true\b/.test(text);
+    const fl = /\bconst\s+flip\s*=\s*(true|false|undefined)/.exec(text);
+    k.flip = fl && fl[1] !== "undefined" ? fl[1] === "true" : undefined;
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
@@ -535,7 +540,7 @@ export function showCaseBuilder(hooks = {}) {
             </div>
             <small id="cb-klock-hint"></small>
           </div>
-          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid. Pieces stop under the KUGGIS lid's plug, so the lid still closes.</p>
+          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid. Pieces stop under the KUGGIS lid's plug, so the lid still closes. Pieces against a wall come laid out top down (open side on the bed) when their floor can bridge the cavity, up to 3 squares across, so the box's floor rounding prints without support; bigger boxes print upright.</p>
           <button type="button" class="cb-build" id="cb-build">Build printable parts</button>
           <div class="cb-sum" id="cb-sum" aria-live="polite"></div>
         </section>
