@@ -91,6 +91,12 @@ const CASE = Object.freeze({
   camCrest: 0.9, camStep: 0.3,
   clawIn: 0.5, clawLip: 1.6, clawProud: 0.6, clawLead: 30, clawHold: 55,
   fingerW: 7,
+  // the press-and-pull latches (see pressDims below): the lid's bar, the
+  // paddle and its tongue, the lever and its leaf
+  barOut: 1.6, barH: 2.5, barUp: 3, barW: 14, barGroove: 0.9, barGrooveIn: 0.5,
+  padW: 22, padT: 3, padOff: 2.5, paddleDrop: 26, padBoss: 2.75,
+  tongueW: 10, tongueT: 1.8, tongueGap: 0.3, tongueBoss: 2.6, tongueStretch: 0.3,
+  levW: 20, levT: 3, levOff: 2.5, levPivot: 8, levTail: 20, levTop: 8, tooth: 1.6, leaf: 0.8, leafLen: 12,
   topClear: 0.5,
   tabLean: 1.2,   // the bin's pull tab leans this far in off the front face, clear of the lid's wall
   // the "Koch Box" style, after Luca Koch's Parametric Hinged Storage Box
@@ -202,7 +208,7 @@ export function featuredOutline(w, d, sides, draft) {
 // not exported as `prism`: dsl.js re-exports this file, and a DSL word
 // `prism` would clash with models that declare their own (five catalog ones do)
 const prism = (outline, z0, h) => translate([0, 0, z0], linearExtrude({ h }, outline));
-export { prism as outlinePrism };
+export { prism as outlinePrism, CASE as CASE_DIMS };
 const spec = (opts) => ({
   pitch: num(opts.pitch, "pitch", CASEFINITY.pitch),
   rib: CASEFINITY.rib,
@@ -344,18 +350,23 @@ function caseDims(opts) {
   // round clasp's 0.7 gap; only the window hook sits on the tight 0.3
   const lipLatch = ["round", "wedge", "groove", "cam"].includes(latch);
   const clawLatch = latch === "claw" || latch === "fingers";
+  const pressLatch = latch === "paddle" || latch === "lever";
   // how far the front hardware stands off the front wall, body side and lid side
-  const bodyOut = { hook: c.latchCatch, round: c.roundBead, wedge: c.wedgeProud, groove: c.groovePad, cam: c.camCrest, claw: c.clawProud, fingers: c.clawProud };
+  const pd = pressLatch ? pressDims({ c, W, H, latch }) : null;
+  const bodyOut = { hook: c.latchCatch, round: c.roundBead, wedge: c.wedgeProud, groove: c.groovePad, cam: c.camCrest, claw: c.clawProud, fingers: c.clawProud,
+    paddle: pd && pd.padOff + c.padT / 2 + c.padBoss, lever: c.levOff + c.levT / 2 + c.padBoss };
   const latchOut = koch ? c.ribDepth + (toggle ? c.catchOut + c.catchBar : 0) : bodyOut[latch];
-  const lidOut = koch ? (toggle ? c.ribDepth + c.pipGap + c.leverThick / 2 + c.lugR : c.swingPinOut + c.lugR) : (lipLatch || clawLatch ? c.roundGap : c.latchGap) + c.latchThick;
+  const lidOut = koch ? (toggle ? c.ribDepth + c.pipGap + c.leverThick / 2 + c.lugR : c.swingPinOut + c.lugR) : pressLatch ? c.barOut : (lipLatch || clawLatch ? c.roundGap : c.latchGap) + c.latchThick;
   // every filament pin hole: the pin, the measured clearance, the fit slider
   const pinR = c.pin / 2 + c.pinClear + c.pinFit;
   return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, rT, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen,
-    gasket: opts.gasket === true, latch, toggle, lipLatch, clawLatch, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
+    gasket: opts.gasket === true, latch, toggle, lipLatch, clawLatch, pressLatch, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
 }
 
 // the smooth style's clasps, in the order the builder lists them
-export const SMOOTH_LATCHES = Object.freeze(["hook", "round", "wedge", "groove", "cam", "claw", "fingers"]);
+export const SMOOTH_LATCHES = Object.freeze(["hook", "round", "wedge", "groove", "cam", "claw", "fingers", "paddle", "lever"]);
+// the ones printed as a part of their own, on a filament pin through body lugs
+export const PRESS_LATCHES = Object.freeze(["paddle", "lever"]);
 
 const roundedBlock = (L, W, h, r, z = 0) =>
   translate([-L / 2, -W / 2, z], fillet({ r, edges: "z" }, cube([L, W, h])));
@@ -521,6 +532,141 @@ export function casefinitySwingLatch(opts = {}) {
   return translate([0, 0, lw / 2], rotate([0, -90, 0], latch));
 }
 
+// ---- press-and-pull latches (2026-10-30) --------------------------------
+// Two latches after the Pelican double throw and the toolbox lever, as a
+// SEPARATE part on a filament pin through two lugs on the body's front,
+// holding a bar on the lid's skirt. Printed flat (paddle) or on its side
+// (lever); the paddle's tongue pin is printed in place.
+//
+//   "paddle": the paddle hangs from pin A just under the parting line. A
+//     tongue OUTBOARD of the paddle hangs from pin B at the paddle's bottom
+//     and its top arm reaches in over the lid's bar, a rib on its underside
+//     in the bar's groove. Pressed flat, B sits past the line from A away
+//     from the bar (over centre): on the way the tongue is stretched
+//     tongueStretch, at rest it is slack again and the lid is held down.
+//     Pull the paddle's bottom out and the tongue goes slack: lift it off.
+//   "lever": a single pivot levPivot under the parting line. A tooth on the
+//     lever's inner face sits over the lid's bar; closing the lid cams the
+//     tooth out (its 60 deg top) and it snaps back over the bar; a leaf
+//     under the tail presses on the body and keeps it there. Press the tail
+//     in to lift the tooth and open.
+function pressDims(d) {
+  const { c, W, H } = d, fy = -W / 2;
+  const paddle = d.latch === "paddle";
+  const w = paddle ? c.padW : c.levW;
+  const zBarBot = H + c.barUp, zBarTop = zBarBot + c.barH;
+  // the paddle's pin sits a boss under the parting line, clear of the lid's
+  // skirt; the lever's levPivot under it
+  const zPin = paddle ? H - c.padBoss - 0.3 : H - c.levPivot;
+  // The paddle's over-centre throw is the tongue's stretch when pin B
+  // passes the line from the bar away from pin A: |AC| + |AB| - |BC|.
+  // It grows with how far out A stands, and shrinks on a short body
+  // (the paddle stops short of the bed), so the standoff is solved per
+  // case for tongueStretch, from padOff up to 7 mm
+  const drop0 = Math.min(c.paddleDrop, zPin - c.tongueBoss - 1);
+  // the tongue lies tongueGap clear of the paddle's pin boss, which stands
+  // proud of the paddle's outer face
+  const tongueOff = Math.max(0, c.padBoss - c.padT / 2) + c.tongueGap;
+  const zC = zBarTop + 0.1, yC = fy - c.barOut / 2;
+  const throwAt = (off) => {
+    const yA = fy - off - c.padT / 2, yB = fy - off - c.padT - tongueOff - c.tongueT / 2, zB = zPin - drop0;
+    return Math.hypot(yA - yC, zPin - zC) + Math.hypot(yA - yB, zPin - zB) - Math.hypot(yB - yC, zB - zC);
+  };
+  let padOff = c.padOff;
+  if (paddle) while (padOff < 7 && throwAt(padOff) < c.tongueStretch) padOff += 0.05;
+  padOff = +padOff.toFixed(2);
+  const yPin = paddle ? fy - padOff - c.padT / 2 : fy - c.levOff - c.levT / 2;
+  // the paddle's tongue: outboard of the paddle, on pin B at its bottom.
+  // On a short body the paddle (and the lever's tail) stop short of the
+  // bed: the throw past centre shrinks with them, so a body under ~30
+  // tall gets a softer paddle than a tall one
+  const drop = Math.min(c.paddleDrop, zPin - c.tongueBoss - 1);
+  const tail = Math.min(c.levTail, zPin - 2);
+  const yB = fy - padOff - c.padT - tongueOff - c.tongueT / 2, zB = zPin - drop;
+  return { fy, paddle, yPin, zPin, w, zBarBot, zBarTop, yB, zB, drop, tail, padOff, yC, zC, throw: paddle ? +throwAt(padOff).toFixed(3) : 0, lugX: w / 2 + 0.3 };
+}
+const ring2 = (y, z, r, n = 24) => Array.from({ length: n }, (_, i) => [y + r * Math.cos((i / n) * 2 * Math.PI), z + r * Math.sin((i / n) * 2 * Math.PI)]);
+const barX = (y, z, r, x0, len) => translate([x0, y, z], rotate([0, 90, 0], cylinder({ r, h: len })));
+
+// The body's two lugs for the latch pin (the hole is cut with the body's
+// other cuts: see casefinityCase).
+function pressLugs(d) {
+  const { c } = d, p = pressDims(d);
+  const prof = hull2([...ring2(p.yPin, p.zPin, c.padBoss), [p.fy + 1, p.zPin - c.padBoss], [p.fy + 1, p.zPin + c.padBoss]]);
+  return union(alongX(prof, -(p.lugX + c.lugWidth), c.lugWidth), alongX(prof, p.lugX, c.lugWidth));
+}
+function pressPinHole(d) {
+  const { c } = d, p = pressDims(d);
+  return barX(p.yPin, p.zPin, d.pinR, -(p.lugX + c.lugWidth + 1), 2 * (p.lugX + c.lugWidth) + 2);
+}
+// The lid's bar: barOut proud of the skirt, barH tall from barUp above the
+// parting line, its bottom outer edge chamfered (the lever's tooth and the
+// print both like it), and for the paddle a round groove along its top
+// that the tongue's rib drops into.
+function pressBar(d) {
+  const { c } = d, p = pressDims(d), fy = p.fy;
+  const prof = [[fy + 0.01, p.zBarBot], [fy - c.barOut + 0.6, p.zBarBot], [fy - c.barOut, p.zBarBot + 0.6], [fy - c.barOut, p.zBarTop], [fy + 0.01, p.zBarTop]];
+  const bar = alongX(prof, -c.barW / 2, c.barW);
+  if (!p.paddle) return bar;
+  return difference(bar, barX(fy - c.barOut / 2, p.zBarTop + c.barGroove - c.barGrooveIn, c.barGroove, -c.barW / 2 - 1, c.barW + 2));
+}
+
+// The latch part itself, closed, in case coordinates; { print: true } lays
+// it on the bed (the paddle on its inner face, tongue up; the lever on its
+// side, like the swing latch).
+export const pressLatchDims = (opts) => pressDims(caseDims(opts));
+
+export function casefinityPressLatch(opts = {}) {
+  const d = caseDims(opts);
+  if (!d.pressLatch) throw new Error("casefinityPressLatch: latch must be \"paddle\" or \"lever\"");
+  const { c, H } = d, p = pressDims(d), fy = p.fy;
+  const box = (x0, x1, y0, y1, z0, z1) => translate([x0, y0, z0], cube([x1 - x0, y1 - y0, z1 - z0]));
+  let part, printed;
+  if (p.paddle) {
+    const yi = p.yPin + c.padT / 2, yo = p.yPin - c.padT / 2, hw = c.padW / 2;
+    const earX = c.tongueW / 2 + c.pipLug;
+    const plate = box(-hw, hw, yo, yi, p.zB, p.zPin);
+    const bossA = barX(p.yPin, p.zPin, c.padBoss, -hw, c.padW);
+    // the ears carrying pin B stand off the paddle's outer face at its bottom
+    const earProf = hull2([...ring2(p.yB, p.zB, c.tongueBoss), [yo + 0.01, p.zB - c.tongueBoss], [yo + 0.01, p.zB + c.tongueBoss]]);
+    const ears = union(alongX(earProf, -(earX + c.lugWidth), c.lugWidth), alongX(earProf, earX, c.lugWidth));
+    const pinB = barX(p.yB, p.zB, c.pipPin, -(earX + c.lugWidth) + 0.5, 2 * (earX + c.lugWidth) - 1);
+    const paddle = difference(union(plate, bossA, ears, pinB), barX(p.yPin, p.zPin, d.pinR, -hw - 1, c.padW + 2));
+    // the tongue: a boss round pin B, a strap up past the paddle's top, an
+    // arm in over the bar with a round rib under it for the bar's groove
+    const tw = c.tongueW / 2, ty0 = p.yB - c.tongueT / 2, ty1 = p.yB + c.tongueT / 2;
+    const zArm0 = p.zBarTop + 0.1, zArm1 = zArm0 + c.tongueT;
+    const tongue = difference(
+      union(
+        barX(p.yB, p.zB, c.tongueBoss, -tw, c.tongueW),
+        box(-tw, tw, ty0, ty1, p.zB, zArm1),
+        box(-tw, tw, ty0, fy - 0.3, zArm0, zArm1),
+        barX(fy - c.barOut / 2, zArm0 + 0.01, c.barGroove - 0.2, -tw, c.tongueW),
+      ),
+      barX(p.yB, p.zB, c.pipPin + c.pipClear, -tw - 1, c.tongueW + 2),
+    );
+    part = group(paddle, tongue);
+    // on its side, the width along z: the tongue lies beside the paddle and
+    // pin B stands upright in its hole, the way a printed pin prints best
+    printed = translate([0, 0, hw], rotate([0, 90, 0], part));
+  } else {
+    const yi = p.yPin + c.levT / 2, yo = p.yPin - c.levT / 2, hw = c.levW / 2;
+    const zTail = p.zPin - p.tail, zTop = H + c.levTop;
+    const plate = box(-hw, hw, yo, yi, zTail, zTop);
+    const boss = barX(p.yPin, p.zPin, c.padBoss, -hw, c.levW);
+    // the tooth: flat underside just over the bar, a short face, a 60 deg
+    // top the bar's chamfer rides on the way down
+    const zT = p.zBarTop + 0.2;
+    const tooth = alongX([[yi - 0.01, zT], [yi + c.tooth, zT], [yi + c.tooth, zT + 0.8], [yi - 0.01, zT + 0.8 + c.tooth * tanD(60)]], -hw + 2, c.levW - 4);
+    // the leaf: from the tail's bottom, rising in to touch the body
+    const leaf = alongX([[yi - 0.01, zTail], [yi + c.leaf, zTail], [fy - 0.15, zTail + c.leafLen], [fy - 0.15 - c.leaf, zTail + c.leafLen]], -hw + 2, c.levW - 4);
+    part = difference(union(plate, boss, tooth, leaf), barX(p.yPin, p.zPin, d.pinR, -hw - 1, c.levW + 2));
+    // on its side: the width along z
+    printed = translate([0, 0, hw], rotate([0, 90, 0], part));
+  }
+  return opts.print ? printed : part;
+}
+
 // The case body, standing on z = 0, cavity N*P exactly, Casefinity ribs and
 // grooves on its walls, the hinge's end knuckles on the back, the latch catch
 // on the front.
@@ -553,6 +699,9 @@ export function casefinityCase(opts = {}) {
     }
     latchCatch = union(...padParts, ...kochRibs(d, "body"));
     extraCuts.push(...hingeNotches(d));
+  } else if (d.pressLatch) {
+    latchCatch = pressLugs(d);
+    extraCuts.push(pressPinHole(d));
   } else if (d.latch === "round") {
     // a round bead along the front, half buried in the wall, sitting just
     // above where the lid blade's lip comes to rest (0.15 play)
@@ -665,6 +814,8 @@ export function casefinityCaseLid(opts = {}) {
     }
     tab = union(...parts);
     extraCuts.push(...hingeNotches(d));
+  } else if (d.pressLatch) {
+    tab = pressBar(d);
   } else if (d.lipLatch) {
     // a solid blade with a round lip along its inner bottom edge: it rolls
     // over the body's bead (or wedge, groove pad, cam) and sits under it.
@@ -778,6 +929,14 @@ export function caseKit(opts = {}) {
       const zTop = d.H + d.c.swingPinUp + 3, zBot = d.H - d.c.padRoof - d.c.pocketH;
       parts.unshift([colorize(CASEKIT_COLORS.latch, casefinitySwingLatch({ ...opts, print: true })),
         -zTop, -zBot, -(d.W / 2 + d.c.ribDepth + d.c.swingGap + d.c.swingBoss), -(d.W / 2 + d.c.ribDepth + d.c.swingGap - d.c.swingLipIn)]);
+    }
+    if (d.pressLatch) {
+      const p = pressDims(d), c = d.c;
+      // both print on their side: x runs along case z, y stays case y
+      const b = p.paddle
+        ? [p.zB - c.tongueBoss, p.zBarTop + c.tongueT + 0.5, p.yB - c.tongueBoss, p.fy]
+        : [p.zPin - p.tail, d.H + c.levTop, p.yPin - c.padBoss, p.fy];
+      parts.unshift([colorize(CASEKIT_COLORS.latch, casefinityPressLatch({ ...opts, print: true })), ...b]);
     }
     parts.unshift([colorize(CASEKIT_COLORS.lid, casefinityCaseLid({ ...opts, print: true })), -side, side, -back, lidFront]);
     parts.unshift([colorize(CASEKIT_COLORS.case, casefinityCase(opts)), -side, side, -front, back]);

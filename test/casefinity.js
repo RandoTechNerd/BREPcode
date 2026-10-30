@@ -8,7 +8,7 @@
 
 import * as dsl from "../src/dsl.js";
 import { build, toSTL } from "../index.js";
-import { casefinityFit, casefinityBin, casefinityBinLid, casefinityCase, casefinityCaseLid, casefinitySwingLatch, caseKit, CASEFINITY } from "../src/casefinity.js";
+import { casefinityFit, casefinityBin, casefinityBinLid, casefinityCase, casefinityCaseLid, casefinitySwingLatch, casefinityPressLatch, pressLatchDims, caseKit, CASEFINITY, CASE_DIMS as CASE } from "../src/casefinity.js";
 import { isCaseUrl, kitCode, parseKitCode, paintRegion, tally, PRESETS } from "../viewer/casebuilder.js";
 
 let pass = 0, fail = 0;
@@ -192,6 +192,45 @@ console.log("\nthe lid closes: rounded tongue, clear corners, optional gasket\n"
   }
   const twoFingers = await measure(dsl.intersection(casefinityCaseLid({ ...size, latch: "fingers" }), dsl.translate([-12, -38 / 2 - 3, 17 - 11 + 3], dsl.cube([24, 3, 5]))));
   check("fingers: two 7 mm fingers, a slot between", near(twoFingers.vol, 2 * 7 * 1.6 * 5, 2), `${twoFingers.vol.toFixed(1)} mm³ (112 for two fingers, 160 for a blade)`);
+}
+
+console.log("\nthe press-and-pull latches: a separate part on a filament pin, a bar on the lid\n");
+{
+  const size = { width: 53, depth: 38, height: 35 };
+  const c = CASE;
+  const overlap = async (a, b) => {
+    const [va, vb, vu] = await Promise.all([measure(a), measure(b), measure(dsl.union(a, b))]);
+    return va.vol + vb.vol - vu.vol;
+  };
+  for (const latch of ["paddle", "lever"]) {
+    const o = { ...size, latch };
+    const body = casefinityCase(o), lid = casefinityCaseLid(o), part = casefinityPressLatch(o);
+    const [bm, lm, pm] = await Promise.all([measure(body), measure(lid), measure(part)]);
+    check(`${latch}: body, lid and latch build exact`, [bm, lm, pm].every((m) => /Exact/i.test(m.engine)), `${bm.engine} / ${lm.engine} / ${pm.engine}`);
+    check(`${latch}: the lid's bar stands ${c.barOut} proud of the skirt`, near(lm.y.min, -(38 / 2 + c.barOut), 0.01), `${lm.y.min}`);
+    const [bl, bp, lp] = await Promise.all([overlap(body, lid), overlap(body, part), overlap(lid, part)]);
+    check(`${latch}: closed, the lid clears the body`, bl < 2, `${bl.toFixed(2)} mm³`);
+    check(`${latch}: the latch swings on its pin clear of the body (the leaf just touches)`, bp < 2, `${bp.toFixed(2)} mm³`);
+    check(`${latch}: ...and sits on the bar without biting into it`, lp < 2, `${lp.toFixed(2)} mm³`);
+    const printed = await measure(casefinityPressLatch({ ...o, print: true }));
+    check(`${latch}: prints on the bed`, near(printed.z.min, 0, 0.01), `${printed.z.min}`);
+    const kit = await measure(caseKit({ ...o, layout: [] }));
+    check(`${latch}: a kit is body, lid and the latch${latch === "paddle" ? " (paddle and tongue)" : ""}`, kit.solids === (latch === "paddle" ? 4 : 3), `${kit.solids} solids`);
+  }
+  // the paddle's over-centre: pin A under the parting line, pin B at the
+  // paddle's bottom, outboard; the tongue is tightest when B is on the line
+  // from the bar away from A, tongueStretch longer than at rest. The
+  // standoff is solved per case for that, so a short body gets a paddle
+  // standing a little further out, not a soft one
+  const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  for (const [label, o] of [["a short 35 case", { ...size, latch: "paddle" }], ["a 70 tall case", { width: 120, depth: 80, height: 70, latch: "paddle" }]]) {
+    const p = pressLatchDims(o);
+    const A = [p.yPin, p.zPin], B = [p.yB, p.zB], C = [p.yC, p.zC];
+    const stretch = dist(A, C) + dist(A, B) - dist(B, C);
+    check(`paddle on ${label}: pressing it flat takes the tongue ${c.tongueStretch} mm over centre (standoff ${p.padOff})`, near(stretch, c.tongueStretch, 0.03) && p.padOff >= c.padOff && p.padOff <= 7, `${stretch.toFixed(3)} mm, padOff ${p.padOff}`);
+    check(`paddle on ${label}: the paddle stops above the bed`, p.zB - c.tongueBoss >= 0.5, `${(p.zB - c.tongueBoss).toFixed(1)}`);
+  }
+  check("paddle: the lever arm is a printed-in-place pin's clearance off its tongue boss", near(c.tongueBoss - c.pipPin - c.pipClear, 0.75, 0.01));
 }
 
 console.log("\nthe Koch Box: ribbed walls, a swing latch on a pin\n");

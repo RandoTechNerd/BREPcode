@@ -142,7 +142,7 @@ const height = ${+s.height};  // [${s.inside ? 15 : 35}:300] ${s.inside ? "insid
 const includeCase = ${s.includeCase !== false};   // false: only the pieces that go in the grid
 const gasket = ${s.gasket === true};   // true: a sealing ridge along the rim and a matching trench in the lid (dust seal)
 const style = "${koch ? "koch" : "smooth"}";   // "smooth": plain walls and the clasp below. "koch": the Koch Box, ribbed walls and a swing latch on a filament pin
-const latch = "${latch}";   // smooth walls: "hook" (windowed blade under a 30/60 deg wedge), "round" (round lip over a round bead), "wedge" (round lip under a wedge, sprung on a pad), "groove" (round lip in a groove, soft click), "cam" (round lip wound up a cam, pressure), "claw" (solid blade gripping at its tip), "fingers" (two claw fingers).
+const latch = "${latch}";   // smooth walls: "hook" (windowed blade under a 30/60 deg wedge), "round" (round lip over a round bead), "wedge" (round lip under a wedge, sprung on a pad), "groove" (round lip in a groove, soft click), "cam" (round lip wound up a cam, pressure), "claw" (solid blade gripping at its tip), "fingers" (two claw fingers), "paddle" (press-and-pull double throw, a separate part on a filament pin), "lever" (press-to-open lever, a separate part).
                        // Koch Box: "swing" (swing latch on a filament pin, printed separately), "swingpip" (the same latch printed in place on the lid), "toggle" (folding over-centre latch, printed in place, fold the bail after printing)
 const lidFit = ${+s.lidFit || 0.3};   // [0.1:0.6] clearance between the lid and the body, per side (mm)
 const pinFit = ${+s.pinFit || 0};   // [0:0.4] extra room in every filament pin hole (mm). 0 is the tight fit as measured; 0.1 goes in and out by hand
@@ -523,6 +523,8 @@ export function showCaseBuilder(hooks = {}) {
               <option value="cam">Cam clasp (lip wound up a cam, pressure)</option>
               <option value="claw">Claw hook (grips at the tip)</option>
               <option value="fingers">Twin fingers (two claw fingers)</option>
+              <option value="paddle">Press-and-pull paddle (separate part)</option>
+              <option value="lever">Press-to-open lever (separate part)</option>
             </select>
             <div class="cb-seg" id="cb-klatch" role="radiogroup" aria-label="Koch Box latch" hidden>
               <button type="button" data-v="swingpip">Swing, in place</button><button type="button" data-v="swing">Swing, pin</button><button type="button" data-v="toggle">Folding toggle</button>
@@ -665,6 +667,8 @@ export function showCaseBuilder(hooks = {}) {
     cam: "The body face leans out 0.9 mm over the blade's drop, winding the blade up as the lid closes, then a 0.3 mm step holds it. Strongest closed pressure; best in PETG (about 1.8 % strain).",
     claw: "A solid blade whose very tip turns in 0.5 mm and hooks under a 30/55° wedge. The grip is at the tip only, 0.4 mm of overlap: enough to hold, little enough for PLA.",
     fingers: "The claw as two 7 mm fingers: a third of the force each, a thumbnail fits between them, and one still holds if the other tires.",
+    paddle: "A Pelican-style double throw, printed as its own part on a filament pin through two lugs on the body: a paddle with a tongue down its outside that hooks a bar on the lid. Press the paddle flat to lock (it goes over centre), pull its bottom out to open.",
+    lever: "A toolbox lever on a filament pin through two body lugs, printed on its side: a tooth above the pin snaps over a bar on the lid as it closes, a leaf under the tail keeps it there. Press the tail to open.",
   };
   $("cb-latch").value = SMOOTH_LATCHES.includes(S.latch) ? S.latch : "hook";
   $("cb-latch").addEventListener("change", (e) => {
@@ -886,7 +890,7 @@ export function showCaseBuilder(hooks = {}) {
         : `Your own measurements, inside the box: the rim ${S.kuggis.lidIn} mm down where the lid's plug ends, the depth floor to top, the taper as how far each wall leans out.`;
       $("cb-khint").innerHTML += ` The corner rib: measure from the box's sharp inside corner (where the two walls would meet) to the rib's inner face, along the diagonal, and add a millimetre.`;
     }
-    const separateLatch = S.style === "koch" && S.kochLatch === "swing";
+    const separateLatch = (S.style === "koch" && S.kochLatch === "swing") || (S.style !== "koch" && (S.latch === "paddle" || S.latch === "lever"));
     const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, separateLatch);
     const plate = hooks.plate?.() || null;
     const warn = [];
