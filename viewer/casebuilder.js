@@ -43,7 +43,7 @@ export const DEFAULTS = Object.freeze({ width: 200, depth: 140, height: 70, insi
 export const KUGGIS_DEFAULT_SIZE = "26x35x15";
 export function defaultKuggis(sizeId = KUGGIS_DEFAULT_SIZE) {
   const sz = KUGGIS_SIZES.find((k) => k.id === sizeId) || KUGGIS_SIZES[3];
-  return { size: sz.id, ...kuggisEstimate(sz.outer) };
+  return { size: sz.id, ...kuggisEstimate(sz) };
 }
 
 // Does this address ask for the case builder? ?case=1 is what the /case
@@ -205,7 +205,7 @@ export function parseKitCode(src = "") {
     const k = defaultKuggis();
     for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
     // the size whose estimate these numbers still are, if any; else "custom"
-    const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz.outer); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
+    const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
     state.kuggis = k;
   }
@@ -778,7 +778,9 @@ export function showCaseBuilder(hooks = {}) {
     if (kug) {
       const sz = KUGGIS_SIZES.find((x) => x.id === S.kuggis.size);
       $("cb-khint").innerHTML = sz
-        ? `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm). Measure your box inside ${S.kuggis.lidIn} mm down (where the lid's plug ends) and at the floor, and type over them.`
+        ? sz.measured
+          ? `<b>Measured on a real box</b> (${esc(sz.note || "")}). Check yours ${S.kuggis.lidIn} mm down and at the floor, and type over anything that differs.`
+          : `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm), scaled from a measured 26 × 35. Measure your box inside ${S.kuggis.lidIn} mm down (where the lid's plug ends) and at the floor, and type over them.`
         : `Your own measurements, inside the box: the rim ${S.kuggis.lidIn} mm down where the lid's plug ends, the depth floor to top, the taper as how far each wall leans out.`;
     }
     const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, S.style === "koch");

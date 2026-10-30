@@ -35,7 +35,12 @@ console.log("\nthe box as numbers\n");
 {
   check("five IKEA sizes", KUGGIS_SIZES.length === 5 && KUGGIS_SIZES.every((s) => s.outer.length === 3));
   const e = kuggisEstimate([260, 350, 150]);
-  check("the estimate pulls the rim in and the depth down", e.rimW < 260 && e.rimD < 350 && e.height < 150, JSON.stringify(e));
+  // IKEA quotes the footprint: a real 26x35 is 265 inside 9 mm down and 146.4 deep
+  check("the estimate reads IKEA's size as the footprint", e.rimW === 265 && e.rimD === 355 && e.height === 146.4, JSON.stringify(e));
+  const m = kuggisEstimate(KUGGIS_SIZES.find((s) => s.id === "26x35x15"));
+  check("the measured box sets its own taper from floor and rim", near(m.taper, 7.7, 0.1) && m.rimW === 265 && m.height === 146.4, JSON.stringify(m));
+  check("...and its floor comes back out of the fit", near(kuggisFit(m).floor[0], 228, 0.3), `${kuggisFit(m).floor[0]}`);
+  check("an unmeasured size is the plain estimate", kuggisEstimate(KUGGIS_SIZES[0]).taper === KUGGIS.taper);
   const f = kuggisFit(e);
   const shrink = 2 * (e.height - e.lidIn) * Math.tan((e.taper * Math.PI) / 180);
   check("the floor is the rim less the lean of both walls", near(f.floor[0], e.rimW - shrink, 0.1) && near(f.floor[1], e.rimD - shrink, 0.1), `${f.floor} vs ${e.rimW - shrink}`);

@@ -48,24 +48,31 @@ export const KUGGIS = Object.freeze({
   // that, clear of the plug.
   lidIn: 9,
   topClear: 1,
-  // the estimates below, per mm of outside size
-  rimIn: 3.0,           // inside at lidIn down = outside - 2 * rimIn (a 2.25 wall, plus the lean over lidIn)
-  depthIn: 6,           // inside depth = outside height - depthIn (the lid's 3 mm above the rim, the floor)
-  taper: 5,             // degrees each wall leans out, floor to rim. Read off IKEA's own
-                        // dimension drawing of the 26x35x15: both visible corner edges
-                        // lean ~1.25 cm per side over the 15 cm, through the drawing's
-                        // 26 and 35 cm scales (±1 degree; a measured box beats it)
+  // The estimates below, per mm of outside size, re-based on a measured
+  // 26x35x15 (see KUGGIS_SIZES): IKEA's quoted size is the FOOTPRINT, the
+  // inside 9 mm down is 5 mm wider than it, the inside depth is 3.6 under
+  // the quoted height, and each wall leans 7.7 degrees (18.5 mm over the
+  // 137.4 mm between floor and the lid-plug line). IKEA's own dimension
+  // drawing had suggested 5 degrees; the box says otherwise.
+  rimIn: -2.5,          // inside at lidIn down = outside - 2 * rimIn
+  depthIn: 3.6,         // inside depth = outside height - depthIn
+  taper: 7.7,           // degrees each wall leans out, floor to the lid-plug line
   corner: 10,           // vertical corner radius inside
   floorRound: 6,        // the floor-to-wall rounding inside
 });
 
 // IKEA's five sizes. width x depth x height as IKEA lists them (width is the
-// short side, depth the long one), in mm.
+// short side, depth the long one), in mm. `measured` holds numbers taken
+// off a real box with calipers (2026-10-30, one 26x35x15): the inside 9 mm
+// down, the inside at the floor, the depth straight down. They override
+// the estimate; what is not in there is still estimated.
 export const KUGGIS_SIZES = Object.freeze([
   { id: "13x18x8", label: "13 × 18 × 8 cm (5 × 7 × 3¼ in)", outer: [130, 180, 80] },
   { id: "18x26x8", label: "18 × 26 × 8 cm (7 × 10¼ × 3¼ in)", outer: [180, 260, 80] },
   { id: "18x26x15", label: "18 × 26 × 15 cm (7 × 10¼ × 6 in)", outer: [180, 260, 150] },
-  { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150] },
+  { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150],
+    measured: { rimW: 265, floorW: 228, height: 146.4, lidIn: 9 },
+    note: "short side and depth measured; long side still estimated" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);
 
@@ -76,11 +83,15 @@ const num = (v, name, d) => {
 };
 const tanD = (deg) => Math.tan((deg * Math.PI) / 180);
 
-// The inside of a box, estimated from its outside size. What the builder
-// shows when a size is picked; every field is then the user's to correct.
-export function kuggisEstimate(outer) {
+// The inside of a box, estimated from its outside size, with any measured
+// numbers (a KUGGIS_SIZES entry's `measured`) laid over the estimate. What
+// the builder shows when a size is picked; every field is then the user's
+// to correct. Takes a size entry or a bare [w, d, h].
+export function kuggisEstimate(size) {
+  const outer = Array.isArray(size) ? size : size.outer;
+  const m = Array.isArray(size) ? {} : (size.measured || {});
   const [w, d, h] = outer.map((v, i) => num(v, ["width", "depth", "height"][i]));
-  return {
+  const e = {
     rimW: +(w - 2 * KUGGIS.rimIn).toFixed(1),
     rimD: +(d - 2 * KUGGIS.rimIn).toFixed(1),
     height: +(h - KUGGIS.depthIn).toFixed(1),
@@ -90,6 +101,12 @@ export function kuggisEstimate(outer) {
     floorRound: KUGGIS.floorRound,
     clear: KUGGIS.clear,
   };
+  for (const k of ["rimW", "rimD", "height", "lidIn", "corner", "floorRound"]) if (m[k] != null) e[k] = m[k];
+  // a measured floor width fixes the taper: the lean from floor to the plug line
+  if (m.floorW != null && m.rimW != null) {
+    e.taper = +((Math.atan(((m.rimW - m.floorW) / 2) / (e.height - e.lidIn)) * 180) / Math.PI).toFixed(1);
+  }
+  return e;
 }
 
 // The box as the geometry needs it, from the builder's numbers: the inside
