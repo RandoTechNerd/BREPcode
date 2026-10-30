@@ -168,9 +168,10 @@ function kuggisCode(s) {
 // 15 mm squares across the floor inside: ${fit.cols} x ${fit.rows} at these numbers.
 // IKEA publishes outside sizes only, so the inside below started as an
 // estimate. Measure your box and correct it: the pieces follow the sliders.
-const rimW = ${+k.rimW};   // [60:600] inside width at the rim (mm)
-const rimD = ${+k.rimD};   // [60:600] inside depth at the rim (mm)
-const height = ${+k.height};   // [20:300] inside depth, floor to rim (mm)
+const rimW = ${+k.rimW};   // [60:600] inside width, measured lidIn below the top (mm)
+const rimD = ${+k.rimD};   // [60:600] inside depth, measured lidIn below the top (mm)
+const height = ${+k.height};   // [20:300] inside depth, floor to the top of the box (mm)
+const lidIn = ${+k.lidIn};   // [0:30] how far the lid's plug reaches into the box; the rim is measured there, the pieces stop under it (mm)
 const taper = ${+k.taper};   // [0:15] how far each wall leans out, floor to rim (degrees)
 const corner = ${+k.corner};   // [1:40] the vertical corners' radius inside (mm)
 const floorRound = ${+k.floorRound};   // [0:15] the rounding where the floor meets the walls (mm)
@@ -183,7 +184,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, taper, corner, floorRound, clear, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, corner, floorRound, clear, layout: pieces });
 `;
 }
 
@@ -202,7 +203,7 @@ export function parseKitCode(src = "") {
   if (kuggis) {
     state.container = "kuggis";
     const k = defaultKuggis();
-    for (const key of ["rimW", "rimD", "height", "taper", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
+    for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz.outer); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
@@ -440,10 +441,11 @@ export function showCaseBuilder(hooks = {}) {
                says so; the fields are there to be measured and typed over. -->
           <div id="cb-kuggis" hidden>
             <select id="cb-ksize" class="cb-select" aria-label="KUGGIS size" style="margin-top:8px"></select>
-            <div class="cb-dims">
-              <label title="Measured inside the box at the rim, across the short side">Rim width<input id="cb-krw" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
-              <label title="Measured inside the box at the rim, along the long side">Rim depth<input id="cb-krd" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
-              <label title="Floor to rim, inside">Depth<input id="cb-kh" type="number" min="20" max="300" step="0.5" inputmode="decimal" /></label>
+            <div class="cb-dims cb-dims4">
+              <label title="Inside the box, across the short side, measured as far down as the lid's plug reaches">Rim width<input id="cb-krw" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
+              <label title="Inside the box, along the long side, measured as far down as the lid's plug reaches">Rim depth<input id="cb-krd" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
+              <label title="Floor to the top of the box, inside">Depth<input id="cb-kh" type="number" min="20" max="300" step="0.5" inputmode="decimal" /></label>
+              <label title="How far the lid's plug reaches into the box. The rim is measured there and the pieces stop 1 mm under it">Lid in<input id="cb-kl" type="number" min="0" max="30" step="0.5" inputmode="decimal" /></label>
             </div>
             <div class="cb-dims cb-dims4">
               <label title="How far each wall leans out from floor to rim, in degrees. 7° is 17 mm over a 142 mm wall">Taper °<input id="cb-kt" type="number" min="0" max="15" step="0.5" inputmode="decimal" /></label>
@@ -481,7 +483,7 @@ export function showCaseBuilder(hooks = {}) {
             <small id="cb-latch-hint"></small>
           </div>
           </div>
-          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid, no connectors. Pieces stop 3 mm under the rim, so the KUGGIS lid still closes.</p>
+          <p class="cb-hint" id="cb-kbuild" hidden>Every piece sits in the box itself: no case, no lid, no connectors. Pieces stop under the KUGGIS lid's plug, so the lid still closes.</p>
           <button type="button" class="cb-build" id="cb-build">Build printable parts</button>
           <div class="cb-sum" id="cb-sum" aria-live="polite"></div>
         </section>
@@ -531,7 +533,7 @@ export function showCaseBuilder(hooks = {}) {
   $("cb-w").value = S.width; $("cb-d").value = S.depth; $("cb-hh").value = S.height;
   const seg = (id, v) => { for (const b of $(id).querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === String(v)); };
   // the KUGGIS: a size list that fills in the estimate, and the fields it fills
-  const KFIELDS = [["cb-krw", "rimW"], ["cb-krd", "rimD"], ["cb-kh", "height"], ["cb-kt", "taper"], ["cb-kc", "corner"], ["cb-kf", "floorRound"], ["cb-kg", "clear"]];
+  const KFIELDS = [["cb-krw", "rimW"], ["cb-krd", "rimD"], ["cb-kh", "height"], ["cb-kl", "lidIn"], ["cb-kt", "taper"], ["cb-kc", "corner"], ["cb-kf", "floorRound"], ["cb-kg", "clear"]];
   const ksize = $("cb-ksize");
   for (const sz of KUGGIS_SIZES) {
     const o = document.createElement("option");
@@ -776,8 +778,8 @@ export function showCaseBuilder(hooks = {}) {
     if (kug) {
       const sz = KUGGIS_SIZES.find((x) => x.id === S.kuggis.size);
       $("cb-khint").innerHTML = sz
-        ? `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm). Measure your box inside at the rim and the floor, and type over them.`
-        : "Your own measurements. Rim and depth are inside the box; the taper is how far each wall leans out from floor to rim.";
+        ? `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm). Measure your box inside ${S.kuggis.lidIn} mm down (where the lid's plug ends) and at the floor, and type over them.`
+        : `Your own measurements, inside the box: the rim ${S.kuggis.lidIn} mm down where the lid's plug ends, the depth floor to top, the taper as how far each wall leans out.`;
     }
     const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, S.style === "koch");
     const plate = hooks.plate?.() || null;
@@ -795,7 +797,7 @@ export function showCaseBuilder(hooks = {}) {
     $("cb-read").innerHTML = (f.fits
       ? kug
         ? `<b>${cols} × ${rows}</b> squares of 15 mm on the floor · floor inside <b>${f.floor[0]} × ${f.floor[1]}</b>, rim <b>${f.rim[0]} × ${f.rim[1]}</b> mm`
-          + `<br />Pieces ${f.pieceHeight} mm tall (3 under the rim), lean ${S.kuggis.taper}° with the walls, ${S.kuggis.clear} mm off them`
+          + `<br />Pieces ${f.pieceHeight} mm tall (stopping under the lid's ${f.lidIn} mm plug), lean ${S.kuggis.taper}° with the walls, ${S.kuggis.clear} mm off them`
         : `<b>${cols} × ${rows}</b> squares of 15 mm · outside <b>${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} × ${+f.height.toFixed(1)}</b> mm`
           + `<br />Grid ${f.inner[0]} × ${f.inner[1]} mm, ${+f.inner[2].toFixed(1)} deep · boxes ${f.binHeight} mm tall`
           + (f.headroom >= 5 ? ", with pull tabs" : "")

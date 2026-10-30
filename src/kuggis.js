@@ -42,10 +42,15 @@ export const KUGGIS = Object.freeze({
   wall: 1.2, floor: 1.2,
   between: 0.3,         // air between two neighbouring pieces, on diameter
   clear: 1.0,           // fit gap to the box wall, per side
-  topClear: 3,          // a piece stops this far under the rim, so the lid still sits
+  // The KUGGIS lid is a plug: on the 26x35x15 it is 12 mm tall and 8.8 mm
+  // of that drops INSIDE the rim (measured). So the rim is measured lidIn
+  // below the top, where the plug ends, and a piece stops topClear under
+  // that, clear of the plug.
+  lidIn: 9,
+  topClear: 1,
   // the estimates below, per mm of outside size
-  rimIn: 3.5,           // rim inside = outside - 2 * rimIn (wall plus the lid's seat)
-  depthIn: 8,           // inside depth = outside height - depthIn (floor plus the lid's recess)
+  rimIn: 3.0,           // inside at lidIn down = outside - 2 * rimIn (a 2.25 wall, plus the lean over lidIn)
+  depthIn: 6,           // inside depth = outside height - depthIn (the lid's 3 mm above the rim, the floor)
   taper: 5,             // degrees each wall leans out, floor to rim. Read off IKEA's own
                         // dimension drawing of the 26x35x15: both visible corner edges
                         // lean ~1.25 cm per side over the 15 cm, through the drawing's
@@ -79,6 +84,7 @@ export function kuggisEstimate(outer) {
     rimW: +(w - 2 * KUGGIS.rimIn).toFixed(1),
     rimD: +(d - 2 * KUGGIS.rimIn).toFixed(1),
     height: +(h - KUGGIS.depthIn).toFixed(1),
+    lidIn: KUGGIS.lidIn,
     taper: KUGGIS.taper,
     corner: KUGGIS.corner,
     floorRound: KUGGIS.floorRound,
@@ -86,22 +92,25 @@ export function kuggisEstimate(outer) {
   };
 }
 
-// The box as the geometry needs it, from the builder's numbers: rim inside
-// (rimW x rimD, at the top of the inserts' travel), inside depth, the taper,
-// the corner radius and the floor rounding.
+// The box as the geometry needs it, from the builder's numbers: the inside
+// at lidIn below the top (rimW x rimD, where the lid's plug ends and the
+// pieces top out), inside depth floor to top, the taper, the corner radius
+// and the floor rounding.
 function boxDims(opts) {
-  const rimW = num(opts.rimW, "rimW", 253), rimD = num(opts.rimD, "rimD", 343);
-  const height = num(opts.height, "height", 142);
+  const rimW = num(opts.rimW, "rimW", 254), rimD = num(opts.rimD, "rimD", 344);
+  const height = num(opts.height, "height", 144);
+  const lidIn = Math.max(0, Math.min(num(opts.lidIn, "lidIn", KUGGIS.lidIn), height / 2));
   const taper = Math.min(20, Math.max(0, num(opts.taper, "taper", KUGGIS.taper)));
-  const shrink = height * tanD(taper);                  // how far each wall leans, floor to rim
+  const span = height - lidIn;                          // floor to the measuring plane
+  const shrink = span * tanD(taper);                    // how far each wall leans over that
   const floorW = rimW - 2 * shrink, floorD = rimD - 2 * shrink;
   const corner = Math.max(0.5, Math.min(num(opts.corner, "corner", KUGGIS.corner), Math.min(floorW, floorD) / 2 - 1));
   const floorRound = Math.max(0, Math.min(num(opts.floorRound, "floorRound", KUGGIS.floorRound), Math.min(floorW, floorD) / 4, height / 2));
   const clear = Math.max(0, num(opts.clear, "clear", KUGGIS.clear));
   const wall = num(opts.wall, "wall", KUGGIS.wall), floor = num(opts.floor, "floor", KUGGIS.floor);
   const topClear = num(opts.topClear, "topClear", KUGGIS.topClear);
-  const pieceH = height - topClear;
-  return { rimW, rimD, height, taper, shrink, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH };
+  const pieceH = span - topClear;
+  return { rimW, rimD, height, lidIn, span, taper, shrink, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH };
 }
 
 // The module grid a box holds: whole 15 mm squares across the FLOOR inside,
@@ -113,7 +122,7 @@ export function kuggisFit(opts = {}) {
   const cols = Math.max(0, Math.floor(useW / P)), rows = Math.max(0, Math.floor(useD / P));
   return {
     cols, rows, pitch: P,
-    rim: [b.rimW, b.rimD], floor: [+b.floorW.toFixed(1), +b.floorD.toFixed(1)], height: b.height,
+    rim: [b.rimW, b.rimD], floor: [+b.floorW.toFixed(1), +b.floorD.toFixed(1)], height: b.height, lidIn: b.lidIn,
     inner: [cols * P, rows * P, +b.pieceH.toFixed(1)],
     pieceHeight: +b.pieceH.toFixed(1),
     // the margin between the grid and the floor's inside, per side
