@@ -46,7 +46,10 @@ export const KUGGIS = Object.freeze({
   // the estimates below, per mm of outside size
   rimIn: 3.5,           // rim inside = outside - 2 * rimIn (wall plus the lid's seat)
   depthIn: 8,           // inside depth = outside height - depthIn (floor plus the lid's recess)
-  taper: 7,             // degrees each wall leans out, floor to rim
+  taper: 5,             // degrees each wall leans out, floor to rim. Read off IKEA's own
+                        // dimension drawing of the 26x35x15: both visible corner edges
+                        // lean ~1.25 cm per side over the 15 cm, through the drawing's
+                        // 26 and 35 cm scales (±1 degree; a measured box beats it)
   corner: 10,           // vertical corner radius inside
   floorRound: 6,        // the floor-to-wall rounding inside
 });
