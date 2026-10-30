@@ -477,7 +477,7 @@ export function showCaseBuilder(hooks = {}) {
               <label title="Inside the box, across the short side, measured as far down as the lid's plug reaches">Rim width<input id="cb-krw" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
               <label title="Inside the box, along the long side, measured as far down as the lid's plug reaches">Rim depth<input id="cb-krd" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
               <label title="Floor to the top of the box, inside">Depth<input id="cb-kh" type="number" min="20" max="300" step="0.5" inputmode="decimal" /></label>
-              <label title="How far the lid's plug reaches into the box. The rim is measured there and the pieces stop 1 mm under it">Lid in<input id="cb-kl" type="number" min="0" max="30" step="0.5" inputmode="decimal" /></label>
+              <label title="How far the lid's plug reaches into the box. The rim is measured there and the pieces stop 7 mm under it">Lid in<input id="cb-kl" type="number" min="0" max="30" step="0.5" inputmode="decimal" /></label>
             </div>
             <div class="cb-dims cb-dims4">
               <label title="How far each wall leans out from floor to rim, in degrees. 7° is 17 mm over a 142 mm wall">Taper °<input id="cb-kt" type="number" min="0" max="15" step="0.5" inputmode="decimal" /></label>

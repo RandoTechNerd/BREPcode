@@ -64,7 +64,10 @@ export const KUGGIS = Object.freeze({
   // below the top, where the plug ends, and a piece stops topClear under
   // that, clear of the plug.
   lidIn: 9,
-  topClear: 1,
+  // 2026-10-30: the first printed 2x2 corner piece (pieces stopping 1 mm
+  // under the plug) held the lid a little high on the 26x35, so the
+  // pieces stop 7 mm under it now: 6 mm off the top
+  topClear: 7,
   // The estimates below, per mm of outside size, re-based on a measured
   // 26x35x15 (see KUGGIS_SIZES): IKEA's quoted size is the FOOTPRINT, the
   // inside 9 mm down is 5 mm wider than it, the inside depth is 3.6 under
