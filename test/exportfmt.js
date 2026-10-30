@@ -418,7 +418,7 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
   // with .hidden and also styles by ID needs the guard said out loud.
   console.log("\nHidden option rows collapse\n");
   const TOGGLED = ["publish-row", "mesh-variant-row", "step-variant-row", "glb-wrap-row",
-    "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row", "layer-row",
+    "mf-colour-row", "mf-printer-row", "mf-nozzle-row", "plate-row", "printer-row", "nozzle-row", "layer-row",
     "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row",
     "style-row", "angle-row", "gcode-row", "gcode-text-row"];
   for (const id of TOGGLED) {

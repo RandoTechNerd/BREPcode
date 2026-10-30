@@ -365,7 +365,7 @@ ${tris.map((t) => `     <triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).joi
 
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
- <metadata name="Application">BREPcode-${APP_VERSION}</metadata>
+${appMetadata(opts)}
  <metadata name="Title">${name}</metadata>
  <resources>
   <m:colorgroup id="${COLOURS_ID}">
@@ -552,12 +552,12 @@ export function plateOrigin(index, count, plate = DEFAULT_PLATE) {
 //                                    dont_load_config), plates are only
 //                                    created from that path, and the import
 //                                    then centres every part as one group on
-//                                    plate 1. Claiming to be Bambu Studio is
-//                                    no way out: a project is then expected
-//                                    to carry the complete printer, filament
-//                                    and process presets, and a file without
-//                                    them crashed the importer. So the
-//                                    dialog says: press A (Arrange) there.
+//                                    plate 1. The way out is to BE a Bambu
+//                                    Studio project: with a Bambu printer
+//                                    chosen the file says so (appMetadata)
+//                                    and names installed presets, see
+//                                    BAMBU_PRINTERS. Without one, the dialog
+//                                    says: press A (Arrange) there.
 //   the coordinates themselves       plate 2's parts are written beside plate
 //                                    1's (see plateOrigin), so a slicer with no
 //                                    plate concept (PrusaSlicer, Cura) still
@@ -637,7 +637,7 @@ ${onPlate.map((id) => `    <model_instance>
 
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="${M}">
- <metadata name="Application">BREPcode-${APP_VERSION}</metadata>
+${appMetadata(opts)}
  <metadata name="Title">${name}</metadata>
  <resources>
   <m:colorgroup id="${COLOURS_ID}">
@@ -702,6 +702,113 @@ export const PRINTERS = {
   },
 };
 
+// ---------------------------------------------------------- Bambu Lab printers
+//
+// Bambu Studio is stricter than Orca: it reads a file's project config ONLY
+// when the Application metadata says "BambuStudio-x.y.z" (bbs_3mf.cpp,
+// dont_load_config), and it draws plates only from that config. So for a
+// Bambu printer the file claims to be a Bambu Studio project. What makes that
+// safe is in its preset loader (PresetBundle::load_config_file_config ->
+// PresetCollection::load_external_preset): the three *_settings_id keys are
+// always in the "different settings" set, and for a name that matches an
+// INSTALLED system preset every other value is copied from that preset
+// before the comparison, so a project that names presets and carries no
+// values of its own selects them untouched. Verified in Bambu Studio 2.7 on
+// an A1 mini: three plates, printer and process as they were, no dialogs.
+//
+// Two things the loader needs beyond the names:
+//   filament_diameter   Preset::normalize trims EVERY per-filament list to
+//                       this list's length (default: one), which emptied
+//                       the second and third filament names and gave them
+//                       presets named after the file
+//   different_settings_to_system   one entry per preset: process, each
+//                       filament, printer. Empty strings; the ids are added
+//                       by the loader itself
+//
+// The names are matched by STRING against the installed vendor profiles, so
+// every one below is spelled as resources/profiles/BBL spells it (read from
+// an installed Bambu Studio 2.7, process and filament resolved through their
+// compatible_printers lists; test/printers.js checks them against whatever
+// Bambu Studio or OrcaSlicer is installed). The P1P has no "Bambu PLA Basic"
+// profile of its own; its generic high-speed PLA is the one that exists.
+export const BAMBU_PROJECT_VERSION = "02.00.01.00";   // a Bambu Studio that every current one is newer than
+export const BAMBU_NOZZLES = ["0.2", "0.4", "0.6", "0.8"];
+const bambuNoz = (printer, process, filament) => ({ printer, process, filament });
+function bambuPrinter(label, blurb, model, bed, height, byNozzle) {
+  return {
+    label, blurb, model, bed, height, byNozzle, bambu: true,
+    // one hot end; the AMS feeds it up to sixteen filaments
+    nozzles: 1, maxFilaments: 16, defaultNozzle: "0.4",
+    // the 0.4 names, so code that reads .printer/.process/.filament still works
+    ...byNozzle["0.4"],
+    variant: "0.4", nozzleDiameter: "0.4", filamentType: "PLA",
+  };
+}
+const BAMBU_PRINTERS = {
+  "bambu-a1m": bambuPrinter("Bambu Lab A1 mini", "180 × 180 × 180 mm, AMS lite", "Bambu Lab A1 mini", [180, 180], 180, {
+    "0.2": bambuNoz("Bambu Lab A1 mini 0.2 nozzle", "0.10mm Standard @BBL A1M 0.2 nozzle", "Bambu PLA Basic @BBL A1M 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab A1 mini 0.4 nozzle", "0.20mm Standard @BBL A1M", "Bambu PLA Basic @BBL A1M"),
+    "0.6": bambuNoz("Bambu Lab A1 mini 0.6 nozzle", "0.30mm Standard @BBL A1M 0.6 nozzle", "Bambu PLA Basic @BBL A1M"),
+    "0.8": bambuNoz("Bambu Lab A1 mini 0.8 nozzle", "0.40mm Standard @BBL A1M 0.8 nozzle", "Bambu PLA Basic @BBL A1M"),
+  }),
+  "bambu-a1": bambuPrinter("Bambu Lab A1", "256 × 256 × 256 mm, AMS lite", "Bambu Lab A1", [256, 256], 256, {
+    "0.2": bambuNoz("Bambu Lab A1 0.2 nozzle", "0.10mm Standard @BBL A1 0.2 nozzle", "Bambu PLA Basic @BBL A1 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab A1 0.4 nozzle", "0.20mm Standard @BBL A1", "Bambu PLA Basic @BBL A1"),
+    "0.6": bambuNoz("Bambu Lab A1 0.6 nozzle", "0.30mm Standard @BBL A1 0.6 nozzle", "Bambu PLA Basic @BBL A1"),
+    "0.8": bambuNoz("Bambu Lab A1 0.8 nozzle", "0.40mm Standard @BBL A1 0.8 nozzle", "Bambu PLA Basic @BBL A1"),
+  }),
+  "bambu-p1p": bambuPrinter("Bambu Lab P1P", "256 × 256 × 256 mm", "Bambu Lab P1P", [256, 256], 256, {
+    "0.2": bambuNoz("Bambu Lab P1P 0.2 nozzle", "0.10mm Standard @BBL P1P 0.2 nozzle", "Generic PLA High Speed @BBL P1P 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab P1P 0.4 nozzle", "0.20mm Standard @BBL P1P", "Generic PLA High Speed @BBL P1P"),
+    "0.6": bambuNoz("Bambu Lab P1P 0.6 nozzle", "0.30mm Standard @BBL P1P 0.6 nozzle", "Generic PLA High Speed @BBL P1P"),
+    "0.8": bambuNoz("Bambu Lab P1P 0.8 nozzle", "0.40mm Standard @BBL P1P 0.8 nozzle", "Generic PLA High Speed @BBL P1P"),
+  }),
+  "bambu-p1s": bambuPrinter("Bambu Lab P1S", "256 × 256 × 256 mm, AMS", "Bambu Lab P1S", [256, 256], 256, {
+    "0.2": bambuNoz("Bambu Lab P1S 0.2 nozzle", "0.10mm Standard @BBL X1C 0.2 nozzle", "Bambu PLA Basic @BBL X1C 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab P1S 0.4 nozzle", "0.20mm Standard @BBL X1C", "Bambu PLA Basic @BBL P1S 0.4 nozzle"),
+    "0.6": bambuNoz("Bambu Lab P1S 0.6 nozzle", "0.30mm Standard @BBL X1C 0.6 nozzle", "Bambu PLA Basic @BBL P1S 0.6 nozzle"),
+    "0.8": bambuNoz("Bambu Lab P1S 0.8 nozzle", "0.40mm Standard @BBL X1C 0.8 nozzle", "Bambu PLA Basic @BBL X1C 0.8 nozzle"),
+  }),
+  "bambu-x1": bambuPrinter("Bambu Lab X1", "256 × 256 × 256 mm, AMS", "Bambu Lab X1", [256, 256], 256, {
+    "0.2": bambuNoz("Bambu Lab X1 0.2 nozzle", "0.10mm Standard @BBL X1C 0.2 nozzle", "Bambu PLA Basic @BBL X1C 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab X1 0.4 nozzle", "0.20mm Standard @BBL X1C", "Bambu PLA Basic @BBL X1"),
+    "0.6": bambuNoz("Bambu Lab X1 0.6 nozzle", "0.30mm Standard @BBL X1 0.6 nozzle", "Bambu PLA Basic @BBL X1"),
+    "0.8": bambuNoz("Bambu Lab X1 0.8 nozzle", "0.40mm Standard @BBL X1 0.8 nozzle", "Bambu PLA Basic @BBL X1"),
+  }),
+  "bambu-x1c": bambuPrinter("Bambu Lab X1 Carbon", "256 × 256 × 256 mm, AMS", "Bambu Lab X1 Carbon", [256, 256], 256, {
+    "0.2": bambuNoz("Bambu Lab X1 Carbon 0.2 nozzle", "0.10mm Standard @BBL X1C 0.2 nozzle", "Bambu PLA Basic @BBL X1C 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab X1 Carbon 0.4 nozzle", "0.20mm Standard @BBL X1C", "Bambu PLA Basic @BBL X1C"),
+    "0.6": bambuNoz("Bambu Lab X1 Carbon 0.6 nozzle", "0.30mm Standard @BBL X1C 0.6 nozzle", "Bambu PLA Basic @BBL X1C 0.6 nozzle"),
+    "0.8": bambuNoz("Bambu Lab X1 Carbon 0.8 nozzle", "0.40mm Standard @BBL X1C 0.8 nozzle", "Bambu PLA Basic @BBL X1C 0.8 nozzle"),
+  }),
+  "bambu-x1e": bambuPrinter("Bambu Lab X1E", "256 × 256 × 256 mm, AMS", "Bambu Lab X1E", [256, 256], 256, {
+    "0.2": bambuNoz("Bambu Lab X1E 0.2 nozzle", "0.10mm Standard @BBL X1C 0.2 nozzle", "Bambu PLA Basic @BBL X1C 0.2 nozzle"),
+    "0.4": bambuNoz("Bambu Lab X1E 0.4 nozzle", "0.20mm Standard @BBL X1C", "Bambu PLA Basic @BBL X1C"),
+    "0.6": bambuNoz("Bambu Lab X1E 0.6 nozzle", "0.30mm Standard @BBL X1C 0.6 nozzle", "Bambu PLA Basic @BBL X1C"),
+    "0.8": bambuNoz("Bambu Lab X1E 0.8 nozzle", "0.40mm Standard @BBL X1C 0.8 nozzle", "Bambu PLA Basic @BBL X1C 0.8 nozzle"),
+  }),
+};
+Object.assign(PRINTERS, BAMBU_PRINTERS);
+
+// The three preset names for a Bambu printer at a nozzle size, or null.
+export function bambuPreset(printerKey, nozzle) {
+  const p = PRINTERS[printerKey];
+  if (!p?.bambu) return null;
+  const nz = p.byNozzle[String(nozzle)] ? String(nozzle) : p.defaultNozzle;
+  return { nozzle: nz, ...p.byNozzle[nz] };
+}
+
+// The model's Application metadata. A file prepared for a Bambu printer says
+// it is a Bambu Studio project (see BAMBU_PRINTERS for why that is safe);
+// everything else says what it is.
+export function appMetadata(opts) {
+  if (PRINTERS[opts?.printer]?.bambu) {
+    return ` <metadata name="Application">BambuStudio-${BAMBU_PROJECT_VERSION}</metadata>\n`
+      + ` <metadata name="BambuStudio:3mfVersion">1</metadata>`;
+  }
+  return ` <metadata name="Application">BREPcode-${APP_VERSION}</metadata>`;
+}
+
 // Colours for extruders the model does not use. A tool head with no filament
 // named is still a tool head, and leaving the slot empty makes the slicer
 // invent one.
@@ -709,9 +816,27 @@ const SPARE_COLOURS = ["#FFFFFF", "#000000", "#FF6A13", "#1E88E5"];
 
 // The project preset a slicer reads on open. `palette` is the model's own
 // colours, in extruder order.
-export function projectSettings(printerKey, palette = []) {
+export function projectSettings(printerKey, palette = [], nozzle) {
   const p = PRINTERS[printerKey];
   if (!p) return null;
+  if (p.bambu) {
+    const b = bambuPreset(printerKey, nozzle);
+    // one filament slot per colour (at least one); the AMS has sixteen
+    const colours = (palette.length ? palette : [SPARE_COLOURS[0]]).slice(0, p.maxFilaments);
+    const n = colours.length;
+    const times = (v) => Array.from({ length: n }, () => v);
+    return {
+      version: BAMBU_PROJECT_VERSION,
+      name: "project_settings",
+      from: "project",
+      printer_settings_id: b.printer,
+      print_settings_id: b.process,
+      filament_settings_id: times(b.filament),
+      filament_colour: colours,
+      filament_diameter: times("1.75"),
+      different_settings_to_system: Array.from({ length: n + 2 }, () => ""),
+    };
+  }
   const n = p.nozzles;
   const colours = [];
   for (let i = 0; i < n; i++) {
@@ -742,7 +867,7 @@ export function projectSettings(printerKey, palette = []) {
 // and it also names the presets, so the slicer opens on the right machine with
 // the right filaments instead of a project named after the file.
 function projectPart(opts, palette = []) {
-  const full = projectSettings(opts?.printer, palette);
+  const full = projectSettings(opts?.printer, palette, opts?.nozzle);
   if (full) return `${JSON.stringify(full, null, 1)}\n`;
   if (!palette.length) return null;
   return `{\n  "filament_colour": [${palette.map((hex) => `"${hex}"`).join(", ")}]\n}\n`;
@@ -1042,17 +1167,19 @@ export function stlTo3MF(stl, name = "brepcode-model", opts = {}) {
   // Core-spec metadata, so anything reading this file knows where it came from.
   // Our 3MF used to declare nothing at all, which is simply a gap.
   //
-  // What this deliberately does NOT do is claim to be a slicer project.
+  // What this does NOT do on its own is claim to be a slicer project.
   // OrcaSlicer greets a bare 3MF with "generated by an old OrcaSlicer version,
-  // loading geometry data only", and the tempting fix — adding its
-  // `BambuStudio:3mfVersion` marker — is a trap: it makes Orca take the Bambu
-  // project path, then hunt for the per-object settings, plate thumbnails and
-  // slice info that a real project carries. Measured, the file went from
-  // loading in about 30 seconds to not loading at all. The message is also
-  // accurate: we export geometry, and have no print settings to give it.
+  // loading geometry data only", and adding the `BambuStudio:3mfVersion`
+  // marker ALONE is a trap: it makes Orca take the Bambu project path, then
+  // hunt for the per-object settings that a real project carries. Measured,
+  // the file went from loading in about 30 seconds to not loading at all.
+  // The exception is a Bambu printer chosen under Prepare for: then
+  // appMetadata makes the file a Bambu Studio project that names installed
+  // presets (BAMBU_PRINTERS), and the page routes the export through
+  // colored3MF so the per-object settings are there too.
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
- <metadata name="Application">BREPcode-${APP_VERSION}</metadata>
+${appMetadata(opts)}
  <metadata name="Title">${name}</metadata>
  <resources>
   <object id="1" type="model" name="${name}">

@@ -2883,7 +2883,26 @@
             <span>Prepare for</span>
             <select id="mf-printer">
               <option value="">Any slicer - geometry and colours only</option>
+              <option value="bambu-a1m">Bambu Lab A1 mini - opens in Bambu Studio as a project</option>
+              <option value="bambu-a1">Bambu Lab A1 - opens in Bambu Studio as a project</option>
+              <option value="bambu-p1p">Bambu Lab P1P - opens in Bambu Studio as a project</option>
+              <option value="bambu-p1s">Bambu Lab P1S - opens in Bambu Studio as a project</option>
+              <option value="bambu-x1">Bambu Lab X1 - opens in Bambu Studio as a project</option>
+              <option value="bambu-x1c">Bambu Lab X1 Carbon - opens in Bambu Studio as a project</option>
+              <option value="bambu-x1e">Bambu Lab X1E - opens in Bambu Studio as a project</option>
               <option value="snapmaker-u1">Snapmaker U1 - 4 tool heads, ready to slice</option>
+            </select>
+          </label>
+          <!-- Bambu's presets are per nozzle ("Bambu Lab A1 mini 0.6 nozzle",
+               "0.30mm Standard @BBL A1M 0.6 nozzle"), so the file has to name
+               the one that is fitted or Bambu Studio switches the printer. -->
+          <label id="mf-nozzle-row" hidden title="The nozzle fitted: Bambu Studio's printer and process presets are named per nozzle size">
+            <span>Nozzle</span>
+            <select id="mf-nozzle">
+              <option value="0.2">0.2 mm</option>
+              <option value="0.4" selected>0.4 mm (standard)</option>
+              <option value="0.6">0.6 mm</option>
+              <option value="0.8">0.8 mm</option>
             </select>
           </label>
           <!-- A 3MF carries a position, and a slicer's plate origin is its
@@ -14699,6 +14718,27 @@ ${joined}${SITE_TAIL}`), joined);
       const p = printerKey && exp?.PRINTERS?.[printerKey];
       return p ? { x: p.bed[0], y: p.bed[1] } : currentPlate();
     }
+    // The printer a 3MF is prepared for, and the nozzle on it. Remembered like
+    // the plate: the same printer every export, not a choice to make each time.
+    const mfPrinterSel = $("mf-printer"), mfNozzleSel = $("mf-nozzle");
+    mfPrinterSel.value = localStorage.getItem("brepcode-mf-printer") || "";
+    if (!mfPrinterSel.value) mfPrinterSel.value = "";       // a printer we no longer list
+    mfNozzleSel.value = localStorage.getItem("brepcode-mf-nozzle") || "0.4";
+    if (!mfNozzleSel.value) mfNozzleSel.value = "0.4";
+    function syncNozzleRow() {
+      const row = $("mf-nozzle-row");
+      if (row && !row.hidden) row.hidden = !/^bambu-/.test(mfPrinterSel.value);
+    }
+    mfPrinterSel.addEventListener("change", () => {
+      localStorage.setItem("brepcode-mf-printer", mfPrinterSel.value);
+      $("mf-nozzle-row").hidden = !/^bambu-/.test(mfPrinterSel.value);
+    });
+    mfNozzleSel.addEventListener("change", () => localStorage.setItem("brepcode-mf-nozzle", mfNozzleSel.value));
+    for (const el of [mfPrinterSel, mfNozzleSel]) el.addEventListener("click", (e) => e.stopPropagation());
+    // Chosen a Bambu printer? Then the file is a Bambu Studio project, and a
+    // project carries per-object settings: the colour writer makes them, the
+    // plain single-mesh one does not, so even a one-colour model goes that way.
+    function isBambu(printerKey, exp) { return !!(printerKey && exp?.PRINTERS?.[printerKey]?.bambu); }
 
     function currentPlate() {
       const [x, y] = (plateSel.value || "256x256").split("x").map(Number);
@@ -15979,11 +16019,11 @@ ${joined}${SITE_TAIL}`), joined);
         const distinct = new Set(groups.map((g) => g.color)).size;
         const slicerPrinter = $("mf-printer")?.value || "";
         const opts = {
-          source: code.value.trim(), printer: slicerPrinter,
+          source: code.value.trim(), printer: slicerPrinter, nozzle: $("mf-nozzle")?.value || "0.4",
           plate: plateFor(slicerPrinter, exp) ?? currentPlate(),
           scene: currentScene(), history: hist.stack,
         };
-        const bytes = distinct > 1 ? exp.colored3MF(groups, base, opts)
+        const bytes = distinct > 1 || isBambu(slicerPrinter, exp) ? exp.colored3MF(groups, base, opts)
                                    : exp.stlTo3MF(await exportSTL(), base, opts);
         const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
         if (!r?.ok) { setStatus("err", `Couldn't open the slicer: ${r?.error || "unknown error"}`); return; }
@@ -16050,10 +16090,11 @@ ${joined}${SITE_TAIL}`), joined);
           const printerKey = $("mf-printer").value || "";
           const opts3mf = {
             source: src, plate: plateFor(printerKey, exp) ?? plate, printer: printerKey,
+            nozzle: $("mf-nozzle").value || "0.4",
             scene: currentScene(), history: hist.stack,
           };
           size = download(`${base}.3mf`,
-            distinct > 1 ? exp.colored3MF(groups, base, opts3mf)
+            distinct > 1 || isBambu(printerKey, exp) ? exp.colored3MF(groups, base, opts3mf)
                          : exp.stlTo3MF(await exportSTL(), base, opts3mf),
             "model/3mf");
           // The plate the file was ACTUALLY centred on, which is the printer's
@@ -16094,10 +16135,12 @@ ${joined}${SITE_TAIL}`), joined);
           if (!groups.length) throw new Error("build the model first");
           const plate = currentPlate() ?? undefined;   // "keep coordinates" makes no sense here
           const partsPrinter = $("mf-printer").value || "";
-          const files = exp.partsPlate3MF(groups, base, {
-            source: src, plate: plateFor(partsPrinter, exp) ?? plate, printer: partsPrinter,
+          const partsNozzle = $("mf-nozzle").value || "0.4";
+          const partsOpts = {
+            source: src, plate: plateFor(partsPrinter, exp) ?? plate, printer: partsPrinter, nozzle: partsNozzle,
             gap: 8, scene: currentScene(), history: hist.stack,
-          });
+          };
+          const files = exp.partsPlate3MF(groups, base, partsOpts);
           if (!files.length) throw new Error("no printable geometry");
           // One file for every plate. It used to be a file per plate, and
           // browsers allow one download per click — a three-plate job
@@ -16106,15 +16149,25 @@ ${joined}${SITE_TAIL}`), joined);
           size = download(`${base}${f.suffix}.3mf`, f.bytes, "model/3mf");
           const totalParts = f.parts;
           const nPlates = f.plates;
-          const plateTxt = plate ?? exp.DEFAULT_PLATE;
+          // the plate it was ACTUALLY laid out on: the printer's own bed when one is chosen
+          const plateTxt = partsOpts.plate ?? exp.DEFAULT_PLATE;
+          const bp = isBambu(partsPrinter, exp) ? exp.bambuPreset(partsPrinter, partsNozzle) : null;
+          const nColours = new Set(groups.map((g) => g.color)).size;
           fixnote.innerHTML = `<span style="color:var(--muted3)">${totalParts} part${totalParts === 1 ? "" : "s"} `
             + `laid out on ${nPlates} plate${nPlates === 1 ? "" : "s"} of ${plateTxt.x} × ${plateTxt.y} mm `
-            + `(size under <b>Plate</b> in this menu), 8&thinsp;mm apart, every piece standing on the bed. `
-            + (nPlates > 1
-              ? `All ${nPlates} plates are in this one file. Bambu Studio and OrcaSlicer open any file they did not `
-                + `write themselves on one plate, so press <b>A</b> (Arrange) there and they add the plates; `
-                + `PrusaSlicer and Cura have no plates, so the overflow sits beside the bed for their arrange button. `
-              : "")
+            + `(${bp ? `the ${exp.PRINTERS[partsPrinter].label}'s bed` : "size under <b>Plate</b> in this menu"}), `
+            + `8&thinsp;mm apart, every piece standing on the bed. `
+            + (bp
+              ? `A Bambu Studio project: it opens with ${nPlates === 1 ? "its plate" : `a tab per plate (${nPlates})`}, `
+                + `the <b>${esc(bp.printer)}</b> and <b>${esc(bp.process)}</b> presets selected and `
+                + `${nColours === 1 ? "one filament slot" : `${nColours} filament slots`} in the model's colours `
+                + `(${esc(bp.filament)}; swap in what is loaded). Other slicers see the parts laid out as usual. `
+              : nPlates > 1
+                ? `All ${nPlates} plates are in this one file. Bambu Studio and OrcaSlicer open any file they did not `
+                  + `write themselves on one plate, so press <b>A</b> (Arrange) there and they add the plates, or pick `
+                  + `your Bambu printer under <b>Prepare for</b> and the file opens with a tab per plate; `
+                  + `PrusaSlicer and Cura have no plates, so the overflow sits beside the bed for their arrange button. `
+                : "")
             + `Parts are separate objects in the slicer, so they can still be moved one by one.</span>`;
         } else if (fmt === "step-curved") {
           // real analytic B-rep: the DSL tree re-built in OCCT (replicad),
@@ -16505,8 +16558,8 @@ ${joined}${SITE_TAIL}`), joined);
       publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> (source, thumbnail and a viewer page) and adds it to the stashed gallery. The stash lives on the site itself, not in this browser: it survives clearing local data, and anyone who unlocks the stash sees it there. The mesh travels with the page, so it works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
       stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange - geometry only, so any colours are dropped." },
       obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
-      "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "plate-row"] },
-      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Every plate in the one file; in Bambu Studio or OrcaSlicer press A (Arrange) to spread it over plates.", opts: ["mesh-variant-row", "plate-row"] },
+      "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "mf-nozzle-row", "plate-row"] },
+      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Every plate in the one file. Pick your Bambu printer under Prepare for and Bambu Studio opens it with a tab per plate; otherwise press A (Arrange) there.", opts: ["mesh-variant-row", "mf-printer-row", "mf-nozzle-row", "plate-row"] },
       gcode: { kind: "slice", desc: "BETA - check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer - what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid - opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
@@ -17466,12 +17519,13 @@ ${joined}${SITE_TAIL}`), joined);
       syncGroupControls(fmt);
       $("exp-desc").textContent = spec.desc;
       for (const row of ["mesh-variant-row", "step-variant-row", "glb-wrap-row",
-        "short-row", "publish-row", "mf-colour-row", "mf-printer-row", "plate-row", "printer-row", "nozzle-row",
+        "short-row", "publish-row", "mf-colour-row", "mf-printer-row", "mf-nozzle-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row",
         "skin-row", "stagger-row",
         "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"]) {
         $(row).hidden = !(spec.opts || []).includes(row);
       }
+      syncNozzleRow();
       if (fmt === "share") wireShortRow();
       // the disclosure only earns its space if something is inside it
       $("exp-more").hidden = !ADVANCED_ROWS.some((id) => !$(id).hidden);
