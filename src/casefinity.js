@@ -600,7 +600,9 @@ export function casefinityCaseLid(opts = {}) {
     ];
     if (pip) {
       parts.push(pinAt(c.pipPin, -(lw / 2 + lg + c.lugWidth) + 0.5, lw + 2 * lg + 2 * c.lugWidth - 1));
-      parts.push(d.toggle ? toggleLatch(d) : casefinitySwingLatch(opts));
+      // in case coordinates, never the separate part's on-its-side print pose:
+      // the lid as a whole is turned over for printing further down
+      parts.push(d.toggle ? toggleLatch(d) : casefinitySwingLatch({ ...opts, print: false }));
     } else {
       extraCuts.push(pinAt(d.pinR, -(lw / 2 + lg + c.lugWidth + 1), lw + 2 * (lg + c.lugWidth) + 2));
     }

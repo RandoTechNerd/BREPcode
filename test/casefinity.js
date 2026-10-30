@@ -221,7 +221,14 @@ console.log("\nKoch latches printed in place, the click bar, the pin fit\n");
   const kit = await measure(caseKit({ ...size, layout: [] }));
   check("a Koch kit with the in-place latch is body and lid, two solids", kit.solids === 2 && /Exact/i.test(kit.engine), `${kit.solids} / ${kit.engine}`);
   const lid = await measure(casefinityCaseLid({ ...size, print: true }));
-  check("printed, the lid stands taller than its 18: the latch rises from the pin", lid.z.max > 18 + 10 && near(lid.z.min, 0), `${lid.z.min}..${lid.z.max}`);
+  // turned over, the lid is 18 tall and the latch rises from the pin (at z = 18 - 8 = 10)
+  // to its lip 6.9 below the parting line, which is 35 - 10.1 = 24.9 up
+  check("printed, the lid stands taller than its 18: the latch rises from the pin", near(lid.z.max, 24.9, 0.05) && near(lid.z.min, 0), `${lid.z.min}..${lid.z.max}`);
+  // and the latch is ON the pin: the pin sits at y = +(19 + 5.5), and the plate
+  // (2 thick, 0.5 off the pad, so y = 22.5..24.5 turned over) rises from it between the lugs
+  const onPin = await measure(dsl.intersection(casefinityCaseLid({ ...size, print: true }),
+    dsl.translate([-3, 19 + 3.6, 14], dsl.cube([6, 1.8, 6]))));
+  check("...and rises from the pin itself, not from somewhere else", onPin.vol > 10, `${onPin.vol.toFixed(1)} mm³ of latch just outboard of the pin`);
   // the in-place latch alone: its boss hole fits the printed pin with 0.35 of room
   const pipLatch = casefinitySwingLatch({ ...size, latch: "swingpip" });
   const hole = await measure(dsl.intersection(
