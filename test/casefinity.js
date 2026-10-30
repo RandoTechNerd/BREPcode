@@ -159,7 +159,7 @@ console.log("\nthe lid closes: rounded tongue, clear corners, optional gasket\n"
   check("lidFit is 0.3 a side", near(lm.z.min, 17 - 11, 0.01) && near(lm.y.min, -(38 / 2 + 0.3 + 1.6), 0.01), `${lm.y.min}`);
   // the hook clasp: the wedge stands 0.9 proud, the blade 1.6 thick on a 0.3
   // gap, the bar under its window 2.4 tall on 4 mm legs; closed, no contact
-  check("hook clasp: the wedge stands 0.9 proud of the front", near(bm.y.min, -(38 / 2 + 0.9), 0.01), `${bm.y.min}`);
+  check("hook clasp: the wedge stands 0.6 proud of the front (was 0.9: the 2026-10-30 redesign)", near(bm.y.min, -(38 / 2 + 0.6), 0.01), `${bm.y.min}`);
   const bar = await measure(dsl.intersection(lid, dsl.translate([-12, -38 / 2 - 3, 17 - 11 - 0.5], dsl.cube([24, 3, 2.9]))));
   check("hook clasp: a 2.4 bar, 1.6 thick, across the blade", bar.vol > 60 && bar.vol < 78, `${bar.vol.toFixed(1)} mm³ (76.8 before its chamfers; the old 1.3 x 1.6 bar was 41.6)`);
   // the round clasp: a solid blade with a round lip under a round bead on the
@@ -176,6 +176,22 @@ console.log("\nthe lid closes: rounded tongue, clear corners, optional gasket\n"
   check("round clasp: closed lid and body do not intersect", rClosed < 2, `${rClosed.toFixed(2)} mm³`);
   const solidBlade = await measure(dsl.intersection(rLid, dsl.translate([-12, -38 / 2 - 3, 17 - 11 + 3], dsl.cube([24, 3, 5]))));
   check("round clasp: the blade has no window", near(solidBlade.vol, 20 * 1.6 * 5, 2), `${solidBlade.vol.toFixed(1)} mm³ (160 solid; 32 with the hook's window)`);
+  // the 2026-10-30 clasps: each builds exact, stands its own distance proud,
+  // and closed the lid meets the body only where it is meant to be sprung
+  // (the wedge pad, the groove pad and the cam hold the lip 0.2 to 0.5 out;
+  // the claws touch nothing)
+  const proud = { wedge: 0.7, groove: 0.8, cam: 0.9, claw: 0.6, fingers: 0.6 };
+  const sprung = { wedge: 12, groove: 12, cam: 30, claw: 2, fingers: 2 };
+  for (const latch of ["wedge", "groove", "cam", "claw", "fingers"]) {
+    const body = casefinityCase({ ...size, latch }), lid = casefinityCaseLid({ ...size, latch });
+    const [bm2, lm2, ov] = await Promise.all([measure(body), measure(lid), overlap(body, lid)]);
+    check(`${latch}: body and lid build exact`, /Exact/i.test(bm2.engine) && /Exact/i.test(lm2.engine), `${bm2.engine} / ${lm2.engine}`);
+    check(`${latch}: the body feature stands ${proud[latch]} proud`, near(bm2.y.min, -(38 / 2 + proud[latch]), 0.01), `${bm2.y.min}`);
+    check(`${latch}: the blade stands on the 0.7 gap`, near(lm2.y.min, -(38 / 2 + 0.7 + 1.6), 0.01), `${lm2.y.min}`);
+    check(`${latch}: closed, ${sprung[latch] > 2 ? "only the sprung lip meets the body" : "lid and body do not touch"}`, ov < sprung[latch] && (sprung[latch] <= 2 || ov > 0.5), `${ov.toFixed(2)} mm³`);
+  }
+  const twoFingers = await measure(dsl.intersection(casefinityCaseLid({ ...size, latch: "fingers" }), dsl.translate([-12, -38 / 2 - 3, 17 - 11 + 3], dsl.cube([24, 3, 5]))));
+  check("fingers: two 7 mm fingers, a slot between", near(twoFingers.vol, 2 * 7 * 1.6 * 5, 2), `${twoFingers.vol.toFixed(1)} mm³ (112 for two fingers, 160 for a blade)`);
 }
 
 console.log("\nthe Koch Box: ribbed walls, a swing latch on a pin\n");

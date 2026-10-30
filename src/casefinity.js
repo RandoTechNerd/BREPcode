@@ -57,8 +57,12 @@ const CASE = Object.freeze({
   // under a wedge on the body. 1.6 thick flexing 0.6 over 11 mm is ~1.2 %
   // strain (PLA holds to ~2.5 %); the first cut's 1.3 x 1.6 bar on 3 mm legs
   // snapped off, so the legs are 4 and the bar 2.4
-  latchWidth: 20, latchThick: 1.6, latchDrop: 11, latchCatch: 0.9, latchGap: 0.3,
-  latchLeg: 4, latchBar: 2.4,
+  // 2026-10-30 redesign after the snap-fit guides (Core77, Fictiv, x3dprints:
+  // lead-in 20-30 deg, hold 45-60 deg, 90 is a permanent lock): the wedge
+  // ramps at hookLead and holds at hookHold, the catch is 0.6 not 0.9, and
+  // the bar's inner bottom edge is chamfered to ride the ramp
+  latchWidth: 20, latchThick: 1.6, latchDrop: 11, latchCatch: 0.6, latchGap: 0.3,
+  latchLeg: 4, latchBar: 2.4, hookLead: 30, hookHold: 60,
   // the "round" clasp: a round bead along the body's front rolls over a round
   // lip on a SOLID blade. No window, no flat underside anywhere: nothing to
   // support. The blade stands roundGap off the wall; the lip (radius roundLip,
@@ -67,6 +71,26 @@ const CASE = Object.freeze({
   // Passing costs roundBead + roundLipOut - roundGap = 0.6 of flex (~1.2 %),
   // and the lip sits 0.6 under the bead when closed
   roundBead: 0.7, roundLip: 0.9, roundLipOut: 0.6, roundGap: 0.7,
+  // Five more clasps to test against those two (2026-10-30; renders in
+  // shots/latches). The round-lip blade with a different body feature:
+  //   "wedge":  a wedge with a wedgeLead ramp and a wedgeHold underside,
+  //             wedgeProud out, and a wedgePad pad below it that keeps the
+  //             blade sprung wedgePad - 0.1 when closed (pressure, firm click)
+  //   "groove": the lip drops grooveDepth into a round groove in a groovePad
+  //             pad with a grooveLead ramp on top: no sharp face anywhere, a
+  //             soft symmetric click, the kind PLA never shears
+  //   "cam":    the body face leans out camCrest over the blade's drop, so
+  //             the blade is wound up steadily as the lid goes down, then a
+  //             camStep step holds it (pressure latch, ~1.8 % strain: PETG)
+  // and a hook that grips at its very tip instead of through a window:
+  //   "claw":   a solid blade whose tip turns in clawIn, hooking under a
+  //             clawProud wedge with a clawLead ramp and a clawHold underside
+  //   "fingers": the claw as two fingerW fingers, a third of the force each
+  wedgeProud: 0.7, wedgeLead: 20, wedgeHold: 60, wedgePad: 0.3,
+  groovePad: 0.8, grooveDepth: 0.5, grooveLead: 20,
+  camCrest: 0.9, camStep: 0.3,
+  clawIn: 0.5, clawLip: 1.6, clawProud: 0.6, clawLead: 30, clawHold: 55,
+  fingerW: 7,
   topClear: 0.5,
   tabLean: 1.2,   // the bin's pull tab leans this far in off the front face, clear of the lid's wall
   // the "Koch Box" style, after Luca Koch's Parametric Hinged Storage Box
@@ -314,16 +338,24 @@ function caseDims(opts) {
   // folding over-centre latch. The smooth style keeps its hook and round clasps.
   const latch = koch
     ? (["swing", "swingpip", "toggle"].includes(opts.latch) ? opts.latch : "swingpip")
-    : opts.latch === "round" ? "round" : "hook";
+    : SMOOTH_LATCHES.includes(opts.latch) ? opts.latch : "hook";
   const toggle = latch === "toggle";
+  // the round-lip family and the claw family both stand the blade on the
+  // round clasp's 0.7 gap; only the window hook sits on the tight 0.3
+  const lipLatch = ["round", "wedge", "groove", "cam"].includes(latch);
+  const clawLatch = latch === "claw" || latch === "fingers";
   // how far the front hardware stands off the front wall, body side and lid side
-  const latchOut = koch ? c.ribDepth + (toggle ? c.catchOut + c.catchBar : 0) : latch === "round" ? c.roundBead : c.latchCatch;
-  const lidOut = koch ? (toggle ? c.ribDepth + c.pipGap + c.leverThick / 2 + c.lugR : c.swingPinOut + c.lugR) : (latch === "round" ? c.roundGap : c.latchGap) + c.latchThick;
+  const bodyOut = { hook: c.latchCatch, round: c.roundBead, wedge: c.wedgeProud, groove: c.groovePad, cam: c.camCrest, claw: c.clawProud, fingers: c.clawProud };
+  const latchOut = koch ? c.ribDepth + (toggle ? c.catchOut + c.catchBar : 0) : bodyOut[latch];
+  const lidOut = koch ? (toggle ? c.ribDepth + c.pipGap + c.leverThick / 2 + c.lugR : c.swingPinOut + c.lugR) : (lipLatch || clawLatch ? c.roundGap : c.latchGap) + c.latchThick;
   // every filament pin hole: the pin, the measured clearance, the fit slider
   const pinR = c.pin / 2 + c.pinClear + c.pinFit;
   return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, rT, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen,
-    gasket: opts.gasket === true, latch, toggle, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
+    gasket: opts.gasket === true, latch, toggle, lipLatch, clawLatch, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
 }
+
+// the smooth style's clasps, in the order the builder lists them
+export const SMOOTH_LATCHES = Object.freeze(["hook", "round", "wedge", "groove", "cam", "claw", "fingers"]);
 
 const roundedBlock = (L, W, h, r, z = 0) =>
   translate([-L / 2, -W / 2, z], fillet({ r, edges: "z" }, cube([L, W, h])));
@@ -526,15 +558,37 @@ export function casefinityCase(opts = {}) {
     // above where the lid blade's lip comes to rest (0.15 play)
     const bw = c.latchWidth - 4, zc = H - c.latchDrop + 2 * c.roundLip + c.roundBead + 0.15;
     latchCatch = translate([-bw / 2, fy, zc], rotate([0, 90, 0], cylinder({ r: c.roundBead, h: bw })));
+  } else if (d.latch === "hook") {
+    // the window hook's wedge: a hookLead ramp on top the bar rides over, a
+    // hookHold underside it hooks under, latchCatch proud. Narrower than the
+    // blade's window by 1 a side
+    const cw = c.latchWidth - 2 * c.latchLeg - 2, zUnder = H - c.latchDrop + c.latchBar + 0.15, cd = c.latchCatch;
+    latchCatch = alongX([[fy + 0.4, zUnder - cd / tanD(c.hookHold)], [fy - cd, zUnder], [fy - cd, zUnder + 0.3], [fy + 0.4, zUnder + 0.3 + cd / tanD(c.hookLead)]], -cw / 2, cw);
   } else {
-    // wedge: flat underside the blade's bar hooks under, a long ramp on top it
-    // rides over (2.5x the catch depth, so the blade bends gently rather than
-    // snagging). Narrower than the blade's window by 1 a side
-    const cw = c.latchWidth - 2 * c.latchLeg - 2, z0 = H - c.latchDrop + c.latchBar + 0.2;
-    const out = fy - c.latchCatch;
-    const catchProf = [[z0, fy + 0.4], [z0, out], [z0 + 0.6, out], [z0 + 0.6 + c.latchCatch * 2.5, fy + 0.4]]
-      .map(([zz, yy]) => [-zz, yy]);
-    latchCatch = translate([-cw / 2, 0, 0], rotate([0, 90, 0], linearExtrude({ h: cw }, polygon(catchProf))));
+    // the 2026-10-30 clasps (see CASE): a profile in the Y/Z plane across
+    // bw, about the lid blade's round lip (its top at zLip) or its claw
+    const bw = c.latchWidth - 4, zb = H - c.latchDrop;
+    const zLip = zb + 2 * c.roundLip;
+    const wedgeProf = (proud, lead, hold, zUnder) =>
+      [[fy + 0.5, zUnder - proud / tanD(hold)], [fy - proud, zUnder], [fy - proud, zUnder + 0.3], [fy + 0.5, zUnder + 0.3 + proud / tanD(lead)]];
+    if (d.latch === "wedge") {
+      const zUnder = zLip + 0.15, pad = c.wedgePad;
+      latchCatch = union(
+        alongX(wedgeProf(c.wedgeProud, c.wedgeLead, c.wedgeHold, zUnder), -bw / 2, bw),
+        // the pad: proud from under the wedge to below the lip's rest, then a 6 mm ramp back to the face
+        alongX([[fy + 0.5, zUnder - 1], [fy - pad, zUnder - 1], [fy - pad, zb - 1.5], [fy + 0.5, zb - 7.5]], -bw / 2, bw));
+    } else if (d.latch === "groove") {
+      const pad = c.groovePad, zTop = zLip + 1.0, zBot = zb - 1;
+      latchCatch = alongX([[fy + 0.5, zTop + pad / tanD(c.grooveLead)], [fy - pad, zTop], [fy - pad, zBot], [fy + 0.5, zBot - 3]], -bw / 2, bw);
+      // the groove, cut with the rest: a 1.0 radius bar grooveDepth into the pad at the lip's centre
+      extraCuts.push(translate([-bw / 2 - 1, fy - pad + (1.0 - c.grooveDepth), zb + c.roundLip], rotate([0, 90, 0], cylinder({ r: 1.0, h: bw + 2 }))));
+    } else if (d.latch === "cam") {
+      const zCrest = zLip + 0.1, crest = c.camCrest, hold = crest - c.camStep;
+      latchCatch = alongX([[fy + 0.5, H - 0.5], [fy, H - 1], [fy - crest, zCrest], [fy - hold, zCrest - 0.2], [fy - hold, zb - 1], [fy + 0.5, zb - 4]], -bw / 2, bw);
+    } else {
+      // claw and fingers: one wedge, the claw's top is where it hooks
+      latchCatch = alongX(wedgeProf(c.clawProud, c.clawLead, c.clawHold, zb + c.clawLip + 0.15), -bw / 2, bw);
+    }
   }
   // The cavity, exactly N*P, as one outline: liner ribs on -Y and +X are
   // notched IN (the wall keeps them), line-to-line grooves on +Y and -X stand
@@ -575,7 +629,7 @@ export function casefinityCase(opts = {}) {
 export function casefinityCaseLid(opts = {}) {
   const d = caseDims(opts);
   const { c, Lin, Win, L, W, H, tongueT } = d;
-  const gap = d.latch === "round" ? c.roundGap : c.latchGap;
+  const gap = d.lipLatch || d.clawLatch ? c.roundGap : c.latchGap;
   const y0 = -W / 2 - gap - c.latchThick, zb = H - c.latchDrop, lh = c.lidHeight;
   // the blade hangs from a block let into the lid's front wall
   const root = translate([-c.latchWidth / 2, y0, H + 1], cube([c.latchWidth, c.latchThick + gap + 1.4, lh * 0.6 - 1]));
@@ -611,24 +665,34 @@ export function casefinityCaseLid(opts = {}) {
     }
     tab = union(...parts);
     extraCuts.push(...hingeNotches(d));
-  } else if (d.latch === "round") {
+  } else if (d.lipLatch) {
     // a solid blade with a round lip along its inner bottom edge: it rolls
-    // over the body's bead and sits under it. Round both ways, so it prints
-    // without supports and opens as smoothly as it closes
+    // over the body's bead (or wedge, groove pad, cam) and sits under it.
+    // Round both ways, so it prints without supports and opens as smoothly
+    // as it closes
     const blade = translate([-c.latchWidth / 2, y0, zb], cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6]));
     const lip = translate([-c.latchWidth / 2 + 1, y0 + c.latchThick - (c.roundLip - c.roundLipOut), zb + c.roundLip],
       rotate([0, 90, 0], cylinder({ r: c.roundLip, h: c.latchWidth - 2 })));
     tab = union(blade, lip, root);
+  } else if (d.clawLatch) {
+    // a solid blade whose very tip turns in clawIn toward the body, its
+    // lower inner edge chamfered at 60 deg as the lead-in: the grip is at the
+    // tip only. "fingers" is the same blade as two fingerW fingers
+    const yi = y0 + c.latchThick, top = H + lh * 0.6;
+    const prof = [[y0, zb], [yi + c.clawIn - 0.3, zb], [yi + c.clawIn, zb + 0.3 * tanD(60)], [yi + c.clawIn, zb + c.clawLip], [yi, zb + c.clawLip], [yi, top], [y0, top]];
+    const blade = d.latch === "fingers"
+      ? union(alongX(prof, -c.latchWidth / 2, c.fingerW), alongX(prof, c.latchWidth / 2 - c.fingerW, c.fingerW))
+      : alongX(prof, -c.latchWidth / 2, c.latchWidth);
+    tab = union(blade, root);
   } else {
+    // the window hook: the blade's inner bottom edge chamfered leadIn to
+    // ride the wedge's ramp, the window the wedge pokes through stopping 2
+    // short of the parting line so the blade keeps a full-width top to flex
+    // from; what is left under the window is the bar that hooks
+    const yi = y0 + c.latchThick, top = H + lh * 0.6, ch = Math.min(c.leadIn, c.latchThick * 0.45);
     tab = difference(
-      union(
-        // the blade, its free bottom edge chamfered so it rides the catch's ramp
-        translate([-c.latchWidth / 2, y0, zb],
-          chamfer({ d: Math.min(c.leadIn, c.latchThick * 0.45), edges: "bottom" }, cube([c.latchWidth, c.latchThick, c.latchDrop + lh * 0.6]))),
-        root,
-      ),
-      // the window the body's wedge pokes through; what is left under it is the bar that hooks
-      translate([-(c.latchWidth - 2 * c.latchLeg) / 2, y0 - 1, zb + c.latchBar], cube([c.latchWidth - 2 * c.latchLeg, c.latchThick + 2, c.latchDrop - c.latchBar - 1])),
+      union(alongX([[y0, zb], [yi - ch, zb], [yi, zb + ch], [yi, top], [y0, top]], -c.latchWidth / 2, c.latchWidth), root),
+      translate([-(c.latchWidth - 2 * c.latchLeg) / 2, y0 - 1, zb + c.latchBar], cube([c.latchWidth - 2 * c.latchLeg, c.latchThick + 2, c.latchDrop - c.latchBar - 2])),
     );
   }
   // the groove for the tongue: rounded with it, with a flared mouth (a cutter
