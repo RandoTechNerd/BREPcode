@@ -218,6 +218,10 @@ const tetra = (ox, oy, oz, color) => ({
   const [o1, o2, o3] = [0, 1, 2].map((i) => plateOrigin(i, 3, { x: 200, y: 200 }));
   check("plate 2 is to the right of plate 1, plate 3 in front of it",
     o1[0] === 0 && o2[0] > 200 && o2[1] === 0 && o3[0] === 0 && o3[1] < -200, `${o2} / ${o3}`);
+  // at the slicers' own stride: Bambu Studio and OrcaSlicer put a part on
+  // the plate its footprint lands in, and their plates step by 1.2 beds
+  check("...at exactly the stride Bambu Studio and OrcaSlicer draw plates",
+    Math.abs(o2[0] - 240) < 1e-9 && Math.abs(o3[1] + 240) < 1e-9, `${o2} / ${o3}`);
   const b = boundsOfModel(await modelOf(files[0].bytes));
   check("the file's footprint spans more than one plate",
     b.size[0] > 200 && b.size[1] > 200, `size ${b.size.join(",")}`);

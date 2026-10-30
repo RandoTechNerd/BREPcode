@@ -511,13 +511,19 @@ export function layoutOnPlates(parts, plate = DEFAULT_PLATE, gap = 8) {
 }
 
 // Where a slicer draws plate N. Bambu Studio and OrcaSlicer tile their plates
-// in a grid, ceil(sqrt(n)) wide, stepping one plate plus a tenth of a plate
-// to the right for each column and the same toward the front (-y) for each
-// row. Parts on plate 2 are therefore written at world coordinates that
-// already sit on plate 2, so the file opens with every piece where the
-// slicer would have put it, rather than the slicer discovering the plate
-// list and then finding its parts stacked on plate 1.
-export const PLATE_GAP = 0.1;
+// in a grid, ceil(sqrt(n)) wide (compute_colum_count in PartPlate.hpp),
+// stepping one plate plus a FIFTH of a plate (LOGICAL_PART_PLATE_GAP = 1/5
+// in PartPlate.cpp, both slicers) to the right for each column and the same
+// toward the front (-y) for each row.
+//
+// This is the whole mechanism, not a nicety: both slicers decide which plate
+// a part is on by where its footprint lands in that grid
+// (PartPlateList::reload_all_objects), and the <plate> list in
+// model_settings.config only sets how many plates to draw. A part written a
+// tenth of a plate over instead of a fifth straddled the border of plate 2
+// and came up "laid over the boundary"; written at the slicer's own stride
+// it is simply on plate 2.
+export const PLATE_GAP = 0.2;
 export function plateOrigin(index, count, plate = DEFAULT_PLATE) {
   const px = Number(plate?.x) > 0 ? Number(plate.x) : DEFAULT_PLATE.x;
   const py = Number(plate?.y) > 0 ? Number(plate.y) : DEFAULT_PLATE.y;
