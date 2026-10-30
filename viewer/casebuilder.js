@@ -696,7 +696,7 @@ function showDone(hooks, t) {
   el.innerHTML = `
     <button type="button" class="cb-x2" title="Close" aria-label="Close">&times;</button>
     <b>${t.pieces} parts, laid out to print</b>
-    <p>Download them as 3MF (every part separate, every plate in the one file) or STL. The sliders resize the case.</p>
+    <p>Download them as 3MF (every part separate, every plate in the one file; press A in Bambu Studio to spread it over plates) or STL. The sliders resize the case.</p>
     <div class="cb-acts">
       <button type="button" class="pri" data-a="3mf">Download 3MF</button>
       <button type="button" data-a="stl">STL</button>

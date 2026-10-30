@@ -542,8 +542,22 @@ export function plateOrigin(index, count, plate = DEFAULT_PLATE) {
 //
 // Which plate a part is on is said twice, in the two ways slicers listen:
 //   Metadata/model_settings.config   a <plate> per plate naming its objects —
-//                                    the Bambu Studio / OrcaSlicer plate list,
-//                                    so the file opens with plate tabs
+//                                    the Bambu Studio / OrcaSlicer plate list.
+//                                    Their command line honours it (round-
+//                                    tripped, three plates come back as
+//                                    three). Their desktop apps do NOT: a
+//                                    file whose Application tag is not
+//                                    "BambuStudio-x.y.z" never has its
+//                                    project config read (bbs_3mf.cpp,
+//                                    dont_load_config), plates are only
+//                                    created from that path, and the import
+//                                    then centres every part as one group on
+//                                    plate 1. Claiming to be Bambu Studio is
+//                                    no way out: a project is then expected
+//                                    to carry the complete printer, filament
+//                                    and process presets, and a file without
+//                                    them crashed the importer. So the
+//                                    dialog says: press A (Arrange) there.
 //   the coordinates themselves       plate 2's parts are written beside plate
 //                                    1's (see plateOrigin), so a slicer with no
 //                                    plate concept (PrusaSlicer, Cura) still

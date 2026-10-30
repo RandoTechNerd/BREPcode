@@ -16111,7 +16111,8 @@ ${joined}${SITE_TAIL}`), joined);
             + `laid out on ${nPlates} plate${nPlates === 1 ? "" : "s"} of ${plateTxt.x} × ${plateTxt.y} mm `
             + `(size under <b>Plate</b> in this menu), 8&thinsp;mm apart, every piece standing on the bed. `
             + (nPlates > 1
-              ? `All ${nPlates} plates are in this one file: Bambu Studio and OrcaSlicer open it with a tab per plate; `
+              ? `All ${nPlates} plates are in this one file. Bambu Studio and OrcaSlicer open any file they did not `
+                + `write themselves on one plate, so press <b>A</b> (Arrange) there and they add the plates; `
                 + `PrusaSlicer and Cura have no plates, so the overflow sits beside the bed for their arrange button. `
               : "")
             + `Parts are separate objects in the slicer, so they can still be moved one by one.</span>`;
@@ -16505,7 +16506,7 @@ ${joined}${SITE_TAIL}`), joined);
       stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange - geometry only, so any colours are dropped." },
       obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
       "3mf": { kind: "color", ext: ".3mf", desc: "The modern print format: geometry plus colour, placed on your build plate. Multi-material slicers assign a filament per colour.", opts: ["mesh-variant-row", "mf-colour-row", "mf-printer-row", "plate-row"] },
-      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Every plate in the one file: Bambu Studio and OrcaSlicer open it with a tab per plate.", opts: ["mesh-variant-row", "plate-row"] },
+      "3mf-parts": { kind: "parts", ext: ".3mf", desc: "Every physically separate piece laid side by side on the bed, each standing on z=0 - ready to print, not assembled. Every plate in the one file; in Bambu Studio or OrcaSlicer press A (Arrange) to spread it over plates.", opts: ["mesh-variant-row", "plate-row"] },
       gcode: { kind: "slice", desc: "BETA - check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer - what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid - opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
@@ -17210,7 +17211,7 @@ ${joined}${SITE_TAIL}`), joined);
           line.userData.ownGeometry = true; line.userData.ownMaterial = true;
           holder.add(line);
           tag.textContent = plates.length > 1
-            ? `${parts.length} parts on ${plates.length} plates, all in the one file — plate 1 shown`
+            ? `${parts.length} parts for ${plates.length} plates, all in the one file — plate 1 shown`
             : `${parts.length} part${parts.length === 1 ? "" : "s"} on the plate, each on the bed`;
         } catch {
           tag.textContent = "preview unavailable — the export itself still works";

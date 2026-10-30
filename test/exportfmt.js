@@ -199,8 +199,9 @@ const tetra = (ox, oy, oz, color) => ({
     `${files.length} file(s) ${files.map((f) => JSON.stringify(f.suffix)).join(" ")}`);
   check("...and no part is lost in the split", files[0]?.parts === 3, String(files[0]?.parts));
   // The plate list Bambu Studio / OrcaSlicer read: a <plate> per plate, each
-  // naming the objects on it. Checked against Bambu Studio 2.7 by round-trip:
-  // it opens with three plate tabs, one part on each.
+  // naming the objects on it. Checked against Bambu Studio 2.7's command line
+  // by round-trip: three plates come back, one part on each. (The desktop app
+  // ignores it for a non-Bambu file and opens on one plate; see exporters.js.)
   const zip = await JSZip.loadAsync(files[0].bytes);
   const config = await zip.file("Metadata/model_settings.config").async("string");
   const plateBlocks = config.split("<plate>").slice(1);
