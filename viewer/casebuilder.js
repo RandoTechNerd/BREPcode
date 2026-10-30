@@ -172,7 +172,8 @@ const rimW = ${+k.rimW};   // [60:600] inside width, measured lidIn below the to
 const rimD = ${+k.rimD};   // [60:600] inside depth, measured lidIn below the top (mm)
 const height = ${+k.height};   // [20:300] inside depth, floor to the top of the box (mm)
 const lidIn = ${+k.lidIn};   // [0:30] how far the lid's plug reaches into the box; the rim is measured there, the pieces stop under it (mm)
-const taper = ${+k.taper};   // [0:15] how far each wall leans out, floor to rim (degrees)
+const taper = ${+k.taper};   // [0:15] how far the short-side walls lean out, floor to the lid line (degrees)
+const taperD = ${+(k.taperD || 0)};   // [0:15] the long-side walls, if they lean differently (0 = same as taper)
 const corner = ${+k.corner};   // [1:40] the vertical corners' radius inside (mm)
 const floorRound = ${+k.floorRound};   // [0:15] the rounding where the floor meets the walls (mm)
 const clear = ${+k.clear};   // [0:3] fit gap to the box wall, per side (mm)
@@ -184,7 +185,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, corner, floorRound, clear, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, layout: pieces });
 `;
 }
 
@@ -203,7 +204,7 @@ export function parseKitCode(src = "") {
   if (kuggis) {
     state.container = "kuggis";
     const k = defaultKuggis();
-    for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
+    for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "taperD", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
@@ -559,6 +560,7 @@ export function showCaseBuilder(hooks = {}) {
       const v = +$(id).value;
       if (!Number.isFinite(v) || v < 0) return;
       S.kuggis[key] = v;
+      if (key === "taper") S.kuggis.taperD = 0;    // one typed taper means both axes
       S.kuggis.size = "custom";       // typed over: no longer the estimate
       ksize.value = "custom";
       paint();
@@ -799,7 +801,7 @@ export function showCaseBuilder(hooks = {}) {
     $("cb-read").innerHTML = (f.fits
       ? kug
         ? `<b>${cols} × ${rows}</b> squares of 15 mm on the floor · floor inside <b>${f.floor[0]} × ${f.floor[1]}</b>, rim <b>${f.rim[0]} × ${f.rim[1]}</b> mm`
-          + `<br />Pieces ${f.pieceHeight} mm tall (stopping under the lid's ${f.lidIn} mm plug), lean ${S.kuggis.taper}° with the walls, ${S.kuggis.clear} mm off them`
+          + `<br />Pieces ${f.pieceHeight} mm tall (stopping under the lid's ${f.lidIn} mm plug), lean ${S.kuggis.taper}°${S.kuggis.taperD > 0 && S.kuggis.taperD !== S.kuggis.taper ? ` / ${S.kuggis.taperD}° (long side)` : ""} with the walls, ${S.kuggis.clear} mm off them`
         : `<b>${cols} × ${rows}</b> squares of 15 mm · outside <b>${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} × ${+f.height.toFixed(1)}</b> mm`
           + `<br />Grid ${f.inner[0]} × ${f.inner[1]} mm, ${+f.inner[2].toFixed(1)} deep · boxes ${f.binHeight} mm tall`
           + (f.headroom >= 5 ? ", with pull tabs" : "")

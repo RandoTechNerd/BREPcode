@@ -54,10 +54,13 @@ export const KUGGIS = Object.freeze({
   // the quoted height, and each wall leans 7.7 degrees (18.5 mm over the
   // 137.4 mm between floor and the lid-plug line). IKEA's own dimension
   // drawing had suggested 5 degrees; the box says otherwise.
-  rimIn: -2.5,          // inside at lidIn down = outside - 2 * rimIn
+  rimIn: -2.5,          // short side: inside at lidIn down = outside - 2 * rimIn
+  rimInD: 0,            // long side: measured 350 against a quoted 350
   depthIn: 3.6,         // inside depth = outside height - depthIn
-  taper: 7.7,           // degrees each wall leans out, floor to the lid-plug line
-  corner: 10,           // vertical corner radius inside
+  taper: 7.7,           // degrees the short-side walls lean out, floor to the lid-plug line
+  taperD: 6.2,          // the long-side walls: 15 mm over the same 137.4 (320 at the floor)
+  corner: 19,           // vertical corner radius inside: a 423 mm diagonal between the rounded
+                        // corners of a 265 x 350 (sharp diagonal 439) is 2 * r * (sqrt2 - 1) short, r = 19
   floorRound: 6,        // the floor-to-wall rounding inside
 });
 
@@ -71,8 +74,8 @@ export const KUGGIS_SIZES = Object.freeze([
   { id: "18x26x8", label: "18 × 26 × 8 cm (7 × 10¼ × 3¼ in)", outer: [180, 260, 80] },
   { id: "18x26x15", label: "18 × 26 × 15 cm (7 × 10¼ × 6 in)", outer: [180, 260, 150] },
   { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150],
-    measured: { rimW: 265, floorW: 228, height: 146.4, lidIn: 9 },
-    note: "short side and depth measured; long side still estimated" },
+    measured: { rimW: 265, floorW: 228, rimD: 350, floorD: 320, height: 146.4, lidIn: 9, corner: 19 },
+    note: "measured with calipers: both sides 9 mm down and at the floor, the depth, the corner from the diagonal" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);
 
@@ -93,19 +96,20 @@ export function kuggisEstimate(size) {
   const [w, d, h] = outer.map((v, i) => num(v, ["width", "depth", "height"][i]));
   const e = {
     rimW: +(w - 2 * KUGGIS.rimIn).toFixed(1),
-    rimD: +(d - 2 * KUGGIS.rimIn).toFixed(1),
+    rimD: +(d - 2 * KUGGIS.rimInD).toFixed(1),
     height: +(h - KUGGIS.depthIn).toFixed(1),
     lidIn: KUGGIS.lidIn,
     taper: KUGGIS.taper,
+    taperD: KUGGIS.taperD,
     corner: KUGGIS.corner,
     floorRound: KUGGIS.floorRound,
     clear: KUGGIS.clear,
   };
   for (const k of ["rimW", "rimD", "height", "lidIn", "corner", "floorRound"]) if (m[k] != null) e[k] = m[k];
-  // a measured floor width fixes the taper: the lean from floor to the plug line
-  if (m.floorW != null && m.rimW != null) {
-    e.taper = +((Math.atan(((m.rimW - m.floorW) / 2) / (e.height - e.lidIn)) * 180) / Math.PI).toFixed(1);
-  }
+  // a measured floor fixes that axis's taper: the lean from floor to the plug line
+  const lean = (rim, fl) => +((Math.atan((rim - fl) / 2 / (e.height - e.lidIn)) * 180) / Math.PI).toFixed(1);
+  if (m.floorW != null && m.rimW != null) e.taper = lean(m.rimW, m.floorW);
+  if (m.floorD != null && m.rimD != null) e.taperD = lean(m.rimD, m.floorD);
   return e;
 }
 
@@ -118,16 +122,19 @@ function boxDims(opts) {
   const height = num(opts.height, "height", 144);
   const lidIn = Math.max(0, Math.min(num(opts.lidIn, "lidIn", KUGGIS.lidIn), height / 2));
   const taper = Math.min(20, Math.max(0, num(opts.taper, "taper", KUGGIS.taper)));
+  // the long walls may lean differently; 0 or absent means the same as the short ones
+  const tD = num(opts.taperD, "taperD", 0);
+  const taperD = tD > 0 ? Math.min(20, tD) : taper;
   const span = height - lidIn;                          // floor to the measuring plane
-  const shrink = span * tanD(taper);                    // how far each wall leans over that
-  const floorW = rimW - 2 * shrink, floorD = rimD - 2 * shrink;
+  const shrink = span * tanD(taper), shrinkD = span * tanD(taperD);   // how far each wall leans over that
+  const floorW = rimW - 2 * shrink, floorD = rimD - 2 * shrinkD;
   const corner = Math.max(0.5, Math.min(num(opts.corner, "corner", KUGGIS.corner), Math.min(floorW, floorD) / 2 - 1));
   const floorRound = Math.max(0, Math.min(num(opts.floorRound, "floorRound", KUGGIS.floorRound), Math.min(floorW, floorD) / 4, height / 2));
   const clear = Math.max(0, num(opts.clear, "clear", KUGGIS.clear));
   const wall = num(opts.wall, "wall", KUGGIS.wall), floor = num(opts.floor, "floor", KUGGIS.floor);
   const topClear = num(opts.topClear, "topClear", KUGGIS.topClear);
   const pieceH = span - topClear;
-  return { rimW, rimD, height, lidIn, span, taper, shrink, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH };
+  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH };
 }
 
 // The module grid a box holds: whole 15 mm squares across the FLOOR inside,
@@ -156,8 +163,8 @@ const slab = (w, d, r, z, t = 0.02) =>
 // to z1 (past the rim is fine: the slope continues). floorRound rounds the
 // floor edge; the hull of three slabs is that shape to within the facets.
 function liner(b, inset, z0, z1, floorRound) {
-  const t = tanD(b.taper);
-  const at = (z) => [b.floorW - 2 * inset + 2 * z * t, b.floorD - 2 * inset + 2 * z * t];
+  const t = tanD(b.taper), tD = tanD(b.taperD);
+  const at = (z) => [b.floorW - 2 * inset + 2 * z * t, b.floorD - 2 * inset + 2 * z * tD];
   const r = Math.max(0.5, b.corner - inset);
   const fr = Math.max(0, Math.min(floorRound, (z1 - z0) / 2));
   const [w0, d0] = at(z0), [w1, d1] = at(z1);
@@ -224,7 +231,7 @@ function piece(b, fit, g, kind, divide, L) {
     if (adds.length) shape = union(shape, onWall ? intersection(union(...adds), L.walls) : union(...adds));
   }
   // where the piece really reaches: the rim size at the top on an edge side
-  const topHalfW = (b.floorW + 2 * H * tanD(b.taper)) / 2 - b.clear, topHalfD = (b.floorD + 2 * H * tanD(b.taper)) / 2 - b.clear;
+  const topHalfW = (b.floorW + 2 * H * tanD(b.taper)) / 2 - b.clear, topHalfD = (b.floorD + 2 * H * tanD(b.taperD)) / 2 - b.clear;
   const bounds = [edgeL ? -topHalfW : x0, edgeR ? topHalfW : x1, edgeF ? -topHalfD : y0, edgeB ? topHalfD : y1];
   return { shape, bounds };
 }
