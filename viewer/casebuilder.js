@@ -186,6 +186,10 @@ const taperD = ${+(k.taperD || 0)};   // [0:15] the long-side walls, if they lea
 const corner = ${+k.corner};   // [1:40] the vertical corners' radius inside (mm)
 const floorRound = ${+k.floorRound};   // [0:15] the rounding where the floor meets the walls (mm)
 const clear = ${+k.clear};   // [0:3] fit gap to the box wall, per side (mm)
+// The box has a short rib across each inside corner at the floor. A corner piece gets a slot for it:
+const lug = ${+k.lug};   // [0:40] how far the slot reaches in from the box's sharp inside corner, along the diagonal (mm); 0 = no slot
+const lugW = ${+k.lugW};   // [1:12] the slot's width (mm)
+const lugH = ${+k.lugH};   // [0:150] the slot's height above the floor (mm)
 const lock = ${k.lock === true};   // true: Casefinity ribs and sockets on the faces between pieces, so the kit holds together. false: smooth sides
 
 // What goes where. at: [column, row] from the front-left square; size in squares.
@@ -195,7 +199,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lock, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, layout: pieces });
 `;
 }
 
@@ -214,7 +218,7 @@ export function parseKitCode(src = "") {
   if (kuggis) {
     state.container = "kuggis";
     const k = defaultKuggis();
-    for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "taperD", "corner", "floorRound", "clear"]) if (n(key) != null) k[key] = n(key);
+    for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "taperD", "corner", "floorRound", "clear", "lug", "lugW", "lugH"]) if (n(key) != null) k[key] = n(key);
     k.lock = /\b(?:const\s+lock\s*=|lock\s*:)\s*true\b/.test(text);
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
@@ -476,6 +480,12 @@ export function showCaseBuilder(hooks = {}) {
               <label title="The rounding where the floor meets the walls, inside">Floor round<input id="cb-kf" type="number" min="0" max="15" step="0.5" inputmode="decimal" /></label>
               <label title="Air between a piece and the box wall, per side. 1 mm lifts out with a finger; 0.5 sits snug">Fit gap<input id="cb-kg" type="number" min="0" max="3" step="0.1" inputmode="decimal" /></label>
             </div>
+            <!-- the rib across each inside corner at the floor: a corner piece gets a slot for it -->
+            <div class="cb-dims">
+              <label title="The box has a short rib across each inside corner at the floor. How far in from the sharp inside corner, along the diagonal, a corner piece's slot reaches to clear it. 0 = no slot">Corner rib in<input id="cb-klug" type="number" min="0" max="40" step="0.5" inputmode="decimal" /></label>
+              <label title="The slot's width: the rib's thickness plus some air">Rib slot width<input id="cb-klugw" type="number" min="1" max="12" step="0.5" inputmode="decimal" /></label>
+              <label title="The slot's height: how tall the rib stands above the floor, plus some air">Rib height<input id="cb-klugh" type="number" min="0" max="150" step="1" inputmode="decimal" /></label>
+            </div>
             <p class="cb-hint" id="cb-khint"></p>
           </div>
           <div class="cb-read" id="cb-read" aria-live="polite"></div>
@@ -575,7 +585,8 @@ export function showCaseBuilder(hooks = {}) {
   $("cb-w").value = S.width; $("cb-d").value = S.depth; $("cb-hh").value = S.height;
   const seg = (id, v) => { for (const b of $(id).querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === String(v)); };
   // the KUGGIS: a size list that fills in the estimate, and the fields it fills
-  const KFIELDS = [["cb-krw", "rimW"], ["cb-krd", "rimD"], ["cb-kh", "height"], ["cb-kl", "lidIn"], ["cb-kt", "taper"], ["cb-kc", "corner"], ["cb-kf", "floorRound"], ["cb-kg", "clear"]];
+  const KFIELDS = [["cb-krw", "rimW"], ["cb-krd", "rimD"], ["cb-kh", "height"], ["cb-kl", "lidIn"], ["cb-kt", "taper"], ["cb-kc", "corner"], ["cb-kf", "floorRound"], ["cb-kg", "clear"],
+    ["cb-klug", "lug"], ["cb-klugw", "lugW"], ["cb-klugh", "lugH"]];
   const ksize = $("cb-ksize");
   for (const sz of KUGGIS_SIZES) {
     const o = document.createElement("option");
@@ -858,6 +869,7 @@ export function showCaseBuilder(hooks = {}) {
           ? `<b>Measured on a real box</b> (${esc(sz.note || "")}). Check yours ${S.kuggis.lidIn} mm down and at the floor, and type over anything that differs.`
           : `These are <b>estimates</b> from IKEA's outside size (${sz.outer[0] / 10} × ${sz.outer[1] / 10} × ${sz.outer[2] / 10} cm), scaled from a measured 26 × 35. Measure your box inside ${S.kuggis.lidIn} mm down (where the lid's plug ends) and at the floor, and type over them.`
         : `Your own measurements, inside the box: the rim ${S.kuggis.lidIn} mm down where the lid's plug ends, the depth floor to top, the taper as how far each wall leans out.`;
+      $("cb-khint").innerHTML += ` The corner rib: measure from the box's sharp inside corner (where the two walls would meet) to the rib's inner face, along the diagonal, and add a millimetre.`;
     }
     const separateLatch = S.style === "koch" && S.kochLatch === "swing";
     const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, separateLatch);

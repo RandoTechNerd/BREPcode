@@ -28,7 +28,14 @@ async function measure(shape) {
   // A mesh has vertices only where faces meet, so ask at heights that have
   // them: the bed, the floor rounding's top, the piece's top.
   const at = (zq, i) => { const s = v.filter((p) => Math.abs(p[2] - zq) <= 0.5); return s.length ? Math.max(...s.map((p) => p[i])) - Math.min(...s.map((p) => p[i])) : NaN; };
-  return { x: ax(0), y: ax(1), z: ax(2), solids: out.solids.length, engine: out.engine, at };
+  // how many vertices sit at exactly this height (a feature that ends there)
+  const atZ = (zq) => v.filter((p) => Math.abs(p[2] - zq) < 0.02).length;
+  let vol = 0;
+  for (let i = 0; i + 2 < v.length; i += 3) {
+    const [a, b, c] = [v[i], v[i + 1], v[i + 2]];
+    vol += (a[0] * (b[1] * c[2] - c[1] * b[2]) - a[1] * (b[0] * c[2] - c[0] * b[2]) + a[2] * (b[0] * c[1] - c[0] * b[1])) / 6;
+  }
+  return { x: ax(0), y: ax(1), z: ax(2), solids: out.solids.length, engine: out.engine, at, atZ, vol: Math.abs(vol) };
 }
 
 console.log("\nthe box as numbers\n");
@@ -41,7 +48,11 @@ console.log("\nthe box as numbers\n");
   check("the measured box sets each axis's taper from floor and rim", near(m.taper, 7.7, 0.1) && near(m.taperD, 6.2, 0.1) && m.rimW === 265 && m.rimD === 350 && m.height === 146.4, JSON.stringify(m));
   const mf = kuggisFit(m);
   check("...and both floors come back out of the fit", near(mf.floor[0], 228, 0.3) && near(mf.floor[1], 320, 0.3), `${mf.floor}`);
-  check("...with the 19 mm corner the diagonal gave", m.corner === 19);
+  check("...with the corner re-based per size (12 on the 26x35, 7.5 on the 13x18)", m.corner === 12 && kuggisEstimate(KUGGIS_SIZES[0]).corner === 7.5, `${m.corner} / ${kuggisEstimate(KUGGIS_SIZES[0]).corner}`);
+  check("...and a corner rib slot: past the corner, 4 wide, 30 % of the depth", m.lug === 16 && m.lugW === 4 && m.lugH === 44, `${m.lug} ${m.lugW} ${m.lugH}`);
+  check("the smallest box's slot is as tall as the published insert's (25 mm)", kuggisEstimate(KUGGIS_SIZES[0]).lugH >= 20 && kuggisEstimate(KUGGIS_SIZES[0]).lugH <= 25, `${kuggisEstimate(KUGGIS_SIZES[0]).lugH}`);
+  check("the rib slot is a slider in the code", /const lug = [\d.]+/.test(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] })));
+  check("...and reads back", parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), lug: 21.5, lugH: 33 }, regions: [] })).kuggis.lug === 21.5);
   check("a taper alone leans both axes the same", kuggisFit({ rimW: 200, rimD: 300, height: 100, lidIn: 9, taper: 5 }).floor[1] === +(300 - 2 * 91 * Math.tan(5 * Math.PI / 180)).toFixed(1));
   check("an unmeasured size is the plain estimate", kuggisEstimate(KUGGIS_SIZES[0]).taper === KUGGIS.taper);
   const f = kuggisFit(e);
@@ -73,6 +84,22 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   const margin = (f.floor[0] - f.cols * 15) / 2;
   const expectTop = 30 - KUGGIS.between / 2 + margin + corner.z.max * t - e.clear;
   check("its top reaches the wall less the fit gap", near(top, expectTop, 0.6), `${top.toFixed(2)} vs ${expectTop.toFixed(2)}`);
+  // the corner rib slot: it ends at lugH on the outside and a wall higher
+  // inside (the cavity's slot is grown by the wall), so those are the only
+  // heights with vertices between the floor and the top; the same piece
+  // with lug 0 has nothing there, and the same outline everywhere else
+  const noSlot = await measure(kuggisKit({ ...e, lug: 0, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  check("a corner piece has a slot for the box's corner rib, as tall as the rib",
+    corner.atZ(e.lugH) >= 4 && corner.atZ(e.lugH + KUGGIS.wall) >= 4 && noSlot.atZ(e.lugH) === 0,
+    `${corner.atZ(e.lugH)} / ${corner.atZ(e.lugH + KUGGIS.wall)} vertices at ${e.lugH} / ${e.lugH + KUGGIS.wall}; without: ${noSlot.atZ(e.lugH)}`);
+  check("...with a wall around the slot (more plastic, not less)", corner.vol > noSlot.vol + 50 && corner.vol < noSlot.vol + 2000, `${corner.vol.toFixed(0)} vs ${noSlot.vol.toFixed(0)} mm³`);
+  // (at the bed the slot's cut through the floor rounding adds vertices
+  // between 0 and 0.5 that the plain hull does not have, so compare the top
+  // and the bounding box, not the bed band)
+  check("...and the same outline at the top and the same bounds", near(corner.at(corner.z.max, 0), noSlot.at(noSlot.z.max, 0), 0.02)
+    && near(corner.x.min, noSlot.x.min, 0.02) && near(corner.y.min, noSlot.y.min, 0.02) && near(corner.x.max, noSlot.x.max, 0.02),
+    `${corner.x.min}/${noSlot.x.min} ${corner.y.min}/${noSlot.y.min}`);
+  check("an inside piece never has one", (await measure(kuggisKit({ ...e, layout: [{ at: [2, 3], size: [2, 2], kind: "box" }] }))).atZ(e.lugH) === 0);
 
   // a box in the middle of the grid: upright and plain
   const mid = await measure(kuggisKit({ ...e, layout: [{ at: [2, 3], size: [2, 2], kind: "box" }] }));

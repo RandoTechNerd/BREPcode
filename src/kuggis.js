@@ -22,6 +22,18 @@
 // separator frame). Two intersections and one difference per piece,
 // whatever its shape, and the slope is never computed twice.
 //
+// THE CORNER LUGS
+//
+// Every KUGGIS has a short rib standing diagonally across each inside
+// corner at the floor (a stacking lug), so a piece that sits in a box
+// corner needs a slot for it. The published inserts all cut the same thing:
+// a narrow slot along the corner's diagonal, from the rounded corner in to
+// just past the rib's inner face, as tall as the rib. Here the slot is cut
+// into the LINER's four corners once (lug = how far in from the box's sharp
+// inside corner the slot reaches, lugW its width, lugH its height), so only
+// a piece that reaches a corner ever has one, and the cavity liner carries
+// the same slot grown by the wall, so a wall stays around it inside.
+//
 // WHAT WE KNOW ABOUT THE BOXES
 //
 // IKEA publishes the OUTSIDE sizes only (13x18x8, 18x26x8, 18x26x15,
@@ -33,9 +45,9 @@
 // way the published dividers are made, so a piece lifts out with a finger.
 
 import {
-  cube, translate, difference, union, intersection, hull, fillet, colorize, group,
+  cube, translate, rotate, difference, union, intersection, hull, fillet, colorize, group,
 } from "./dsl.js";
-import { CASEFINITY, CASEKIT_COLORS, shelfPack, featuredOutline, prism as outlinePrism } from "./casefinity.js";
+import { CASEFINITY, CASEKIT_COLORS, shelfPack, featuredOutline, outlinePrism } from "./casefinity.js";
 
 export const KUGGIS = Object.freeze({
   pitch: 15,            // the Casefinity module, so the builder's grid is the same grid
@@ -64,9 +76,24 @@ export const KUGGIS = Object.freeze({
   depthIn: 3.6,         // inside depth = outside height - depthIn
   taper: 7.7,           // degrees the short-side walls lean out, floor to the lid-plug line
   taperD: 6.2,          // the long-side walls: 15 mm over the same 137.4 (320 at the floor)
-  corner: 19,           // vertical corner radius inside: a 423 mm diagonal between the rounded
-                        // corners of a 265 x 350 (sharp diagonal 439) is 2 * r * (sqrt2 - 1) short, r = 19
+  // The vertical corners inside are tighter than they look: the published
+  // inserts' corners measure r 7.3 at the floor of a 13x18 (agepbiz,
+  // printables 1285504), r 15 on a floor plate for an 18x26 (Eric T,
+  // 1096506, generous: a flat plate also has to clear the floor rounding)
+  // and r 18 on a baseplate for a 37x54 (357454). A 423 mm tape diagonal
+  // on the 26x35 had suggested r 19, but a printed 2x2 corner piece at 19
+  // stood well clear of the box's corner: r 12 for that box, and in
+  // general 3 + 0.035 per mm of the box's short side (7.5, 9.5, 12, 16).
+  corner: 12,
+  cornerBase: 3, cornerPerMm: 0.035,
   floorRound: 6,        // the floor-to-wall rounding inside
+  // The corner lug slots (see THE CORNER LUGS above). The slot reaches
+  // lugOver past the corner radius along the diagonal (the rib sits just
+  // round the corner's arc: 11.4 in on the 13x18 whose corner is ~8, 19 on
+  // Eric T's 18x26 plate), is lugW wide (3 on the 13x18, 4 on the 18x26),
+  // and stands lugFrac of the inside depth, no less than lugMin (25 mm on
+  // the 72 mm deep 13x18x8). 0 for lug = no slot.
+  lugOver: 4, lugW: 4, lugFrac: 0.3, lugMin: 20,
 });
 
 // IKEA's five sizes. width x depth x height as IKEA lists them (width is the
@@ -79,8 +106,8 @@ export const KUGGIS_SIZES = Object.freeze([
   { id: "18x26x8", label: "18 × 26 × 8 cm (7 × 10¼ × 3¼ in)", outer: [180, 260, 80] },
   { id: "18x26x15", label: "18 × 26 × 15 cm (7 × 10¼ × 6 in)", outer: [180, 260, 150] },
   { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150],
-    measured: { rimW: 265, floorW: 228, rimD: 350, floorD: 320, height: 146.4, lidIn: 9, corner: 19 },
-    note: "measured with calipers: both sides 9 mm down and at the floor, the depth, the corner from the diagonal" },
+    measured: { rimW: 265, floorW: 228, rimD: 350, floorD: 320, height: 146.4, lidIn: 9 },
+    note: "measured with calipers: both sides 9 mm down and at the floor, and the depth. The corner radius and the corner lug slot are still estimates: check them against your box" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);
 
@@ -99,18 +126,24 @@ export function kuggisEstimate(size) {
   const outer = Array.isArray(size) ? size : size.outer;
   const m = Array.isArray(size) ? {} : (size.measured || {});
   const [w, d, h] = outer.map((v, i) => num(v, ["width", "depth", "height"][i]));
+  const half = (v) => Math.round(v * 2) / 2;
+  const corner = half(KUGGIS.cornerBase + KUGGIS.cornerPerMm * Math.min(w, d));
+  const height = +(h - KUGGIS.depthIn).toFixed(1);
   const e = {
     rimW: +(w - 2 * KUGGIS.rimIn).toFixed(1),
     rimD: +(d - 2 * KUGGIS.rimInD).toFixed(1),
-    height: +(h - KUGGIS.depthIn).toFixed(1),
+    height,
     lidIn: KUGGIS.lidIn,
     taper: KUGGIS.taper,
     taperD: KUGGIS.taperD,
-    corner: KUGGIS.corner,
+    corner,
     floorRound: KUGGIS.floorRound,
     clear: KUGGIS.clear,
+    lug: corner + KUGGIS.lugOver,
+    lugW: KUGGIS.lugW,
+    lugH: Math.max(KUGGIS.lugMin, Math.round(KUGGIS.lugFrac * (m.height ?? height))),
   };
-  for (const k of ["rimW", "rimD", "height", "lidIn", "corner", "floorRound"]) if (m[k] != null) e[k] = m[k];
+  for (const k of ["rimW", "rimD", "height", "lidIn", "corner", "floorRound", "lug", "lugW", "lugH"]) if (m[k] != null) e[k] = m[k];
   // a measured floor fixes that axis's taper: the lean from floor to the plug line
   const lean = (rim, fl) => +((Math.atan((rim - fl) / 2 / (e.height - e.lidIn)) * 180) / Math.PI).toFixed(1);
   if (m.floorW != null && m.rimW != null) e.taper = lean(m.rimW, m.floorW);
@@ -140,7 +173,11 @@ function boxDims(opts) {
   const topClear = num(opts.topClear, "topClear", KUGGIS.topClear);
   const pieceH = span - topClear;
   const lock = opts.lock === true;
-  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock };
+  // the corner lug slot: 0 reach = none; never deeper than a quarter of the floor
+  const lug = Math.max(0, Math.min(num(opts.lug, "lug", 0), Math.min(floorW, floorD) / 4));
+  const lugW = Math.max(0.5, num(opts.lugW, "lugW", KUGGIS.lugW));
+  const lugH = Math.max(0, Math.min(num(opts.lugH, "lugH", KUGGIS.lugMin), height));
+  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock, lug, lugW, lugH };
 }
 
 // The module grid a box holds: whole 15 mm squares across the FLOOR inside,
@@ -168,7 +205,10 @@ const slab = (w, d, r, z, t = 0.02) =>
 // The liner: the box's inside pulled in by `inset` on every wall, from z0 up
 // to z1 (past the rim is fine: the slope continues). floorRound rounds the
 // floor edge; the hull of three slabs is that shape to within the facets.
-function liner(b, inset, z0, z1, floorRound) {
+// Then the corner lug slots, `grow` more than the box's own (the slot is a
+// bump INTO the piece, so a liner inset by the wall carries it grown by the
+// wall), up to lugTop: four cutters that never touch, one difference.
+function liner(b, inset, z0, z1, floorRound, grow = 0, lugTop = b.lugH) {
   const t = tanD(b.taper), tD = tanD(b.taperD);
   const at = (z) => [b.floorW - 2 * inset + 2 * z * t, b.floorD - 2 * inset + 2 * z * tD];
   const r = Math.max(0.5, b.corner - inset);
@@ -181,7 +221,16 @@ function liner(b, inset, z0, z1, floorRound) {
   } else {
     slabs.push(slab(w0, d0, r, z0));
   }
-  return hull(...slabs);
+  const body = hull(...slabs);
+  if (!(b.lug > 0) || lugTop <= z0) return body;
+  // a slot along each corner's diagonal: from `reach` in from the box's
+  // sharp inside corner at the floor, out past the corner (the walls lean
+  // out above the floor, so the slot only gets roomier higher up)
+  const reach = b.lug + grow, w = b.lugW + 2 * grow, out = 30 + b.height * Math.max(t, tD);
+  const cutter = translate([-out, -w / 2, z0 - 1], cube([reach + out, w, lugTop - z0 + 1]));
+  const slots = [[-1, -1, 45], [1, -1, 135], [1, 1, 225], [-1, 1, 315]].map(([sx, sy, ang]) =>
+    translate([sx * b.floorW / 2, sy * b.floorD / 2, 0], rotate([0, 0, ang], cutter)));
+  return difference(body, ...slots);
 }
 
 // The three liners a kit cuts with, built ONCE and shared by every piece:
@@ -191,8 +240,8 @@ function liners(b) {
   const H = b.pieceH;
   return {
     outer: liner(b, b.clear, 0, H + 1, b.floorRound),
-    inner: liner(b, b.clear + b.wall, b.floor, H + 2, Math.max(0, b.floorRound - b.wall)),
-    innerOpen: liner(b, b.clear + b.wall, -1, H + 2, 0),
+    inner: liner(b, b.clear + b.wall, b.floor, H + 2, Math.max(0, b.floorRound - b.wall), b.wall, b.lugH + b.wall),
+    innerOpen: liner(b, b.clear + b.wall, -1, H + 2, 0, b.wall, b.lugH + b.wall),
     walls: liner(b, b.clear + 0.05, -1, H + 1, b.floorRound),
   };
 }

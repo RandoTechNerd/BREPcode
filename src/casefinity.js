@@ -175,7 +175,10 @@ export function featuredOutline(w, d, sides, draft) {
   }
   return polygon(pts);
 }
-export const prism = (outline, z0, h) => translate([0, 0, z0], linearExtrude({ h }, outline));
+// not exported as `prism`: dsl.js re-exports this file, and a DSL word
+// `prism` would clash with models that declare their own (five catalog ones do)
+const prism = (outline, z0, h) => translate([0, 0, z0], linearExtrude({ h }, outline));
+export { prism as outlinePrism };
 const spec = (opts) => ({
   pitch: num(opts.pitch, "pitch", CASEFINITY.pitch),
   rib: CASEFINITY.rib,
