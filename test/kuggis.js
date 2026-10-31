@@ -123,6 +123,13 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   const big = await measure(kuggisKit({ ...e, layout: [{ at: [0, 0], size: [5, 5], kind: "box" }] }));
   check("a box wider than the floor can bridge prints upright", big.at(big.z.max, 0) > big.at(0, 0) + 2, `${big.at(0, 0).toFixed(2)} -> ${big.at(big.z.max, 0).toFixed(2)}`);
   check("...unless told to flip", (await measure(kuggisKit({ ...e, flip: true, layout: [{ at: [0, 0], size: [5, 5], kind: "box" }] }))).at(0, 0) > big.at(0, 0) + 2);
+  // half squares: a 7.5 pitch doubles the grid, is a const in the code and reads back, and a piece on it builds
+  const halfFit = kuggisFit({ ...e, pitch: 7.5 });
+  check("half squares double the grid (or one half square more, where it fits)", halfFit.cols >= 2 * f.cols && halfFit.cols <= 2 * f.cols + 1 && halfFit.rows >= 2 * f.rows && halfFit.rows <= 2 * f.rows + 1 && halfFit.pitch === 7.5, `${halfFit.cols} x ${halfFit.rows} vs ${f.cols} x ${f.rows}`);
+  check("...are a const in the code that reads back", /const pitch = 7\.5;/.test(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), pitch: 7.5 }, regions: [] }))
+    && parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), pitch: 7.5 }, regions: [] })).kuggis.pitch === 7.5
+    && parseKitCode(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] })).kuggis.pitch == null);
+  check("...and a 4 x 4 half-square corner box builds", (await measure(kuggisKit({ ...e, pitch: 7.5, flip: false, layout: [{ at: [0, 0], size: [4, 4], kind: "box" }] }))).solids === 1);
   check("the flip is a const in the code and reads back", /const flip = undefined/.test(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] }))
     && parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), flip: false }, regions: [] })).kuggis.flip === false);
 
@@ -169,7 +176,7 @@ console.log("\nthe builder's code\n");
 {
   const s = { container: "kuggis", kuggis: { ...defaultKuggis("18x26x15"), lock: true }, regions: [{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox" }, { c: 2, r: 0, w: 3, h: 3, kind: "frame", split: true }] };
   const code = kitCode(s);
-  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, layout: pieces/.test(code));
+  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, pitch, layout: pieces/.test(code));
   check("it calls kuggisKit, not caseKit", /return kuggisKit\(/.test(code) && !/caseKit\(/.test(code));
   check("the box's inside is sliders", /const rimW = [\d.]+;\s+\/\/ \[/.test(code) && /const taper = /.test(code) && /const taperD = /.test(code) && /const clear = /.test(code));
   check("it says the numbers are estimates to measure over", /estimate/i.test(code) && /Measure your box/.test(code));

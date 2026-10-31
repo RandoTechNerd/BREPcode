@@ -174,7 +174,7 @@ function kuggisCode(s) {
 //
 // The pieces are cut from the box's INSIDE: a piece against a wall leans and
 // rounds with it, the faces between pieces stay upright. The grid is whole
-// 15 mm squares across the floor inside: ${fit.cols} x ${fit.rows} at these numbers.
+// ${fit.pitch} mm squares across the floor inside: ${fit.cols} x ${fit.rows} at these numbers.
 // IKEA publishes outside sizes only, so the inside below started as an
 // estimate. Measure your box and correct it: the pieces follow the sliders.
 const rimW = ${+k.rimW};   // [60:600] inside width, measured lidIn below the top (mm)
@@ -191,6 +191,7 @@ const lug = ${+k.lug};   // [0:40] how far the slot reaches in from the box's sh
 const lugW = ${+k.lugW};   // [1:12] the slot's width (mm)
 const lugH = ${+k.lugH};   // [0:150] the slot's height above the floor (mm)
 const lock = ${k.lock === true};   // true: Casefinity ribs and sockets on the faces between pieces, so the kit holds together. false: smooth sides
+const pitch = ${k.pitch === 7.5 ? 7.5 : 15};   // [7.5:15] the grid square: 15 is the Casefinity module, 7.5 half squares (an odd count splits in two equal pieces)
 // Wall pieces print top down (open top on the bed) when the floor can bridge the cavity, up to 3 squares across;
 // bigger boxes print upright. flip: true forces top down, false forces upright.
 const flip = ${k.flip === true ? "true" : k.flip === false ? "false" : "undefined"};
@@ -202,7 +203,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, pitch, layout: pieces });
 `;
 }
 
@@ -222,6 +223,7 @@ export function parseKitCode(src = "") {
     state.container = "kuggis";
     const k = defaultKuggis();
     for (const key of ["rimW", "rimD", "height", "lidIn", "taper", "taperD", "corner", "floorRound", "clear", "lug", "lugW", "lugH"]) if (n(key) != null) k[key] = n(key);
+    if (n("pitch") === 7.5) k.pitch = 7.5;
     k.lock = /\b(?:const\s+lock\s*=|lock\s*:)\s*true\b/.test(text);
     const fl = /\bconst\s+flip\s*=\s*(true|false|undefined)/.exec(text);
     k.flip = fl && fl[1] !== "undefined" ? fl[1] === "true" : undefined;
@@ -436,7 +438,7 @@ export function showCaseBuilder(hooks = {}) {
   // improves as boxes get measured, and a stale copy under a size's name
   // would quietly print to last month's estimate. Hand-typed numbers are
   // "custom" and stay exactly as typed.
-  if (S.kuggis.size && S.kuggis.size !== "custom" && !fromCode) S.kuggis = { ...defaultKuggis(S.kuggis.size), lock: S.kuggis.lock === true };
+  if (S.kuggis.size && S.kuggis.size !== "custom" && !fromCode) S.kuggis = { ...defaultKuggis(S.kuggis.size), lock: S.kuggis.lock === true, pitch: S.kuggis.pitch };
   let brush = "box", split = false;
   const undo = [];
 
@@ -473,6 +475,9 @@ export function showCaseBuilder(hooks = {}) {
                says so; the fields are there to be measured and typed over. -->
           <div id="cb-kuggis" hidden>
             <select id="cb-ksize" class="cb-select" aria-label="KUGGIS size" style="margin-top:8px"></select>
+            <details class="cb-adv" id="cb-kadv">
+            <summary>Advanced: half squares, the box's inside, the corner rib</summary>
+            <label class="cb-check" style="margin-top:8px"><input type="checkbox" id="cb-khalf" /><span>Half squares<small>A 7.5 mm grid instead of 15, so an odd count of squares splits into two equal pieces (15 squares = 7½ + 7½). Finer to paint; the pieces print the same.</small></span></label>
             <div class="cb-dims cb-dims4">
               <label title="Inside the box, across the short side, measured as far down as the lid's plug reaches">Rim width<input id="cb-krw" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
               <label title="Inside the box, along the long side, measured as far down as the lid's plug reaches">Rim depth<input id="cb-krd" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
@@ -492,6 +497,7 @@ export function showCaseBuilder(hooks = {}) {
               <label title="The slot's height: how tall the rib stands above the floor, plus some air">Rib height<input id="cb-klugh" type="number" min="0" max="150" step="1" inputmode="decimal" /></label>
             </div>
             <p class="cb-hint" id="cb-khint"></p>
+            </details>
           </div>
           <div class="cb-read" id="cb-read" aria-live="polite"></div>
           <h3>2 · Start from a layout</h3>
@@ -617,8 +623,21 @@ export function showCaseBuilder(hooks = {}) {
   paintKuggisFields();
   ksize.addEventListener("change", () => {
     if (ksize.value === "custom") { S.kuggis.size = "custom"; paint(); return; }
-    S.kuggis = { ...defaultKuggis(ksize.value), lock: S.kuggis.lock === true };
+    S.kuggis = { ...defaultKuggis(ksize.value), lock: S.kuggis.lock === true, pitch: S.kuggis.pitch };
     paintKuggisFields(); paint();
+  });
+  const khalf = $("cb-khalf");
+  khalf.checked = S.kuggis.pitch === 7.5;
+  khalf.addEventListener("change", () => {
+    const from = S.kuggis.pitch === 7.5 ? 7.5 : 15, to = khalf.checked ? 7.5 : 15;
+    if (from === to) return;
+    // the painted regions follow the grid: doubled going finer, halved
+    // coming back when every edge still lands on a line, else cleared
+    if (to < from) S.regions = S.regions.map((g) => ({ ...g, c: g.c * 2, r: g.r * 2, w: g.w * 2, h: g.h * 2 }));
+    else if (S.regions.every((g) => [g.c, g.r, g.w, g.h].every((n) => n % 2 === 0))) S.regions = S.regions.map((g) => ({ ...g, c: g.c / 2, r: g.r / 2, w: g.w / 2, h: g.h / 2 }));
+    else S.regions = [];
+    S.kuggis.pitch = to;
+    paint();
   });
   for (const [id, key] of KFIELDS) {
     $(id).addEventListener("input", () => {
@@ -894,7 +913,7 @@ export function showCaseBuilder(hooks = {}) {
     const t = tally(S.regions, cols, rows, !kug && S.includeCase !== false, separateLatch);
     const plate = hooks.plate?.() || null;
     const warn = [];
-    if (!f.fits) warn.push(kug ? "No whole 15 mm square fits the floor at these numbers. Check the rim size, depth and taper." : "Too small for a single 15 mm square. Make it bigger.");
+    if (!f.fits) warn.push(kug ? `No whole ${f.pitch} mm square fits the floor at these numbers. Check the rim size, depth and taper.` : "Too small for a single 15 mm square. Make it bigger.");
     if (plate && !kug && S.includeCase !== false
       && (Math.max(f.width, f.depth) > Math.max(plate.x, plate.y) || Math.min(f.width, f.depth) > Math.min(plate.x, plate.y))) {
       warn.push(`The case (${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} mm) is bigger than your ${plate.x} × ${plate.y} mm plate.`);
@@ -906,7 +925,7 @@ export function showCaseBuilder(hooks = {}) {
     }
     $("cb-read").innerHTML = (f.fits
       ? kug
-        ? `<b>${cols} × ${rows}</b> squares of 15 mm on the floor · floor inside <b>${f.floor[0]} × ${f.floor[1]}</b>, rim <b>${f.rim[0]} × ${f.rim[1]}</b> mm`
+        ? `<b>${cols} × ${rows}</b> squares of ${f.pitch} mm on the floor · floor inside <b>${f.floor[0]} × ${f.floor[1]}</b>, rim <b>${f.rim[0]} × ${f.rim[1]}</b> mm`
           + `<br />Pieces ${f.pieceHeight} mm tall (stopping under the lid's ${f.lidIn} mm plug), lean ${S.kuggis.taper}°${S.kuggis.taperD > 0 && S.kuggis.taperD !== S.kuggis.taper ? ` / ${S.kuggis.taperD}° (long side)` : ""} with the walls, ${S.kuggis.clear} mm off them`
         : `<b>${cols} × ${rows}</b> squares of 15 mm · outside <b>${+f.width.toFixed(1)} × ${+f.depth.toFixed(1)} × ${+f.height.toFixed(1)}</b> mm`
           + `<br />Grid ${f.inner[0]} × ${f.inner[1]} mm, ${+f.inner[2].toFixed(1)} deep · boxes ${f.binHeight} mm tall`
