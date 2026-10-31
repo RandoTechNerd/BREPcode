@@ -118,10 +118,11 @@ export const KUGGIS_SIZES = Object.freeze([
   { id: "18x26x8", label: "18 × 26 × 8 cm (7 × 10¼ × 3¼ in)", outer: [180, 260, 80] },
   { id: "18x26x15", label: "18 × 26 × 15 cm (7 × 10¼ × 6 in)", outer: [180, 260, 150] },
   { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150],
-    // the floor was calipered 228 x 320, but the first printed corner piece
-    // leaned 1 degree more than the box (air under its bottom edge), so the
-    // floor is re-fitted a degree steeper: 6.7 / 5.2 instead of 7.7 / 6.2
-    measured: { rimW: 265, floorW: 232.7, rimD: 350, floorD: 325.0, height: 146.4, lidIn: 9 },
+    // calipered 265 x 350 at the plug line and 228 x 320 at the floor, but
+    // the first printed corner piece leaned 1 degree more than the box (air
+    // under its bottom edge), so both are re-fitted about mid-height: the
+    // floor 2.4 wider, the rim 2.4 narrower, 6.7 / 5.2 instead of 7.7 / 6.2
+    measured: { rimW: 262.6, floorW: 230.4, rimD: 347.6, floorD: 322.4, height: 146.4, lidIn: 9 },
     note: "measured with calipers 9 mm down and the depth; the taper re-fitted from a printed corner piece (a degree steeper than the calipered floor). The corner radius and the corner lug slot are still estimates: check them against your box" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);
