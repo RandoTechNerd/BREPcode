@@ -46,7 +46,7 @@ console.log("\nthe box as numbers\n");
   // IKEA quotes the footprint: a real 26x35 is 265 inside 9 mm down and 146.4 deep
   check("the estimate reads IKEA's size as the footprint", e.rimW === 265 && e.rimD === 350 && e.height === 146.4, JSON.stringify(e));
   const m = kuggisEstimate(KUGGIS_SIZES.find((s) => s.id === "26x35x15"));
-  check("the measured box sets each axis's taper from floor and rim", near(m.taper, 7.2, 0.1) && near(m.taperD, 5.7, 0.1) && m.rimW === 262.6 && m.rimD === 347.6 && m.height === 146.4, JSON.stringify(m));
+  check("the measured box sets each axis's taper from floor and rim", near(m.taper, 6.7, 0.1) && near(m.taperD, 5.0, 0.1) && m.rimW === 260.3 && m.rimD === 344.0 && m.height === 146.4, JSON.stringify(m));
   const mf = kuggisFit(m);
   check("...and both floors come back out of the fit", near(mf.floor[0], 228, 0.3) && near(mf.floor[1], 320, 0.3), `${mf.floor}`);
   check("...with the corner re-based per size (12 on the 26x35, 7.5 on the 13x18)", m.corner === 12 && kuggisEstimate(KUGGIS_SIZES[0]).corner === 7.5, `${m.corner} / ${kuggisEstimate(KUGGIS_SIZES[0]).corner}`);

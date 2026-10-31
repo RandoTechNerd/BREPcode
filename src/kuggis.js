@@ -77,8 +77,8 @@ export const KUGGIS = Object.freeze({
   rimIn: -2.5,          // short side: inside at lidIn down = outside - 2 * rimIn
   rimInD: 0,            // long side: measured 350 against a quoted 350
   depthIn: 3.6,         // inside depth = outside height - depthIn
-  taper: 7.2,           // degrees the short-side walls lean out, floor to the lid-plug line (7.7 calipered; a printed piece said a little less)
-  taperD: 5.7,          // the long-side walls, a little less than calipered too
+  taper: 6.7,           // degrees the short-side walls lean out, floor to the lid-plug line (7.7 calipered; prints said less)
+  taperD: 5.0,          // the long-side walls (6.2 calipered; a three-piece row built to that would not go in at the top)
   // The vertical corners inside are tighter than they look: the published
   // inserts' corners measure r 7.3 at the floor of a 13x18 (agepbiz,
   // printables 1285504), r 15 on a floor plate for an 18x26 (Eric T,
@@ -118,14 +118,13 @@ export const KUGGIS_SIZES = Object.freeze([
   { id: "18x26x8", label: "18 × 26 × 8 cm (7 × 10¼ × 3¼ in)", outer: [180, 260, 80] },
   { id: "18x26x15", label: "18 × 26 × 15 cm (7 × 10¼ × 6 in)", outer: [180, 260, 150] },
   { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150],
-    // calipered 265 x 350 at the plug line and 228 x 320 at the floor. The
-    // floor IS the calipers: a row of three pieces built on a floor 2.4 mm
-    // longer than that did not go in. The rim is 2.4 narrower than
-    // calipered (the first printed corner piece read as leaning too far:
-    // top a little narrower), so the walls lean 7.2 / 5.7 instead of the
-    // calipered 7.7 / 6.2. The air under that piece's bottom edge was most
-    // likely the floor rounding, now 3 (was an estimated 6)
-    measured: { rimW: 262.6, floorW: 228, rimD: 347.6, floorD: 320, height: 146.4, lidIn: 9 },
+    // calipered 265 x 350 at the plug line and 228 x 320 at the floor. A
+    // printed gauge cut to 228 x 320 had ~2 mm of play at the floor (room,
+    // kept as room), but a row of three pieces built to the calipered lean
+    // (6.2 deg) would not go in at the TOP, so the rim is what gives: 260.3
+    // x 344 at the plug line, walls leaning 6.7 / 5.0 instead of 7.7 / 6.2.
+    // Floor rounding 3 (an estimated 6 left air under a piece's bottom edge)
+    measured: { rimW: 260.3, floorW: 228, rimD: 344.0, floorD: 320, height: 146.4, lidIn: 9 },
     note: "measured with calipers 9 mm down and the depth; the taper re-fitted from a printed corner piece (a degree steeper than the calipered floor). The corner radius and the corner lug slot are still estimates: check them against your box" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);

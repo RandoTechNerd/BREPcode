@@ -388,14 +388,12 @@ function style() {
 }
 
 function creditHTML() {
-  return `Grid system: <a href="${CREDITS.casefinity}" target="_blank" rel="noopener">Casefinity</a>
-    (<a href="${CREDITS.spec}" target="_blank" rel="noopener">spec</a>,
-    <a href="${CREDITS.github}" target="_blank" rel="noopener">source</a>) by Chris Agocs, built on
-    <a href="${CREDITS.hardcases}" target="_blank" rel="noopener">Gridfinity for Hardcases</a> by the
-    <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>.
-    If this saves you time, <a href="${CREDITS.patreon}" target="_blank" rel="noopener">support him on Patreon</a>.
-    <br />The case, the bins and their lids here are BREPcode's own designs, made to the Casefinity spec so they fit its grid.
-    The Koch Box style (ribbed walls, swing latch) follows
+  return `Case geometry follows the <a href="${CREDITS.spec}" target="_blank" rel="noopener">Casefinity interoperability spec</a>
+    (<a href="${CREDITS.github}" target="_blank" rel="noopener">source</a>) by Chris Agocs, MIT licensed.
+    The &ldquo;<a href="${CREDITS.hardcases}" target="_blank" rel="noopener">Gridfinity for Hardcases</a>&rdquo; system it implements is the design of the
+    <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>, reimplemented with his permission.
+    Support the original work: <a href="${CREDITS.patreon}" target="_blank" rel="noopener">patreon.com/cw/UnemployedArchitect</a>.
+    <br />The Koch Box style (ribbed walls, swing latch) follows
     <a href="${CREDITS.koch}" target="_blank" rel="noopener">Parametric Hinged Storage Box</a> by Luca Koch on Printables.`;
 }
 
@@ -1008,9 +1006,10 @@ function showDone(hooks, t) {
       <button type="button" data-a="stl">STL</button>
       <button type="button" data-a="grid">Back to the grid</button>
     </div>
-    <small>Grid: <a href="${CREDITS.casefinity}" target="_blank" rel="noopener">Casefinity</a> by Chris Agocs, on
-      <a href="${CREDITS.hardcases}" target="_blank" rel="noopener">Gridfinity for Hardcases</a> by the
-      <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>.</small>`;
+    <small>Case geometry follows the <a href="${CREDITS.spec}" target="_blank" rel="noopener">Casefinity spec</a> by Chris Agocs (MIT);
+      &ldquo;Gridfinity for Hardcases&rdquo; is the design of the
+      <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Unemployed Architect</a>, reimplemented with his permission.
+      <a href="${CREDITS.patreon}" target="_blank" rel="noopener">Support the original work</a>.</small>`;
   document.body.appendChild(el);
   el.querySelector(".cb-x2").addEventListener("click", () => el.remove());
   el.addEventListener("click", (e) => {
