@@ -46,9 +46,9 @@ console.log("\nthe box as numbers\n");
   // IKEA quotes the footprint: a real 26x35 is 265 inside 9 mm down and 146.4 deep
   check("the estimate reads IKEA's size as the footprint", e.rimW === 265 && e.rimD === 350 && e.height === 146.4, JSON.stringify(e));
   const m = kuggisEstimate(KUGGIS_SIZES.find((s) => s.id === "26x35x15"));
-  check("the measured box sets each axis's taper from floor and rim", near(m.taper, 6.7, 0.1) && near(m.taperD, 5.0, 0.1) && m.rimW === 260.3 && m.rimD === 344.0 && m.height === 146.4, JSON.stringify(m));
+  check("the measured box sets each axis's taper from floor and rim", near(m.taper, 6.3, 0.1) && near(m.taperD, 4.6, 0.1) && m.rimW === 260.3 && m.rimD === 344.0 && m.height === 146.4, JSON.stringify(m));
   const mf = kuggisFit(m);
-  check("...and both floors come back out of the fit", near(mf.floor[0], 228, 0.3) && near(mf.floor[1], 320, 0.3), `${mf.floor}`);
+  check("...and both floors come back out of the fit", near(mf.floor[0], 230, 0.3) && near(mf.floor[1], 322, 0.3), `${mf.floor}`);
   check("...with the corner re-based per size (12 on the 26x35, 7.5 on the 13x18)", m.corner === 12 && kuggisEstimate(KUGGIS_SIZES[0]).corner === 7.5, `${m.corner} / ${kuggisEstimate(KUGGIS_SIZES[0]).corner}`);
   check("...and a corner rib slot: past the corner, 4 wide, 30 % of the depth", m.lug === 16 && m.lugW === 4 && m.lugH === 44, `${m.lug} ${m.lugW} ${m.lugH}`);
   check("the smallest box's slot is as tall as the published insert's (25 mm)", kuggisEstimate(KUGGIS_SIZES[0]).lugH >= 20 && kuggisEstimate(KUGGIS_SIZES[0]).lugH <= 25, `${kuggisEstimate(KUGGIS_SIZES[0]).lugH}`);
@@ -138,6 +138,9 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   // the two box-side walls of this 2x2 corner piece (60 tall) are about 2 x 1.2 x 30 x 60 mm³
   check("no walls against the box: the corner piece loses its two box-side walls", openW.solids === 1 && openW.vol < corner.vol - 3000, `${openW.vol.toFixed(0)} vs ${corner.vol.toFixed(0)} mm³ (${(corner.vol - openW.vol).toFixed(0)} less)`);
   check("...whose floor still reaches the box wall", near(openW.at(0, 0), corner.at(0, 0), 0.05), `${openW.at(0, 0).toFixed(2)} vs ${corner.at(0, 0).toFixed(2)}`);
+  check("...and the corner slot is open too, whatever the slot setting", openW.atZ(e.lugH + KUGGIS.wall) === 0 && openW.atZ(e.lugH) === 0, `${openW.atZ(e.lugH + KUGGIS.wall)} / ${openW.atZ(e.lugH)} vertices at a slot wall`);
+  const openWL = await measure(kuggisKit({ ...e, flip: false, openWalls: true, openLug: true, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  check("...no walls + open slot is the same piece", openWL.solids === 1 && near(openWL.vol, openW.vol, 1), `${openWL.vol.toFixed(0)} vs ${openW.vol.toFixed(0)} mm³`);
   const openL = await measure(kuggisKit({ ...e, flip: false, openLug: true, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
   check("open corner slot: no wall over the slot, lighter", openL.solids === 1 && openL.atZ(e.lugH + KUGGIS.wall) === 0 && openL.vol < corner.vol - 20, `${openL.atZ(e.lugH + KUGGIS.wall)} vertices a wall over the rib, ${openL.vol.toFixed(0)} vs ${corner.vol.toFixed(0)} mm³`);
   check("both are consts in the code that read back", (() => { const p = parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), openWalls: true, openLug: true }, regions: [] })).kuggis; return p.openWalls === true && p.openLug === true; })()

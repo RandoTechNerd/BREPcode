@@ -77,8 +77,8 @@ export const KUGGIS = Object.freeze({
   rimIn: -2.5,          // short side: inside at lidIn down = outside - 2 * rimIn
   rimInD: 0,            // long side: measured 350 against a quoted 350
   depthIn: 3.6,         // inside depth = outside height - depthIn
-  taper: 6.7,           // degrees the short-side walls lean out, floor to the lid-plug line (7.7 calipered; prints said less)
-  taperD: 5.0,          // the long-side walls (6.2 calipered; a three-piece row built to that would not go in at the top)
+  taper: 6.3,           // degrees the short-side walls lean out, floor to the lid-plug line (7.7 calipered; prints said less)
+  taperD: 4.6,          // the long-side walls (6.2 calipered; a three-piece row built to that would not go in at the top)
   // The vertical corners inside are tighter than they look: the published
   // inserts' corners measure r 7.3 at the floor of a 13x18 (agepbiz,
   // printables 1285504), r 15 on a floor plate for an 18x26 (Eric T,
@@ -122,10 +122,12 @@ export const KUGGIS_SIZES = Object.freeze([
     // printed gauge cut to 228 x 320 had ~2 mm of play at the floor (room,
     // kept as room), but a row of three pieces built to the calipered lean
     // (6.2 deg) would not go in at the TOP, so the rim is what gives: 260.3
-    // x 344 at the plug line, walls leaning 6.7 / 5.0 instead of 7.7 / 6.2.
+    // x 344 at the plug line. A printed snap gauge cut to the calipered
+    // floor then had 2 mm of play, so the floor is 230 x 322 at the wall
+    // plane (the calipers sat in the floor rounding): 6.3 / 4.6 degrees.
     // Floor rounding 3 (an estimated 6 left air under a piece's bottom edge)
-    measured: { rimW: 260.3, floorW: 228, rimD: 344.0, floorD: 320, height: 146.4, lidIn: 9 },
-    note: "measured with calipers 9 mm down and the depth; the taper re-fitted from a printed corner piece (a degree steeper than the calipered floor). The corner radius and the corner lug slot are still estimates: check them against your box" },
+    measured: { rimW: 260.3, floorW: 230, rimD: 344.0, floorD: 322, height: 146.4, lidIn: 9 },
+    note: "measured with calipers 9 mm down and the depth; the floor from a printed snap gauge and the rim trimmed until a printed row went in. The corner radius and the corner lug slot are still estimates: check them against your box" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);
 
@@ -297,16 +299,19 @@ function liners(b) {
   const H = b.pieceH;
   const outer = liner(b, b.clear, 0, H + 1, b.floorRound);
   const walls = liner(b, b.clear + 0.05, -1, H + 1, b.floorRound);
+  // No walls against the box: the cavity is the box itself, a millimetre
+  // past the piece's skin, so nothing is left on the box side; the corner
+  // rib's slot is cut open too (its walls are walls against the box).
+  const column = () => (b.lug > 0 ? lugCutters(b, 0.3, -1, b.lugH + 2) : []);
   if (b.openWalls) {
     return {
       outer, walls,
-      inner: liner(b, b.clear - 1, b.floor, H + 2, 0, 0, 0, false),
-      innerOpen: liner(b, b.clear - 1, -1, H + 2, 0, 0, 0, false),
+      inner: union(liner(b, b.clear - 1, b.floor, H + 2, 0, 0, 0, false), ...column()),
+      innerOpen: union(liner(b, b.clear - 1, -1, H + 2, 0, 0, 0, false), ...column()),
     };
   }
   const inset = b.clear + b.wall, fr = Math.max(0, b.floorRound - b.wall);
   if (b.openLug && b.lug > 0) {
-    const column = () => lugCutters(b, 0.3, -1, b.lugH + 2);
     return {
       outer, walls,
       inner: union(liner(b, inset, b.floor, H + 2, fr, 0, 0, false), ...column()),
