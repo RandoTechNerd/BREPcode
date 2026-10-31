@@ -17,7 +17,7 @@
 // read on its own. The pure parts (fit, presets, the code it writes and reads
 // back) are exported for test/casebuilder.js.
 
-import { casefinityFit, CASEKIT_COLORS, SMOOTH_LATCHES } from "../src/casefinity.js";
+import { casefinityFit, CASEKIT_COLORS, SMOOTH_LATCHES, PRESS_LATCHES, PRESS_MIN_BODY } from "../src/casefinity.js";
 import { kuggisFit, kuggisEstimate, KUGGIS_SIZES } from "../src/kuggis.js";
 
 export const CREDITS = Object.freeze({
@@ -931,6 +931,8 @@ export function showCaseBuilder(hooks = {}) {
     for (const b of $("cb-klatch").querySelectorAll("button")) b.disabled = S.includeCase === false;
     $("cb-latch-row").style.opacity = S.includeCase === false ? ".5" : "";
     $("cb-latch-hint").textContent = koch ? KLATCH_HINT[KOCH_LATCHES.includes(S.kochLatch) ? S.kochLatch : "swingpip"] : LATCH_HINT[SMOOTH_LATCHES.includes(S.latch) ? S.latch : "hook"];
+    // the press latches need room down the front: a short case gets the hook
+    if (!koch && PRESS_LATCHES.includes(S.latch) && f.bodyHeight < PRESS_MIN_BODY) $("cb-latch-hint").textContent += ` Too short for it: a case needs a body ${PRESS_MIN_BODY} mm tall (${PRESS_MIN_BODY + (f.lidHeight || 18)} mm overall), so this one gets the hook clasp.`;
     $("cb-adv").style.opacity = S.includeCase === false ? ".5" : "";
     $("cb-sum").innerHTML = t.pieces
       ? `<b>${t.pieces} piece${t.pieces === 1 ? "" : "s"}</b> to print: ${esc(bits.join(", "))}.`

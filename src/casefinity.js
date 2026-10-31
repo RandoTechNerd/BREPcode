@@ -347,9 +347,14 @@ function caseDims(opts) {
   // the Koch style's latch: "swing" on a filament pin (a separate part),
   // "swingpip" the same latch printed in place on the lid, "toggle" the
   // folding over-centre latch. The smooth style keeps its hook and round clasps.
-  const latch = koch
+  let latch = koch
     ? (["swing", "swingpip", "toggle"].includes(opts.latch) ? opts.latch : "swingpip")
     : SMOOTH_LATCHES.includes(opts.latch) ? opts.latch : "hook";
+  // the press-and-pull latches hang down the body's front: under
+  // PRESS_MIN_BODY of body there is no room for a paddle or a tail, and the
+  // paddle's geometry folds in on itself, so such a case gets the hook
+  let latchNote = null;
+  if (!koch && PRESS_LATCHES.includes(latch) && H < PRESS_MIN_BODY) { latchNote = `the ${latch} latch needs a body at least ${PRESS_MIN_BODY} mm tall (a case ${PRESS_MIN_BODY + c.lidHeight} tall with this lid): hook clasp instead`; latch = "hook"; }
   const toggle = latch === "toggle";
   // the round-lip family and the claw family both stand the blade on the
   // round clasp's 0.7 gap; only the window hook sits on the tight 0.3
@@ -365,13 +370,14 @@ function caseDims(opts) {
   // every filament pin hole: the pin, the measured clearance, the fit slider
   const pinR = c.pin / 2 + c.pinClear + c.pinFit;
   return { o, c, cols, rows, Lin, Win, L, W, H, tongueT, R, rT, kr, axisOff, axisY: W / 2 + axisOff, hingeLen, segLen,
-    gasket: opts.gasket === true, latch, toggle, lipLatch, clawLatch, pressLatch, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
+    gasket: opts.gasket === true, latch, latchNote, toggle, lipLatch, clawLatch, pressLatch, latchOut, lidOut, koch, ribW, ribX, ribY, lw, pinR };
 }
 
 // the smooth style's clasps, in the order the builder lists them
 export const SMOOTH_LATCHES = Object.freeze(["hook", "round", "wedge", "groove", "cam", "claw", "fingers", "paddle", "lever"]);
 // the ones printed as a part of their own, on a filament pin through body lugs
 export const PRESS_LATCHES = Object.freeze(["paddle", "lever"]);
+export const PRESS_MIN_BODY = 16;
 
 const roundedBlock = (L, W, h, r, z = 0) =>
   translate([-L / 2, -W / 2, z], fillet({ r, edges: "z" }, cube([L, W, h])));
