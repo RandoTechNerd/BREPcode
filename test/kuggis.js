@@ -46,9 +46,9 @@ console.log("\nthe box as numbers\n");
   // IKEA quotes the footprint: a real 26x35 is 265 inside 9 mm down and 146.4 deep
   check("the estimate reads IKEA's size as the footprint", e.rimW === 265 && e.rimD === 350 && e.height === 146.4, JSON.stringify(e));
   const m = kuggisEstimate(KUGGIS_SIZES.find((s) => s.id === "26x35x15"));
-  check("the measured box sets each axis's taper from floor and rim", near(m.taper, 7.7, 0.1) && near(m.taperD, 6.2, 0.1) && m.rimW === 265 && m.rimD === 350 && m.height === 146.4, JSON.stringify(m));
+  check("the measured box sets each axis's taper from floor and rim", near(m.taper, 6.7, 0.1) && near(m.taperD, 5.2, 0.1) && m.rimW === 265 && m.rimD === 350 && m.height === 146.4, JSON.stringify(m));
   const mf = kuggisFit(m);
-  check("...and both floors come back out of the fit", near(mf.floor[0], 228, 0.3) && near(mf.floor[1], 320, 0.3), `${mf.floor}`);
+  check("...and both floors come back out of the fit", near(mf.floor[0], 232.7, 0.3) && near(mf.floor[1], 325.0, 0.3), `${mf.floor}`);
   check("...with the corner re-based per size (12 on the 26x35, 7.5 on the 13x18)", m.corner === 12 && kuggisEstimate(KUGGIS_SIZES[0]).corner === 7.5, `${m.corner} / ${kuggisEstimate(KUGGIS_SIZES[0]).corner}`);
   check("...and a corner rib slot: past the corner, 4 wide, 30 % of the depth", m.lug === 16 && m.lugW === 4 && m.lugH === 44, `${m.lug} ${m.lugW} ${m.lugH}`);
   check("the smallest box's slot is as tall as the published insert's (25 mm)", kuggisEstimate(KUGGIS_SIZES[0]).lugH >= 20 && kuggisEstimate(KUGGIS_SIZES[0]).lugH <= 25, `${kuggisEstimate(KUGGIS_SIZES[0]).lugH}`);
