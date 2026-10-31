@@ -196,22 +196,31 @@
         });
       } catch (e) { return Promise.resolve(false); }
     })();
-    // The kernel's entry and its static imports. Without these the 9 MB
-    // PartHistory chunk only starts downloading once brep-kernel.js has
-    // arrived and been parsed; asked for here it downloads in parallel with
-    // everything else. The names carry content hashes: build-site checks
-    // every one exists.
-    window.__swReady.then(function () {
-      ["/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js",
-       "/node_modules/brep-io-kernel/dist-kernel/PartHistory-CIahaME9.js",
-       "/node_modules/brep-io-kernel/dist-kernel/deepClone-DtPu-m_d.js",
-       "/node_modules/brep-io-kernel/dist-kernel/index.esm-C2RuGKV3.js"].forEach(function (href) {
-        var l = document.createElement("link");
-        l.rel = "modulepreload";
-        l.href = href;
-        document.head.appendChild(l);
+    // The JS kernel's entry and its static imports (11 MB, the page's own
+    // copy for exports, imports and the sketch solver, and the worker's
+    // fallback lane). Without these hints the 9 MB PartHistory chunk only
+    // starts downloading once brep-kernel.js has arrived and been parsed.
+    // They used to be added at boot, beside SMLib's 4.4 MB on its way to the
+    // worker, and on a slow line the two split it and SMLib (the kernel that
+    // actually builds the first model) landed late. Now the page adds them
+    // when it warms the JS kernel: after the first build, or ten seconds in
+    // (warmJsKernel below). The names carry content hashes: build-site
+    // checks every one exists.
+    window.__preloadJsKernel = function () {
+      if (window.__preloadJsKernel.done) return;
+      window.__preloadJsKernel.done = true;
+      window.__swReady.then(function () {
+        ["/node_modules/brep-io-kernel/dist-kernel/brep-kernel.js",
+         "/node_modules/brep-io-kernel/dist-kernel/PartHistory-CIahaME9.js",
+         "/node_modules/brep-io-kernel/dist-kernel/deepClone-DtPu-m_d.js",
+         "/node_modules/brep-io-kernel/dist-kernel/index.esm-C2RuGKV3.js"].forEach(function (href) {
+          var l = document.createElement("link");
+          l.rel = "modulepreload";
+          l.href = href;
+          document.head.appendChild(l);
+        });
       });
-    });
+    };
   </script>
   <!--
     Live BrepScript typing -> solid model, rendered with the BREP.io kernel.
@@ -4584,10 +4593,23 @@
       _kernel = undefined;              // so the next caller really does retry
       throw e;
     }));
-    getKernel();
     // sketch() solves its constraints and dims with the kernel's own solver
     const sketchSolverReady = () => getKernel().then((k) => { if (k?.ConstraintSolver) dsl.useSketchSolver(k.ConstraintSolver); }).catch(() => {});
-    sketchSolverReady();
+    // The page's JS kernel used to be imported right here, at boot: 11 MB
+    // downloaded and parsed on the main thread while the worker was still
+    // fetching SMLib, so the first model waited on both. It is warmed once
+    // the first build has landed (SMLib is in by then) or ten seconds after
+    // load, whichever comes first; anything that needs it sooner awaits
+    // getKernel() and simply starts the import then.
+    let jsKernelWarmed = false;
+    function warmJsKernel() {
+      if (jsKernelWarmed) return;
+      jsKernelWarmed = true;
+      try { window.__preloadJsKernel?.(); } catch { /* a hint, nothing more */ }
+      getKernel().catch(() => { /* retried by whoever needs it */ });
+      sketchSolverReady();
+    }
+    window.addEventListener("load", () => setTimeout(warmJsKernel, 10000));
 
     // ---- the kernel's heavy half, off the main thread ---------------------
     //
@@ -6807,6 +6829,11 @@
     const negBtn = $("neg-btn");
     const negGroup = new THREE.Group();
     scene.add(negGroup);
+    // The meshes a drag preview moves for a feature: its faces on the model
+    // and, with the overlay on, its negative-shape ghost (the dashed outline
+    // and the invisible pick solid), so a hole's outline follows the hand
+    // instead of sitting where it was until the rebuild lands.
+    const dragMeshesOf = (...fids) => [...modelGroup.children, ...negGroup.children].filter((m) => fids.includes(m.userData.featureId));
     // Invisible to the renderer, solid to the raycaster — see refreshNegatives.
     const negPickMat = new THREE.MeshBasicMaterial({ visible: false });
     let lastShape = null;
@@ -11074,6 +11101,8 @@ ${joined}${SITE_TAIL}`), joined);
         lastBuildMs = performance.now() - t0;
         if (window.brepscript.firstBuildMs === undefined) {
           window.brepscript.firstBuildMs = Math.round(performance.now());
+          // the kernel that builds has landed: the JS kernel can have the line now
+          setTimeout(warmJsKernel, 500);
         }
         const via = lastLang === "openscad" ? "OpenSCAD · " : lastLang === "jscad" ? "JSCAD · "
           : lastLang === "build123d" ? "build123d · " : lastLang === "cadquery" ? "CadQuery · " : "";
@@ -13231,7 +13260,7 @@ ${joined}${SITE_TAIL}`), joined);
       const inst = instanceSpan(site);
       if (inst?.shared) {
         return { site, span: null, fids: [fid], isCutter: false, shared: inst.shared,
-          meshes: modelGroup.children.filter((m) => m.userData.featureId === fid) };
+          meshes: dragMeshesOf(fid) };
       }
       const span = inst ?? dragSpanFor(code.value, site);
       const fids = inst
@@ -13400,7 +13429,7 @@ ${joined}${SITE_TAIL}`), joined);
                 // the corner that stays: opposite on every axis
                 fixed: new THREE.Vector3(signs[0] > 0 ? fbb.min.x : fbb.max.x, signs[1] > 0 ? fbb.min.y : fbb.max.y, signs[2] > 0 ? fbb.min.z : fbb.max.z),
                 size: fbb.getSize(new THREE.Vector3()),
-                meshes: modelGroup.children.filter((m) => patternIds(H.fid).includes(m.userData.featureId)),
+                meshes: dragMeshesOf(...patternIds(H.fid)),
                 dot: hHit.object, dotStart: at.clone(),
                 delta: new THREE.Vector3(), moved: false,
               };
@@ -13449,7 +13478,7 @@ ${joined}${SITE_TAIL}`), joined);
                 anchor: anchorCentered ? fbb.getCenter(new THREE.Vector3())
                   : (H.sign > 0 ? fbb.min : fbb.max),
                 start: hHit.object.position.clone(), planeZ: hHit.object.position.z,
-                meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
+                meshes: dragMeshesOf(H.fid),
                 delta: new THREE.Vector3(), amount: 0, moved: false,
                 dot: hHit.object, dotStart: hHit.object.position.clone(),  // rides the face out or in
               };
@@ -13484,7 +13513,7 @@ ${joined}${SITE_TAIL}`), joined);
               corners: fcorners.map((p) => p.slice()),
               index: best, origin: fcorners[best].slice(),
               start: at.clone(), planeZ: at.z,
-              meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
+              meshes: dragMeshesOf(H.fid),
               // BOTH meshes of the pair: each handle is drawn twice (a crisp
               // pass and a see-through ghost). Moving only the one the ray hit
               // left its twin sitting at the old corner, which read as a ghost
@@ -13508,7 +13537,7 @@ ${joined}${SITE_TAIL}`), joined);
                 start: hHit.object.position.clone(), planeZ: hHit.object.position.z,
                 anchorX: anchorCentered ? center.x : (signX > 0 ? fbb.min.x : fbb.max.x),
                 anchorY: anchorCentered ? center.y : (signY > 0 ? fbb.min.y : fbb.max.y),
-                meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
+                meshes: dragMeshesOf(H.fid),
                 ax: 0, ay: 0, moved: false,
               };
             }
@@ -13521,7 +13550,7 @@ ${joined}${SITE_TAIL}`), joined);
                 mode: "scale", fid: H.fid, site: hSite, targets, center,
                 startDist: Math.max(Math.hypot(startV.x, startV.y), 0.5),
                 start: hHit.object.position.clone(), planeZ: hHit.object.position.z,
-                meshes: modelGroup.children.filter((m) => m.userData.featureId === H.fid),
+                meshes: dragMeshesOf(H.fid),
                 factor: 1, moved: false,
               };
             }
