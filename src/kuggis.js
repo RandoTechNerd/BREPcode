@@ -232,7 +232,33 @@ const slab = (w, d, r, z, t = 0.02) =>
 // Then the corner lug slots, `grow` more than the box's own (the slot is a
 // bump INTO the piece, so a liner inset by the wall carries it grown by the
 // wall), up to lugTop: four cutters that never touch, one difference.
-function liner(b, inset, z0, z1, floorRound, grow = 0, lugTop = b.lugH) {
+// The rib slots' cutters: one per corner, along the corner's diagonal, from
+// `reach` in from the box's sharp inside corner at the floor out past the
+// corner (the walls lean out above the floor, so the slot only gets roomier
+// higher up). The end is not a flat roof but a 45 degree ramp climbing back
+// out toward the corner, so the slot prints without support whichever way
+// up the piece goes: the profile in the diagonal's vertical plane is drawn
+// as a polygon and extruded across the slot's width. `grow` widens and
+// deepens the slot; zb and zt are its bottom and the foot of its ramp.
+function lugCutters(b, grow, zb, zt) {
+  const t = tanD(b.taper), tD = tanD(b.taperD);
+  const reach = b.lug + grow, w = b.lugW + 2 * grow, out = 30 + b.height * Math.max(t, tD);
+  const profile = polygon([[-out, zb], [reach, zb], [reach, zt], [-out, zt + reach + out]]);
+  // drawn in x/y, stood up: rotate about x turns +y into +z and the
+  // extrusion (0..w along z) into -w..0 along y, so centre it on the diagonal
+  const cutter = translate([0, w / 2, 0], rotate([90, 0, 0], linearExtrude({ h: w }, profile)));
+  return [[-1, -1, 45], [1, -1, 135], [1, 1, 225], [-1, 1, 315]].map(([sx, sy, ang]) =>
+    translate([sx * b.floorW / 2, sy * b.floorD / 2, 0], rotate([0, 0, ang], cutter)));
+}
+
+// The liner: the box's inside pulled in by `inset` on every wall, from z0 up
+// to z1 (past the rim is fine: the slope continues). floorRound rounds the
+// floor edge; the hull of three slabs is that shape to within the facets.
+// Then, unless `notch` is false, the corner rib slots, `grow` more than the
+// box's own (the slot is a bump INTO the piece, so a liner inset by the wall
+// carries it grown by the wall), up to lugTop: four cutters that never
+// touch, one difference.
+function liner(b, inset, z0, z1, floorRound, grow = 0, lugTop = b.lugH, notch = true) {
   const t = tanD(b.taper), tD = tanD(b.taperD);
   const at = (z) => [b.floorW - 2 * inset + 2 * z * t, b.floorD - 2 * inset + 2 * z * tD];
   const r = Math.max(0.5, b.corner - inset);
@@ -246,43 +272,49 @@ function liner(b, inset, z0, z1, floorRound, grow = 0, lugTop = b.lugH) {
     slabs.push(slab(w0, d0, r, z0));
   }
   const body = hull(...slabs);
-  if (!(b.lug > 0) || lugTop <= z0) return body;
-  // a slot along each corner's diagonal: from `reach` in from the box's
-  // sharp inside corner at the floor, out past the corner (the walls lean
-  // out above the floor, so the slot only gets roomier higher up). Its end
-  // is not a flat roof but a 45 degree ramp climbing back out toward the
-  // corner, so the slot prints without support whichever way up the piece
-  // goes: the profile in the diagonal's vertical plane is drawn as a
-  // polygon and extruded across the slot's width.
-  const reach = b.lug + grow, w = b.lugW + 2 * grow, out = 30 + b.height * Math.max(t, tD);
-  const zb = z0 - 1, zt = lugTop;
-  const profile = polygon([[-out, zb], [reach, zb], [reach, zt], [-out, zt + reach + out]]);
-  // drawn in x/y, stood up: rotate about x turns +y into +z and the
-  // extrusion (0..w along z) into -w..0 along y, so centre it on the diagonal
-  const cutter = translate([0, w / 2, 0], rotate([90, 0, 0], linearExtrude({ h: w }, profile)));
-  const slots = [[-1, -1, 45], [1, -1, 135], [1, 1, 225], [-1, 1, 315]].map(([sx, sy, ang]) =>
-    translate([sx * b.floorW / 2, sy * b.floorD / 2, 0], rotate([0, 0, ang], cutter)));
-  return difference(body, ...slots);
+  if (!notch || !(b.lug > 0) || lugTop <= z0) return body;
+  return difference(body, ...lugCutters(b, grow, z0 - 1, lugTop));
 }
 
 // The three liners a kit cuts with, built ONCE and shared by every piece:
 // the engine builds a hull it has seen before from its cache, and a piece
 // that touches no wall never asks for them at all.
+//
+// The cavity liner has three forms. Walled (the default): inset by the
+// wall, its rib slot grown by the wall, so a wall stands round the slot.
+// openWalls: the cavity reaches a whole millimetre OUTSIDE the piece's wall
+// sides and carries no slot of its own, so a wall piece keeps its floor and
+// its upright walls between pieces, and the outer's slot through the floor
+// simply opens into it. openLug (walls kept): the cavity has no slot of its
+// own either; instead the slot's column, a little wider and taller than the
+// outer's, is ADDED to it, so the slot opens into the piece. Never a cavity
+// slot a hair bigger than the outer's: two ramps 0.05 apart left a sliver
+// sheet across the corner (the "corner cover" that would not go away) and,
+// with the lock's featured cavity, a mesh of slanted slabs.
 function liners(b) {
   const H = b.pieceH;
-  // the cavity liner: inset by the wall, or (openWalls) a hair OUTSIDE the
-  // outer liner so the wall side comes away clean; its rib slot grown by
-  // the wall, or (openLug) a hair bigger than the outer's so the slot is
-  // open into the piece, with the top ramps coinciding
-  const inset = b.openWalls ? b.clear - 0.05 : b.clear + b.wall;
-  const grow = b.openLug || b.openWalls ? 0.05 : b.wall;
-  const lugTop = b.openLug || b.openWalls ? b.lugH + 0.05 : b.lugH + b.wall;
-  const floorRound = b.openWalls ? b.floorRound : Math.max(0, b.floorRound - b.wall);
+  const outer = liner(b, b.clear, 0, H + 1, b.floorRound);
+  const walls = liner(b, b.clear + 0.05, -1, H + 1, b.floorRound);
+  if (b.openWalls) {
+    return {
+      outer, walls,
+      inner: liner(b, b.clear - 1, b.floor, H + 2, 0, 0, 0, false),
+      innerOpen: liner(b, b.clear - 1, -1, H + 2, 0, 0, 0, false),
+    };
+  }
+  const inset = b.clear + b.wall, fr = Math.max(0, b.floorRound - b.wall);
+  if (b.openLug && b.lug > 0) {
+    const column = () => lugCutters(b, 0.3, -1, b.lugH + 2);
+    return {
+      outer, walls,
+      inner: union(liner(b, inset, b.floor, H + 2, fr, 0, 0, false), ...column()),
+      innerOpen: union(liner(b, inset, -1, H + 2, 0, 0, 0, false), ...column()),
+    };
+  }
   return {
-    outer: liner(b, b.clear, 0, H + 1, b.floorRound),
-    inner: liner(b, inset, b.floor, H + 2, floorRound, grow, lugTop),
-    innerOpen: liner(b, inset, -1, H + 2, 0, grow, lugTop),
-    walls: liner(b, b.clear + 0.05, -1, H + 1, b.floorRound),
+    outer, walls,
+    inner: liner(b, inset, b.floor, H + 2, fr, b.wall, b.lugH + b.wall),
+    innerOpen: liner(b, inset, -1, H + 2, 0, b.wall, b.lugH + b.wall),
   };
 }
 
