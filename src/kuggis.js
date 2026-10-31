@@ -77,8 +77,8 @@ export const KUGGIS = Object.freeze({
   rimIn: -2.5,          // short side: inside at lidIn down = outside - 2 * rimIn
   rimInD: 0,            // long side: measured 350 against a quoted 350
   depthIn: 3.6,         // inside depth = outside height - depthIn
-  taper: 6.7,           // degrees the short-side walls lean out, floor to the lid-plug line (7.7 calipered; a printed piece said a degree less)
-  taperD: 5.2,          // the long-side walls, a degree less than calipered too
+  taper: 7.2,           // degrees the short-side walls lean out, floor to the lid-plug line (7.7 calipered; a printed piece said a little less)
+  taperD: 5.7,          // the long-side walls, a little less than calipered too
   // The vertical corners inside are tighter than they look: the published
   // inserts' corners measure r 7.3 at the floor of a 13x18 (agepbiz,
   // printables 1285504), r 15 on a floor plate for an 18x26 (Eric T,
@@ -89,7 +89,7 @@ export const KUGGIS = Object.freeze({
   // general 3 + 0.035 per mm of the box's short side (7.5, 9.5, 12, 16).
   corner: 12,
   cornerBase: 3, cornerPerMm: 0.035,
-  floorRound: 6,        // the floor-to-wall rounding inside
+  floorRound: 3,        // the floor-to-wall rounding inside (6 pulled the first printed piece's bottom edge visibly off the wall)
   // The corner lug slots (see THE CORNER LUGS above). The slot reaches
   // lugOver past the corner radius along the diagonal (the rib sits just
   // round the corner's arc: 11.4 in on the 13x18 whose corner is ~8, 19 on
@@ -118,11 +118,14 @@ export const KUGGIS_SIZES = Object.freeze([
   { id: "18x26x8", label: "18 × 26 × 8 cm (7 × 10¼ × 3¼ in)", outer: [180, 260, 80] },
   { id: "18x26x15", label: "18 × 26 × 15 cm (7 × 10¼ × 6 in)", outer: [180, 260, 150] },
   { id: "26x35x15", label: "26 × 35 × 15 cm (10¼ × 13¾ × 6 in)", outer: [260, 350, 150],
-    // calipered 265 x 350 at the plug line and 228 x 320 at the floor, but
-    // the first printed corner piece leaned 1 degree more than the box (air
-    // under its bottom edge), so both are re-fitted about mid-height: the
-    // floor 2.4 wider, the rim 2.4 narrower, 6.7 / 5.2 instead of 7.7 / 6.2
-    measured: { rimW: 262.6, floorW: 230.4, rimD: 347.6, floorD: 322.4, height: 146.4, lidIn: 9 },
+    // calipered 265 x 350 at the plug line and 228 x 320 at the floor. The
+    // floor IS the calipers: a row of three pieces built on a floor 2.4 mm
+    // longer than that did not go in. The rim is 2.4 narrower than
+    // calipered (the first printed corner piece read as leaning too far:
+    // top a little narrower), so the walls lean 7.2 / 5.7 instead of the
+    // calipered 7.7 / 6.2. The air under that piece's bottom edge was most
+    // likely the floor rounding, now 3 (was an estimated 6)
+    measured: { rimW: 262.6, floorW: 228, rimD: 347.6, floorD: 320, height: 146.4, lidIn: 9 },
     note: "measured with calipers 9 mm down and the depth; the taper re-fitted from a printed corner piece (a degree steeper than the calipered floor). The corner radius and the corner lug slot are still estimates: check them against your box" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
 ]);
