@@ -130,6 +130,18 @@ console.log("\na piece against the wall leans with it; one inside stands upright
     && parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), pitch: 7.5 }, regions: [] })).kuggis.pitch === 7.5
     && parseKitCode(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] })).kuggis.pitch == null);
   check("...and a 4 x 4 half-square corner box builds", (await measure(kuggisKit({ ...e, pitch: 7.5, flip: false, layout: [{ at: [0, 0], size: [4, 4], kind: "box" }] }))).solids === 1);
+  // openWalls: the corner box keeps no wall on its two box sides, so it is
+  // lighter and its top outline on the wall side pulls in to the inner walls;
+  // openLug: the slot is open into the piece, no wall over it (no vertices a
+  // wall higher than the rib), lighter than the walled slot
+  const openW = await measure(kuggisKit({ ...e, flip: false, openWalls: true, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  // the two box-side walls of this 2x2 corner piece (60 tall) are about 2 x 1.2 x 30 x 60 mm³
+  check("no walls against the box: the corner piece loses its two box-side walls", openW.solids === 1 && openW.vol < corner.vol - 3000, `${openW.vol.toFixed(0)} vs ${corner.vol.toFixed(0)} mm³ (${(corner.vol - openW.vol).toFixed(0)} less)`);
+  check("...whose floor still reaches the box wall", near(openW.at(0, 0), corner.at(0, 0), 0.05), `${openW.at(0, 0).toFixed(2)} vs ${corner.at(0, 0).toFixed(2)}`);
+  const openL = await measure(kuggisKit({ ...e, flip: false, openLug: true, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  check("open corner slot: no wall over the slot, lighter", openL.solids === 1 && openL.atZ(e.lugH + KUGGIS.wall) === 0 && openL.vol < corner.vol - 20, `${openL.atZ(e.lugH + KUGGIS.wall)} vertices a wall over the rib, ${openL.vol.toFixed(0)} vs ${corner.vol.toFixed(0)} mm³`);
+  check("both are consts in the code that read back", (() => { const p = parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), openWalls: true, openLug: true }, regions: [] })).kuggis; return p.openWalls === true && p.openLug === true; })()
+    && parseKitCode(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] })).kuggis.openWalls === false);
   check("the flip is a const in the code and reads back", /const flip = undefined/.test(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] }))
     && parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), flip: false }, regions: [] })).kuggis.flip === false);
 
@@ -176,7 +188,7 @@ console.log("\nthe builder's code\n");
 {
   const s = { container: "kuggis", kuggis: { ...defaultKuggis("18x26x15"), lock: true }, regions: [{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox" }, { c: 2, r: 0, w: 3, h: 3, kind: "frame", split: true }] };
   const code = kitCode(s);
-  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, pitch, layout: pieces/.test(code));
+  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, pitch, openWalls, openLug, layout: pieces/.test(code));
   check("it calls kuggisKit, not caseKit", /return kuggisKit\(/.test(code) && !/caseKit\(/.test(code));
   check("the box's inside is sliders", /const rimW = [\d.]+;\s+\/\/ \[/.test(code) && /const taper = /.test(code) && /const taperD = /.test(code) && /const clear = /.test(code));
   check("it says the numbers are estimates to measure over", /estimate/i.test(code) && /Measure your box/.test(code));

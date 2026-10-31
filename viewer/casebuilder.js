@@ -195,6 +195,8 @@ const pitch = ${k.pitch === 7.5 ? 7.5 : 15};   // [7.5:15] the grid square: 15 i
 // Wall pieces print top down (open top on the bed) when the floor can bridge the cavity, up to 3 squares across;
 // bigger boxes print upright. flip: true forces top down, false forces upright.
 const flip = ${k.flip === true ? "true" : k.flip === false ? "false" : "undefined"};
+const openWalls = ${k.openWalls === true};   // true: a piece against the box wall keeps no wall of its own there (the box closes it): floor and the walls between pieces only
+const openLug = ${k.openLug === true};   // true: the corner rib's slot is open into the piece instead of walled off
 
 // What goes where. at: [column, row] from the front-left square; size in squares.
 //   kind "box"    a bin                   split: true = one 1 x 1 box per square
@@ -203,7 +205,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, pitch, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, pitch, openWalls, openLug, layout: pieces });
 `;
 }
 
@@ -227,6 +229,8 @@ export function parseKitCode(src = "") {
     k.lock = /\b(?:const\s+lock\s*=|lock\s*:)\s*true\b/.test(text);
     const fl = /\bconst\s+flip\s*=\s*(true|false|undefined)/.exec(text);
     k.flip = fl && fl[1] !== "undefined" ? fl[1] === "true" : undefined;
+    k.openWalls = /\bconst\s+openWalls\s*=\s*true\b/.test(text);
+    k.openLug = /\bconst\s+openLug\s*=\s*true\b/.test(text);
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
@@ -438,7 +442,7 @@ export function showCaseBuilder(hooks = {}) {
   // improves as boxes get measured, and a stale copy under a size's name
   // would quietly print to last month's estimate. Hand-typed numbers are
   // "custom" and stay exactly as typed.
-  if (S.kuggis.size && S.kuggis.size !== "custom" && !fromCode) S.kuggis = { ...defaultKuggis(S.kuggis.size), lock: S.kuggis.lock === true, pitch: S.kuggis.pitch };
+  if (S.kuggis.size && S.kuggis.size !== "custom" && !fromCode) S.kuggis = { ...defaultKuggis(S.kuggis.size), lock: S.kuggis.lock === true, pitch: S.kuggis.pitch, openWalls: S.kuggis.openWalls === true, openLug: S.kuggis.openLug === true };
   let brush = "box", split = false;
   const undo = [];
 
@@ -478,6 +482,8 @@ export function showCaseBuilder(hooks = {}) {
             <details class="cb-adv" id="cb-kadv">
             <summary>Advanced: half squares, the box's inside, the corner rib</summary>
             <label class="cb-check" style="margin-top:8px"><input type="checkbox" id="cb-khalf" /><span>Half squares<small>A 7.5 mm grid instead of 15, so an odd count of squares splits into two equal pieces (15 squares = 7½ + 7½). Finer to paint; the pieces print the same.</small></span></label>
+            <label class="cb-check"><input type="checkbox" id="cb-kopenwalls" /><span>No walls against the box<small>A piece touching the box wall keeps its floor and the walls between pieces only; the box's own wall closes it. Less plastic, faster, and nothing leans.</small></span></label>
+            <label class="cb-check"><input type="checkbox" id="cb-kopenlug" /><span>Open corner slot<small>The corner rib's slot is cut straight through into the piece instead of walled off: the rib shows inside the corner, nothing to bridge over it.</small></span></label>
             <div class="cb-dims cb-dims4">
               <label title="Inside the box, across the short side, measured as far down as the lid's plug reaches">Rim width<input id="cb-krw" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
               <label title="Inside the box, along the long side, measured as far down as the lid's plug reaches">Rim depth<input id="cb-krd" type="number" min="40" max="600" step="0.5" inputmode="decimal" /></label>
@@ -623,9 +629,13 @@ export function showCaseBuilder(hooks = {}) {
   paintKuggisFields();
   ksize.addEventListener("change", () => {
     if (ksize.value === "custom") { S.kuggis.size = "custom"; paint(); return; }
-    S.kuggis = { ...defaultKuggis(ksize.value), lock: S.kuggis.lock === true, pitch: S.kuggis.pitch };
+    S.kuggis = { ...defaultKuggis(ksize.value), lock: S.kuggis.lock === true, pitch: S.kuggis.pitch, openWalls: S.kuggis.openWalls === true, openLug: S.kuggis.openLug === true };
     paintKuggisFields(); paint();
   });
+  for (const [id, key] of [["cb-kopenwalls", "openWalls"], ["cb-kopenlug", "openLug"]]) {
+    $(id).checked = S.kuggis[key] === true;
+    $(id).addEventListener("change", (e) => { S.kuggis[key] = !!e.target.checked; paint(); });
+  }
   const khalf = $("cb-khalf");
   khalf.checked = S.kuggis.pitch === 7.5;
   khalf.addEventListener("change", () => {

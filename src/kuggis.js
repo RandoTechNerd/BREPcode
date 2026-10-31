@@ -196,7 +196,12 @@ function boxDims(opts) {
   // flip: true = every wall piece top down, false = all upright, absent =
   // wall pieces whose cavity bridges (flipMax) top down
   const flip = opts.flip === true ? true : opts.flip === false ? false : "auto";
-  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock, lug, lugW, lugH, flip };
+  // openWalls: a piece against the box wall keeps no wall of its own on
+  // that side (the box's wall closes it): floor and the upright walls
+  // between pieces only. openLug: the corner rib's slot is cut straight
+  // through into the piece instead of walled off
+  const openWalls = opts.openWalls === true, openLug = opts.openLug === true;
+  return { rimW, rimD, height, lidIn, span, taper, taperD, shrink, shrinkD, floorW, floorD, corner, floorRound, clear, wall, floor, topClear, pieceH, lock, lug, lugW, lugH, flip, openWalls, openLug };
 }
 
 // The module grid a box holds: whole 15 mm squares across the FLOOR inside,
@@ -265,10 +270,18 @@ function liner(b, inset, z0, z1, floorRound, grow = 0, lugTop = b.lugH) {
 // that touches no wall never asks for them at all.
 function liners(b) {
   const H = b.pieceH;
+  // the cavity liner: inset by the wall, or (openWalls) a hair OUTSIDE the
+  // outer liner so the wall side comes away clean; its rib slot grown by
+  // the wall, or (openLug) a hair bigger than the outer's so the slot is
+  // open into the piece, with the top ramps coinciding
+  const inset = b.openWalls ? b.clear - 0.05 : b.clear + b.wall;
+  const grow = b.openLug || b.openWalls ? 0.05 : b.wall;
+  const lugTop = b.openLug || b.openWalls ? b.lugH + 0.05 : b.lugH + b.wall;
+  const floorRound = b.openWalls ? b.floorRound : Math.max(0, b.floorRound - b.wall);
   return {
     outer: liner(b, b.clear, 0, H + 1, b.floorRound),
-    inner: liner(b, b.clear + b.wall, b.floor, H + 2, Math.max(0, b.floorRound - b.wall), b.wall, b.lugH + b.wall),
-    innerOpen: liner(b, b.clear + b.wall, -1, H + 2, 0, b.wall, b.lugH + b.wall),
+    inner: liner(b, inset, b.floor, H + 2, floorRound, grow, lugTop),
+    innerOpen: liner(b, inset, -1, H + 2, 0, grow, lugTop),
     walls: liner(b, b.clear + 0.05, -1, H + 1, b.floorRound),
   };
 }
