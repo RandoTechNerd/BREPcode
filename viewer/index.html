@@ -18487,6 +18487,10 @@ let SIMPLIFY_TARGET = 10000;
         if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
         await new Promise((res) => setTimeout(res, 30));       // let the bar paint before the writer runs
         r = cageToStep(cage.verts, cage.quads, { name: name.replace(/\.\w+$/, ""), mesh: true });
+        // A patch that still turns over would be refused by the kernel after a
+        // long try, and the fallback would then chew through the whole preview
+        // mesh. Say so now instead.
+        if (r.folded) throw new Error(`${r.folded} patch${r.folded === 1 ? "" : "es"} would fold over in a spot too tight to smooth`);
       } catch (e) {
         const why = String(e?.message || e).slice(0, 220);
         logEvent("smooth", name, { ok: false });

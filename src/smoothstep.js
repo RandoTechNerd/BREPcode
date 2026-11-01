@@ -188,15 +188,20 @@ export function closeCage(verts, quads) {
   };
   for (let h = 0; h < loops.length; h++) {
     while (parity[h]) {
-      // every strip leaving hole h; prefer one that lands on another odd hole
+      // every strip leaving hole h: prefer one that lands on another odd
+      // hole, and of those the SHORTEST. A strip can wrap right round the
+      // part (the bag: 2,209 quads became 4,335 faces taking the first one),
+      // and every quad it crosses is split in two.
       let best = null;
       const loop = loops[h];
-      for (let i = 0; i < loop.length && !(best && parity[best.end]); i++) {
+      const better = (s, b) => !b || (parity[s.end] && !parity[b.end])
+        || (!!parity[s.end] === !!parity[b.end] && s.crossed.length < b.crossed.length);
+      for (let i = 0; i < loop.length; i++) {
         const a = loop[i], b = loop[(i + 1) % loop.length];
         if (splitEdges.has(topo.edgeKey(a, b))) continue;
         const s = walk(a, b);
         if (!s || s.end === h || s.crossed.some((k) => splitEdges.has(k))) continue;
-        if (!best || (parity[s.end] && !parity[best.end])) best = s;
+        if (better(s, best)) best = s;
       }
       if (!best) throw new Error("couldn't pair up the cage's odd holes");
       for (const k of best.crossed) splitEdges.add(k);
@@ -448,10 +453,12 @@ function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
   }
   folded = check(fitted);
   const relaxed = new Set();
-  if (folded.length) {
-    const ring = Array.from({ length: topo.nv }, () => []);
-    for (const e of topo.edges.values()) { ring[e.a].push(e.b); ring[e.b].push(e.a); }
-    for (let round = 0; round < 40 && folded.length; round++) {
+  let uncreased = 0;
+  if (!folded.length) return { fitted, folded: 0, relaxed: 0, uncreased };
+  const ring = Array.from({ length: topo.nv }, () => []);
+  for (const e of topo.edges.values()) { ring[e.a].push(e.b); ring[e.b].push(e.a); }
+  const relax = (rounds) => {
+    for (let round = 0; round < rounds && folded.length; round++) {
       const move = new Set();
       for (const q of folded) for (let k = 0; k < 4; k++) {
         const v = quads[q * 4 + k];
@@ -471,8 +478,29 @@ function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
       fitted = next;
       folded = check(fitted);
     }
+  };
+  relax(40);
+  // Still folded: the crease rule itself is holding the twist (a crease
+  // through a crinkle tighter than its quads). Let those edges go smooth,
+  // then relax again. The tags are dropped from `crease` itself, so the
+  // patches the caller builds next agree with what was checked here.
+  if (folded.length && crease?.creases.size) {
+    const near = new Set();
+    for (const q of folded) for (let k = 0; k < 4; k++) {
+      const v = quads[q * 4 + k];
+      near.add(v);
+      for (const w of ring[v]) near.add(w);
+    }
+    for (const key of [...crease.creases]) {
+      const e = topo.edges.get(key);
+      if (near.has(e.a) || near.has(e.b)) { crease.creases.delete(key); uncreased++; }
+    }
+    crease.degree.fill(0);
+    for (const key of crease.creases) { const e = topo.edges.get(key); crease.degree[e.a]++; crease.degree[e.b]++; }
+    folded = check(fitted);
+    relax(40);
   }
-  return { fitted, folded: folded.length, relaxed: relaxed.size };
+  return { fitted, folded: folded.length, relaxed: relaxed.size, uncreased };
 }
 
 // ------------------------------------------------------------ STEP text
@@ -484,7 +512,7 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
   const topo = cageTopology(verts, quads);
   if (topo.nq < 1) throw new Error("the cage has no quads");
   const crease = wantCreases ? findCreases(verts, quads, topo, creaseAngle) : null;
-  const { fitted, folded, relaxed } = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
+  const { fitted, folded, relaxed, uncreased } = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
   const { patches, corners } = catmullClarkPatches(fitted, quads, topo, crease);
   const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
 
@@ -557,6 +585,7 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
     holesFilled: closed.holes,
     folded,
     relaxed,
+    uncreased,
     vertices: topo.nv,
     step: "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n"
       + `FILE_NAME('${name}.step','',(''),(''),'brepcode','brepcode','');\n`
