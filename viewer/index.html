@@ -18088,9 +18088,12 @@ let SIMPLIFY_TARGET = 10000;
     }
 
     // Once the first model is on the plate and the page is idle, fetch the
-    // features people reach for first (the drop menu and FizzCore with its mesh
-    // engine, the tour, the assistant, the inventory), one at a time, so they
-    // open instantly. Skipped on a metered or very slow connection.
+    // features people reach for first (the tour, the assistant, the
+    // inventory), one at a time, so they open instantly. Skipped on a metered
+    // or very slow connection. FizzCore and the drop menu (fizz.js, and its
+    // half-megabyte mesh engine) are not among them: they load on first use,
+    // behind the load bar, so a visit that never drops a file or opens
+    // FizzCore never downloads them.
     function warmLikelyFeatures() {
       const c = navigator.connection;
       if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))) return;
@@ -18098,8 +18101,6 @@ let SIMPLIFY_TARGET = 10000;
         ? (f) => window.requestIdleCallback(f, { timeout: 4000 })
         : (f) => setTimeout(f, 800);
       const jobs = [
-        () => getFizz(),
-        () => import("../src/fizzcore.js").then((m) => m.loadManifold()),
         () => getTour(),
         () => getChatbot(),
         () => getInventory(),
