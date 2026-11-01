@@ -9,7 +9,7 @@
 import * as dsl from "../src/dsl.js";
 import { build, toSTL } from "../index.js";
 import { casefinityFit, casefinityBin, casefinityBinLid, casefinityCase, casefinityCaseLid, casefinitySwingLatch, casefinityPressLatch, pressLatchDims, caseKit, CASEFINITY, CASE_DIMS as CASE } from "../src/casefinity.js";
-import { isCaseUrl, kitCode, parseKitCode, paintRegion, tally, PRESETS } from "../viewer/casebuilder.js";
+import { isCaseUrl, kitCode, parseKitCode, paintRegion, carveRegion, moveRegion, sixLayout, tally, PRESETS } from "../viewer/casebuilder.js";
 
 let pass = 0, fail = 0;
 const T0 = Date.now();
@@ -314,9 +314,23 @@ console.log("\nthe builder: routes, painting, the code it writes\n");
 
   let L = [{ c: 0, r: 0, w: 4, h: 4, kind: "box", split: false }];
   L = paintRegion(L, { c: 3, r: 3, w: 2, h: 2 }, "lidbox", true);
-  check("painting over a piece replaces it", L.length === 1 && L[0].kind === "lidbox" && L[0].split);
+  const cells = (list) => list.reduce((n, g) => n + g.w * g.h, 0);
+  check("painting over the corner of a piece keeps the rest of it around the new one", L.length === 3 && L.filter((g) => g.kind === "box").length === 2
+    && cells(L.filter((g) => g.kind === "box")) === 15 && L.find((g) => g.kind === "lidbox").split, JSON.stringify(L));
+  check("...and nothing overlaps", L.every((g, i) => L.every((h, j) => i === j || !(g.c < h.c + h.w && h.c < g.c + g.w && g.r < h.r + h.h && h.r < g.r + g.h))));
   L = paintRegion(L, { c: 4, r: 4, w: 1, h: 1 }, "erase");
-  check("erase removes what it touches", L.length === 0);
+  check("erase takes only the squares it touches", cells(L) === 15 + 3 && L.filter((g) => g.kind === "lidbox").length === 2, JSON.stringify(L));
+  check("a piece wholly under the brush goes", paintRegion([{ c: 1, r: 1, w: 1, h: 1, kind: "box" }], { c: 0, r: 0, w: 3, h: 3 }, "frame", false).length === 1);
+  check("carving the middle of a piece leaves four", carveRegion([{ c: 0, r: 0, w: 5, h: 5, kind: "box" }], { c: 2, r: 2, w: 1, h: 1 }).length === 4
+    && cells(carveRegion([{ c: 0, r: 0, w: 5, h: 5, kind: "box" }], { c: 2, r: 2, w: 1, h: 1 })) === 24);
+  const g0 = { c: 0, r: 0, w: 2, h: 2, kind: "box", split: false }, g1 = { c: 2, r: 0, w: 2, h: 2, kind: "frame", split: false };
+  const moved = moveRegion([g0, g1], g0, { c: 1, r: 0, w: 2, h: 2 });
+  check("moving a piece carves what it lands on and keeps its kind", moved.length === 2 && moved.at(-1).kind === "box" && moved.at(-1).c === 1
+    && moved[0].kind === "frame" && moved[0].c === 3 && moved[0].w === 1, JSON.stringify(moved));
+  const six = sixLayout(15, 21);
+  check("the six-piece layout is 2 across, 3 deep, matching corners, covering the grid", six.length === 6 && cells(six) === 15 * 21
+    && six.filter((g) => g.r === 0).length === 2 && six[0].h === six.at(-1).h && six[0].w === 8 && six[1].w === 7, JSON.stringify(six));
+  check("...the case first visit is 2 x 2 boxes, the preset is there", PRESETS.some((p) => p.id === "two") && PRESETS.some((p) => p.id === "six"));
 
   const t = tally([{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox", split: true }, { c: 2, r: 0, w: 2, h: 1, kind: "frame", split: true }], 6, 4, true);
   check("tally counts split boxes, their lids, frames and the case", t.lidbox === 4 && t.lids === 4 && t.frame === 1 && t.pieces === 11 && t.empty === 18,

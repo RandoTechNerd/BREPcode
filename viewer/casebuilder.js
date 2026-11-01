@@ -76,14 +76,27 @@ function tile(c0, r0, w, h, tw, th, kind, split = false) {
 }
 
 // The ready layouts. Each is a function of the grid, so it fits any case.
+// Split n squares into k runs as equal as possible, the wider ones first.
+function runs(n, k) {
+  const out = [];
+  for (let i = 0, at = 0; i < k; i++) { const w = Math.ceil((n - at) / (k - i)); out.push([at, w]); at += w; }
+  return out.filter(([, w]) => w > 0);
+}
+// Six pieces in a 2 x 3: two across, three front to back, the KUGGIS kit as
+// printed (four corners that match and two middles).
+export function sixLayout(C, R, kind = "box") {
+  const out = [];
+  for (const [r, h] of runs(R, 3)) for (const [c, w] of runs(C, 2)) out.push({ c, r, w, h, kind, split: false });
+  return out;
+}
 export const PRESETS = [
-  // Separators first: it is the first-visit default. Open 3 x 3 frames (45 mm
-  // compartments), each a plain rim with no inner walls, so the whole kit
-  // builds in a couple of seconds. The fine grid below is one frame with a
-  // wall on every 15 mm line, and every wall is a boolean the kernel pays
-  // for: on the default case that is 20 walls and the slowest layout here,
-  // slower than 65 small boxes.
+  // Separators: open 3 x 3 frames (45 mm compartments), each a plain rim
+  // with no inner walls, so the whole kit builds in a couple of seconds.
+  // The fine grid below is one frame with a wall on every 15 mm line, and
+  // every wall is a boolean the kernel pays for: on the default case that
+  // is 20 walls and the slowest layout here, slower than 65 small boxes.
   { id: "dividers", label: "Separators", blurb: "open 45 mm compartments", make: (C, R) => tile(0, 0, C, R, 3, 3, "frame") },
+  { id: "six", label: "Six pieces", blurb: "2 across, 3 deep", make: (C, R) => sixLayout(C, R) },
   { id: "fine", label: "Fine grid", blurb: "a wall on every 15 mm line", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "frame", split: true }] },
   { id: "small", label: "Small boxes", blurb: "one box per square", make: (C, R) => [{ c: 0, r: 0, w: C, h: R, kind: "box", split: true }] },
   { id: "two", label: "2 × 2 boxes", blurb: "30 mm boxes", make: (C, R) => tile(0, 0, C, R, 2, 2, "box") },
@@ -257,12 +270,35 @@ export function parseKitCode(src = "") {
   return state;
 }
 
-// Paint a rectangle onto a layout: whatever it overlaps goes, and (unless
-// erasing) the new piece takes its place. Returns a new list.
+// Cut a rectangle out of a layout: a piece it overlaps keeps whatever of
+// itself lies outside it, as up to four rectangles (left, right, front,
+// back). A piece wholly inside goes. Returns a new list.
+export function carveRegion(regions, rect) {
+  const out = [];
+  for (const g of regions) {
+    if (!overlaps(g, rect)) { out.push(g); continue; }
+    const c0 = Math.max(g.c, rect.c), c1 = Math.min(g.c + g.w, rect.c + rect.w);
+    if (rect.c > g.c) out.push({ ...g, w: rect.c - g.c });
+    if (rect.c + rect.w < g.c + g.w) out.push({ ...g, c: rect.c + rect.w, w: g.c + g.w - rect.c - rect.w });
+    if (rect.r > g.r) out.push({ ...g, c: c0, w: c1 - c0, h: rect.r - g.r });
+    if (rect.r + rect.h < g.r + g.h) out.push({ ...g, c: c0, w: c1 - c0, r: rect.r + rect.h, h: g.r + g.h - rect.r - rect.h });
+  }
+  return out;
+}
+
+// Paint a rectangle onto a layout: it takes its place, and whatever it
+// overlaps keeps the part around it (carveRegion). Erase just carves.
 export function paintRegion(regions, rect, brush, split) {
-  const kept = regions.filter((g) => !overlaps(g, rect));
+  const kept = carveRegion(regions, rect);
   if (brush === "erase") return kept;
   return [...kept, { ...rect, kind: brush, split: !!split }];
+}
+
+// Move or resize one piece: it leaves where it was, takes the new rectangle,
+// and carves anything else there.
+export function moveRegion(regions, g, rect) {
+  const others = regions.filter((x) => x !== g);
+  return [...carveRegion(others, rect), { ...g, ...rect }];
 }
 
 // --------------------------------------------------------------- styling
@@ -355,6 +391,14 @@ function style() {
     background-size: var(--cs) var(--cs), var(--cs) var(--cs), auto; background-position: -1px -1px, -1px -1px, 0 0; }
   .cb-reg span { font: 600 11px system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); padding: 0 3px;
     max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cb-reg .cb-del { position: absolute; top: 0; right: 0; width: 16px; height: 16px; border: 0; border-radius: 0 3px 0 5px; padding: 0;
+    background: rgba(0,0,0,.45); color: #fff; font: 700 11px/16px system-ui, sans-serif; cursor: pointer; pointer-events: auto; opacity: .75; }
+  .cb-reg .cb-del:hover { opacity: 1; background: #c0392b; }
+  #cb-grid[data-cursor="move"] { cursor: move; }
+  #cb-grid[data-cursor="ew"] { cursor: ew-resize; }
+  #cb-grid[data-cursor="ns"] { cursor: ns-resize; }
+  #cb-grid[data-cursor="nwse"] { cursor: nwse-resize; }
+  #cb-grid[data-cursor="nesw"] { cursor: nesw-resize; }
   .cb-ghost { position: absolute; border: 2px dashed #fff; border-radius: 5px; pointer-events: none; background: rgba(255,255,255,.12); }
   .cb-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; }
   .cb-row button { background: var(--input-bg, #0d1320); border: 1px solid var(--border, #26314a); color: var(--text2, #d8e2f5);
@@ -433,8 +477,13 @@ export function showCaseBuilder(hooks = {}) {
   // Build was a long wait for inserts nobody had asked for. The case and
   // its lid alone are the quickest build there is, and every insert is a
   // choice: a preset is one click, a brush a drag.
-  if (!Array.isArray(S.regions)) S.regions = [];
+  // First visit: the case with 2 x 2 Casefinity boxes in it, one click to
+  // Build and a second or two more than the empty case. A KUGGIS opened
+  // on an empty grid gets the six-piece kit (below).
+  const firstVisit = !Array.isArray(S.regions);
+  if (firstVisit) S.regions = [];
   if (S.container !== "kuggis") S.container = "case";
+  if (firstVisit && S.container === "case") { const f0 = casefinityFit(S.width, S.depth, S.height, { inside: !!S.inside, wall: S.wall, floor: S.floor }); S.regions = PRESETS.find((p) => p.id === "two").make(f0.cols, f0.rows); }
   S.kuggis = { ...defaultKuggis(), ...(S.kuggis || {}) };
   // A remembered KUGGIS size takes the table's CURRENT numbers: the table
   // improves as boxes get measured, and a stale copy under a size's name
@@ -564,7 +613,7 @@ export function showCaseBuilder(hooks = {}) {
         </section>
         <section class="cb-main" aria-label="The grid">
           <div class="cb-edge" id="cb-edge-back">Back · hinge</div>
-          <div class="cb-board"><div id="cb-grid" role="application" aria-label="Case grid: drag to paint"></div></div>
+          <div class="cb-board"><div id="cb-grid" role="application" aria-label="Case grid: drag to paint; drag a piece of the chosen kind to move it, its edge to resize it"></div></div>
           <div class="cb-edge" id="cb-edge-front">Front · latch</div>
           <div class="cb-row">
             <button type="button" id="cb-undo">Undo</button>
@@ -679,6 +728,8 @@ export function showCaseBuilder(hooks = {}) {
       // the KUGGIS lid covers every piece, so a lidded box is just a box there
       S.regions = S.regions.map((g) => g.kind === "lidbox" ? { ...g, kind: "box" } : g);
       if (brush === "lidbox") brush = "box";
+      // an empty grid starts as the six-piece kit
+      if (!S.regions.length) { const f = fitNow(); S.regions = sixLayout(f.cols, f.rows); }
     }
     paintTools(); paint();
   });
@@ -833,27 +884,64 @@ export function showCaseBuilder(hooks = {}) {
     node.style.width = `${g.w * cs - 1}px`;
     node.style.height = `${g.h * cs - 1}px`;
   };
+  // What is under the pointer: the piece there (the last painted wins), and
+  // which of its edges the pointer is on, within a handle zone. A piece of
+  // the brush's own kind is grabbed: by an edge to resize, inside to move.
+  // Any other kind, or erase, draws over it and the piece keeps the rest.
+  const sameRect = (a, b) => a.c === b.c && a.r === b.r && a.w === b.w && a.h === b.h;
+  const hitAt = (e) => {
+    const cell = cellAt(e);
+    const g = [...S.regions].reverse().find((x) => inGrid(x, cols, rows) && cell.c >= x.c && cell.c < x.c + x.w && cell.r >= x.r && cell.r < x.r + x.h);
+    if (!g) return null;
+    const r = grid.getBoundingClientRect();
+    const px = e.clientX - r.left - g.c * cs, py = e.clientY - r.top - (rows - g.r - g.h) * cs;
+    const zone = Math.min(10, cs * 0.35);
+    const edges = { l: px < zone, r: px > g.w * cs - zone, t: py < zone, b: py > g.h * cs - zone };   // t = the back (high r), b = the front
+    return { g, cell, edges, any: edges.l || edges.r || edges.t || edges.b };
+  };
+  const grabbable = (h) => h && brush !== "erase" && h.g.kind === brush;
+  const cursorFor = (h) => !grabbable(h) ? "" : !h.any ? "move"
+    : ((h.edges.l && h.edges.t) || (h.edges.r && h.edges.b)) ? "nesw" : ((h.edges.l && h.edges.b) || (h.edges.r && h.edges.t)) ? "nwse"
+    : (h.edges.l || h.edges.r) ? "ew" : "ns";
+  const clampRect = (q) => {
+    const w = Math.max(1, Math.min(cols, q.w)), h = Math.max(1, Math.min(rows, q.h));
+    return { c: Math.max(0, Math.min(cols - w, q.c)), r: Math.max(0, Math.min(rows - h, q.r)), w, h };
+  };
+  const dragRect = (d, cell) => {
+    if (d.mode === "draw") return rectOf(d.a, cell);
+    const g = d.g;
+    if (d.mode === "move") return clampRect({ c: g.c + cell.c - d.a.c, r: g.r + cell.r - d.a.r, w: g.w, h: g.h });
+    let c0 = g.c, c1 = g.c + g.w, r0 = g.r, r1 = g.r + g.h;
+    if (d.edges.l) c0 = Math.min(cell.c, c1 - 1);
+    if (d.edges.r) c1 = Math.max(cell.c + 1, c0 + 1);
+    if (d.edges.b) r0 = Math.min(cell.r, r1 - 1);
+    if (d.edges.t) r1 = Math.max(cell.r + 1, r0 + 1);
+    return clampRect({ c: c0, r: r0, w: c1 - c0, h: r1 - r0 });
+  };
   grid.addEventListener("pointerdown", (e) => {
-    if (!cols || !rows) return;
+    if (!cols || !rows || e.target.closest(".cb-del")) return;
     e.preventDefault();
     try { grid.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capture */ }
-    const a = cellAt(e);
-    drag = { a, b: a };
+    const h = hitAt(e), a = h ? h.cell : cellAt(e);
+    drag = grabbable(h) ? { mode: h.any ? "resize" : "move", a, g: h.g, edges: h.edges } : { mode: "draw", a };
+    drag.rect = dragRect(drag, a);
     ghost.hidden = false;
-    place(ghost, rectOf(a, a));
+    place(ghost, drag.rect);
   });
   grid.addEventListener("pointermove", (e) => {
-    if (!drag) return;
-    drag.b = cellAt(e);
-    place(ghost, rectOf(drag.a, drag.b));
+    if (!drag) { grid.dataset.cursor = cursorFor(hitAt(e)); return; }
+    drag.rect = dragRect(drag, cellAt(e));
+    place(ghost, drag.rect);
   });
+  grid.addEventListener("pointerleave", () => { if (!drag) grid.dataset.cursor = ""; });
   grid.addEventListener("pointerup", () => {
     if (!drag) return;
-    const rect = rectOf(drag.a, drag.b);
+    const d = drag;
     drag = null;
     ghost.hidden = true;
-    undo.push(S.regions);
-    S.regions = paintRegion(S.regions, rect, brush, split);
+    if (d.mode === "draw") { undo.push(S.regions); S.regions = paintRegion(S.regions, d.rect, brush, split); }
+    else if (!sameRect(d.rect, d.g)) { undo.push(S.regions); S.regions = moveRegion(S.regions, d.g, d.rect); }
+    else return;
     paint();
   });
   grid.addEventListener("pointercancel", () => { drag = null; ghost.hidden = true; });
@@ -893,6 +981,14 @@ export function showCaseBuilder(hooks = {}) {
         const what = g.kind === "frame" ? (g.split ? "walls" : "open") : g.kind === "lidbox" ? "lid" : "box";
         t.textContent = g.split && g.kind !== "frame" ? `${g.w * g.h} × 1×1 ${what}` : `${g.w}×${g.h} ${what}`;
         d.appendChild(t);
+      }
+      if (g.w * cs >= 26 && g.h * cs >= 26) {
+        const x = document.createElement("button");
+        x.type = "button"; x.className = "cb-del"; x.textContent = "×"; x.title = "Remove this piece";
+        x.setAttribute("aria-label", "Remove this piece");
+        x.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+        x.addEventListener("click", (ev) => { ev.stopPropagation(); undo.push(S.regions); S.regions = S.regions.filter((q) => q !== g); paint(); });
+        d.appendChild(x);
       }
       grid.appendChild(d);
     }
