@@ -1199,6 +1199,35 @@
     #build-cancel:hover { opacity: 1; background: rgba(255, 255, 255, .09); }
     #build-cancel[hidden] { display: none; }
 
+    /* progress.js: a bar under the status line for anything slow, and the
+       same bar as a small card when the editor panel is closed */
+    #status.has-pbar { position: relative; }
+    #status .pbar { position: absolute; left: 0; right: 0; bottom: 0; }
+    .pbar { height: 3px; overflow: hidden; background: color-mix(in srgb, var(--busy) 18%, transparent); }
+    .pbar[hidden] { display: none; }
+    .pbar i { display: block; height: 100%; width: 0; background: var(--busy); transition: width .3s linear; }
+    .pbar.slide i { width: 28%; transition: none; animation: pbar-slide 1.25s ease-in-out infinite; }
+    .pbar.fail i { background: var(--err); }
+    @keyframes pbar-slide { from { transform: translateX(-110%); } to { transform: translateX(370%); } }
+    .ptime { flex: none; opacity: .7; font-variant-numeric: tabular-nums; }
+    .ptime:empty { display: none; }
+    #pcard {
+      position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 10002;
+      width: min(440px, calc(100vw - 32px)); background: var(--card); color: var(--busy);
+      border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+      box-shadow: 0 10px 32px rgba(0, 0, 0, .45); font-size: 12.5px;
+    }
+    #pcard[hidden] { display: none; }
+    #pcard.failed { color: var(--err); }
+    #pcard .pc-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+    #pcard .pc-text { flex: 1; min-width: 0; line-height: 1.35; }
+    #pcard .pc-time { flex: none; opacity: .7; font-variant-numeric: tabular-nums; }
+    #pcard button { flex: none; font: inherit; color: inherit; background: transparent; cursor: pointer;
+      border: 1px solid currentColor; border-radius: 6px; padding: 1px 8px; opacity: .8; }
+    #pcard button:hover { opacity: 1; }
+    #pcard button[hidden] { display: none; }
+    @media (prefers-reduced-motion: reduce) { .pbar.slide i { animation-duration: 3s; } }
+
     /* The ring spinner grew up into the build cube (see .bcube below) — same
        compositor guarantee, more story. #spin is just its slot now. The cube
        draws its 3D content a touch above its own box (the iso tilt), so the
@@ -5009,7 +5038,8 @@
     // is going. Foreground work marks itself with bg.foreground()/bg.during();
     // a dialog can carry data-bg-busy instead. ?bg=log prints what it does.
     import { createScheduler } from "./bgjobs.js";
-    import { queueCage, getCage, needCage } from "./cage.js";
+    import { queueCage, getCage, needCage, watchCage } from "./cage.js";
+    import { createProgress } from "./progress.js";
     const bg = createScheduler({
       log: /[?&]bg=log\b/.test(location.search) ? (l) => console.log(`[bg] ${l}`) : null,
     });
@@ -10733,7 +10763,19 @@ ${joined}${SITE_TAIL}`), joined);
       statusText.textContent = msg;
       const c = $("build-cancel");
       if (c) c.hidden = cls !== "busy";
+      progress.noteStatus(cls, msg);
     };
+    // The progress bar (progress.js): any busy spell past ~0.7 s gets one
+    // under this status line (or as a card when the editor is closed); slow
+    // jobs that know their steps (smooth surface, curved STEP) drive it too.
+    const progress = createProgress({
+      status,
+      say: (text) => setStatus("busy", text),
+      isStatusVisible: () => {
+        const r = status.getClientRects()[0];
+        return !!r && r.bottom > 0 && r.top < innerHeight && r.width > 0;
+      },
+    });
 
     // The source of the last build that actually finished, and the line that
     // reported it. Reverting is just going back to these.
@@ -16549,6 +16591,18 @@ ${joined}${SITE_TAIL}`), joined);
       if (fmt === "slicer") return openInSlicer();
       if (!lastSolids.length) { setStatus("err", "Nothing to export — build a model first."); return; }
       const base = safeModelName();
+      // The progress bar for this export: a curved STEP knows its steps (the
+      // ~11 MB kernel on first use, then rebuilding every face, which on a
+      // smooth surface of 2,000+ patches is the slow part); every other
+      // format is one step that slides until it is done.
+      const fmtName = { "step-curved": "Curved STEP", "3mf-parts": "3MF (parts)" }[fmt] || fmt.toUpperCase();
+      const job = progress.task(`Exporting ${fmtName}`, fmt === "step-curved"
+        ? [
+          { label: "Loading the precision CAD kernel", estMs: window.__replicadReady ? 300 : 8000 },
+          { label: "Rebuilding with true curved surfaces", estMs: 15000, weight: 3 },
+          { label: "Writing the file", estMs: 1500 },
+        ]
+        : [{ label: `Exporting ${fmtName}` }]);
       try {
         let size;
         // The recipe travels with the part. A mesh is a dead end — "make it 3mm
@@ -16667,12 +16721,14 @@ ${joined}${SITE_TAIL}`), joined);
           // real analytic B-rep: the DSL tree re-built in OCCT (replicad),
           // so cylinders export as CYLINDRICAL_SURFACE, not triangle fans
           if (!lastShape) throw new Error("build the model first");
-          setStatus("busy", "Loading precision CAD kernel (first time ≈ 11 MB)…");
+          job.step(0, { label: window.__replicadReady ? "Loading the precision CAD kernel" : "Loading the precision CAD kernel (first time ≈ 11 MB)" });
           const curved = await getCurved();
           await curved.loadReplicad();
-          setStatus("busy", "Rebuilding with analytic surfaces…");
-          await new Promise((r) => setTimeout(r, 30));      // let the spinner paint
+          window.__replicadReady = true;
+          job.step(1);
+          await new Promise((r) => setTimeout(r, 30));      // let the bar paint
           const blob = await curved.curvedStepBlob(lastShape);
+          job.step(2);
           size = download(`${base}-curved.step`, blob, "application/step");
         } else if (fmt === "svg") {
           if (!lastShape) throw new Error("build the model first");
@@ -16935,9 +16991,24 @@ ${joined}${SITE_TAIL}`), joined);
         }
         // "share" and "publish" put a link on the clipboard; nothing lands in Downloads.
         const verb = fmt === "share" ? "link copied" : fmt === "publish" ? "published" : "downloaded";
-        setStatus("ok", `${fmt.toUpperCase()} ${verb} — ${(size / 1024).toFixed(0)} KB, ${lastSolids.length} solid${lastSolids.length === 1 ? "" : "s"}.`);
+        job.done();
+        setStatus("ok", `${fmtName} ${verb} — ${(size / 1024).toFixed(0)} KB, ${lastSolids.length} solid${lastSolids.length === 1 ? "" : "s"}.`);
       } catch (e) {
-        setStatus("err", `${fmt.toUpperCase()} export failed: ${String(e?.message || e).slice(0, 90)}`);
+        // Said in full, with a way to try again: the status line has room for
+        // a headline only, and an export that fails silently-but-red is the
+        // one people retry blindly or give up on.
+        const why = String(e?.message || e);
+        const retry = () => exportAs(fmt);
+        job.fail(`${fmtName} export failed: ${why.slice(0, 160)}`, { retry });
+        setStatus("err", `${fmtName} export failed: ${why.slice(0, 90)}`);
+        const tip = fmt === "step-curved"
+          ? " The faceted STEP export (Surfaces: Faceted) always works and opens in every CAD program."
+          : fmt === "share" || fmt === "publish" ? " Check the connection, then try again." : "";
+        fixnote.innerHTML = `<span style="color:var(--err)"><b>${esc(fmtName)} export failed.</b> ${esc(why.slice(0, 400).replace(/[.!?]?\s*$/, "."))}${esc(tip)}</span> `
+          + `<button id="export-retry" style="font:inherit;padding:1px 8px;margin-left:4px;border:1px solid currentColor;border-radius:6px;background:transparent;color:var(--err);cursor:pointer">Try again</button>`;
+        $("export-retry")?.addEventListener("click", () => { fixnote.textContent = ""; retry(); });
+      } finally {
+        job.done();                          // (a no-op after fail: the failure stays up)
       }
     }
 
@@ -18478,15 +18549,27 @@ let SIMPLIFY_TARGET = 10000;
     async function convertImportToSmooth(name) {
       const stl = dsl.getImport(name);
       const meshCode = code.value;
-      setStatus("busy", `Wrapping ${name} in a smooth surface…`);
       let cage, r;
       const t0 = performance.now();
+      // Three steps on the progress bar, each with a rough time from the
+      // mesh size (measured: a 20k Benchy lays out in ~3 s, fits in ~4 s and
+      // builds 2,400 faces in ~11 s); the layout also reports its stages.
+      const tris = (stl.match(/facet normal/g) || []).length;
+      const stages = [
+        { label: `Laying out the surface patches on ${name}`, estMs: 1500 + tris * 0.15 },
+        { label: "Fitting the smooth patches", estMs: 4000 },
+        { label: "Building the smooth solid", estMs: 12000, weight: 2 },
+      ];
+      const job = progress.task(`Wrapping ${name} in a smooth surface`, stages);
+      const unwatch = watchCage(name, (ev) => job.frac(ev.stage / ev.of));
       try {
-        cage = await withLoadBar("Laying out the surface patches…", needCage(bg, name));
+        try { cage = await needCage(bg, name); } finally { unwatch(); }
         if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
+        stages[1].estMs = 1500 + cage.quads.length / 4 * 1.6;
+        job.step(1);
         await new Promise((res) => setTimeout(res, 30));       // let the bar paint before the writer runs
         // in its own worker: the fit and the patch checks take a few seconds
-        r = await withLoadBar("Fitting the smooth patches…", new Promise((resolve, reject) => {
+        r = await (new Promise((resolve, reject) => {
           const w = new Worker(new URL("./smooth-worker.js", import.meta.url), { type: "module" });
           w.onmessage = ({ data }) => { w.terminate(); if (data.ok) resolve(data.result); else reject(new Error(data.error)); };
           w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "the smooth-surface worker crashed")); };
@@ -18501,10 +18584,26 @@ let SIMPLIFY_TARGET = 10000;
         const why = String(e?.message || e).slice(0, 220);
         logEvent("smooth", name, { ok: false });
         hint.innerHTML = `Couldn't wrap <b>${esc(name)}</b> in a smooth surface (${esc(why)}). `
-          + `It stays a mesh, which prints, cuts and exports exactly as before.`;
+          + `It stays a mesh, which prints, cuts and exports exactly as before. `
+          + `<button id="smooth-retry" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Try again</button>`;
+        $("smooth-retry")?.addEventListener("click", () => convertImportToSmooth(name));
+        job.fail(`Couldn't wrap ${name} in a smooth surface: ${why}. It stays a mesh.`, { retry: () => convertImportToSmooth(name) });
         setStatus("warn", `${name} stayed a mesh.`);
         return;
       }
+      // the last step runs until the kernel has built the smooth solid
+      stages[2].estMs = 2000 + r.faces * 5;
+      job.step(2);
+      // ...past a stand-in build on the JS kernel while Rust is still loading
+      (async () => {
+        const t1 = Date.now();
+        while (Date.now() - t1 < 300000) {
+          if (!(await whenBuilt(5000))) continue;
+          if (lastEngine?.fallbackKind === "loading") { await new Promise((res) => setTimeout(res, 1000)); continue; }
+          break;
+        }
+        job.done();
+      })();
       const stepName = name.replace(/\.(stl|3mf|obj)$/i, "") + "-smooth.step";
       dsl.registerImport(stepName, r.step, { mesh: r.mesh });
       logEvent("smooth", name, { ok: true, faces: r.faces, tris: cage.triangles, ms: Math.round(performance.now() - t0) });

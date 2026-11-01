@@ -29,6 +29,17 @@ function keyOf(stl) {
 }
 
 export function getCage(name) { return cache.get(name)?.cage || null; }
+
+// Someone waiting on a cage can follow it stage by stage (a progress bar),
+// whoever queued it: watchCage(name, fn) -> unsubscribe. fn gets
+// { name, stage, of, label, seed } as each QuadriFlow stage starts.
+const watchers = new Map();
+export function watchCage(name, fn) {
+  if (!watchers.has(name)) watchers.set(name, new Set());
+  watchers.get(name).add(fn);
+  return () => watchers.get(name)?.delete(fn);
+}
+const tell = (ev) => { for (const fn of watchers.get(ev.name) || []) { try { fn(ev); } catch { /* a listener's problem */ } } };
 export function jobId(name) { return `cage:${name}`; }
 
 // One worker per job, terminated at the end (or on a kill), so a finished or
@@ -122,7 +133,9 @@ export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, on
           const stageMs = [];
           for (let k = 0; k < STAGE_NAMES.length; k++) {
             await ctx.checkpoint();             // the pause point: between stages
-            onProgress?.({ name, stage: k, of: STAGE_NAMES.length, label: STAGE_NAMES[k], seed });
+            const ev = { name, stage: k, of: STAGE_NAMES.length, label: STAGE_NAMES[k], seed };
+            onProgress?.(ev);
+            tell(ev);
             const r = await call({ op: "stage", k });
             stageMs.push(Math.round(r.ms));
           }
