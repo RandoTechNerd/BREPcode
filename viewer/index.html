@@ -75,6 +75,14 @@
               } catch (e) { /* the address stays as it is */ }
               return;
             }
+            // A publish reaches the host one file at a time, so for a while
+            // this page can be NEWER than the version.json it is handed.
+            // Refreshing then went backwards: brepcode.com/seedstarter came
+            // back as the build before it (?b=<the older one>), whose files
+            // had no seed starter. Only ever move forwards; the next visit
+            // checks again.
+            var when = function (b) { var m = /(\d{4}-\d\d-\d\d \d\d:\d\d)/.exec(b || ""); return m ? m[1] : ""; };
+            if (when(v.build) && when(here) && when(v.build) < when(here)) { S.step = "server copy older than this page (publish still spreading)"; return; }
             if (sessionStorage.getItem("bc-freshened") === v.build) { S.step = "already refreshed to this build"; return; }
             S.step = "stale — refreshing";
             sessionStorage.setItem("bc-freshened", v.build);
@@ -18352,8 +18360,18 @@ let SIMPLIFY_TARGET = 10000;
     // ("make it 4 by 4", "use a bottle") work on it like any catalog design.
     async function openSeedStarter() {
       let S, cat, schema;
+      // One retry with this page's build in the query. A module can fail
+      // while a publish is still spreading (the host's copy of a new file
+      // is missing or old for a minute), and a query string is a fresh
+      // request to both the service worker (sw.js lets queries through) and
+      // the host's cache.
+      const retry = "?b=" + encodeURIComponent(document.querySelector('meta[name="brepcode-build"]')?.content || Date.now());
       try {
-        [S, cat, schema] = await Promise.all([import("./seedstarter.js"), import("../src/catalog/index.js"), import("../src/catalog/schema.js")]);
+        [S, cat, schema] = await Promise.all([
+          import("./seedstarter.js").catch(() => import("./seedstarter.js" + retry)),
+          import("../src/catalog/index.js").catch(() => import("../src/catalog/index.js" + retry)),
+          import("../src/catalog/schema.js").catch(() => import("../src/catalog/schema.js" + retry)),
+        ]);
       } catch (e) {
         setStatus("err", `Couldn't open the seed starter: ${e?.message || e}`);
         return;
