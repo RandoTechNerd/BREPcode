@@ -18303,9 +18303,24 @@ let SIMPLIFY_TARGET = 10000;
         return;
       }
       C.showCaseBuilder({
-        build: async (src) => {
+        build: async (src, name) => {
+          // The kit gets its own name ("KUGGIS 26x35x15 inserts"), not the
+          // last model's: a kit built over a SnapMaker model was exporting
+          // as "SnapMaker U1 MICRO". A name typed onto an earlier kit stays
+          // when that kit is rebuilt from the grid.
+          const wasKit = /Made with the BREPcode case builder/.test(code.value);
+          let auto = "";
+          try { auto = localStorage.getItem("brepcode-modelname-kit") || ""; } catch { /* private */ }
+          const keep = wasKit && modelName && modelName !== auto;
           pushHistory(code.value);
-          return applyGeneratedCode(src, { show: "params" });
+          const res = await applyGeneratedCode(src, { show: "params" });
+          if (name && !keep) {
+            modelName = String(name).slice(0, 60);
+            try { localStorage.setItem("brepcode-modelname", modelName); localStorage.setItem("brepcode-modelname-kit", modelName); } catch { /* private */ }
+            ownName(modelName);
+            paintName();
+          }
+          return res;
         },
         exportParts: () => { $("export-btn").click(); expShow("3mf-parts"); },
         exportStl: () => { $("export-btn").click(); expShow("stl"); },

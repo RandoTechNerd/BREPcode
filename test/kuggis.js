@@ -145,6 +145,9 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   check("open corner slot: no wall over the slot, lighter", openL.solids === 1 && openL.atZ(e.lugH + KUGGIS.wall) === 0 && openL.vol < corner.vol - 20, `${openL.atZ(e.lugH + KUGGIS.wall)} vertices a wall over the rib, ${openL.vol.toFixed(0)} vs ${corner.vol.toFixed(0)} mm³`);
   check("both are consts in the code that read back", (() => { const p = parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), openWalls: true, openLug: true }, regions: [] })).kuggis; return p.openWalls === true && p.openLug === true; })()
     && parseKitCode(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] })).kuggis.openWalls === false);
+  check("...named the way the builder names them, so the Parameters panel reads No walls / Open slot", /const noWalls = true;/.test(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), openWalls: true }, regions: [] }))
+    && /const openSlot = false;/.test(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] })));
+  check("...and code from before the rename still reads back", parseKitCode("// Inserts for an IKEA KUGGIS box\nconst rimW = 260;\nconst openWalls = true;\nconst openLug = true;\nreturn kuggisKit({ rimW, layout: [] });")?.kuggis?.openWalls === true);
   check("the flip is a const in the code and reads back", /const flip = undefined/.test(kitCode({ container: "kuggis", kuggis: defaultKuggis(), regions: [] }))
     && parseKitCode(kitCode({ container: "kuggis", kuggis: { ...defaultKuggis(), flip: false }, regions: [] })).kuggis.flip === false);
 
@@ -191,7 +194,7 @@ console.log("\nthe builder's code\n");
 {
   const s = { container: "kuggis", kuggis: { ...defaultKuggis("18x26x15"), lock: true }, regions: [{ c: 0, r: 0, w: 2, h: 2, kind: "lidbox" }, { c: 2, r: 0, w: 3, h: 3, kind: "frame", split: true }] };
   const code = kitCode(s);
-  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, pitch, openWalls, openLug, layout: pieces/.test(code));
+  check("the lock style is a flag in the code", /const lock = true;/.test(code) && /lock, flip, pitch, openWalls: noWalls, openLug: openSlot, layout: pieces/.test(code));
   check("it calls kuggisKit, not caseKit", /return kuggisKit\(/.test(code) && !/caseKit\(/.test(code));
   check("the box's inside is sliders", /const rimW = [\d.]+;\s+\/\/ \[/.test(code) && /const taper = /.test(code) && /const taperD = /.test(code) && /const clear = /.test(code));
   check("it says the numbers are estimates to measure over", /estimate/i.test(code) && /Measure your box/.test(code));

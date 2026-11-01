@@ -131,6 +131,19 @@ export function tally(regions, cols, rows, includeCase = true, separateLatch = f
 // What Build writes into the editor. Plain, commented and editable: width,
 // depth and height are sliders, and the layout list is something a person or
 // an AI can change by hand ("make the left column lidded").
+// The model's name: what it is and its size, so a kit never takes the name
+// of whatever was open before it.
+export function kitName(state) {
+  const s = { ...DEFAULTS, ...state };
+  if (s.container === "kuggis") {
+    const k = s.kuggis || {};
+    return k.size && k.size !== "custom" ? `KUGGIS ${k.size} inserts` : "KUGGIS inserts";
+  }
+  const size = `${Math.round(s.width)}x${Math.round(s.depth)}x${Math.round(s.height)}`;
+  if (s.includeCase === false) return `Case inserts ${size}`;
+  return `${s.style === "koch" ? "Koch case" : "Case"} ${size}`;
+}
+
 export function kitCode(state) {
   const s = { ...DEFAULTS, ...state };
   if (s.container === "kuggis") return kuggisCode(s);
@@ -208,8 +221,8 @@ const pitch = ${k.pitch === 7.5 ? 7.5 : 15};   // [7.5:15] the grid square: 15 i
 // Wall pieces print top down (open top on the bed) when the floor can bridge the cavity, up to 3 squares across;
 // bigger boxes print upright. flip: true forces top down, false forces upright.
 const flip = ${k.flip === true ? "true" : k.flip === false ? "false" : "undefined"};
-const openWalls = ${k.openWalls === true};   // true: a piece against the box wall keeps no wall of its own there (the box closes it): floor and the walls between pieces only
-const openLug = ${k.openLug === true};   // true: the corner rib's slot is open into the piece instead of walled off
+const noWalls = ${k.openWalls === true};   // true: a piece against the box wall keeps no wall of its own there (the box closes it): floor and the walls between pieces only, and the corner slot open
+const openSlot = ${k.openLug === true};   // true: the corner rib's slot is open into the piece instead of walled off
 
 // What goes where. at: [column, row] from the front-left square; size in squares.
 //   kind "box"    a bin                   split: true = one 1 x 1 box per square
@@ -218,7 +231,7 @@ const pieces = [
 ${regions.map(row).join("\n")}
 ];
 
-return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, pitch, openWalls, openLug, layout: pieces });
+return kuggisKit({ rimW, rimD, height, lidIn, taper, taperD, corner, floorRound, clear, lug, lugW, lugH, lock, flip, pitch, openWalls: noWalls, openLug: openSlot, layout: pieces });
 `;
 }
 
@@ -242,8 +255,8 @@ export function parseKitCode(src = "") {
     k.lock = /\b(?:const\s+lock\s*=|lock\s*:)\s*true\b/.test(text);
     const fl = /\bconst\s+flip\s*=\s*(true|false|undefined)/.exec(text);
     k.flip = fl && fl[1] !== "undefined" ? fl[1] === "true" : undefined;
-    k.openWalls = /\bconst\s+openWalls\s*=\s*true\b/.test(text);
-    k.openLug = /\bconst\s+openLug\s*=\s*true\b/.test(text);
+    k.openWalls = /\bconst\s+(?:noWalls|openWalls)\s*=\s*true\b/.test(text);
+    k.openLug = /\bconst\s+(?:openSlot|openLug)\s*=\s*true\b/.test(text);
     // the size whose estimate these numbers still are, if any; else "custom"
     const match = KUGGIS_SIZES.find((sz) => { const e = kuggisEstimate(sz); return e.rimW === k.rimW && e.rimD === k.rimD && e.height === k.height; });
     k.size = match ? match.id : "custom";
@@ -1078,7 +1091,7 @@ export function showCaseBuilder(hooks = {}) {
     const code = kitCode(S);
     close();
     let ok = false;
-    try { ok = !!(await hooks.build?.(code))?.ok; } catch { ok = false; }
+    try { ok = !!(await hooks.build?.(code, kitName(S)))?.ok; } catch { ok = false; }
     if (ok) showDone(hooks, tally(S.regions, f.cols, f.rows, !isKuggis() && S.includeCase !== false, S.style === "koch" && S.kochLatch === "swing"));
   });
 
