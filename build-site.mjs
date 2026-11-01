@@ -126,6 +126,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "make.js",
   // the case builder (/case and the Toolbox): a Casefinity case painted on a grid
   "casebuilder.js",
+  // the seed starter configurator (/seedstarter): watering chooser + dials
+  "seedstarter.js",
   "deskview.js", "deskxr.js",
   // the line icons those cards and the drop menu share
   "icons.js",
@@ -223,6 +225,15 @@ bounce("make", "make=1", "BREPcode: what do you want to 3D print?",
 bounce("case", "case=1", "BREPcode case builder: a printable case with a Casefinity grid",
   "Size a 3D-printable hinged case, paint its grid with boxes, lidded boxes and separators, and download every part laid out to print as 3MF or STL. Grid: Casefinity by Chris Agocs, on Gridfinity for Hardcases by the Unemployed Architect.",
   "Opening the case builder");
+// ---- /seedstarter : the self-watering seed starter -----------------------
+// The catalog's seed starter (src/catalog/garden/seed-starter.js) built on
+// the plate, with a card to pick the watering (pour-in spout or a twist-in
+// soda bottle) and the main sizes; Export lays every part out to print
+// (viewer/seedstarter.js, started by ?seedstarter=1). Linked from the
+// RandoTechNerd seed starter video.
+bounce("seedstarter", "seedstarter=1", "BREPcode seed starter: make your own self-watering seed starter",
+  "Make your own 3D-printable self-watering seed starter: pick a pour-in spout or a twist-in soda bottle, set how many pots and how big, and download every part laid out to print. Free, no account.",
+  "Opening the seed starter");
 // ---- /rtn2026 : the premium door -----------------------------------------
 // The app with the house AI as the chat's AI, when locked-key.js says
 // mode: "premium" (see docs/house-ai.md). Without that file in the build it

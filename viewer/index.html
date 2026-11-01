@@ -18328,6 +18328,68 @@ let SIMPLIFY_TARGET = 10000;
         plate: () => { try { return currentPlate() ?? null; } catch { return null; } },
       });
     }
+    // brepcode.com/seedstarter (a folder bouncing to ?seedstarter=1),
+    // ?seedstarter=1 or #seedstarter: the self-watering seed starter, built,
+    // with its watering chooser. Same rules as /case: the flag comes off the
+    // address, and /m/seedstarter is a model, not this.
+    function seedStarterRequested() {
+      let hit = false;
+      for (const L of hostLocations()) {
+        if (!/[?&]seedstarter=1(&|$)/.test(L.search) && !/^#seed-?starter$/i.test(L.hash)
+            && !(/(^|\/)seed-?starter\/?(index\.html)?$/i.test(L.pathname) && !/(^|\/)m\/seed-?starter\/?$/i.test(L.pathname))) continue;
+        hit = true;
+        try {
+          const u = new URL(L.href);
+          u.searchParams.delete("seedstarter");
+          if (/^#seed-?starter$/i.test(u.hash)) u.hash = "";
+          (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
+        } catch { /* cross-origin frame */ }
+      }
+      return hit;
+    }
+    // The seed starter configurator (viewer/seedstarter.js). The model is the
+    // catalog's own code, so the Params sliders and the chat's follow-ups
+    // ("make it 4 by 4", "use a bottle") work on it like any catalog design.
+    async function openSeedStarter() {
+      let S, cat, schema;
+      try {
+        [S, cat, schema] = await Promise.all([import("./seedstarter.js"), import("../src/catalog/index.js"), import("../src/catalog/schema.js")]);
+      } catch (e) {
+        setStatus("err", `Couldn't open the seed starter: ${e?.message || e}`);
+        return;
+      }
+      const fam = cat.FAMILIES.find((f) => f.id === S.FAMILY_ID);
+      if (!fam) return;
+      const P = await ensureParams();
+      // they came for a seed starter, not for code: sliders and the card
+      quietEditor = true;
+      // applyGeneratedCode puts the code in before its first await, so the
+      // card can come up straight away and say "Building…" over the build
+      let built = null;
+      if (!S.isSeedStarterCode(code.value)) {
+        pushHistory(code.value);
+        modelName = "Seed starter";
+        try { localStorage.setItem("brepcode-modelname", modelName); } catch { /* private */ }
+        paintName();
+        built = applyGeneratedCode(schema.familyCode(fam, schema.resolveParams(fam).values), { show: "params" });
+      }
+      const card = S.showSeedStarter({
+        family: fam,
+        read: () => {
+          if (!S.isSeedStarterCode(code.value)) return null;
+          return Object.fromEntries(P.findParams(code.value).map((p) => [p.name, p.value]));
+        },
+        set: (name, value) => setParam(name, value),
+        exportParts: () => { $("export-btn").click(); expShow("3mf-parts"); },
+        openParams: () => {
+          if (!paramsCard.classList.contains("open")) toggleCard(paramsCard, paramsBtn, true);
+          refreshParams(true);
+        },
+        status: () => ({ kind: status.className, text: $("status-text")?.textContent || "" }),
+      });
+      await built;
+      card.paint();
+    }
     // W is welcome.js or a promise of it: the door does not wait for it.
     // offerTour: the desktop app's first launch, where the door IS the welcome
     // and the tour is offered once their model is on screen.
@@ -25079,6 +25141,9 @@ ${SC.describeSelectionContext(anchor)}` : "");
     } else if (!urlCarriesModel() && caseRequested()) {
       // brepcode.com/case: the builder is the front door for this visitor
       openCaseBuilder();
+    } else if (!urlCarriesModel() && seedStarterRequested()) {
+      // brepcode.com/seedstarter: the seed starter, built, with its chooser
+      openSeedStarter();
     } else if (!urlCarriesModel() && makeRequested()) {
       // The quick door: at once, not after the welcome card's 700 ms. It is
       // the first thing this visitor sees, and on brepcode.com/make the host

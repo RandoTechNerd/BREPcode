@@ -17,9 +17,10 @@ import birdhouse from "./birdhouse.js";
 import birdFeeder from "./bird-feeder.js";
 import rainGauge from "./rain-gauge.js";
 import potFeet from "./pot-feet.js";
+import seedStarter from "./seed-starter.js";
 
 export const FAMILIES = [plantPot, selfWateringPlanter, hangingPlanter, wallPlanter, windowBox, seedlingTray,
-  plantMarker, plantClip, hoseGuide, bottleWaterer, birdhouse, birdFeeder, rainGauge, potFeet];
+  plantMarker, plantClip, hoseGuide, bottleWaterer, birdhouse, birdFeeder, rainGauge, potFeet, seedStarter];
 
 // ---- real objects the garden families are sized from
 //

@@ -42,10 +42,11 @@ application source.
 >    `/brep/index.html#s=` followed by the slug, rendering nothing at all — no
 >    layout, no flash of the landing page.
 >
-> 5b. Add four more redirects the same way, rendering nothing:
+> 5b. Add five more redirects the same way, rendering nothing:
 >    `/make` -> `/brep/index.html?make=1` (the quick door for newcomers),
 >    `/tour` -> `/brep/index.html?tour=1`, `/welcome` -> `/brep/index.html?welcome=1`,
->    and `/case` -> `/brep/index.html?case=1` (the case builder).
+>    `/case` -> `/brep/index.html?case=1` (the case builder),
+>    and `/seedstarter` -> `/brep/index.html?seedstarter=1` (the seed starter).
 >    Every other route stays as it is.
 >
 > 6. Keep the files under `public/brep/` that the zip does not contain:

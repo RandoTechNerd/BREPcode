@@ -264,11 +264,19 @@ console.log("\nevery advertised follow-up does something\n");
 
 // ---------------------------------------------------------------- building
 
-async function measure(code) {
+async function measure(code, { separate = false } = {}) {
   const t0 = performance.now();
   const r = await build(evalCode(code));
   const ms = performance.now() - t0;
-  const stl = toSTL(r, "s");
+  // a family of separately printed parts (f.separate) is measured part by
+  // part: each one stands on its own z = 0 when Export lays them out
+  if (separate && r.solids.length > 1) {
+    const parts = r.solids.map((s) => measureSTL(toSTL({ solids: [s], tolerance: r.tolerance }, "s")));
+    return { ms, parts, tris: parts.reduce((n, p) => n + (p.tris || 0), 0) };
+  }
+  return { ms, ...measureSTL(toSTL(r, "s")) };
+}
+function measureSTL(stl) {
   const coords = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].flatMap((m) => m.slice(1).map(Number));
   if (!coords.length) return { empty: true };
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
@@ -289,17 +297,26 @@ async function measure(code) {
     else if (nz < -0.72 && !onBed) hang += area;
   }
   const health = inspectMesh(weldTriangles(coords, { places: 3 }));
-  return { ms, size: [0, 1, 2].map((i) => hi[i] - lo[i]), zMin: lo[2], bed, hang, total, health, tris: coords.length / 9 };
+  return { size: [0, 1, 2].map((i) => hi[i] - lo[i]), zMin: lo[2], bed, hang, total, health, tris: coords.length / 9 };
 }
 
 const BED = 256;                 // a common printer bed: a default should fit it
 async function buildCase(label, f, values, { strict = true } = {}) {
   let m;
-  try { m = await measure(familyCode(f, values)); }
+  try { m = await measure(familyCode(f, values), { separate: !!f.separate }); }
   catch (e) { check(`${label}: builds`, false, e.message); return; }
-  if (m.empty) { check(`${label}: builds`, false, "empty"); return; }
+  if (m.empty || m.parts?.some((p) => p.empty)) { check(`${label}: builds`, false, "empty"); return; }
   check(`${label}: builds (${Math.round(m.ms)} ms, ${m.tris} tris)`, m.ms < 15000, `${Math.round(m.ms)} ms`);
-  check(`${label}: sits on the bed`, Math.abs(m.zMin) < 0.05, `zMin ${m.zMin}`);
+  if (m.parts) {
+    m.parts.forEach((p, i) => printable(`${label} part ${i + 1}/${m.parts.length}`, f, values, p, strict, true));
+    return;
+  }
+  printable(label, f, values, m, strict);
+}
+// part: one of a separate-parts family's pieces, measured on its own floor
+// (it may sit up in the assembly; the 3MF parts export stands it on z = 0)
+function printable(label, f, values, m, strict, part = false) {
+  if (!part) check(`${label}: sits on the bed`, Math.abs(m.zMin) < 0.05, `zMin ${m.zMin}`);
   check(`${label}: has a real footprint`, m.bed > 20, `${m.bed.toFixed(0)} mm2 on the bed`);
   if (strict) check(`${label}: fits a ${BED} mm bed`, m.size.every((s) => s <= BED + 0.5), m.size.map((s) => s.toFixed(0)).join(" x "));
   // a bridge (a flat ceiling) is not an overhang, and f.bridges says how much

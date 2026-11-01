@@ -71,6 +71,14 @@ createServer((req, res) => {
     return;
   }
 
+  // The site's one-word doors (build-site.mjs bounces them into the app), so
+  // localhost:<port>/seedstarter works the way brepcode.com/seedstarter does.
+  const door = /^\/(make|tour|welcome|case|seedstarter)\/?$/.exec(pathname);
+  if (door) {
+    res.writeHead(302, { location: `/viewer/index.html?${door[1]}=1` }).end();
+    return;
+  }
+
   let filePath = normalize(join(root, pathname));
   if (!filePath.startsWith(root)) {          // no escaping the project directory
     res.writeHead(403).end("Forbidden");

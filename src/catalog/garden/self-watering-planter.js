@@ -38,7 +38,7 @@ export default {
       params: { potD: 110, height: 95, waterH: 30 } },
     { names: ["large self watering planter", "big self watering pot"], title: "Large self-watering planter",
       params: { potD: 200, height: 180, waterH: 50, wall: 2.4, holes: 10, fillW: 26 } },
-    { names: ["self watering seed starter", "self watering seedling pot"], title: "Self-watering seed starter",
+    { names: ["self watering seedling pot", "self watering seedling cup"], title: "Self-watering seedling pot",
       params: { potD: 80, height: 80, waterH: 25, holes: 0, fillW: 12 } },
     { names: ["self watering pot for tomatoes", "self watering tomato planter"], title: "Self-watering tomato planter",
       params: { potD: 220, height: 220, waterH: 70, wall: 2.6, holes: 12, fillW: 30 } },
