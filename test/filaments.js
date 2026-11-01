@@ -347,7 +347,10 @@ console.log("\nthe page can actually drive it\n");
   check("flake is emissive, so it catches light at glancing angles",
     /totalEmissiveRadiance \+= fxFlake/.test(HTML));
   check("the module is fetched lazily", /import\("\.\/filaments\.js"\)/.test(HTML));
-  check("...on idle, after everything else", /requestIdleCallback[\s\S]{0,200}loadSpools/.test(HTML));
+  // either a bare idle callback, or (since bgjobs.js) the background scheduler's
+  // last job: priority 90, behind every other warm-up and the cage
+  check("...on idle, after everything else", /requestIdleCallback[\s\S]{0,200}loadSpools/.test(HTML)
+    || /bg\.background\(\{ id: "warm:spools"[^\n]*priority: 9\d[^\n]*loadSpools\(\)/.test(HTML));
   check("...and on opening the Material panel", /loadSpools\(\);\s*\/\/ no-op/.test(HTML));
   check("effects default to OFF so an unused feature costs nothing",
     /grad: \{ value: 0 \}/.test(HTML) && /flake: \{ value: 0 \}/.test(HTML));

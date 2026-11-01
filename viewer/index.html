@@ -4894,7 +4894,9 @@
       if (!w) return Promise.reject(new WorkerGone("no build worker available"));
       const id = ++workerSeq;
       if (msg?.op === "build") { workerBuildId = id; workerBuildStart = performance.now(); }
-      return new Promise((resolve, reject) => {
+      // Every kernel call is foreground work: background jobs hold off until
+      // it answers.
+      return bg.during(`kernel ${msg?.op || "call"}`, new Promise((resolve, reject) => {
         workerPending.set(id, { resolve, reject });
         const item = { msg: { ...msg, id }, transfer, reject };
         if (workerReady) postToWorker(item);
@@ -4902,7 +4904,7 @@
           if (WORKER_DEBUG) console.log(`[page] queue ${msg?.op} #${id} (worker still loading)`);
           workerOutbox.push(item);
         }
-      });
+      }));
     }
     // Spawn it now, in parallel with everything else the page is starting, so
     // the kernel is already in memory over there when the first model builds.
@@ -4994,6 +4996,19 @@
       drillParts, deletionSpan,
     } from "./assist.js";
     import { ringAngle, makeAngleTracker, snapAngle, readout, rotateEdit } from "./rotategizmo.js";
+    // Background jobs (bgjobs.js): work nobody has asked for yet, run one at a
+    // time while the app is quiet and paused while anything the user waits on
+    // is going. Foreground work marks itself with bg.foreground()/bg.during();
+    // a dialog can carry data-bg-busy instead. ?bg=log prints what it does.
+    import { createScheduler } from "./bgjobs.js";
+    import { queueCage, getCage, needCage } from "./cage.js";
+    const bg = createScheduler({
+      log: /[?&]bg=log\b/.test(location.search) ? (l) => console.log(`[bg] ${l}`) : null,
+    });
+    // console: brepscript.bg.status(), brepscript.cage("part.stl"),
+    // await brepscript.needCage("part.stl") (promotes it: no more pausing)
+    window.brepscript = window.brepscript || {};
+    Object.assign(window.brepscript, { bg, cage: getCage, needCage: (name) => needCage(bg, name) });
     // the line icons the chat's chips and buttons are drawn with (icons.js)
     import { icon as lineIcon } from "./icons.js";
 
@@ -5737,6 +5752,11 @@
     // Touch the view yourself and the app stops moving it. Whatever it was
     // arranging matters less than not fighting the hand on the mouse.
     controls.addEventListener("start", () => { camGlide = null; autoPlaced = false; });
+    // Turning or zooming the view is foreground: frames matter more than the
+    // background cage while a hand is on the mouse.
+    let endViewDrag = null;
+    controls.addEventListener("start", () => { endViewDrag?.(); endViewDrag = bg.foreground("view drag"); });
+    controls.addEventListener("end", () => { endViewDrag?.(); endViewDrag = null; });
 
     (function loop() {
       requestAnimationFrame(loop);
@@ -16486,7 +16506,9 @@ ${joined}${SITE_TAIL}`), joined);
       }).catch(() => { /* leave the button hidden */ });
     }
 
-    async function exportAs(fmt) {
+    // An export is foreground work for as long as it runs.
+    function exportAs(fmt) { return bg.during(`export ${fmt}`, exportAsNow(fmt)); }
+    async function exportAsNow(fmt) {
       // Saving the project is the one export that must work on a model that
       // does NOT build. A half-finished part you cannot get back is precisely
       // what you most need to keep, and refusing to save it would be the worst
@@ -18361,6 +18383,7 @@ let SIMPLIFY_TARGET = 10000;
             return convertImportToExact(file.name);
           }
           await importMeshFile(file);
+          queueSmoothCage(file.name);
           if (pick.action === "tool" && pick.tool) {
             // the tools act on the built model, so wait for the import's build
             await new Promise((r) => setTimeout(r, 50));
@@ -18370,6 +18393,21 @@ let SIMPLIFY_TARGET = 10000;
         }
       }
       await importMeshFile(file);
+      if (/\.(stl|3mf|obj)$/i.test(file.name)) queueSmoothCage(file.name);
+    }
+
+    // A dropped mesh gets its smooth-surface cage built in the background
+    // (cage.js on the bg scheduler): QuadriFlow, one stage at a time, paused
+    // whenever the app is busy. Ready by the time anyone asks for a smooth
+    // STEP; brepscript.cage(name) in the console reads it. Never in the way: a mesh too
+    // big, a machine too small, or data saver, and it simply doesn't run.
+    function queueSmoothCage(name) {
+      let stl = null;
+      try { stl = dsl.getImport(name); } catch { /* not imported (refused, view-only) */ }
+      const job = queueCage(bg, name, stl);
+      job?.promise.then(
+        (c) => { if (/[?&]bg=log\b/.test(location.search)) console.log(`[bg] cage ${name}: ${c.quads.length / 4} quads from ${c.triangles} triangles in ${c.ms} ms (stages ${c.stageMs.join(" / ")} ms)`); },
+        () => { /* cancelled, skipped or failed: the cage is optional */ });
     }
 
     // ------------------------------------------- mesh -> exact solid (beta)
@@ -18469,24 +18507,17 @@ let SIMPLIFY_TARGET = 10000;
     // half-megabyte mesh engine) are not among them: they load on first use,
     // behind the load bar, so a visit that never drops a file or opens
     // FizzCore never downloads them.
+    // Background jobs tagged "network" (bgjobs.js): the scheduler skips them
+    // on data saver or a 2G connection, runs them one at a time on idle beats,
+    // and holds them while a build, an export or a view drag is going. A
+    // failure is fine: the module loads on demand instead.
     function warmLikelyFeatures() {
-      const c = navigator.connection;
-      if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))) return;
-      const idle = window.requestIdleCallback
-        ? (f) => window.requestIdleCallback(f, { timeout: 4000 })
-        : (f) => setTimeout(f, 800);
       const jobs = [
-        () => getTour(),
-        () => getChatbot(),
-        () => getInventory(),
+        ["tour", () => getTour()],
+        ["chatbot", () => getChatbot()],
+        ["inventory", () => getInventory()],
       ];
-      let i = 0;
-      const next = () => {
-        if (i >= jobs.length) return;
-        const job = jobs[i++];
-        Promise.resolve().then(job).catch(() => { /* it loads on demand instead */ }).finally(() => idle(next));
-      };
-      idle(next);
+      jobs.forEach(([id, run], i) => bg.background({ id: `warm:${id}`, needs: "network", priority: 10 + i, run }));
     }
     // EVERY tool that works on an opened mesh, so dropping a file shows the
     // lot. `id` is a toolbox button to click, or "wrap:<name>" for an
@@ -25935,12 +25966,15 @@ ${SC.describeSelectionContext(anchor)}` : "");
     // The default shape is on screen — now quietly warm the on-demand feature
     // modules (curved export, image tracer, key-locker) during the idle gap, so
     // the first click on any of them is instant. Never blocks; failures are fine.
-    const warm = () => { getCurved().catch(() => {}); getTrace().catch(() => {}); getLockbox().catch(() => {}); };
-    (window.requestIdleCallback || ((f) => setTimeout(f, 800)))(warm);
-    // Dead last, on a second idle beat: the named spools are the least urgent
-    // thing in the app — a colour nobody has asked for yet.
-    (window.requestIdleCallback || ((f) => setTimeout(f, 2500)))(
-      () => setTimeout(() => { try { loadSpools(); } catch { /* fine */ } }, 1200));
+    // All of it is background work on the scheduler (bgjobs.js), which starts
+    // here: nothing background runs before the first model is on screen.
+    bg.background({ id: "warm:curved", needs: "network", priority: 20, run: () => getCurved() });
+    bg.background({ id: "warm:trace", needs: "network", priority: 21, run: () => getTrace() });
+    bg.background({ id: "warm:lockbox", needs: "network", priority: 22, run: () => getLockbox() });
+    // Dead last: the named spools are the least urgent thing in the app — a
+    // colour nobody has asked for yet.
+    bg.background({ id: "warm:spools", needs: "network", priority: 90, run: () => loadSpools() });
+    bg.start();
   </script>
   <!-- Publish and the cloud stash: a host file brepcode.com serves beside the
        app (site/quicksave.js is the reference copy). Never bundled, so on any

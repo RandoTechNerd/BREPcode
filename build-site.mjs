@@ -80,6 +80,7 @@ const rewrites = [
   // beside it, so the vendor cache keeps the two together)
   ["/vendor/brep-kernel-smlib/", "./vendor/brep-kernel-smlib/"],
   ["/native/nvidia-kernel/adapter.cjs", "./vendor/brep-kernel-smlib/adapter.cjs"],
+  ["/vendor/quadriflow/", "./vendor/quadriflow/"],
 ];
 const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), text);
 
@@ -150,6 +151,9 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "selection-context.js",
   // the rotate gizmo's angle and rotate() edit arithmetic
   "rotategizmo.js",
+  // background jobs (warm-ups, the smooth-surface cage) and the cage worker,
+  // which is loaded by URL like the build worker below
+  "bgjobs.js", "cage.js", "cage-stages.js", "cage-worker.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
@@ -327,6 +331,14 @@ for (const f of ["api.mjs", "smlib.mjs", "smlib.wasm", "LICENSE", "THIRD_PARTY_N
   cpSync(`vendor/brep-kernel-smlib/${f}`, join(OUT, "vendor/brep-kernel-smlib", f));
 }
 cpSync("native/nvidia-kernel/adapter.cjs", join(OUT, "vendor/brep-kernel-smlib/adapter.cjs"));
+// ---- vendor: QuadriFlow (the smooth-surface quad cage, a background job) ----
+// Built from ../QuadriFlowWasm (stages.cpp + `bash build.sh stages`), BSD.
+// 432 KB raw, ~139 KB brotli with its loader; fetched only when a dropped
+// mesh's cage starts.
+mkdirSync(join(OUT, "vendor", "quadriflow"), { recursive: true });
+for (const f of ["quadriflow-stages.mjs", "quadriflow-stages.wasm", "LICENSE.txt"]) {
+  cpSync(`vendor/quadriflow/${f}`, join(OUT, "vendor/quadriflow", f));
+}
 
 // ---- vendor: bwip-js (scannable codes, lazy-loaded) ----
 mkdirSync(join(OUT, "vendor", "bwip"), { recursive: true });

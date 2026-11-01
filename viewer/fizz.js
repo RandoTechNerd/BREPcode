@@ -161,6 +161,10 @@ function modal(cls, title, ic = "") {
   injectStyle();
   const veil = document.createElement("div");
   veil.className = "fz-veil";
+  // The FizzCore / fins dialog computes previews as you turn its dials: while
+  // it is open, background jobs (viewer/bgjobs.js) hold off. The drop menu
+  // shares this modal but is just a menu, so it doesn't.
+  if (cls === "fz-main") veil.setAttribute("data-bg-busy", "fizzcore");
   veil.innerHTML = `<div class="fz-box ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
     <div class="fz-head"><h2>${ic ? `<span class="fz-hi">${icon(ic, 18)}</span>` : ""}${esc(title)}</h2><button class="fz-x" title="Close" aria-label="Close">&times;</button></div>
   </div>`;
