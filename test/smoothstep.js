@@ -144,17 +144,27 @@ console.log("\nsmooth STEP: a box keeps its edges\n");
   const stl = boxSTL(10);
   const raw = await runCage(stl, 600);
   const cage = closeCage(raw.verts, raw.quads);
-  check(`QuadriFlow's holes closed (${cage.holes} holes, ${cage.split} strip edges split)`, cageTopology(cage.verts, cage.quads).open === 0);
+  // QuadriFlow leaves the box two 3-edge holes at corners: odd, so they stay
+  // open in the cage and are closed in the STEP (a split rim edge + a patch)
+  const rawOpen = cageTopology(raw.verts, raw.quads).open;
+  const odd = cage.oddLoops.reduce((s, l) => s + l.length, 0);
+  check(`odd holes left open in the cage, even ones filled (${cage.holes} holes, ${cage.oddLoops.length} odd)`, cageTopology(cage.verts, cage.quads).open === odd && cage.oddLoops.every((l) => l.length & 1));
   const nq = cage.quads.length / 4;
   const topo = cageTopology(cage.verts, cage.quads);
   const cr = findCreases(cage.verts, cage.quads, topo, 40);
-  const corners = [...cr.degree].filter((d) => d >= 3).length;
   check(`creases found along the 12 box edges (${cr.creases.size} crease edges of ${topo.edges.size})`, cr.creases.size > 40 && cr.creases.size < topo.edges.size / 4);
-  check(`8 hard corners (vertices with 3 creases): ${corners}`, corners === 8);
+  // every box corner has a hard vertex on it (hole rims add a few more)
+  const boxCorners = [];
+  for (const x of [0, 40]) for (const y of [0, 30]) for (const z of [0, 20]) boxCorners.push([x, y, z]);
+  const hard = [];
+  for (let v = 0; v < topo.nv; v++) if (cr.degree[v] >= 3) hard.push([cage.verts[v * 3], cage.verts[v * 3 + 1], cage.verts[v * 3 + 2]]);
+  const covered = boxCorners.filter((c) => hard.some((h) => Math.hypot(h[0] - c[0], h[1] - c[1], h[2] - c[2]) < 0.5)).length;
+  check(`a hard corner on each of the 8 box corners: ${covered} (${hard.length} hard vertices)`, covered === 8);
   const r = cageToStep(cage.verts, cage.quads, { name: "box" });
   writeFileSync(join(OUT, "box.step"), r.step);
   const back = readBack(r.step);
   check(`closed: ${r.faces} faces, no open edges`, back.open === 0 && back.over === 0, `open ${back.open}, over ${back.over}`);
+  check(`no strips: ${r.faces} faces from ${raw.quads.length / 4} cage quads (${rawOpen} open edges)`, r.faces <= raw.quads.length / 4 + 4 * cage.holes);
   // flat faces stay flat: mid-patch points lie on the box's planes within a hair
   const { patches } = catmullClarkPatches(fitCage(cage.verts, cage.quads, topo, cr), cage.quads, topo, cr);
   let worst = 0;
@@ -174,7 +184,7 @@ console.log("\nsmooth STEP: a box keeps its edges\n");
   check(`corners stay put (${cornerOff.toFixed(4)} mm)`, cornerOff < 1e-9);
   // without creases the same box rounds off
   const soft = cageToStep(cage.verts, cage.quads, { name: "softbox", creases: false });
-  check("creases can be turned off", soft.creases === 0 && soft.faces === nq);
+  check(`creases can be turned off (only the ${odd} hole-rim edges stay creased)`, soft.creases === odd && soft.faces === r.faces);
   registerImport("box-smooth.step", r.step, { mesh: cageToStl(cage.verts, cage.quads, { name: "box" }) });
   let out = null, why = "";
   const t1 = Date.now();
@@ -223,6 +233,8 @@ console.log("\nsmooth STEP: a 20k Benchy (thin walls, odd holes that pair round 
     const raw = await handle({ op: "finish" });
     const r = cageToStep(raw.verts, raw.quads, { name: "benchy" });
     check(`every hole closed, no patch folded or stray (${r.holesFilled} holes, ${r.faces} faces, ${r.relaxed} relaxed)`, r.folded === 0);
+    // the strips this replaced turned this cage into 5,260 faces
+    check(`no strips: ${r.faces} faces from ${raw.quads.length / 4} cage quads`, r.faces <= raw.quads.length / 4 + 4 * r.holesFilled);
     registerImport("benchy-smooth.step", r.step);
     let out = null, why = "";
     const t1 = Date.now();

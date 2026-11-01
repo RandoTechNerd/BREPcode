@@ -124,35 +124,47 @@ export function findCreases(verts, quads, topo, creaseAngle = 40, minChain = 4) 
     if (comp.length >= minChain) for (const k of comp) kept.add(k);
   }
   creases = kept;
+  // the rim of a hole left open (an odd one, see closeCage) is always a
+  // crease: the patches beside it then end on the rim's own B-spline, which
+  // is what the fill patches are built against
+  for (const [key, e] of topo.edges) if (e.faces.length === 1) creases.add(key);
   return { creases, degree: degree() };
 }
 
 // ------------------------------------------------------ closing the cage
 // QuadriFlow sometimes leaves small holes (a box corner, a thin rim: the bag
-// sample has five, of 3 to 9 edges). Quads alone can only fill a hole with
-// an even number of edges (each quad has four, every inner edge is counted
-// twice), and odd holes always come in pairs. So: for each odd hole, walk a
-// quad STRIP from one of its edges (enter a quad, leave by the opposite edge)
-// until it reaches another hole; a strip from a boundary always ends on a
-// boundary. Splitting every quad along that strip's midline adds one vertex
-// to each end's hole, so two odd holes become even. Then every hole is filled
-// with a fan of quads round its centre (a 4-edge hole is one quad).
-// New points are linear (edge midpoints, hole centroids); fitCage then pulls
-// the limit surface through them, so a filled hole is smooth, not exact.
-// A closed cage, with every corner shared by only two quads merged away.
-// Catmull-Clark has no smooth surface round a valence-2 vertex: the two
-// patches there fold onto each other, and no amount of relaxing helps.
-// QuadriFlow leaves the odd one (a 20k Benchy had two, both refused by the
-// kernel). Quads (v,a,x,b) and (v,b,y,a) become (a,x,b,y) and v goes; that
-// can leave a or b with two quads, so it repeats. Points are renumbered
-// (order kept), and originalVerts counts how many are still QuadriFlow's.
+// sample has five, of 3 to 9 edges). A hole with an EVEN number of edges is
+// filled here with a fan of quads round its centre (a 4-edge hole is one
+// quad), so the Catmull-Clark patches see a closed cage there.
+//
+// A hole with an ODD number of edges cannot be filled with quads at all
+// (each quad has four edges, every inner edge is counted twice). Keeping the
+// cage all-quads meant splitting a strip of quads from one odd hole to
+// another, which could wrap round the whole part (a Benchy's 2,448 quads
+// became 5,260 faces). So odd holes are LEFT OPEN here: their rims become
+// crease edges (findCreases), which gives the patches beside them a border
+// that depends on the rim alone, and fillOddHoles closes each one after the
+// patching, at the STEP level: one rim edge is split at its middle, so the
+// face beside it has five edges (the kernel takes that: a face is a 4-sided
+// surface, its loop can have any number of edges), and the hole, now even,
+// is a small fan of Coons patches on the rim curves. A few faces per hole.
+//
+// Then every corner shared by only two quads is merged away: Catmull-Clark
+// has no smooth surface round a valence-2 vertex (the two patches fold onto
+// each other, and no amount of relaxing helps). QuadriFlow leaves the odd
+// one (a 20k Benchy had two). Quads (v,a,x,b) and (v,b,y,a) become (a,x,b,y)
+// and v goes; that can leave a or b with two quads, so it repeats. Points
+// are renumbered (order kept); originalVerts counts how many are still
+// QuadriFlow's, and oddLoops (each in the winding a filling face would have)
+// follow the renumbering.
 export function closeCage(verts, quads) {
   const closed = closeCageHoles(verts, quads);
   return dissolveValence2(closed);
 }
 
-export function dissolveValence2({ verts, quads, holes, split, originalVerts }) {
+export function dissolveValence2({ verts, quads, holes, oddLoops = [], originalVerts }) {
   const nv = verts.length / 3;
+  const openBefore = cageTopology(verts, quads).open;
   let Q = Array.from(quads);
   let merged = 0;
   for (let pass = 0; pass < 20; pass++) {
@@ -167,6 +179,7 @@ export function dissolveValence2({ verts, quads, holes, split, originalVerts }) 
       const k1 = [0, 1, 2, 3].find((k) => Q[q1 + k] === v), k2 = [0, 1, 2, 3].find((k) => Q[q2 + k] === v);
       const a = Q[q1 + ((k1 + 1) & 3)], x = Q[q1 + ((k1 + 2) & 3)], b = Q[q1 + ((k1 + 3) & 3)];
       const b2 = Q[q2 + ((k2 + 1) & 3)], y = Q[q2 + ((k2 + 2) & 3)], a2 = Q[q2 + ((k2 + 3) & 3)];
+      // (a hole's rim vertex with two quads shares only one edge between them: left alone)
       if (a !== a2 || b !== b2 || x === y || new Set([a, x, b, y]).size < 4) continue;
       Q[q1] = a; Q[q1 + 1] = x; Q[q1 + 2] = b; Q[q1 + 3] = y;
       Q[q2] = -1;
@@ -178,7 +191,7 @@ export function dissolveValence2({ verts, quads, holes, split, originalVerts }) 
     Q = keep;
     if (!changed) break;
   }
-  if (!merged) return { verts, quads, holes, split, originalVerts, merged: 0 };
+  if (!merged) return { verts, quads, holes, oddLoops, originalVerts, merged: 0 };
   // renumber the points still in use, in their old order
   const used = new Uint8Array(nv);
   for (const v of Q) used[v] = 1;
@@ -193,133 +206,43 @@ export function dissolveValence2({ verts, quads, holes, split, originalVerts }) 
   }
   const out = Int32Array.from(Q, (v) => map[v]);
   const check = cageTopology(V, out);
-  if (check.open || check.over) throw new Error(`merging two-quad corners left ${check.open} open and ${check.over} overused edges`);
-  return { verts: Float64Array.from(V), quads: out, holes, split, originalVerts: keptOriginal, merged };
+  if (check.open !== openBefore || check.over) throw new Error(`merging two-quad corners left ${check.open} open and ${check.over} overused edges`);
+  return { verts: Float64Array.from(V), quads: out, holes, oddLoops: oddLoops.map((l) => l.map((v) => map[v])), originalVerts: keptOriginal, merged };
 }
 
 function closeCageHoles(verts, quads) {
-  let topo = cageTopology(verts, quads);
-  if (!topo.open) return { verts, quads, holes: 0, split: 0, originalVerts: verts.length / 3 };
+  const topo = cageTopology(verts, quads);
+  if (!topo.open) return { verts, quads, holes: 0, oddLoops: [], originalVerts: verts.length / 3 };
   if (topo.over) throw new Error(`the cage has ${topo.over} edges on more than two quads`);
-  const nq = topo.nq;
-  const holeLoops = (Q, T) => {
-    const next = new Map();
-    for (let q = 0; q < Q.length; q += 4) for (let k = 0; k < 4; k++) {
-      const a = Q[q + k], b = Q[q + ((k + 1) & 3)];
-      if (T.edges.get(T.edgeKey(a, b)).faces.length === 1) {
-        if (next.has(b)) throw new Error("the cage has a pinched hole (a vertex on two hole edges)");
-        next.set(b, a);                // the hole runs against the quad beside it
-      }
-    }
-    const loops = [], seen = new Set();
-    for (const s of next.keys()) {
-      if (seen.has(s)) continue;
-      const loop = [];
-      for (let v = s; !seen.has(v); v = next.get(v)) { seen.add(v); loop.push(v); }
-      loops.push(loop);
-    }
-    return loops;
-  };
-
-  // --- make every hole even by splitting strips between odd holes
-  const loops = holeLoops(quads, topo);
-  const holeOf = new Map();            // boundary edge key -> hole index
-  loops.forEach((loop, h) => loop.forEach((v, i) => holeOf.set(topo.edgeKey(v, loop[(i + 1) % loop.length]), h)));
-  const parity = loops.map((l) => l.length & 1);
-  const splitEdges = new Set();        // edge keys to cut at their midpoint
-  const sideOf = (q, a, b) => { for (let k = 0; k < 4; k++) { const x = quads[q * 4 + k], y = quads[q * 4 + ((k + 1) & 3)]; if ((x === a && y === b) || (x === b && y === a)) return k; } return -1; };
-  // walk the strip that starts across boundary edge (a, b): the edges it crosses, and the hole it ends on
-  const walk = (a, b) => {
-    const crossed = [topo.edgeKey(a, b)];
-    let q = topo.edges.get(topo.edgeKey(a, b)).faces[0];
-    for (let guard = 0; guard <= 2 * nq; guard++) {
-      const k = sideOf(q, a, b);
-      const c = quads[q * 4 + ((k + 2) & 3)], d = quads[q * 4 + ((k + 3) & 3)];
-      [a, b] = [c, d];
-      const key = topo.edgeKey(a, b);
-      crossed.push(key);
-      const e = topo.edges.get(key);
-      if (e.faces.length === 1) return { crossed, end: holeOf.get(key) };
-      q = e.faces[0] === q ? e.faces[1] : e.faces[0];
-    }
-    return null;
-  };
-  // Until no hole is odd. A strip that can only reach an EVEN hole makes
-  // that hole odd, maybe one already visited (the Benchy: hole 4 had to go
-  // to hole 0), so this goes round again rather than once over the list.
-  for (let guard = 0; guard < 8 * loops.length && parity.some(Boolean); guard++) {
-    const h = parity.indexOf(1);
-    {
-      // every strip leaving hole h: prefer one that lands on another odd
-      // hole, and of those the SHORTEST. A strip can wrap right round the
-      // part (the bag: 2,209 quads became 4,335 faces taking the first one),
-      // and every quad it crosses is split in two.
-      let best = null;
-      const loop = loops[h];
-      const better = (s, b) => !b || (parity[s.end] && !parity[b.end])
-        || (!!parity[s.end] === !!parity[b.end] && s.crossed.length < b.crossed.length);
-      for (let i = 0; i < loop.length; i++) {
-        const a = loop[i], b = loop[(i + 1) % loop.length];
-        if (splitEdges.has(topo.edgeKey(a, b))) continue;
-        const s = walk(a, b);
-        if (!s || s.end === h || s.crossed.some((k) => splitEdges.has(k))) continue;
-        if (better(s, best)) best = s;
-      }
-      if (!best) throw new Error("couldn't pair up the cage's odd holes");
-      for (const k of best.crossed) splitEdges.add(k);
-      parity[h] ^= 1; parity[best.end] ^= 1;
+  const next = new Map();
+  for (let q = 0; q < quads.length; q += 4) for (let k = 0; k < 4; k++) {
+    const a = quads[q + k], b = quads[q + ((k + 1) & 3)];
+    if (topo.edges.get(topo.edgeKey(a, b)).faces.length === 1) {
+      if (next.has(b)) throw new Error("the cage has a pinched hole (a vertex on two hole edges)");
+      next.set(b, a);                  // the hole runs against the quad beside it
     }
   }
-
-  // --- apply the splits
-  const V = Array.from(verts);
-  const mid = new Map();
-  const midOf = (a, b) => {
-    const key = topo.edgeKey(a, b);
-    let m = mid.get(key);
-    if (m === undefined) {
-      m = V.length / 3;
-      for (let c = 0; c < 3; c++) V.push((verts[a * 3 + c] + verts[b * 3 + c]) / 2);
-      mid.set(key, m);
-    }
-    return m;
-  };
-  const Q = [];
-  for (let q = 0; q < nq; q++) {
-    const c = [0, 1, 2, 3].map((k) => quads[q * 4 + k]);
-    const cut = [0, 1, 2, 3].map((k) => splitEdges.has(topo.edgeKey(c[k], c[(k + 1) & 3])));
-    const n = cut.filter(Boolean).length;
-    if (n === 0) { Q.push(...c); continue; }
-    if (n === 4) {
-      const m = [0, 1, 2, 3].map((k) => midOf(c[k], c[(k + 1) & 3]));
-      const ctr = V.length / 3;
-      for (let a = 0; a < 3; a++) V.push((verts[c[0] * 3 + a] + verts[c[1] * 3 + a] + verts[c[2] * 3 + a] + verts[c[3] * 3 + a]) / 4);
-      for (let k = 0; k < 4; k++) Q.push(c[k], m[k], ctr, m[(k + 3) & 3]);
-      continue;
-    }
-    const k = cut[0] ? 0 : 1;                   // the strip crosses sides k and k+2
-    if (n !== 2 || !cut[k + 2]) throw new Error("a strip split left a quad cut on adjacent sides");
-    const m1 = midOf(c[k], c[k + 1]), m2 = midOf(c[k + 2], c[(k + 3) & 3]);
-    Q.push(c[k], m1, m2, c[(k + 3) & 3]);
-    Q.push(m1, c[k + 1], c[k + 2], m2);
+  const loops = [], seen = new Set();
+  for (const s of next.keys()) {
+    if (seen.has(s)) continue;
+    const loop = [];
+    for (let v = s; !seen.has(v); v = next.get(v)) { seen.add(v); loop.push(v); }
+    loops.push(loop);
   }
-
-  // --- fill the (now even) holes
-  let quadsOut = Int32Array.from(Q);
-  topo = cageTopology(V, quadsOut);
-  const filled = holeLoops(quadsOut, topo);
-  for (const loop of filled) {
-    if (loop.length & 1) throw new Error("a cage hole stayed odd");
-    if (loop.length === 2) throw new Error("a cage hole of two edges");
+  const V = Array.from(verts), Q = Array.from(quads), oddLoops = [];
+  for (const loop of loops) {
+    if (loop.length < 3) throw new Error(`a cage hole of ${loop.length} edges`);
+    if (loop.length & 1) { oddLoops.push(loop); continue; }
     if (loop.length === 4) { Q.push(...loop); continue; }
     const ctr = V.length / 3;
     for (let a = 0; a < 3; a++) V.push(loop.reduce((s, v) => s + V[v * 3 + a], 0) / loop.length);
     for (let i = 0; i < loop.length; i += 2) Q.push(loop[i], loop[i + 1], loop[(i + 2) % loop.length], ctr);
   }
-  quadsOut = Int32Array.from(Q);
+  const quadsOut = Int32Array.from(Q);
   const check = cageTopology(V, quadsOut);
-  if (check.open || check.over) throw new Error(`closing the cage left ${check.open} open and ${check.over} overused edges`);
-  return { verts: Float64Array.from(V), quads: quadsOut, holes: filled.length, split: splitEdges.size, originalVerts: verts.length / 3 };
+  const oddEdges = oddLoops.reduce((s, l) => s + l.length, 0);
+  if (check.open !== oddEdges || check.over) throw new Error(`closing the cage left ${check.open} open and ${check.over} overused edges`);
+  return { verts: Float64Array.from(V), quads: quadsOut, holes: loops.length, oddLoops, originalVerts: verts.length / 3 };
 }
 
 // ------------------------------------------------- Catmull-Clark patches
@@ -714,6 +637,7 @@ export function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
     }
     for (const key of [...crease.creases]) {
       const e = topo.edges.get(key);
+      if (e.faces.length === 1) continue;                 // a hole rim stays a crease: the fill is built on it
       if (near.has(e.a) || near.has(e.b)) { crease.creases.delete(key); uncreased++; }
     }
     crease.degree.fill(0);
@@ -724,20 +648,182 @@ export function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
   return { fitted, folded: folded.length, bad: folded, relaxed: relaxed.size, uncreased };
 }
 
+// ------------------------------------------------- filling the odd holes
+// The 4x4 grid cells along side k of a patch, from its corner k to corner k+1.
+const SIDE_CELLS = [
+  [[0, 0], [1, 0], [2, 0], [3, 0]],
+  [[3, 0], [3, 1], [3, 2], [3, 3]],
+  [[3, 3], [2, 3], [1, 3], [0, 3]],
+  [[0, 3], [0, 2], [0, 1], [0, 0]],
+];
+
+// A grid's four inner control points as the bicubic Coons patch of its edges.
+function coonsInterior(g) {
+  const p = (i, j) => [g[(i * 4 + j) * 3], g[(i * 4 + j) * 3 + 1], g[(i * 4 + j) * 3 + 2]];
+  const put = (i, j, terms) => { for (let c = 0; c < 3; c++) g[(i * 4 + j) * 3 + c] = terms.reduce((s, [w, q]) => s + w * q[c], 0) / 9; };
+  put(1, 1, [[-4, p(0, 0)], [6, p(0, 1)], [6, p(1, 0)], [-2, p(0, 3)], [-2, p(3, 0)], [3, p(3, 1)], [3, p(1, 3)], [-1, p(3, 3)]]);
+  put(1, 2, [[-4, p(0, 3)], [6, p(0, 2)], [6, p(1, 3)], [-2, p(0, 0)], [-2, p(3, 3)], [3, p(3, 2)], [3, p(1, 0)], [-1, p(3, 0)]]);
+  put(2, 1, [[-4, p(3, 0)], [6, p(3, 1)], [6, p(2, 0)], [-2, p(3, 3)], [-2, p(0, 0)], [3, p(0, 1)], [3, p(2, 3)], [-1, p(0, 3)]]);
+  put(2, 2, [[-4, p(3, 3)], [6, p(3, 2)], [6, p(2, 3)], [-2, p(3, 0)], [-2, p(0, 3)], [3, p(0, 2)], [3, p(2, 0)], [-1, p(0, 0)]]);
+}
+
+// Close each odd hole after the patching. Its rim curves are read off the
+// patches beside it (rim edges are creases, so each is the cubic B-spline of
+// the rim polyline). The longest rim curve is cut at t = 1/2 (exact de
+// Casteljau halves) with a new vertex there, which makes the rim even; then
+// a 4-edge rim is one patch, a longer one a fan of patches round its centre
+// with straight spokes. Every fill patch takes its edges as given and gets a
+// Coons interior. Returns the fill patches (a grid and four sides each), the
+// split edges (the face beside one gets five edges in the STEP), and the new
+// vertex positions, numbered from firstId.
+export function fillOddHoles(patches, corners, quads, topo, oddLoops, firstId) {
+  const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
+  const C = (v) => [corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]];
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  // the rim curve a -> b, as the patch beside it has it
+  const rimCurve = (a, b) => {
+    const g = topo.edges.get(topo.edgeKey(a, b)).faces[0];
+    const k = [0, 1, 2, 3].find((s) => {
+      const x = quads[g * 4 + s], y = quads[g * 4 + ((s + 1) & 3)];
+      return (x === a && y === b) || (x === b && y === a);
+    });
+    const pts = SIDE_CELLS[k].map(([i, j]) => G(g, i, j));
+    return quads[g * 4 + k] === a ? pts : pts.reverse();
+  };
+  const fills = [], splits = new Map(), extra = [];
+  let nextId = firstId;
+  const newVertex = (p) => { extra.push(p); return nextId++; };
+  for (const loop of oddLoops) {
+    const L = loop.length;
+    // rim nodes and the curves between them, in the fill's winding
+    let longest = 0, best = -1;
+    for (let i = 0; i < L; i++) {
+      const d = len(sub(C(loop[(i + 1) % L]), C(loop[i])));
+      if (d > longest) { longest = d; best = i; }
+    }
+    const nodes = [], curves = [];
+    for (let i = 0; i < L; i++) {
+      const a = loop[i], b = loop[(i + 1) % L], ctrl = rimCurve(a, b);
+      nodes.push({ id: a, p: C(a) });
+      if (i !== best) { curves.push(ctrl); continue; }
+      const [p0, p1, p2, p3] = ctrl;
+      const a1 = lerp(p0, p1, 0.5), a2 = lerp(p1, p2, 0.5), a3 = lerp(p2, p3, 0.5);
+      const b1 = lerp(a1, a2, 0.5), b2 = lerp(a2, a3, 0.5), m = lerp(b1, b2, 0.5);
+      const mid = newVertex(m);
+      const h1 = [p0, a1, b1, m], h2 = [m, b2, a3, p3];
+      splits.set(topo.edgeKey(a, b), { a, b, mid, h1, h2 });     // halves run a -> mid -> b
+      curves.push(h1);
+      nodes.push({ id: mid, p: m });
+      curves.push(h2);
+    }
+    const n = nodes.length;                                        // even now
+    const patchOf = (corner4, side4) => {
+      const g = new Float64Array(48);
+      side4.forEach((ctrl, k) => SIDE_CELLS[k].forEach(([i, j], t) => g.set(ctrl[t], (i * 4 + j) * 3)));
+      coonsInterior(g);
+      return { grid: g, sides: side4.map((ctrl, k) => ({ a: corner4[k], b: corner4[(k + 1) & 3], ctrl })) };
+    };
+    if (n === 4) {
+      fills.push(patchOf(nodes.map((x) => x.id), curves));
+      continue;
+    }
+    // The fan's centre: the rim's centroid, unless that folds a patch (a
+    // long rim that is far from flat: a Benchy's 9-edge hole). Then the
+    // centre moves along the rim's mean normal (Newell, in the fill's own
+    // winding, so +normal is outward), in steps of the mean rim edge, and
+    // the first fan that passes the kernel-like checks wins (else the best).
+    const cen = nodes.reduce((s, x) => [s[0] + x.p[0] / n, s[1] + x.p[1] / n, s[2] + x.p[2] / n], [0, 0, 0]);
+    let nrm = [0, 0, 0], rimLen = 0;
+    for (let i = 0; i < n; i++) {
+      const p = nodes[i].p, q = nodes[(i + 1) % n].p;
+      nrm = [nrm[0] + (p[1] - q[1]) * (p[2] + q[2]), nrm[1] + (p[2] - q[2]) * (p[0] + q[0]), nrm[2] + (p[0] - q[0]) * (p[1] + q[1])];
+      rimLen += len(sub(q, p));
+    }
+    nrm = norm(nrm);
+    const step = rimLen / n;
+    const spoke = (p, q) => [p, lerp(p, q, 1 / 3), lerp(p, q, 2 / 3), q];
+    const fanAt = (ctr, c) => {
+      const fan = [];
+      for (let i = 0; i < n; i += 2) {
+        const A = nodes[i], B = nodes[i + 1], D = nodes[(i + 2) % n];
+        fan.push(patchOf([A.id, B.id, D.id, c], [curves[i], curves[i + 1], spoke(D.p, ctr), spoke(ctr, A.p)]));
+      }
+      return fan;
+    };
+    const badIn = (fan) => {
+      const fp = new Float64Array(fan.length * 48), fv = [], fq = [];
+      fan.forEach((f, i) => { fp.set(f.grid, i * 48); for (const [ci, cj] of [[0, 0], [3, 0], [3, 3], [0, 3]]) { fq.push(fv.length / 3); fv.push(...f.grid.subarray((ci * 4 + cj) * 3, (ci * 4 + cj) * 3 + 3)); } });
+      const s = new Set(foldedPatches(fp, fv, fq, fan.length, { grid: 8, minCos: 0, minJac: 0 }));
+      for (const q of strayEdgePatches(fp, fan.length)) s.add(q);
+      return s.size;
+    };
+    // A LADDER across the hole: rungs straight between opposite rim nodes,
+    // from node s round both ways (n/2 - 1 patches, no centre point). Suits
+    // a long rim that a fan folds over.
+    const ladderFrom = (s) => {
+      const k = (i) => nodes[(s + i) % n];
+      const rim = (i) => curves[(s + i) % n];                // rim curve k(i) -> k(i+1)
+      const out = [];
+      for (let i = 0; i <= n / 2 - 2; i++) {
+        const a = k(i), b = k(i + 1), d = k(n - 2 - i), e = k(n - 1 - i);
+        const side1 = n - 2 - i === i + 2 ? rim(i + 1) : spoke(b.p, d.p);
+        const side3 = i === 0 ? rim(n - 1) : spoke(e.p, a.p);
+        out.push(patchOf([a.id, b.id, d.id, e.id], [rim(i), side1, rim(n - 2 - i), side3]));
+      }
+      return out;
+    };
+    const c = nextId;
+    const tries = [];
+    for (let s = 0; s < n; s++) tries.push({ fan: ladderFrom(s), ctr: null });
+    for (const k of [0, 0.25, 0.5, -0.25, 0.75, 1, -0.5, 1.5]) {
+      const ctr = [cen[0] + nrm[0] * step * k, cen[1] + nrm[1] * step * k, cen[2] + nrm[2] * step * k];
+      tries.push({ fan: fanAt(ctr, c), ctr });
+    }
+    let pick = null;
+    for (const t of tries) {
+      const nb = badIn(t.fan);
+      if (!pick || nb < pick.nb) pick = { ...t, nb };
+      if (!nb) break;
+    }
+    if (pick.ctr) newVertex(pick.ctr);
+    fills.push(...pick.fan);
+  }
+  return { fills, splits, extra };
+}
+
 // ------------------------------------------------------------ STEP text
-// solid name, cage, options -> { step, faces, creases, open }.
+// solid name, cage, options -> { step, faces, ... }.
 export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, creases: wantCreases = true, fit = 8, mesh = false } = {}) {
   const closed = closeCage(verts, quads);
   verts = closed.verts;
   quads = outwardQuads(verts, closed.quads);
   const topo = cageTopology(verts, quads);
   if (topo.nq < 1) throw new Error("the cage has no quads");
-  const crease = wantCreases ? findCreases(verts, quads, topo, creaseAngle) : null;
+  // creases off still creases the rims of odd holes (findCreases always does)
+  const crease = findCreases(verts, quads, topo, wantCreases ? creaseAngle : 181);
   const { fitted, bad, relaxed, uncreased } = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
   const { patches, corners } = catmullClarkPatches(fitted, quads, topo, crease);
   const flattened = bad?.length || 0;
   const folded = repairPatches(patches, fitted, quads, topo, bad);
+  let fillFolded = 0;
+  const { fills, splits, extra } = fillOddHoles(patches, corners, quads, topo, closed.oddLoops || [], topo.nv);
+  // Fill patches that look doubtful (a real flip, or the kernel-like edge
+  // projection test) are counted apart, as fillFolded, and do not stop the
+  // export: a hole whose rim wraps round a thin wall edge (a Benchy's 9-edge
+  // hole) is U-shaped, no fan or ladder of Coons patches fits it cleanly,
+  // and the Rust kernel still takes the result. It has the last word.
+  if (fills.length) {
+    const fv = [], fq = [], fp = new Float64Array(fills.length * 48);
+    fills.forEach((f, i) => {
+      fp.set(f.grid, i * 48);
+      for (const [ci, cj] of [[0, 0], [3, 0], [3, 3], [0, 3]]) { fq.push(fv.length / 3); fv.push(...f.grid.subarray((ci * 4 + cj) * 3, (ci * 4 + cj) * 3 + 3)); }
+    });
+    const fillBad = new Set(foldedPatches(fp, fv, fq, fills.length, { grid: 8, minCos: 0, minJac: 0 }));
+    for (const q of strayEdgePatches(fp, fills.length)) fillBad.add(q);
+    fillFolded = fillBad.size;
+  }
   const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
+  const posOf = (v) => (v < topo.nv ? [corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]] : extra[v - topo.nv]);
 
   const out = [];
   let n = 0;
@@ -755,42 +841,50 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
   const gctx = add(`(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#${unc}))GLOBAL_UNIT_ASSIGNED_CONTEXT((#${lenU},#${ang},#${sol}))REPRESENTATION_CONTEXT('',''))`);
   const origin = add(`AXIS2_PLACEMENT_3D('',#${pt([0, 0, 0])},#${dir([0, 0, 1])},#${dir([1, 0, 0])})`);
 
-  // one VERTEX_POINT per cage vertex, at its limit position
-  const vp = new Int32Array(topo.nv);
-  for (let v = 0; v < topo.nv; v++) vp[v] = add(`VERTEX_POINT('',#${pt([corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]])})`);
+  // one VERTEX_POINT per vertex (cage limit points, then split and fan points), made when first used
+  const vp = new Map();
+  const vertexPoint = (v) => { let id = vp.get(v); if (!id) { id = add(`VERTEX_POINT('',#${pt(posOf(v))})`); vp.set(v, id); } return id; };
 
-  // one EDGE_CURVE per cage edge: the cubic Bezier boundary both patches
-  // share, written once, running from the lower vertex id to the higher
+  // one EDGE_CURVE per edge, written once and shared by the faces either
+  // side, running from the lower vertex id to the higher
   const edgeIds = new Map();
   const edgeCurve = (a, b, ctrl) => {           // ctrl: 4 points a -> b
-    const key = topo.edgeKey(a, b);
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
     let id = edgeIds.get(key);
     if (id) return id;
     const run = a < b ? ctrl : [...ctrl].reverse();
     const [lo, hi] = a < b ? [a, b] : [b, a];
     const pts = run.map(pt);
     const curve = add(`B_SPLINE_CURVE_WITH_KNOTS('',3,(${pts.map((i) => `#${i}`).join(",")}),.UNSPECIFIED.,.F.,.F.,(4,4),(0.,1.),.UNSPECIFIED.)`);
-    id = add(`EDGE_CURVE('',#${vp[lo]},#${vp[hi]},#${curve},.T.)`);
+    id = add(`EDGE_CURVE('',#${vertexPoint(lo)},#${vertexPoint(hi)},#${curve},.T.)`);
     edgeIds.set(key, id);
     return id;
   };
+  const oriented = (a, b, ctrl) => add(`ORIENTED_EDGE('',*,*,#${edgeCurve(a, b, ctrl)},${a < b ? ".T." : ".F."})`);
+  // a side a -> b: one oriented edge, or two where the rim edge was split
+  const sideEdges = (a, b, ctrl) => {
+    const s = a < topo.nv && b < topo.nv ? splits.get(topo.edgeKey(a, b)) : null;
+    if (!s) return [oriented(a, b, ctrl)];
+    if (s.a === a) return [oriented(a, s.mid, s.h1), oriented(s.mid, b, s.h2)];
+    return [oriented(a, s.mid, [...s.h2].reverse()), oriented(s.mid, b, [...s.h1].reverse())];
+  };
 
   const faceIds = [];
-  for (let q = 0; q < topo.nq; q++) {
-    const c = [0, 1, 2, 3].map((k) => quads[q * 4 + k]);
-    // the four boundary curves in loop order c0->c1->c2->c3->c0
-    const sides = [
-      [c[0], c[1], [G(q, 0, 0), G(q, 1, 0), G(q, 2, 0), G(q, 3, 0)]],
-      [c[1], c[2], [G(q, 3, 0), G(q, 3, 1), G(q, 3, 2), G(q, 3, 3)]],
-      [c[2], c[3], [G(q, 3, 3), G(q, 2, 3), G(q, 1, 3), G(q, 0, 3)]],
-      [c[3], c[0], [G(q, 0, 3), G(q, 0, 2), G(q, 0, 1), G(q, 0, 0)]],
-    ];
-    const oes = sides.map(([a, b, ctrl]) => add(`ORIENTED_EDGE('',*,*,#${edgeCurve(a, b, ctrl)},${a < b ? ".T." : ".F."})`));
+  const face = (grid, sides) => {
+    const oes = sides.flatMap(({ a, b, ctrl }) => sideEdges(a, b, ctrl));
     const loop = add(`EDGE_LOOP('',(${oes.map((i) => `#${i}`).join(",")}))`);
     const rows = [];
-    for (let i = 0; i < 4; i++) rows.push(`(${[0, 1, 2, 3].map((j) => `#${pt(G(q, i, j))}`).join(",")})`);
+    for (let i = 0; i < 4; i++) rows.push(`(${[0, 1, 2, 3].map((j) => `#${pt(grid(i, j))}`).join(",")})`);
     const surf = add(`B_SPLINE_SURFACE_WITH_KNOTS('',3,3,(${rows.join(",")}),.UNSPECIFIED.,.F.,.F.,.F.,(4,4),(4,4),(0.,1.),(0.,1.),.UNSPECIFIED.)`);
     faceIds.push(add(`ADVANCED_FACE('',(#${add(`FACE_OUTER_BOUND('',#${loop},.T.)`)}),#${surf},.T.)`));
+  };
+  for (let q = 0; q < topo.nq; q++) {
+    const c = [0, 1, 2, 3].map((k) => quads[q * 4 + k]);
+    face((i, j) => G(q, i, j), [0, 1, 2, 3].map((k) => ({ a: c[k], b: c[(k + 1) & 3], ctrl: SIDE_CELLS[k].map(([i, j]) => G(q, i, j)) })));
+  }
+  for (const f of fills) {
+    // a fill side on the split edge already IS a half: write it as itself
+    face((i, j) => [f.grid[(i * 4 + j) * 3], f.grid[(i * 4 + j) * 3 + 1], f.grid[(i * 4 + j) * 3 + 2]], f.sides);
   }
   const shell = add(`CLOSED_SHELL('',(${faceIds.map((i) => `#${i}`).join(",")}))`);
   const brep = add(`MANIFOLD_SOLID_BREP('${name}',#${shell})`);
@@ -801,17 +895,25 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
   const pd = add(`PRODUCT_DEFINITION('design','',#${pdf},#${pdctx})`);
   const pds = add(`PRODUCT_DEFINITION_SHAPE('','',#${pd})`);
   add(`SHAPE_DEFINITION_REPRESENTATION(#${pds},#${rep})`);
+  let allPatches = patches;
+  if (fills.length) {
+    allPatches = new Float64Array(patches.length + fills.length * 48);
+    allPatches.set(patches);
+    fills.forEach((f, i) => allPatches.set(f.grid, patches.length + i * 48));
+  }
   return {
-    faces: topo.nq,
-    creases: crease ? crease.creases.size : 0,
-    mesh: mesh ? patchesToStl(patches, topo.nq, name) : undefined,
+    faces: faceIds.length,
+    creases: crease.creases.size,
+    mesh: mesh ? patchesToStl(allPatches, topo.nq + fills.length, name) : undefined,
     holesFilled: closed.holes,
+    oddHoles: (closed.oddLoops || []).length,
     merged: closed.merged || 0,
     flattened,
     folded,
+    fillFolded,
     relaxed,
     uncreased,
-    vertices: topo.nv,
+    vertices: topo.nv + extra.length,
     step: "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n"
       + `FILE_NAME('${name}.step','',(''),(''),'brepcode','brepcode','');\n`
       + "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));\nENDSEC;\nDATA;\n"
@@ -839,14 +941,6 @@ export function patchesToStl(patches, nq, name = "smooth", segs = 3) {
   return out.join("\n");
 }
 
-export function cageToStl(verts, quads, { name = "smooth", segs = 3, creaseAngle = 40, creases = true, fit = 8 } = {}) {
-  const closed = closeCage(verts, quads);
-  verts = closed.verts;
-  quads = outwardQuads(verts, closed.quads);
-  const topo = cageTopology(verts, quads);
-  const crease = creases ? findCreases(verts, quads, topo, creaseAngle) : null;
-  const fs = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
-  const { patches } = catmullClarkPatches(fs.fitted, quads, topo, crease);
-  repairPatches(patches, fs.fitted, quads, topo, fs.bad);
-  return patchesToStl(patches, topo.nq, name, segs);
+export function cageToStl(verts, quads, { name = "smooth", creaseAngle = 40, creases = true, fit = 8 } = {}) {
+  return cageToStep(verts, quads, { name, creaseAngle, creases, fit, mesh: true }).mesh;
 }
