@@ -82,7 +82,9 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   const lean = (corner.z.max - e.floorRound) * t;
   check("wider at the top than above the floor rounding, by the wall's lean",
     top > low && near(top - low, lean, 0.6), `${low.toFixed(2)} -> ${top.toFixed(2)}, lean ${lean.toFixed(2)}`);
-  check("it rounds in toward the floor", corner.at(0, 0) < low - 2, `${corner.at(0, 0).toFixed(2)} vs ${low.toFixed(2)}`);
+  check("by default the wall runs straight to the floor: no rounding in at the bed", e.floorRound === 0 && near(corner.at(0, 0), low, 0.05), `${corner.at(0, 0).toFixed(2)} vs ${low.toFixed(2)}, floorRound ${e.floorRound}`);
+  const rounded = await measure(kuggisKit({ ...e, floorRound: 3, flip: false, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
+  check("...and a typed floor rounding still rounds it in toward the floor", rounded.at(0, 0) < rounded.at(3, 0) - 2, `${rounded.at(0, 0).toFixed(2)} vs ${rounded.at(3, 0).toFixed(2)}`);
   // the same box's width at the top: two squares, plus the margin out to the wall at that height, less the fit gap
   const margin = (f.floor[0] - f.cols * 15) / 2;
   const expectTop = 30 - KUGGIS.between / 2 + margin + corner.z.max * t - e.clear;
@@ -116,7 +118,7 @@ console.log("\na piece against the wall leans with it; one inside stands upright
   // floor rounding closes in at the top
   const flipped = await measure(kuggisKit({ ...e, layout: [{ at: [0, 0], size: [2, 2], kind: "box" }] }));
   check("a small corner box prints top down: widest at the bed", flipped.at(0, 0) > flipped.at(flipped.z.max - e.floorRound, 0) + 2, `${flipped.at(0, 0).toFixed(2)} at the bed vs ${flipped.at(flipped.z.max - e.floorRound, 0).toFixed(2)} below the top`);
-  check("...rounding in at the top", flipped.at(flipped.z.max, 0) < flipped.at(flipped.z.max - e.floorRound, 0) - 2);
+  check("...narrowing straight up to the top (no rounding by default)", flipped.at(flipped.z.max, 0) < flipped.at(0, 0) - 2);
   check("...same height, still on the bed", near(flipped.z.min, 0, 0.01) && near(flipped.z.max, corner.z.max, 0.01));
   check("...and it is the upright piece turned over", near(flipped.at(0, 0), top, 0.05) && near(flipped.at(flipped.z.max, 0), corner.at(0, 0), 0.05), `${flipped.at(0, 0).toFixed(2)} vs ${top.toFixed(2)}`);
   // a big box would have to bridge its whole floor: it stays upright

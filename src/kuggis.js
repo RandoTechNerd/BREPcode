@@ -89,7 +89,12 @@ export const KUGGIS = Object.freeze({
   // general 3 + 0.035 per mm of the box's short side (7.5, 9.5, 12, 16).
   corner: 12,
   cornerBase: 3, cornerPerMm: 0.035,
-  floorRound: 3,        // the floor-to-wall rounding inside (6 pulled the first printed piece's bottom edge visibly off the wall)
+  // The floor-to-wall rounding inside. 0: the wall runs straight from the
+  // top to the floor at the box's own lean. The 26 x 35's floor meets its
+  // walls almost square, and the 3 mm rounding that used to be here left a
+  // gap along every piece's bottom edge that read as a wrong taper (and
+  // was fitted as one). Type a number for a box that really is rounded.
+  floorRound: 0,
   // The corner lug slots (see THE CORNER LUGS above). The slot reaches
   // lugOver past the corner radius along the diagonal (the rib sits just
   // round the corner's arc: 11.4 in on the 13x18 whose corner is ~8, 19 on
@@ -125,7 +130,7 @@ export const KUGGIS_SIZES = Object.freeze([
     // x 344 at the plug line. A printed snap gauge cut to the calipered
     // floor then had 2 mm of play, so the floor is 230 x 322 at the wall
     // plane (the calipers sat in the floor rounding): 6.3 / 4.6 degrees.
-    // Floor rounding 3 (an estimated 6 left air under a piece's bottom edge)
+    // Floor rounding 0: the floor meets the walls almost square (an estimated 6, then 3, left air under a piece's bottom edge)
     measured: { rimW: 260.3, floorW: 230, rimD: 344.0, floorD: 322, height: 146.4, lidIn: 9 },
     note: "measured with calipers 9 mm down and the depth; the floor from a printed snap gauge and the rim trimmed until a printed row went in. The corner radius and the corner lug slot are still estimates: check them against your box" },
   { id: "37x54x21", label: "37 × 54 × 21 cm (14½ × 21¼ × 8¼ in)", outer: [370, 540, 210] },
