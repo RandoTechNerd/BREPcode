@@ -148,6 +148,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "design/sketcher.js", "design/sketch-model.js",
   // "Ask about this…": the pinned spot every AI path reads (lazy, on first pin)
   "selection-context.js",
+  // the rotate gizmo's angle and rotate() edit arithmetic
+  "rotategizmo.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.

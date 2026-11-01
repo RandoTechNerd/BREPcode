@@ -1165,6 +1165,13 @@
       background: var(--hint-bg); border-top: 1px solid var(--border);
     }
     #hint b { color: var(--hint-b); font-weight: 600; }
+    /* the rotate gizmo's live angle, pinned just above the part's centre */
+    #ring-readout {
+      position: absolute; transform: translate(-50%, calc(-100% - 14px));
+      padding: 3px 9px; border-radius: 6px; font: 600 13px/1.4 system-ui, sans-serif;
+      color: #fff; background: rgba(16, 22, 34, .82); pointer-events: none;
+      white-space: nowrap; z-index: 5;
+    }
 
     /* The shared-link landing strip. Deliberately narrower than the editor:
        it is a caption for the model, not a panel to work in, and it has to
@@ -1903,6 +1910,11 @@
       padding: 6px 6px; cursor: pointer; color: var(--text); font: 12.5px system-ui, sans-serif; border-radius: 6px;
     }
     #shape-menu .sm-item:hover { background: var(--hover-strong); }
+    #shape-menu .sm-danger { color: #ff7b7b; display: flex; align-items: center; justify-content: space-between; }
+    #shape-menu .sm-danger kbd {
+      font: 10.5px system-ui, sans-serif; color: var(--muted2);
+      border: 1px solid var(--border); border-radius: 4px; padding: 0 5px;
+    }
     /* shape-swap row: chips for the other primitives you can turn this into */
     #sm-swap-block { display: none; }
     #sm-swap-block.on { display: block; }
@@ -3167,6 +3179,13 @@
       <div class="sm-hint" id="sm-mat-hint">Applies to this piece only.</div>
       <button class="sm-item" id="sm-matclear">Clear this piece's material</button>
     </div>
+    <div class="sm-sep"></div>
+    <button class="sm-item" id="sm-rotate" title="Swap the handles for turning rings. W swaps them back.">
+      Rotate this part <kbd>R</kbd>
+    </button>
+    <button class="sm-item sm-danger" id="sm-delete" title="Cuts this shape out of the code. Ctrl+Z brings it back.">
+      Delete this part <kbd>Del</kbd>
+    </button>
   </div>
 
   <!-- "See it on your desk": top-right corner, outside the dock (whose
@@ -4972,8 +4991,9 @@
       swapTarget, wordAt, numberAt, optionAt, optionTarget, primitiveSites, mapTraceToSites, convertPrimitiveCall,
       isBrepscriptModule, prepareBrepscriptModule, declaredNames, fixDanglingReturn, looseShapeCount,
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
-      drillParts,
+      drillParts, deletionSpan,
     } from "./assist.js";
+    import { ringAngle, makeAngleTracker, snapAngle, readout, rotateEdit } from "./rotategizmo.js";
     // the line icons the chat's chips and buttons are drawn with (icons.js)
     import { icon as lineIcon } from "./icons.js";
 
@@ -5219,8 +5239,21 @@
     // exactly where it is on screen and spins in place, whatever the layout
     // has done to the framing. Pan and zoom stay with OrbitControls. The
     // classic behaviour is one setting away (gear > Rotate around).
+    //
+    // NO POLES. The tilt used to be clamped just short of straight down, so a
+    // downward drag tipped the part toward you and then stopped dead at the
+    // top view; any sideways movement after that only swirled the part flat on
+    // the screen, which reads as "it got to a point and turned the other way".
+    // Now the camera's up vector travels WITH the tilt (the same trick the
+    // view-cube arrows use for their tumble), so a drag rolls smoothly over the
+    // top and keeps going. The sideways spin stays a turntable about world Z,
+    // but SIGNED by which way up the view currently is: once you have rolled
+    // past the top and the part is upside down, spinning about +Z would make
+    // sideways drags run backwards on screen, so it spins about -Z instead and
+    // the near side of the part always follows the mouse.
     const spinUp = new THREE.Vector3(0, 0, 1);
     const spinQ = new THREE.Quaternion();
+    let spinSign = 1;
     function orbitAbout(pivot, dx, dy) {
       const h = renderer.domElement.clientHeight || 1;
       const k = 2 * Math.PI / h * controls.rotateSpeed;
@@ -5228,26 +5261,34 @@
         spinQ.setFromAxisAngle(axis, ang);
         camera.position.sub(pivot).applyQuaternion(spinQ).add(pivot);
         controls.target.sub(pivot).applyQuaternion(spinQ).add(pivot);
+        camera.up.applyQuaternion(spinQ);
       };
-      spinUp.copy(camera.up).normalize();
-      turn(spinUp, -dx * k);
-      // tilt about the camera's own right-hand axis, clamped short of the
-      // poles where "up" stops meaning anything. The clamp is on the SIGNED
-      // angle: a tilt about this axis moves the polar angle by exactly the
-      // tilt, so it is cur + tilt. Testing the unsigned angle after the turn
-      // let a quick drag hop straight over the top (0.05 - 0.1 reads as 0.05)
-      // and the view flipped back and forth there, while a slow one stalled.
+      // Square the up vector to the view first (what lookAt does anyway, so
+      // nothing moves on screen). Kept square, it stays square through every
+      // turn below, and its Z says which way up the picture is.
       const look = controls.target.clone().sub(camera.position).normalize();
-      const right = look.clone().cross(spinUp);
-      if (right.lengthSq() > 1e-9) {
+      camera.up.addScaledVector(look, -camera.up.dot(look));
+      if (camera.up.lengthSq() < 1e-12) camera.up.set(0, 0, 1).addScaledVector(look, -look.z);
+      camera.up.normalize();
+      // exactly at a pole up.z is 0: keep the last known sign
+      if (Math.abs(camera.up.z) > 1e-6) spinSign = camera.up.z > 0 ? 1 : -1;
+      spinUp.set(0, 0, spinSign);
+      turn(spinUp, -dx * k);
+      // tilt about the camera's own right-hand axis, with no clamp
+      look.copy(controls.target).sub(camera.position).normalize();
+      const right = look.clone().cross(camera.up);
+      if (right.lengthSq() > 1e-9 && dy) {
         right.normalize();
-        const cur = Math.acos(THREE.MathUtils.clamp(-look.dot(spinUp), -1, 1));
-        const tilt = THREE.MathUtils.clamp(cur - dy * k, 0.02, Math.PI - 0.02) - cur;
-        if (Math.abs(tilt) > 1e-9) turn(right, tilt);
+        turn(right, -dy * k);
       }
+      camera.up.normalize();
       controls.update();
       controls.dispatchEvent({ type: "change" });
     }
+    // test hook: where the camera is, so a drag can be checked for direction
+    window.__brepCam = () => ({
+      pos: camera.position.toArray(), target: controls.target.toArray(), up: camera.up.toArray(),
+    });
     const applyOrbitPref = () => { controls.enableRotate = prefs.orbit === "view"; };
     applyOrbitPref();
     let spin = null;
@@ -5660,6 +5701,9 @@
     // Same reason: applyMaterial() runs before the handle materials exist, so it
     // calls through this stub, which is replaced once they do.
     let applyHandleColours = () => {};
+    // The render loop sizes the rotate gizmo's rings every frame, long before
+    // the gizmo section below exists.
+    let ringRescale = () => {};
 
     function resize() {
       const w = stage.clientWidth, h = stage.clientHeight;
@@ -5703,6 +5747,7 @@
       measureRescale();       // markers and labels hold their size on screen
       sizeHandleDots?.();     // …and so do the selection's handle dots
       followDragPreview?.();  // edges and the selection outline track a dragged mesh
+      ringRescale();          // so do the rotate gizmo's rings
       renderer.render(scene, camera);
     })();
 
@@ -7922,6 +7967,18 @@
     }
     $("sm-custom").addEventListener("input", (e) => { if (shapeMenuFid) setShapeColor(shapeMenuFid, e.target.value); });
     $("sm-auto").addEventListener("click", () => { autoColorAll(); shapeMenu.classList.remove("open"); });
+    $("sm-rotate").addEventListener("click", () => {
+      const fid = shapeMenuFid;
+      shapeMenu.classList.remove("open");
+      if (!fid) return;
+      setGizmoMode("rotate");
+      if (selected?.fid !== fid) spawnHandles(fid);
+    });
+    $("sm-delete").addEventListener("click", () => {
+      const fid = shapeMenuFid;
+      shapeMenu.classList.remove("open");
+      if (fid) deletePart(fid);
+    });
     $("mat-autocolor").addEventListener("click", autoColorAll);
     $("mat-clearcolor").addEventListener("click", () => {
       for (const k of Object.keys(featureColors)) delete featureColors[k];
@@ -8288,7 +8345,9 @@
       }
 
       const target = controls.target.clone();
-      const up = new THREE.Vector3(0, 0, 1);
+      // Upside down (rolled over the top by a drag or the tumble arrows), a
+      // left/right step about +Z would run backwards on screen: use -Z then.
+      const up = new THREE.Vector3(0, 0, camera.up.z < 0 ? -1 : 1);
       let offset = camera.position.clone().sub(target);
       const step = Math.PI / 4;
       if (ABS_VIEW[dir] || dir === "home") camera.up.set(0, 0, 1);   // back on its feet
@@ -12016,6 +12075,9 @@ ${joined}${SITE_TAIL}`), joined);
       selected = { fid };
       highlightMeshesOf(fid);
       designUI?.onSelect(fid);
+      // R mode: the part gets turning rings and nothing else, so a press can
+      // only ever mean "turn it", never a resize that happened to be nearer.
+      if (gizmoMode === "rotate") { spawnRotateRings(fid); return; }
       // A drill's numbers are a point, a direction, a width and a depth — none
       // of which the world-axis face handles can express. It gets its own.
       if (site.kind === "drill" && spawnDrillHandles(fid, site, bb)) return;
@@ -12070,6 +12132,180 @@ ${joined}${SITE_TAIL}`), joined);
       // not at the next frame
       sizeHandleDots();
       handleGroup.updateMatrixWorld(true);
+    }
+
+    // ------------------------------------------------------- rotate gizmo (R)
+    // R swaps the selected part's handles for three rings, W swaps them back.
+    // Drag a ring to turn the part about that world axis through its centre;
+    // release writes one rotate() (composed with any translate/rotate already
+    // wrapping it, never nested) as a single undo step. The angle arithmetic
+    // and the text edit live in rotategizmo.js, where they are unit-tested.
+    //
+    // Why a running total of wrapped per-frame steps rather than "angle now
+    // minus angle at press": the latter jumps by 360 the moment the cursor
+    // crosses the atan2 seam, which is the classic gizmo that flips direction
+    // halfway round.
+    let gizmoMode = "move";             // "move" = W handles, "rotate" = R rings
+    const RING_PX = 95;                 // ring radius on screen, at any zoom
+    const ringMats = [0xff5c5c, 0x4fd16b, 0x4c8dff].map((c) => new THREE.MeshBasicMaterial({
+      color: c, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false,
+    }));
+    // A fat invisible twin, so a 3px ring is not a 3px target
+    const ringPickMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false });
+    // three-quarter arcs: a full circle seen at a slant reads as a blob of three
+    // overlapping loops; the gap says which way round each one runs
+    const ringGeo = new THREE.TorusGeometry(1, 0.028, 8, 72, Math.PI * 1.5);
+    const ringPickGeo = new THREE.TorusGeometry(1, 0.11, 6, 48, Math.PI * 1.5);
+    // the torus lies in XY (axis Z); these stand it on X and Y
+    const RING_TURN = [new THREE.Euler(0, Math.PI / 2, 0), new THREE.Euler(-Math.PI / 2, 0, 0), new THREE.Euler()];
+
+    // What a turn applies to: like a move, grabbing the body of a boolean
+    // turns the whole boolean, its holes riding along. The pivot is the centre
+    // of everything that turns.
+    function rotateTargetOf(fid) {
+      const site = (featureMap && mapText === code.value) ? featureMap[fid] : null;
+      if (!site) return null;
+      const span = dragSpanFor(code.value, site);
+      const fids = span.whole
+        ? Object.keys(featureMap).filter((id) => featureMap[id].start >= span.start && featureMap[id].end <= span.end)
+        : [fid];
+      const bb = new THREE.Box3();
+      for (const id of fids) bb.union(featureBox(id));
+      if (bb.isEmpty()) return null;
+      return { site, span, fids, pivot: bb.getCenter(new THREE.Vector3()) };
+    }
+
+    function spawnRotateRings(fid) {
+      const T = rotateTargetOf(fid);
+      if (!T) return;
+      for (let axis = 0; axis < 3; axis++) {
+        for (const [geo, material, order] of [[ringPickGeo, ringPickMat, 995], [ringGeo, ringMats[axis], 999]]) {
+          const h = new THREE.Mesh(geo, material);
+          h.position.copy(T.pivot);
+          h.rotation.copy(RING_TURN[axis]);
+          h.renderOrder = order;
+          h.userData.handle = { kind: "ring", axis, fid };
+          handleGroup.add(h);
+        }
+      }
+      ringRescale();
+      handleGroup.updateMatrixWorld(true);
+    }
+
+    // Every frame: hold the rings at RING_PX on screen however far the camera is.
+    ringRescale = () => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const h = Math.max(1, rect.height);
+      const fov = (camera.fov ?? 50) * Math.PI / 180;
+      for (const o of handleGroup.children) {
+        if (o.userData.handle?.kind !== "ring") continue;
+        const worldPerPx = camera.isOrthographicCamera
+          ? (camera.top - camera.bottom) / (camera.zoom || 1) / h
+          : (2 * Math.tan(fov / 2) * camera.position.distanceTo(o.position)) / h;
+        o.scale.setScalar(worldPerPx * RING_PX);
+      }
+    };
+
+    function setGizmoMode(mode) {
+      if (drag) return false;
+      const changed = gizmoMode !== mode;
+      gizmoMode = mode;
+      if (selected) {
+        const fid = selected.fid;
+        spawnHandles(fid);
+        hint.innerHTML = mode === "rotate"
+          ? "Drag a <b>ring</b> to turn the part (<b>Shift</b> = 15° steps, <b>Esc</b> cancels). <b>W</b> goes back to the size and move handles."
+          : "Back to the size and move handles. <b>R</b> turns the part.";
+      } else if (changed) {
+        hint.innerHTML = mode === "rotate"
+          ? "Rotate mode: click a part to get its turning rings. <b>W</b> goes back."
+          : "Move mode: click a part for its size and move handles.";
+      }
+      return true;
+    }
+
+    // The on-model readout ("37.5° about Z"), pinned beside the pivot.
+    const ringReadout = document.createElement("div");
+    ringReadout.id = "ring-readout";
+    ringReadout.hidden = true;
+    stage.appendChild(ringReadout);
+    function showRingReadout(text, at) {
+      const p = at.clone().project(camera);
+      ringReadout.textContent = text;
+      ringReadout.style.left = `${((p.x + 1) / 2) * stage.clientWidth}px`;
+      ringReadout.style.top = `${((1 - p.y) / 2) * stage.clientHeight}px`;
+      ringReadout.hidden = false;
+    }
+
+    // The angle the cursor sits at on a ring, or null when unreadable.
+    function cursorRingAngle(e, pivot, axis) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ), camera);
+      const { origin, direction } = raycaster.ray;
+      return ringAngle(origin.toArray(), direction.toArray(), pivot.toArray(), axis);
+    }
+
+    // Turn the preview: every dragged object about the pivot, from where it
+    // sat at press time (meshes sit at identity; a cutter's ghost may not).
+    function applyRotatePreview(deg) {
+      const q = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3().setComponent(drag.axis, 1), deg * Math.PI / 180);
+      for (const { obj, pos, quat } of drag.bases) {
+        obj.quaternion.copy(q).multiply(quat);
+        obj.position.copy(pos).sub(drag.pivot).applyQuaternion(q).add(drag.pivot);
+      }
+    }
+
+    // A rotate drag ends here, written or not. `commit` false (a click, a
+    // no-op, Esc, a cancelled pointer) puts every mesh back exactly.
+    //
+    // On a commit the turned preview stays up until the rebuild lands:
+    // snapping the part back to where it started for the length of a build
+    // would look like the very flip this gizmo exists to avoid.
+    function endRotateDrag(commit) {
+      const d = drag;
+      const restore = () => {
+        for (const { obj, pos, quat } of d.bases) { obj.position.copy(pos); obj.quaternion.copy(quat); }
+      };
+      ringReadout.hidden = true;
+      highlightGroup.visible = true;
+      for (const h of handleGroup.children) if (h.userData.handle?.kind === "ring") h.visible = true;
+      if (!commit) {
+        restore();
+        if (Math.abs(d.deg) < 0.05 && d.moved) hint.innerHTML = "Back where it started: nothing to write.";
+        return;
+      }
+      const text = code.value;
+      const r = rotateEdit(text, d.span, d.pivot.toArray(), d.axis, d.deg);
+      if (r.refuse) {
+        restore();
+        if (Math.abs(d.deg) >= 0.05) setStatus("warn", r.refuse);
+        else hint.innerHTML = "Back where it started: nothing to write.";
+        return;
+      }
+      // Through execCommand, like deletePart, so the turn lands on the
+      // editor's own undo stack and Ctrl+Z in the editor takes it back, not
+      // only the toolbar Undo.
+      const expected = text.slice(0, r.start) + r.text + text.slice(r.end);
+      pushHistory(text);
+      code.focus();
+      code.setSelectionRange(r.start, r.end);
+      let viaEditor = false;
+      try { viaEditor = document.execCommand("insertText", false, r.text); } catch { /* not supported */ }
+      if (!viaEditor || code.value !== expected) code.value = expected;
+      clearTimeout(timer);            // the input event queued a build; this one runs now
+      pushHistory();
+      hint.innerHTML = `Turned <b>${d.span.label}</b> ${readout(d.deg, d.axis)}. <b>Ctrl+Z</b> or Undo puts it back.`;
+      const done = () => {
+        restore();
+        // keep the part selected in the editor, so R / W / Delete still apply
+        const s = selectedSiteSpan();
+        if (s && document.activeElement === code) code.setSelectionRange(s.start, s.end);
+      };
+      buildAfterToolEdit().then(done, done);
     }
 
     // ------------------------------------------------------- free-form boxes
@@ -13260,6 +13496,7 @@ ${joined}${SITE_TAIL}`), joined);
       const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
       controls.enabled = true;
       clearGhosts();
+      if (drag.mode === "rotate") endRotateDrag(false);
       for (const m of drag.meshes) { m.position.set(0, 0, 0); m.scale.set(1, 1, 1); }
       drag = null;
       dragPointer = null;
@@ -13476,7 +13713,51 @@ ${joined}${SITE_TAIL}`), joined);
             beginMove(H.fid, hSite, at, e, { free: true });
             return;
           }
-          if (H.kind === "drillDia" || H.kind === "drillDepth" || H.kind === "drillAim") {
+          if (H.kind === "ring") {
+            const T = rotateTargetOf(H.fid);
+            const a0 = T ? cursorRingAngle(e, T.pivot, H.axis) : null;
+            // No readable angle at the press (the ring is edge-on, or its
+            // plane is behind the camera) means no drag: starting from a
+            // guessed angle is exactly how a gizmo lurches on the first frame.
+            if (a0 == null) {
+              hint.innerHTML = "That ring is edge-on from here: turn the view a little, or grab another ring.";
+              return;
+            }
+            // A cutter turns as a ghost, same as a cutter being moved: turning
+            // the inside faces of its hole would tear the wall out of the part.
+            const encl = enclosingBooleanSpan(code.value, T.site.start);
+            const isCutter = !T.span.whole && encl && encl.op === "difference";
+            const dragMeshes = modelGroup.children.filter((m) => T.fids.includes(m.userData.featureId));
+            let ghosts = null;
+            if (isCutter) {
+              ghosts = dragMeshes.map((m) => {
+                const g = new THREE.Mesh(m.geometry, cutterGhostMat);
+                g.position.copy(m.position);
+                g.quaternion.copy(m.quaternion);
+                g.scale.copy(m.scale);
+                g.renderOrder = 995;
+                ghostGroup.add(g);
+                return g;
+              });
+            }
+            drag = {
+              mode: "rotate", fid: H.fid, site: T.site, span: T.span,
+              axis: H.axis, pivot: T.pivot, tracker: makeAngleTracker(a0), deg: 0,
+              meshes: ghosts ? [] : dragMeshes,
+              ghosts,
+              bases: (ghosts || dragMeshes).map((obj) => ({
+                obj, pos: obj.position.clone(), quat: obj.quaternion.clone(),
+              })),
+              moved: false,
+            };
+            // The selection outline is a frozen copy of the part's edges, so
+            // it would stay behind while the part turns; only the grabbed
+            // ring stays up, so it is plain which axis is turning.
+            highlightGroup.visible = false;
+            for (const h of handleGroup.children) {
+              if (h.userData.handle?.kind === "ring") h.visible = h.userData.handle.axis === H.axis;
+            }
+          } else if (H.kind === "drillDia" || H.kind === "drillDepth" || H.kind === "drillAim") {
             const P = drillParts(code.value, hSite);
             if (P) {
               const n = new THREE.Vector3(...P.dir);
@@ -13781,6 +14062,20 @@ ${joined}${SITE_TAIL}`), joined);
       if (dragPointer) {
         if (e.pointerId !== dragPointer.id) return;   // not the finger that is dragging
         dragPointer.x = e.clientX; dragPointer.y = e.clientY;
+      }
+
+      if (drag.mode === "rotate") {
+        // an unreadable frame (edge-on mid-drag) holds the last angle
+        const total = drag.tracker.update(cursorRingAngle(e, drag.pivot, drag.axis));
+        const raw = total * 180 / Math.PI;
+        drag.deg = snapAngle(raw, e.shiftKey);
+        if (Math.abs(raw) > 0.5) drag.moved = true;
+        applyRotatePreview(drag.deg);
+        const said = readout(drag.deg, drag.axis);
+        showRingReadout(said, drag.pivot);
+        hint.innerHTML = `Turning <b>${drag.span.label}</b> ${said} — release to write it into the code`
+          + `${e.shiftKey ? "" : " · hold <b>Shift</b> for 15° steps"} · <b>Esc</b> cancels`;
+        return;
       }
 
       // stretch() widgets: slide the cut plane (`at`) or open the gap (`by`).
@@ -14386,6 +14681,12 @@ ${joined}${SITE_TAIL}`), joined);
         controls.enabled = true;
         const wasDrag = drag.moved;
         clearGhosts();
+        if (drag.mode === "rotate") {
+          endRotateDrag(wasDrag);
+          drag = null;
+          downAt = null;
+          return;
+        }
         for (const m of drag.meshes) { m.position.set(0, 0, 0); m.scale.set(1, 1, 1); }
         const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
         if (wasDrag) {
@@ -14485,7 +14786,9 @@ ${joined}${SITE_TAIL}`), joined);
       }
       spawnHandles(fid);
       selectCodeRange(range ?? site);
-      hint.innerHTML = `Selected <b>${site.kind}</b>${fdims} — drag a <b>face dot</b> to push that side, a <b>corner dot</b> to ${site.kind === "cube" || site.kind === "cuboid" ? "stretch width &amp; depth" : "scale it"}`
+      hint.innerHTML = gizmoMode === "rotate"
+        ? `Selected <b>${site.kind}</b>${fdims} — drag a <b>ring</b> to turn it (<b>Shift</b> = 15° steps, <b>Esc</b> cancels). <b>W</b> brings back the size and move handles.`
+        : `Selected <b>${site.kind}</b>${fdims} — drag a <b>face dot</b> to push that side, a <b>corner dot</b> to ${site.kind === "cube" || site.kind === "cuboid" ? "stretch width &amp; depth" : "scale it"}`
         + ` (rest on a dot for its arrows), or drag the body to move it (Shift = vertical). <b>Alt-drag</b> moves it freely, <b>double-click</b> a dot to type the numbers. <b>Right-click</b> it to change the shape or its colour.`;
       return true;
     }
@@ -14504,8 +14807,80 @@ ${joined}${SITE_TAIL}`), joined);
       code.scrollTop = Math.max(0, line * 21 - code.clientHeight / 2);
     }
 
+    // ------------------------------------------------------- delete a part
+    // Click a part, press Delete (or right-click > Delete this part). The part
+    // is code, so deleting it means cutting its call out of the editor, with
+    // its own translate/colour wrappers and one neighbouring comma, so what is
+    // left still builds. deletionSpan() decides the cut, or refuses with a
+    // reason when cutting would break the code (a lone model, a shape kept in
+    // a variable, one inside an if/for).
+    //
+    // The cut goes through execCommand, not a code.value assignment, so it
+    // lands on the editor's own undo stack: Ctrl+Z in the editor brings the
+    // part back, as does the toolbar Undo.
+    function selectedSiteSpan() {
+      if (!selected || !featureMap || mapText !== code.value) return null;
+      return featureMap[selected.fid] || null;
+    }
+    function deletePart(fid = selected?.fid) {
+      if (!fid) return false;
+      const site = (featureMap && mapText === code.value) ? featureMap[fid] : null;
+      if (!site) {
+        hint.innerHTML = "Can't delete that piece from here: it doesn't map back to one call in the code (a loop, helper or module made it), so remove it in the editor.";
+        return true;
+      }
+      const cut = deletionSpan(code.value, site);
+      if (cut.refuse) { hint.innerHTML = cut.refuse; return true; }
+      const before = code.value;
+      const label = /^\s*difference\s*\(/.test(cut.removed)
+        ? `the ${site.kind} and the holes cut in it` : `the ${site.kind}`;
+      clearHandles();
+      shapeMenu.classList.remove("open");
+      pushHistory(before);
+      code.focus();
+      code.setSelectionRange(cut.start, cut.end);
+      let viaEditor = false;
+      try { viaEditor = document.execCommand("delete"); } catch { /* not supported */ }
+      const expected = before.slice(0, cut.start) + before.slice(cut.end);
+      if (!viaEditor || code.value !== expected) {
+        code.value = expected;
+        code.dispatchEvent(new Event("input"));
+      }
+      code.setSelectionRange(cut.start, cut.start);
+      pushHistory();
+      hint.innerHTML = `Deleted <b>${label}</b>. <b>Ctrl+Z</b> or Undo brings it back.`;
+      return true;
+    }
+    window.__brepDeletePart = (fid) => deletePart(fid);
+
     // ------------------------------------------------------------- keyboard
     code.addEventListener("keydown", (e) => {
+      // Clicking a part focuses the editor with that part's call selected, so
+      // the Delete the user presses lands HERE, not on the page. While the
+      // selection is still exactly the clicked part, Delete/Backspace delete
+      // the PART (cleanly, comma and wrappers included) rather than leaving a
+      // hole in the argument list. Any other selection edits text as usual.
+      if ((e.key === "Delete" || e.key === "Backspace")
+          && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const s = selectedSiteSpan();
+        if (s && code.selectionStart === s.start && code.selectionEnd === s.end) {
+          e.preventDefault();
+          deletePart();
+          return;
+        }
+      }
+      // R / W, on the same terms as Delete: only while the selection is still
+      // exactly the part that was clicked. Typing anywhere else, or over a
+      // selection of your own, types the letter.
+      if ((e.key === "r" || e.key === "R" || e.key === "w" || e.key === "W")
+          && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const s = selectedSiteSpan();
+        if (s && code.selectionStart === s.start && code.selectionEnd === s.end) {
+          e.preventDefault();
+          setGizmoMode(e.key.toLowerCase() === "r" ? "rotate" : "move");
+          return;
+        }
+      }
       // Ctrl+Space (or Cmd+Space) = "show me what I can type here"
       if ((e.ctrlKey || e.metaKey) && (e.key === " " || e.code === "Space")) {
         e.preventDefault();
@@ -25233,6 +25608,15 @@ ${SC.describeSelectionContext(anchor)}` : "");
         if (!W.welcomed()) W.showWelcome(hooks);
       }, 700);
     }
+    // Esc mid-turn puts the part back. Ahead of the focus check below, because
+    // clicking a part focuses the editor and a drag is never typing.
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || drag?.mode !== "rotate") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      abandonDrag();
+      hint.innerHTML = "Turn cancelled: nothing written.";
+    }, true);
     document.addEventListener("keydown", (e) => {
       const a = document.activeElement;
       if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.isContentEditable)) return;
@@ -25253,6 +25637,9 @@ ${SC.describeSelectionContext(anchor)}` : "");
       else if (e.key === "ArrowUp") snapView("up");
       else if (e.key === "ArrowDown") snapView("down");
       else if (e.key === "Home") snapView("home");
+      else if ((e.key === "Delete" || e.key === "Backspace") && selected) deletePart();
+      else if (k === "r") setGizmoMode("rotate");
+      else if (k === "w") setGizmoMode("move");
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && shaveUndo.length
                && document.activeElement !== code) { if (undoShave()) e.preventDefault(); }
       else if (e.key === "Escape") { if (measureArmed) setMeasureArmed(false); if (shaveArmed) setShaveArmed(false); if (drillArmed) setDrillArmed(false); if (codeArmed) setCodeArmed(false); if (finsArmed) setFinsArmed(false); if (embossArmed) setEmbossArmed(false); document.querySelectorAll(".card.open").forEach((c) => toggleCard(c, cardButtons[c.id], false)); shapeMenu.classList.remove("open"); }

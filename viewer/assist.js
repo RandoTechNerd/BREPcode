@@ -1086,6 +1086,151 @@ export function dragSpanFor(text, site) {
   return { start: site.start, end: site.end, label: site.kind, whole: false };
 }
 
+// ---- delete a shape ---------------------------------------------------------
+// What to cut out of the code so one clicked shape disappears and the rest
+// still builds. Returns { start, end, removed, whole } or { refuse } with a
+// sentence saying why not: refusing beats leaving the editor full of broken
+// syntax the user then has to repair by hand.
+//
+// The walk goes OUTWARD from the shape's own call:
+//   - through single-child wrappers (translate, rotate, colorize, fillet…), so
+//     deleting a moved cylinder takes its translate() with it;
+//   - the FIRST shape of a difference() is its body, the thing the holes are
+//     cut from: deleting it deletes the whole difference, holes included,
+//     which is what "delete this part" means when you click the block;
+//   - a union()/group()/… left with nothing else in it goes too.
+// It stops at the first container that still has other shapes in it, and the
+// cut includes one neighbouring comma so the argument list stays valid.
+const DELETE_CONTAINERS = new Set([
+  "union", "difference", "intersection", "group", "hull", "smoothUnion", "[",
+]);
+const DELETE_BLOCKERS = new Set(["if", "for", "while", "switch", "function", "catch"]);
+
+// Bracket spans ( "(" calls and "[" lists ) strictly enclosing [s, e],
+// innermost first. Strings and comments are skipped so a ")" inside a text()
+// label cannot unbalance the scan.
+function enclosingBrackets(text, s, e) {
+  const stack = [], out = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === "\\") i++;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && text[i + 1] === "*") { const c = text.indexOf("*/", i + 2); i = c < 0 ? text.length : c + 1; continue; }
+    if (ch === "(" || ch === "[") {
+      let name = "[";
+      let callStart = i;
+      if (ch === "(") {
+        let j = i - 1;
+        while (j >= 0 && /\s/.test(text[j])) j--;
+        let k = j;
+        while (k >= 0 && /[A-Za-z0-9_$.]/.test(text[k])) k--;
+        name = k < j ? text.slice(k + 1, j + 1) : "";
+        if (name) callStart = k + 1;
+      }
+      stack.push({ name, start: callStart, open: i });
+    } else if (ch === ")" || ch === "]") {
+      const c = stack.pop();
+      if (c && c.open < s && i >= e) out.push({ ...c, end: i + 1 });
+    }
+  }
+  if (stack.length) return null;          // unbalanced: claim nothing
+  return out.sort((a, b) => (a.end - a.start) - (b.end - b.start));
+}
+
+// The top-level arguments of a bracket span, trimmed, as { start, end }.
+function bracketArgs(text, b) {
+  const args = [];
+  let depth = 0, from = b.open + 1;
+  const push = (to) => {
+    let a = from, z = to;
+    while (a < z && /\s/.test(text[a])) a++;
+    while (z > a && /\s/.test(text[z - 1])) z--;
+    if (z > a) args.push({ start: a, end: z });
+  };
+  for (let i = b.open + 1; i < b.end - 1; i++) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      for (i++; i < b.end && text[i] !== ch; i++) if (text[i] === "\\") i++;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "/") { while (i < b.end && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && text[i + 1] === "*") { const c = text.indexOf("*/", i + 2); i = c < 0 ? b.end : c + 1; continue; }
+    if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    else if (ch === "," && depth === 0) { push(i); from = i + 1; }
+  }
+  push(b.end - 1);
+  return args;
+}
+
+// An argument that is an options object or a plain number is not a shape:
+// hull({ exact: true }, a, b) and smoothUnion(2, a, b) have two shapes each.
+const isShapeArg = (text, a) => !/^(\{|-?[\d.])/.test(text.slice(a.start, a.end));
+
+export function deletionSpan(text, site) {
+  if (!site || !(site.end > site.start)) return { refuse: "That piece isn't one call in the code, so there is nothing to cut out. Remove it in the editor." };
+  let start = site.start, end = site.end, whole = false;
+  for (let guard = 0; guard < 24; guard++) {
+    const encl = enclosingBrackets(text, start, end);
+    if (!encl) return { refuse: "The code has an unmatched bracket, so I can't tell where this shape ends. Fix that first." };
+    const anc = encl[0];
+    if (!anc) {
+      const before = text.slice(0, start);
+      const v = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before);
+      return { refuse: v
+        ? `That shape is stored in <b>${v[1]}</b>. Delete it where <b>${v[1]}</b> is used, or remove that line in the editor.`
+        : "That's the whole model. Deleting it would leave nothing to build." };
+    }
+    if (DELETE_BLOCKERS.has(anc.name)) {
+      return { refuse: "That shape sits inside an if/for block, so it is safer to remove it in the editor." };
+    }
+    const args = bracketArgs(text, anc);
+    const idx = args.findIndex((a) => a.start <= start && a.end >= end);
+    if (idx < 0) return { refuse: "I couldn't find where that shape sits in the code. Remove it in the editor." };
+    const shapes = args.filter((a) => isShapeArg(text, a));
+    const climb = () => { start = anc.start; end = anc.end; whole = true; };
+
+    if (anc.name === "" ) {                         // a bare ( … ) group
+      if (args.length === 1) { climb(); continue; }
+      return { refuse: "That shape is part of an expression I can't take apart safely. Remove it in the editor." };
+    }
+    if (DELETE_CONTAINERS.has(anc.name)) {
+      // The first shape of a difference is the body the holes are cut from.
+      if (anc.name === "difference" && shapes[0] && shapes[0].start === args[idx].start) { climb(); continue; }
+      if (shapes.length <= 1) { climb(); continue; }
+    } else {
+      // A wrapper: its shapes come after its own leading settings.
+      if (idx === 0 && !isShapeArg(text, args[0])) {
+        return { refuse: "I couldn't find where that shape sits in the code. Remove it in the editor." };
+      }
+      if (idx === 0) {
+        return { refuse: `That shape is fed into <b>${anc.name}()</b> in a way I can't cut safely. Remove it in the editor.` };
+      }
+      const kids = args.slice(1).filter((a) => isShapeArg(text, a));
+      if (kids.length <= 1) { climb(); continue; }
+    }
+    // Cut this argument and ONE comma next to it.
+    const a = args[idx];
+    let cutStart, cutEnd;
+    if (idx < args.length - 1) { cutStart = a.start; cutEnd = args[idx + 1].start; }
+    else { cutStart = args[idx - 1].end; cutEnd = a.end; }
+    // A cut that empties its whole line takes the line with it.
+    // (The last argument's cut runs from the previous argument's end, so a
+    // trailing comma the author wrote after it is kept and stays valid.)
+    const lineStart = text.lastIndexOf("\n", cutStart - 1) + 1;
+    if (idx < args.length - 1 && /^\s*$/.test(text.slice(lineStart, cutStart))
+        && text.slice(a.end, cutEnd).includes("\n")) {
+      cutStart = lineStart;
+      cutEnd = text.lastIndexOf("\n", cutEnd - 1) + 1;
+    }
+    return { start: cutStart, end: cutEnd, removed: text.slice(start, end), whole };
+  }
+  return { refuse: "That shape is nested too deeply to cut safely. Remove it in the editor." };
+}
+
 // The number to edit when resizing `site` along world axis 0/1/2 (x/y/z).
 // Returns {numStart, numEnd, value, label} with offsets absolute in `text`.
 // A drill's four editable parts, with the exact span of each so a drag rewrites
@@ -1372,7 +1517,7 @@ export function addImplicitReturn(src) {
     }
     masked += c;
     if ("([{".includes(c)) depth++;
-    else if (")]}".includes(c)) depth--;
+    else if (")]}".includes(c)) { depth--; if (depth < 0) break; }   // `for (const x of xs) stmt`: the binding list ended
     else if ((c === ";" || c === "}") && depth === 0) bounds.push(i + 1);
   }
   // Statements separated by NOTHING BUT A NEWLINE. Code with no semicolons at
@@ -1628,7 +1773,7 @@ export function looseShapeCount(src, vocabulary = NAMES) {
     if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
     if (c === "/" && src[i + 1] === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 1; continue; }
     if ("([{".includes(c)) depth++;
-    else if (")]}".includes(c)) depth--;
+    else if (")]}".includes(c)) { depth--; if (depth < 0) break; }   // `for (const x of xs) stmt`: the binding list ended
     if (depth === 0 && (c === ";" || c === "\n")) { stmt += c; take(); continue; }
     stmt += c;
   }
@@ -1696,7 +1841,7 @@ export function declaredNames(src, vocabulary = NAMES) {
     let depth = 0, part = "";
     for (const c of m[2]) {
       if ("([{".includes(c)) depth++;
-      else if (")]}".includes(c)) depth--;
+      else if (")]}".includes(c)) { depth--; if (depth < 0) break; }   // `for (const x of xs) stmt`: the binding list ended
       if (c === "," && depth === 0) { parts.push(part); part = ""; continue; }
       part += c;
     }
