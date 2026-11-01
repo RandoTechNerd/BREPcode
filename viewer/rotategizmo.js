@@ -234,9 +234,14 @@ const fmt = (v) => `[${v.map(r2).join(", ")}]`;
 // translate([..], rotate([..], inner)). Transforms further out (K) stay where
 // they are, so the new private matrix is M' = K^-1 · W · K · M.
 //
+// `dropZ` (mm, world Z) is added after the turn: the gizmo passes the lift
+// that puts a part that was standing on the bed back down on it, so tipping
+// a tall part over doesn't leave it floating, and standing a flat one up
+// doesn't sink it through the bed.
+//
 // Returns { start, end, text } for text.slice(0, start) + text + slice(end),
 // or { refuse } with a sentence saying why not.
-export function rotateEdit(text, span, pivot, axis, deg) {
+export function rotateEdit(text, span, pivot, axis, deg, { dropZ = 0 } = {}) {
   if (!deg || Math.abs(deg) < 0.05) return { refuse: "No turn to write." };
   const ancs = ancestors(text, span);
   if (!ancs) return { refuse: "The code's brackets don't balance, so it can't be edited safely." };
@@ -274,7 +279,7 @@ export function rotateEdit(text, span, pivot, axis, deg) {
   const R = axisRotation(axis, deg);
   const pv = pivot;
   const Rp = app3(R, pv);
-  const W = { L: R, t: [pv[0] - Rp[0], pv[1] - Rp[1], pv[2] - Rp[2]] };
+  const W = { L: R, t: [pv[0] - Rp[0], pv[1] - Rp[1], pv[2] - Rp[2] + (Number(dropZ) || 0)] };
   const Kinv = invert(K);
   if (!Kinv) return { refuse: "A scale of zero around this part can't be undone." };
   const Mn = compose(Kinv, compose(W, compose(K, M)));

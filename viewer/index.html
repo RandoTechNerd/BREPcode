@@ -12277,6 +12277,22 @@ ${joined}${SITE_TAIL}`), joined);
         obj.quaternion.copy(q).multiply(quat);
         obj.position.copy(pos).sub(drag.pivot).applyQuaternion(q).add(drag.pivot);
       }
+      // back down onto the bed, measured on the turned triangles themselves
+      // (a turned bounding box would leave a gap under anything round)
+      drag.dropZ = 0;
+      if (drag.onBed) {
+        const low = lowestZ(drag.bases.map((b) => b.obj));
+        if (Number.isFinite(low)) {
+          drag.dropZ = -low;
+          for (const { obj } of drag.bases) obj.position.z += drag.dropZ;
+        }
+      }
+    }
+    // The lowest world Z of these meshes' actual vertices.
+    function lowestZ(objs) {
+      const bb = new THREE.Box3();
+      for (const o of objs) if (o?.isMesh) { o.updateMatrixWorld(true); bb.expandByObject(o, true); }
+      return bb.isEmpty() ? NaN : bb.min.z;
     }
 
     // A rotate drag ends here, written or not. `commit` false (a click, a
@@ -12299,7 +12315,7 @@ ${joined}${SITE_TAIL}`), joined);
         return;
       }
       const text = code.value;
-      const r = rotateEdit(text, d.span, d.pivot.toArray(), d.axis, d.deg);
+      const r = rotateEdit(text, d.span, d.pivot.toArray(), d.axis, d.deg, { dropZ: d.dropZ || 0 });
       if (r.refuse) {
         restore();
         if (Math.abs(d.deg) >= 0.05) setStatus("warn", r.refuse);
@@ -13768,6 +13784,13 @@ ${joined}${SITE_TAIL}`), joined);
               bases: (ghosts || dragMeshes).map((obj) => ({
                 obj, pos: obj.position.clone(), quat: obj.quaternion.clone(),
               })),
+              // A part standing on the bed stays on it: the turn is about its
+              // centre, so tipping a tall part over would leave it floating and
+              // standing a flat one up would sink it through the bed. The
+              // preview and the written code both set it back down (dropZ).
+              // A cutter, or a part already up in the air, turns in place.
+              onBed: !ghosts && Math.abs(lowestZ(dragMeshes)) < 0.05,
+              dropZ: 0,
               moved: false,
             };
             // The selection outline is a frozen copy of the part's edges, so
@@ -18380,6 +18403,22 @@ let SIMPLIFY_TARGET = 10000;
             // rebuild that mesh exactly. The mesh stays registered, so "Back
             // to mesh" is one click and costs nothing.
             await importMeshFile(file);
+            // Too dense to import (a full 226k Benchy) opens as a view-only
+            // preview with no mesh registered, and the exact rebuild had
+            // nothing to read: "there's no mesh text to rebuild" in red. Say
+            // what happened instead, and finish the job after Simplify & edit.
+            if (typeof dsl.getImport(file.name) !== "string") {
+              const dense = pendingSimplify?.fileName === file.name ? pendingSimplify.totalTris : 0;
+              if (dense) {
+                exactAfterSimplify = file.name;
+                setStatus("warn", `${file.name} is too dense to rebuild as an exact solid straight away `
+                  + `(${Math.round(dense / 1000)}k triangles; the limit is ${MESH_REFUSE / 1000}k). Press `
+                  + `Simplify & edit below: once the simplified mesh lands it rebuilds as an exact solid.`);
+              } else {
+                setStatus("warn", `${file.name} didn't open as an editable mesh, so there's nothing to rebuild as an exact solid.`);
+              }
+              return;
+            }
             return convertImportToExact(file.name);
           }
           await importMeshFile(file);
@@ -19230,6 +19269,9 @@ let SIMPLIFY_TARGET = 10000;
     }
 
     let pendingSimplify = null;
+    // Set when "Open as an exact solid" met a mesh too dense to import: the
+    // next Simplify & edit of that file goes on to the exact rebuild.
+    let exactAfterSimplify = null;
 
     // Whether the mesh is actually BROKEN, which is a different question from
     // whether it is big — and the one people assume the answer to. A model that
@@ -19353,6 +19395,13 @@ let SIMPLIFY_TARGET = 10000;
               restoreSimplify(back);
             });
             hint.appendChild(u);
+          }
+          // the drop menu asked for an exact solid before the file was light
+          // enough to import; now it is, so carry on with that
+          if (exactAfterSimplify === fileName) {
+            exactAfterSimplify = null;
+            if (typeof dsl.getImport(fileName) === "string") await convertImportToExact(fileName);
+            else setStatus("warn", `${fileName} came in as ${slim.length} separate parts, so it can't be rebuilt as one exact solid. Each part is an editable mesh.`);
           }
         } catch (e) {
           for (const x of buttons) { x.disabled = false; x.textContent = "simplify failed — try again"; }

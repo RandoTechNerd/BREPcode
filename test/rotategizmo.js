@@ -183,5 +183,35 @@ const starter = `difference(
   check("a no-op turn writes nothing", !!r.refuse);
 }
 
+console.log("\nrotate gizmo: back down on the bed\n");
+
+{
+  // A 40 x 10 x 35 block standing on the bed, tipped 90 deg about X through
+  // its centre: turned alone it would hang 12.5 mm up (its 35 mm height
+  // becomes 10). dropZ = -12.5 is what the gizmo passes; the written code
+  // must turn it AND set it down, every corner exactly where the preview put it.
+  const text = "cube([40, 10, 35])";
+  const site = primitiveSites(text).find((s) => s.kind === "cube");
+  const pivot = [20, 5, 17.5];
+  const r = rotateEdit(text, site, pivot, 0, 90, { dropZ: -12.5 });
+  const next = text.slice(0, r.start) + r.text + text.slice(r.end);
+  const site2 = primitiveSites(next).find((s) => s.kind === "cube");
+  const box = [[0, 0, 0], [40, 0, 0], [0, 10, 0], [0, 0, 35], [40, 10, 35], [40, 10, 0], [0, 10, 35], [40, 0, 35]];
+  let worst = 0, minZ = Infinity;
+  for (const c of box) {
+    const want = turned(c, pivot, 0, 90);
+    want[2] += -12.5;
+    const got = worldOf(next, site2, c);
+    worst = Math.max(worst, ...want.map((w, i) => Math.abs(w - got[i])));
+    minZ = Math.min(minZ, got[2]);
+  }
+  check("dropZ: the turn and the drop both land in the code", worst < 0.02 && parses(next), `off by ${worst}\n${next}`);
+  check("dropZ: the tipped block sits on the bed (lowest corner at z = 0)", Math.abs(minZ) < 0.02, `min z ${minZ}`);
+
+  const plain = rotateEdit(text, site, pivot, 0, 90);
+  const withZero = rotateEdit(text, site, pivot, 0, 90, { dropZ: 0 });
+  check("dropZ 0 writes exactly what no dropZ writes", plain.text === withZero.text);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);
