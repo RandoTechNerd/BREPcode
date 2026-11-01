@@ -5002,6 +5002,7 @@
     // a dialog can carry data-bg-busy instead. ?bg=log prints what it does.
     import { createScheduler } from "./bgjobs.js";
     import { queueCage, getCage, needCage } from "./cage.js";
+    import { cageToStep } from "../src/smoothstep.js";
     const bg = createScheduler({
       log: /[?&]bg=log\b/.test(location.search) ? (l) => console.log(`[bg] ${l}`) : null,
     });
@@ -18421,6 +18422,15 @@ let SIMPLIFY_TARGET = 10000;
             }
             return convertImportToExact(file.name);
           }
+          if (pick.action === "smooth") {
+            await importMeshFile(file);
+            if (typeof dsl.getImport(file.name) !== "string") {
+              setStatus("warn", `${file.name} didn't open as an editable mesh (too dense, or a view-only preview), so there's nothing to wrap in a smooth surface. Simplify & edit it first.`);
+              return;
+            }
+            queueSmoothCage(file.name);
+            return convertImportToSmooth(file.name);
+          }
           await importMeshFile(file);
           queueSmoothCage(file.name);
           if (pick.action === "tool" && pick.tool) {
@@ -18447,6 +18457,60 @@ let SIMPLIFY_TARGET = 10000;
       job?.promise.then(
         (c) => { if (/[?&]bg=log\b/.test(location.search)) console.log(`[bg] cage ${name}: ${c.quads.length / 4} quads from ${c.triangles} triangles in ${c.ms} ms (stages ${c.stageMs.join(" / ")} ms)`); },
         () => { /* cancelled, skipped or failed: the cage is optional */ });
+    }
+
+    // ------------------------------------------ mesh -> smooth surface (beta)
+    // The other way to make a mesh a solid: wrap it rather than rebuild it.
+    // The background cage (QuadriFlow quads following the curvature) becomes
+    // one bicubic B-spline patch per quad (src/smoothstep.js: Catmull-Clark
+    // limit surface, creases kept sharp, holes closed, folds relaxed), written
+    // as STEP and opened as importedSolid(...) on the Rust kernel. For organic
+    // and scanned shapes, where the exact rebuild only finds facets. Close to
+    // the original, never identical: the summary says so.
+    async function convertImportToSmooth(name) {
+      const stl = dsl.getImport(name);
+      const meshCode = code.value;
+      setStatus("busy", `Wrapping ${name} in a smooth surface…`);
+      let cage, r;
+      const t0 = performance.now();
+      try {
+        cage = await withLoadBar("Laying out the surface patches…", needCage(bg, name));
+        if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
+        await new Promise((res) => setTimeout(res, 30));       // let the bar paint before the writer runs
+        r = cageToStep(cage.verts, cage.quads, { name: name.replace(/\.\w+$/, ""), mesh: true });
+      } catch (e) {
+        const why = String(e?.message || e).slice(0, 220);
+        logEvent("smooth", name, { ok: false });
+        hint.innerHTML = `Couldn't wrap <b>${esc(name)}</b> in a smooth surface (${esc(why)}). `
+          + `It stays a mesh, which prints, cuts and exports exactly as before.`;
+        setStatus("warn", `${name} stayed a mesh.`);
+        return;
+      }
+      const stepName = name.replace(/\.(stl|3mf|obj)$/i, "") + "-smooth.step";
+      dsl.registerImport(stepName, r.step, { mesh: r.mesh });
+      logEvent("smooth", name, { ok: true, faces: r.faces, tris: cage.triangles, ms: Math.round(performance.now() - t0) });
+      pushHistory(code.value);
+      code.value = `importedSolid(${JSON.stringify(stepName)})`;
+      pushHistory();
+      scheduleBuild();
+      const notes = [
+        r.creases ? `sharp edges kept along ${r.creases.toLocaleString()} cage edges` : "",
+        r.holesFilled ? `${r.holesFilled} small gap${r.holesFilled === 1 ? "" : "s"} in the layout closed` : "",
+        r.relaxed ? `${r.relaxed} tight spot${r.relaxed === 1 ? "" : "s"} smoothed a little more than the rest` : "",
+      ].filter(Boolean).join(", ");
+      hint.innerHTML = `<b>${esc(name)}</b> wrapped in a smooth surface: ${cage.triangles.toLocaleString()} triangles → `
+        + `<b>${r.faces.toLocaleString()} curved faces</b>${notes ? ` (${notes})` : ""}. `
+        + `It follows the mesh closely but is not identical to it: fine detail smaller than the patches is smoothed over. `
+        + `Export STEP with <b>Surfaces: True curved</b> to hand a CAD program the smooth solid. `
+        + `<button id="smooth-keep" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Keep smooth</button> <button id="smooth-back" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Back to mesh</button>`;
+      $("smooth-keep").addEventListener("click", () => { hint.textContent = `Kept ${stepName} as a smooth solid.`; });
+      $("smooth-back").addEventListener("click", () => {
+        pushHistory(code.value);
+        code.value = meshCode;
+        pushHistory();
+        scheduleBuild();
+        hint.textContent = `Back to the mesh of ${name}. The smooth version is still on hand as importedSolid(${JSON.stringify(stepName)}).`;
+      });
     }
 
     // ------------------------------------------- mesh -> exact solid (beta)

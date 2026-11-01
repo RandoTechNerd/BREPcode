@@ -61,7 +61,7 @@ function rpc(worker) {
   };
 }
 
-export function queueCage(scheduler, name, stl, { faces = 4000, sharp = true, onProgress = null } = {}) {
+export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, onProgress = null } = {}) {
   if (typeof stl !== "string" || !/^\s*solid/.test(stl)) return null;
   const key = keyOf(stl);
   const hit = cache.get(name);

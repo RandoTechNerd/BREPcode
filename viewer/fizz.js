@@ -185,7 +185,7 @@ export function dropSkipped() { return lsGet(SKIP_KEY) === "1"; }
 /**
  * Ask what to do with a dropped mesh.
  * groups: [{ title, tools: [{ id, label, icon, desc }] }] - every tool that works on the opened mesh
- * returns a Promise of { action: "open" | "exact" | "fizz" | "fins" | "tool", tool? } or null if cancelled
+ * returns a Promise of { action: "open" | "exact" | "smooth" | "fizz" | "fins" | "tool", tool? } or null if cancelled
  */
 export function chooseDropAction(file, { groups = [] } = {}) {
   return new Promise((resolve) => {
@@ -200,6 +200,8 @@ export function chooseDropAction(file, { groups = [] } = {}) {
           <span><b>Open in the editor</b><small>import it as a mesh you can cut, scale, combine and export</small></span></button>
         <button class="fz-opt" data-a="exact"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so cuts are exact and a curved STEP export carries true surfaces. Best for parts made in CAD; you can switch back to the mesh.</small></span></button>
+        <button class="fz-opt" data-a="smooth"><span class="ic">${icon("open", 20)}</span>
+          <span><b>Open as a smooth surface<span class="fz-new">BETA</span></b><small>wrap organic or scanned shapes in smooth curved patches, so a STEP export is a small, editable solid instead of thousands of triangles. Close to the original, not exact; you can switch back to the mesh.</small></span></button>
         <button class="fz-opt hero" data-a="fizz"><span class="ic">${icon("fizz", 20)}</span>
           <span><b>FizzCore bubble infill<span class="fz-new">NEW</span></b><small>fill it with graded, self-supporting bubbles: less plastic, and still strong. Support fins optional.</small></span></button>
         <button class="fz-opt" data-a="fins"><span class="ic">${icon("fins", 20)}</span>
