@@ -65,6 +65,7 @@ export default {
     sockH: { default: 14, min: 8, max: 24, unit: "mm", label: "socket depth the bottle twists into", say: ["socket"] },
     levelZ: { default: 14, min: 6, max: 30, unit: "mm", label: "water level the bottle keeps, from the floor", say: ["level"] },
     cradleR: { default: 34, min: 20, max: 50, unit: "mm", label: "bottle shoulder cradle radius at the top", say: ["cradle", "shoulder"] },
+    bottleD: { default: 80, min: 55, max: 120, unit: "mm", label: "bottle body diameter, keeps the bottle clear of the pots (1 L 80, 2 L 110)", say: ["diameter", "litre", "liter"] },
     assembled: { default: "yes", unit: "choice", choices: ["yes", "no"], label: "assembled (no = parts laid out for printing)",
       words: { yes: ["assembled", "together"], no: ["laid out", "apart", "exploded", "print layout"] } },
   },
@@ -155,21 +156,28 @@ const frontY = -D / 2;
 if (water === "spout") {
   const sb = translate([0, frontY - spoutOut / 2 + 1, spoutH / 2], rbox(spoutW, spoutOut + 2, spoutH, 6));
   const sh = translate([0, frontY - spoutOut / 2 + 1 + wall / 2, floorT + spoutH / 2], rbox(spoutW - 2 * wall, spoutOut + 2 - wall, spoutH, Math.max(1, 6 - wall)));
-  const mouth = translate([-(spoutW - 2 * wall - 6) / 2, frontY - 2, floorT], cube([spoutW - 2 * wall - 6, wall + 4, spoutH - floorT - 3]));
+  // through the wall AND the ledge under the tray: the cavity starts wall + ledgeW in
+  const mouth = translate([-(spoutW - 2 * wall - 6) / 2, frontY - 2, floorT], cube([spoutW - 2 * wall - 6, wall + ledgeW + 4, spoutH - floorT - 3]));
   body = difference(difference(difference(union(body, sb), sh), mouth), translate([0, 0, floorT + (resH + 1) / 2], rbox(innerW, innerD, resH + 1, Math.max(1, cornerR - wall - ledgeW))));
 } else {
   const rb = neckD / 2 + 0.2, rc = rb / Math.cos(Math.PI / 12), outerR = rc + 3;
-  const cy = frontY - outerR + 3;                          // the tower runs 3 mm into the front wall
+  // The bottle stands upside down over the socket, so its axis sits far enough out that
+  // neither the cradle nor the bottle itself reaches over the pots. A bridge carries the
+  // water channel back to the reservoir, and a foot keeps a full bottle from tipping it.
+  const cy = frontY - Math.max(bottleD / 2, cradleR + 2) - 3;
   const topZ = levelZ + sockH;
   const tower = translate([0, cy, 0], cylinder({ r: outerR, h: topZ, $fn: 96 }));
-  const cradleTop = Math.min(resH + 12, topZ + (cradleR - outerR) * 1.1);
+  const foot = translate([0, cy, 0], cylinder({ r: Math.max(outerR + 6, bottleD * 0.4), h: floorT + 1.4, $fn: 96 }));
+  const bridgeW = 14 + 2 * wall;
+  const bridge = translate([-bridgeW / 2, cy, 0], cube([bridgeW, frontY + wall / 2 - cy, levelZ + 1 + wall]));
+  const cradleTop = topZ + (cradleR - outerR) * 1.1;
   const cradle = difference(
     translate([0, cy, topZ - 0.5], cylinder({ r1: outerR, r2: cradleR + 2, h: cradleTop - topZ + 0.5, $fn: 96 })),
     translate([0, cy, topZ - 0.01], cylinder({ r1: rc + 0.8, r2: cradleR, h: cradleTop - topZ + 0.02, $fn: 96 })));   // throat clears the socket's corners
   const bore = translate([0, cy, levelZ], rotate([0, 0, 15], cylinder({ r: rc, h: sockH + 0.6, $fn: 12 })));
-  const channel = translate([-7, cy, floorT], cube([14, -cy + frontY + wall + 6, levelZ - floorT + 1]));
+  const channel = translate([-7, cy, floorT], cube([14, frontY + wall + ledgeW + 3 - cy, levelZ - floorT + 1]));
   const under = translate([0, cy, floorT], cylinder({ r: rc - 2, h: levelZ - floorT + 0.5, $fn: 48 }));
-  body = difference(difference(difference(union(body, tower, cradle), bore), under), channel);
+  body = difference(difference(difference(union(body, tower, foot, bridge, cradle), bore), under), channel);
 }
 
 // ---- assembly or print layout

@@ -5858,7 +5858,12 @@
       // nothing to rescue and no room to rescue it into.
       if (document.querySelector(".card.open.expanded, .card.open.maxed")) return null;
       const blockers = [];
-      for (const c of document.querySelectorAll(".card.open")) blockers.push(c.getBoundingClientRect());
+      // [data-stage-window]: an overlay that is not a card but sits over the
+      // stage all the same (the /seedstarter card). Hidden ones measure 0.
+      for (const c of document.querySelectorAll(".card.open, [data-stage-window]")) {
+        const r = c.getBoundingClientRect();
+        if (r.width && r.height) blockers.push(r);
+      }
       const btns = $("buttons")?.getBoundingClientRect();
       if (btns) blockers.push(btns);
       lastFree = chooseFreeRect(blockers, innerWidth, innerHeight, lastFree);
@@ -13116,7 +13121,7 @@ ${joined}${SITE_TAIL}`), joined);
       const free = stageFreeRect(), model = modelScreenBox();
       if (!free || !model) return { free: null, model: null, inFree: null, behindAWindow: null };
       const r = (n) => Math.round(n);
-      const hidden = [...document.querySelectorAll(".card.open")].some((c) => {
+      const hidden = [...document.querySelectorAll(".card.open, [data-stage-window]")].some((c) => {
         const q = c.getBoundingClientRect();
         return model.right > q.left && model.left < q.right
           && model.bottom > q.top && model.top < q.bottom;
@@ -18409,13 +18414,21 @@ let SIMPLIFY_TARGET = 10000;
       if (modeSwitch.mode !== "code") modeSwitch.setMode("code");
       // applyGeneratedCode puts the code in before its first await, so the
       // card can come up straight away and say "Building…" over the build
+      // A seed starter saved from an earlier visit is brought up to this
+      // build's design with its own dial settings kept: an older copy had a
+      // spout with no way through and a bottle funnel over the pots.
       let built = null;
-      if (!S.isSeedStarterCode(code.value)) {
+      const mine = S.isSeedStarterCode(code.value);
+      const kept = mine ? Object.fromEntries(P.findParams(code.value).map((p) => [p.name, p.value])) : null;
+      const want = schema.familyCode(fam, schema.resolveParams(fam, kept).values);
+      if (want !== code.value) {
         pushHistory(code.value);
-        modelName = "Seed starter";
-        try { localStorage.setItem("brepcode-modelname", modelName); } catch { /* private */ }
-        paintName();
-        built = applyGeneratedCode(schema.familyCode(fam, schema.resolveParams(fam).values), { show: "params" });
+        if (!mine) {
+          modelName = "Seed starter";
+          try { localStorage.setItem("brepcode-modelname", modelName); } catch { /* private */ }
+          paintName();
+        }
+        built = applyGeneratedCode(want, { show: "params" });
       }
       const card = S.showSeedStarter({
         family: fam,
@@ -18430,6 +18443,9 @@ let SIMPLIFY_TARGET = 10000;
           refreshParams(true);
         },
         status: () => ({ kind: status.className, text: $("status-text")?.textContent || "" }),
+        // the card is a window the model keeps clear of, like the cards
+        windowsChanged: () => windowsChanged(),
+        cubeHTML: buildCubeHTML,
       });
       await built;
       card.paint();

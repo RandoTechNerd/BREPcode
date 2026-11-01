@@ -66,14 +66,16 @@ function style() {
       max-height: calc(100dvh - 140px); overflow: auto;
       background: var(--card, #121826); color: var(--text, #e8eefc); border: 1px solid var(--border-soft, #2a3654); border-radius: 14px;
       box-shadow: 0 14px 40px rgba(0,0,0,.5); font: 13px/1.4 system-ui, sans-serif; }
-    #ss .ss-top { display: flex; align-items: flex-start; gap: 8px; padding: 11px 11px 4px 13px; }
+    #ss .ss-top { display: flex; align-items: flex-start; gap: 2px; padding: 11px 8px 4px 13px;
+      cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
+    #ss.ss-drag .ss-top { cursor: grabbing; }
     #ss .ss-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     #ss .ss-eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted2, #8ea0c0); }
     #ss h2 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.25; }
     #ss .ss-size { color: var(--muted2, #8ea0c0); font-size: 12px; }
-    #ss .ss-min { flex: none; background: none; border: 0; color: var(--muted2, #8ea0c0); font-size: 18px; line-height: 1;
+    #ss .ss-min, #ss .ss-x { flex: none; background: none; border: 0; color: var(--muted2, #8ea0c0); font-size: 18px; line-height: 1;
       width: 26px; height: 26px; border-radius: 8px; cursor: pointer; }
-    #ss .ss-min:hover { background: var(--hover, #1a2334); color: var(--text, #e8eefc); }
+    #ss .ss-min:hover, #ss .ss-x:hover { background: var(--hover, #1a2334); color: var(--text, #e8eefc); }
     #ss .ss-body { padding: 4px 13px 12px; display: flex; flex-direction: column; gap: 10px; }
     #ss.ss-small .ss-body { display: none; }
     body.design-mode #ss { display: none; }   /* Design's panels own that corner */
@@ -94,7 +96,8 @@ function style() {
     #ss .ss-btn:hover { background: var(--hover, #1a2334); }
     #ss .ss-go { background: var(--accent, #7fd1ff); color: #06101c; border-color: transparent; }
     #ss .ss-go:hover { filter: brightness(1.08); background: var(--accent, #7fd1ff); }
-    #ss .ss-status { font-size: 11.5px; color: var(--muted2, #8ea0c0); min-height: 1.4em; }
+    #ss .ss-status { font-size: 11.5px; color: var(--muted2, #8ea0c0); min-height: 1.4em; display: flex; align-items: center; gap: 8px; }
+    #ss .ss-status .bcube-wrap { --bc: 14; display: block; position: relative; }
     @media (max-width: 560px) { #ss { top: auto; bottom: 92px; max-height: 55dvh; } }
   `;
   document.head.appendChild(css);
@@ -114,6 +117,8 @@ export function showSeedStarter(hooks = {}) {
   const fam = hooks.family || { params: {} };
   const el = document.createElement("div");
   el.id = "ss";
+  // the app's stage-fit treats this as a window: the model stays clear of it
+  el.dataset.stageWindow = "";
   el.setAttribute("role", "region");
   el.setAttribute("aria-label", "Seed starter settings");
   const dialHTML = DIALS.map((d) => {
@@ -128,6 +133,7 @@ export function showSeedStarter(hooks = {}) {
     <div class="ss-top">
       <div class="ss-txt"><span class="ss-eyebrow">Self-watering seed starter</span><h2>Make it yours</h2><span class="ss-size"></span></div>
       <button type="button" class="ss-min" aria-expanded="true" title="Fold this card" aria-label="Fold this card">&minus;</button>
+      <button type="button" class="ss-x" title="Close (every setting is still in Params)" aria-label="Close">&times;</button>
     </div>
     <div class="ss-body">
       <div>
@@ -168,9 +174,18 @@ export function showSeedStarter(hooks = {}) {
       $(`#ss-${d.name}`).value = v[d.name];
       $(`#ss-${d.name}-o`).textContent = outText(d.name, v[d.name]);
     }
+    // Building: the app's own build cube with the word, here where it is
+    // always seen (the one by the Editor button sits under the Params panel)
     const s = hooks.status?.() || {};
-    $(".ss-status").textContent = s.kind === "busy" ? "Building…" : s.kind === "err" ? (s.text || "That didn't build.") : "";
+    const line = s.kind === "busy" ? "busy" : s.kind === "err" ? `err:${s.text}` : "";
+    if (line !== shown) {                  // only on a change, so the cube keeps spinning
+      shown = line;
+      const st = $(".ss-status");
+      if (s.kind === "busy") st.innerHTML = `${hooks.cubeHTML?.() || ""}<span>Building…</span>`;
+      else st.textContent = s.kind === "err" ? (s.text || "That didn't build.") : "";
+    }
   }
+  let shown = null;
   const outText = (name, x) => (fam.params[name]?.unit === "mm" ? `${fmt(x)} mm` : fmt(x));
 
   for (const b of el.querySelectorAll("[data-water]")) {
@@ -197,12 +212,39 @@ export function showSeedStarter(hooks = {}) {
     e.currentTarget.setAttribute("aria-expanded", String(!small));
     e.currentTarget.innerHTML = small ? "+" : "&minus;";
     e.currentTarget.title = e.currentTarget.ariaLabel = small ? "Open this card" : "Fold this card";
+    hooks.windowsChanged?.();
   });
+
+  // Moved by its header, like the app's own windows; kept on screen.
+  {
+    const top = $(".ss-top");
+    let from = null;
+    top.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest("button")) return;
+      const r = el.getBoundingClientRect();
+      from = { x: e.clientX - r.left, y: e.clientY - r.top };
+      top.setPointerCapture(e.pointerId);
+      el.classList.add("ss-drag");
+      e.preventDefault();
+    });
+    top.addEventListener("pointermove", (e) => {
+      if (!from) return;
+      const r = el.getBoundingClientRect();
+      const x = Math.min(Math.max(0, e.clientX - from.x), innerWidth - r.width);
+      const y = Math.min(Math.max(0, e.clientY - from.y), innerHeight - 40);
+      Object.assign(el.style, { left: `${x}px`, top: `${y}px`, bottom: "auto" });
+    });
+    const end = () => { if (!from) return; from = null; el.classList.remove("ss-drag"); hooks.windowsChanged?.(); };
+    top.addEventListener("pointerup", end);
+    top.addEventListener("pointercancel", end);
+  }
+  $(".ss-x").addEventListener("click", () => { el.remove(); stop(); });
 
   // The code can change under the card (Params, the chat, Ctrl+Z, the
   // editor), so it re-reads it rather than trusting what it last wrote.
   const timer = setInterval(paint, 700);
-  function stop() { clearInterval(timer); }
+  function stop() { clearInterval(timer); hooks.windowsChanged?.(); }
   paint();
-  return { el, paint, close: () => { stop(); el.remove(); } };
+  hooks.windowsChanged?.();
+  return { el, paint, close: () => { el.remove(); stop(); } };
 }
