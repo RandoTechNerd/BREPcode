@@ -611,6 +611,13 @@
       padding-bottom: 1.5px;
     }
     #open-btn.active { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+    /* With the editor shut, its status bar (and the cube in it) is hidden:
+       this small cube beside the Editor button says a build is running. */
+    #dock-spin { flex: none; align-self: center; display: grid; place-items: center; width: 34px; height: 34px;
+      border-radius: 50%; background: var(--card, #121826); border: 1px solid var(--border, #26314a);
+      box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: pointer; }
+    #dock-spin[hidden] { display: none; }
+    #dock-spin .bcube-wrap { --bc: 16; display: block; position: relative; top: 1px; }
     #app-settings {
       display: grid; gap: 7px; padding: 4px 2px 12px; margin-bottom: 10px;
       border-bottom: 1px solid var(--border-soft, var(--border));
@@ -4495,6 +4502,7 @@
     </section>
 
     <div id="buttons">
+      <span id="dock-spin" hidden title="Building…" aria-live="polite" aria-label="Building"></span>
       <button id="open-btn" class="dock-btn"><span class="plus">+</span> Editor</button>
       <button id="cheat-btn" title="What can I type?" aria-label="Cheat sheet">
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none"
@@ -10739,6 +10747,21 @@ ${joined}${SITE_TAIL}`), joined);
         + `</span></span></span>`;
     }
     $("spin").innerHTML = buildCubeHTML();
+    // The same cube, small, beside the Editor button while a build runs and
+    // the editor (with its status bar) is shut. Watches the two classes that
+    // decide it, so every path that starts or ends a build is covered.
+    {
+      const ds = $("dock-spin"), pnl = $("panel");
+      if (ds && pnl) {
+        ds.innerHTML = buildCubeHTML();
+        const sync = () => { ds.hidden = !(status.className === "busy" && !pnl.classList.contains("open")); };
+        const mo = new MutationObserver(sync);
+        mo.observe(status, { attributes: true, attributeFilter: ["class"] });
+        mo.observe(pnl, { attributes: true, attributeFilter: ["class"] });
+        ds.addEventListener("click", () => $("open-btn").click());
+        sync();
+      }
+    }
 
     const exact = $("exact"), fixnote = $("fixnote");
 
