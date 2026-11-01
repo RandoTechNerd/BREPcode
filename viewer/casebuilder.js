@@ -728,8 +728,13 @@ export function showCaseBuilder(hooks = {}) {
       // the KUGGIS lid covers every piece, so a lidded box is just a box there
       S.regions = S.regions.map((g) => g.kind === "lidbox" ? { ...g, kind: "box" } : g);
       if (brush === "lidbox") brush = "box";
-      // an empty grid starts as the six-piece kit
-      if (!S.regions.length) { const f = fitNow(); S.regions = sixLayout(f.cols, f.rows); }
+      // an empty grid starts as the six-piece kit, on half squares when
+      // that is what makes the two columns (and so the four corners) equal
+      if (!S.regions.length) {
+        if (fitNow().cols % 2 && S.kuggis.pitch !== 7.5) { S.kuggis.pitch = 7.5; khalf.checked = true; }
+        const f = fitNow();
+        S.regions = sixLayout(f.cols, f.rows);
+      }
     }
     paintTools(); paint();
   });
