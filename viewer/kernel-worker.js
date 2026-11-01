@@ -16,6 +16,7 @@
 // site, exactly as it does for every other viewer file.
 import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
+import { trianglesStep } from "../src/facetstep.js";
 
 // The split engine (src/engine.js): the Rust kernel for exact parts, manifold
 // for meshes, this file's JS kernel when either refuses. Both wasm modules are
@@ -570,15 +571,37 @@ self.onmessage = async ({ data, ports }) => {
       const b = builds.get(data.key || "model");
       if (!b || !b.solids.length) throw new Error("no build to export — build the model first");
       if (b.split) {
+        // An exact import (importedSolid: an STL rebuilt on drop, a STEP file)
+        // is written straight from the faces this build already made. Rebuilt
+        // on the JS kernel it took minutes and kept a fraction of the faces:
+        // a Benchy's 8,106 came out as 1,830 with 3,106 open edges, which a
+        // slicer shows as half a boat. See src/facetstep.js.
+        let hist = null;
+        try { hist = typeof b.json === "string" ? JSON.parse(b.json) : b.json; } catch { /* fine */ }
+        const exactImport = (hist?.features || []).some((f) => f?.type === "IMPORT3D" && typeof f.inputParams?.stepText === "string");
+        if (exactImport && b.split.solids?.length) {
+          const r = trianglesStep(b.split.solids, data.name || "model");
+          trace(`STEP from the build's own faces: ${r.faces} faces, ${r.openEdges} open edges`);
+          self.postMessage({ id, ok: true, text: r.step, faces: r.faces, openEdges: r.openEdges, source: "build" });
+          return;
+        }
         // The Rust kernel can write exact STEP, but only from full solid JSON,
         // and a history build hands back handles (see BREPcodeRustKernel's
         // recommendations). Until it can, STEP comes from the JS kernel, built
-        // once on demand from the same history.
+        // once on demand from the same history; if that rebuild fails, from
+        // this build's own faces instead.
         if (!b.ph) {
           const ph = new (await getPartHistory())();
           await ph.fromJSON(b.json);
           if ((ph.features || []).some((f) => f?.type === "IMPORT3D")) await ensureImportClonePatch();
-          await ph.runHistory({ throwOnFeatureError: true });
+          try { await ph.runHistory({ throwOnFeatureError: true }); }
+          catch (e) {
+            if (!b.split.solids?.length) throw e;
+            trace(`JS rebuild for STEP failed (${e?.message || e}); writing the build's own faces`);
+            const r = trianglesStep(b.split.solids, data.name || "model");
+            self.postMessage({ id, ok: true, text: r.step, faces: r.faces, openEdges: r.openEdges, source: "build" });
+            return;
+          }
           b.ph = ph;
           b.jsSolids = (ph.scene?.children || []).filter((o) => o && o.type === "SOLID" && typeof o.toSTL === "function");
         }
