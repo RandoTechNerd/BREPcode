@@ -76,6 +76,7 @@ function style() {
     #ss .ss-min:hover { background: var(--hover, #1a2334); color: var(--text, #e8eefc); }
     #ss .ss-body { padding: 4px 13px 12px; display: flex; flex-direction: column; gap: 10px; }
     #ss.ss-small .ss-body { display: none; }
+    body.design-mode #ss { display: none; }   /* Design's panels own that corner */
     #ss .ss-q { font-size: 12px; font-weight: 600; color: var(--muted2, #8ea0c0); margin: 2px 0 5px; }
     #ss .ss-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     #ss .ss-seg button { font: inherit; font-weight: 600; padding: 8px 6px; border-radius: 10px; cursor: pointer;

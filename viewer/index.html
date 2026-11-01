@@ -18381,6 +18381,9 @@ let SIMPLIFY_TARGET = 10000;
       const P = await ensureParams();
       // they came for a seed starter, not for code: sliders and the card
       quietEditor = true;
+      // Code mode, whatever was remembered: Design's model browser sits
+      // where the card goes (the card hides itself in Design mode)
+      if (modeSwitch.mode !== "code") modeSwitch.setMode("code");
       // applyGeneratedCode puts the code in before its first await, so the
       // card can come up straight away and say "Building…" over the build
       let built = null;
