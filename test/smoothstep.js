@@ -211,5 +211,25 @@ console.log("\nsmooth STEP: a cage with holes (the bag sample)\n");
   }
 }
 
+console.log("\nsmooth STEP: a 20k Benchy (thin walls, odd holes that pair round the hull)\n");
+{
+  const path = join(HERE, "..", "scratch_fz", "benchy20.stl");
+  let stl = null;
+  // a binary STL: the worker decodes the bytes itself
+  try { stl = new Uint8Array(readFileSync(path)); } catch { console.log("  SKIP  scratch_fz/benchy20.stl not on this machine"); }
+  if (stl) {
+    await handle({ op: "begin", stl, faces: 2500, sharp: 1, seed: 0 });
+    for (let k = 0; k < STAGE_NAMES.length; k++) await handle({ op: "stage", k });
+    const raw = await handle({ op: "finish" });
+    const r = cageToStep(raw.verts, raw.quads, { name: "benchy" });
+    check(`every hole closed, no patch folded or stray (${r.holesFilled} holes, ${r.faces} faces, ${r.relaxed} relaxed)`, r.folded === 0);
+    registerImport("benchy-smooth.step", r.step);
+    let out = null, why = "";
+    const t1 = Date.now();
+    try { out = await engineSolids(importedSolid("benchy-smooth.step")); } catch (e) { why = String(e?.message || e).slice(0, 300); }
+    check(`the Rust kernel imports the Benchy (${Date.now() - t1} ms)`, out && out.lane === "exact" && out.solids?.length === 1 && out.solids[0].exact, why || `lane ${out?.lane}`);
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

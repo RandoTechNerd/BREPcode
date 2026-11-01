@@ -139,7 +139,65 @@ export function findCreases(verts, quads, topo, creaseAngle = 40, minChain = 4) 
 // with a fan of quads round its centre (a 4-edge hole is one quad).
 // New points are linear (edge midpoints, hole centroids); fitCage then pulls
 // the limit surface through them, so a filled hole is smooth, not exact.
+// A closed cage, with every corner shared by only two quads merged away.
+// Catmull-Clark has no smooth surface round a valence-2 vertex: the two
+// patches there fold onto each other, and no amount of relaxing helps.
+// QuadriFlow leaves the odd one (a 20k Benchy had two, both refused by the
+// kernel). Quads (v,a,x,b) and (v,b,y,a) become (a,x,b,y) and v goes; that
+// can leave a or b with two quads, so it repeats. Points are renumbered
+// (order kept), and originalVerts counts how many are still QuadriFlow's.
 export function closeCage(verts, quads) {
+  const closed = closeCageHoles(verts, quads);
+  return dissolveValence2(closed);
+}
+
+export function dissolveValence2({ verts, quads, holes, split, originalVerts }) {
+  const nv = verts.length / 3;
+  let Q = Array.from(quads);
+  let merged = 0;
+  for (let pass = 0; pass < 20; pass++) {
+    const around = Array.from({ length: nv }, () => []);
+    for (let q = 0; q < Q.length; q += 4) for (let k = 0; k < 4; k++) if (Q[q] >= 0) around[Q[q + k]].push(q);
+    let changed = false;
+    const dead = new Set();
+    for (let v = 0; v < nv; v++) {
+      const fs = around[v].filter((q) => !dead.has(q));
+      if (fs.length !== 2) continue;
+      const [q1, q2] = fs;
+      const k1 = [0, 1, 2, 3].find((k) => Q[q1 + k] === v), k2 = [0, 1, 2, 3].find((k) => Q[q2 + k] === v);
+      const a = Q[q1 + ((k1 + 1) & 3)], x = Q[q1 + ((k1 + 2) & 3)], b = Q[q1 + ((k1 + 3) & 3)];
+      const b2 = Q[q2 + ((k2 + 1) & 3)], y = Q[q2 + ((k2 + 2) & 3)], a2 = Q[q2 + ((k2 + 3) & 3)];
+      if (a !== a2 || b !== b2 || x === y || new Set([a, x, b, y]).size < 4) continue;
+      Q[q1] = a; Q[q1 + 1] = x; Q[q1 + 2] = b; Q[q1 + 3] = y;
+      Q[q2] = -1;
+      dead.add(q1); dead.add(q2);                 // touched: settle the rest next pass
+      merged++; changed = true;
+    }
+    const keep = [];
+    for (let q = 0; q < Q.length; q += 4) if (Q[q] >= 0) keep.push(Q[q], Q[q + 1], Q[q + 2], Q[q + 3]);
+    Q = keep;
+    if (!changed) break;
+  }
+  if (!merged) return { verts, quads, holes, split, originalVerts, merged: 0 };
+  // renumber the points still in use, in their old order
+  const used = new Uint8Array(nv);
+  for (const v of Q) used[v] = 1;
+  const map = new Int32Array(nv).fill(-1);
+  const V = [];
+  let keptOriginal = 0;
+  for (let v = 0; v < nv; v++) {
+    if (!used[v]) continue;
+    map[v] = V.length / 3;
+    V.push(verts[v * 3], verts[v * 3 + 1], verts[v * 3 + 2]);
+    if (v < originalVerts) keptOriginal++;
+  }
+  const out = Int32Array.from(Q, (v) => map[v]);
+  const check = cageTopology(V, out);
+  if (check.open || check.over) throw new Error(`merging two-quad corners left ${check.open} open and ${check.over} overused edges`);
+  return { verts: Float64Array.from(V), quads: out, holes, split, originalVerts: keptOriginal, merged };
+}
+
+function closeCageHoles(verts, quads) {
   let topo = cageTopology(verts, quads);
   if (!topo.open) return { verts, quads, holes: 0, split: 0, originalVerts: verts.length / 3 };
   if (topo.over) throw new Error(`the cage has ${topo.over} edges on more than two quads`);
@@ -186,8 +244,12 @@ export function closeCage(verts, quads) {
     }
     return null;
   };
-  for (let h = 0; h < loops.length; h++) {
-    while (parity[h]) {
+  // Until no hole is odd. A strip that can only reach an EVEN hole makes
+  // that hole odd, maybe one already visited (the Benchy: hole 4 had to go
+  // to hole 0), so this goes round again rather than once over the list.
+  for (let guard = 0; guard < 8 * loops.length && parity.some(Boolean); guard++) {
+    const h = parity.indexOf(1);
+    {
       // every strip leaving hole h: prefer one that lands on another odd
       // hole, and of those the SHORTEST. A strip can wrap right round the
       // part (the bag: 2,209 quads became 4,335 faces taking the first one),
@@ -405,18 +467,28 @@ export function fitCage(verts, quads, topo, crease, passes = 8, { fitBelow = Inf
 // Patches whose surface turns over (its normal against the quad's own) at
 // any of a 5 x 5 grid of points, or pinches to nothing: a CAD kernel refuses
 // to trim those, so the caller unfits them.
-export function foldedPatches(patches, verts, quads, nq) {
+// How bent a patch may be before it counts as folded. A CAD kernel trims a
+// face by fitting its edges into the surface's (u, v) chart; a patch that
+// turns almost edge-on (not even flipped) or stretches very unevenly makes
+// that fit fail ("pcurve fit refused"), so the bar is set below a flip:
+// minCos is the least the patch normal may agree with its quad's, minJac the
+// least its local area may be next to its largest. Measured on a 20k Benchy.
+export const foldLimits = { grid: 8, minCos: 0.2, minJac: 0.03 };
+
+export function foldedPatches(patches, verts, quads, nq, { grid, minCos, minJac } = foldLimits) {
   const bad = [];
   const P = (i) => [verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]];
   const B = (t) => [(1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t * t * (1 - t), t ** 3];
   const D = (t) => [-3 * (1 - t) ** 2, 3 * (1 - t) ** 2 - 6 * t * (1 - t), 6 * t * (1 - t) - 3 * t * t, 3 * t * t];
+  const tables = [];
+  for (let i = 0; i <= grid; i++) { const t = i / grid; tables.push([B(t), D(t)]); }
   for (let q = 0; q < nq; q++) {
     const c = [0, 1, 2, 3].map((k) => P(quads[q * 4 + k]));
     const qn = cross(sub(c[2], c[0]), sub(c[3], c[1]));
     const ql = len(qn);
-    let folded = false;
-    for (let i = 0; i <= 4 && !folded; i++) for (let j = 0; j <= 4 && !folded; j++) {
-      const u = i / 4, v = j / 4, bu = B(u), bv = B(v), du = D(u), dv = D(v);
+    let folded = false, lo = Infinity, hi = 0;
+    for (let i = 0; i <= grid && !folded; i++) for (let j = 0; j <= grid && !folded; j++) {
+      const [bu, du] = tables[i], [bv, dv] = tables[j];
       const pu = [0, 0, 0], pv = [0, 0, 0];
       for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
         const o = (q * 16 + a * 4 + b) * 3;
@@ -424,13 +496,153 @@ export function foldedPatches(patches, verts, quads, nq) {
       }
       const nn = cross(pu, pv), nl = len(nn);
       // a corner of an irregular or creased patch may pinch (nl ~ 0): that is fine, it is not a fold
-      const corner = (i === 0 || i === 4) && (j === 0 || j === 4);
-      if (nl < 1e-12 * ql) { if (!corner) folded = true; continue; }
-      if (dot(nn, qn) / (nl * ql) < 0) folded = true;
+      const corner = (i === 0 || i === grid) && (j === 0 || j === grid);
+      if (corner) continue;
+      if (nl < 1e-12 * ql) { folded = true; continue; }
+      if (dot(nn, qn) / (nl * ql) < minCos) folded = true;
+      if (nl < lo) lo = nl;
+      if (nl > hi) hi = nl;
     }
-    if (folded) bad.push(q);
+    if (folded || lo < minJac * hi) bad.push(q);
   }
   return bad;
+}
+
+// Patches whose own edges don't project back onto themselves. A CAD kernel
+// trims a face by projecting points along each edge into the surface's
+// (u, v) chart; on a patch that bends back over itself near an edge (not a
+// flip: the normals can all agree) the nearest point is somewhere else on
+// the patch, and the kernel refuses the file ("pcurve fit refused ...
+// stations stand X off the carrier"). This does the same projection: a
+// coarse grid search, then Newton, for points along all four edges, and
+// flags a patch whose edge points land more than `uvTol` away in (u, v) or
+// `distTol` (relative to the patch size) away in space. A 20k Benchy had 38
+// such patches with no fold at all. `only` limits it to some patches.
+export const strayLimits = { stations: 9, grid: 8, uvTol: 0.02, distTol: 1e-4 };
+
+export function strayEdgePatches(patches, nq, only = null, { stations, grid, uvTol, distTol } = strayLimits) {
+  const B = (t) => [(1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t * t * (1 - t), t ** 3];
+  const D = (t) => [-3 * (1 - t) ** 2, 3 * (1 - t) ** 2 - 6 * t * (1 - t), 6 * t * (1 - t) - 3 * t * t, 3 * t * t];
+  const D2 = (t) => [6 * (1 - t), -12 * (1 - t) + 6 * t, 6 * (1 - t) - 12 * t, 6 * t];
+  const ev = (o0, a, b) => {
+    const o = [0, 0, 0];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      const w = a[i] * b[j], o1 = o0 + (i * 4 + j) * 3;
+      o[0] += w * patches[o1]; o[1] += w * patches[o1 + 1]; o[2] += w * patches[o1 + 2];
+    }
+    return o;
+  };
+  const gridT = [];
+  for (let i = 0; i <= grid; i++) gridT.push(B(i / grid));
+  const bad = [];
+  const list = only ? [...only] : Array.from({ length: nq }, (_, q) => q);
+  for (const q of list) {
+    const o0 = q * 48;
+    // the patch's size, for the distance tolerance
+    let size = 0;
+    for (let k = 1; k < 16; k++) size = Math.max(size, Math.hypot(patches[o0 + k * 3] - patches[o0], patches[o0 + k * 3 + 1] - patches[o0 + 1], patches[o0 + k * 3 + 2] - patches[o0 + 2]));
+    const samples = [];
+    for (let i = 0; i <= grid; i++) for (let j = 0; j <= grid; j++) samples.push([i / grid, j / grid, ev(o0, gridT[i], gridT[j])]);
+    let stray = false;
+    for (let side = 0; side < 4 && !stray; side++) for (let k = 1; k < stations && !stray; k++) {
+      const t = k / stations;
+      const [u0, v0] = side === 0 ? [0, t] : side === 1 ? [1, t] : side === 2 ? [t, 0] : [t, 1];
+      const p = ev(o0, B(u0), B(v0));
+      let best = null, bd = Infinity;
+      for (const s of samples) { const d = (s[2][0] - p[0]) ** 2 + (s[2][1] - p[1]) ** 2 + (s[2][2] - p[2]) ** 2; if (d < bd) { bd = d; best = s; } }
+      let u = best[0], v = best[1];
+      for (let it = 0; it < 25; it++) {
+        const bu = B(u), bv = B(v), du = D(u), dv = D(v);
+        const r = sub(ev(o0, bu, bv), p);
+        const su = ev(o0, du, bv), sv = ev(o0, bu, dv);
+        const suu = ev(o0, D2(u), bv), svv = ev(o0, bu, D2(v)), suv = ev(o0, du, dv);
+        const g0 = dot(r, su), g1 = dot(r, sv);
+        const h00 = dot(su, su) + dot(r, suu), h01 = dot(su, sv) + dot(r, suv), h11 = dot(sv, sv) + dot(r, svv);
+        const det = h00 * h11 - h01 * h01;
+        if (Math.abs(det) < 1e-30) break;
+        const stepU = (h11 * g0 - h01 * g1) / det, stepV = (h00 * g1 - h01 * g0) / det;
+        u = Math.min(1, Math.max(0, u - stepU)); v = Math.min(1, Math.max(0, v - stepV));
+        if (Math.abs(stepU) + Math.abs(stepV) < 1e-12) break;
+      }
+      const dist = len(sub(ev(o0, B(u), B(v)), p));
+      if (Math.hypot(u - u0, v - v0) > uvTol || dist > distTol * size) stray = true;
+    }
+    if (stray) bad.push(q);
+  }
+  return bad;
+}
+
+// Last resort for a patch that still folds: keep its four edges (shared with
+// its neighbours, so the shell stays closed) and rebuild its four inner
+// control points as the bicubic Coons patch of those edges. That gives up
+// tangent continuity across this one patch, but a sharp feature running
+// diagonally through a quad (a Benchy's hull edge, where no crease can
+// follow it) no longer folds. Returns the patches that are still bad.
+export function coonsPatches(patches, verts, quads, nq, list) {
+  const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
+  const set = (q, i, j, p) => patches.set(p, (q * 16 + i * 4 + j) * 3);
+  const mix = (terms) => [0, 1, 2].map((c) => terms.reduce((s, [w, p]) => s + w * p[c], 0) / 9);
+  for (const q of list) {
+    const p = (i, j) => G(q, i, j);
+    set(q, 1, 1, mix([[-4, p(0, 0)], [6, p(0, 1)], [6, p(1, 0)], [-2, p(0, 3)], [-2, p(3, 0)], [3, p(3, 1)], [3, p(1, 3)], [-1, p(3, 3)]]));
+    set(q, 1, 2, mix([[-4, p(0, 3)], [6, p(0, 2)], [6, p(1, 3)], [-2, p(0, 0)], [-2, p(3, 3)], [3, p(3, 2)], [3, p(1, 0)], [-1, p(3, 0)]]));
+    set(q, 2, 1, mix([[-4, p(3, 0)], [6, p(3, 1)], [6, p(2, 0)], [-2, p(3, 3)], [-2, p(0, 0)], [3, p(0, 1)], [3, p(2, 3)], [-1, p(0, 3)]]));
+    set(q, 2, 2, mix([[-4, p(3, 3)], [6, p(3, 2)], [6, p(2, 3)], [-2, p(3, 0)], [-2, p(0, 3)], [3, p(0, 2)], [3, p(2, 0)], [-1, p(0, 0)]]));
+  }
+  const only = new Set(list);
+  const still = new Set(foldedPatches(patches, verts, quads, nq).filter((q) => only.has(q)));
+  for (const q of strayEdgePatches(patches, nq, only)) still.add(q);
+  return [...still];
+}
+
+// The last two steps for patches that still fold after fitting and relaxing:
+// first a Coons interior on the patch's own edges; if that still folds, the
+// edges themselves bulge (they follow smooth neighbours round a sharp turn),
+// so the patch goes BILINEAR over its four corner points, straight edges and
+// all, and each neighbour's shared edge row is straightened to match (the
+// corners are shared, so nothing else moves). A neighbour that then folds
+// gets a Coons interior on its new edges. A bilinear patch cannot fold unless
+// its quad is a bow-tie. Returns how many patches are still bad.
+export function repairPatches(patches, verts, quads, topo, bad) {
+  if (!bad?.length) return 0;
+  let still = coonsPatches(patches, verts, quads, topo.nq, bad);
+  if (!still.length) return 0;
+  const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
+  const set = (q, i, j, p) => patches.set(p, (q * 16 + i * 4 + j) * 3);
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  // the grid cells along side k of a quad, from corner k to corner k+1
+  const sideCells = [
+    [[0, 0], [1, 0], [2, 0], [3, 0]],
+    [[3, 0], [3, 1], [3, 2], [3, 3]],
+    [[3, 3], [2, 3], [1, 3], [0, 3]],
+    [[0, 3], [0, 2], [0, 1], [0, 0]],
+  ];
+  const touched = new Set();
+  for (const q of still) {
+    const c = [G(q, 0, 0), G(q, 3, 0), G(q, 3, 3), G(q, 0, 3)];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) set(q, i, j, lerp(lerp(c[0], c[1], i / 3), lerp(c[3], c[2], i / 3), j / 3));
+    for (let k = 0; k < 4; k++) {
+      const a = quads[q * 4 + k], b = quads[q * 4 + ((k + 1) & 3)];
+      const e = topo.edges.get(topo.edgeKey(a, b));
+      const g = e.faces[0] === q ? e.faces[1] : e.faces[0];
+      if (g == null || still.includes(g)) continue;
+      const kg = [0, 1, 2, 3].find((s) => {
+        const x = quads[g * 4 + s], y = quads[g * 4 + ((s + 1) & 3)];
+        return (x === a && y === b) || (x === b && y === a);
+      });
+      const from = quads[g * 4 + kg] === a ? c[k] : c[(k + 1) & 3];
+      const to = quads[g * 4 + kg] === a ? c[(k + 1) & 3] : c[k];
+      sideCells[kg].forEach(([i, j], t) => set(g, i, j, lerp(from, to, t / 3)));
+      touched.add(g);
+    }
+  }
+  const reb = new Set(foldedPatches(patches, verts, quads, topo.nq).filter((q) => touched.has(q)));
+  for (const q of strayEdgePatches(patches, topo.nq, touched)) reb.add(q);
+  const left = reb.size ? coonsPatches(patches, verts, quads, topo.nq, [...reb]) : [];
+  const onlyStill = new Set(still);
+  const after = new Set(foldedPatches(patches, verts, quads, topo.nq).filter((q) => onlyStill.has(q)));
+  for (const q of strayEdgePatches(patches, topo.nq, onlyStill)) after.add(q);
+  return after.size + left.length;
 }
 
 // Fit, then make sure no patch folds. First undo the fit at the corners of
@@ -439,10 +651,19 @@ export function foldedPatches(patches, verts, quads, nq) {
 // those corners and their neighbours toward the average of their ring, a
 // little at a time, until it untwists. Returns how many cage points had to
 // be relaxed: those spots are smoothed past the original shape.
-function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
+export function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
   let fitted = passes ? fitCage(verts, quads, topo, crease, passes, { fitBelow }) : Float64Array.from(verts);
   let folded = [];
-  const check = (pts) => foldedPatches(catmullClarkPatches(pts, quads, topo, crease).patches, pts, quads, topo.nq);
+  // bad = folded, or edges that project elsewhere; `near` limits the costly
+  // projection test to patches around the points just moved
+  const check = (pts, near = null) => {
+    const { patches } = catmullClarkPatches(pts, quads, topo, crease);
+    const out = new Set(foldedPatches(patches, pts, quads, topo.nq));
+    let only = null;
+    if (near) { only = new Set(); for (const v of near) for (const q of topo.vfaces[v]) only.add(q); }
+    for (const q of strayEdgePatches(patches, topo.nq, only)) out.add(q);
+    return [...out];
+  };
   for (let round = 0; round < 4 && passes; round++) {
     folded = check(fitted);
     if (!folded.length) break;
@@ -454,7 +675,7 @@ function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
   folded = check(fitted);
   const relaxed = new Set();
   let uncreased = 0;
-  if (!folded.length) return { fitted, folded: 0, relaxed: 0, uncreased };
+  if (!folded.length) return { fitted, folded: 0, bad: [], relaxed: 0, uncreased };
   const ring = Array.from({ length: topo.nv }, () => []);
   for (const e of topo.edges.values()) { ring[e.a].push(e.b); ring[e.b].push(e.a); }
   const relax = (rounds) => {
@@ -476,7 +697,7 @@ function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
         }
       }
       fitted = next;
-      folded = check(fitted);
+      folded = check(fitted, move);
     }
   };
   relax(40);
@@ -500,7 +721,7 @@ function fitSafely(verts, quads, topo, crease, passes, fitBelow) {
     folded = check(fitted);
     relax(40);
   }
-  return { fitted, folded: folded.length, relaxed: relaxed.size, uncreased };
+  return { fitted, folded: folded.length, bad: folded, relaxed: relaxed.size, uncreased };
 }
 
 // ------------------------------------------------------------ STEP text
@@ -512,8 +733,10 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
   const topo = cageTopology(verts, quads);
   if (topo.nq < 1) throw new Error("the cage has no quads");
   const crease = wantCreases ? findCreases(verts, quads, topo, creaseAngle) : null;
-  const { fitted, folded, relaxed, uncreased } = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
+  const { fitted, bad, relaxed, uncreased } = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
   const { patches, corners } = catmullClarkPatches(fitted, quads, topo, crease);
+  const flattened = bad?.length || 0;
+  const folded = repairPatches(patches, fitted, quads, topo, bad);
   const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
 
   const out = [];
@@ -583,6 +806,8 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
     creases: crease ? crease.creases.size : 0,
     mesh: mesh ? patchesToStl(patches, topo.nq, name) : undefined,
     holesFilled: closed.holes,
+    merged: closed.merged || 0,
+    flattened,
     folded,
     relaxed,
     uncreased,
@@ -620,6 +845,8 @@ export function cageToStl(verts, quads, { name = "smooth", segs = 3, creaseAngle
   quads = outwardQuads(verts, closed.quads);
   const topo = cageTopology(verts, quads);
   const crease = creases ? findCreases(verts, quads, topo, creaseAngle) : null;
-  const { patches } = catmullClarkPatches(fitSafely(verts, quads, topo, crease, fit, closed.originalVerts).fitted, quads, topo, crease);
+  const fs = fitSafely(verts, quads, topo, crease, fit, closed.originalVerts);
+  const { patches } = catmullClarkPatches(fs.fitted, quads, topo, crease);
+  repairPatches(patches, fs.fitted, quads, topo, fs.bad);
   return patchesToStl(patches, topo.nq, name, segs);
 }

@@ -5010,7 +5010,6 @@
     // a dialog can carry data-bg-busy instead. ?bg=log prints what it does.
     import { createScheduler } from "./bgjobs.js";
     import { queueCage, getCage, needCage } from "./cage.js";
-    import { cageToStep } from "../src/smoothstep.js";
     const bg = createScheduler({
       log: /[?&]bg=log\b/.test(location.search) ? (l) => console.log(`[bg] ${l}`) : null,
     });
@@ -18486,7 +18485,14 @@ let SIMPLIFY_TARGET = 10000;
         cage = await withLoadBar("Laying out the surface patches…", needCage(bg, name));
         if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
         await new Promise((res) => setTimeout(res, 30));       // let the bar paint before the writer runs
-        r = cageToStep(cage.verts, cage.quads, { name: name.replace(/\.\w+$/, ""), mesh: true });
+        // in its own worker: the fit and the patch checks take a few seconds
+        r = await withLoadBar("Fitting the smooth patches…", new Promise((resolve, reject) => {
+          const w = new Worker(new URL("./smooth-worker.js", import.meta.url), { type: "module" });
+          w.onmessage = ({ data }) => { w.terminate(); if (data.ok) resolve(data.result); else reject(new Error(data.error)); };
+          w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "the smooth-surface worker crashed")); };
+          // copies: the cached cage stays usable for another try
+          w.postMessage({ verts: cage.verts.slice(), quads: cage.quads.slice(), name: name.replace(/\.\w+$/, "") });
+        }));
         // A patch that still turns over would be refused by the kernel after a
         // long try, and the fallback would then chew through the whole preview
         // mesh. Say so now instead.
@@ -18510,6 +18516,7 @@ let SIMPLIFY_TARGET = 10000;
         r.creases ? `sharp edges kept along ${r.creases.toLocaleString()} cage edges` : "",
         r.holesFilled ? `${r.holesFilled} small gap${r.holesFilled === 1 ? "" : "s"} in the layout closed` : "",
         r.relaxed ? `${r.relaxed} tight spot${r.relaxed === 1 ? "" : "s"} smoothed a little more than the rest` : "",
+        r.flattened ? `${r.flattened} patch${r.flattened === 1 ? "" : "es"} kept flatter where a sharp edge cuts across ${r.flattened === 1 ? "it" : "them"}` : "",
       ].filter(Boolean).join(", ");
       hint.innerHTML = `<b>${esc(name)}</b> wrapped in a smooth surface: ${cage.triangles.toLocaleString()} triangles → `
         + `<b>${r.faces.toLocaleString()} curved faces</b>${notes ? ` (${notes})` : ""}. `

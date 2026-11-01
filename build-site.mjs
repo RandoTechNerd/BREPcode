@@ -154,6 +154,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   // background jobs (warm-ups, the smooth-surface cage) and the cage worker,
   // which is loaded by URL like the build worker below
   "bgjobs.js", "cage.js", "cage-stages.js", "cage-worker.js",
+  // the smooth-surface writer's worker (src/smoothstep.js), also loaded by URL
+  "smooth-worker.js",
   // the build worker: loaded by URL rather than imported, so nothing else
   // references it — leaving it out ships a site that silently falls back to
   // freezing the main thread on every build.
