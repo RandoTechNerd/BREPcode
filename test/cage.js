@@ -126,5 +126,41 @@ if (existsSync(WOBBLY)) {
   check("real STL: watertight all-quad cage", t.open === 0 && t.non === 0 && out.quads.length > 0);
 }
 
+console.log("\ncage: a stage that never finishes is retried on another seed\n");
+{
+  // QuadriFlow loops forever on the Taco Bell bag's imported mesh with seed 0
+  // (the index map never returns) and finishes in 3 s with seeds 1-3. A fake
+  // worker plays that: seed 0 never answers stage 4, any other seed does.
+  const { createScheduler } = await import("../viewer/bgjobs.js");
+  const { queueCage, setStageLimits, setWorkerUrl } = await import("../viewer/cage.js");
+  const made = [];
+  globalThis.Worker = class {
+    constructor() { this.seed = null; this.dead = false; made.push(this); }
+    postMessage(m) {
+      if (this.dead) return;
+      if (m.op === "begin") this.seed = m.seed ?? 0;
+      const reply = () => this.onmessage?.({ data: m.op === "finish"
+        ? { id: m.id, ok: true, verts: new Float64Array(12), quads: new Int32Array([0, 1, 2, 3]) }
+        : { id: m.id, ok: true, ms: 1, triangles: 8, vertices: 6 } });
+      if (m.op === "stage" && m.k === 4 && this.seed === 0) return;      // stuck
+      setTimeout(reply, 1);
+    }
+    terminate() { this.dead = true; }
+  };
+  setWorkerUrl("fake");
+  setStageLimits({ base: 60, perTriangle: 0 });
+  const s = createScheduler({ settleMs: 0, idle: (f) => setTimeout(f, 0), env: () => ({ cores: 8 }) });
+  s.start();
+  const stl = "solid t\n facet normal 0 0 1\n  outer loop\n   vertex 0 0 0\n   vertex 1 0 0\n   vertex 0 1 0\n  endloop\n endfacet\nendsolid t";
+  const t0 = Date.now();
+  const job = queueCage(s, "stuck.stl", stl);
+  const cage = await job.promise.catch((e) => ({ err: e }));
+  check("a stuck stage doesn't hang the job: it finishes on the next seed", cage && !cage.err && cage.seed === 1, cage?.err?.message || `seed ${cage?.seed}`);
+  check("the stuck worker was thrown away", made[0]?.dead === true && made.length === 2);
+  check(`and it took about one deadline, not forever (${Date.now() - t0} ms)`, Date.now() - t0 < 2000);
+  check("the scheduler is free again for other background jobs", s.status().current === null);
+  setStageLimits({ base: 15000, perTriangle: 0.25 });
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);

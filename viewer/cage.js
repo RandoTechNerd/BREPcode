@@ -61,6 +61,19 @@ function rpc(worker) {
   };
 }
 
+// Per-stage deadline for QuadriFlow (see run() below): generous, since a
+// stage that is merely slow must never be cut off.
+let STAGE_BASE_MS = 15000;
+let STAGE_MS_PER_TRIANGLE = 0.25;       // 225k triangles -> 71 s per stage
+// test/cage.js shortens these to prove a stuck stage is retried, not waited on
+export function setStageLimits({ base = STAGE_BASE_MS, perTriangle = STAGE_MS_PER_TRIANGLE } = {}) {
+  STAGE_BASE_MS = base; STAGE_MS_PER_TRIANGLE = perTriangle;
+}
+const SEEDS = [0, 1, 2];
+class StageTimeout extends Error {
+  constructor(msg) { super(`${msg.op === "stage" ? STAGE_NAMES[msg.k] : msg.op} ran too long`); this.name = "StageTimeout"; }
+}
+
 export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, onProgress = null } = {}) {
   if (typeof stl !== "string" || !/^\s*solid/.test(stl)) return null;
   const key = keyOf(stl);
@@ -82,30 +95,54 @@ export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, on
     kill,
     run: async (ctx) => {
       const t0 = performance.now();
-      worker = new Worker(workerUrl || new URL("./cage-worker.js", import.meta.url), { type: "module" });
-      link = rpc(worker);
-      try {
-        await ctx.checkpoint();
-        const begun = await link.call({ op: "begin", stl, faces, sharp });
-        const stageMs = [];
-        for (let k = 0; k < STAGE_NAMES.length; k++) {
-          await ctx.checkpoint();             // the pause point: between stages
-          onProgress?.({ name, stage: k, of: STAGE_NAMES.length, label: STAGE_NAMES[k] });
-          const r = await link.call({ op: "stage", k });
-          stageMs.push(Math.round(r.ms));
-        }
-        await ctx.checkpoint();
-        const out = await link.call({ op: "finish" });
-        const cage = {
-          name, verts: out.verts, quads: out.quads,
-          triangles: begun.triangles, stageMs, ms: Math.round(performance.now() - t0),
+      // QuadriFlow can loop forever on some meshes with some random seeds:
+      // the Taco Bell bag, after the import's repair, never leaves the index
+      // map with seed 0, and finishes in 3 s with seeds 1, 2 and 3. So every
+      // stage runs against a deadline sized from the mesh (Benchy's 225k
+      // triangles need ~9 s for the slowest stage), and a stage that blows it
+      // costs that worker and a retry on the next seed. A cage that never
+      // finishes would also hold up every other background job.
+      const stageLimit = STAGE_BASE_MS + triangles * STAGE_MS_PER_TRIANGLE;
+      let lastErr = null;
+      for (const seed of SEEDS) {
+        worker = new Worker(workerUrl || new URL("./cage-worker.js", import.meta.url), { type: "module" });
+        link = rpc(worker);
+        const call = (msg) => {
+          const l = link;
+          if (!l) return Promise.reject(new Error("stopped to make room for foreground work"));
+          let timer;
+          return Promise.race([
+            l.call(msg),
+            new Promise((_, rej) => { timer = setTimeout(() => rej(new StageTimeout(msg)), stageLimit); }),
+          ]).finally(() => clearTimeout(timer));
         };
-        cache.set(name, { key, cage });
-        return cage;
-      } finally {
-        worker?.terminate();
-        worker = null; link = null;
+        try {
+          await ctx.checkpoint();
+          const begun = await call({ op: "begin", stl, faces, sharp, seed });
+          const stageMs = [];
+          for (let k = 0; k < STAGE_NAMES.length; k++) {
+            await ctx.checkpoint();             // the pause point: between stages
+            onProgress?.({ name, stage: k, of: STAGE_NAMES.length, label: STAGE_NAMES[k], seed });
+            const r = await call({ op: "stage", k });
+            stageMs.push(Math.round(r.ms));
+          }
+          await ctx.checkpoint();
+          const out = await call({ op: "finish" });
+          const cage = {
+            name, verts: out.verts, quads: out.quads, seed,
+            triangles: begun.triangles, stageMs, ms: Math.round(performance.now() - t0),
+          };
+          cache.set(name, { key, cage });
+          return cage;
+        } catch (e) {
+          if (!(e instanceof StageTimeout)) throw e;
+          lastErr = e;                          // try the next seed on a fresh worker
+        } finally {
+          worker?.terminate();
+          worker = null; link = null;
+        }
       }
+      throw new Error(`the surface layout didn't settle on this mesh (${lastErr?.message || "timed out"}, ${SEEDS.length} tries)`);
     },
   });
   return job;

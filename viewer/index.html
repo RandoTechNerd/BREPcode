@@ -4716,6 +4716,11 @@
     // build (on the JS kernel meanwhile) is still running, and then that
     // build's reply is the moment to rebuild on it, not the smlibReady.
     let smlibArrived = false;
+    // The same race for the Rust kernel: it lands in a few seconds, but the
+    // JS-kernel build it fell back to (an imported mesh: ~15 s) answers
+    // after it, so the rustReady found nothing to redo and the model stayed
+    // on the JS kernel until the next edit. That reply rebuilds instead.
+    let rustArrived = false;
     // " · Exact" (Rust kernel, STEP-able), " · Mesh" (has textures/imports),
     // " · JS kernel (...)" when the split engine refused and the JS kernel built it.
     function engineNote(e) {
@@ -4733,7 +4738,9 @@
       if (e.engine === "exact") return " · Exact" + native + rounded;
       if (e.engine === "mesh") return " · Mesh" + native + rounded;
       if (!e.fallback) return "";
-      return e.fallbackKind === "loading" ? ` · JS kernel (${buildKernel() === "nvidia" && !window.brepcodeDesktop ? "SMLib" : "Rust"} still loading)`
+      // which one is still on its way: SMLib only until it has arrived; after
+      // that it is the Rust kernel (an import SMLib turned away waits on it)
+      return e.fallbackKind === "loading" ? ` · JS kernel (${buildKernel() === "nvidia" && !window.brepcodeDesktop && !smlibArrived ? "SMLib" : "Rust"} still loading)`
         : e.fallbackKind === "unavailable" ? " · JS kernel (Rust unavailable)"
         : " · JS kernel (Rust refused)";
     }
@@ -4797,6 +4804,7 @@
         kernelWorker = new Worker(url, { type: "module" });
         kernelWorker.onmessage = ({ data }) => {
           if (data?.rustReady) {                // the Rust kernel finished downloading
+            rustArrived = true;
             if (lastEngine?.fallbackKind === "loading") scheduleBuild();
             return;
           }
@@ -11116,6 +11124,7 @@ ${joined}${SITE_TAIL}`), joined);
             fromWorker = true;
             lastEngine = { engine: r.engine || "js", fallback: r.fallback || null, fallbackKind: r.fallbackKind || null, stats: r.stats || null };
             if (r.stats?.smlibLoading && smlibArrived) setTimeout(scheduleBuild, 0);
+            else if (r.fallbackKind === "loading" && rustArrived && !r.stats?.smlibLoading) setTimeout(scheduleBuild, 0);
             // How much of the model actually had to be rebuilt. Worth showing:
             // it is the difference between "this edit was cheap" and "this edit
             // threw the cache away", and without it an incremental build that
@@ -18511,6 +18520,43 @@ let SIMPLIFY_TARGET = 10000;
         scheduleBuild();
         hint.textContent = `Back to the mesh of ${name}. The smooth version is still on hand as importedSolid(${JSON.stringify(stepName)}).`;
       });
+      watchSmoothBuild(name, stepName, meshCode);
+    }
+
+    // The wrap is only a smooth SOLID once the exact kernel accepts it. Some
+    // shapes come out with a patch folded over (a 20k Benchy: thin walls and
+    // sharp corners), the Rust kernel refuses the STEP ("pcurve fit
+    // refused"), and the JS kernel shows the fallback mesh instead, under a
+    // hint still saying it worked. Wait for the real build (past a "Rust
+    // still loading" one) and say plainly when it didn't hold up.
+    async function watchSmoothBuild(name, stepName, meshCode) {
+      const call = `importedSolid(${JSON.stringify(stepName)})`;
+      const t0 = Date.now();
+      while (Date.now() - t0 < 240000) {
+        await new Promise((r) => setTimeout(r, 1000));
+        if (!code.value.includes(call)) return;            // edited or undone meanwhile
+        if (!(await whenBuilt(5000))) continue;
+        if (lastEngine?.fallbackKind === "loading") continue;
+        if (lastEngine?.engine === "exact") return;          // a real smooth solid
+        if (lastEngine?.fallbackKind !== "refused") return;
+        const why = /pcurve fit refused|stations stand/.test(lastEngine.fallback || "")
+          ? "one of its patches folds over where the shape turns too sharply for the patch size"
+          : String(lastEngine.fallback || "").replace(/^Rust kernel, [^:]*: /, "").slice(0, 140);
+        logEvent("smooth", name, { ok: false, refused: true });
+        hint.innerHTML = `The smooth surface for <b>${esc(name)}</b> didn't hold up as a solid: ${esc(why)}. `
+          + `What you see is the mesh standing in for it, and a STEP export would be facets, not curves. `
+          + `Parts with thin walls and sharp corners (a Benchy) usually do better with <b>Open as an exact solid</b> from the drop menu. `
+          + `<button id="smooth-refused-back" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Back to the mesh</button>`;
+        setStatus("warn", `${name}: the smooth surface was refused by the exact kernel; showing the mesh.`);
+        $("smooth-refused-back")?.addEventListener("click", () => {
+          pushHistory(code.value);
+          code.value = meshCode;
+          pushHistory();
+          scheduleBuild();
+          hint.textContent = `Back to the mesh of ${name}.`;
+        });
+        return;
+      }
     }
 
     // ------------------------------------------- mesh -> exact solid (beta)
