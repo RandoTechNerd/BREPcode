@@ -4,8 +4,8 @@ version = 4
 
 [[package]]
 name = "BREP_RANSAC"
-version = "0.1.4"
-source = "git+https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL?rev=75bad91750536b9b4fbac607b14c44b68070de6c#75bad91750536b9b4fbac607b14c44b68070de6c"
+version = "0.1.5"
+source = "git+https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL?rev=4661b90d764a7b58c2ddba18a048f80e51463221#4661b90d764a7b58c2ddba18a048f80e51463221"
 dependencies = [
  "serde",
  "web-time",
@@ -13,8 +13,8 @@ dependencies = [
 
 [[package]]
 name = "BREP_kernel"
-version = "0.9.0"
-source = "git+https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL?rev=75bad91750536b9b4fbac607b14c44b68070de6c#75bad91750536b9b4fbac607b14c44b68070de6c"
+version = "0.11.0"
+source = "git+https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL?rev=4661b90d764a7b58c2ddba18a048f80e51463221#4661b90d764a7b58c2ddba18a048f80e51463221"
 dependencies = [
  "BREP_RANSAC",
  "rayon",
@@ -29,8 +29,8 @@ dependencies = [
 
 [[package]]
 name = "BREP_reconstruction"
-version = "0.6.0"
-source = "git+https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL?rev=75bad91750536b9b4fbac607b14c44b68070de6c#75bad91750536b9b4fbac607b14c44b68070de6c"
+version = "0.8.0"
+source = "git+https://github.com/mmiscool/next.BREP.io_RUST_BREP_KERNEL?rev=4661b90d764a7b58c2ddba18a048f80e51463221#4661b90d764a7b58c2ddba18a048f80e51463221"
 dependencies = [
  "BREP_RANSAC",
  "BREP_kernel",
@@ -67,7 +67,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "brepcode_native"
-version = "0.9.0-brepcode.1"
+version = "0.11.0-brepcode.1"
 dependencies = [
  "BREP_kernel",
  "BREP_reconstruction",

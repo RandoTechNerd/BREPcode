@@ -80,6 +80,12 @@ Three files live on brepcode.com and never in the zip:
   kernel (the status line says "JS kernel (Rust unavailable)"), and the drop
   menu's exact-solid option reports that it can't load.
 
+  2026-11-01, kernel 0.11.0: uploaded to
+  `/__l5e/assets-v1/cc79d90c-f532-409d-a73c-62eea681aa5d/brep_kernel_bg.wasm`
+  (16,636,299 bytes, checked byte for byte) and set as `__BREP_RUST_WASM_URL`.
+  The 0.9.0 asset at `34d5b7bb-...` must stay: it is `__BREP_STL2STEP_LEGACY_URL`,
+  the build "Open as an exact solid" falls back to (`vendor/brep-stl2step-legacy`).
+
 Not host-owned: the SMLib kernel as WebAssembly,
 `vendor/brep-kernel-smlib/smlib.wasm` (4.4 MB; the website's default kernel,
 Settings > Kernel > "SMLib (alpha), then Rust"). It fits in `/brep/`, so it ships in the zip and the

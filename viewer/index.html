@@ -153,7 +153,14 @@
       // is too big for /brep/ too, so it sits in the asset store (uploaded
       // 2026-10-27). A rebuilt Rust kernel has to be uploaded again and this
       // address changed (docs/deploy-lovable.md).
-      window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/34d5b7bb-03c8-4928-b642-cecc4a3ca36c/brep_kernel_bg.wasm";
+      // 2026-11-01: kernel 0.11.0 (16.6 MB, sha256 1f188c7e...), uploaded the
+      // same day. The 0.9.0 asset (34d5b7bb-...) stays, as the STL -> STEP
+      // second opinion below.
+      window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/cc79d90c-f532-409d-a73c-62eea681aa5d/brep_kernel_bg.wasm";
+      // The 0.9.0 build kept as the STL -> STEP second opinion
+      // (vendor/brep-stl2step-legacy, 14.5 MB, src/stlexact.js) is the file
+      // the asset store has held since 2026-10-27 (byte-identical), so it reuses that.
+      window.__BREP_STL2STEP_LEGACY_URL = "/__l5e/assets-v1/34d5b7bb-03c8-4928-b642-cecc4a3ca36c/brep_kernel_bg.wasm";
       // The SMLib kernel (vendor/brep-kernel-smlib/smlib.wasm, 4.4 MB) fits in
       // /brep/ and ships in the zip, so it needs nothing here. If it ever has
       // to move to the asset store, upload smlib.wasm there and set:
@@ -4607,6 +4614,7 @@
     import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
     import { LineMaterial } from "three/addons/lines/LineMaterial.js";
     import * as dsl from "../src/dsl.js";
+    import * as stlexact from "../src/stlexact.js";
     import * as codemap from "../src/codemap.js";
     import { faceEdges } from "./faceedges.js";
     import { initModeSwitch } from "./design.js";
@@ -18972,9 +18980,9 @@ let SIMPLIFY_TARGET = 10000;
 
     // ------------------------------------------ mesh -> a solid, chosen
     // "Open as a solid": both ways at once, then the better one. The exact
-    // rebuild (next.BREP.io's stl2step reconstruction) runs in a kernel worker
-    // of its own, so a slow one can be stopped without touching the build
-    // worker, while the smooth surface is laid out and fitted alongside.
+    // rebuild (next.BREP.io's stl2step reconstruction) runs in workers of its
+    // own (exactRebuildApart), so a slow one can be stopped without touching
+    // the build worker, while the smooth surface is laid out and fitted alongside.
     // Exact wins when at most half the mesh came back as plain triangles (a
     // CAD part: the Gaggia mast's 1,202 triangles -> 33 planes and cylinders
     // in 0.5 s). Smooth wins when the rebuild failed (organic meshes often
@@ -18983,23 +18991,21 @@ let SIMPLIFY_TARGET = 10000;
     // soon as the smooth surface is ready, and past 30 s regardless (one 92k
     // vase took 68 s only to fail).
     const EXACT_MAX_FACETED = 0.5;
+    // The exact attempt goes through src/stlexact.js: the current kernel's
+    // reconstruction first, the 0.9.0 build as a second opinion when that one
+    // fails, traps, hangs or only repairs facets, each in a throwaway worker
+    // (stl2stepAttempt below). stop() ends whichever attempt is running.
     function exactRebuildApart(stl, name) {
-      const url = new URL("kernel-worker.js", import.meta.url);
-      url.searchParams.set("engine", "split");              // the Rust kernel only, no SMLib
-      if (window.__BREP_RUST_WASM_URL) url.searchParams.set("rust", window.__BREP_RUST_WASM_URL);
-      const w = new Worker(url, { type: "module" });
-      let over = false;
-      const stop = () => { if (!over) { over = true; w.terminate(); } };
-      const promise = new Promise((resolve, reject) => {
-        w.onmessage = ({ data }) => {
-          if (data?.id !== 1) return;                         // its rustReady and the like
-          stop();
-          if (data.ok) resolve(data); else reject(new Error(data.error));
-        };
-        w.onerror = (e) => { stop(); reject(new Error(e.message || "the exact rebuild crashed")); };
-        w.postMessage({ id: 1, op: "stl2step", stl, name: name.replace(/\.\w+$/, ""), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+      let stopped = false;
+      const live = new Set();
+      const run = (engine) => (stopped
+        ? Promise.resolve({ ok: false, engine, stopped: true, error: "stopped" })
+        : stl2stepAttempt(engine, stl, name.replace(/\.\w+$/, ""), live));
+      const promise = stlexact.convertStlToExact(run).then(({ best, attempts, error }) => {
+        if (!best) throw new Error(error);
+        return { ...best, ms: attempts.reduce((n, x) => n + (x.ms || 0), 0), tried: attempts.length };
       });
-      return { promise, stop };
+      return { promise, stop: () => { stopped = true; for (const end of [...live]) end(); } };
     }
     async function convertImportAuto(name) {
       const stl = dsl.getImport(name);
@@ -19062,6 +19068,32 @@ let SIMPLIFY_TARGET = 10000;
     // right away, so the viewport IS the preview; Keep or Back to mesh decides.
     // CAD-made parts come out beautifully (1,202 triangles -> 33 faces); an
     // organic model mostly stays facets, and the summary says so.
+    // One reconstruction attempt (engine "current" | "legacy") in a fresh
+    // worker that is terminated after: a trap or a hang inside it never
+    // reaches the build worker's kernel, and the cap ends a hang. Resolves
+    // { ok: false, ... } rather than rejecting, so the policy can compare.
+    function stl2stepAttempt(engine, stl, name, live = null) {
+      return new Promise((resolve) => {
+        const url = new URL("./stl2step-worker.js", import.meta.url);
+        url.searchParams.set("engine", engine);
+        const wasm = engine === "legacy" ? window.__BREP_STL2STEP_LEGACY_URL : window.__BREP_RUST_WASM_URL;
+        if (wasm) url.searchParams.set("wasm", wasm);
+        const w = new Worker(url, { type: "module" });
+        const t0 = performance.now();
+        let done = false;
+        const finish = (r) => { if (done) return; done = true; clearTimeout(cap); live?.delete(end); w.terminate(); resolve(r); };
+        const end = () => finish({ ok: false, engine, stopped: true, ms: Math.round(performance.now() - t0), error: "stopped" });
+        live?.add(end);
+        const cap = setTimeout(() => finish({ ok: false, engine, timedOut: true, ms: Math.round(performance.now() - t0),
+          error: `no result after ${Math.round(stlexact.STL_EXACT_CAP_MS / 1000)} s` }), stlexact.STL_EXACT_CAP_MS);
+        w.onmessage = ({ data }) => {
+          if (data.ready) { w.postMessage({ id: 1, stl, name }); return; }
+          finish(data);
+        };
+        w.onerror = (e) => { e.preventDefault?.(); finish({ ok: false, engine, crashed: true, error: e.message || "the reconstruction worker crashed" }); };
+      });
+    }
+
     // pre: a reconstruction already done (the automatic choice ran it)
     async function convertImportToExact(name, pre = null, why = "") {
       const stl = dsl.getImport(name);
@@ -19073,8 +19105,11 @@ let SIMPLIFY_TARGET = 10000;
       setStatus("busy", `Rebuilding ${name} as an exact solid…`);
       let r;
       try {
-        r = pre || await withLoadBar("Rebuilding the surfaces…",
-          workerCall({ op: "stl2step", stl, name: name.replace(/\.\w+$/, ""), rustWasmUrl: window.__BREP_RUST_WASM_URL }));
+        // src/stlexact.js: the current kernel's reconstruction first, the
+        // 0.9.0 build as a second opinion when that one fails, traps, hangs or
+        // only repairs facets (exactRebuildApart). "Open as a solid" hands in
+        // the result it already has.
+        r = pre || await withLoadBar("Rebuilding the surfaces…", exactRebuildApart(stl, name).promise);
       } catch (e) {
         const why = String(e?.message || e).replace(/:?\s*\[ValidationIssue.*$/s, "").slice(0, 220);
         logEvent("exact", name, { ok: false });
@@ -19094,10 +19129,14 @@ let SIMPLIFY_TARGET = 10000;
         .filter(([n]) => n).map(([n, w]) => `${n.toLocaleString()} ${w}${n === 1 ? "" : w === "torus" ? "es" : "s"}`).join(", ");
       // Mostly facets = the triangles came back as triangles: it's still exact,
       // but there was no CAD shape hiding in it, and the mesh is the lighter one.
-      const faceted = r.faces > 0.4 * r.sourceTriangles;
+      // Read from the converter's own report (src/stlexact.js exactShare): a
+      // face count against the triangle count called a 12-triangle box, 6
+      // perfect planes, "mostly facets".
+      const faceted = stlexact.exactShare(r) < 0.5;
       hint.innerHTML = (why ? `${why} ` : "") + `<b>${esc(name)}</b> rebuilt as an exact solid in ${(r.ms / 1000).toFixed(1)} s: `
         + `${r.sourceTriangles.toLocaleString()} triangles → <b>${r.faces.toLocaleString()} face${r.faces === 1 ? "" : "s"}</b>${kinds ? ` (${kinds})` : ""}`
-        + `${r.solids > 1 ? `, ${r.solids} separate solids` : ""}. `
+        + `${r.solids > 1 ? `, ${r.solids} separate solids` : ""}`
+        + `${r.engine === "legacy" ? " (by the earlier reconstruction, which found more real surfaces in this one)" : ""}. `
         + (faceted
           ? `Most of it is still facets: this looks like an organic or sculpted shape, so there were few real surfaces to recover. The mesh is usually the better choice here. `
           : `Those are real surfaces now: cut it exactly, and export STEP with <b>Surfaces: True curved</b> to hand a CAD program the real geometry (the faceted STEP stays triangles). `)

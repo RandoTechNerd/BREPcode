@@ -615,40 +615,10 @@ self.onmessage = async ({ data, ports }) => {
       self.postMessage({ id, ok: true, text: res.data });
       return;
     }
-    if (op === "stl2step") {
-      // STL -> exact solid (the drop menu's "Open as an exact solid"): the
-      // upstream stl2step reconstruction, built into the same wasm as the
-      // kernel. Returns the STEP text plus what it recognised, so the page can
-      // say "33 faces: 25 planes, 8 cylinders" before you keep it.
-      const t0 = performance.now();
-      let text = null;
-      if (await nativeKernel()) {
-        try { text = (await nativeCall({ op: "stl2step", stl: data.stl, options: data.options, name: data.name || "part" })).json; }
-        catch (e) { if (e.fromHost) throw e; dropNative(`native stl2step failed: ${e.message || e}`); }
-      }
-      if (text == null) {
-        const rust = await loadRust(data.rustWasmUrl);
-        if (typeof rust.stl_to_step_json !== "function") throw new Error("this kernel build has no STL reconstruction (rebuild vendor/brep-kernel-rust from BREPcodeRustKernel/brepcode-kernel)");
-        const bytes = typeof data.stl === "string" ? new TextEncoder().encode(data.stl) : new Uint8Array(data.stl);
-        text = rust.stl_to_step_json(bytes, data.options ? JSON.stringify(data.options) : "", data.name || "part");
-      }
-      const out = JSON.parse(text);
-      const ms = Math.round(performance.now() - t0);
-      const count = (re) => (out.step.match(re) || []).length;
-      const faces = count(/ADVANCED_FACE\(/g);
-      const planes = count(/=\s*PLANE\(/g), cylinders = count(/CYLINDRICAL_SURFACE\(/g),
-        cones = count(/CONICAL_SURFACE\(/g), spheres = count(/SPHERICAL_SURFACE\(/g), tori = count(/TOROIDAL_SURFACE\(/g);
-      self.postMessage({
-        id, ok: true, step: out.step, ms, sourceTriangles: out.sourceTriangles,
-        backend: out.report?.backend || "", solids: count(/MANIFOLD_SOLID_BREP\(/g),
-        faces, planes, cylinders, cones, spheres, tori,
-        // how much of the mesh stayed triangles: what "Open as a solid" weighs
-        // against the smooth surface (a facet is also a PLANE, so the plane
-        // count alone can't say)
-        facetedTriangles: out.report?.hybrid_rebuild?.faceted_triangles ?? null,
-      });
-      return;
-    }
+    // "stl2step" (Open as an exact solid) moved out of this worker on
+    // 2026-11-01: viewer/stl2step-worker.js, one throwaway worker per attempt,
+    // because the reconstruction can trap or hang on some meshes and this
+    // worker's kernel instance builds every model (src/stlexact.js).
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }
     // from the page, no reply: the desktop's native kernel arriving or going
     if (op === "nativePort") { if (ports?.[0]) setNativePort(ports[0]); return; }

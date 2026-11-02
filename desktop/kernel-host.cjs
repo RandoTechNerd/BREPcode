@@ -9,7 +9,6 @@
 // the worker then builds on its wasm kernel as before.
 //
 // Messages on a port: { id, op: "build", json, tolerance, kernel? }
-//                     { id, op: "stl2step", stl, options, name }
 //                     { id, op: "info" }
 // Replies:            { id, ok: true, ... } | { id, ok: false, error, refusal?, lane? }
 // While a long build runs: { id, progress: true, set, remove, done, total }
@@ -83,10 +82,9 @@ async function build(msg, post) {
   return { ok: true, lane: out.lane, solids, stats: { ...out.stats, native: true, kernel: used, nvidiaRefused, nativeMs: Math.round(ms) } };
 }
 
-function stl2step(msg) {
-  const bytes = typeof msg.stl === "string" ? new TextEncoder().encode(msg.stl) : new Uint8Array(msg.stl);
-  return { ok: true, json: kernel.stl_to_step_json(bytes, msg.options ? JSON.stringify(msg.options) : "", msg.name || "part") };
-}
+// No stl2step here any more: "Open as an exact solid" runs in throwaway
+// wasm workers (viewer/stl2step-worker.js), because a reconstruction that
+// hangs here would hold this one build queue for every model.
 
 function serve(port) {
   port.on("message", ({ data }) => {
@@ -96,7 +94,6 @@ function serve(port) {
         if (!kernel && !(op === "build" && nvidia) && op !== "info") throw new Error(`native kernel unavailable: ${native.load.error}`);
         let r;
         if (op === "build") r = await build(data, (m) => port.postMessage(m));
-        else if (op === "stl2step") r = stl2step(data);
         else if (op === "info") r = { ok: true, info: kernel?.info, nvidia: nvidia ? nvidia.info : null };
         else throw new Error(`unknown op "${op}"`);
         port.postMessage({ id, ...r });
