@@ -136,8 +136,8 @@ export function evalCurve(P, level, t) {
 }
 
 // closest (u, v) on S to p, Gauss-Newton from a start, clamped to the square
-function project(S, p, u, v) {
-  for (let it = 0; it < 6; it++) {
+function project(S, p, u, v, iters = 6) {
+  for (let it = 0; it < iters; it++) {
     const { p: q, du, dv } = evalSurf(S, u, v, true);
     const r = [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
     const a = dot(du, du), b = dot(du, dv), c = dot(dv, dv), e = dot(r, du), f = dot(r, dv);
@@ -268,6 +268,8 @@ export function coarseModel(verts, quads, mesh, opts = {}) {
       f.edges.push({ e, fwd: a < b });
     }
   }
+  // an odd-hole fill keeps its own bicubic, so the edges it shares must not move
+  for (const fl of fills) for (const { a, b } of fl.sides) { const e = edges.get(a < b ? `${a},${b}` : `${b},${a}`); if (e) e.frozen = true; }
   const posOf = (v) => (v < topo.nv ? [corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]] : extra[v - topo.nv]);
   return { cp, faces, edges, fills, splits, extra, corners, topo, sideCtrl, mesh, posOf };
 }
@@ -445,6 +447,30 @@ function folded(S, ref) {
   }
   return js.some((j) => j < 0 || j < 0.01 * maxA);
 }
+// The kernel's edge check, for any span count (smoothstep.js's
+// strayEdgePatches does it for one Bezier): it trims a face by inverting
+// stations along each edge into the surface's (u, v), starting from the
+// nearest of a sampled grid. A fitted face that curls back near its edge (a
+// thin wall) sends a station to the wrong place, and the import is refused
+// with "pcurve fit refused". A face that fails here counts as folded.
+function strayEdges(S, { stations = 9, uvTol = 0.02, distTol = 1e-4 } = {}) {
+  const g = Math.min(32, 8 << Math.max(S.lu, S.lv)), samples = [];
+  for (let a = 0; a <= g; a++) for (let b = 0; b <= g; b++) samples.push([a / g, b / g, evalSurf(S, a / g, b / g)]);
+  let size = 0;
+  for (const s of samples) size = Math.max(size, dist(s[2], samples[0][2]));
+  const n = stations * (1 << Math.max(S.lu, S.lv));
+  for (let side = 0; side < 4; side++) for (let k = 1; k < n; k++) {
+    const t = k / n;
+    const [u0, v0] = side === 0 ? [0, t] : side === 1 ? [1, t] : side === 2 ? [t, 0] : [t, 1];
+    const p = evalSurf(S, u0, v0);
+    let best = samples[0], bd = Infinity;
+    for (const s of samples) { const d = dist(s[2], p); if (d < bd) { bd = d; best = s; } }
+    const [u, v] = project(S, p, best[0], best[1], 25);
+    if (Math.hypot(u - u0, v - v0) > uvTol || dist(evalSurf(S, u, v), p) > distTol * size) return true;
+  }
+  return false;
+}
+
 function quadNormal(model, f) {
   const C = (v) => model.posOf(v);
   const [a, b, c, d] = f.c.map(C);
@@ -545,7 +571,7 @@ export function adapt(model, { tol, maxLevel = MAX_LEVEL, lambda = 0.2, maxPts =
         for (const lam of [lambda, lambda * 8, lambda * 64]) {
           const keep = Float64Array.from(f.S.P);
           fitFace(f, lam);
-          if (!folded(f.S, quadNormal(model, f))) { ok = true; break; }
+          if (!folded(f.S, quadNormal(model, f)) && !strayEdges(f.S)) { ok = true; break; }
           f.S.P = keep;
         }
         if (!ok) foldedNow.push(f);
@@ -563,7 +589,7 @@ export function adapt(model, { tol, maxLevel = MAX_LEVEL, lambda = 0.2, maxPts =
       }
       fitList = [...fitList];
     }
-    for (const f of touched) if (f.foldedFit && folded(f.S, quadNormal(model, f))) {
+    for (const f of touched) if (f.foldedFit && (folded(f.S, quadNormal(model, f)) || strayEdges(f.S))) {
       // last resort: the old surface, refined, with its old boundary (every
       // edge it touched this pass has been put back by now, or never moved)
       if (f.edges.every(({ e }) => !oldP.has(e))) {

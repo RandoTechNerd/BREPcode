@@ -19,7 +19,7 @@ try {
   out.tried = [];
   for (const size of sizes) {
     log(`cage ${size}`);
-    c = await cage(stl, size);
+    c = await cage(stl, size, 1, path);
     t = performance.now();
     model = A.coarseModel(c.verts, c.quads, mesh);
     out.coarseMs = Math.round(performance.now() - t);

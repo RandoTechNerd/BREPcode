@@ -19,20 +19,34 @@ export function loadSTL(path) {
   return { stl, mesh: weldSTL(stl), name: path.replace(/^.*[\\/]/, "").replace(/\.\w+$/, "") };
 }
 
-// QuadriFlow with seed retry; returns { verts, quads, stageMs, ms }
-export async function cage(input, faces, sharp = 1) {
-  for (const seed of [0, 1, 2]) {
+// one seed, in this process
+export async function cage1(input, faces, seed, sharp = 1) {
+  const t0 = performance.now();
+  const msg = input.verts ? { verts: input.verts, tris: input.tris } : { stl: input };
+  const b = await handle({ op: "begin", ...msg, faces, sharp, seed });
+  const stageMs = [b.ms];
+  for (let k = 0; k < 5; k++) stageMs.push((await handle({ op: "stage", k })).ms);
+  const raw = await handle({ op: "finish" });
+  return { ...raw, stageMs: stageMs.map((x) => Math.round(x)), ms: Math.round(performance.now() - t0), seed };
+}
+// QuadriFlow with seed retry; with a file path each seed runs in a child
+// process under a deadline (like the app's per-stage watchdog: some seeds
+// never leave the index map). Returns { verts, quads, stageMs, ms, seed }
+export async function cage(input, faces, sharp = 1, path = null) {
+  const { spawnSync } = await import("node:child_process");
+  const { readFileSync: rf, mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  for (const seed of [0, 1, 2, 3]) {
+    if (!path) { try { return await cage1(input, faces, seed, sharp); } catch { continue; } }
+    const out = `${mkdtempSync(tmpdir() + "/qf-")}/c.json`;
     const t0 = performance.now();
-    try {
-      const msg = input.verts ? { verts: input.verts, tris: input.tris } : { stl: input };
-      const b = await handle({ op: "begin", ...msg, faces, sharp, seed });
-      const stageMs = [b.ms];
-      for (let k = 0; k < 5; k++) stageMs.push((await handle({ op: "stage", k })).ms);
-      const raw = await handle({ op: "finish" });
-      return { ...raw, stageMs: stageMs.map((x) => Math.round(x)), ms: Math.round(performance.now() - t0), seed };
-    } catch { /* next seed */ }
+    const r = spawnSync(process.execPath, [(await import("node:url")).fileURLToPath(new URL("./cagechild.mjs", import.meta.url)), path, String(faces), String(seed), out], { timeout: 60000 });
+    if (r.status !== 0) { process.stderr.write(`  cage ${faces} seed ${seed}: ${r.error ? "timed out" : "failed"} after ${Math.round(performance.now() - t0)} ms
+`); continue; }
+    const c = JSON.parse(rf(out, "utf8"));
+    return { ...c, verts: Float64Array.from(c.verts), quads: Int32Array.from(c.quads), wallMs: Math.round(performance.now() - t0) };
   }
-  throw new Error("cage failed on 3 seeds");
+  throw new Error("cage failed on 4 seeds");
 }
 
 let rust = null;
