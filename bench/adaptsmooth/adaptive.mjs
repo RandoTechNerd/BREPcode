@@ -9,7 +9,7 @@ const [path, q = "400", tolPct = "0.1", ml = "3"] = process.argv.slice(2);
 const { stl, mesh, name } = loadSTL(path);
 const log = (m) => process.stderr.write(`[${new Date().toISOString().slice(11, 19)}] ${m}
 `);
-const out = { lambda: +(process.env.LAMBDA || 0.02), name, triangles: mesh.tris.length / 3, target: +q, tolPct: +tolPct, maxLevel: +ml, mode: process.env.MODE || "adapt" };
+const out = { noise: process.env.NOISE !== "0", lambda: +(process.env.LAMBDA || 0.02), name, triangles: mesh.tris.length / 3, target: +q, tolPct: +tolPct, maxLevel: +ml, mode: process.env.MODE || "adapt" };
 try {
   // AUTO: the smallest coarse cage that keeps the shape (mesh -> surface
   // p95 under 1% of the diagonal); a thin wall or a cabin lost at 400 quads
@@ -42,7 +42,7 @@ try {
     const te = performance.now();
     out.estimate = A.estimate(model, [0.4, 0.2, 0.1, 0.05].map((p) => diag * p / 100), { maxLevel: +ml });
     out.estimateMs = Math.round(performance.now() - te);
-    out.adapt = A.adapt(model, { tol: diag * +tolPct / 100, maxLevel: +ml, lambda: +(process.env.LAMBDA || 0.02) });
+    out.adapt = A.adapt(model, { tol: diag * +tolPct / 100, maxLevel: +ml, lambda: +(process.env.LAMBDA || 0.02), noiseTest: process.env.NOISE !== "0" });
   }
   if (process.env.CONFORM) out.conform = { mode: process.env.CONFORM, ...A.conform(model, process.env.CONFORM) };
   t = performance.now();

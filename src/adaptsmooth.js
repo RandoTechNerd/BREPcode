@@ -332,6 +332,57 @@ function faceError(f) {
   return { p95: ds[Math.floor(ds.length * 0.95)], max: ds.at(-1), n: ds.length };
 }
 
+// Is what a face still misses SHAPE, or noise? (The idea is next.BREP.io's
+// freeform acceptance test; this is our own version of it.) The signed
+// misses along the surface normal are regressed on the basis one more level
+// of refinement would add (the next level's B-spline functions over the face:
+// 5 x 5 = 25 for a face still one patch). If the misses are noise, that fit
+// explains about as much as m random numbers would: ESS / sigma^2 follows a
+// chi-square with m degrees of freedom. Refining only fits noise unless that
+// is unlikely at p = 1e-6, so such a face stops asking for more spans (a
+// scanned or 3D-printed surface's grain, not its shape).
+const NOISE_P = 1e-6;
+function chi2Upper(x, k) {               // Wilson-Hilferty, plenty for a 1e-6 gate
+  const z = (Math.cbrt(x / k) - (1 - 2 / (9 * k))) / Math.sqrt(2 / (9 * k));
+  return 0.5 * erfc(z / Math.SQRT2);
+}
+function erfc(x) {                       // Numerical Recipes erfcc, ~1e-7 relative
+  const z = Math.abs(x), t = 1 / (1 + 0.5 * z);
+  const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+  return x >= 0 ? r : 2 - r;
+}
+function noiseOnly(f) {
+  const lu = Math.min(MAX_LEVEL, f.S.lu + 1), lv = Math.min(MAX_LEVEL, f.S.lv + 1);
+  const U = knotsFor(lu), V = knotsFor(lv), nu = (1 << lu) + 3, nvv = (1 << lv) + 3, m = nu * nvv;
+  const rows = [];
+  for (const d of f.data) {
+    if (d.u <= 0 || d.u >= 1 || d.v <= 0 || d.v >= 1) continue;
+    const { p, du, dv } = evalSurf(f.S, d.u, d.v, true);
+    const n = norm(cross(du, dv));
+    rows.push({ u: d.u, v: d.v, r: dot(sub(d.p, p), n) });
+  }
+  if (rows.length < m + 20) return { noise: false, n: rows.length, m };      // too few points to tell: refine
+  const A = new Float64Array(m * m), B = new Float64Array(m);
+  const a = [0, 0, 0, 0], b = [0, 0, 0, 0];
+  let tss = 0;
+  for (const { u, v, r } of rows) {
+    const su = spanOf(lu, u), sv = spanOf(lv, v);
+    basis(U, su, u, a, null); basis(V, sv, v, b, null);
+    const idx = [], w = [];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { idx.push((su - DEG + i) * nvv + (sv - DEG + j)); w.push(a[i] * b[j]); }
+    for (let x = 0; x < 16; x++) { B[idx[x]] += w[x] * r; for (let y = 0; y < 16; y++) A[idx[x] * m + idx[y]] += w[x] * w[y]; }
+    tss += r * r;
+  }
+  for (let i = 0; i < m; i++) A[i * m + i] += 1e-9 * rows.length / m;
+  const c = Float64Array.from(B), M = Float64Array.from(A);
+  if (!cholSolve(M, m, c, 1)) return { noise: false, n: rows.length, m };
+  let ess = 0;
+  for (let i = 0; i < m; i++) ess += c[i] * B[i];        // c' B = explained sum of squares
+  const rss = Math.max(tss - ess, 1e-30), sigma2 = rss / (rows.length - m);
+  const stat = ess / sigma2, pval = chi2Upper(stat, m);
+  return { noise: pval > NOISE_P, n: rows.length, m, stat, pval };
+}
+
 function edgeError(e, closest) {
   const n = 6 * (1 << e.level) + 1;
   let max = 0, s = 0;
@@ -533,6 +584,81 @@ export function estimate(model, tols, { maxLevel = MAX_LEVEL, gain = 2, coef = t
   });
 }
 
+// ------------------------------------------------- the cage meets the regions
+// QuadriFlow lays its quads out without knowing where a flat region ends, so
+// some quads sit half on a plane and half on the fillet beside it, and stay
+// curved. Before the patches are made, cage corners slide onto those
+// borders: for every cage edge that runs from inside a plane region to
+// outside it, the end nearer the border moves onto the nearest point of the
+// border (mesh edges between the region and anything else). A move that
+// would squash a quad (under 25% of its area) or turn it over is skipped.
+// regionOf(t) is the mesh triangle's region or null. Returns new verts.
+export function alignCageToRegions(verts, quads, mesh, regionOf, { reach = 0.6 } = {}) {
+  const nv = verts.length / 3, nq = quads.length / 4;
+  const V = (i) => [verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]];
+  const isPlane = (r) => r && r.carrier.type === "Plane";
+  // the border: mesh edges whose two triangles are in different regions, one a plane
+  const tri = mesh.tris, owner = new Map();
+  const key = (a, b) => (a < b ? `${a},${b}` : `${b},${a}`);
+  for (let t = 0; t < tri.length / 3; t++) for (let k = 0; k < 3; k++) {
+    const a = tri[t * 3 + k], b = tri[t * 3 + (k + 1) % 3], kk = key(a, b);
+    const o = owner.get(kk); if (o) o.push(t); else owner.set(kk, [t]);
+  }
+  const segs = [];
+  for (const [kk, ts] of owner) {
+    if (ts.length !== 2) continue;
+    const r0 = regionOf(ts[0]), r1 = regionOf(ts[1]);
+    if (r0 === r1 || !(isPlane(r0) || isPlane(r1))) continue;
+    const [a, b] = kk.split(",").map(Number);
+    segs.push([[mesh.verts[a * 3], mesh.verts[a * 3 + 1], mesh.verts[a * 3 + 2]], [mesh.verts[b * 3], mesh.verts[b * 3 + 1], mesh.verts[b * 3 + 2]]]);
+  }
+  if (!segs.length) return { verts: Float64Array.from(verts), moved: 0, skipped: 0, segments: 0 };
+  // quad sizes, and a grid over the border segments
+  let edgeSum = 0;
+  for (let q = 0; q < nq; q++) edgeSum += dist(V(quads[q * 4]), V(quads[q * 4 + 1]));
+  const h = edgeSum / nq, cell = h, grid = new Map(), gk = (x, y, z) => `${x},${y},${z}`;
+  segs.forEach((sg, i) => { const m = [0, 1, 2].map((c) => Math.floor((sg[0][c] + sg[1][c]) / 2 / cell)); const k = gk(...m); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(i); });
+  const nearest = (p) => {
+    const g = p.map((x) => Math.floor(x / cell));
+    let best = null, bd = Infinity;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++)
+      for (const i of grid.get(gk(g[0] + dx, g[1] + dy, g[2] + dz)) || []) {
+        const [a, b] = segs[i], ab = sub(b, a), t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / (dot(ab, ab) || 1)));
+        const q = [a[0] + t * ab[0], a[1] + t * ab[1], a[2] + t * ab[2]], d = dist(p, q);
+        if (d < bd) { bd = d; best = q; }
+      }
+    return { q: best, d: bd };
+  };
+  // which side each cage corner is on: the region of the nearest mesh triangle
+  const idx = meshIndex(mesh.verts, mesh.tris, h / 2);
+  const side = Array.from({ length: nv }, (_, i) => { const hit = idx(V(i)); const r = hit.t >= 0 ? regionOf(hit.t) : null; return isPlane(r) ? r : null; });
+  const out = Float64Array.from(verts);
+  const P = (i) => [out[i * 3], out[i * 3 + 1], out[i * 3 + 2]];
+  const vq = Array.from({ length: nv }, () => []);
+  for (let q = 0; q < nq; q++) for (let k = 0; k < 4; k++) vq[quads[q * 4 + k]].push(q);
+  const quadArea = (q, Pf) => { const [a, b, c, d] = [0, 1, 2, 3].map((k) => Pf(quads[q * 4 + k])); return cross(sub(c, a), sub(d, b)); };
+  const done = new Set();
+  let moved = 0, skipped = 0;
+  const edgesSeen = new Set();
+  for (let q = 0; q < nq; q++) for (let k = 0; k < 4; k++) {
+    const a = quads[q * 4 + k], b = quads[q * 4 + ((k + 1) & 3)], kk = key(a, b);
+    if (edgesSeen.has(kk)) continue;
+    edgesSeen.add(kk);
+    if (side[a] === side[b]) continue;            // both in the same region, or both outside
+    // the end nearer the border moves (each corner at most once)
+    const na = nearest(P(a)), nb = nearest(P(b));
+    const [v, hit] = na.d <= nb.d ? [a, na] : [b, nb];
+    if (done.has(v) || !hit.q || hit.d > reach * h) continue;
+    const before = vq[v].map((qq) => quadArea(qq, P));
+    const old = P(v);
+    out.set(hit.q, v * 3);
+    const ok = vq[v].every((qq, i) => { const n1 = quadArea(qq, P), n0 = before[i]; return dot(n1, n0) > 0 && Math.hypot(...n1) > 0.25 * Math.hypot(...n0); });
+    if (!ok) { out.set(old, v * 3); skipped++; continue; }
+    done.add(v); moved++;
+  }
+  return { verts: out, moved, skipped, segments: segs.length };
+}
+
 // ------------------------------------------------- analytic regions (hybrid)
 // Where another recogniser (next.BREP.io's kernel segmentation, called
 // unchanged through our wasm) says a region of the mesh IS a plane, the faces
@@ -580,16 +706,26 @@ const onCyl = (p, { point: o, axis: a, radius: r }) => {
   if (l < 1e-12) return p;
   return [o[0] + t * a[0] + w[0] * r / l, o[1] + t * a[1] + w[1] * r / l, o[2] + t * a[2] + w[2] * r / l];
 };
-const offCarrier = (p, c) => (c.kind === "cyl" ? dist(onCyl(p, c), p) : Math.abs(dot(sub(p, c.origin), c.normal)));
+// a cone: { kind: "cone", apex, axis (unit, into the region), half (radians) }
+const onCone = (p, { apex: A, axis: d, half }) => {
+  const v = sub(p, A), t = dot(v, d), w = [v[0] - t * d[0], v[1] - t * d[1], v[2] - t * d[2]], rho = Math.hypot(...w);
+  const s = Math.max(0, t * Math.cos(half) + rho * Math.sin(half));
+  const wh = rho > 1e-12 ? w.map((x) => x / rho) : [0, 0, 0];
+  return [0, 1, 2].map((k) => A[k] + d[k] * s * Math.cos(half) + wh[k] * s * Math.sin(half));
+};
+// a sphere: { kind: "sphere", center, radius }
+const onSphere = (p, { center: c, radius: r }) => { const v = sub(p, c), l = Math.hypot(...v) || 1; return [c[0] + v[0] * r / l, c[1] + v[1] * r / l, c[2] + v[2] * r / l]; };
+const onCurved = (p, c) => (c.kind === "cyl" ? onCyl(p, c) : c.kind === "cone" ? onCone(p, c) : onSphere(p, c));
+const offCarrier = (p, c) => (c.kind === "plane" ? Math.abs(dot(sub(p, c.origin), c.normal)) : dist(onCurved(p, c), p));
 // onto every carrier at once: planes exactly (their line, their point);
 // with a cylinder among them, alternating projections (they meet at an
 // angle, so this settles in a few rounds)
 function onCarriers(p, cs) {
-  const pls = cs.filter((c) => c.kind !== "cyl"), cyl = cs.filter((c) => c.kind === "cyl");
+  const pls = cs.filter((c) => c.kind === "plane"), cyl = cs.filter((c) => c.kind !== "plane");
   if (!cyl.length) return onPlanes(p, pls);
   let q = p;
   for (let it = 0; it < 60; it++) {
-    for (const c of cyl) q = onCyl(q, c);
+    for (const c of cyl) q = onCurved(q, c);
     if (pls.length) q = onPlanes(q, pls);
   }
   return q;
@@ -598,7 +734,7 @@ function onCarriers(p, cs) {
 // an edge curve put on its carriers: exact for planes; on a cylinder, refitted
 // to points projected onto it, refined until it stays within `acc`
 function edgeOntoCarriers(e, cs, acc) {
-  if (cs.every((c) => c.kind !== "cyl")) {
+  if (cs.every((c) => c.kind === "plane")) {
     e.P = e.P.map((p) => onCarriers(p, cs));
     return 0;
   }
@@ -634,26 +770,30 @@ function faceOntoCylinder(f, c) {
       basis(S.U, su, u, Nu, null); basis(S.V, sv, v, Nv, null);
       const cols = [], ws = [];
       for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { cols.push((su - DEG + i) * S.nv + (sv - DEG + j)); ws.push(Nu[i] * Nv[j]); }
-      rows.push({ cols, ws, p: onCyl(evalSurf(S, u, v), c) });
+      rows.push({ cols, ws, p: onCurved(evalSurf(S, u, v), c) });
     }
     const free = (k) => { const i = Math.floor(k / S.nv), j = k % S.nv; return i > 0 && i < S.nu - 1 && j > 0 && j < S.nv - 1; };
     const out = fitNet(S.nu, S.nv, free, S.P, rows, 1e-6, 1e-9);
     if (out) S.P = out;
   }
   let worst = 0;
-  for (let a = 0; a <= 12; a++) for (let b = 0; b <= 12; b++) { const p = evalSurf(S, a / 12, b / 12); worst = Math.max(worst, dist(onCyl(p, c), p)); }
+  for (let a = 0; a <= 12; a++) for (let b = 0; b <= 12; b++) { const p = evalSurf(S, a / 12, b / 12); worst = Math.max(worst, dist(onCurved(p, c), p)); }
   return worst;
 }
 
-export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5, flatFrac = 0.001, tolFrac = 0.004, accFrac = 1e-6, lambda = 0.2, grid = 4, kinds = ["Plane", "Cylinder"] } = {}) {
+export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5, flatFrac = 0.001, tolFrac = 0.004, accFrac = 1e-6, lambda = 0.2, grid = 4, kinds = ["Plane", "Cylinder", "Cone", "Sphere"] } = {}) {
   prepare(model);
   const { faces, edges, topo } = model;
   const t0 = performance.now();
   const tol = tolFrac * model.diag, acc = accFrac * model.diag;
   let straddle = 0;          // faces partly (30-80%) in a region that stayed curved: the border runs through them
-  const carrierOf = (r) => (r.carrier.type === "Plane"
-    ? { id: r.id, kind: "plane", origin: r.carrier.origin, normal: norm(r.carrier.normal) }
-    : { id: r.id, kind: "cyl", point: r.carrier.axis_point, axis: norm(r.carrier.axis_dir), radius: r.carrier.radius });
+  const carrierOf = (r) => {
+    const c = r.carrier;
+    if (c.type === "Plane") return { id: r.id, kind: "plane", origin: c.origin, normal: norm(c.normal) };
+    if (c.type === "Cylinder") return { id: r.id, kind: "cyl", point: c.axis_point, axis: norm(c.axis_dir), radius: c.radius };
+    if (c.type === "Cone") return { id: r.id, kind: "cone", apex: c.apex, axis: norm(c.axis_dir), half: c.half_angle_rad };
+    return { id: r.id, kind: "sphere", center: c.center, radius: c.radius };
+  };
   // 1. a face joins a region when nearly all of it (a grid of points over
   //    the face, each taking the region of the mesh triangle nearest to it)
   //    is in that region and its corners lie near the carrier; never next to
@@ -745,7 +885,7 @@ export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5,
     if (f.carrier?.kind === "plane") {
       for (let i = 1; i < f.S.nu - 1; i++) for (let j = 1; j < f.S.nv - 1; j++) f.S.P.set(onPlane(ctrl(f.S, i, j), f.carrier), (i * f.S.nv + j) * 3);
       planar++;
-    } else if (f.carrier?.kind === "cyl") {
+    } else if (f.carrier) {
       faceOff = Math.max(faceOff, faceOntoCylinder(f, f.carrier));
       round++;
     } else {
@@ -771,20 +911,21 @@ export const snapToPlanes = (model, regionOf, opts = {}) => snapToCarriers(model
 // ---------------------------------------------------------------- passes
 // adapt(model, { tol, maxLevel, lambda, onPass }) refines in place.
 // onPass({ pass, faces touched, ms, ... }) after each pass: a live preview hook.
-export function adapt(model, { tol, maxLevel = MAX_LEVEL, lambda = 0.2, maxPts = 120000, onPass = null } = {}) {
+export function adapt(model, { tol, maxLevel = MAX_LEVEL, lambda = 0.2, maxPts = 120000, onPass = null, noiseTest = true } = {}) {
   const { faces, edges } = model;
   const t0 = performance.now();
   prepare(model, { maxPts });
   const { diag, closest } = model;
   tol ??= 0.001 * diag;
   const passes = [];
-  let todoF = [], todoE = [];
+  let todoF = [], todoE = [], noisy = 0;
   for (let pass = 1; pass <= maxLevel + 1; pass++) {
     const tp = performance.now();
     // measure what the last pass touched
     for (const f of todoF) f.err = faceError(f);
     for (const e of todoE) e.err = edgeError(e, closest);
-    const badF = faces.filter((f) => !f.carrier && f.err.n >= 4 && (f.err.p95 > tol || f.err.max > 4 * tol) && (f.level ?? 0) < maxLevel && !f.stuck);
+    let badF = faces.filter((f) => !f.carrier && f.err.n >= 4 && (f.err.p95 > tol || f.err.max > 4 * tol) && (f.level ?? 0) < maxLevel && !f.stuck && !f.noise);
+    if (noiseTest) badF = badF.filter((f) => { const t = noiseOnly(f); if (t.noise) { f.noise = true; noisy++; } return !t.noise; });
     const badE = [...edges.values()].filter((e) => !e.frozen && e.err.max > tol && e.level < maxLevel && !e.stuck);
     const measureMs = performance.now() - tp;
     if (!badF.length && !badE.length) { passes.push({ pass, faces: 0, edges: 0, measureMs: Math.round(measureMs), ms: 0 }); break; }
@@ -863,7 +1004,7 @@ export function adapt(model, { tol, maxLevel = MAX_LEVEL, lambda = 0.2, maxPts =
   for (const f of faces) for (let i = 1; i < (f.hist?.length || 0); i++) if (f.hist[i] > 0 && f.hist[i - 1] > tol) ratios.push(f.hist[i - 1] / f.hist[i]);
   ratios.sort((a, b) => a - b);
   const gain = ratios.length ? +ratios[ratios.length >> 1].toFixed(2) : null;
-  return { tol, diag, passes, prepareMs: model.prepareMs, gain, ms: Math.round(performance.now() - t0), ...summary(model) };
+  return { tol, diag, passes, prepareMs: model.prepareMs, gain, noisy, ms: Math.round(performance.now() - t0), ...summary(model) };
 }
 
 // Make edge knots match face knots, by knot insertion only (exact, nothing
@@ -1042,20 +1183,34 @@ export function modelToStep(model, name = "smooth") {
     for (const f of g.faces) grouped.add(f);
     planeFaces++;
   }
-  let cylFaces = 0;
+  let cylFaces = 0, coneFaces = 0, sphereFaces = 0;
   for (const f of faces) {
     if (grouped.has(f)) continue;
-    if (f.carrier?.kind === "cyl") {
-      // a true CYLINDRICAL_SURFACE, trimmed by the same edge curves
+    if (f.carrier && f.carrier.kind !== "plane") {
+      // a true CYLINDRICAL / CONICAL / SPHERICAL_SURFACE, trimmed by the same edge curves
       const c = f.carrier, { p, du, dv } = evalSurf(f.S, 0.5, 0.5, true);
-      const w = sub(p, c.point), radial = norm(sub(w, c.axis.map((x) => x * dot(w, c.axis))));
-      const same = dot(cross(du, dv), radial) > 0;
-      const ref = norm(Math.abs(c.axis[0]) < 0.9 ? cross(c.axis, [1, 0, 0]) : cross(c.axis, [0, 1, 0]));
+      let out;
+      if (c.kind === "sphere") out = norm(sub(p, c.center));
+      else {
+        const o = c.kind === "cyl" ? c.point : c.apex, w = sub(p, o), radial = norm(sub(w, c.axis.map((x) => x * dot(w, c.axis))));
+        out = c.kind === "cyl" ? radial : norm([0, 1, 2].map((k) => radial[k] * Math.cos(c.half) - c.axis[k] * Math.sin(c.half)));
+      }
+      const same = dot(cross(du, dv), out) > 0;
+      const ax = c.kind === "sphere" ? [0, 0, 1] : c.axis;
+      const ref = norm(Math.abs(ax[0]) < 0.9 ? cross(ax, [1, 0, 0]) : cross(ax, [0, 1, 0]));
       const oes = sidesOf(f).flatMap(({ a, b, P, level }) => sideEdges(a, b, P, level));
       const loop = add(`EDGE_LOOP('',(${oes.map((x) => `#${x}`).join(",")}))`);
-      const surf = add(`CYLINDRICAL_SURFACE('',#${add(`AXIS2_PLACEMENT_3D('',#${pt(c.point)},#${dir(c.axis)},#${dir(ref)})`)},${fmt(c.radius)})`);
+      let surf;
+      if (c.kind === "cyl") surf = add(`CYLINDRICAL_SURFACE('',#${add(`AXIS2_PLACEMENT_3D('',#${pt(c.point)},#${dir(ax)},#${dir(ref)})`)},${fmt(c.radius)})`);
+      else if (c.kind === "sphere") surf = add(`SPHERICAL_SURFACE('',#${add(`AXIS2_PLACEMENT_3D('',#${pt(c.center)},#${dir(ax)},#${dir(ref)})`)},${fmt(c.radius)})`);
+      else {
+        // STEP's cone is placed at a point on its axis with the radius there:
+        // the axis point level with this face's middle
+        const h = Math.max(1e-6, dot(sub(p, c.apex), c.axis)), at = [0, 1, 2].map((k) => c.apex[k] + c.axis[k] * h);
+        surf = add(`CONICAL_SURFACE('',#${add(`AXIS2_PLACEMENT_3D('',#${pt(at)},#${dir(ax)},#${dir(ref)})`)},${fmt(h * Math.tan(c.half))},${fmt(c.half)})`);
+      }
       faceIds.push(add(`ADVANCED_FACE('',(#${add(`FACE_OUTER_BOUND('',#${loop},.T.)`)}),#${surf},${same ? ".T." : ".F."})`));
-      cylFaces++;
+      if (c.kind === "cyl") cylFaces++; else if (c.kind === "cone") coneFaces++; else sphereFaces++;
       continue;
     }
     face(f.S, sidesOf(f));
@@ -1077,6 +1232,8 @@ export function modelToStep(model, name = "smooth") {
     faces: faceIds.length,
     planeFaces,
     cylFaces,
+    coneFaces,
+    sphereFaces,
     mergedFaces: grouped.size,
     unmerged: why,
     step: "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n"
@@ -1099,7 +1256,7 @@ export function modelToTriangles(model, segsPerSpan = 3) {
       T.push(...g(a, b), ...g(a + 1, b + 1), ...g(a, b + 1)); L.push(lvl);
     }
   };
-  for (const f of model.faces) emit(f.S, f.carrier ? (f.carrier.kind === "cyl" ? 9 : 8) : f.stuck && f.foldedFit ? 7 : Math.max(f.S.lu, f.S.lv));
+  for (const f of model.faces) emit(f.S, f.carrier ? (f.carrier.kind === "plane" ? 8 : 9) : f.stuck && f.foldedFit ? 7 : Math.max(f.S.lu, f.S.lv));
   for (const fl of model.fills) emit(makeSurf(0, 0, Float64Array.from(fl.grid)), 6);
   return { tris: Float64Array.from(T), level: Uint8Array.from(L) };
 }

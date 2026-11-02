@@ -13,7 +13,7 @@ const [path, q = "2500", tolPct = "0.1", minTris = "8"] = process.argv.slice(2);
 const SHARE = +(process.env.SHARE || 0.8);
 const { stl, mesh, name } = loadSTL(path);
 const rust = await loadRustKernel();
-const out = { name, triangles: mesh.tris.length / 3, align: !!process.env.ALIGN };
+const out = { name, triangles: mesh.tris.length / 3, align: !!process.env.ALIGN, slide: !!process.env.SLIDE };
 
 let t = performance.now();
 const seg = JSON.parse(rust.segment_mesh_faces_json(JSON.stringify({ positions: [...mesh.verts], indices: [...mesh.tris], options: {} })));
@@ -54,20 +54,23 @@ out.cage = { quads: c.quads.length / 4, ms: c.wallMs ?? c.ms, seed: c.seed };
 for (const mode of (process.env.ONLY ? [process.env.ONLY] : ["plain", "hybrid"])) {
   const r = {};
   t = performance.now();
-  const model = A.coarseModel(c.verts, c.quads, mesh);
+  // SLIDE=1: cage corners slide onto the plane regions' borders first (hybrid only)
+  let cv = c.verts;
+  if (mode === "hybrid" && process.env.SLIDE) { const al = A.alignCageToRegions(c.verts, c.quads, mesh, regionOf); cv = al.verts; r.slide = { moved: al.moved, skipped: al.skipped, segments: al.segments }; }
+  const model = A.coarseModel(cv, c.quads, mesh);
   A.prepare(model);
   r.prepareMs = Math.round(performance.now() - t);
-  if (mode === "hybrid") { log("snap"); r.snap = A.snapToCarriers(model, regionOf, { share: SHARE, kinds: (process.env.KINDS || "Plane,Cylinder").split(",") }); }
+  if (mode === "hybrid") { log("snap"); r.snap = A.snapToCarriers(model, regionOf, { share: SHARE, kinds: (process.env.KINDS || "Plane,Cylinder,Cone,Sphere").split(",") }); }
   log(`${mode}: adapt`);
   r.adapt = A.adapt(model, { tol: model.diag * +tolPct / 100, maxLevel: 3 });
   delete r.adapt.passes;
   t = performance.now();
   const w = A.modelToStep(model, name);
-  r.write = { ms: Math.round(performance.now() - t), faces: w.faces, planeFaces: w.planeFaces, cylFaces: w.cylFaces, mergedFaces: w.mergedFaces, unmerged: w.unmerged, MB: +(w.step.length / 1048576).toFixed(2) };
+  r.write = { ms: Math.round(performance.now() - t), faces: w.faces, planeFaces: w.planeFaces, cylFaces: w.cylFaces, coneFaces: w.coneFaces, sphereFaces: w.sphereFaces, mergedFaces: w.mergedFaces, unmerged: w.unmerged, MB: +(w.step.length / 1048576).toFixed(2) };
   const fin = A.modelToTriangles(model, 3);
   // tint: plane faces level 1, the rest by their own level + 2 (for render.py)
   const lv = []; let k = 0;
-  for (const f of model.faces) { const n = 2 * 9 * (1 << f.S.lu) * (1 << f.S.lv); for (let i = 0; i < n; i++) lv.push(f.carrier ? (f.carrier.kind === "cyl" ? 2 : 1) : 0); k += n; }
+  for (const f of model.faces) { const n = 2 * 9 * (1 << f.S.lu) * (1 << f.S.lv); for (let i = 0; i < n; i++) lv.push(f.carrier ? (f.carrier.kind === "plane" ? 1 : 2) : 0); k += n; }
   for (let i = k; i < fin.level.length; i++) lv.push(6);
   r.dev = deviation(mesh, fin.tris);
   writeFileSync(new URL(`./out/${name}-${mode}${process.env.ALIGN ? "-al" : ""}.step`, import.meta.url), w.step);
