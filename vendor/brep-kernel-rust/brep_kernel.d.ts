@@ -19,7 +19,7 @@ export class WasmBrepSolid {
      * Construct from the flat f64 codec instead of JSON — same arena
      * validation as the JSON constructor.
      */
-    static from_buffer(data: Float64Array, names_json: string): WasmBrepSolid;
+    static from_buffer(data: Float64Array | number[], names_json: string): WasmBrepSolid;
     full_mass_properties_json(): string;
     /**
      * Full mass properties scaled to a physical `density` (Golovanov §8.11):
@@ -35,10 +35,10 @@ export class WasmBrepSolid {
      * neighbours. Mirrors `delete_face_and_heal_json`; `face_ids` follows
      * `offset_shell_json`'s integer-id validation.
      */
-    move_faces_json(face_ids: Float64Array, dx: number, dy: number, dz: number): string;
+    move_faces_json(face_ids: Float64Array | number[], dx: number, dy: number, dz: number): string;
     constructor(solid_json: string);
-    offset_shell_buffer(opening_face_ids: Float64Array, distance: number): WasmSolidBuffer;
-    offset_shell_json(opening_face_ids: Float64Array, distance: number): string;
+    offset_shell_buffer(opening_face_ids: Float64Array | number[], distance: number): WasmSolidBuffer;
+    offset_shell_json(opening_face_ids: Float64Array | number[], distance: number): string;
     /**
      * Compute + serialize every edge's shared samples once, so the face-range
      * split can hand the same buffer to each worker instead of recomputing
@@ -69,11 +69,11 @@ export class WasmBrepSolid {
      * Face-stride tessellation using pre-computed edge samples (from
      * `sample_edges_buffer`), skipping the redundant per-worker resampling.
      */
-    tessellate_watertight_face_stride_with_samples_buffers(chord_tolerance: number, stride: number, offset: number, samples: Float64Array): WasmMeshBuffers;
+    tessellate_watertight_face_stride_with_samples_buffers(chord_tolerance: number, stride: number, offset: number, samples: Float64Array | number[]): WasmMeshBuffers;
     to_buffer(): WasmSolidBuffer;
     to_json(): string;
-    transform_buffer(matrix: Float64Array, reverse_orientation: boolean): WasmSolidBuffer;
-    transform_json(matrix: Float64Array, reverse_orientation: boolean): string;
+    transform_buffer(matrix: Float64Array | number[], reverse_orientation: boolean): WasmSolidBuffer;
+    transform_json(matrix: Float64Array | number[], reverse_orientation: boolean): string;
     validate_json(): string;
 }
 
@@ -94,7 +94,7 @@ export class WasmNurbsCurve {
     free(): void;
     [Symbol.dispose](): void;
     derivatives_flat(parameter: number, derivative_count: number): Float64Array;
-    evaluate_many(parameters: Float64Array): Float64Array;
+    evaluate_many(parameters: Float64Array | number[]): Float64Array;
     constructor(curve_json: string);
 }
 
@@ -102,9 +102,9 @@ export class WasmNurbsSurface {
     free(): void;
     [Symbol.dispose](): void;
     derivatives_flat(u: number, v: number, derivative_count: number): Float64Array;
-    evaluate_many(parameters_uv: Float64Array): Float64Array;
+    evaluate_many(parameters_uv: Float64Array | number[]): Float64Array;
     constructor(surface_json: string);
-    normals_many(parameters_uv: Float64Array): Float64Array;
+    normals_many(parameters_uv: Float64Array | number[]): Float64Array;
 }
 
 /**
@@ -176,14 +176,58 @@ export function assembly_apply_document_json(document_json: string): string;
 export function assembly_apply_inferred_constraints_json(options_json: string): string;
 
 /**
+ * Every NAMED face and edge of one component, resolved like
+ * [`assembly_resolve_refs_json`] (component-local frames). Entities without
+ * an analytic frame are skipped: a mate could never have referenced them.
+ * An unknown component is an empty list.
+ */
+export function assembly_component_entities_json(component_id: string): string;
+
+/**
  * The last solve's DOF/diagnostics summary (`{ok, dof, rank, redundant,
  * status, strategy, iterations, maxResidual, ...}` or `{ok:false, error}`).
  */
 export function assembly_dof_json(): string;
 
 /**
+ * The live-drag dry run against the session (`lifecycle::drag_solve`).
+ * Request `{poses: {componentId: {translate, rotateEulerDeg}}, unfix?: [id],
+ * reference?: {componentId: pose}, explain?: bool}` — the dragged components at their
+ * dragged poses, and the last good live poses to re-base mechanical mates at. Reply `{ok: true, poses:
+ * {componentId: {translate, rotateEulerDeg}}, blocking: [constraintId]}` for every movable body
+ * (`blocking`: with `explain`, the constraints that would not let the dragged
+ * components reach the drag pose; empty otherwise);
+ * `Err` when the mates cannot hold at this drag. Nothing in the session (the
+ * state, the scene, the pending write-backs, the report) changes.
+ */
+export function assembly_drag_solve_json(request_json: string): string;
+
+/**
+ * What **Flip** would do to constraint `id`, read from the live session:
+ * `{ok: true, patch, seed, elements: [{component, fixed, anchor, direction,
+ * geom}], value, angleAxis}` (world frame, pick order), or `{ok: false,
+ * reason}` for a type with no other solution. Read-only: the caller writes the
+ * patch and the seeded pose as one edit (`constraints::flip_rule`).
+ */
+export function assembly_flip_plan_json(id: string): string;
+
+/**
+ * One frame of a motion study against the session (`lifecycle::frame_solve`).
+ * Request `{overrides: {constraintId: {value?: number, enabled?: bool}},
+ * reference?: {componentId: {translate, rotateEulerDeg}}}`: `value` drives a
+ * distance or angle constraint to it (model units or degrees; an angle may
+ * run past 360), `enabled` switches a constraint off or on for the frame, and
+ * `reference` is the previous frame's poses (the warm start). Reply `{ok:
+ * true, poses: {componentId: {translate, rotateEulerDeg}}}` for every movable
+ * body; `Err` when the mates cannot hold the frame or an override names a
+ * constraint the session lacks or drives one that is not a distance or angle.
+ * Nothing in the session changes.
+ */
+export function assembly_frame_solve_json(request_json: string): string;
+
+/**
  * SCAN the live scene for constraints its component placement implies, without
- * creating anything. `options_json` is [`super::infer::InferOptions`] (`{}` for
+ * creating anything. `options_json` is `super::infer::InferOptions` (`{}` for
  * the defaults). Never `Err`: a missing session or a bad options object comes
  * back as `{ok: false, error}` — a `JsValue` error aborts a native build.
  */
@@ -223,6 +267,16 @@ export function assembly_pose_updates_json(): string;
  * Delete a constraint. Auto-solves; returns the solve report.
  */
 export function assembly_remove_constraint_json(id: string): string;
+
+/**
+ * Resolve selection refs against the live session WITHOUT touching any
+ * constraint: `refs_json` is `["ACOMP2:Part_PZ", …]`; the reply is one row
+ * per ref, `{ref, ok: true, component, geom, point, direction, radius}` in
+ * the owning component's local frame, or `{ref, ok: false, status, error}`.
+ * Read-only — the replace-component lane snapshots a mate's references
+ * before the swap with it.
+ */
+export function assembly_resolve_refs_json(refs_json: string): string;
 
 /**
  * Manual solve (the panel's Solve button). Returns the solve report.
@@ -386,7 +440,7 @@ export function import_step_json(step_text: string): string;
  * `tolerance <= 0` derives the vertex-weld band from the model's
  * bounding-box diagonal.
  */
-export function import_stl_solid(data: Uint8Array, tolerance: number): string;
+export function import_stl_solid(data: Uint8Array | number[], tolerance: number): string;
 
 export function interpolate_curve_thinned_json(request_json: string): string;
 
@@ -458,7 +512,7 @@ export function project_surface_json(request_json: string): string;
 
 export function pyramid_brep_json(corner_x: number, corner_y: number, corner_z: number, side_length: number, height: number, sides: number): string;
 
-export function read_stl_json(data: Uint8Array): string;
+export function read_stl_json(data: Uint8Array | number[]): string;
 
 /**
  * UPDATE (update-components / edit-in-place commit): replace an existing
@@ -478,7 +532,7 @@ export function refresh_library_entry(name: string, source_signature: string, do
  * Ingest a solid from the flat f64 codec into the resident registry (arena +
  * validate kept — external / first-crossing ingest). Returns an opaque handle.
  */
-export function register_solid_buffer(data: Float64Array, names_json: string): number;
+export function register_solid_buffer(data: Float64Array | number[], names_json: string): number;
 
 /**
  * Ingest a solid from JSON into the resident registry (arena + validate kept).
@@ -605,7 +659,7 @@ export function split_solid_by_surface_json(request_json: string): string;
  * Returns JSON `{ step, report, sourceTriangles }`; `step` feeds the kernel's
  * IMPORT3D `stepText` lane unchanged.
  */
-export function stl_to_step_json(bytes: Uint8Array, options_json: string, name: string): string;
+export function stl_to_step_json(bytes: Uint8Array | number[], options_json: string, name: string): string;
 
 export function sweep_profile_along_path_buffer(request_json: string): WasmSolidBuffer;
 
@@ -652,7 +706,7 @@ export function transform_brep_json(request_json: string): string;
  * unblocks Transform/Pattern/bakeTransform from the legacy serialize lane). The
  * result never crosses the boundary as topology. Kernel-produced, so trusted.
  */
-export function transform_handle(handle: number, matrix: Float64Array, reverse_orientation: boolean): number;
+export function transform_handle(handle: number, matrix: Float64Array | number[], reverse_orientation: boolean): number;
 
 export function uniform_clamped_knots_json(control_point_count: number, degree: number): string;
 
@@ -680,13 +734,18 @@ export interface InitOutput {
     readonly assembly_add_constraint_json: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly assembly_apply_document_json: (a: number, b: number) => [number, number, number, number];
     readonly assembly_apply_inferred_constraints_json: (a: number, b: number) => [number, number];
+    readonly assembly_component_entities_json: (a: number, b: number) => [number, number];
     readonly assembly_dof_json: () => [number, number];
+    readonly assembly_drag_solve_json: (a: number, b: number) => [number, number, number, number];
+    readonly assembly_flip_plan_json: (a: number, b: number) => [number, number];
+    readonly assembly_frame_solve_json: (a: number, b: number) => [number, number, number, number];
     readonly assembly_infer_constraints_json: (a: number, b: number) => [number, number];
     readonly assembly_inferable_types_json: () => [number, number];
     readonly assembly_move_constraint_json: (a: number, b: number, c: number) => [number, number, number, number];
     readonly assembly_overlay_json: () => [number, number];
     readonly assembly_pose_updates_json: () => [number, number];
     readonly assembly_remove_constraint_json: (a: number, b: number) => [number, number, number, number];
+    readonly assembly_resolve_refs_json: (a: number, b: number) => [number, number];
     readonly assembly_run_solve_json: () => [number, number, number, number];
     readonly assembly_set_constraint_enabled_json: (a: number, b: number, c: number) => [number, number, number, number];
     readonly assembly_set_constraint_open_json: (a: number, b: number, c: number) => [number, number];

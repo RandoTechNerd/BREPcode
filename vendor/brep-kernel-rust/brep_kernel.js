@@ -26,9 +26,11 @@ export class WasmBrepSolid {
      */
     boolean_buffer(other, operation, tolerance, merge_coplanar_faces) {
         _assertClass(other, WasmBrepSolid);
+        const val2 = +tolerance;
+        const val3 = +merge_coplanar_faces;
         const ptr0 = passStringToWasm0(operation, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmbrepsolid_boolean_buffer(this.__wbg_ptr, other.__wbg_ptr, ptr0, len0, tolerance, merge_coplanar_faces);
+        const ret = wasm.wasmbrepsolid_boolean_buffer(this.__wbg_ptr, other.__wbg_ptr, ptr0, len0, val2, val3);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -42,24 +44,26 @@ export class WasmBrepSolid {
      * @returns {string}
      */
     boolean_json(other, operation, tolerance, merge_coplanar_faces) {
-        let deferred3_0;
-        let deferred3_1;
+        let deferred5_0;
+        let deferred5_1;
         try {
             _assertClass(other, WasmBrepSolid);
+            const val2 = +tolerance;
+            const val3 = +merge_coplanar_faces;
             const ptr0 = passStringToWasm0(operation, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.wasmbrepsolid_boolean_json(this.__wbg_ptr, other.__wbg_ptr, ptr0, len0, tolerance, merge_coplanar_faces);
-            var ptr2 = ret[0];
-            var len2 = ret[1];
+            const ret = wasm.wasmbrepsolid_boolean_json(this.__wbg_ptr, other.__wbg_ptr, ptr0, len0, val2, val3);
+            var ptr4 = ret[0];
+            var len4 = ret[1];
             if (ret[3]) {
-                ptr2 = 0; len2 = 0;
+                ptr4 = 0; len4 = 0;
                 throw takeFromExternrefTable0(ret[2]);
             }
-            deferred3_0 = ptr2;
-            deferred3_1 = len2;
-            return getStringFromWasm0(ptr2, len2);
+            deferred5_0 = ptr4;
+            deferred5_1 = len4;
+            return getStringFromWasm0(ptr4, len4);
         } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
         }
     }
     /**
@@ -109,12 +113,20 @@ export class WasmBrepSolid {
         let deferred5_0;
         let deferred5_1;
         try {
-            const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len0 = WASM_VECTOR_LEN;
-            const ptr1 = passStringToWasm0(unit, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len1 = WASM_VECTOR_LEN;
-            const ptr2 = passStringToWasm0(timestamp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len2 = WASM_VECTOR_LEN;
+            let ptr0, len0, ptr1, len1, ptr2, len2;
+            try {
+                ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+                len0 = WASM_VECTOR_LEN;
+                ptr1 = passStringToWasm0(unit, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+                len1 = WASM_VECTOR_LEN;
+                ptr2 = passStringToWasm0(timestamp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+                len2 = WASM_VECTOR_LEN;
+            } catch (e) {
+                if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+                if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+                if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+                throw e;
+            }
             const ret = wasm.wasmbrepsolid_export_step(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
             var ptr4 = ret[0];
             var len4 = ret[1];
@@ -132,15 +144,22 @@ export class WasmBrepSolid {
     /**
      * Construct from the flat f64 codec instead of JSON — same arena
      * validation as the JSON constructor.
-     * @param {Float64Array} data
+     * @param {Float64Array | number[]} data
      * @param {string} names_json
      * @returns {WasmBrepSolid}
      */
     static from_buffer(data, names_json) {
-        const ptr0 = passArrayF64ToWasm0(data, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(names_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
+        let ptr0, len0, ptr1, len1;
+        try {
+            ptr0 = passArrayF64ToWasm0(data, wasm.__wbindgen_malloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(names_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 8, 8); }
+            throw e;
+        }
         const ret = wasm.wasmbrepsolid_from_buffer(ptr0, len0, ptr1, len1);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
@@ -220,30 +239,33 @@ export class WasmBrepSolid {
      * (dx, dy, dz) and heal the adjacency by re-intersecting the planar
      * neighbours. Mirrors `delete_face_and_heal_json`; `face_ids` follows
      * `offset_shell_json`'s integer-id validation.
-     * @param {Float64Array} face_ids
+     * @param {Float64Array | number[]} face_ids
      * @param {number} dx
      * @param {number} dy
      * @param {number} dz
      * @returns {string}
      */
     move_faces_json(face_ids, dx, dy, dz) {
-        let deferred3_0;
-        let deferred3_1;
+        let deferred6_0;
+        let deferred6_1;
         try {
+            const val2 = +dx;
+            const val3 = +dy;
+            const val4 = +dz;
             const ptr0 = passArrayF64ToWasm0(face_ids, wasm.__wbindgen_malloc);
             const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.wasmbrepsolid_move_faces_json(this.__wbg_ptr, ptr0, len0, dx, dy, dz);
-            var ptr2 = ret[0];
-            var len2 = ret[1];
+            const ret = wasm.wasmbrepsolid_move_faces_json(this.__wbg_ptr, ptr0, len0, val2, val3, val4);
+            var ptr5 = ret[0];
+            var len5 = ret[1];
             if (ret[3]) {
-                ptr2 = 0; len2 = 0;
+                ptr5 = 0; len5 = 0;
                 throw takeFromExternrefTable0(ret[2]);
             }
-            deferred3_0 = ptr2;
-            deferred3_1 = len2;
-            return getStringFromWasm0(ptr2, len2);
+            deferred6_0 = ptr5;
+            deferred6_1 = len5;
+            return getStringFromWasm0(ptr5, len5);
         } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
         }
     }
     /**
@@ -261,42 +283,44 @@ export class WasmBrepSolid {
         return this;
     }
     /**
-     * @param {Float64Array} opening_face_ids
+     * @param {Float64Array | number[]} opening_face_ids
      * @param {number} distance
      * @returns {WasmSolidBuffer}
      */
     offset_shell_buffer(opening_face_ids, distance) {
+        const val2 = +distance;
         const ptr0 = passArrayF64ToWasm0(opening_face_ids, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmbrepsolid_offset_shell_buffer(this.__wbg_ptr, ptr0, len0, distance);
+        const ret = wasm.wasmbrepsolid_offset_shell_buffer(this.__wbg_ptr, ptr0, len0, val2);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return WasmSolidBuffer.__wrap(ret[0]);
     }
     /**
-     * @param {Float64Array} opening_face_ids
+     * @param {Float64Array | number[]} opening_face_ids
      * @param {number} distance
      * @returns {string}
      */
     offset_shell_json(opening_face_ids, distance) {
-        let deferred3_0;
-        let deferred3_1;
+        let deferred4_0;
+        let deferred4_1;
         try {
+            const val2 = +distance;
             const ptr0 = passArrayF64ToWasm0(opening_face_ids, wasm.__wbindgen_malloc);
             const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.wasmbrepsolid_offset_shell_json(this.__wbg_ptr, ptr0, len0, distance);
-            var ptr2 = ret[0];
-            var len2 = ret[1];
+            const ret = wasm.wasmbrepsolid_offset_shell_json(this.__wbg_ptr, ptr0, len0, val2);
+            var ptr3 = ret[0];
+            var len3 = ret[1];
             if (ret[3]) {
-                ptr2 = 0; len2 = 0;
+                ptr3 = 0; len3 = 0;
                 throw takeFromExternrefTable0(ret[2]);
             }
-            deferred3_0 = ptr2;
-            deferred3_1 = len2;
-            return getStringFromWasm0(ptr2, len2);
+            deferred4_0 = ptr3;
+            deferred4_1 = len3;
+            return getStringFromWasm0(ptr3, len3);
         } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
         }
     }
     /**
@@ -413,13 +437,16 @@ export class WasmBrepSolid {
      * @param {number} chord_tolerance
      * @param {number} stride
      * @param {number} offset
-     * @param {Float64Array} samples
+     * @param {Float64Array | number[]} samples
      * @returns {WasmMeshBuffers}
      */
     tessellate_watertight_face_stride_with_samples_buffers(chord_tolerance, stride, offset, samples) {
+        const val2 = +chord_tolerance;
+        const val3 = +stride;
+        const val4 = +offset;
         const ptr0 = passArrayF64ToWasm0(samples, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmbrepsolid_tessellate_watertight_face_stride_with_samples_buffers(this.__wbg_ptr, chord_tolerance, stride, offset, ptr0, len0);
+        const ret = wasm.wasmbrepsolid_tessellate_watertight_face_stride_with_samples_buffers(this.__wbg_ptr, val2, val3, val4, ptr0, len0);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -457,42 +484,44 @@ export class WasmBrepSolid {
         }
     }
     /**
-     * @param {Float64Array} matrix
+     * @param {Float64Array | number[]} matrix
      * @param {boolean} reverse_orientation
      * @returns {WasmSolidBuffer}
      */
     transform_buffer(matrix, reverse_orientation) {
+        const val2 = +reverse_orientation;
         const ptr0 = passArrayF64ToWasm0(matrix, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmbrepsolid_transform_buffer(this.__wbg_ptr, ptr0, len0, reverse_orientation);
+        const ret = wasm.wasmbrepsolid_transform_buffer(this.__wbg_ptr, ptr0, len0, val2);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return WasmSolidBuffer.__wrap(ret[0]);
     }
     /**
-     * @param {Float64Array} matrix
+     * @param {Float64Array | number[]} matrix
      * @param {boolean} reverse_orientation
      * @returns {string}
      */
     transform_json(matrix, reverse_orientation) {
-        let deferred3_0;
-        let deferred3_1;
+        let deferred4_0;
+        let deferred4_1;
         try {
+            const val2 = +reverse_orientation;
             const ptr0 = passArrayF64ToWasm0(matrix, wasm.__wbindgen_malloc);
             const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.wasmbrepsolid_transform_json(this.__wbg_ptr, ptr0, len0, reverse_orientation);
-            var ptr2 = ret[0];
-            var len2 = ret[1];
+            const ret = wasm.wasmbrepsolid_transform_json(this.__wbg_ptr, ptr0, len0, val2);
+            var ptr3 = ret[0];
+            var len3 = ret[1];
             if (ret[3]) {
-                ptr2 = 0; len2 = 0;
+                ptr3 = 0; len3 = 0;
                 throw takeFromExternrefTable0(ret[2]);
             }
-            deferred3_0 = ptr2;
-            deferred3_1 = len2;
-            return getStringFromWasm0(ptr2, len2);
+            deferred4_0 = ptr3;
+            deferred4_1 = len3;
+            return getStringFromWasm0(ptr3, len3);
         } finally {
-            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+            wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
         }
     }
     /**
@@ -604,7 +633,7 @@ export class WasmNurbsCurve {
         return v1;
     }
     /**
-     * @param {Float64Array} parameters
+     * @param {Float64Array | number[]} parameters
      * @returns {Float64Array}
      */
     evaluate_many(parameters) {
@@ -662,7 +691,7 @@ export class WasmNurbsSurface {
         return v1;
     }
     /**
-     * @param {Float64Array} parameters_uv
+     * @param {Float64Array | number[]} parameters_uv
      * @returns {Float64Array}
      */
     evaluate_many(parameters_uv) {
@@ -691,7 +720,7 @@ export class WasmNurbsSurface {
         return this;
     }
     /**
-     * @param {Float64Array} parameters_uv
+     * @param {Float64Array | number[]} parameters_uv
      * @returns {Float64Array}
      */
     normals_many(parameters_uv) {
@@ -800,14 +829,23 @@ export function add_part_to_library(name, source_key, source_signature, document
     let deferred6_0;
     let deferred6_1;
     try {
-        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(source_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(source_signature, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len2 = WASM_VECTOR_LEN;
-        const ptr3 = passStringToWasm0(document_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len3 = WASM_VECTOR_LEN;
+        let ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3;
+        try {
+            ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(source_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+            ptr2 = passStringToWasm0(source_signature, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len2 = WASM_VECTOR_LEN;
+            ptr3 = passStringToWasm0(document_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len3 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr3) { wasm.__wbindgen_free(ptr3, len3 * 1, 1); }
+            if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
         const ret = wasm.add_part_to_library(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
         var ptr5 = ret[0];
         var len5 = ret[1];
@@ -910,10 +948,17 @@ export function assembly_add_constraint_json(constraint_type, params_json) {
     let deferred4_0;
     let deferred4_1;
     try {
-        const ptr0 = passStringToWasm0(constraint_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(params_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
+        let ptr0, len0, ptr1, len1;
+        try {
+            ptr0 = passStringToWasm0(constraint_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(params_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
         const ret = wasm.assembly_add_constraint_json(ptr0, len0, ptr1, len1);
         var ptr3 = ret[0];
         var len3 = ret[1];
@@ -984,6 +1029,29 @@ export function assembly_apply_inferred_constraints_json(options_json) {
 }
 
 /**
+ * Every NAMED face and edge of one component, resolved like
+ * [`assembly_resolve_refs_json`] (component-local frames). Entities without
+ * an analytic frame are skipped: a mate could never have referenced them.
+ * An unknown component is an empty list.
+ * @param {string} component_id
+ * @returns {string}
+ */
+export function assembly_component_entities_json(component_id) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(component_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.assembly_component_entities_json(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * The last solve's DOF/diagnostics summary (`{ok, dof, rank, redundant,
  * status, strategy, iterations, maxResidual, ...}` or `{ok:false, error}`).
  * @returns {string}
@@ -1002,8 +1070,101 @@ export function assembly_dof_json() {
 }
 
 /**
+ * The live-drag dry run against the session (`lifecycle::drag_solve`).
+ * Request `{poses: {componentId: {translate, rotateEulerDeg}}, unfix?: [id],
+ * reference?: {componentId: pose}, explain?: bool}` — the dragged components at their
+ * dragged poses, and the last good live poses to re-base mechanical mates at. Reply `{ok: true, poses:
+ * {componentId: {translate, rotateEulerDeg}}, blocking: [constraintId]}` for every movable body
+ * (`blocking`: with `explain`, the constraints that would not let the dragged
+ * components reach the drag pose; empty otherwise);
+ * `Err` when the mates cannot hold at this drag. Nothing in the session (the
+ * state, the scene, the pending write-backs, the report) changes.
+ * @param {string} request_json
+ * @returns {string}
+ */
+export function assembly_drag_solve_json(request_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.assembly_drag_solve_json(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * What **Flip** would do to constraint `id`, read from the live session:
+ * `{ok: true, patch, seed, elements: [{component, fixed, anchor, direction,
+ * geom}], value, angleAxis}` (world frame, pick order), or `{ok: false,
+ * reason}` for a type with no other solution. Read-only: the caller writes the
+ * patch and the seeded pose as one edit (`constraints::flip_rule`).
+ * @param {string} id
+ * @returns {string}
+ */
+export function assembly_flip_plan_json(id) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.assembly_flip_plan_json(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * One frame of a motion study against the session (`lifecycle::frame_solve`).
+ * Request `{overrides: {constraintId: {value?: number, enabled?: bool}},
+ * reference?: {componentId: {translate, rotateEulerDeg}}}`: `value` drives a
+ * distance or angle constraint to it (model units or degrees; an angle may
+ * run past 360), `enabled` switches a constraint off or on for the frame, and
+ * `reference` is the previous frame's poses (the warm start). Reply `{ok:
+ * true, poses: {componentId: {translate, rotateEulerDeg}}}` for every movable
+ * body; `Err` when the mates cannot hold the frame or an override names a
+ * constraint the session lacks or drives one that is not a distance or angle.
+ * Nothing in the session changes.
+ * @param {string} request_json
+ * @returns {string}
+ */
+export function assembly_frame_solve_json(request_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.assembly_frame_solve_json(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * SCAN the live scene for constraints its component placement implies, without
- * creating anything. `options_json` is [`super::infer::InferOptions`] (`{}` for
+ * creating anything. `options_json` is `super::infer::InferOptions` (`{}` for
  * the defaults). Never `Err`: a missing session or a bad options object comes
  * back as `{ok: false, error}` — a `JsValue` error aborts a native build.
  * @param {string} options_json
@@ -1050,23 +1211,24 @@ export function assembly_inferable_types_json() {
  * @returns {string}
  */
 export function assembly_move_constraint_json(id, index) {
-    let deferred3_0;
-    let deferred3_1;
+    let deferred4_0;
+    let deferred4_1;
     try {
+        const val2 = +index;
         const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.assembly_move_constraint_json(ptr0, len0, index);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
+        const ret = wasm.assembly_move_constraint_json(ptr0, len0, val2);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
         if (ret[3]) {
-            ptr2 = 0; len2 = 0;
+            ptr3 = 0; len3 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
 }
 
@@ -1139,6 +1301,31 @@ export function assembly_remove_constraint_json(id) {
 }
 
 /**
+ * Resolve selection refs against the live session WITHOUT touching any
+ * constraint: `refs_json` is `["ACOMP2:Part_PZ", …]`; the reply is one row
+ * per ref, `{ref, ok: true, component, geom, point, direction, radius}` in
+ * the owning component's local frame, or `{ref, ok: false, status, error}`.
+ * Read-only — the replace-component lane snapshots a mate's references
+ * before the swap with it.
+ * @param {string} refs_json
+ * @returns {string}
+ */
+export function assembly_resolve_refs_json(refs_json) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(refs_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.assembly_resolve_refs_json(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Manual solve (the panel's Solve button). Returns the solve report.
  * @returns {string}
  */
@@ -1168,23 +1355,24 @@ export function assembly_run_solve_json() {
  * @returns {string}
  */
 export function assembly_set_constraint_enabled_json(id, enabled) {
-    let deferred3_0;
-    let deferred3_1;
+    let deferred4_0;
+    let deferred4_1;
     try {
+        const val2 = +enabled;
         const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.assembly_set_constraint_enabled_json(ptr0, len0, enabled);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
+        const ret = wasm.assembly_set_constraint_enabled_json(ptr0, len0, val2);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
         if (ret[3]) {
-            ptr2 = 0; len2 = 0;
+            ptr3 = 0; len3 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
 }
 
@@ -1194,9 +1382,10 @@ export function assembly_set_constraint_enabled_json(id, enabled) {
  * @param {boolean} open
  */
 export function assembly_set_constraint_open_json(id, open) {
+    const val2 = +open;
     const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.assembly_set_constraint_open_json(ptr0, len0, open);
+    const ret = wasm.assembly_set_constraint_open_json(ptr0, len0, val2);
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
@@ -1249,10 +1438,17 @@ export function assembly_update_constraint_json(id, params_json) {
     let deferred4_0;
     let deferred4_1;
     try {
-        const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(params_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
+        let ptr0, len0, ptr1, len1;
+        try {
+            ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(params_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
         const ret = wasm.assembly_update_constraint_json(ptr0, len0, ptr1, len1);
         var ptr3 = ret[0];
         var len3 = ret[1];
@@ -1330,9 +1526,13 @@ export function boolean_brep_json(request_json) {
  * @returns {number}
  */
 export function boolean_handle(a, b, operation, tolerance, merge_coplanar_faces) {
+    const val2 = +a;
+    const val3 = +b;
+    const val4 = +tolerance;
+    const val5 = +merge_coplanar_faces;
     const ptr0 = passStringToWasm0(operation, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.boolean_handle(a, b, ptr0, len0, tolerance, merge_coplanar_faces);
+    const ret = wasm.boolean_handle(val2, val3, ptr0, len0, val4, val5);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -1461,23 +1661,24 @@ export function capabilities_json() {
  * @returns {string}
  */
 export function carrier_preview_patch_json(surface_json, inflate) {
-    let deferred3_0;
-    let deferred3_1;
+    let deferred4_0;
+    let deferred4_1;
     try {
+        const val2 = +inflate;
         const ptr0 = passStringToWasm0(surface_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.carrier_preview_patch_json(ptr0, len0, inflate);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
+        const ret = wasm.carrier_preview_patch_json(ptr0, len0, val2);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
         if (ret[3]) {
-            ptr2 = 0; len2 = 0;
+            ptr3 = 0; len3 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
 }
 
@@ -2161,23 +2362,24 @@ export function hyperbola_curve_json(request_json) {
  * @returns {string}
  */
 export function import_obj_solid(text, tolerance) {
-    let deferred3_0;
-    let deferred3_1;
+    let deferred4_0;
+    let deferred4_1;
     try {
+        const val2 = +tolerance;
         const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.import_obj_solid(ptr0, len0, tolerance);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
+        const ret = wasm.import_obj_solid(ptr0, len0, val2);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
         if (ret[3]) {
-            ptr2 = 0; len2 = 0;
+            ptr3 = 0; len3 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
 }
 
@@ -2213,28 +2415,29 @@ export function import_step_json(step_text) {
  * Import binary-STL bytes as a faceted (planar-triangle) BREP solid.
  * `tolerance <= 0` derives the vertex-weld band from the model's
  * bounding-box diagonal.
- * @param {Uint8Array} data
+ * @param {Uint8Array | number[]} data
  * @param {number} tolerance
  * @returns {string}
  */
 export function import_stl_solid(data, tolerance) {
-    let deferred3_0;
-    let deferred3_1;
+    let deferred4_0;
+    let deferred4_1;
     try {
+        const val2 = +tolerance;
         const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.import_stl_solid(ptr0, len0, tolerance);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
+        const ret = wasm.import_stl_solid(ptr0, len0, val2);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
         if (ret[3]) {
-            ptr2 = 0; len2 = 0;
+            ptr3 = 0; len3 = 0;
             throw takeFromExternrefTable0(ret[2]);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
     } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
     }
 }
 
@@ -2933,7 +3136,7 @@ export function pyramid_brep_json(corner_x, corner_y, corner_z, side_length, hei
 }
 
 /**
- * @param {Uint8Array} data
+ * @param {Uint8Array | number[]} data
  * @returns {string}
  */
 export function read_stl_json(data) {
@@ -2973,12 +3176,20 @@ export function read_stl_json(data) {
  * @param {string} document_json
  */
 export function refresh_library_entry(name, source_signature, document_json) {
-    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(source_signature, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(document_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
+    let ptr0, len0, ptr1, len1, ptr2, len2;
+    try {
+        ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(source_signature, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+        ptr2 = passStringToWasm0(document_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len2 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
     const ret = wasm.refresh_library_entry(ptr0, len0, ptr1, len1, ptr2, len2);
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
@@ -2988,15 +3199,22 @@ export function refresh_library_entry(name, source_signature, document_json) {
 /**
  * Ingest a solid from the flat f64 codec into the resident registry (arena +
  * validate kept — external / first-crossing ingest). Returns an opaque handle.
- * @param {Float64Array} data
+ * @param {Float64Array | number[]} data
  * @param {string} names_json
  * @returns {number}
  */
 export function register_solid_buffer(data, names_json) {
-    const ptr0 = passArrayF64ToWasm0(data, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(names_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArrayF64ToWasm0(data, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(names_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 8, 8); }
+        throw e;
+    }
     const ret = wasm.register_solid_buffer(ptr0, len0, ptr1, len1);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3260,10 +3478,17 @@ export function scene_metadata_remove(name) {
  * @param {string} record_json
  */
 export function scene_metadata_set_json(name, record_json) {
-    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(record_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(record_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
     const ret = wasm.scene_metadata_set_json(ptr0, len0, ptr1, len1);
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
@@ -3601,7 +3826,7 @@ export function split_solid_by_surface_json(request_json) {
  * `options_json` is a (possibly partial) `StlConversionOptions`; "" = defaults.
  * Returns JSON `{ step, report, sourceTriangles }`; `step` feeds the kernel's
  * IMPORT3D `stepText` lane unchanged.
- * @param {Uint8Array} bytes
+ * @param {Uint8Array | number[]} bytes
  * @param {string} options_json
  * @param {string} name
  * @returns {string}
@@ -3610,12 +3835,20 @@ export function stl_to_step_json(bytes, options_json, name) {
     let deferred5_0;
     let deferred5_1;
     try {
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(options_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len2 = WASM_VECTOR_LEN;
+        let ptr0, len0, ptr1, len1, ptr2, len2;
+        try {
+            ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(options_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+            ptr2 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len2 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
         const ret = wasm.stl_to_step_json(ptr0, len0, ptr1, len1, ptr2, len2);
         var ptr4 = ret[0];
         var len4 = ret[1];
@@ -3972,14 +4205,16 @@ export function transform_brep_json(request_json) {
  * unblocks Transform/Pattern/bakeTransform from the legacy serialize lane). The
  * result never crosses the boundary as topology. Kernel-produced, so trusted.
  * @param {number} handle
- * @param {Float64Array} matrix
+ * @param {Float64Array | number[]} matrix
  * @param {boolean} reverse_orientation
  * @returns {number}
  */
 export function transform_handle(handle, matrix, reverse_orientation) {
+    const val2 = +handle;
+    const val3 = +reverse_orientation;
     const ptr0 = passArrayF64ToWasm0(matrix, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.transform_handle(handle, ptr0, len0, reverse_orientation);
+    const ret = wasm.transform_handle(val2, ptr0, len0, val3);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -4069,10 +4304,17 @@ export function write_obj_text(mesh_json, name) {
     let deferred4_0;
     let deferred4_1;
     try {
-        const ptr0 = passStringToWasm0(mesh_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
+        let ptr0, len0, ptr1, len1;
+        try {
+            ptr0 = passStringToWasm0(mesh_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len0 = WASM_VECTOR_LEN;
+            ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            len1 = WASM_VECTOR_LEN;
+        } catch (e) {
+            if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+            if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+            throw e;
+        }
         const ret = wasm.write_obj_text(ptr0, len0, ptr1, len1);
         var ptr3 = ret[0];
         var len3 = ret[1];
@@ -4094,10 +4336,17 @@ export function write_obj_text(mesh_json, name) {
  * @returns {Uint8Array}
  */
 export function write_stl_bytes(mesh_json, name) {
-    const ptr0 = passStringToWasm0(mesh_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passStringToWasm0(mesh_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
     const ret = wasm.write_stl_bytes(ptr0, len0, ptr1, len1);
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
@@ -4109,14 +4358,14 @@ export function write_stl_bytes(mesh_json, name) {
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_is_undefined_8865fb403f8fe9d8: function(arg0) {
+        __wbg___wbindgen_is_undefined_be5b34249ff1fc15: function(arg0) {
             const ret = arg0 === undefined;
             return ret;
         },
-        __wbg___wbindgen_throw_41e9ee4f547fc59a: function(arg0, arg1) {
+        __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbg_error_0139aba94e64e4ae: function(arg0, arg1) {
+        __wbg_error_a27dc054c00464da: function(arg0, arg1) {
             let deferred0_0;
             let deferred0_1;
             try {
@@ -4127,7 +4376,7 @@ function __wbg_get_imports() {
                 wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
             }
         },
-        __wbg_new_dd247e4963bf5309: function() {
+        __wbg_new_eb9fa55eef220a59: function() {
             const ret = new Error();
             return ret;
         },
@@ -4135,31 +4384,31 @@ function __wbg_get_imports() {
             const ret = arg0.now();
             return ret;
         },
-        __wbg_performance_3fcf6e32a7e1ed0a: function(arg0) {
+        __wbg_performance_7e4e4494fdc9d07a: function(arg0) {
             const ret = arg0.performance;
             return ret;
         },
-        __wbg_stack_54d96e483ed941ff: function(arg0, arg1) {
+        __wbg_stack_64765c3e01b4e551: function(arg0, arg1) {
             const ret = arg1.stack;
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+            getDataViewMemory0().setInt32((arg0 >>> 0) + 4 * 1, len1, true);
+            getDataViewMemory0().setInt32((arg0 >>> 0) + 4 * 0, ptr1, true);
         },
-        __wbg_static_accessor_GLOBAL_266715b9d96ba635: function() {
-            const ret = typeof global === 'undefined' ? null : global;
+        __wbg_static_accessor_GLOBAL_THIS_003ee833af9699fc: function() {
+            const ret = typeof globalThis === 'undefined' ? undefined : globalThis;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
-        __wbg_static_accessor_GLOBAL_THIS_10fb7dc1ae063179: function() {
-            const ret = typeof globalThis === 'undefined' ? null : globalThis;
+        __wbg_static_accessor_GLOBAL_e4293fb22cbe77da: function() {
+            const ret = typeof global === 'undefined' ? undefined : global;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
-        __wbg_static_accessor_SELF_0b583911f537483a: function() {
-            const ret = typeof self === 'undefined' ? null : self;
+        __wbg_static_accessor_SELF_53bb20457401453d: function() {
+            const ret = typeof self === 'undefined' ? undefined : self;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
-        __wbg_static_accessor_WINDOW_d7f903d1508cbdc4: function() {
-            const ret = typeof window === 'undefined' ? null : window;
+        __wbg_static_accessor_WINDOW_b5e0810bfecb7feb: function() {
+            const ret = typeof window === 'undefined' ? undefined : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
         __wbindgen_generic_0000000000000001: function(arg0, arg1) {
@@ -4169,12 +4418,11 @@ function __wbg_get_imports() {
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
-            const offset = table.grow(4);
             table.set(0, undefined);
-            table.set(offset + 0, undefined);
-            table.set(offset + 1, null);
-            table.set(offset + 2, true);
-            table.set(offset + 3, false);
+            table.set(1024, undefined);
+            table.set(1025, null);
+            table.set(1026, true);
+            table.set(1027, false);
         },
     };
     return {
@@ -4243,7 +4491,8 @@ function getFloat64ArrayMemory0() {
 }
 
 function getStringFromWasm0(ptr, len) {
-    return decodeText(ptr >>> 0, len);
+    ptr = ptr >>> 0;
+    return decodeText(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
 let cachedUint32ArrayMemory0 = null;
@@ -4323,18 +4572,18 @@ function takeFromExternrefTable0(idx) {
     return value;
 }
 
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
 let numBytesDecoded = 0;
-function decodeText(ptr, len) {
-    numBytesDecoded += len;
+function decodeText(bytes) {
+    numBytesDecoded += bytes.length;
     if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
         cachedTextDecoder.decode();
-        numBytesDecoded = len;
+        numBytesDecoded = bytes.length;
     }
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+    return cachedTextDecoder.decode(bytes);
 }
 
 const cachedTextEncoder = new TextEncoder();
@@ -4424,9 +4673,17 @@ function initSync(module) {
     return __wbg_finalize_init(instance, module);
 }
 
+let __wbg_init_promise;
 async function __wbg_init(module_or_path) {
     if (wasm !== undefined) return wasm;
+    if (__wbg_init_promise === undefined) {
+        __wbg_init_promise = __wbg_init_once(module_or_path);
+        __wbg_init_promise.catch(() => { __wbg_init_promise = undefined; });
+    }
+    return __wbg_init_promise;
+}
 
+async function __wbg_init_once(module_or_path) {
 
     if (module_or_path !== undefined) {
         if (Object.getPrototypeOf(module_or_path) === Object.prototype) {

@@ -9,6 +9,8 @@
 const path = require("node:path");
 
 const CANDIDATES = [
+  // a candidate build for the tests and bench/kernel-bench.mjs
+  process.env.BREPCODE_NATIVE_KERNEL && path.resolve(process.env.BREPCODE_NATIVE_KERNEL),
   path.join(__dirname, "..", "vendor", "brep-kernel-native", "brepcode_native.node"),
   // electron-builder asarUnpack puts it here; Electron also redirects the
   // path above, this is the belt to that brace

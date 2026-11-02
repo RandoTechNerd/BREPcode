@@ -76,6 +76,7 @@ const rewrites = [
   // (a module worker has no import map). After the import-map pair above.
   ["/node_modules/manifold-3d/manifold.js", "./vendor/manifold/manifold.js"],
   ["/vendor/brep-kernel-rust/", "./vendor/brep-kernel-rust/"],
+  ["/vendor/brep-stl2step-legacy/", "./vendor/brep-stl2step-legacy/"],
   // SMLib as WebAssembly, and the desktop's adapter it runs behind (copied
   // beside it, so the vendor cache keeps the two together)
   ["/vendor/brep-kernel-smlib/", "./vendor/brep-kernel-smlib/"],
@@ -156,6 +157,9 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "bgjobs.js", "cage.js", "cage-stages.js", "cage-worker.js",
   // the smooth-surface writer's worker (src/smoothstep.js), also loaded by URL
   "smooth-worker.js",
+  // "Open as an exact solid": one throwaway worker per reconstruction attempt
+  // (src/stlexact.js), also loaded by URL
+  "stl2step-worker.js",
   // the progress bar under the status line (and its card)
   "progress.js",
   // the build worker: loaded by URL rather than imported, so nothing else
@@ -322,6 +326,13 @@ cpSync("node_modules/manifold-3d/LICENSE", join(OUT, "vendor/manifold/LICENSE"))
 mkdirSync(join(OUT, "vendor", "brep-kernel-rust"), { recursive: true });
 for (const f of ["brep_kernel.js", "brep_kernel_bg.wasm", "LICENSE.md"]) {
   cpSync(`vendor/brep-kernel-rust/${f}`, join(OUT, "vendor/brep-kernel-rust", f));
+}
+// ...and its 0.9.0 predecessor, loaded only as the second opinion in "Open as
+// an exact solid" (src/stlexact.js, vendor/brep-stl2step-legacy/README.md).
+// The same 14.5 MB file brepcode.com's asset store already holds.
+mkdirSync(join(OUT, "vendor", "brep-stl2step-legacy"), { recursive: true });
+for (const f of ["brep_kernel.js", "brep_kernel_bg.wasm", "LICENSE.md", "README.md"]) {
+  cpSync(`vendor/brep-stl2step-legacy/${f}`, join(OUT, "vendor/brep-stl2step-legacy", f));
 }
 
 // ---- vendor: SMLib as WebAssembly (the kernel picker's "nvidia", lazy) ----

@@ -2,13 +2,17 @@
 // loads the same two wasm modules by URL; see viewer/kernel-worker.js.
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 import { createRequire } from "node:module";
 
 let rust = null;
 export async function loadRustKernel() {
   if (rust) return rust;
-  const url = new URL("../vendor/brep-kernel-rust/brep_kernel.js", import.meta.url);
+  // BREPCODE_RUST_KERNEL_DIR points the tests and bench/kernel-bench.mjs at a
+  // candidate build (a folder holding brep_kernel.js + brep_kernel_bg.wasm).
+  const dir = process.env.BREPCODE_RUST_KERNEL_DIR;
+  const url = dir ? pathToFileURL(resolve(dir, "brep_kernel.js")) : new URL("../vendor/brep-kernel-rust/brep_kernel.js", import.meta.url);
   const mod = await import(url.href);
   mod.initSync({ module: readFileSync(fileURLToPath(new URL("brep_kernel_bg.wasm", url))) });
   rust = mod;
