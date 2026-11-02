@@ -793,7 +793,10 @@ export function fillOddHoles(patches, corners, quads, topo, oddLoops, firstId) {
 
 // ------------------------------------------------------------ STEP text
 // solid name, cage, options -> { step, faces, ... }.
-export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, creases: wantCreases = true, fit = 8, mesh = false } = {}) {
+// The cage as bicubic patches, before any STEP is written: the corner
+// points, the patch grids, and the odd-hole fills with their split rim edges.
+// cageToStep writes these; src/adaptsmooth.js refines them first.
+export function cagePatches(verts, quads, { creaseAngle = 40, creases: wantCreases = true, fit = 8 } = {}) {
   const closed = closeCage(verts, quads);
   verts = closed.verts;
   quads = outwardQuads(verts, closed.quads);
@@ -822,6 +825,13 @@ export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, cr
     for (const q of strayEdgePatches(fp, fills.length)) fillBad.add(q);
     fillFolded = fillBad.size;
   }
+  return { verts, quads, topo, crease, closed, patches, corners, fills, splits, extra, flattened, folded, fillFolded, relaxed, uncreased };
+}
+
+export function cageToStep(verts, quads, { name = "smooth", creaseAngle = 40, creases: wantCreases = true, fit = 8, mesh = false } = {}) {
+  let topo, crease, closed, patches, corners, fills, splits, extra, flattened, folded, fillFolded, relaxed, uncreased;
+  ({ verts, quads, topo, crease, closed, patches, corners, fills, splits, extra, flattened, folded, fillFolded, relaxed, uncreased }
+    = cagePatches(verts, quads, { creaseAngle, creases: wantCreases, fit }));
   const G = (q, i, j) => { const o = (q * 16 + i * 4 + j) * 3; return [patches[o], patches[o + 1], patches[o + 2]]; };
   const posOf = (v) => (v < topo.nv ? [corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]] : extra[v - topo.nv]);
 
