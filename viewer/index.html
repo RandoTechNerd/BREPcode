@@ -18632,6 +18632,7 @@ let SIMPLIFY_TARGET = 10000;
     // Benchy at 800 quads has no cabin), and no refining brings that back,
     // so the 2,500-quad layout is used instead.
     const SMOOTH_COVER = 0.01;
+    const SMOOTH_ALT_LAYOUTS = 2;
     let smoothSession = null;          // { s, name, estimates, stop } while a smooth result is on screen
     const closeSmoothSession = () => { smoothSession?.s.close(); smoothSession = null; };
 
@@ -18663,6 +18664,17 @@ let SIMPLIFY_TARGET = 10000;
       smoothPreview.clear();
       if (smoothPreviewHid) { smoothPreviewHid = false; modelGroup.visible = true; }
     }
+    // The estimates come from Node timings; this machine and browser may be
+    // slower or faster. Each finished smooth build compares its real time
+    // with the estimate, and later estimates are scaled by that (a running
+    // average, kept per browser).
+    const SPEED_KEY = "brepcode.smoothSpeed";
+    const smoothSpeed = () => { try { const v = +localStorage.getItem(SPEED_KEY); return v > 0.2 && v < 10 ? v : 1; } catch { return 1; } };
+    const learnSmoothSpeed = (actualMs, estMs) => {
+      if (!(actualMs > 0 && estMs > 0)) return;
+      const r = Math.min(8, Math.max(0.25, actualMs / estMs));
+      try { localStorage.setItem(SPEED_KEY, String(+(0.6 * smoothSpeed() + 0.4 * r).toFixed(3))); } catch { /* storage off: estimates stay unscaled */ }
+    };
     const secs = (ms) => (ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60000)} min`);
 
     // stop: { i } read again after each refine, so a slider moved meanwhile
@@ -18684,11 +18696,33 @@ let SIMPLIFY_TARGET = 10000;
           const c = begun.coverage;
           if (c.p95 <= SMOOTH_COVER * c.diag) break;
         }
+        // Even the finest layout lost part of the shape. Which part depends on
+        // QuadriFlow's random seed (on a 20k Benchy seed 0 keeps the chimney's
+        // top, 0.78 mm at 95%; seed 3 closes it, 1.77 mm), so lay it out again
+        // from other seeds, up to SMOOTH_ALT_LAYOUTS times, and keep whichever
+        // surface comes closest.
+        const ok = (b) => b.coverage.p95 <= SMOOTH_COVER * b.coverage.diag;
+        const tag = name.replace(/\.\w+$/, "");
+        const stops = SMOOTH_STOPS.map((x) => x.pct);
+        let best = { cage, begun }, held = cage;        // held: the layout the worker holds now
+        for (let alt = 1; alt <= SMOOTH_ALT_LAYOUTS && !ok(best.begun); alt++) {
+          const faces = CAGE_SIZES.at(-1);
+          job?.step(1, { label: `Another layout (${alt} of ${SMOOTH_ALT_LAYOUTS}): the first one lost part of the shape` });
+          const q = queueCage(bg, name, stl, { faces, alt });
+          const other = q ? await (bg.promote(q.id) || q.promise).catch(() => null) : null;
+          if (!other) break;
+          const b2 = await s.call({ op: "begin", verts: other.verts.slice(), quads: other.quads.slice(), stl, name: tag, stops });
+          held = other;
+          if (b2.coverage.p95 < best.begun.coverage.p95) best = { cage: other, begun: b2 };
+          if (preview) showSmoothPreview(best.begun.preview);
+        }
+        ({ cage, begun } = best);
+        if (held !== cage) begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: tag, stops });
         onEstimates?.(begun.estimates);
         let done = -1, summary = null;
         while (done !== stop.i) {
           const i = stop.i;
-          job?.step(2, { label: `Adding detail where the surface misses the mesh (${SMOOTH_STOPS[i].label}, about ${secs(begun.estimates[i].ms)})` });
+          job?.step(2, { label: `Adding detail where the surface misses the mesh (${SMOOTH_STOPS[i].label}, about ${secs(begun.estimates[i].ms * smoothSpeed())})` });
           summary = (await s.call({ op: "refine", tolPct: SMOOTH_STOPS[i].pct }, (m) => { if (preview) showSmoothPreview(m.preview); })).summary;
           done = i;
         }
@@ -18754,7 +18788,7 @@ let SIMPLIFY_TARGET = 10000;
     // The Detail slider's row, for the hint: a stop per setting, each with its
     // estimated time (layout already done, so: refining plus the solid build)
     const BTN = `font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer`;
-    const smoothStops = (estimates, i) => SMOOTH_STOPS.map((st, k) => `${k === i ? "<b>" : ""}${st.label} ~${secs(estimates[k].ms)}${k === i ? "</b>" : ""}`).join(" · ");
+    const smoothStops = (estimates, i) => SMOOTH_STOPS.map((st, k) => `${k === i ? "<b>" : ""}${st.label} ~${secs(estimates[k].ms * smoothSpeed())}${k === i ? "</b>" : ""}`).join(" · ");
     function smoothDetailRow(estimates, i) {
       return `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">Detail <input id="smooth-detail" type="range" min="0" max="${SMOOTH_STOPS.length - 1}" step="1" value="${i}" style="width:110px;vertical-align:middle"> <span id="smooth-stops" style="opacity:.8">${smoothStops(estimates, i)}</span></span>`;
     }
@@ -18810,7 +18844,7 @@ let SIMPLIFY_TARGET = 10000;
       // the last step runs until the kernel has built the smooth solid, and
       // the preview steps aside for it then (past a stand-in build on the JS
       // kernel while Rust is still loading)
-      const swapIn = (res, job) => {
+      const swapIn = (res, job, estMs) => {
         stages[3].estMs = 2000 + res.faces * 8;
         job.step(3);
         (async () => {
@@ -18822,10 +18856,12 @@ let SIMPLIFY_TARGET = 10000;
           }
           clearSmoothPreview();
           job.done();
+          // refine + build, against what the slider said (only a real exact build counts)
+          if (lastEngine?.engine === "exact" && !document.hidden) learnSmoothSpeed((res.summary?.ms || 0) + (Date.now() - t1), estMs);
         })();
         dsl.registerImport(stepName, res.step, { mesh: res.mesh });
       };
-      swapIn(r, job);
+      swapIn(r, job, estimates[stop.i].ms);
       logEvent("smooth", name, { ok: true, faces: r.faces, tris: cage.triangles, ms: Math.round(performance.now() - t0) });
       pushHistory(code.value);
       code.value = swapImportCall(name, `importedSolid(${JSON.stringify(stepName)})`);
@@ -18865,12 +18901,12 @@ let SIMPLIFY_TARGET = 10000;
           const redo = progress.task(`Smooth surface for ${name} at ${SMOOTH_STOPS[k].label}`, [stages[2], stages[3]]);
           $("smooth-detail").disabled = true;
           try {
-            redo.step(0, { label: `Adding detail (${SMOOTH_STOPS[k].label}, about ${secs(est.ms)})` });
+            redo.step(0, { label: `Adding detail (${SMOOTH_STOPS[k].label}, about ${secs(est.ms * smoothSpeed())})` });
             const sum = (await s.call({ op: "refine", tolPct: SMOOTH_STOPS[k].pct }, (m) => showSmoothPreview(m.preview))).summary;
             const { result } = await s.call({ op: "write" });
             result.summary = sum;
             stop.i = k;
-            swapIn(result, { step: () => redo.step(1), done: () => redo.done() });
+            swapIn(result, { step: () => redo.step(1), done: () => redo.done() }, est.ms);
             scheduleBuild();
             sayResult(result, k);
           } catch (e) {
