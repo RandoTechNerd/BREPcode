@@ -41,7 +41,7 @@ rather than a wrong part.
 
 ## The calls
 
-```js
+```
 bearing("608")                       // the bearing, for a fit check
 bearingPocket("608")                 // press seat: +0.1 on diameter, 0.2 deeper
 bearingPocket("608", { slip: true })      // +0.3 instead — turns freely

@@ -78,7 +78,20 @@ app.whenReady().then(async () => {
     try { if (await win.webContents.executeJavaScript("!!window.__brepAgent", true)) break; } catch { /* still loading */ }
     await wait(250);
   }
-  await wait(4000);
+  // A fixed sleep here was a coin toss: a cold start (kernel wasm still
+  // compiling, caches empty) is still "busy" at 4 s and the first check failed
+  // on a build that was going fine. Poll until the status settles instead,
+  // with a ceiling well past any real starter build.
+  await wait(1000);
+  for (let i = 0; i < 240; i++) {
+    let kind = "busy";
+    try {
+      kind = await win.webContents.executeJavaScript(
+        `window.__brepAgent.run({ action: "get_state" }).then((s) => s.status && s.status.kind)`, true);
+    } catch { /* page still settling */ }
+    if (kind && kind !== "busy") break;
+    await wait(250);
+  }
 
   try {
     const ping = await call("GET", "/ping");
