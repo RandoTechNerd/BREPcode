@@ -67,6 +67,11 @@ export function summarise(out, ms, engine) {
     sourceTriangles: out.sourceTriangles,
     backend: out.report?.backend || "",
     analyticTriangles: h ? ["plane", "cylinder", "cone", "sphere", "torus"].reduce((n, k) => n + (h[`analytic_${k}_triangles`] || 0), 0) : null,
+    // how much of the mesh stayed triangles, which "Open as a solid" weighs
+    // against the smooth surface (a facet is also a PLANE, so the plane count
+    // can't say): all of it for a faceted repair, none for a recognised part
+    facetedTriangles: String(out.report?.backend || "").startsWith("faceted") ? out.sourceTriangles
+      : h ? (h.faceted_triangles ?? 0) : 0,
     solids: count(/MANIFOLD_SOLID_BREP\(/g),
     faces: count(/ADVANCED_FACE\(/g),
     planes: count(/=\s*PLANE\(/g), cylinders: count(/CYLINDRICAL_SURFACE\(/g),

@@ -126,6 +126,15 @@ console.log("\nsmooth STEP: a lumpy sphere\n");
     worst = Math.max(worst, err); sum += err; nS++;
   }
   check(`limit surface on the shape: mean ${(sum / nS).toFixed(3)} mm, worst ${worst.toFixed(3)} mm off a 20 mm radius`, worst < 0.6 && sum / nS < 0.15);
+  // the measure the app sizes the cage by (viewer/cagedev.js): input vertices
+  // against the finished surface's preview, agreeing with the sampling above
+  {
+    const { surfaceDeviation } = await import("../viewer/cagedev.js");
+    const withMesh = cageToStep(cage.verts, cage.quads, { name: "lumpy", mesh: true });
+    const pts = (t) => [...t.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].flatMap((m) => [+m[1], +m[2], +m[3]]);
+    const d = surfaceDeviation(pts(stl), pts(withMesh.mesh));
+    check(`surfaceDeviation measures it too: mean ${d.mean.toFixed(3)} mm, p95 ${d.p95.toFixed(3)} mm over a ${d.diag.toFixed(0)} mm part`, d.mean > 0 && d.mean < 0.15 && d.p95 < 0.6 && d.diag > 60 && d.diag < 80);
+  }
   // the Rust kernel imports it as an exact solid
   registerImport("lumpy-smooth.step", r.step, { mesh: cageToStl(cage.verts, cage.quads, { name: "lumpy" }) });
   const t1 = Date.now();

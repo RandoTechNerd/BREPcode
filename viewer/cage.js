@@ -13,7 +13,11 @@
 
 import { STAGE_NAMES } from "./cage-stages.js";
 
-const cache = new Map();          // name -> { key, cage }
+const cache = new Map();          // `${name}@${faces}` -> { key, cage }
+// The smooth surface sizes itself (index.html): a 1,200-quad cage first, and a
+// 2,500-quad one when the small one's surface strays too far from the mesh.
+export const CAGE_SIZES = [1200, 2500];
+const slot = (name, faces) => `${name}@${faces}`;
 const MAX_TRIANGLES = 300_000;    // past this a background run is minutes, not seconds
 
 let workerUrl = null;
@@ -28,7 +32,7 @@ function keyOf(stl) {
   return `${s.length}:${h}`;
 }
 
-export function getCage(name) { return cache.get(name)?.cage || null; }
+export function getCage(name, faces = CAGE_SIZES.at(-1)) { return cache.get(slot(name, faces))?.cage || null; }
 
 // Someone waiting on a cage can follow it stage by stage (a progress bar),
 // whoever queued it: watchCage(name, fn) -> unsubscribe. fn gets
@@ -40,7 +44,7 @@ export function watchCage(name, fn) {
   return () => watchers.get(name)?.delete(fn);
 }
 const tell = (ev) => { for (const fn of watchers.get(ev.name) || []) { try { fn(ev); } catch { /* a listener's problem */ } } };
-export function jobId(name) { return `cage:${name}`; }
+export function jobId(name, faces = CAGE_SIZES.at(-1)) { return `cage:${name}@${faces}`; }
 
 // One worker per job, terminated at the end (or on a kill), so a finished or
 // abandoned cage never holds memory.
@@ -88,8 +92,8 @@ class StageTimeout extends Error {
 export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, onProgress = null } = {}) {
   if (typeof stl !== "string" || !/^\s*solid/.test(stl)) return null;
   const key = keyOf(stl);
-  const hit = cache.get(name);
-  if (hit && hit.key === key) return { id: jobId(name), promise: Promise.resolve(hit.cage) };
+  const hit = cache.get(slot(name, faces));
+  if (hit && hit.key === key) return { id: jobId(name, faces), promise: Promise.resolve(hit.cage) };
   const triangles = (stl.match(/facet normal/g) || []).length;
   if (triangles > MAX_TRIANGLES) return null;
 
@@ -100,8 +104,8 @@ export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, on
     worker = null; link = null;
   };
   const job = scheduler.background({
-    id: jobId(name),
-    priority: 30,
+    id: jobId(name, faces),
+    priority: faces <= CAGE_SIZES[0] ? 30 : 31,      // the small cage first: it is often enough
     needs: "cpu",
     kill,
     run: async (ctx) => {
@@ -133,7 +137,7 @@ export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, on
           const stageMs = [];
           for (let k = 0; k < STAGE_NAMES.length; k++) {
             await ctx.checkpoint();             // the pause point: between stages
-            const ev = { name, stage: k, of: STAGE_NAMES.length, label: STAGE_NAMES[k], seed };
+            const ev = { name, faces, stage: k, of: STAGE_NAMES.length, label: STAGE_NAMES[k], seed };
             onProgress?.(ev);
             tell(ev);
             const r = await call({ op: "stage", k });
@@ -145,7 +149,7 @@ export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, on
             name, verts: out.verts, quads: out.quads, seed,
             triangles: begun.triangles, stageMs, ms: Math.round(performance.now() - t0),
           };
-          cache.set(name, { key, cage });
+          cache.set(slot(name, faces), { key, cage });
           return cage;
         } catch (e) {
           if (!(e instanceof StageTimeout)) throw e;
@@ -162,10 +166,10 @@ export function queueCage(scheduler, name, stl, { faces = 2500, sharp = true, on
 }
 
 // Someone wants the cage now: stop pausing, put it first, and wait for it.
-export async function needCage(scheduler, name) {
-  const hit = getCage(name);
+export async function needCage(scheduler, name, faces = CAGE_SIZES.at(-1)) {
+  const hit = getCage(name, faces);
   if (hit) return hit;
-  const p = scheduler.promote(jobId(name));
+  const p = scheduler.promote(jobId(name, faces));
   if (!p) return null;
   return p;
 }
