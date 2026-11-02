@@ -3110,13 +3110,34 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
   // `matrix` is the transform the child was placed with: "x" / "y" / "z" and
   // "top" / "bottom" mean the shape's own axes where the fillet is written,
   // so a rounded part stays rounded the same way after a rotate() around it.
-  async function childEdgeNames(childId, spec, matrix = IDENTITY) {
+  //
+  // Only the child's own features are run on the JS kernel: they are the ones
+  // emitted since `start`. Running the whole history instead made every
+  // fillet re-solve every part before it, so a group of N filleted parts
+  // compiled in N^2 time (8 perforated plates: 22.6 s of compile for 48 s of
+  // kernel). If the child reuses something emitted earlier its solid won't be
+  // in the slice, and the full run is the fallback.
+  async function childSolid(childId, start, pick) {
+    const all = partHistory.features;
+    if (start > 0 && Array.isArray(all) && start < all.length) {
+      partHistory.features = all.slice(start);
+      try {
+        await runKeepingImports(partHistory);
+        const hit = pick((partHistory.scene?.children || []).filter((o) => o.type === "SOLID"), true);
+        if (hit) return hit;
+      } catch { /* fall through to the full run */ }
+      finally { partHistory.features = all; }
+    }
+    await runKeepingImports(partHistory);
+    return pick((partHistory.scene?.children || []).filter((o) => o.type === "SOLID"), false);
+  }
+
+  async function childEdgeNames(childId, spec, matrix = IDENTITY, start = 0) {
     // "convex" reads the faces' geometry, which only the JS solid has
     let edges = spec === "convex" ? null : await fastEdges(childId);
     if (!edges) {
-      await runKeepingImports(partHistory);
-      const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
-      const solid = solids.find((s) => s.name === childId) || solids[solids.length - 1];
+      const solid = await childSolid(childId, start, (solids, exact) =>
+        solids.find((s) => s.name === childId) || (exact ? null : solids[solids.length - 1]));
       if (!solid) return [];
       edges = [];
       solid.traverse((o) => {
@@ -3186,14 +3207,12 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     } catch { return null; }
   }
 
-  async function childFaceNames(childId, filter) {
+  async function childFaceNames(childId, filter, start = 0) {
     let names = await fastFaceNames(childId);
     if (!names) {
-      await runKeepingImports(partHistory);
-      const solids = (partHistory.scene?.children || []).filter((o) => o.type === "SOLID");
-      const solid = solids.find((s) => s.name === childId)
+      const solid = await childSolid(childId, start, (solids, exact) => solids.find((s) => s.name === childId)
         || solids.find((s) => { let hit = false; s.traverse((f) => { if (f.type === "FACE" && String(f.name || "").startsWith(childId)) hit = true; }); return hit; })
-        || solids[solids.length - 1];
+        || (exact ? null : solids[solids.length - 1]));
       if (!solid) return [];
       names = [];
       solid.traverse((f) => { if (f.type === "FACE" && f.name) names.push(f.name); });
@@ -3350,13 +3369,14 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     }
 
     if (n.kind === "edgeop") {
+      const start = Array.isArray(partHistory.features) ? partHistory.features.length : 0;
       const childId = await emit(n.child, matrix, st);
       let faces;
       if (Array.isArray(n.edges)) {
         // named edges: every one must be on the shape. A name goes stale when
         // a shape is added before this one (ids count in build order), and
         // rounding whatever edges happen to be left would be a silent lie.
-        const have = new Set(await childEdgeNames(childId, "all"));
+        const have = new Set(await childEdgeNames(childId, "all", IDENTITY, start));
         const bare = (e) => e.replace(/\[\d+\]$/, "");
         // "A|B[0]" and "B|A[0]" are one edge: the kernels sort the pair
         const sorted = (e) => {
@@ -3391,7 +3411,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
             + ` (edge names follow the build order; pick the edges again)`);
         }
         faces = n.edges.flatMap((e) => (have.has(e) ? [e] : [...have].filter((h) => bare(h) === e)));
-      } else faces = n.edges ? await childEdgeNames(childId, n.edges, matrix) : await childFaceNames(childId, n.faces);
+      } else faces = n.edges ? await childEdgeNames(childId, n.edges, matrix, start) : await childFaceNames(childId, n.faces, start);
       if (!faces.length) {
         throw new Error(`${n.code === "F" ? "fillet" : "chamfer"}(): couldn't find any edges to work on for this shape`);
       }
