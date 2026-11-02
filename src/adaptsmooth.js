@@ -1099,7 +1099,7 @@ export function modelToTriangles(model, segsPerSpan = 3) {
       T.push(...g(a, b), ...g(a + 1, b + 1), ...g(a, b + 1)); L.push(lvl);
     }
   };
-  for (const f of model.faces) emit(f.S, f.stuck && f.foldedFit ? 7 : Math.max(f.S.lu, f.S.lv));
+  for (const f of model.faces) emit(f.S, f.carrier ? (f.carrier.kind === "cyl" ? 9 : 8) : f.stuck && f.foldedFit ? 7 : Math.max(f.S.lu, f.S.lv));
   for (const fl of model.fills) emit(makeSurf(0, 0, Float64Array.from(fl.grid)), 6);
   return { tris: Float64Array.from(T), level: Uint8Array.from(L) };
 }

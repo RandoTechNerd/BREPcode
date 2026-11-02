@@ -5,7 +5,7 @@
 // pass previewed), and refine again at another setting without laying the
 // surface out again.
 //
-//   page -> { id, op: "begin", verts, quads, stl, name, stops }   stops: tolerances, % of the part's size
+//   page -> { id, op: "begin", verts, quads, stl, name, stops, hybrid, rustWasmUrl }   stops: tolerances, % of the part's size
 //   worker -> { id, ok, coverage: { p95, mean, diag }, estimates: [...], preview }
 //   page -> { id, op: "refine", tolPct }
 //   worker -> { id, pass: {...}, preview }  (each pass)  then { id, ok, summary }
@@ -13,21 +13,49 @@
 //   worker -> { id, ok, result: { step, mesh, faces, dev, ... } }
 //
 // preview = { positions: Float32Array, level: Uint8Array per triangle }:
-// level is the face's span level (0 = left as the coarse patch), so the page
-// can tint where the work went.
+// level is the face's span level (0 = left as the coarse patch), 8 a face on
+// a true plane, 9 on a true cylinder, so the page can tint where the work went.
 import { weldSTL } from "./cage-worker.js";
-import { coarseModel, prepare, estimate, adapt, modelToStep, modelToTriangles, summary } from "../src/adaptsmooth.js";
+import { coarseModel, prepare, estimate, adapt, modelToStep, modelToTriangles, summary, snapToCarriers } from "../src/adaptsmooth.js";
 import { surfaceDeviation } from "./cagedev.js";
 
-let base = null;       // { verts, quads, mesh, name }: enough to start over
-let model = null, refinedTo = Infinity;
+let base = null;       // { verts, quads, mesh, name, regionOf }: enough to start over
+let model = null, refinedTo = Infinity, snapped = null;
+
+// The hybrid (begin with hybrid: true): next.BREP.io's kernel segmentation,
+// called unchanged in our Rust wasm, says which regions of the mesh are
+// planes and cylinders; those faces of ours go exactly onto them and are
+// written as true PLANE and CYLINDRICAL_SURFACE faces (adaptsmooth.js
+// snapToCarriers). The 13 MB kernel comes from the HTTP cache the build
+// worker already filled.
+let rustP = null;
+const loadRust = (url) => (rustP ??= (async () => {
+  const mod = await import("/vendor/brep-kernel-rust/brep_kernel.js");
+  await mod.default({ module_or_path: url || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href) });
+  return mod;
+})());
+const MIN_REGION_TRIANGLES = 8;       // smaller regions are noise (a Benchy has ~100 "spheres" of 1-7 triangles)
+async function segment(mesh, url) {
+  const rust = await loadRust(url);
+  if (typeof rust.segment_mesh_faces_json !== "function") return null;
+  const seg = JSON.parse(rust.segment_mesh_faces_json(JSON.stringify({ positions: Array.from(mesh.verts), indices: Array.from(mesh.tris), options: {} })));
+  const arr = (v) => (v && typeof v === "object" && "x" in v ? [v.x, v.y, v.z] : v);     // its Vec3s are { x, y, z }
+  for (const r of seg.regions) for (const k of Object.keys(r.carrier)) r.carrier[k] = arr(r.carrier[k]);
+  return (t) => {
+    const r = seg.regions[seg.triangle_region_ids[t]];
+    return r && r.carrier.type !== "Freeform" && r.triangle_count >= MIN_REGION_TRIANGLES ? r : null;
+  };
+}
 
 const preview = (segs = 2) => {
   const { tris, level } = modelToTriangles(model, segs);
   const positions = Float32Array.from(tris);
   return { positions, level };
 };
-const fresh = () => { model = coarseModel(base.verts, base.quads, base.mesh); prepare(model); refinedTo = Infinity; };
+const fresh = () => {
+  model = coarseModel(base.verts, base.quads, base.mesh); prepare(model); refinedTo = Infinity;
+  snapped = base.regionOf ? snapToCarriers(model, base.regionOf) : null;
+};
 
 function stlText(tris, name) {
   const out = [`solid ${name}`];
@@ -41,19 +69,27 @@ function stlText(tris, name) {
   return out.join("\n");
 }
 
-self.onmessage = ({ data }) => {
+self.onmessage = async ({ data }) => {
   const { id, op } = data;
   const reply = (msg, transfer = []) => self.postMessage({ id, ...msg }, transfer);
   try {
     if (op === "begin") {
       const mesh = weldSTL(data.stl);
-      base = { verts: data.verts, quads: data.quads, mesh, name: data.name };
+      base = { verts: data.verts, quads: data.quads, mesh, name: data.name, regionOf: null };
+      // the coverage test is on the plain coarse surface (snapping moves it a little)
+      model = coarseModel(base.verts, base.quads, base.mesh);
+      const coverage = surfaceDeviation(Array.from(mesh.verts), modelToTriangles(model, 2).tris);
+      let segMs = 0, segError = null;
+      if (data.hybrid) {
+        const t0 = performance.now();
+        try { base.regionOf = await segment(mesh, data.rustWasmUrl); } catch (e) { segError = String(e?.message || e).slice(0, 160); }
+        segMs = Math.round(performance.now() - t0);
+      }
       fresh();
       const p = preview();
-      const coverage = surfaceDeviation(Array.from(mesh.verts), p.positions);
       const estimates = estimate(model, (data.stops || []).map((pct) => model.diag * pct / 100), { maxLevel: 3 })
         .map((e, i) => ({ tolPct: data.stops[i], ms: e.ms, refined: e.refined, faces: model.faces.length + model.fills.length }));
-      reply({ ok: true, coverage, estimates, faces: model.faces.length + model.fills.length, preview: p }, [p.positions.buffer, p.level.buffer]);
+      reply({ ok: true, coverage, estimates, faces: model.faces.length + model.fills.length, hybrid: snapped ? { ...snapped, segMs } : null, segError, preview: p }, [p.positions.buffer, p.level.buffer]);
     } else if (op === "refine") {
       const tol = model.diag * data.tolPct / 100;
       // tighter than before: carry on from here; looser: start over from the coarse surface
@@ -65,12 +101,12 @@ self.onmessage = ({ data }) => {
       refinedTo = tol;
       reply({ ok: true, summary: { ms: r.ms, passes: r.passes, ...summary(model) } });
     } else if (op === "write") {
-      const { step, faces } = modelToStep(model, base.name);
+      const { step, faces, planeFaces, cylFaces, mergedFaces } = modelToStep(model, base.name);
       const { tris } = modelToTriangles(model, 3);
       const dev = surfaceDeviation(Array.from(base.mesh.verts), tris);
       // the JS kernel's stand-in mesh: coarser, it only shows while Rust loads
       const mesh = stlText(modelToTriangles(model, 2).tris, base.name);
-      reply({ ok: true, result: { step, mesh, faces, dev, ...summary(model) } });
+      reply({ ok: true, result: { step, mesh, faces, dev, planeFaces, cylFaces, mergedFaces, ...summary(model) } });
     } else throw new Error(`unknown op ${op}`);
   } catch (e) {
     reply({ ok: false, error: String(e?.message || e) });

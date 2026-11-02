@@ -18633,6 +18633,11 @@ let SIMPLIFY_TARGET = 10000;
     // so the 2,500-quad layout is used instead.
     const SMOOTH_COVER = 0.01;
     const SMOOTH_ALT_LAYOUTS = 2;
+    // The hybrid: where next.BREP.io's segmentation (in our Rust wasm) finds
+    // a real plane or cylinder, those faces become true PLANE and
+    // CYLINDRICAL_SURFACE faces; the rest stays smooth B-spline. ?hybrid=0
+    // turns it off, to compare.
+    const SMOOTH_HYBRID = () => (/[?&]hybrid=0/.test(location.search) ? {} : { hybrid: true, rustWasmUrl: window.__BREP_RUST_WASM_URL });
     let smoothSession = null;          // { s, name, estimates, stop } while a smooth result is on screen
     const closeSmoothSession = () => { smoothSession?.s.close(); smoothSession = null; };
 
@@ -18642,13 +18647,14 @@ let SIMPLIFY_TARGET = 10000;
     smoothPreview.name = "smooth-preview";
     scene.add(smoothPreview);
     let smoothPreviewHid = false;
-    const PREVIEW_TINT = [[0.62, 0.66, 0.72], [0.42, 0.62, 0.9], [0.95, 0.75, 0.3], [0.93, 0.47, 0.25], [0.8, 0.2, 0.2], [0, 0, 0], [0.65, 0.4, 0.8], [0.65, 0.4, 0.8]];
+    // 0-4 spans level, 6 a hole fill, 7 a fold, 8 a true plane (green), 9 a true cylinder (pink)
+    const PREVIEW_TINT = [[0.62, 0.66, 0.72], [0.42, 0.62, 0.9], [0.95, 0.75, 0.3], [0.93, 0.47, 0.25], [0.8, 0.2, 0.2], [0, 0, 0], [0.65, 0.4, 0.8], [0.65, 0.4, 0.8], [0.35, 0.75, 0.5], [0.92, 0.45, 0.7]];
     function showSmoothPreview(p) {
       for (const m of smoothPreview.children) m.geometry.dispose();
       smoothPreview.clear();
       const n = p.positions.length / 3, col = new Float32Array(n * 3);
       for (let t = 0; t < n / 3; t++) {
-        const c = PREVIEW_TINT[Math.min(7, p.level[t])];
+        const c = PREVIEW_TINT[Math.min(9, p.level[t])];
         for (let k = 0; k < 3; k++) col.set(c, (t * 3 + k) * 3);
       }
       const g = new THREE.BufferGeometry();
@@ -18691,7 +18697,7 @@ let SIMPLIFY_TARGET = 10000;
           try { cage = await needCage(bg, name, faces); } finally { unwatch?.(); }
           if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
           await new Promise((res) => setTimeout(res, 30));       // let the bar paint
-          begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: name.replace(/\.\w+$/, ""), stops: SMOOTH_STOPS.map((x) => x.pct) });
+          begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: name.replace(/\.\w+$/, ""), stops: SMOOTH_STOPS.map((x) => x.pct), ...SMOOTH_HYBRID() });
           if (preview) showSmoothPreview(begun.preview);
           const c = begun.coverage;
           if (c.p95 <= SMOOTH_COVER * c.diag) break;
@@ -18711,13 +18717,13 @@ let SIMPLIFY_TARGET = 10000;
           const q = queueCage(bg, name, stl, { faces, alt });
           const other = q ? await (bg.promote(q.id) || q.promise).catch(() => null) : null;
           if (!other) break;
-          const b2 = await s.call({ op: "begin", verts: other.verts.slice(), quads: other.quads.slice(), stl, name: tag, stops });
+          const b2 = await s.call({ op: "begin", verts: other.verts.slice(), quads: other.quads.slice(), stl, name: tag, stops, ...SMOOTH_HYBRID() });
           held = other;
           if (b2.coverage.p95 < best.begun.coverage.p95) best = { cage: other, begun: b2 };
           if (preview) showSmoothPreview(best.begun.preview);
         }
         ({ cage, begun } = best);
-        if (held !== cage) begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: tag, stops });
+        if (held !== cage) begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: tag, stops, ...SMOOTH_HYBRID() });
         onEstimates?.(begun.estimates);
         let done = -1, summary = null;
         while (done !== stop.i) {
@@ -18822,7 +18828,7 @@ let SIMPLIFY_TARGET = 10000;
           stop: live,
           preview: true,
           onEstimates: (est) => {
-            hint.innerHTML = `The coarse surface for <b>${esc(name)}</b> is on screen; detail goes only where it misses the mesh (tinted: grey left alone, then blue, amber, orange). `
+            hint.innerHTML = `The coarse surface for <b>${esc(name)}</b> is on screen; detail goes only where it misses the mesh (tinted: grey left alone, then blue, amber, orange; green is a true plane, pink a true cylinder). `
               + smoothDetailRow(est, live.i);
             wireSlider((i) => { live.i = i; const el = $("smooth-stops"); if (el) el.innerHTML = smoothStops(est, i); });
           },
@@ -18871,8 +18877,13 @@ let SIMPLIFY_TARGET = 10000;
       const sayResult = (res, i) => {
         const lv = res.facesByLevel || [];
         const refined = lv.slice(1).reduce((a, b) => a + b, 0);
+        const exact = [
+          res.planeFaces ? `${res.planeFaces} true plane${res.planeFaces === 1 ? "" : "s"}` : "",
+          res.cylFaces ? `${res.cylFaces} true cylinder face${res.cylFaces === 1 ? "" : "s"}` : "",
+        ].filter(Boolean).join(" and ");
         const notes = [
-          refined ? `detail added to ${refined.toLocaleString()} of them, the rest left as the coarse patches` : "every face fit as the coarse patch",
+          exact ? `${exact} where the mesh really is flat or round` : "",
+          refined ? `detail added to ${refined.toLocaleString()} of the curved ones, the rest left as the coarse patches` : "every curved face fit as the coarse patch",
           res.fills ? `${res.fills} small gap${res.fills === 1 ? "" : "s"} in the layout closed` : "",
         ].filter(Boolean).join(", ");
         const close = res.dev
