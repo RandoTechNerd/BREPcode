@@ -14,7 +14,8 @@
 // The bar lives in the editor's status line. When the editor panel is
 // closed that line is not on screen, so the same bar shows as a small card
 // at the bottom of the window instead. A failure stays up there with the
-// reason, a Try again button when the caller gives one, and a close button.
+// reason, a Try again button when the caller gives one (plus any other
+// ways out it names, as `actions`), and a close button.
 
 export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) {
   // ---- DOM: a bar in the status line, and the floating card
@@ -32,18 +33,20 @@ export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) 
   card.hidden = true;
   card.setAttribute("role", "status");
   card.innerHTML = `<div class="pc-row"><span class="pc-text"></span><span class="pc-time"></span>`
-    + `<button class="pc-retry" hidden>Try again</button><button class="pc-x" title="Dismiss" hidden>✕</button></div>`
+    + `<span class="pc-acts"></span><button class="pc-retry" hidden>Try again</button><button class="pc-x" title="Dismiss" hidden>✕</button></div>`
     + `<div class="pbar"><i></i></div>`;
   document.body.appendChild(card);
   const cardText = card.querySelector(".pc-text"), cardTime = card.querySelector(".pc-time");
   const retryBtn = card.querySelector(".pc-retry"), closeBtn = card.querySelector(".pc-x");
+  const acts = card.querySelector(".pc-acts");
+  let actsFor = null;          // the failure the extra buttons were made for
   closeBtn.onclick = () => { failure = null; render(); };
   retryBtn.onclick = () => { const r = failure?.retry; failure = null; render(); r?.(); };
 
   // ---- state
   let generic = null;          // { t0, text, frac }  from the status line
   let task = null;             // { label, stages, i, t0, stageT0, frac, text }
-  let failure = null;          // { text, retry, until }
+  let failure = null;          // { text, retry, actions, until }
   let timer = 0;
 
   const fracOfText = (text) => {
@@ -90,13 +93,23 @@ export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) 
     time.textContent = timeText;
     // the card, when the status line is out of sight (or for a failure)
     const offscreen = !isStatusVisible();
-    if (failure && failure.until && now > failure.until && !failure.retry) failure = null;
+    if (failure && failure.until && now > failure.until) failure = null;
     if (failure && offscreen) {
       card.hidden = false;
       card.classList.add("failed");
       cardText.textContent = failure.text;
       cardTime.textContent = "";
       retryBtn.hidden = !failure.retry;
+      if (actsFor !== failure) {
+        actsFor = failure;
+        acts.replaceChildren(...(failure.actions || []).map(({ label, run }) => {
+          const b = document.createElement("button");
+          b.className = "pc-retry";
+          b.textContent = label;
+          b.onclick = () => { failure = null; render(); run(); };
+          return b;
+        }));
+      }
       closeBtn.hidden = false;
       paint(card.querySelector(".pbar"), null, now, true);
     } else if (shown && offscreen) {
@@ -151,9 +164,9 @@ export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) 
       // how far through the current step, 0..1, when the caller knows
       frac(f) { if (task === me) { task.frac = Math.max(0, Math.min(1, f)); render(); } return h; },
       done() { if (task === me) { task = null; render(); } },
-      fail(text, { retry = null, holdMs = 8000 } = {}) {
+      fail(text, { retry = null, actions = null, holdMs = 8000 } = {}) {
         if (task === me) task = null;
-        failure = { text, retry, until: retry ? 0 : performance.now() + holdMs };
+        failure = { text, retry, actions, until: retry || actions ? 0 : performance.now() + holdMs };
         render();
       },
     };

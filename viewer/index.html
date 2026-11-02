@@ -1219,8 +1219,11 @@
     }
     #pcard[hidden] { display: none; }
     #pcard.failed { color: var(--err); }
-    #pcard .pc-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+    #pcard .pc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 12px; }
     #pcard .pc-text { flex: 1; min-width: 0; line-height: 1.35; }
+    /* a failure's other ways out get a line of their own under the reason */
+    #pcard .pc-acts:not(:empty) { order: 1; flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+    #pcard .pc-acts button { font-weight: 700; opacity: 1; }
     #pcard .pc-time { flex: none; opacity: .7; font-variant-numeric: tabular-nums; }
     #pcard button { flex: none; font: inherit; color: inherit; background: transparent; cursor: pointer;
       border: 1px solid currentColor; border-radius: 6px; padding: 1px 8px; opacity: .8; }
@@ -5001,7 +5004,7 @@
     import { VISITOR_DEFAULTS, visitorSummary } from "../src/visitor.js";
     import { inspectMesh, weldTriangles, healthSummary } from "../src/meshhealth.js";
     import { chooseFreeRect } from "./stagefit.js";
-    import { repairMesh, repairBinaryStl, repairSummary } from "../src/meshrepair.js";
+    import { repairMesh, repairBinaryStl, repairSummary, meshFromAsciiStl } from "../src/meshrepair.js";
     // More on-demand modules: exporters (only on download/import), the chatbot
     // (only when you open chat), and the folder inventory (only when you browse).
     // Each is a memoised dynamic import so nothing but the model engine loads up
@@ -16999,6 +17002,30 @@ ${joined}${SITE_TAIL}`), joined);
         // one people retry blindly or give up on.
         const why = String(e?.message || e);
         const retry = () => exportAs(fmt);
+        // An imported mesh too dense for the precision kernel: offer the two
+        // ways to bring it down right here, first, rather than "go decimate
+        // it somewhere and re-import". Either one exports again once it builds.
+        const dense = fmt === "step-curved" && why.match(/importedMesh\("([^"]+)"\) is ~(\d+)k triangles/);
+        if (dense && typeof dsl.getImport(dense[1]) === "string") {
+          const [, name, k] = dense;
+          const smooth = () => convertImportToSmooth(name, null, "", retry);
+          const simplify = () => simplifyImportForStep(name, retry);
+          const simpLabel = `Simplify to ${(DENSE_STEP_TARGET / 1000).toFixed(0)}k triangles`;
+          job.fail(`${fmtName} export failed: ${name} is ~${k}k triangles, too many for curved surfaces (the limit is 20k).`,
+            { actions: [{ label: "Make it a smooth surface", run: smooth }, { label: simpLabel, run: simplify }] });
+          setStatus("err", `${fmtName} export failed: ${name} is ~${k}k triangles (the limit is 20k).`);
+          const btn = (id, text, title) => `<button id="${id}" title="${esc(title)}" style="font:inherit;padding:1px 8px;margin:2px 4px 2px 0;border:1px solid currentColor;border-radius:6px;background:transparent;color:var(--err);cursor:pointer;font-weight:700">${text}</button>`;
+          // The fix note is one clipped line in the toolbar; the hint below it
+          // has room for the reason and both buttons.
+          fixnote.innerHTML = `<span style="color:var(--err)"><b>${esc(fmtName)} export failed:</b> too dense, see below</span>`;
+          hint.innerHTML = `<span style="color:var(--err)"><b>${esc(fmtName)} export failed:</b> ${esc(name)} is ~${k}k triangles, and curved surfaces take 20k at most. Bring it down, then it exports again:</span><br>`
+            + btn("export-smooth", "Make it a smooth surface", "Wrap the mesh in a few thousand curved patches (close to the original, not exact), then export the curved STEP")
+            + btn("export-simplify", simpLabel, `Decimate the mesh to about ${DENSE_STEP_TARGET.toLocaleString()} triangles (drift capped at ~1%), then export the curved STEP`)
+            + `<br><span style="color:var(--muted3)">Smooth gives real curved faces; simplified stays triangles inside the STEP. The faceted STEP export works at any size.</span>`;
+          $("export-smooth")?.addEventListener("click", () => { fixnote.textContent = ""; hint.textContent = ""; smooth(); });
+          $("export-simplify")?.addEventListener("click", () => { fixnote.textContent = ""; hint.textContent = ""; simplify(); });
+          return;
+        }
         job.fail(`${fmtName} export failed: ${why.slice(0, 160)}`, { retry });
         setStatus("err", `${fmtName} export failed: ${why.slice(0, 90)}`);
         const tip = fmt === "step-curved"
@@ -18606,8 +18633,59 @@ let SIMPLIFY_TARGET = 10000;
       return last;
     }
 
+    // The code with importedMesh("name", …) swapped for `call`, wherever it
+    // sits (inside a difference, a translate…); just `call` when the code
+    // doesn't mention it, which is the fresh-drop case.
+    function swapImportCall(name, call) {
+      const q = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`importedMesh\\(\\s*(["'])${q}\\1\\s*(?:,\\s*\\{[^}]*\\})?\\s*\\)`, "g");
+      const out = code.value.replace(re, call);
+      return out === code.value ? call : out;
+    }
+
+    // Curved STEP refuses an imported mesh over 20k triangles (curved.js), so
+    // aim under it with room for the simplifier's 1% drift cap overshooting.
+    const DENSE_STEP_TARGET = 18000;
+    async function simplifyImportForStep(name, then = null) {
+      const stl = dsl.getImport(name);
+      const job = progress.task(`Simplifying ${name}`, [{ label: "Decimating the mesh", estMs: 2000 }, { label: "Building it", estMs: 8000 }]);
+      try {
+        const coords = meshFromAsciiStl(stl);
+        const soup = new Float64Array(coords.faces.length * 9);
+        coords.faces.forEach((f, i) => f.forEach((v, j) => soup.set(coords.points[v], i * 9 + j * 3)));
+        const [slim] = await (await getSimplify()).simplifyObjects([{ positions: soup }], DENSE_STEP_TARGET);
+        const tris = slim.positions.length / 9;
+        const rows = [`solid ${name}`];
+        const p = slim.positions;
+        for (let o = 0; o < p.length; o += 9) {
+          rows.push("facet normal 0 0 0", "outer loop");
+          for (let k = 0; k < 9; k += 3) rows.push(`vertex ${p[o + k]} ${p[o + k + 1]} ${p[o + k + 2]}`);
+          rows.push("endloop", "endfacet");
+        }
+        rows.push(`endsolid ${name}`);
+        const slimName = name.replace(/\.(stl|3mf|obj)$/i, "") + `-${Math.round(tris / 1000)}k.stl`;
+        dsl.registerImport(slimName, rows.join("\n"));
+        if (tris > 20000) throw new Error(`it only came down to ${Math.round(tris / 1000)}k triangles without losing its shape; try Make it a smooth surface`);
+        job.step(1);
+        pushHistory(code.value);
+        code.value = swapImportCall(name, `importedMesh(${JSON.stringify(slimName)})`);
+        pushHistory();
+        scheduleBuild();
+        await new Promise((r) => setTimeout(r, 300));
+        await whenBuilt(120000);
+        job.done();
+        hint.innerHTML = `Simplified <b>${esc(name)}</b> from ${Math.round(coords.faces.length / 1000)}k to <b>${Math.round(tris / 1000)}k</b> triangles as <b>${esc(slimName)}</b> (drift capped at ~1% of its size). Ctrl+Z puts the original back.`;
+        then?.();
+      } catch (e) {
+        const why = String(e?.message || e).slice(0, 200);
+        job.fail(`Couldn't simplify ${name}: ${why}`, { retry: () => simplifyImportForStep(name, then) });
+        setStatus("err", `Couldn't simplify ${name}: ${why.slice(0, 90)}`);
+      }
+    }
+
     // pre: a { cage, r } already computed (the automatic choice ran it)
-    async function convertImportToSmooth(name, pre = null, why = "") {
+    // then: run once the smooth solid has built exact (a curved STEP retry)
+    async function convertImportToSmooth(name, pre = null, why = "", then = null) {
       const stl = dsl.getImport(name);
       const meshCode = code.value;
       let cage, r;
@@ -18654,7 +18732,7 @@ let SIMPLIFY_TARGET = 10000;
       dsl.registerImport(stepName, r.step, { mesh: r.mesh });
       logEvent("smooth", name, { ok: true, faces: r.faces, tris: cage.triangles, ms: Math.round(performance.now() - t0) });
       pushHistory(code.value);
-      code.value = `importedSolid(${JSON.stringify(stepName)})`;
+      code.value = swapImportCall(name, `importedSolid(${JSON.stringify(stepName)})`);
       pushHistory();
       scheduleBuild();
       const notes = [
@@ -18682,7 +18760,7 @@ let SIMPLIFY_TARGET = 10000;
         scheduleBuild();
         hint.textContent = `Back to the mesh of ${name}. The smooth version is still on hand as importedSolid(${JSON.stringify(stepName)}).`;
       });
-      watchSmoothBuild(name, stepName, meshCode);
+      watchSmoothBuild(name, stepName, meshCode).then((exact) => { if (exact) then?.(); });
     }
 
     // The wrap is only a smooth SOLID once the exact kernel accepts it. Some
@@ -18699,7 +18777,7 @@ let SIMPLIFY_TARGET = 10000;
         if (!code.value.includes(call)) return;            // edited or undone meanwhile
         if (!(await whenBuilt(5000))) continue;
         if (lastEngine?.fallbackKind === "loading") continue;
-        if (lastEngine?.engine === "exact") return;          // a real smooth solid
+        if (lastEngine?.engine === "exact") return true;     // a real smooth solid
         if (lastEngine?.fallbackKind !== "refused") return;
         const why = /pcurve fit refused|stations stand/.test(lastEngine.fallback || "")
           ? "one of its patches folds over where the shape turns too sharply for the patch size"
