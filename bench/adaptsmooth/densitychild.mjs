@@ -21,6 +21,12 @@ if (sizes !== "none") {
   if (rel.length !== nv) throw new Error(`size field has ${rel.length} values for ${nv} vertices`);
   const ps = M._malloc(rel.byteLength); M.HEAPF64.set(rel, ps / 8); M._qf_set_size(ps, nv);
 }
+// LABELS=<file.json>: a region label per triangle; QuadriFlow keeps their borders as quad edges
+if (process.env.LABELS) {
+  const lab = Int32Array.from(JSON.parse(readFileSync(process.env.LABELS, "utf8")));
+  if (lab.length !== nf) throw new Error(`labels: ${lab.length} for ${nf} triangles`);
+  const pl = M._malloc(lab.byteLength); M.HEAP32.set(lab, pl / 4); M._qf_set_face_labels(pl, nf);
+}
 const stageMs = [];
 for (let k = 0; k < 5; k++) { const t = performance.now(); const r = M._qf_stage(k); if (r) throw new Error(`stage ${k}: ${r}`); stageMs.push(Math.round(performance.now() - t)); }
 const n = M._qf_vert_count(), nq = M._qf_quad_count();

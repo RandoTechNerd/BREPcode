@@ -571,64 +571,153 @@ function onPlanes(p, planes) {
   return x.map((v, i) => v / M[i][i]);
 }
 
-export function snapToPlanes(model, regionOf, { share = 0.8, tolFrac = 0.004, lambda = 0.2, grid = 4 } = {}) {
+// A cylinder carrier: { kind: "cyl", point, axis (unit), radius }. Unlike a
+// plane, projecting a B-spline's control points onto it does not put the
+// curve on it, so curves and faces on a cylinder are FITTED to points
+// projected onto it (finely enough that they stay within ~1e-5 of it).
+const onCyl = (p, { point: o, axis: a, radius: r }) => {
+  const v = sub(p, o), t = dot(v, a), w = [v[0] - t * a[0], v[1] - t * a[1], v[2] - t * a[2]], l = Math.hypot(...w);
+  if (l < 1e-12) return p;
+  return [o[0] + t * a[0] + w[0] * r / l, o[1] + t * a[1] + w[1] * r / l, o[2] + t * a[2] + w[2] * r / l];
+};
+const offCarrier = (p, c) => (c.kind === "cyl" ? dist(onCyl(p, c), p) : Math.abs(dot(sub(p, c.origin), c.normal)));
+// onto every carrier at once: planes exactly (their line, their point);
+// with a cylinder among them, alternating projections (they meet at an
+// angle, so this settles in a few rounds)
+function onCarriers(p, cs) {
+  const pls = cs.filter((c) => c.kind !== "cyl"), cyl = cs.filter((c) => c.kind === "cyl");
+  if (!cyl.length) return onPlanes(p, pls);
+  let q = p;
+  for (let it = 0; it < 60; it++) {
+    for (const c of cyl) q = onCyl(q, c);
+    if (pls.length) q = onPlanes(q, pls);
+  }
+  return q;
+}
+
+// an edge curve put on its carriers: exact for planes; on a cylinder, refitted
+// to points projected onto it, refined until it stays within `acc`
+function edgeOntoCarriers(e, cs, acc) {
+  if (cs.every((c) => c.kind !== "cyl")) {
+    e.P = e.P.map((p) => onCarriers(p, cs));
+    return 0;
+  }
+  if (e.level < 2) { e.P = refineCurve(e.P, e.level, 2); e.level = 2; }
+  let worst = Infinity;
+  for (let round = 0; round < 3; round++) {
+    const n = e.P.length, cur = new Float64Array(n * 3);
+    e.P.forEach((p, k) => cur.set(p, k * 3));
+    const K = knotsFor(e.level), N = [0, 0, 0, 0], rows = [], ns = 16 * (1 << e.level);
+    for (let k = 1; k < ns; k++) {
+      const t = k / ns, s = spanOf(e.level, t);
+      basis(K, s, t, N, null);
+      rows.push({ cols: [0, 1, 2, 3].map((a) => s - DEG + a), ws: [...N], p: onCarriers(evalCurve(e.P, e.level, t), cs) });
+    }
+    const out = fitNet(n, 1, (k) => k > 0 && k < n - 1, cur, rows, 1e-6, 1e-9);
+    if (out) { e.P = []; for (let k = 0; k < n; k++) e.P.push([out[k * 3], out[k * 3 + 1], out[k * 3 + 2]]); }
+    worst = 0;
+    for (let k = 1; k < 4 * ns; k++) { const p = evalCurve(e.P, e.level, k / (4 * ns)); worst = Math.max(worst, dist(onCarriers(p, cs), p)); }
+    if (worst <= acc || e.level >= MAX_LEVEL) break;
+    e.P = refineCurve(e.P, e.level, e.level + 1); e.level++;
+  }
+  return worst;
+}
+
+// a face's interior put on its cylinder (its boundary rows are already the
+// edge curves): least squares to a grid of its own points projected on it
+function faceOntoCylinder(f, c) {
+  const S = f.S;
+  for (let it = 0; it < 3; it++) {
+    const g = 6 * Math.max(S.nu, S.nv), rows = [];
+    for (let a = 1; a < g; a++) for (let b = 1; b < g; b++) {
+      const u = a / g, v = b / g, su = spanOf(S.lu, u), sv = spanOf(S.lv, v);
+      basis(S.U, su, u, Nu, null); basis(S.V, sv, v, Nv, null);
+      const cols = [], ws = [];
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { cols.push((su - DEG + i) * S.nv + (sv - DEG + j)); ws.push(Nu[i] * Nv[j]); }
+      rows.push({ cols, ws, p: onCyl(evalSurf(S, u, v), c) });
+    }
+    const free = (k) => { const i = Math.floor(k / S.nv), j = k % S.nv; return i > 0 && i < S.nu - 1 && j > 0 && j < S.nv - 1; };
+    const out = fitNet(S.nu, S.nv, free, S.P, rows, 1e-6, 1e-9);
+    if (out) S.P = out;
+  }
+  let worst = 0;
+  for (let a = 0; a <= 12; a++) for (let b = 0; b <= 12; b++) { const p = evalSurf(S, a / 12, b / 12); worst = Math.max(worst, dist(onCyl(p, c), p)); }
+  return worst;
+}
+
+export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5, flatFrac = 0.001, tolFrac = 0.004, accFrac = 1e-6, lambda = 0.2, grid = 4, kinds = ["Plane", "Cylinder"] } = {}) {
   prepare(model);
   const { faces, edges, topo } = model;
   const t0 = performance.now();
-  const tol = tolFrac * model.diag;
-  // 1. a face joins a plane region when nearly all of it (a grid of points
-  //    over the face, each taking the region of the mesh triangle nearest to
-  //    it) is in that region and its corners lie near the plane; never next
-  //    to a hole fill. Mesh VERTICES would not do: a CAD mesh's flat side is
-  //    a few big triangles whose vertices all sit on its edges.
+  const tol = tolFrac * model.diag, acc = accFrac * model.diag;
+  let straddle = 0;          // faces partly (30-80%) in a region that stayed curved: the border runs through them
+  const carrierOf = (r) => (r.carrier.type === "Plane"
+    ? { id: r.id, kind: "plane", origin: r.carrier.origin, normal: norm(r.carrier.normal) }
+    : { id: r.id, kind: "cyl", point: r.carrier.axis_point, axis: norm(r.carrier.axis_dir), radius: r.carrier.radius });
+  // 1. a face joins a region when nearly all of it (a grid of points over
+  //    the face, each taking the region of the mesh triangle nearest to it)
+  //    is in that region and its corners lie near the carrier; never next to
+  //    a hole fill. Mesh VERTICES would not do: a CAD mesh's flat side is a
+  //    few big triangles whose vertices all sit on its edges.
   for (const f of faces) {
     f.carrier = null;
     if (f.edges.some(({ e }) => e.frozen)) continue;
-    const count = new Map();
+    const count = new Map(), hits = [];
     let n = 0;
     for (let a = 0; a <= grid; a++) for (let b = 0; b <= grid; b++) {
       const hit = model.closest(evalSurf(f.S, (a + 0.5) / (grid + 1), (b + 0.5) / (grid + 1)));
-      n++;
+      n++; hits.push(hit);
       const r = hit.t >= 0 ? regionOf(hit.t) : null;
       if (r) count.set(r, (count.get(r) || 0) + 1);
     }
     let best = null, m = 0;
-    for (const [r, c] of count) if (c > m) { best = r; m = c; }
-    if (!best || m < share * n || best.carrier.type !== "Plane") continue;
-    const pl = { origin: best.carrier.origin, normal: norm(best.carrier.normal) };
-    const far = f.c.map((v) => Math.abs(dot(sub(model.posOf(v), pl.origin), pl.normal)));
-    if (!(Math.max(...far) <= tol)) continue;
-    f.carrier = { id: best.id, ...pl };
+    for (const [r, k] of count) if (k > m) { best = r; m = k; }
+    if (!best || !kinds.includes(best.carrier.type) || m < looseShare * n) continue;
+    const c = carrierOf(best);
+    // a face only partly in the region (the border runs through it) joins
+    // when the mesh under ALL of it lies on that carrier anyway (planes only)
+    if (m < share * n) {
+      const off = c.kind === "plane" ? Math.max(...hits.map((h) => (h.q ? offCarrier(h.q, c) : Infinity))) : Infinity;
+      if (!(off <= flatFrac * model.diag)) { straddle++; continue; }
+    }
+    if (!(Math.max(...f.c.map((v) => offCarrier(model.posOf(v), c))) <= tol)) continue;
+    f.carrier = c;
   }
-  // 2. corners, then edges, then the plane faces' own control points
-  const planesAt = (v) => { const m = new Map(); for (const q of topo.vfaces[v] || []) { const f = faces[q]; if (f?.carrier) m.set(f.carrier.id, f.carrier); } return [...m.values()]; };
-  // A corner or edge pulled far to reach its planes is not where they meet
+  // 2. corners, then edges, then the faces' own control points
+  const carriersAt = (v) => { const m = new Map(); for (const q of topo.vfaces[v] || []) { const f = faces[q]; if (f?.carrier) m.set(f.carrier.id, f.carrier); } return [...m.values()]; };
+  const carriersOn = (e) => { const m = new Map(); for (const f of e.faces) if (f.carrier) m.set(f.carrier.id, f.carrier); return [...m.values()]; };
+  // A corner or edge pulled far to reach its carriers is not where they meet
   // (two planes at a shallow angle meet well off the part): the faces around
-  // it give up their plane, and the check runs again until nothing jumps.
+  // it give up their carrier, and the check runs again until nothing jumps.
+  // A corner on a frozen edge (next to a hole fill, which keeps its own
+  // bicubic) must not move at all.
   const maxMove = 3 * tol;
+  const pinned = new Set();
+  for (const e of edges.values()) if (e.frozen) { pinned.add(e.a); pinned.add(e.b); }
   for (let round = 0; round < 8; round++) {
     const drop = new Set();
+    for (const v of pinned) for (const q of topo.vfaces[v] || []) if (faces[q]?.carrier) drop.add(faces[q]);
     for (let v = 0; v < topo.nv; v++) {
-      const pls = planesAt(v);
-      if (pls.length > 1 && dist(onPlanes(model.posOf(v), pls), model.posOf(v)) > maxMove) for (const q of topo.vfaces[v]) if (faces[q]?.carrier) drop.add(faces[q]);
+      const cs = carriersAt(v);
+      if (cs.length > 1 && dist(onCarriers(model.posOf(v), cs), model.posOf(v)) > maxMove) for (const q of topo.vfaces[v]) if (faces[q]?.carrier) drop.add(faces[q]);
     }
     for (const e of edges.values()) {
-      const m = new Map(); for (const f of e.faces) if (f.carrier) m.set(f.carrier.id, f.carrier);
-      if (m.size < 2) continue;
-      if (e.P.some((p) => dist(onPlanes(p, [...m.values()]), p) > maxMove)) for (const f of e.faces) drop.add(f);
+      const cs = carriersOn(e);
+      if (cs.length < 2) continue;
+      if (e.P.some((p) => dist(onCarriers(p, cs), p) > maxMove)) for (const f of e.faces) drop.add(f);
     }
     if (!drop.size) break;
     for (const f of drop) f.carrier = null;
   }
   const moved = new Set(), shifted = new Map();       // vertex -> how far it moved
   for (let v = 0; v < topo.nv; v++) {
-    const pls = planesAt(v);
-    if (!pls.length) continue;
-    const before = model.posOf(v), after = onPlanes(before, pls);
+    const cs = carriersAt(v);
+    if (!cs.length) continue;
+    const before = model.posOf(v), after = onCarriers(before, cs);
     model.corners.set(after, v * 3);
     shifted.set(v, sub(after, before));
   }
-  // an edge off the planes whose end moved: its end control points follow
+  // an edge off the carriers whose end moved: its end control points follow
   // (the end and the next one, so it leaves the corner the way it did)
   for (const e of edges.values()) {
     for (const [v, end, nxt] of [[e.a, 0, 1], [e.b, e.P.length - 1, e.P.length - 2]]) {
@@ -638,21 +727,27 @@ export function snapToPlanes(model, regionOf, { share = 0.8, tolFrac = 0.004, la
       for (const f of e.faces) moved.add(f);
     }
   }
+  let edgeOff = 0;
   for (const e of edges.values()) {
-    const m = new Map(); for (const f of e.faces) if (f.carrier) m.set(f.carrier.id, f.carrier);
-    const pls = [...m.values()];
-    if (!pls.length) continue;
-    e.P = e.P.map((p) => onPlanes(p, pls));
+    const cs = carriersOn(e);
+    if (!cs.length) continue;
+    e.P[0] = model.posOf(e.a); e.P[e.P.length - 1] = model.posOf(e.b);
+    edgeOff = Math.max(edgeOff, edgeOntoCarriers(e, cs, acc));
     e.P[0] = model.posOf(e.a); e.P[e.P.length - 1] = model.posOf(e.b);
     e.frozen = true; e.carrierEdge = true;
     for (const f of e.faces) moved.add(f);
   }
-  let planar = 0, refit = 0, folds = 0;
+  let planar = 0, round = 0, refit = 0, folds = 0, faceOff = 0;
   for (const f of moved) {
+    const [lu, lv] = faceLevels(f);
+    f.S = refineSurf(f.S, lu, lv);
     stampBoundary(f, model);
-    if (f.carrier) {
+    if (f.carrier?.kind === "plane") {
       for (let i = 1; i < f.S.nu - 1; i++) for (let j = 1; j < f.S.nv - 1; j++) f.S.P.set(onPlane(ctrl(f.S, i, j), f.carrier), (i * f.S.nv + j) * 3);
       planar++;
+    } else if (f.carrier?.kind === "cyl") {
+      faceOff = Math.max(faceOff, faceOntoCylinder(f, f.carrier));
+      round++;
     } else {
       let ok = false;
       for (const lam of [lambda, lambda * 8, lambda * 64]) {
@@ -667,10 +762,11 @@ export function snapToPlanes(model, regionOf, { share = 0.8, tolFrac = 0.004, la
   }
   // regions: the plane faces grouped by region id, for modelToStep
   const groups = new Map();
-  for (const f of faces) if (f.carrier) { let g = groups.get(f.carrier.id); if (!g) groups.set(f.carrier.id, g = { id: f.carrier.id, origin: f.carrier.origin, normal: f.carrier.normal, faces: new Set() }); g.faces.add(f); }
+  for (const f of faces) if (f.carrier?.kind === "plane") { let g = groups.get(f.carrier.id); if (!g) groups.set(f.carrier.id, g = { id: f.carrier.id, origin: f.carrier.origin, normal: f.carrier.normal, faces: new Set() }); g.faces.add(f); }
   model.planeGroups = [...groups.values()];
-  return { planeFaces: planar, planeRegions: groups.size, refitNeighbours: refit, neighbourFolds: folds, ms: Math.round(performance.now() - t0) };
+  return { straddle, planeFaces: planar, planeRegions: groups.size, cylinderFaces: round, edgeOffCylinder: +edgeOff.toExponential(2), faceOffCylinder: +faceOff.toExponential(2), refitNeighbours: refit, neighbourFolds: folds, ms: Math.round(performance.now() - t0) };
 }
+export const snapToPlanes = (model, regionOf, opts = {}) => snapToCarriers(model, regionOf, { ...opts, kinds: ["Plane"] });
 
 // ---------------------------------------------------------------- passes
 // adapt(model, { tol, maxLevel, lambda, onPass }) refines in place.
@@ -886,7 +982,23 @@ export function modelToStep(model, name = "smooth") {
   // itself) or falls apart into pieces is written face by face instead.
   const grouped = new Set();
   let planeFaces = 0;
+  const why = { pinch: 0, open: 0, pieces: 0 };
+  // each connected patch of a region is its own plane face (a region split by
+  // faces that stayed curved is still the same plane, in pieces)
+  const patches = [];
   for (const g of model.planeGroups || []) {
+    const left = new Set(g.faces);
+    while (left.size) {
+      const f0 = left.values().next().value, part = new Set([f0]), todo = [f0];
+      left.delete(f0);
+      while (todo.length) {
+        const f = todo.pop();
+        for (const { e } of f.edges) for (const h of e.faces) if (left.has(h)) { left.delete(h); part.add(h); todo.push(h); }
+      }
+      patches.push({ ...g, faces: part });
+    }
+  }
+  for (const g of patches) {
     const runs = [];          // { a, b, oe } boundary pieces, in face orientation
     for (const f of g.faces) for (const sd of sidesOf(f)) {
       if (sd.e.faces.every((h) => g.faces.has(h))) continue;
@@ -895,7 +1007,7 @@ export function modelToStep(model, name = "smooth") {
     const from = new Map();
     let pinch = false;
     for (const r of runs) { if (from.has(r.a)) pinch = true; from.set(r.a, r); }
-    if (pinch || !runs.length) continue;
+    if (pinch || !runs.length) { why.pinch++; continue; }
     const loops = [], used = new Set();
     for (const r0 of runs) {
       if (used.has(r0)) continue;
@@ -905,7 +1017,7 @@ export function modelToStep(model, name = "smooth") {
       if (loop.at(-1).b !== r0.a) { pinch = true; break; }
       loops.push(loop);
     }
-    if (pinch) continue;
+    if (pinch) { why.open++; continue; }
     // orientation: outward = the member faces' own normal side
     let nsum = [0, 0, 0];
     for (const f of g.faces) { const { du, dv } = evalSurf(f.S, 0.5, 0.5, true); const c = cross(du, dv); nsum = [nsum[0] + c[0], nsum[1] + c[1], nsum[2] + c[2]]; }
@@ -918,7 +1030,7 @@ export function modelToStep(model, name = "smooth") {
     };
     const areas = loops.map(area);
     const outer = areas.filter((a) => a > 0).length;
-    if (outer !== 1) continue;                         // pieces, or turned inside out: face by face
+    if (outer !== 1) { why.pieces++; continue; }       // pieces, or turned inside out: face by face
     const bounds = loops.map((loop, i) => {
       const oes = loop.flatMap(({ a, b, P, level }) => sideEdges(a, b, P, level));
       const id = add(`EDGE_LOOP('',(${oes.map((x) => `#${x}`).join(",")}))`);
@@ -930,8 +1042,22 @@ export function modelToStep(model, name = "smooth") {
     for (const f of g.faces) grouped.add(f);
     planeFaces++;
   }
+  let cylFaces = 0;
   for (const f of faces) {
     if (grouped.has(f)) continue;
+    if (f.carrier?.kind === "cyl") {
+      // a true CYLINDRICAL_SURFACE, trimmed by the same edge curves
+      const c = f.carrier, { p, du, dv } = evalSurf(f.S, 0.5, 0.5, true);
+      const w = sub(p, c.point), radial = norm(sub(w, c.axis.map((x) => x * dot(w, c.axis))));
+      const same = dot(cross(du, dv), radial) > 0;
+      const ref = norm(Math.abs(c.axis[0]) < 0.9 ? cross(c.axis, [1, 0, 0]) : cross(c.axis, [0, 1, 0]));
+      const oes = sidesOf(f).flatMap(({ a, b, P, level }) => sideEdges(a, b, P, level));
+      const loop = add(`EDGE_LOOP('',(${oes.map((x) => `#${x}`).join(",")}))`);
+      const surf = add(`CYLINDRICAL_SURFACE('',#${add(`AXIS2_PLACEMENT_3D('',#${pt(c.point)},#${dir(c.axis)},#${dir(ref)})`)},${fmt(c.radius)})`);
+      faceIds.push(add(`ADVANCED_FACE('',(#${add(`FACE_OUTER_BOUND('',#${loop},.T.)`)}),#${surf},${same ? ".T." : ".F."})`));
+      cylFaces++;
+      continue;
+    }
     face(f.S, sidesOf(f));
   }
   for (const fl of fills) {
@@ -950,7 +1076,9 @@ export function modelToStep(model, name = "smooth") {
   return {
     faces: faceIds.length,
     planeFaces,
+    cylFaces,
     mergedFaces: grouped.size,
+    unmerged: why,
     step: "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n"
       + `FILE_NAME('${name}.step','',(''),(''),'brepcode','brepcode','');\n`
       + "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));\nENDSEC;\nDATA;\n"
