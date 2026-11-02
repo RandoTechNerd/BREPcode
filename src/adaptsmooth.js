@@ -154,6 +154,7 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
 // ------------------------------------------------------- the input mesh
 // closest point on the input triangles, through a uniform grid
@@ -173,7 +174,7 @@ function meshIndex(verts, tris, cell) {
   const V = (i) => [verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]];
   return function closest(p, maxR = 4) {
     const g = p.map((x) => Math.floor(x / cell));
-    let best = Infinity, bq = null;
+    let best = Infinity, bq = null, bt = -1;
     const seen = new Set();
     for (let r = 0; r <= maxR; r++) {
       for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
@@ -182,12 +183,12 @@ function meshIndex(verts, tris, cell) {
           if (seen.has(t)) continue; seen.add(t);
           const q = closestOnTri(p, V(tris[t * 3]), V(tris[t * 3 + 1]), V(tris[t * 3 + 2]));
           const d = dist(p, q);
-          if (d < best) { best = d; bq = q; }
+          if (d < best) { best = d; bq = q; bt = t; }
         }
       }
       if (best <= r * cell) break;
     }
-    return { d: best, q: bq };
+    return { d: best, q: bq, t: bt };
   };
 }
 function closestOnTri(p, a, b, c) {          // Ericson
@@ -312,7 +313,7 @@ function associate(model, faces, maxPts) {
       }
     if (!best || !want.has(best.f)) continue;
     const [u, v] = project(best.f.S, p, best.u, best.v);
-    best.f.data.push({ p, u, v });
+    best.f.data.push({ p, u, v, i });
   }
 }
 
@@ -532,6 +533,145 @@ export function estimate(model, tols, { maxLevel = MAX_LEVEL, gain = 2, coef = t
   });
 }
 
+// ------------------------------------------------- analytic regions (hybrid)
+// Where another recogniser (next.BREP.io's kernel segmentation, called
+// unchanged through our wasm) says a region of the mesh IS a plane, the faces
+// of ours that sit in it are put exactly on that plane: their control points
+// projected onto it (a projection is affine, so the B-spline stays exact),
+// edges between two planes onto the planes' line, corners where three or more
+// meet onto their common point. Those edges freeze, so the freeform faces
+// beside them refit to a boundary that lies on the plane, and modelToStep can
+// write the whole region as ONE true PLANE face. regionOf(i) gives mesh
+// vertex i's region: { id, carrier } or null.
+const onPlane = (p, { origin: o, normal: n }) => { const d = (p[0] - o[0]) * n[0] + (p[1] - o[1]) * n[1] + (p[2] - o[2]) * n[2]; return [p[0] - d * n[0], p[1] - d * n[1], p[2] - d * n[2]]; };
+function onPlanes(p, planes) {
+  if (planes.length === 1) return onPlane(p, planes[0]);
+  // least squares: sum (n.x - n.o)^2 + eps |x - p|^2, so two planes give their
+  // line (nearest point on it), three or more their common point
+  const A = [[1e-6, 0, 0], [0, 1e-6, 0], [0, 0, 1e-6]], b = [1e-6 * p[0], 1e-6 * p[1], 1e-6 * p[2]];
+  for (const { origin: o, normal: n } of planes) {
+    const d = dot(n, o);
+    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) A[r][c] += n[r] * n[c]; b[r] += n[r] * d; }
+  }
+  if (planes.length === 2) {
+    // exact: the nearest point on the line, from p
+    const [n1, n2] = planes.map((q) => q.normal), u = cross(n1, n2), uu = dot(u, u);
+    if (uu < 1e-6) return onPlane(p, planes[0]);       // near parallel: one plane
+    const d1 = dot(n1, planes[0].origin), d2 = dot(n2, planes[1].origin);
+    const q = cross(u, [0, 1, 2].map((k) => d1 * n2[k] - d2 * n1[k])).map((x) => -x / uu);   // a point on the line
+    const t = dot(sub(p, q), u) / uu;
+    return [q[0] + t * u[0], q[1] + t * u[1], q[2] + t * u[2]];
+  }
+  const M = A.map((r) => [...r]), x = [...b];
+  for (let i = 0; i < 3; i++) {
+    let piv = i; for (let r = i + 1; r < 3; r++) if (Math.abs(M[r][i]) > Math.abs(M[piv][i])) piv = r;
+    [M[i], M[piv]] = [M[piv], M[i]]; [x[i], x[piv]] = [x[piv], x[i]];
+    for (let r = 0; r < 3; r++) if (r !== i) { const f = M[r][i] / M[i][i]; for (let c = 0; c < 3; c++) M[r][c] -= f * M[i][c]; x[r] -= f * x[i]; }
+  }
+  return x.map((v, i) => v / M[i][i]);
+}
+
+export function snapToPlanes(model, regionOf, { share = 0.8, tolFrac = 0.004, lambda = 0.2, grid = 4 } = {}) {
+  prepare(model);
+  const { faces, edges, topo } = model;
+  const t0 = performance.now();
+  const tol = tolFrac * model.diag;
+  // 1. a face joins a plane region when nearly all of it (a grid of points
+  //    over the face, each taking the region of the mesh triangle nearest to
+  //    it) is in that region and its corners lie near the plane; never next
+  //    to a hole fill. Mesh VERTICES would not do: a CAD mesh's flat side is
+  //    a few big triangles whose vertices all sit on its edges.
+  for (const f of faces) {
+    f.carrier = null;
+    if (f.edges.some(({ e }) => e.frozen)) continue;
+    const count = new Map();
+    let n = 0;
+    for (let a = 0; a <= grid; a++) for (let b = 0; b <= grid; b++) {
+      const hit = model.closest(evalSurf(f.S, (a + 0.5) / (grid + 1), (b + 0.5) / (grid + 1)));
+      n++;
+      const r = hit.t >= 0 ? regionOf(hit.t) : null;
+      if (r) count.set(r, (count.get(r) || 0) + 1);
+    }
+    let best = null, m = 0;
+    for (const [r, c] of count) if (c > m) { best = r; m = c; }
+    if (!best || m < share * n || best.carrier.type !== "Plane") continue;
+    const pl = { origin: best.carrier.origin, normal: norm(best.carrier.normal) };
+    const far = f.c.map((v) => Math.abs(dot(sub(model.posOf(v), pl.origin), pl.normal)));
+    if (!(Math.max(...far) <= tol)) continue;
+    f.carrier = { id: best.id, ...pl };
+  }
+  // 2. corners, then edges, then the plane faces' own control points
+  const planesAt = (v) => { const m = new Map(); for (const q of topo.vfaces[v] || []) { const f = faces[q]; if (f?.carrier) m.set(f.carrier.id, f.carrier); } return [...m.values()]; };
+  // A corner or edge pulled far to reach its planes is not where they meet
+  // (two planes at a shallow angle meet well off the part): the faces around
+  // it give up their plane, and the check runs again until nothing jumps.
+  const maxMove = 3 * tol;
+  for (let round = 0; round < 8; round++) {
+    const drop = new Set();
+    for (let v = 0; v < topo.nv; v++) {
+      const pls = planesAt(v);
+      if (pls.length > 1 && dist(onPlanes(model.posOf(v), pls), model.posOf(v)) > maxMove) for (const q of topo.vfaces[v]) if (faces[q]?.carrier) drop.add(faces[q]);
+    }
+    for (const e of edges.values()) {
+      const m = new Map(); for (const f of e.faces) if (f.carrier) m.set(f.carrier.id, f.carrier);
+      if (m.size < 2) continue;
+      if (e.P.some((p) => dist(onPlanes(p, [...m.values()]), p) > maxMove)) for (const f of e.faces) drop.add(f);
+    }
+    if (!drop.size) break;
+    for (const f of drop) f.carrier = null;
+  }
+  const moved = new Set(), shifted = new Map();       // vertex -> how far it moved
+  for (let v = 0; v < topo.nv; v++) {
+    const pls = planesAt(v);
+    if (!pls.length) continue;
+    const before = model.posOf(v), after = onPlanes(before, pls);
+    model.corners.set(after, v * 3);
+    shifted.set(v, sub(after, before));
+  }
+  // an edge off the planes whose end moved: its end control points follow
+  // (the end and the next one, so it leaves the corner the way it did)
+  for (const e of edges.values()) {
+    for (const [v, end, nxt] of [[e.a, 0, 1], [e.b, e.P.length - 1, e.P.length - 2]]) {
+      const d = shifted.get(v);
+      if (!d) continue;
+      for (const k of [end, nxt]) e.P[k] = [e.P[k][0] + d[0], e.P[k][1] + d[1], e.P[k][2] + d[2]];
+      for (const f of e.faces) moved.add(f);
+    }
+  }
+  for (const e of edges.values()) {
+    const m = new Map(); for (const f of e.faces) if (f.carrier) m.set(f.carrier.id, f.carrier);
+    const pls = [...m.values()];
+    if (!pls.length) continue;
+    e.P = e.P.map((p) => onPlanes(p, pls));
+    e.P[0] = model.posOf(e.a); e.P[e.P.length - 1] = model.posOf(e.b);
+    e.frozen = true; e.carrierEdge = true;
+    for (const f of e.faces) moved.add(f);
+  }
+  let planar = 0, refit = 0, folds = 0;
+  for (const f of moved) {
+    stampBoundary(f, model);
+    if (f.carrier) {
+      for (let i = 1; i < f.S.nu - 1; i++) for (let j = 1; j < f.S.nv - 1; j++) f.S.P.set(onPlane(ctrl(f.S, i, j), f.carrier), (i * f.S.nv + j) * 3);
+      planar++;
+    } else {
+      let ok = false;
+      for (const lam of [lambda, lambda * 8, lambda * 64]) {
+        const keep = Float64Array.from(f.S.P);
+        fitFace(f, lam);
+        if (!folded(f.S, quadNormal(model, f)) && !strayEdges(f.S)) { ok = true; break; }
+        f.S.P = keep;
+      }
+      refit++; if (!ok) folds++;
+      f.err = faceError(f);
+    }
+  }
+  // regions: the plane faces grouped by region id, for modelToStep
+  const groups = new Map();
+  for (const f of faces) if (f.carrier) { let g = groups.get(f.carrier.id); if (!g) groups.set(f.carrier.id, g = { id: f.carrier.id, origin: f.carrier.origin, normal: f.carrier.normal, faces: new Set() }); g.faces.add(f); }
+  model.planeGroups = [...groups.values()];
+  return { planeFaces: planar, planeRegions: groups.size, refitNeighbours: refit, neighbourFolds: folds, ms: Math.round(performance.now() - t0) };
+}
+
 // ---------------------------------------------------------------- passes
 // adapt(model, { tol, maxLevel, lambda, onPass }) refines in place.
 // onPass({ pass, faces touched, ms, ... }) after each pass: a live preview hook.
@@ -548,7 +688,7 @@ export function adapt(model, { tol, maxLevel = MAX_LEVEL, lambda = 0.2, maxPts =
     // measure what the last pass touched
     for (const f of todoF) f.err = faceError(f);
     for (const e of todoE) e.err = edgeError(e, closest);
-    const badF = faces.filter((f) => f.err.n >= 4 && (f.err.p95 > tol || f.err.max > 4 * tol) && (f.level ?? 0) < maxLevel && !f.stuck);
+    const badF = faces.filter((f) => !f.carrier && f.err.n >= 4 && (f.err.p95 > tol || f.err.max > 4 * tol) && (f.level ?? 0) < maxLevel && !f.stuck);
     const badE = [...edges.values()].filter((e) => !e.frozen && e.err.max > tol && e.level < maxLevel && !e.stuck);
     const measureMs = performance.now() - tp;
     if (!badF.length && !badE.length) { passes.push({ pass, faces: 0, edges: 0, measureMs: Math.round(measureMs), ms: 0 }); break; }
@@ -738,8 +878,61 @@ export function modelToStep(model, name = "smooth") {
     const surf = surfaceEntity(S);
     faceIds.push(add(`ADVANCED_FACE('',(#${add(`FACE_OUTER_BOUND('',#${loop},.T.)`)}),#${surf},.T.)`));
   };
+  const sidesOf = (f) => f.edges.map(({ e, fwd }, k) => ({ a: f.c[k], b: f.c[(k + 1) & 3], P: fwd ? e.P : [...e.P].reverse(), level: e.level, e }));
+  // A plane region (snapToPlanes) is written as ONE face on a true PLANE:
+  // its member faces' edges that border the outside, chained into loops (the
+  // largest the outer bound, the rest holes). Edges inside the region are
+  // left out. A region whose boundary pinches (a vertex where it touches
+  // itself) or falls apart into pieces is written face by face instead.
+  const grouped = new Set();
+  let planeFaces = 0;
+  for (const g of model.planeGroups || []) {
+    const runs = [];          // { a, b, oe } boundary pieces, in face orientation
+    for (const f of g.faces) for (const sd of sidesOf(f)) {
+      if (sd.e.faces.every((h) => g.faces.has(h))) continue;
+      runs.push(sd);
+    }
+    const from = new Map();
+    let pinch = false;
+    for (const r of runs) { if (from.has(r.a)) pinch = true; from.set(r.a, r); }
+    if (pinch || !runs.length) continue;
+    const loops = [], used = new Set();
+    for (const r0 of runs) {
+      if (used.has(r0)) continue;
+      const loop = [];
+      let r = r0;
+      while (r && !used.has(r)) { used.add(r); loop.push(r); r = from.get(r.b); }
+      if (loop.at(-1).b !== r0.a) { pinch = true; break; }
+      loops.push(loop);
+    }
+    if (pinch) continue;
+    // orientation: outward = the member faces' own normal side
+    let nsum = [0, 0, 0];
+    for (const f of g.faces) { const { du, dv } = evalSurf(f.S, 0.5, 0.5, true); const c = cross(du, dv); nsum = [nsum[0] + c[0], nsum[1] + c[1], nsum[2] + c[2]]; }
+    const n = dot(nsum, g.normal) >= 0 ? g.normal : g.normal.map((x) => -x);
+    const ref = norm(Math.abs(n[0]) < 0.9 ? cross(n, [1, 0, 0]) : cross(n, [0, 1, 0])), ref2 = cross(n, ref);
+    const area = (loop) => {
+      const P = loop.flatMap((r) => r.P.slice(0, -1)).map((p) => [dot(p, ref), dot(p, ref2)]);
+      let a = 0; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; a += x1 * y2 - x2 * y1; }
+      return a / 2;
+    };
+    const areas = loops.map(area);
+    const outer = areas.filter((a) => a > 0).length;
+    if (outer !== 1) continue;                         // pieces, or turned inside out: face by face
+    const bounds = loops.map((loop, i) => {
+      const oes = loop.flatMap(({ a, b, P, level }) => sideEdges(a, b, P, level));
+      const id = add(`EDGE_LOOP('',(${oes.map((x) => `#${x}`).join(",")}))`);
+      return add(`${areas[i] > 0 ? "FACE_OUTER_BOUND" : "FACE_BOUND"}('',#${id},.T.)`);
+    });
+    const o = g.origin;
+    const plane = add(`PLANE('',#${add(`AXIS2_PLACEMENT_3D('',#${pt(o)},#${dir(n)},#${dir(ref)})`)})`);
+    faceIds.push(add(`ADVANCED_FACE('',(${bounds.map((x) => `#${x}`).join(",")}),#${plane},.T.)`));
+    for (const f of g.faces) grouped.add(f);
+    planeFaces++;
+  }
   for (const f of faces) {
-    face(f.S, f.edges.map(({ e, fwd }, k) => ({ a: f.c[k], b: f.c[(k + 1) & 3], P: fwd ? e.P : [...e.P].reverse(), level: e.level })));
+    if (grouped.has(f)) continue;
+    face(f.S, sidesOf(f));
   }
   for (const fl of fills) {
     const P = Float64Array.from(fl.grid);
@@ -756,6 +949,8 @@ export function modelToStep(model, name = "smooth") {
   add(`SHAPE_DEFINITION_REPRESENTATION(#${pds},#${rep})`);
   return {
     faces: faceIds.length,
+    planeFaces,
+    mergedFaces: grouped.size,
     step: "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n"
       + `FILE_NAME('${name}.step','',(''),(''),'brepcode','brepcode','');\n`
       + "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));\nENDSEC;\nDATA;\n"
