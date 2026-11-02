@@ -18581,56 +18581,124 @@ let SIMPLIFY_TARGET = 10000;
     // ------------------------------------------ mesh -> smooth surface (beta)
     // The other way to make a mesh a solid: wrap it rather than rebuild it.
     // The background cage (QuadriFlow quads following the curvature) becomes
-    // one bicubic B-spline patch per quad (src/smoothstep.js: Catmull-Clark
-    // limit surface, creases kept sharp, holes closed, folds relaxed), written
-    // as STEP and opened as importedSolid(...) on the Rust kernel. For organic
-    // and scanned shapes, where the exact rebuild only finds facets. Close to
-    // the original, never identical: the summary says so.
-    // The writer, in its own worker (the fit and the patch checks take a few
-    // seconds), also measuring how far the surface strays from the mesh.
-    function runSmoothWriter(cage, name, stl) {
-      return new Promise((resolve, reject) => {
-        const w = new Worker(new URL("./smooth-worker.js", import.meta.url), { type: "module" });
-        w.onmessage = ({ data }) => { w.terminate(); if (data.ok) resolve(data.result); else reject(new Error(data.error)); };
-        w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "the smooth-surface worker crashed")); };
-        // copies: the cached cage stays usable for another try
-        w.postMessage({ verts: cage.verts.slice(), quads: cage.quads.slice(), name: name.replace(/\.\w+$/, ""), stl });
+    // one B-spline face per quad (src/smoothstep.js's Catmull-Clark patches:
+    // creases kept sharp, holes closed, folds relaxed), written as STEP and
+    // opened as importedSolid(...) on the Rust kernel. For organic and
+    // scanned shapes, where the exact rebuild only finds facets. Close to the
+    // original, never identical: the summary says so.
+    // The surface is built coarse to fine (src/adaptsmooth.js, in
+    // bondo-worker.js, which keeps the model between steps): the coarse
+    // layout's patches first, drawn straight away; then only the faces that
+    // miss the mesh by more than the chosen Detail get more control points,
+    // pass by pass, each pass drawn as it lands. Faces that already fit are
+    // left exactly as they were ("bondo on the dents"), so each pass has less
+    // to do than the one before. The worker stays alive while the result is
+    // on screen, so the Detail slider can refine again without a new layout.
+    function openBondo() {
+      const w = new Worker(new URL("./bondo-worker.js", import.meta.url), { type: "module" });
+      let seq = 0;
+      const pending = new Map();
+      w.onmessage = ({ data }) => {
+        const p = pending.get(data.id);
+        if (!p) return;
+        if (data.pass) { p.onPass?.(data); return; }
+        pending.delete(data.id);
+        if (data.ok) p.resolve(data); else p.reject(new Error(data.error));
+      };
+      w.onerror = (e) => {
+        for (const p of pending.values()) p.reject(new Error(e.message || "the smooth-surface worker crashed"));
+        pending.clear();
+      };
+      const call = (msg, onPass = null) => new Promise((resolve, reject) => {
+        const id = ++seq;
+        pending.set(id, { resolve, reject, onPass });
+        w.postMessage({ ...msg, id });
       });
+      return { call, close: () => w.terminate() };
     }
 
-    // The smooth surface sizes itself to the mesh. A 1,200-patch layout is
-    // tried first and kept when its surface stays within these shares of the
-    // part's size (average, and for 95% of the mesh); otherwise the 2,500-
-    // patch one. Measured: a smooth vase and a bracket keep 1,200 (half the
-    // file, half the import); a crinkled bag, a Benchy, a heart vase and
-    // sharp-edged CAD parts need 2,500. Fewer than 1,200 rounds off real
-    // edges: a mast went from 0.2 mm to 3.3 mm average at 400.
-    const SMOOTH_OK = { mean: 0.001, p95: 0.004 };
-    async function computeSmooth(name, job = null) {
-      const stl = dsl.getImport(name);
-      let last = null;
-      for (let i = 0; i < CAGE_SIZES.length; i++) {
-        const faces = CAGE_SIZES[i];
-        job?.step(i === 0 ? 0 : 2, i === 0 ? {} : { label: "Adding detail: a finer layout" });
-        const unwatch = job ? watchCage(name, (ev) => { if (ev.faces === faces) job.frac(ev.stage / ev.of * (i === 0 ? 1 : 0.5)); }) : null;
-        let cage;
-        try { cage = await needCage(bg, name, faces); } finally { unwatch?.(); }
-        if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
-        if (i === 0) job?.step(1);
-        else job?.frac(0.5);
-        await new Promise((res) => setTimeout(res, 30));       // let the bar paint before the writer runs
-        const r = await runSmoothWriter(cage, name, stl);
-        last = { cage, r };
-        const d = r.dev;
-        const closeEnough = !r.folded && d && d.mean <= SMOOTH_OK.mean * d.diag && d.p95 <= SMOOTH_OK.p95 * d.diag;
-        if (closeEnough) break;
+    // The Detail slider: how close the surface must come to the mesh, as a
+    // share of the part's size. Each stop shows its time, estimated from the
+    // coarse surface before any refining (adaptsmooth.js estimate()).
+    const SMOOTH_STOPS = [
+      { label: "Draft", pct: 0.4 },
+      { label: "Standard", pct: 0.2 },
+      { label: "Fine", pct: 0.1 },
+      { label: "Finest", pct: 0.05 },
+    ];
+    const SMOOTH_DEFAULT_STOP = 2;
+    // A layout is kept when 95% of the mesh lies within 1% of the part's size
+    // of its coarse surface. Coarser than that it has lost real shape (a
+    // Benchy at 800 quads has no cabin), and no refining brings that back,
+    // so the 2,500-quad layout is used instead.
+    const SMOOTH_COVER = 0.01;
+    let smoothSession = null;          // { s, name, estimates, stop } while a smooth result is on screen
+    const closeSmoothSession = () => { smoothSession?.s.close(); smoothSession = null; };
+
+    // The live preview: the surface so far, tinted by how much detail each
+    // face got (grey = left as the coarse patch, then blue, amber, orange).
+    const smoothPreview = new THREE.Group();
+    smoothPreview.name = "smooth-preview";
+    scene.add(smoothPreview);
+    let smoothPreviewHid = false;
+    const PREVIEW_TINT = [[0.62, 0.66, 0.72], [0.42, 0.62, 0.9], [0.95, 0.75, 0.3], [0.93, 0.47, 0.25], [0.8, 0.2, 0.2], [0, 0, 0], [0.65, 0.4, 0.8], [0.65, 0.4, 0.8]];
+    function showSmoothPreview(p) {
+      for (const m of smoothPreview.children) m.geometry.dispose();
+      smoothPreview.clear();
+      const n = p.positions.length / 3, col = new Float32Array(n * 3);
+      for (let t = 0; t < n / 3; t++) {
+        const c = PREVIEW_TINT[Math.min(7, p.level[t])];
+        for (let k = 0; k < 3; k++) col.set(c, (t * 3 + k) * 3);
       }
-      // A patch that still turns over would be refused by the kernel after a
-      // long try, and the fallback would then chew through the whole preview
-      // mesh. Say so now instead.
-      const f = last.r.folded;
-      if (f) throw new Error(`${f} patch${f === 1 ? "" : "es"} would fold over in a spot too tight to smooth`);
-      return last;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(p.positions, 3));
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05, side: THREE.DoubleSide }));
+      smoothPreview.add(m);
+      if (!smoothPreviewHid) { smoothPreviewHid = true; modelGroup.visible = false; }
+    }
+    function clearSmoothPreview() {
+      for (const m of smoothPreview.children) { m.geometry.dispose(); m.material.dispose(); }
+      smoothPreview.clear();
+      if (smoothPreviewHid) { smoothPreviewHid = false; modelGroup.visible = true; }
+    }
+    const secs = (ms) => (ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60000)} min`);
+
+    // stop: { i } read again after each refine, so a slider moved meanwhile
+    // gets a second refine before anything is written
+    async function computeSmooth(name, job = null, { stop = { i: SMOOTH_DEFAULT_STOP }, onEstimates = null, preview = false } = {}) {
+      const stl = dsl.getImport(name);
+      const s = openBondo();
+      try {
+        let cage = null, begun = null;
+        for (let i = 0; i < CAGE_SIZES.length; i++) {
+          const faces = CAGE_SIZES[i];
+          if (i) job?.step(1);
+          const unwatch = job ? watchCage(name, (ev) => { if (ev.faces === faces) job.frac(ev.stage / ev.of); }) : null;
+          try { cage = await needCage(bg, name, faces); } finally { unwatch?.(); }
+          if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
+          await new Promise((res) => setTimeout(res, 30));       // let the bar paint
+          begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: name.replace(/\.\w+$/, ""), stops: SMOOTH_STOPS.map((x) => x.pct) });
+          if (preview) showSmoothPreview(begun.preview);
+          const c = begun.coverage;
+          if (c.p95 <= SMOOTH_COVER * c.diag) break;
+        }
+        onEstimates?.(begun.estimates);
+        let done = -1, summary = null;
+        while (done !== stop.i) {
+          const i = stop.i;
+          job?.step(2, { label: `Adding detail where the surface misses the mesh (${SMOOTH_STOPS[i].label}, about ${secs(begun.estimates[i].ms)})` });
+          summary = (await s.call({ op: "refine", tolPct: SMOOTH_STOPS[i].pct }, (m) => { if (preview) showSmoothPreview(m.preview); })).summary;
+          done = i;
+        }
+        const { result: r } = await s.call({ op: "write" });
+        r.summary = summary;
+        return { cage, r, s, estimates: begun.estimates, stop };
+      } catch (e) {
+        s.close();
+        throw e;
+      }
     }
 
     // The code with importedMesh("name", …) swapped for `call`, wherever it
@@ -18683,83 +18751,136 @@ let SIMPLIFY_TARGET = 10000;
       }
     }
 
-    // pre: a { cage, r } already computed (the automatic choice ran it)
+    // The Detail slider's row, for the hint: a stop per setting, each with its
+    // estimated time (layout already done, so: refining plus the solid build)
+    const BTN = `font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer`;
+    const smoothStops = (estimates, i) => SMOOTH_STOPS.map((st, k) => `${k === i ? "<b>" : ""}${st.label} ~${secs(estimates[k].ms)}${k === i ? "</b>" : ""}`).join(" · ");
+    function smoothDetailRow(estimates, i) {
+      return `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">Detail <input id="smooth-detail" type="range" min="0" max="${SMOOTH_STOPS.length - 1}" step="1" value="${i}" style="width:110px;vertical-align:middle"> <span id="smooth-stops" style="opacity:.8">${smoothStops(estimates, i)}</span></span>`;
+    }
+
+    // pre: a { cage, r, s, estimates, stop } already computed (the automatic choice ran it)
     // then: run once the smooth solid has built exact (a curved STEP retry)
     async function convertImportToSmooth(name, pre = null, why = "", then = null) {
       const stl = dsl.getImport(name);
       const meshCode = code.value;
-      let cage, r;
+      let cage, r, s, estimates, stop;
       const t0 = performance.now();
+      closeSmoothSession();
       // Steps on the progress bar, each with a rough time from the mesh size
-      // (measured: a 20k Benchy lays out in ~3 s, fits in ~4 s and builds
-      // 2,400 faces in ~11 s); the layout also reports its stages. "Adding
-      // detail" only runs when the first, smaller layout wasn't close enough.
+      // (measured: a 20k Benchy lays out in ~3 s; a 92k vase refines in ~4 s
+      // and builds 800 faces in ~6 s). "A finer layout" only runs when the
+      // coarse one lost part of the shape.
       const tris = (stl.match(/facet normal/g) || []).length;
       const stages = [
         { label: `Laying out the surface patches on ${name}`, estMs: 1500 + tris * 0.1 },
-        { label: "Fitting the smooth patches", estMs: 3000 },
-        { label: "Adding detail: a finer layout", estMs: 2000 + tris * 0.15 + 4000, weight: 2 },
+        { label: "A finer layout: the coarse one lost part of the shape", estMs: 2000 + tris * 0.15 },
+        { label: "Adding detail where the surface misses the mesh", estMs: 5000, weight: 2 },
         { label: "Building the smooth solid", estMs: 12000, weight: 2 },
       ];
       const job = progress.task(`Wrapping ${name} in a smooth surface`, stages);
+      // The slider shows as soon as the coarse surface is measured, and may
+      // be moved while the detail is still going on (the next refine uses it).
+      const live = { i: SMOOTH_DEFAULT_STOP };
+      const wireSlider = (onPick) => $("smooth-detail")?.addEventListener("input", (e) => onPick(+e.target.value));
       try {
-        ({ cage, r } = pre || await computeSmooth(name, job));
+        ({ cage, r, s, estimates, stop } = pre || await computeSmooth(name, job, {
+          stop: live,
+          preview: true,
+          onEstimates: (est) => {
+            hint.innerHTML = `The coarse surface for <b>${esc(name)}</b> is on screen; detail goes only where it misses the mesh (tinted: grey left alone, then blue, amber, orange). `
+              + smoothDetailRow(est, live.i);
+            wireSlider((i) => { live.i = i; const el = $("smooth-stops"); if (el) el.innerHTML = smoothStops(est, i); });
+          },
+        }));
       } catch (e) {
+        clearSmoothPreview();
         const why = String(e?.message || e).slice(0, 220);
         logEvent("smooth", name, { ok: false });
         hint.innerHTML = `Couldn't wrap <b>${esc(name)}</b> in a smooth surface (${esc(why)}). `
           + `It stays a mesh, which prints, cuts and exports exactly as before. `
-          + `<button id="smooth-retry" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Try again</button>`;
+          + `<button id="smooth-retry" style="${BTN}">Try again</button>`;
         $("smooth-retry")?.addEventListener("click", () => convertImportToSmooth(name));
         job.fail(`Couldn't wrap ${name} in a smooth surface: ${why}. It stays a mesh.`, { retry: () => convertImportToSmooth(name) });
         setStatus("warn", `${name} stayed a mesh.`);
         return;
       }
-      // the last step runs until the kernel has built the smooth solid
-      stages[3].estMs = 2000 + r.faces * 5;
-      job.step(3);
-      // ...past a stand-in build on the JS kernel while Rust is still loading
-      (async () => {
-        const t1 = Date.now();
-        while (Date.now() - t1 < 300000) {
-          if (!(await whenBuilt(5000))) continue;
-          if (lastEngine?.fallbackKind === "loading") { await new Promise((res) => setTimeout(res, 1000)); continue; }
-          break;
-        }
-        job.done();
-      })();
+      smoothSession = { s, name, estimates, stop };
       const stepName = name.replace(/\.(stl|3mf|obj)$/i, "") + "-smooth.step";
-      dsl.registerImport(stepName, r.step, { mesh: r.mesh });
+      // the last step runs until the kernel has built the smooth solid, and
+      // the preview steps aside for it then (past a stand-in build on the JS
+      // kernel while Rust is still loading)
+      const swapIn = (res, job) => {
+        stages[3].estMs = 2000 + res.faces * 8;
+        job.step(3);
+        (async () => {
+          const t1 = Date.now();
+          while (Date.now() - t1 < 300000) {
+            if (!(await whenBuilt(5000))) continue;
+            if (lastEngine?.fallbackKind === "loading") { await new Promise((res) => setTimeout(res, 1000)); continue; }
+            break;
+          }
+          clearSmoothPreview();
+          job.done();
+        })();
+        dsl.registerImport(stepName, res.step, { mesh: res.mesh });
+      };
+      swapIn(r, job);
       logEvent("smooth", name, { ok: true, faces: r.faces, tris: cage.triangles, ms: Math.round(performance.now() - t0) });
       pushHistory(code.value);
       code.value = swapImportCall(name, `importedSolid(${JSON.stringify(stepName)})`);
       pushHistory();
       scheduleBuild();
-      const notes = [
-        r.creases ? `sharp edges kept along ${r.creases.toLocaleString()} cage edges` : "",
-        r.holesFilled ? `${r.holesFilled} small gap${r.holesFilled === 1 ? "" : "s"} in the layout closed` : "",
-        r.relaxed ? `${r.relaxed} tight spot${r.relaxed === 1 ? "" : "s"} smoothed a little more than the rest` : "",
-        r.flattened ? `${r.flattened} patch${r.flattened === 1 ? "" : "es"} kept flatter where a sharp edge cuts across ${r.flattened === 1 ? "it" : "them"}` : "",
-      ].filter(Boolean).join(", ");
-      // how close it came, in the part's own millimetres
       const mm = (x) => (x < 0.1 ? `${x.toFixed(2)} mm` : x < 10 ? `${x.toFixed(1)} mm` : `${Math.round(x)} mm`);
-      const close = r.dev
-        ? `It stays within <b>${mm(r.dev.mean)}</b> of the mesh on average and ${mm(r.dev.p95)} for 95% of it; detail smaller than a patch is smoothed over. `
-        : `It follows the mesh closely but is not identical to it: fine detail smaller than the patches is smoothed over. `;
-      hint.innerHTML = (why ? `${why} ` : "")
-        + `<b>${esc(name)}</b> wrapped in a smooth surface: ${cage.triangles.toLocaleString()} triangles → `
-        + `<b>${r.faces.toLocaleString()} curved faces</b>${notes ? ` (${notes})` : ""}. `
-        + close
-        + `Export STEP with <b>Surfaces: True curved</b> to hand a CAD program the smooth solid. `
-        + `<button id="smooth-keep" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Keep smooth</button> <button id="smooth-back" style="font:inherit;padding:2px 9px;margin:0 2px;border:1px solid var(--muted3);border-radius:6px;background:transparent;color:inherit;cursor:pointer">Back to mesh</button>`;
-      $("smooth-keep").addEventListener("click", () => { hint.textContent = `Kept ${stepName} as a smooth solid.`; });
-      $("smooth-back").addEventListener("click", () => {
-        pushHistory(code.value);
-        code.value = meshCode;
-        pushHistory();
-        scheduleBuild();
-        hint.textContent = `Back to the mesh of ${name}. The smooth version is still on hand as importedSolid(${JSON.stringify(stepName)}).`;
-      });
+      const sayResult = (res, i) => {
+        const lv = res.facesByLevel || [];
+        const refined = lv.slice(1).reduce((a, b) => a + b, 0);
+        const notes = [
+          refined ? `detail added to ${refined.toLocaleString()} of them, the rest left as the coarse patches` : "every face fit as the coarse patch",
+          res.fills ? `${res.fills} small gap${res.fills === 1 ? "" : "s"} in the layout closed` : "",
+        ].filter(Boolean).join(", ");
+        const close = res.dev
+          ? `It stays within <b>${mm(res.dev.mean)}</b> of the mesh on average and ${mm(res.dev.p95)} for 95% of it; detail finer than <b>${SMOOTH_STOPS[i].label}</b> is smoothed over. `
+          : "";
+        hint.innerHTML = (why ? `${why} ` : "")
+          + `<b>${esc(name)}</b> wrapped in a smooth surface: ${cage.triangles.toLocaleString()} triangles → `
+          + `<b>${res.faces.toLocaleString()} curved faces</b> (${notes}). `
+          + close
+          + `Export STEP with <b>Surfaces: True curved</b> to hand a CAD program the smooth solid. `
+          + smoothDetailRow(estimates, i) + " "
+          + `<button id="smooth-keep" style="${BTN}">Keep smooth</button> <button id="smooth-back" style="${BTN}">Back to mesh</button>`;
+        $("smooth-keep").addEventListener("click", () => { closeSmoothSession(); hint.textContent = `Kept ${stepName} as a smooth solid.`; });
+        $("smooth-back").addEventListener("click", () => {
+          closeSmoothSession();
+          pushHistory(code.value);
+          code.value = meshCode;
+          pushHistory();
+          scheduleBuild();
+          hint.textContent = `Back to the mesh of ${name}. The smooth version is still on hand as importedSolid(${JSON.stringify(stepName)}).`;
+        });
+        // a new Detail after the build: refine again from the same layout and swap the solid
+        wireSlider(async (k) => {
+          if (smoothSession?.s !== s || k === i) return;
+          const est = estimates[k];
+          const redo = progress.task(`Smooth surface for ${name} at ${SMOOTH_STOPS[k].label}`, [stages[2], stages[3]]);
+          $("smooth-detail").disabled = true;
+          try {
+            redo.step(0, { label: `Adding detail (${SMOOTH_STOPS[k].label}, about ${secs(est.ms)})` });
+            const sum = (await s.call({ op: "refine", tolPct: SMOOTH_STOPS[k].pct }, (m) => showSmoothPreview(m.preview))).summary;
+            const { result } = await s.call({ op: "write" });
+            result.summary = sum;
+            stop.i = k;
+            swapIn(result, { step: () => redo.step(1), done: () => redo.done() });
+            scheduleBuild();
+            sayResult(result, k);
+          } catch (e) {
+            clearSmoothPreview();
+            redo.fail(`Couldn't refine ${name} at ${SMOOTH_STOPS[k].label}: ${String(e?.message || e).slice(0, 160)}`);
+            sayResult(res, i);
+          }
+        });
+      };
+      sayResult(r, stop.i);
       watchSmoothBuild(name, stepName, meshCode).then((exact) => { if (exact) then?.(); });
     }
 

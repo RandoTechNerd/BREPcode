@@ -501,26 +501,34 @@ export function prepare(model, { maxPts = 120000 } = {}) {
 // What each tolerance would cost, from pass 0 alone (no refining yet): a
 // face or edge over tolerance needs about log(err / tol) / log(gain) more
 // levels, where `gain` is how much one level (spans doubled) cuts the error.
-// The time comes from a linear model of the bench (coef), so the slider can
-// show a number at every stop before any of the work is done.
-export const timeCoef = { adaptPerCtrl: 0.03, adaptPerData: 0.004, kernelPerFace: 9, kernelPerCtrl: 0.12, kernelBase: 300 };
-export function estimate(model, tols, { maxLevel = MAX_LEVEL, gain = 3, coef = timeCoef } = {}) {
+// The kernel's import time is mostly per control point, and how much each
+// one costs depends on how wrinkled the fitted faces get: faces that would
+// need more than maxLevel (they end up fitting noise at the cap) make the
+// pcurve fits slow. Calibrated on 8 runs (wobbly, heart, bag, Benchy at 2
+// sizes each, 2026-11-02, Node): kernel within ~1.5x on 6 of 7, 2.3x high
+// on a smooth Wobbly at 387 faces (the safe side).
+export const timeCoef = { adaptBase: 900, adaptPerFaceLevel: 5.5, adaptPerData: 0.0045, kernelBase: 3000, kernelPerFace: 4,
+  kernelPerCtrl: 0.05, kernelPerCtrlRough: 2.5, kernelRoughMax: 1 };
+export function estimate(model, tols, { maxLevel = MAX_LEVEL, gain = 2, coef = timeCoef } = {}) {
   prepare(model);
+  const nFaces = model.faces.length + model.fills.length;
   return tols.map((tol) => {
-    const need = (err) => (err <= tol ? 0 : Math.min(maxLevel, Math.ceil(Math.log(err / tol) / Math.log(gain))));
-    let ctrlPts = 0, refined = 0, work = 0, dataWork = 0;
+    const raw = (err) => (err <= tol ? 0 : Math.ceil(Math.log(err / tol) / Math.log(gain)));
+    let ctrlPts = 0, refined = 0, capped = 0, faceLevels = 0, dataWork = 0;
     const byLevel = new Array(maxLevel + 1).fill(0);
     for (const f of model.faces) {
-      let L = f.err.n >= 4 ? Math.max(need(f.err.p95), need(f.err.max / 4)) : 0;
-      for (const { e } of f.edges) if (!e.frozen) L = Math.max(L, need(e.err.max));
+      let R = f.err.n >= 4 ? Math.max(raw(f.err.p95), raw(f.err.max / 4)) : 0;
+      for (const { e } of f.edges) if (!e.frozen) R = Math.max(R, raw(e.err.max));
+      if (R > maxLevel) capped++;
+      const L = Math.min(maxLevel, R);
       byLevel[L]++;
-      const n = (1 << L) + 3;
-      ctrlPts += n * n;
-      if (L) { refined++; for (let l = 1; l <= L; l++) work += ((1 << l) + 3) ** 2; dataWork += L * f.data.length; }
+      ctrlPts += ((1 << L) + 3) ** 2;
+      if (L) { refined++; faceLevels += L; dataWork += L * f.data.length; }
     }
-    const adaptMs = coef.adaptPerCtrl * work + coef.adaptPerData * dataWork;
-    const kernelMs = coef.kernelBase + coef.kernelPerFace * (model.faces.length + model.fills.length) + coef.kernelPerCtrl * ctrlPts;
-    return { tol, refined, byLevel, ctrlPts, adaptMs: Math.round(adaptMs), kernelMs: Math.round(kernelMs), ms: Math.round(adaptMs + kernelMs) };
+    const adaptMs = coef.adaptBase + coef.adaptPerFaceLevel * faceLevels + coef.adaptPerData * dataWork;
+    const rough = Math.min(coef.kernelRoughMax, coef.kernelPerCtrlRough * capped / nFaces);
+    const kernelMs = coef.kernelBase + coef.kernelPerFace * nFaces + (coef.kernelPerCtrl + rough) * ctrlPts;
+    return { tol, refined, capped, byLevel, ctrlPts, adaptMs: Math.round(adaptMs), kernelMs: Math.round(kernelMs), ms: Math.round(adaptMs + kernelMs) };
   });
 }
 

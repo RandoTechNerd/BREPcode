@@ -14,9 +14,10 @@
 import { STAGE_NAMES } from "./cage-stages.js";
 
 const cache = new Map();          // `${name}@${faces}` -> { key, cage }
-// The smooth surface sizes itself (index.html): a 1,200-quad cage first, and a
-// 2,500-quad one when the small one's surface strays too far from the mesh.
-export const CAGE_SIZES = [1200, 2500];
+// The smooth surface sizes itself (index.html): an 800-quad cage first (refined
+// only where it misses, adaptsmooth.js), and a 2,500-quad one when the coarse
+// surface has lost part of the shape (a Benchy at 800 has no cabin).
+export const CAGE_SIZES = [800, 2500];
 const slot = (name, faces) => `${name}@${faces}`;
 const MAX_TRIANGLES = 300_000;    // past this a background run is minutes, not seconds
 
