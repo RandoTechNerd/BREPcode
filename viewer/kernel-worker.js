@@ -17,6 +17,7 @@
 import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 import { trianglesStep } from "../src/facetstep.js";
+import { splitHistory, mergeOutputs } from "../src/partsplit.js";
 
 // The split engine (src/engine.js): the Rust kernel for exact parts, manifold
 // for meshes, this file's JS kernel when either refuses. Both wasm modules are
@@ -161,8 +162,13 @@ function runSmlib(json, wasmUrl) {
 // page passes this worker a MessagePort to it; ?native=1 says one is coming.
 // Until the native kernel turns out missing or broken, the 14 MB wasm is not
 // even downloaded. The website never sets native=1 and is unchanged.
+//
+// The page may hand over several ports, one per host in the window's pool
+// (desktop/kernel.cjs): a multi-part model builds its parts on all of them at
+// once. nativePort is the first, which everything single-shot uses.
 const NATIVE_EXPECTED = PARAMS.get("native") === "1";
 let nativePort = null;
+let nativePorts = [];
 let nativeDown = !NATIVE_EXPECTED;   // nothing coming, or the host went away
 let nativeWaiters = [];
 let nativeSeq = 0;
@@ -172,11 +178,12 @@ function nativeSettle(port) {
   nativeWaiters = [];
   for (const r of w) r(port);
 }
-function setNativePort(port) {
-  try { nativePort?.close(); } catch { /* gone */ }
-  nativePort = port;
+function setNativePort(ports) {
+  for (const p of nativePorts) { try { p.close(); } catch { /* gone */ } }
+  nativePorts = ports;
+  nativePort = ports[0];
   nativeDown = false;
-  port.onmessage = ({ data }) => {
+  const onmessage = ({ data }) => {
     const p = nativePending.get(data?.id);
     if (!p) return;
     // a long build's partial model, on its way (not the reply)
@@ -187,13 +194,15 @@ function setNativePort(port) {
     // host itself is fine. An error without it means the host went away.
     else p.reject(Object.assign(new Error(data.error || "native kernel failed"), { refusal: !!data.refusal, fromHost: true, lane: data.lane }));
   };
-  nativeSettle(port);
+  for (const port of ports) port.onmessage = onmessage;
+  nativeSettle(nativePort);
 }
 function dropNative(reason) {
   const err = new Error(reason || "the native kernel went away");
   for (const [, p] of nativePending) p.reject(err);
   nativePending.clear();
-  try { nativePort?.close(); } catch { /* gone */ }
+  for (const p of nativePorts) { try { p.close(); } catch { /* gone */ } }
+  nativePorts = [];
   nativePort = null;
   nativeDown = true;
   nativeSettle(null);
@@ -209,11 +218,14 @@ function nativeKernel() {
     setTimeout(() => { if (!nativePort && !nativeDown) dropNative("the native kernel didn't connect in time"); }, 5000);
   });
 }
-function nativeCall(msg, transfer = [], onProgress = null) {
+// `slot` picks the host. A part always goes to the same slot, so the host
+// that built it last time still has it in its incremental cache.
+function nativeCall(msg, transfer = [], onProgress = null, slot = 0) {
   const id = ++nativeSeq;
+  const port = nativePorts[slot % nativePorts.length] || nativePort;
   return new Promise((resolve, reject) => {
     nativePending.set(id, { resolve, reject, onProgress });
-    try { nativePort.postMessage({ ...msg, id }, transfer); }
+    try { port.postMessage({ ...msg, id }, transfer); }
     catch (e) { nativePending.delete(id); reject(e); }
   });
 }
@@ -419,11 +431,46 @@ self.onmessage = async ({ data, ports }) => {
           total: out.stats.exactFeatures + out.stats.meshFeatures, reason: "",
         }, transfer);
       };
+      // A model of separate parts (a group()) builds part by part: each one
+      // goes to the page the moment it is done, and on the desktop the parts
+      // spread over the window's pool of native kernels. Same engine, same
+      // features, same result as one whole build (test/partsplit.js).
+      const pieces = engine !== "js" ? splitHistory(data.json) : null;
+      const t0 = performance.now();
+      const postPart = (out, i) => {
+        const { payload, transfer } = splitPayload(out);
+        self.postMessage({ id, partial: true, part: i, parts: pieces.length, solids: payload, engine: out.lane }, transfer);
+      };
       // Desktop: the native kernel first. Its refusal is the same kernel's
       // refusal, so that goes straight to the JS kernel; anything else (the
       // host crashed or was killed) leaves this build to the wasm kernel.
       let nativeRefused = false;
-      if (engine !== "js" && await nativeKernel()) {
+      if (pieces && engine !== "js" && await nativeKernel()) {
+        try {
+          const outs = await Promise.all(pieces.map((doc, i) =>
+            nativeCall({ op: "build", json: JSON.stringify(doc), kernel: data.kernel }, [], null, i).then((r) => {
+              const out = { lane: r.lane, solids: r.solids, stats: r.stats };
+              postPart(out, i);
+              return out;
+            })));
+          const out = mergeOutputs(outs, performance.now() - t0, pieces);
+          out.stats.hosts = Math.min(nativePorts.length, pieces.length);
+          trace(`native engine, ${pieces.length} parts on ${out.stats.hosts} hosts: ${out.lane} in ${out.stats.wallMs} ms`);
+          postSplit(out);
+          return;
+        } catch (e) {
+          if (e.refusal) {
+            if (engine === "split") throw e;
+            nativeRefused = true;
+            fallback = String(e.message || e).slice(0, 300);
+            fallbackKind = "refused";
+            trace(`native engine refused a part: ${fallback}`);
+          } else if (!e.fromHost && nativePort) {
+            dropNative(`native build failed: ${e.message || e}`);
+          }
+        }
+      }
+      if (!nativeRefused && engine !== "js" && await nativeKernel()) {
         try {
           // the partial model goes to the page as it grows ({ progressOf },
           // never { id }: that would settle the build early)
@@ -495,7 +542,19 @@ self.onmessage = async ({ data, ports }) => {
       } else if (engine !== "js") {
         try {
           const rust = await loadRust(data.rustWasmUrl);
-          const out = await runEngine(data.json, { rust, manifold: loadManifold });
+          let out;
+          if (pieces) {
+            // one kernel here, so one part after another, but each still
+            // reaches the screen as soon as it is built
+            const outs = [];
+            for (const [i, doc] of pieces.entries()) {
+              outs.push(await runEngine(doc, { rust, manifold: loadManifold }));
+              postPart(outs[i], i);
+            }
+            out = mergeOutputs(outs, performance.now() - t0, pieces);
+          } else {
+            out = await runEngine(data.json, { rust, manifold: loadManifold });
+          }
           trace(`split engine: ${out.lane} (${out.stats.exactMs} ms exact, ${out.stats.meshMs} ms mesh)`);
           if (smlibNote) out.stats = { ...out.stats, ...smlibNote };
           postSplit(out);
@@ -621,7 +680,7 @@ self.onmessage = async ({ data, ports }) => {
     // worker's kernel instance builds every model (src/stlexact.js).
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }
     // from the page, no reply: the desktop's native kernel arriving or going
-    if (op === "nativePort") { if (ports?.[0]) setNativePort(ports[0]); return; }
+    if (op === "nativePort") { if (ports?.length) setNativePort([...ports]); return; }
     if (op === "nativeDown") { if (NATIVE_EXPECTED) dropNative(data.reason); return; }
     throw new Error(`unknown op "${op}"`);
   } catch (e) {

@@ -4820,7 +4820,7 @@
     const NATIVE_KERNEL = typeof window.brepcodeDesktop?.nativeKernelPort === "function";
     if (NATIVE_KERNEL) window.addEventListener("message", (e) => {
       if (e.source !== window || !e.data?.brepcodeKernel || !kernelWorker) return;
-      if (e.data.brepcodeKernel === "port" && e.ports?.[0]) kernelWorker.postMessage({ op: "nativePort" }, [e.ports[0]]);
+      if (e.data.brepcodeKernel === "port" && e.ports?.length) kernelWorker.postMessage({ op: "nativePort" }, [...e.ports]);
       else if (e.data.brepcodeKernel === "down") kernelWorker.postMessage({ op: "nativeDown", reason: e.data.reason });
     });
 
@@ -4868,6 +4868,8 @@
           }
           const p = workerPending.get(data?.id);
           if (!p) return;                       // a reply to a cancelled build
+          // one part of a multi-part build, ahead of the full answer
+          if (data.partial) { try { p.onPartial?.(data); } catch (e) { console.warn("[page] part display failed:", e); } return; }
           workerPending.delete(data.id);
           workerProven = true;
           if (data.ok) p.resolve(data);
@@ -4937,7 +4939,7 @@
       }
     }
 
-    function workerCall(msg, transfer) {
+    function workerCall(msg, transfer, { onPartial = null } = {}) {
       const w = getBuildWorker();
       if (!w) return Promise.reject(new WorkerGone("no build worker available"));
       const id = ++workerSeq;
@@ -4945,7 +4947,7 @@
       // Every kernel call is foreground work: background jobs hold off until
       // it answers.
       return bg.during(`kernel ${msg?.op || "call"}`, new Promise((resolve, reject) => {
-        workerPending.set(id, { resolve, reject });
+        workerPending.set(id, { resolve, reject, onPartial });
         const item = { msg: { ...msg, id }, transfer, reject };
         if (workerReady) postToWorker(item);
         else {
@@ -6162,6 +6164,22 @@
       // stop in a background tab, which would leave the decision itself
       // hostage to whether anyone was looking.
       clearT = setTimeout(() => keepModelClear(), delay);
+    }
+
+    // colours set by colorize() in the code — rebuilt every pass, keyed by
+    // feature id, so adoptSolid()'s matForFeature() paints each coloured piece
+    function applyTraceLooks(trace) {
+      codeColors = {}; codeEmissive = {}; codeClear = {}; codeFinish = {};
+      codeNegatives = new Set();       // cutters — see paintCutFaces()
+      codeOrganic = new Set();
+      for (const t of trace) {
+        if (t.negative) codeNegatives.add(t.id);
+        if (t.organic) codeOrganic.add(t.id);
+        if (t.color) codeColors[t.id] = t.color;
+        if (t.emissive) codeEmissive[t.id] = { hex: t.emissive, int: t.emissiveInt ?? 1 };
+        if (t.clear != null) codeClear[t.id] = t.clear;
+        if (t.finish) codeFinish[t.id] = t.finish;
+      }
     }
 
     function clearModel() {
@@ -11154,9 +11172,32 @@ ${joined}${SITE_TAIL}`), joined);
         // rather than left to finish into a result nobody wants while this one
         // queues behind it.
         cancelWorkerBuild();
+        // A model of separate parts arrives a part at a time (kernel-worker.js):
+        // each goes on screen as it lands, so a twelve-part kit shows its first
+        // piece in seconds rather than everything at the end. `streamed` keeps
+        // those meshes, part by part, for the finish below to keep.
+        let streamed = null;
+        const onPartial = (m) => {
+          if (mine !== token) return;
+          const validIds = new Set(trace.map((t) => t.id));
+          if (!streamed) {
+            streamed = [];
+            if (previewGroup.children.length) clearMeshPreview();
+            clearHistGhost();
+            clearModel();
+            applyTraceLooks(trace);
+          }
+          const meshes = [];
+          for (const s of m.solids) {
+            for (const mesh of adoptFaceData(s.name, s.faces, validIds, true)) { modelGroup.add(mesh); meshes.push(mesh); }
+          }
+          streamed[m.part] = meshes;
+          modelGroup.updateMatrixWorld(true);
+          setStatus("busy", `Building… ${streamed.filter(Boolean).length} of ${m.parts} parts`);
+        };
         if (json && getBuildWorker()) {
           try {
-            let r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL, progress: true });
+            let r = await workerCall({ op: "build", key: "model", json, engine: buildEngine(), kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL, progress: true }, undefined, { onPartial });
             if (mine !== token) return;
             // The JS kernel built it, with the names a fast kernel gave the
             // fillets: an edge it names differently (a circle's rim is one edge
@@ -11224,32 +11265,34 @@ ${joined}${SITE_TAIL}`), joined);
         // which reads as "it lost my model". Swapping at the last moment, in
         // the same synchronous block that adds the new meshes, means no frame
         // is ever painted with neither on screen.
-        if (previewGroup.children.length) clearMeshPreview();
-        clearHistGhost();
-        clearModel();
-        let tris = 0;
-        // colours set by colorize() in the code — rebuilt every pass, keyed by
-        // feature id, so adoptSolid()'s matForFeature() paints each coloured piece
-        codeColors = {}; codeEmissive = {}; codeClear = {}; codeFinish = {};
-        codeNegatives = new Set();       // cutters — see paintCutFaces()
-        codeOrganic = new Set();
-        for (const t of trace) {
-          if (t.negative) codeNegatives.add(t.id);
-          if (t.organic) codeOrganic.add(t.id);
-          if (t.color) codeColors[t.id] = t.color;
-          if (t.emissive) codeEmissive[t.id] = { hex: t.emissive, int: t.emissiveInt ?? 1 };
-          if (t.clear != null) codeClear[t.id] = t.clear;
-          if (t.finish) codeFinish[t.id] = t.finish;
+        // Every part already on screen from the streamed build: keep those
+        // meshes rather than adopting the same faces a second time. Anything
+        // less (a part refused, so the JS kernel built the lot) starts over.
+        const keep = fromWorker && streamed && streamed.length === lastEngine?.stats?.parts
+          && streamed.every(Boolean);
+        if (!keep) {
+          if (previewGroup.children.length) clearMeshPreview();
+          clearHistGhost();
+          clearModel();
         }
+        let tris = 0;
+        applyTraceLooks(trace);
         const validIds = new Set(trace.map((t) => t.id));
-        for (const s of solids) {
-          const meshes = fromWorker
-            ? adoptFaceData(s.name, s.faces, validIds, true)   // buffers are ours
-            : adoptSolid(s, validIds);
-          for (const mesh of meshes) {
-            modelGroup.add(mesh);
-            const g = mesh.geometry;
-            tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+        const countTris = (mesh) => {
+          const g = mesh.geometry;
+          tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+        };
+        if (keep) {
+          for (const meshes of streamed) meshes.forEach(countTris);
+        } else {
+          for (const s of solids) {
+            const meshes = fromWorker
+              ? adoptFaceData(s.name, s.faces, validIds, true)   // buffers are ours
+              : adoptSolid(s, validIds);
+            for (const mesh of meshes) {
+              modelGroup.add(mesh);
+              countTris(mesh);
+            }
           }
         }
         modelGroup.updateMatrixWorld(true);   // frameModel's Box3 needs current world matrices
