@@ -788,6 +788,26 @@ function faceOntoCylinder(f, c) {
   return worst;
 }
 
+// how many times a face's boundary (u, v round the unit square) turns about
+// a carrier's axis
+function turnsAround(S, c) {
+  const o = c.kind === "cyl" ? c.point : c.kind === "cone" ? c.apex : c.center;
+  const ax = c.kind === "sphere" ? [0, 0, 1] : c.axis;
+  const ref = norm(Math.abs(ax[0]) < 0.9 ? cross(ax, [1, 0, 0]) : cross(ax, [0, 1, 0])), ref2 = cross(ax, ref);
+  const n = 32, loop = [];
+  for (let k = 0; k < n; k++) loop.push([k / n, 0]);
+  for (let k = 0; k < n; k++) loop.push([1, k / n]);
+  for (let k = 0; k < n; k++) loop.push([1 - k / n, 1]);
+  for (let k = 0; k < n; k++) loop.push([0, 1 - k / n]);
+  let total = 0, prev = null;
+  for (const [u, v] of [...loop, loop[0]]) {
+    const w = sub(evalSurf(S, u, v), o), a = Math.atan2(dot(w, ref2), dot(w, ref));
+    if (prev !== null) { let d = a - prev; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; total += d; }
+    prev = a;
+  }
+  return total / (2 * Math.PI);
+}
+
 // a plane face's interior control points put in its plane (its boundary rows are the edge curves)
 function flatten(f) {
   for (let i = 1; i < f.S.nu - 1; i++) for (let j = 1; j < f.S.nv - 1; j++) f.S.P.set(onPlane(ctrl(f.S, i, j), f.carrier), (i * f.S.nv + j) * 3);
@@ -833,6 +853,10 @@ export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5,
       if (!(off <= flatFrac * model.diag)) { straddle++; continue; }
     }
     if (!(Math.max(...f.c.map((v) => offCarrier(model.posOf(v), c))) <= tol)) continue;
+    // a face whose boundary goes right round the axis (a band round a thin
+    // pin) has no seam to cut it open; the kernel (0.11) refuses that on a
+    // cylinder or cone, so it stays a B-spline
+    if (c.kind !== "plane" && Math.abs(turnsAround(f.S, c)) > 0.5) { straddle++; continue; }
     f.carrier = c;
   }
   // 2. corners, then edges, then the faces' own control points
