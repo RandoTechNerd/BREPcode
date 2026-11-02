@@ -5,6 +5,8 @@ import { matchRequest, catalogSummary, rankFamilies, keyTokens, stem } from "../
 import { catalogOf, editCatalog, capabilities } from "../src/catalog/edit.js";
 import { catalogStats, FAMILIES, SPECS, CATEGORIES } from "../src/catalog/index.js";
 import { EXACT_CORE } from "../src/exactlane.js";
+// SEARCH/REPLACE edit blocks in a reply (the #edits section), applied by the chat.
+export { applyEdits, parseEditBlocks, hasEditBlocks, stripEditBlocks } from "../src/codeedit.js";
 
 // ------------------------------------------------------------ rule engine
 
@@ -1876,6 +1878,14 @@ RULES
 IDENTITY
 Your name is set by the "Your assistant's name" preference if one is provided. Do not volunteer your name, sign messages, or refer to yourself by name — only state it if the user directly asks what you're called.
 
+#edits
+SMALL CHANGES AS EDITS. When current code is shown and the change touches a few lines (a size, a hole, a fillet, one more part), you may reply with edit blocks INSTEAD of the complete code block; the app applies them to that code and builds it:
+<<<<<<< SEARCH
+lines copied exactly from the current code
+=======
+their replacement
+>>>>>>> REPLACE
+The SEARCH text must match the code character for character, exactly once (add a neighbouring line if it repeats). Several blocks apply in order; an empty REPLACE deletes. Keep the header, dials and final return unless the change is to them. Only your one short sentence goes outside the blocks. A new design or a rewrite of most of the file gets the complete code block. If an edit did not match, reply with the complete code block.
 #app
 APP FEATURES BEYOND THE CODE — you know the whole app, so requests these panels serve better than code get ONE sentence pointing at the control (and you still deliver any geometry asked for). Never claim the app can't do something on this list:
 - Material panel (cube icon in the header): one-click presets — PLA, PETG, ABS, TPU, Nylon, Resin, Carbon fiber, Titanium, Aluminum, Steel, Brass, Copper, Gold, wood, Stone, Concrete, Ceramic, Glass and Acrylic (real reflections), Glow in the dark, and Showroom (white key + green rim product-shot look). Metal/rough/opacity sliders under them.
@@ -2197,6 +2207,9 @@ export const AUTO_SECTIONS = {
     || /\b(openscad|jscad|cadquery|build123d|python|\.scad)\b/i.test(c.text || ""),
   // only while a catalog design is the model on screen (its header line)
   catalog: (c) => !!c.catalogCode,
+  // only when there is a real model on screen to edit: a blank editor or the
+  // starter cube has nothing worth quoting back, so the whole file is the answer
+  edits: (c) => !!c.editable,
 };
 
 export function composeSystemParts(opts = {}) {

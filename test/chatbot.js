@@ -1826,7 +1826,9 @@ console.log("\nhearing a newcomer\n");
       && /for \(const act of local\.run \|\| \[\]\) runChatAction\(act\);/.test(HTML));
     check("...and knows the tour and undo actions", /else if \(act === "tour"\) \$\("tour-btn"\)\.click\(\);/.test(HTML)
       && /else if \(act === "undo"\) \{/.test(HTML));
-    check("the catalog answers first whatever the provider", /if \(!house && !forceAI\) \{\s*const probe = \{ \.\.\.botState \};/.test(HTML)
+    // ...except the app's own retry and exact-pass follow-ups, which the
+    // catalog used to answer with a menu instead of handing back to the AI
+    check("the catalog answers first whatever the provider", /if \(!house && !forceAI && text !== RETRY_TEXT && text !== EXACT_TEXT\) \{\s*const probe = \{ \.\.\.botState \};/.test(HTML)
       && /if \(\(local\.fromCatalog && \(local\.code !== undefined \|\| !local\.cantDo\)\) \|\| acts\) \{/.test(HTML));
     // a catalog question or "it already has that" stays in the chat; only a
     // request the catalog cannot do reaches the AI, and then as an edit

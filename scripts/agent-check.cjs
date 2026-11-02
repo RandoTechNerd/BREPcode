@@ -143,6 +143,28 @@ app.whenReady().then(async () => {
     check("setting a dial to the value it already has returns at once",
       s4.ok === true && Math.abs(s4.size[2] - 45) < 0.5, JSON.stringify(s4.size));
 
+    // edit_code: a targeted change to the code that is there, not a rewrite.
+    // The outside grows from 40 to 60 and every other line stays as it was.
+    const e1 = await call("POST", "/command", { action: "edit_code", edits: [{ old: "cube([40, 30, tall])", new: "cube([60, 30, tall])" }] });
+    check("edit_code built the edited model", e1.built === true && e1.status?.kind !== "err" && e1.edited === 1,
+      `${e1.status?.kind}: ${e1.status?.text || e1.error}`);
+    check("...changing only the quoted text", e1.code === s4.code.replace("cube([40, 30, tall])", "cube([60, 30, tall])"));
+    check("...and the model is the new size", Array.isArray(e1.size) && Math.abs(e1.size[0] - 60) < 0.5, JSON.stringify(e1.size));
+    // Several edits in one call, each seeing the one before.
+    const e2 = await call("POST", "/command", { action: "edit_code", edits: [
+      { old: "const tall = 45;", new: "const tall = 30;" },
+      { old: "cube([60, 30, tall])", new: "cube([50, 30, tall])" },
+    ] });
+    check("edit_code applies several edits", e2.edited === 2 && Math.abs(e2.size?.[0] - 50) < 0.5 && Math.abs(e2.size?.[2] - 30) < 0.5,
+      JSON.stringify({ size: e2.size, err: e2.error }));
+    // A quote that is not there, or is there twice, changes NOTHING and says why.
+    const miss = await call("POST", "/command", { action: "edit_code", edits: [{ old: "cube([99, 30, tall])", new: "cube([1, 1, 1])" }] });
+    check("edit_code refuses an old that is not in the code", /not found/.test(miss.error || ""), JSON.stringify(miss));
+    const twice = await call("POST", "/command", { action: "edit_code", edits: [{ old: "wall", new: "w" }] });
+    check("edit_code refuses an old that matches more than once", /matches \d+ times/.test(twice.error || ""), JSON.stringify(twice));
+    const sNow = await call("GET", "/state");
+    check("...and a refused edit left the code alone", sNow.code === e2.code);
+
     // A build that fails must SAY it failed. Reporting success on a broken
     // model is the one failure mode that wastes the user's whole session.
     //

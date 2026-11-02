@@ -24933,7 +24933,11 @@ let SIMPLIFY_TARGET = 10000;
       // The probe runs on a copy of the chat state, so a guided flow it might
       // start is not left behind to swallow the next AI-bound message.
       let withPicture = false;     // a catalog design just went up for a picture to be added to
-      if (!house && !forceAI) {
+      // The app's own follow-ups (the auto-fix retry, the exact pass) are for
+      // the model that wrote the code. The catalog read "Fix it and return the
+      // corrected complete model" as a vague request and answered it with a
+      // menu, so a failed build was never handed back to the AI at all.
+      if (!house && !forceAI && text !== RETRY_TEXT && text !== EXACT_TEXT) {
         const probe = { ...botState };
         const local = botRespond(text, probe, code.value, modelDims);
         // ...and a reply that ACTS on its own ("undo" steps the editor back)
@@ -25147,12 +25151,17 @@ let SIMPLIFY_TARGET = 10000;
           + (quickEdit ? `\nThis is an EDIT of the model above, not a new design. Keep its code as it is (every line,`
             + ` header and const dial) and make only the change asked for, usually one difference() cut or union()`
             + ` boss wrapped around the existing return. Do not rebuild, restyle or resize anything else. Think briefly:`
-            + ` this is a small change, and the answer is the complete edited code.` : "")
+            + ` this is a small change, and the answer is SEARCH/REPLACE edit blocks against the code above (or the`
+            + ` complete edited code).` : "")
           + imageNote
           + (anchor ? `
 
 ${SC.describeSelectionContext(anchor)}` : "");
         if (anchor) logLine(`pointing at: ${SC.selectionLabel(anchor)} ${SC.vec(anchor.point)}`);
+        // The code exactly as the model is shown it. Edit blocks in the reply
+        // are applied to THIS, not to whatever the editor holds by the time the
+        // answer lands: the quotes were copied from what it saw.
+        const sentCode = code.value;
         const context = code.value.trim()
           ? `Current model code:\n\`\`\`\n${code.value}\n\`\`\`${measured}${parts}\n\n${verbatim}`
           : (parts ? `${parts.trim()}\n\n${verbatim}` : verbatim);
@@ -25267,6 +25276,8 @@ ${SC.describeSelectionContext(anchor)}` : "");
           // a catalog design is on screen: the #catalog section tells the
           // model to keep its header and dials so chat follow-ups keep working
           catalogCode: /From the BREPcode catalog: [a-z0-9-]+\./.test(code.value),
+          // a real model on screen, so SEARCH/REPLACE edits are worth offering
+          editable: !!code.value.trim() && code.value.trim() !== code.defaultValue.trim(),
         };
         if (imgs.length && (cfg.provider === "local" || cfg.provider === "browser")) {
           // these small models are text-only, and a vision payload errors the
@@ -25593,19 +25604,35 @@ ${SC.describeSelectionContext(anchor)}` : "");
           }
         }
 
-        let fence = answer.match(/```[\w]*\n([\s\S]*?)```/);
-        // A reply cut off by the token limit has an OPENING fence and no closing
-        // one. Without this the code never applied and the user just saw the
-        // preamble stop dead mid-thought. Take what arrived and flag it.
-        let truncated = false;
-        if (!fence) {
-          const open = answer.match(/```[\w]*\n([\s\S]*)$/);
-          if (open && open[1].trim()) { fence = open; truncated = true; }
+        // SEARCH/REPLACE edit blocks instead of a whole file (the #edits
+        // section of the harness). Applied to the code the model was shown,
+        // and the result then flows on as if it had sent the complete code, so
+        // the build, the auto-fix retries and the lessons all work unchanged.
+        // A block that does not match goes back to the model as a failure to
+        // fix, the same as a build error, asking for the full code this time.
+        let editFail = "";
+        let fence = null, truncated = false, prose = "";
+        if (CHAT.hasEditBlocks(answer)) {
+          const { edits, incomplete } = CHAT.parseEditBlocks(answer);
+          const r = incomplete ? { ok: false, error: "the reply was cut off in the middle of an edit block." }
+            : CHAT.applyEdits(sentCode, edits, { loose: true });
+          if (r.ok) { fence = [null, r.code]; logLine(`applied ${r.applied} edit${r.applied > 1 ? "s" : ""} to the code`); }
+          else { editFail = r.error; logLine(`edit not applied — ${r.error}`); }
+          prose = CHAT.stripEditBlocks(answer);
+        } else {
+          fence = answer.match(/```[\w]*\n([\s\S]*?)```/);
+          // A reply cut off by the token limit has an OPENING fence and no closing
+          // one. Without this the code never applied and the user just saw the
+          // preamble stop dead mid-thought. Take what arrived and flag it.
+          if (!fence) {
+            const open = answer.match(/```[\w]*\n([\s\S]*)$/);
+            if (open && open[1].trim()) { fence = open; truncated = true; }
+          }
+          prose = answer
+            .replace(/```[\w]*\n[\s\S]*?```/g, "")
+            .replace(/```[\w]*\n[\s\S]*$/, "")
+            .trim();
         }
-        const prose = answer
-          .replace(/```[\w]*\n[\s\S]*?```/g, "")
-          .replace(/```[\w]*\n[\s\S]*$/, "")
-          .trim();
         clearInterval(tick);
         busy.remove();
         if (reasoning) {
@@ -25627,6 +25654,20 @@ ${SC.describeSelectionContext(anchor)}` : "");
           replyEl.appendChild(tag);
         }
         chatLog.push({ role: "assistant", text: answer });
+        if (editFail) {
+          autoFixTries++;
+          if (autoFixTries <= maxAutoFix()) {
+            addMsg("bot", `Those edits didn't fit the code — ${editFail} Asking for the complete model instead (attempt ${autoFixTries} of ${maxAutoFix()})…`);
+            chatLog.push({ role: "user", text: `Your edit blocks could not be applied: ${editFail}\nReply with the complete model in one fenced code block instead.` });
+            if (house) houseNext = house;
+            chatInput.value = RETRY_TEXT;
+            await sendChat();
+            return;
+          }
+          addMsg("bot", `Those edits didn't fit the code: ${editFail}`);
+          quickReplies([RETRY_TEXT], ["Try once more"], ["undo"]);
+          return;
+        }
         if (fence && !unsafe) {
           let r = await applyGeneratedCode(fence[1].trim());
           // A MODULE STILL LOADING IS NOT A CODE ERROR.
@@ -26533,6 +26574,19 @@ ${SC.describeSelectionContext(anchor)}` : "");
         return agentActions.get_state();
       },
 
+      // Targeted edits instead of a whole new file: exact find-and-replace
+      // pairs against what is in the editor NOW (the user may have typed since
+      // the agent last looked). All-or-nothing, and a miss says which edit and
+      // why rather than landing half a change (src/codeedit.js). The result
+      // then goes through set_code, so it is one undo step like any other.
+      async edit_code({ edits, old, new: neu, name }) {
+        if (!Array.isArray(edits) && typeof old === "string") edits = [{ old, new: neu }];
+        const { applyEdits } = await import("../src/codeedit.js");
+        const r = applyEdits(code.value, edits);
+        if (!r.ok) throw new Error(`edit_code changed nothing: ${r.error}`);
+        return { ...(await agentActions.set_code({ code: r.code, name })), edited: r.applied };
+      },
+
       // Build whatever is in the editor now — for after the user has typed.
       async build() { await rebuild(); return agentActions.get_state(); },
 
@@ -26643,6 +26697,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
         const tools = [
           ["get_state", "What is in the BREPcode editor right now: the code, the model name, the build status and message, the model's size in mm, the named parameters with their values, and selection: the spot the user right-clicked to ask about (point, normal, face, edges, the call that made it and its body), or null. Call this first, and again after the user may have typed.", {}, [], true],
           ["set_code", "Replace the editor's contents and build it: the model on screen changes. Returns get_state's fields; status.kind 'err' means the build FAILED and status.text says why. Goes through the undo stack, so the user can Ctrl+Z it. Source can be BREPcode DSL, OpenSCAD or JSCAD, in millimetres.", { code: { ...S, description: "the complete new source" }, name: { ...S, description: "optional model name, used for exported filenames" } }, ["code"]],
+          ["edit_code", "Change part of the editor's code without rewriting it: exact find-and-replace edits, applied in order, then a build. Prefer this to set_code for changes to an existing model. Each 'old' must match the current code exactly once, or nothing changes and the error says why. Returns get_state's fields plus edited. Undoable.", { edits: { type: "array", minItems: 1, items: { type: "object", properties: { old: { ...S, description: "exact text in the editor now" }, new: { ...S, description: "its replacement" } }, required: ["old", "new"] } } }, ["edits"]],
           ["build", "Rebuild whatever is in the editor now, without changing it.", {}, []],
           ["set_param", "Turn one of the model's named parameters (the sliders the user sees) and rebuild. Cheaper than rewriting the source for a dimension change.", { name: { ...S, description: "the parameter name from get_state.params" }, value: { description: "the new value" } }, ["name", "value"]],
           ["set_view", "Point the camera at a named angle.", { view: { ...S, enum: ["home", "top", "front", "right", "left", "up", "down", "opposite"] } }, ["view"]],
