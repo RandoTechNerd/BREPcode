@@ -54,6 +54,15 @@ function injectStyle() {
   .fz-opt:hover .ic, .fz-tile:hover .ic { color: var(--text, #dfe6f3); }
   .fz-opt b { display: block; font-size: 14px; }
   .fz-opt small { color: var(--muted, #8ea0c0); font-size: 12px; }
+  .fz-i { flex: none; margin-left: auto; align-self: flex-start; width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--border, #2a3550); color: var(--muted6, #93a7c8); font: italic 600 12px/20px Georgia, serif;
+    text-align: center; cursor: help; }
+  .fz-i:hover, .fz-i:focus-visible, .fz-i[aria-expanded="true"] { color: var(--text, #dfe6f3); border-color: var(--accent-soft, #4b8cf5); }
+  .fz-info { margin: -2px 0 6px 42px; padding: 10px 12px; border-left: 2px solid var(--accent-soft, #4b8cf5);
+    background: var(--panel2, #121a2b); border-radius: 0 8px 8px 0; font-size: 12px; line-height: 1.5; color: var(--muted, #8ea0c0); }
+  .fz-info b { color: var(--text, #dfe6f3); }
+  .fz-info p { margin: 0 0 6px; } .fz-info p:last-child { margin: 0; }
+  .fz-info ol { margin: 0 0 6px; padding-left: 18px; } .fz-info li { margin: 0 0 3px; }
   .fz-opt.hero { border-color: var(--border-focus, #3a5788); }
   .fz-new { font-size: 10px; font-weight: 600; letter-spacing: .06em; color: var(--accent-soft, #4b8cf5);
     border: 1px solid var(--accent-soft, #4b8cf5); border-radius: 4px; padding: 0 5px; margin-left: 8px; vertical-align: 1px; }
@@ -180,6 +189,29 @@ function modal(cls, title, ic = "") {
 
 // ------------------------------------------------------------ the drop menu
 
+// What the (i) beside each "Open as" option says: how it works underneath.
+const OPEN_INFO = {
+  auto: `<p><b>Both at once, then the better one.</b></p><ol>
+    <li>The exact rebuild and the smooth surface start together, each in its own worker.</li>
+    <li><b>Exact wins</b> when at most half the mesh came back as plain triangles (a CAD part: 1,202 triangles can come back as 33 planes and cylinders in half a second).</li>
+    <li><b>Smooth wins</b> when the rebuild fails, comes back mostly flat facets, or runs long: past 10 s it is dropped as soon as the smooth surface is ready, and past 30 s regardless.</li>
+    <li>If the smooth surface fails too, a mostly faceted exact solid is still kept, since it is still a solid.</li></ol>
+    <p>The hint line says which it chose and why.</p>`,
+  exact: `<p><b>Recovers the shapes the part was designed with.</b> This calls next.BREP.io's stl2step reconstruction (by mmiscool), unchanged:</p><ol>
+    <li>It segments the triangles into regions and fits each region with a true plane, cylinder, cone, sphere or torus.</li>
+    <li>It rebuilds the edges where those surfaces meet and validates the result as a closed B-rep solid.</li>
+    <li>Rust kernel 0.11.0 runs first, in a throwaway worker capped at 2 minutes. If it fails, traps, hangs or only repairs facets, the 0.9.0 build gets a second try, and the result with more real surfaces (then fewer faces) is kept.</li></ol>
+    <p>Regions it can't fit stay flat triangles, so an organic mesh comes back as thousands of facets. <b>Best for:</b> STLs exported from CAD.</p>`,
+  smooth: `<p><b>Fits curved patches over the shape, coarse to fine.</b></p><ol>
+    <li><b>Layout:</b> QuadriFlow remeshes the triangles into a quad cage that follows the curvature; edges that bend sharply stay creases.</li>
+    <li><b>Patches:</b> each quad becomes a bicubic B-spline patch of the Catmull-Clark limit surface (Loop &amp; Schaefer). Neighbours share their edges exactly, so the shell is watertight.</li>
+    <li><b>Refine:</b> patches that sit furthest from the mesh are split and refitted until the Detail slider's target is met. A noise test stops refining where all that is left is scan noise.</li>
+    <li><b>True shapes (hybrid):</b> next.BREP's segmentation, called unchanged, finds the regions that really are planes, cylinders, cones or spheres, and those patches snap onto the true surface. Green / pink in the preview.</li>
+    <li>The solid is checked by the exact kernel (0.11.0, then 0.9.0) and exported as a STEP of curved faces.</li></ol>
+    <p>Close to the original (under 1 mm at p95 on the test parts, 0.02 mm on a lathe part), never the exact triangles. <b>Best for:</b> organic, sculpted or scanned shapes. Add <code>?hybrid=0</code> to the address for all B-spline patches.</p>`,
+};
+const infoBtn = (k) => `<span class="fz-i" role="button" tabindex="0" data-i="${k}" aria-expanded="false" title="How this works" aria-label="How this works">i</span>`;
+
 export function dropSkipped() { return lsGet(SKIP_KEY) === "1"; }
 
 /**
@@ -199,11 +231,14 @@ export function chooseDropAction(file, { groups = [] } = {}) {
         <button class="fz-opt" data-a="open"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open in the editor</b><small>import it as a mesh you can cut, scale, combine and export</small></span></button>
         <button class="fz-opt" data-a="auto"><span class="ic">${icon("open", 20)}</span>
-          <span><b>Open as a solid<span class="fz-new">AUTO</span></b><small>tries both ways below at once and keeps the better one: exact for parts made in CAD, a smooth surface for organic or scanned shapes. Says which it chose and why; you can switch back to the mesh.</small></span></button>
+          <span><b>Open as a solid<span class="fz-new">AUTO</span></b><small>tries both ways below at once and keeps the better one: exact for parts made in CAD, a smooth surface for organic or scanned shapes. Says which it chose and why; you can switch back to the mesh.</small></span>${infoBtn("auto")}</button>
+        <div class="fz-info" data-for="auto" hidden>${OPEN_INFO.auto}</div>
         <button class="fz-opt" data-a="exact"><span class="ic">${icon("open", 20)}</span>
-          <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so cuts are exact and a curved STEP export carries true surfaces. Best for parts made in CAD; you can switch back to the mesh.</small></span></button>
+          <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so cuts are exact and a curved STEP export carries true surfaces. Best for parts made in CAD; you can switch back to the mesh.</small></span>${infoBtn("exact")}</button>
+        <div class="fz-info" data-for="exact" hidden>${OPEN_INFO.exact}</div>
         <button class="fz-opt" data-a="smooth"><span class="ic">${icon("open", 20)}</span>
-          <span><b>Open as a smooth surface<span class="fz-new">BETA</span></b><small>wrap organic or scanned shapes in smooth curved patches, so a STEP export is a small, editable solid instead of thousands of triangles. Close to the original, not exact; you can switch back to the mesh.</small></span></button>
+          <span><b>Open as a smooth surface<span class="fz-new">BETA</span></b><small>wrap organic or scanned shapes in smooth curved patches, so a STEP export is a small, editable solid instead of thousands of triangles. Close to the original, not exact; you can switch back to the mesh.</small></span>${infoBtn("smooth")}</button>
+        <div class="fz-info" data-for="smooth" hidden>${OPEN_INFO.smooth}</div>
         <button class="fz-opt hero" data-a="fizz"><span class="ic">${icon("fizz", 20)}</span>
           <span><b>FizzCore bubble infill<span class="fz-new">NEW</span></b><small>fill it with graded, self-supporting bubbles: less plastic, and still strong. Support fins optional.</small></span></button>
         <button class="fz-opt" data-a="fins"><span class="ic">${icon("fins", 20)}</span>
@@ -216,7 +251,19 @@ export function chooseDropAction(file, { groups = [] } = {}) {
         <input type="checkbox" class="fz-skip" /> Always just open (skip this menu)</label>
         <span style="margin-left:auto">${mb < 1 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${mb.toFixed(1)} MB`}</span></div>`);
     box.querySelector(".fz-skip").onchange = (e) => lsSet(SKIP_KEY, e.target.checked ? "1" : "0");
+    // the (i) opens its notes under the option instead of picking it
+    const toggleInfo = (i) => {
+      const pane = box.querySelector(`.fz-info[data-for="${i.dataset.i}"]`);
+      pane.hidden = !pane.hidden;
+      i.setAttribute("aria-expanded", String(!pane.hidden));
+    };
+    box.addEventListener("keydown", (e) => {
+      const i = e.target.closest?.(".fz-i");
+      if (i && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.stopPropagation(); toggleInfo(i); }
+    });
     box.addEventListener("click", (e) => {
+      const i = e.target.closest(".fz-i");
+      if (i) { e.stopPropagation(); toggleInfo(i); return; }
       const b = e.target.closest("[data-a]");
       if (!b) return;
       finish({ action: b.dataset.a, tool: b.dataset.t });
