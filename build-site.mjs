@@ -155,7 +155,7 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   // which is loaded by URL like the build worker below
   "bgjobs.js", "cage.js", "cage-stages.js", "cage-worker.js",
   // the smooth-surface writer's worker (src/smoothstep.js), also loaded by URL
-  "smooth-worker.js",
+  "smooth-worker.js", "cagedev.js",
   // the progress bar under the status line (and its card)
   "progress.js",
   // the build worker: loaded by URL rather than imported, so nothing else

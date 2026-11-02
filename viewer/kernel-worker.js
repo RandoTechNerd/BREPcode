@@ -642,6 +642,10 @@ self.onmessage = async ({ data, ports }) => {
         id, ok: true, step: out.step, ms, sourceTriangles: out.sourceTriangles,
         backend: out.report?.backend || "", solids: count(/MANIFOLD_SOLID_BREP\(/g),
         faces, planes, cylinders, cones, spheres, tori,
+        // how much of the mesh stayed triangles: what "Open as a solid" weighs
+        // against the smooth surface (a facet is also a PLANE, so the plane
+        // count alone can't say)
+        facetedTriangles: out.report?.hybrid_rebuild?.faceted_triangles ?? null,
       });
       return;
     }

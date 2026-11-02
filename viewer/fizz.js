@@ -185,7 +185,7 @@ export function dropSkipped() { return lsGet(SKIP_KEY) === "1"; }
 /**
  * Ask what to do with a dropped mesh.
  * groups: [{ title, tools: [{ id, label, icon, desc }] }] - every tool that works on the opened mesh
- * returns a Promise of { action: "open" | "exact" | "smooth" | "fizz" | "fins" | "tool", tool? } or null if cancelled
+ * returns a Promise of { action: "open" | "auto" | "exact" | "smooth" | "fizz" | "fins" | "tool", tool? } or null if cancelled
  */
 export function chooseDropAction(file, { groups = [] } = {}) {
   return new Promise((resolve) => {
@@ -198,6 +198,8 @@ export function chooseDropAction(file, { groups = [] } = {}) {
       <div class="fz-list">
         <button class="fz-opt" data-a="open"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open in the editor</b><small>import it as a mesh you can cut, scale, combine and export</small></span></button>
+        <button class="fz-opt" data-a="auto"><span class="ic">${icon("open", 20)}</span>
+          <span><b>Open as a solid<span class="fz-new">AUTO</span></b><small>tries both ways below at once and keeps the better one: exact for parts made in CAD, a smooth surface for organic or scanned shapes. Says which it chose and why; you can switch back to the mesh.</small></span></button>
         <button class="fz-opt" data-a="exact"><span class="ic">${icon("open", 20)}</span>
           <span><b>Open as an exact solid<span class="fz-new">BETA</span></b><small>rebuild real planes and cylinders from the triangles, so cuts are exact and a curved STEP export carries true surfaces. Best for parts made in CAD; you can switch back to the mesh.</small></span></button>
         <button class="fz-opt" data-a="smooth"><span class="ic">${icon("open", 20)}</span>
