@@ -20149,8 +20149,19 @@ let SIMPLIFY_TARGET = 10000;
           }
         }
 
-        // Normalise everything to ASCII STL with one scratch import: that's
-        // what makes transforms bake-able later (binary formats aren't).
+        // A binary STL that needed no repair is decoded straight to ASCII
+        // here. It used to go through the scratch kernel import below, which
+        // runs the JS kernel ON THIS THREAD (face metadata through manifold
+        // for every triangle): a sound 25k-triangle Benchy froze the tab for
+        // over a minute and the browser offered to kill the page. Decoding
+        // is the same text in ~50 ms.
+        if (ext === "stl" && /^data:model\/stl;base64,/.test(contents)) {
+          setStatus("busy", `Reading ${file.name}…`);
+          await new Promise((r) => setTimeout(r, 0));
+          contents = dsl.decodeStlBytes(new Uint8Array(buf), { name: file.name, precision: 6 });
+        }
+        // Normalise everything else to ASCII STL with one scratch import:
+        // that's what makes transforms bake-able later (binary formats aren't).
         if (!/^\s*solid/.test(contents)) {
           setStatus("busy", `Converting ${file.name}…`);
           await new Promise((r) => setTimeout(r, 30));   // let the spinner paint

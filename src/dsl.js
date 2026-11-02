@@ -253,7 +253,12 @@ export function registerImport(name, contents, { mesh } = {}) {
 // Binary STL: 80-byte header, uint32 triangle count, then 50 bytes each
 // (12 floats + a 2-byte attribute). Anything that already reads as ASCII is
 // passed through untouched.
-function decodeStlBytes(bytes) {
+// Binary (or ASCII) STL bytes -> ASCII STL text. Also the page's import path:
+// a binary STL used to be normalised by a scratch JS-kernel import ON THE PAGE
+// THREAD, which for a sound 25k-triangle Benchy froze the tab for over a minute
+// ("page unresponsive"); this is the same text in ~50 ms. `precision` rounds
+// like the kernel's toSTL(name, 6) did; omitted, full float precision.
+export function decodeStlBytes(bytes, { name = "imported", precision = null } = {}) {
   const head = new TextDecoder().decode(bytes.subarray(0, 512));
   if (/^\s*solid/.test(head) && /facet\s+normal/.test(head)) {
     return new TextDecoder().decode(bytes);          // already ASCII
@@ -263,8 +268,8 @@ function decodeStlBytes(bytes) {
   if (bytes.byteLength < 84 + count * 50) {
     throw new Error("that STL looks binary but is truncated — re-export it");
   }
-  const f = (o) => dv.getFloat32(o, true);
-  const out = ["solid imported"];
+  const f = precision == null ? (o) => dv.getFloat32(o, true) : (o) => +dv.getFloat32(o, true).toFixed(precision);
+  const out = [`solid ${name}`];
   for (let i = 0; i < count; i++) {
     const o = 84 + i * 50;
     out.push(`facet normal ${f(o)} ${f(o + 4)} ${f(o + 8)}`, "outer loop");
@@ -274,7 +279,7 @@ function decodeStlBytes(bytes) {
     }
     out.push("endloop", "endfacet");
   }
-  out.push("endsolid imported");
+  out.push(`endsolid ${name}`);
   return out.join("\n");
 }
 export function listImports() { return [...IMPORTS.keys()]; }
