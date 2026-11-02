@@ -303,14 +303,21 @@ function associate(model, faces, maxPts) {
     const p = [mesh.verts[i * 3], mesh.verts[i * 3 + 1], mesh.verts[i * 3 + 2]];
     const n = [model.vn[i * 3], model.vn[i * 3 + 1], model.vn[i * 3 + 2]];
     const gp = p.map((x) => Math.floor(x / cell));
+    // nearest sample facing the same way; failing that (a corner the coarse
+    // layout cut off: the mesh there is far away and turned) the nearest one
+    // not facing away, further out, so the corner still has data pulling on it
     let best = null, bd = Infinity;
-    for (let r = 0; r <= 3 && !best; r++)
-      for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-        for (const s of grid.get(key(gp[0] + dx, gp[1] + dy, gp[2] + dz)) || []) {
-          if (dot(s.n, n) < 0.3) continue;
-          const d = dist(s.p, p); if (d < bd) { bd = d; best = s; }
+    for (const [minDot, R] of [[0.3, 3], [-0.1, 8]]) {
+      for (let r = 0; r <= R && !best; r++)
+        for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r) continue;
+          for (const s of grid.get(key(gp[0] + dx, gp[1] + dy, gp[2] + dz)) || []) {
+            if (dot(s.n, n) < minDot) continue;
+            const d = dist(s.p, p); if (d < bd) { bd = d; best = s; }
+          }
         }
-      }
+      if (best) break;
+    }
     if (!best || !want.has(best.f)) continue;
     const [u, v] = project(best.f.S, p, best.u, best.v);
     best.f.data.push({ p, u, v, i });
@@ -781,6 +788,11 @@ function faceOntoCylinder(f, c) {
   return worst;
 }
 
+// a plane face's interior control points put in its plane (its boundary rows are the edge curves)
+function flatten(f) {
+  for (let i = 1; i < f.S.nu - 1; i++) for (let j = 1; j < f.S.nv - 1; j++) f.S.P.set(onPlane(ctrl(f.S, i, j), f.carrier), (i * f.S.nv + j) * 3);
+}
+
 export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5, flatFrac = 0.001, tolFrac = 0.004, accFrac = 1e-6, lambda = 0.2, grid = 4, kinds = ["Plane", "Cylinder", "Cone", "Sphere"] } = {}) {
   prepare(model);
   const { faces, edges, topo } = model;
@@ -883,7 +895,7 @@ export function snapToCarriers(model, regionOf, { share = 0.8, looseShare = 0.5,
     f.S = refineSurf(f.S, lu, lv);
     stampBoundary(f, model);
     if (f.carrier?.kind === "plane") {
-      for (let i = 1; i < f.S.nu - 1; i++) for (let j = 1; j < f.S.nv - 1; j++) f.S.P.set(onPlane(ctrl(f.S, i, j), f.carrier), (i * f.S.nv + j) * 3);
+      flatten(f);
       planar++;
     } else if (f.carrier) {
       faceOff = Math.max(faceOff, faceOntoCylinder(f, f.carrier));

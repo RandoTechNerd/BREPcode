@@ -18688,6 +18688,10 @@ let SIMPLIFY_TARGET = 10000;
     async function computeSmooth(name, job = null, { stop = { i: SMOOTH_DEFAULT_STOP }, onEstimates = null, preview = false } = {}) {
       const stl = dsl.getImport(name);
       const s = openBondo();
+      // the shape recognition (planes, cylinders, ...) needs only the mesh:
+      // start it now, so it runs while the layout is worked out in another
+      // worker; every begin below reuses it
+      if (SMOOTH_HYBRID().hybrid) s.call({ op: "segment", stl, ...SMOOTH_HYBRID() }).catch(() => {});
       try {
         let cage = null, begun = null;
         for (let i = 0; i < CAGE_SIZES.length; i++) {

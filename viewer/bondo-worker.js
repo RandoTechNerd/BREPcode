@@ -5,6 +5,8 @@
 // pass previewed), and refine again at another setting without laying the
 // surface out again.
 //
+//   page -> { id, op: "segment", stl, rustWasmUrl }   (optional, early: the shape recognition, while the layout runs elsewhere)
+//   worker -> { id, ok, ms }
 //   page -> { id, op: "begin", verts, quads, stl, name, stops, hybrid, rustWasmUrl }   stops: tolerances, % of the part's size
 //   worker -> { id, ok, coverage: { p95, mean, diag }, estimates: [...], preview }
 //   page -> { id, op: "refine", tolPct }
@@ -48,6 +50,18 @@ async function segment(mesh, url) {
   };
 }
 
+// one recognition per mesh: begin runs again for each layout tried, and on
+// a 92k-triangle mesh the recognition alone is ~13 s
+let segFor = null;     // { stl, mesh, p: Promise<{ regionOf, ms, error }> }
+function segmentOnce(stl, url) {
+  if (segFor?.stl === stl) return segFor;
+  const mesh = weldSTL(stl);
+  const t0 = performance.now();
+  const p = segment(mesh, url).then((regionOf) => ({ regionOf, ms: Math.round(performance.now() - t0), error: null }),
+    (e) => ({ regionOf: null, ms: Math.round(performance.now() - t0), error: String(e?.message || e).slice(0, 160) }));
+  return (segFor = { stl, mesh, p });
+}
+
 const preview = (segs = 2) => {
   const { tris, level } = modelToTriangles(model, segs);
   const positions = Float32Array.from(tris);
@@ -74,17 +88,19 @@ self.onmessage = async ({ data }) => {
   const { id, op } = data;
   const reply = (msg, transfer = []) => self.postMessage({ id, ...msg }, transfer);
   try {
-    if (op === "begin") {
-      const mesh = weldSTL(data.stl);
+    if (op === "segment") {
+      const { ms, error } = await segmentOnce(data.stl, data.rustWasmUrl).p;
+      reply({ ok: true, ms, error });
+    } else if (op === "begin") {
+      const mesh = data.hybrid ? segmentOnce(data.stl, data.rustWasmUrl).mesh : weldSTL(data.stl);
       base = { verts: data.verts, quads: data.quads, mesh, name: data.name, regionOf: null };
       // the coverage test is on the plain coarse surface (snapping moves it a little)
       model = coarseModel(base.verts, base.quads, base.mesh);
       const coverage = surfaceDeviation(Array.from(mesh.verts), modelToTriangles(model, 2).tris);
       let segMs = 0, segError = null;
       if (data.hybrid) {
-        const t0 = performance.now();
-        try { base.regionOf = await segment(mesh, data.rustWasmUrl); } catch (e) { segError = String(e?.message || e).slice(0, 160); }
-        segMs = Math.round(performance.now() - t0);
+        const seg = await segmentOnce(data.stl, data.rustWasmUrl).p;
+        base.regionOf = seg.regionOf; segError = seg.error; segMs = seg.ms;
       }
       fresh();
       const p = preview();
