@@ -18634,9 +18634,9 @@ let SIMPLIFY_TARGET = 10000;
     const SMOOTH_COVER = 0.01;
     const SMOOTH_ALT_LAYOUTS = 2;
     // The hybrid: where next.BREP.io's segmentation (in our Rust wasm) finds
-    // a real plane or cylinder, those faces become true PLANE and
-    // CYLINDRICAL_SURFACE faces; the rest stays smooth B-spline. ?hybrid=0
-    // turns it off, to compare.
+    // a real plane, cylinder, cone or sphere, those faces become true
+    // analytic faces; the rest stays smooth B-spline. ?hybrid=0 turns it
+    // off, to compare.
     const SMOOTH_HYBRID = () => (/[?&]hybrid=0/.test(location.search) ? {} : { hybrid: true, rustWasmUrl: window.__BREP_RUST_WASM_URL });
     let smoothSession = null;          // { s, name, estimates, stop } while a smooth result is on screen
     const closeSmoothSession = () => { smoothSession?.s.close(); smoothSession = null; };
@@ -18647,7 +18647,7 @@ let SIMPLIFY_TARGET = 10000;
     smoothPreview.name = "smooth-preview";
     scene.add(smoothPreview);
     let smoothPreviewHid = false;
-    // 0-4 spans level, 6 a hole fill, 7 a fold, 8 a true plane (green), 9 a true cylinder (pink)
+    // 0-4 spans level, 6 a hole fill, 7 a fold, 8 a true plane (green), 9 a true cylinder, cone or sphere (pink)
     const PREVIEW_TINT = [[0.62, 0.66, 0.72], [0.42, 0.62, 0.9], [0.95, 0.75, 0.3], [0.93, 0.47, 0.25], [0.8, 0.2, 0.2], [0, 0, 0], [0.65, 0.4, 0.8], [0.65, 0.4, 0.8], [0.35, 0.75, 0.5], [0.92, 0.45, 0.7]];
     function showSmoothPreview(p) {
       for (const m of smoothPreview.children) m.geometry.dispose();
@@ -18828,7 +18828,7 @@ let SIMPLIFY_TARGET = 10000;
           stop: live,
           preview: true,
           onEstimates: (est) => {
-            hint.innerHTML = `The coarse surface for <b>${esc(name)}</b> is on screen; detail goes only where it misses the mesh (tinted: grey left alone, then blue, amber, orange; green is a true plane, pink a true cylinder). `
+            hint.innerHTML = `The coarse surface for <b>${esc(name)}</b> is on screen; detail goes only where it misses the mesh (tinted: grey left alone, then blue, amber, orange; green is a true plane, pink a true cylinder, cone or sphere). `
               + smoothDetailRow(est, live.i);
             wireSlider((i) => { live.i = i; const el = $("smooth-stops"); if (el) el.innerHTML = smoothStops(est, i); });
           },
@@ -18877,12 +18877,11 @@ let SIMPLIFY_TARGET = 10000;
       const sayResult = (res, i) => {
         const lv = res.facesByLevel || [];
         const refined = lv.slice(1).reduce((a, b) => a + b, 0);
-        const exact = [
-          res.planeFaces ? `${res.planeFaces} true plane${res.planeFaces === 1 ? "" : "s"}` : "",
-          res.cylFaces ? `${res.cylFaces} true cylinder face${res.cylFaces === 1 ? "" : "s"}` : "",
-        ].filter(Boolean).join(" and ");
+        const count = (n, one) => (n ? `${n} true ${one}${n === 1 ? "" : "s"}` : "");
+        const exactList = [count(res.planeFaces, "plane"), count(res.cylFaces, "cylinder face"), count(res.coneFaces, "cone face"), count(res.sphereFaces, "sphere face")].filter(Boolean);
+        const exact = exactList.length > 1 ? `${exactList.slice(0, -1).join(", ")} and ${exactList.at(-1)}` : exactList[0] || "";
         const notes = [
-          exact ? `${exact} where the mesh really is flat or round` : "",
+          exact ? `${exact} where the mesh really is that shape` : "",
           refined ? `detail added to ${refined.toLocaleString()} of the curved ones, the rest left as the coarse patches` : "every curved face fit as the coarse patch",
           res.fills ? `${res.fills} small gap${res.fills === 1 ? "" : "s"} in the layout closed` : "",
         ].filter(Boolean).join(", ");

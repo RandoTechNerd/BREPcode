@@ -14,7 +14,8 @@
 //
 // preview = { positions: Float32Array, level: Uint8Array per triangle }:
 // level is the face's span level (0 = left as the coarse patch), 8 a face on
-// a true plane, 9 on a true cylinder, so the page can tint where the work went.
+// a true plane, 9 on a true cylinder, cone or sphere, so the page can tint
+// where the work went.
 import { weldSTL } from "./cage-worker.js";
 import { coarseModel, prepare, estimate, adapt, modelToStep, modelToTriangles, summary, snapToCarriers } from "../src/adaptsmooth.js";
 import { surfaceDeviation } from "./cagedev.js";
@@ -24,8 +25,8 @@ let model = null, refinedTo = Infinity, snapped = null;
 
 // The hybrid (begin with hybrid: true): next.BREP.io's kernel segmentation,
 // called unchanged in our Rust wasm, says which regions of the mesh are
-// planes and cylinders; those faces of ours go exactly onto them and are
-// written as true PLANE and CYLINDRICAL_SURFACE faces (adaptsmooth.js
+// planes, cylinders, cones and spheres; those faces of ours go exactly onto
+// them and are written as true PLANE, CYLINDRICAL, CONICAL and SPHERICAL faces (adaptsmooth.js
 // snapToCarriers). The 13 MB kernel comes from the HTTP cache the build
 // worker already filled.
 let rustP = null;
@@ -101,12 +102,12 @@ self.onmessage = async ({ data }) => {
       refinedTo = tol;
       reply({ ok: true, summary: { ms: r.ms, passes: r.passes, ...summary(model) } });
     } else if (op === "write") {
-      const { step, faces, planeFaces, cylFaces, mergedFaces } = modelToStep(model, base.name);
+      const { step, faces, planeFaces, cylFaces, coneFaces, sphereFaces, mergedFaces } = modelToStep(model, base.name);
       const { tris } = modelToTriangles(model, 3);
       const dev = surfaceDeviation(Array.from(base.mesh.verts), tris);
       // the JS kernel's stand-in mesh: coarser, it only shows while Rust loads
       const mesh = stlText(modelToTriangles(model, 2).tris, base.name);
-      reply({ ok: true, result: { step, mesh, faces, dev, planeFaces, cylFaces, mergedFaces, ...summary(model) } });
+      reply({ ok: true, result: { step, mesh, faces, dev, planeFaces, cylFaces, coneFaces, sphereFaces, mergedFaces, ...summary(model) } });
     } else throw new Error(`unknown op ${op}`);
   } catch (e) {
     reply({ ok: false, error: String(e?.message || e) });
