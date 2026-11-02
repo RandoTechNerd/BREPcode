@@ -296,5 +296,22 @@ console.log("\na tour link opens the tour, not a loading screen\n");
     "absent key means all open, so a fresh browser shows everything");
 }
 
+console.log("\n\"Move model for windows\" can be turned off\n");
+{
+  // Asked for by name: the model kept sliding away from the windows. Off must
+  // stop it everywhere, which is why the gate sits inside keepModelClear —
+  // the one function that moves the camera for a window — not on each caller.
+  check("the setting ships ON, so nothing changes for anyone else",
+    /moveForWindows: true,/.test(HTML));
+  check("it sits in Settings as a checkbox",
+    /<input type="checkbox" id="set-move-for-windows" \/>\s*<span>Move model for windows<\/span>/.test(HTML));
+  const fn = HTML.slice(HTML.indexOf("function keepModelClear("), HTML.indexOf("const free = stageFreeRect();", HTML.indexOf("function keepModelClear(")));
+  check("keepModelClear does nothing while it is off", /if \(!prefs\.moveForWindows\) return false;/.test(fn));
+  check("the choice is saved like the other settings",
+    /setPref\("moveForWindows", e\.target\.checked\)/.test(HTML));
+  check("the checkbox shows the saved value",
+    /\$\("set-move-for-windows"\)\.checked = !!prefs\.moveForWindows;/.test(HTML));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

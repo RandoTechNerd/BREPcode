@@ -3899,6 +3899,8 @@
               <option value="model">The model's centre</option>
               <option value="view">The view centre (classic)</option>
             </select></label>
+          <label class="set-row set-check" title="Off: opening or closing the editor and other windows leaves the camera alone, so the model stays exactly where you put it."><input type="checkbox" id="set-move-for-windows" />
+            <span>Move model for windows</span></label>
           <label class="set-row"><span>Editor opens</span>
             <select id="set-editor-home">
               <option value="right">Filling the right</option>
@@ -5121,6 +5123,7 @@
     // material Reset never touches how the app behaves.
     const PREFS_DEFAULTS = {
       orbit: "model",          // "model": spin the part about its own centre; "view": classic orbit
+      moveForWindows: true,    // slide the model out from under windows as they open and close
       editorHome: "right",     // where the editor opens: right | left | dock
       chatHome: "top",         // where the assistant opens: top | bottom (corner opposite the editor) | dock
       snapZones: true,         // drag a window to an edge or corner to snap it there
@@ -5268,8 +5271,23 @@
     // for, a grab lands exactly where it was aimed — but rotation now pivots
     // at the model's DEPTH, which was the whole point: the drifted pivot that
     // threw the part across the viewport sat far in front of or behind it.
-    const recentrePivot = () => {
+    // What is on screen to turn around. A heavy STL/3MF is only DRAWN, in
+    // previewGroup, and showing it empties modelGroup — so measuring modelGroup
+    // alone found nothing, both pivots fell back to controls.target, and that
+    // was still parked on the PREVIOUS model (frameModel leaves a camera the
+    // user has touched alone). The boat then swung round the old starter
+    // cube's centre and tumbling over the top threw it off to one side.
+    // previewGroup is declared far below; nothing calls this before it exists
+    // except a pointer event during startup, which the catch covers.
+    function shownModelBox() {
       const box = new THREE.Box3().setFromObject(modelGroup);
+      if (box.isEmpty()) {
+        try { box.setFromObject(previewGroup); } catch { /* not built yet */ }
+      }
+      return box;
+    }
+    const recentrePivot = () => {
+      const box = shownModelBox();
       if (box.isEmpty()) return;
       const centre = box.getCenter(new THREE.Vector3());
       const view = controls.target.clone().sub(camera.position);
@@ -5380,7 +5398,7 @@
       if (!dx && !dy) return;
       if (!spin.started) {
         spin.started = true;
-        const box = new THREE.Box3().setFromObject(modelGroup);
+        const box = shownModelBox();
         spin.pivot = box.isEmpty() ? controls.target.clone() : box.getCenter(new THREE.Vector3());
         controls.dispatchEvent({ type: "start" });
       }
@@ -6064,6 +6082,11 @@
     // Is the part behind a window? Then move it out — and no more than that.
     function keepModelClear({ animate = true } = {}) {
       if (designUI?.sketching?.()) return false;      // the sketch owns the view
+      // Settings > "Move model for windows" off: windows open and close over
+      // the model and the camera stays exactly where it was. This is the one
+      // place the camera follows the windows, so gating it here covers every
+      // window, the dock, and the re-framing a rebuild hands on to it.
+      if (!prefs.moveForWindows) return false;
       const free = stageFreeRect();
       if (!free) return false;
       const g = previewGroup.children.length ? previewGroup : modelGroup;
@@ -9184,6 +9207,7 @@
       $("set-editor-home").value = prefs.editorHome;
       $("set-chat-home").value = prefs.chatHome;
       $("set-snap").checked = !!prefs.snapZones;
+      $("set-move-for-windows").checked = !!prefs.moveForWindows;
     }
     // Re-place every window the APP put somewhere; ones you moved stay put.
     // Design mode on or off: every open window moves to where that mode puts
@@ -9248,6 +9272,11 @@
     $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
     $("set-chat-home").addEventListener("change", (e) => { setPref("chatHome", e.target.value); rehomeWindows(); });
     $("set-snap").addEventListener("change", (e) => setPref("snapZones", e.target.checked));
+    // Turning it back on tidies up at once, rather than at the next window move.
+    $("set-move-for-windows").addEventListener("change", (e) => {
+      setPref("moveForWindows", e.target.checked);
+      if (e.target.checked) windowsChanged();
+    });
     // Kernel: shown where SMLib ships, the desktop alpha (natively) and the
     // website (as WebAssembly), not in the standard desktop build. "js" is the
     // engine switch (JS kernel only); the other two pick the kernel the split
@@ -20170,6 +20199,11 @@ let SIMPLIFY_TARGET = 10000;
         hint.innerHTML = `<b>${esc(file.name)}</b> is ${mb.toFixed(0)} MB. Most slicers and mesh tools can decimate: in Blender use the Decimate modifier; in PrusaSlicer/Bambu export a simplified STL.`;
         return;
       }
+      // A file you just opened is a new scene, so the app frames it. Having
+      // turned the PREVIOUS model marks the camera as yours, and frameModel
+      // then leaves it alone on purpose (so rebuilds never yank the view) —
+      // which left a new STL aimed at, and sized for, whatever came before.
+      autoPlaced = true;
       if (mb > 60 && /^(stl|obj|3mf)$/.test(file.name.toLowerCase().split(".").pop())) {
         try {
           return await showViewOnlyPreview(file, await file.arrayBuffer(),
