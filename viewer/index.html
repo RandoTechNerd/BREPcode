@@ -153,15 +153,13 @@
       // is too big for /brep/ too, so it sits in the asset store (uploaded
       // 2026-10-27). A rebuilt Rust kernel has to be uploaded again and this
       // address changed (docs/deploy-lovable.md).
-      // NB 2026-11-01: the address below still holds the 0.9.0 wasm, and the
-      // 0.11.0 glue (brep_kernel.js) can't drive it. Upload the 0.11.0
-      // brep_kernel_bg.wasm (16.6 MB) and put its address here BEFORE the next
-      // site deploy, or every build falls back to the JS kernel. The old
-      // address stays in use, as the STL -> STEP second opinion below.
-      window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/34d5b7bb-03c8-4928-b642-cecc4a3ca36c/brep_kernel_bg.wasm";
+      // 2026-11-01: kernel 0.11.0 (16.6 MB, sha256 1f188c7e...), uploaded the
+      // same day. The 0.9.0 asset (34d5b7bb-...) stays, as the STL -> STEP
+      // second opinion below.
+      window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/cc79d90c-f532-409d-a73c-62eea681aa5d/brep_kernel_bg.wasm";
       // The 0.9.0 build kept as the STL -> STEP second opinion
-      // (vendor/brep-stl2step-legacy, 14.5 MB, src/stlexact.js) is the same
-      // file the asset store has held since 2026-10-27, so it reuses that.
+      // (vendor/brep-stl2step-legacy, 14.5 MB, src/stlexact.js) is the file
+      // the asset store has held since 2026-10-27 (byte-identical), so it reuses that.
       window.__BREP_STL2STEP_LEGACY_URL = "/__l5e/assets-v1/34d5b7bb-03c8-4928-b642-cecc4a3ca36c/brep_kernel_bg.wasm";
       // The SMLib kernel (vendor/brep-kernel-smlib/smlib.wasm, 4.4 MB) fits in
       // /brep/ and ships in the zip, so it needs nothing here. If it ever has
