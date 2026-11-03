@@ -1695,6 +1695,8 @@ export function texture(opts, ...children) {
       // since then, a 35 mm knurled knob is ~4k tris in under 0.5 s and 16k
       // tris build in under a second, in node and in the viewer alike.
       maxTris: Number(o.maxTris) || 16000,
+      // no maxTris given: compile raises it for a dense input (see there)
+      autoBudget: !Number(o.maxTris),
     },
   });
 }
@@ -3902,18 +3904,46 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // Same shape as hull(): build the children in a throwaway history, read
       // the kernel's own tessellation via toSTL, run the displacement pipeline,
       // and import the result as a mesh solid.
-      const scratch = new partHistory.constructor();
-      for (const child of n.children) await compile(child, scratch);
-      await scratch.runHistory({ throwOnFeatureError: true });
       const flat = [];
-      for (const s of (scratch.scene?.children || [])) {
-        if (s?.type !== "SOLID" || typeof s.toSTL !== "function") continue;
-        for (const m of s.toSTL("t", 6).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) {
-          flat.push(+m[1], +m[2], +m[3]);
+      // An imported mesh IS its triangles, so they are read straight from the
+      // STL. Building it in the scratch history only to tessellate it again
+      // cost a 20k-triangle Benchy 76 s on the JS kernel (its per-face
+      // metadata pass), with the page frozen; this takes milliseconds. A
+      // centred or binary import, or any other child, still goes the long way.
+      const meshText = (c) => {
+        if (c?.kind !== "import" || c.opts?.center) return null;
+        const t = IMPORTS.get(c.name);
+        if (typeof t !== "string" || !/^\s*solid/.test(t)) return null;
+        return c.fix.equals(IDENTITY) ? t : transformedImport(c.name, t, c.fix);
+      };
+      const direct = n.children.map(meshText);
+      if (direct.every(Boolean)) {
+        for (const t of direct) {
+          for (const m of t.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) flat.push(+m[1], +m[2], +m[3]);
+        }
+      } else {
+        const scratch = new partHistory.constructor();
+        for (const child of n.children) await compile(child, scratch);
+        await scratch.runHistory({ throwOnFeatureError: true });
+        for (const s of (scratch.scene?.children || [])) {
+          if (s?.type !== "SOLID" || typeof s.toSTL !== "function") continue;
+          for (const m of s.toSTL("t", 6).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) {
+            flat.push(+m[1], +m[2], +m[3]);
+          }
         }
       }
       if (flat.length < 9) throw new Error("texture(): the shape produced no surface to texture");
-      const pos = displacedPositions(flat, n.opts);
+      // The budget has to leave room above the shape's own triangles. A
+      // 20k-triangle Benchy under the 16k default could never get a lattice
+      // at the pattern's spacing: the remesher coarsened it to about one
+      // sample per period and the knurl came out crumpled. Without a maxTris
+      // of its own, a mesh gets four times its own count (at most 120k): the
+      // Benchy's 80k builds in about a second and reads as clean diamonds. A
+      // CAD part, a few thousand triangles, keeps the default.
+      const inTris = flat.length / 9;
+      const opts = n.opts.autoBudget && inTris * 4 > n.opts.maxTris
+        ? { ...n.opts, maxTris: Math.min(120000, inTris * 4) } : n.opts;
+      const pos = displacedPositions(flat, opts);
 
       let stl = "solid tex\n";
       for (let i = 0; i < pos.length; i += 9) {

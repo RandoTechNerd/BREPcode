@@ -648,8 +648,15 @@ export function remeshForTexture(soup, opt) {
     // on one sphere, remember it: those facets get relaxed together afterwards.
     const sph = trySphere(tris);
     const inComp = new Set(tris);
+    const slivers = [];
     for (const s of tris) {
       if (region[s] >= 0) continue;
+      // A zero-area sliver has no plane of its own, and it used to sink the
+      // whole remesh ("a degenerate facet with no plane"): one sliver in a
+      // decimated Benchy and every curved wall fell back to sampling the
+      // pattern on its raw triangles. Its corners lie on its neighbour's
+      // edge, so it joins that neighbour's facet after this pass.
+      if (degen[s]) { slivers.push(s); continue; }
       const n0 = nrmOf(s), d0 = dot(pos(T[3 * s]), n0);
       const id = regions.length, list = [s];
       region[s] = id;
@@ -665,11 +672,39 @@ export function remeshForTexture(soup, opt) {
         }
       }
       reg = tryPlane(list);
+      // The group grew by testing each neighbour against the SEED's plane,
+      // but tryPlane tests the group's averaged one: on a gently curved hull
+      // the two disagree by more than the tolerance and the group fails as a
+      // whole (a decimated Benchy did, and lost all its texture). Then the
+      // seed stands alone, and the others start groups of their own later in
+      // this loop.
+      if (!reg && list.length > 1) {
+        for (const u of list) region[u] = -1;
+        region[s] = id;
+        list.length = 1;
+        reg = tryPlane(list);
+      }
       if (!reg) return fail("a degenerate facet with no plane");
       reg.sphere = sph;
       reg.facet = true;                      // one facet of a curved surface, not a real plane
       regions.push(reg);
     }
+    // slivers next to slivers wait for a neighbour that has a region
+    for (let pass = 0; slivers.length && pass < 8; pass++) {
+      for (let j = slivers.length - 1; j >= 0; j--) {
+        const s = slivers[j];
+        let host = -1;
+        for (let i = 0; i < 3 && host < 0; i++) {
+          const u = (twin[3 * s + i] / 3) | 0;
+          if (region[u] >= 0 && !degen[u] && inComp.has(u)) host = region[u];
+        }
+        if (host < 0) continue;
+        region[s] = host;
+        regions[host].tris.push(s);
+        slivers.splice(j, 1);
+      }
+    }
+    if (slivers.length) return fail(`${slivers.length} degenerate facet(s) with no neighbour to join`);
   }
 
   // ---- param coordinates: per (triangle, corner); a cylinder corner may sit

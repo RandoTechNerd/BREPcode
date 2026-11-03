@@ -397,6 +397,56 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
   check("uniform-subdivision fallback still watertight", isWatertight(out) && out.length > 12 * 9);
 }
 {
+  // An organic mesh (no plane or cylinder to unroll, every facet its own
+  // region) must still be remeshed. A decimated Benchy wasn't: one group of
+  // nearly coplanar facets failed the averaged-plane check and the whole
+  // remesh declined, so the knurl was sampled on the raw triangles.
+  const soup = [];
+  const at = (i, j) => {
+    const th = (i / 48) * 2 * Math.PI, ph = (j / 24) * Math.PI;
+    const r = 1 + 0.04 * Math.sin(3 * th) * Math.sin(2 * ph);
+    return [30 * r * Math.sin(ph) * Math.cos(th), 20 * r * Math.sin(ph) * Math.sin(th), 15 + 15 * r * Math.cos(ph)];
+  };
+  for (let i = 0; i < 48; i++) for (let j = 0; j < 24; j++) {
+    const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+    if (j > 0) soup.push(...a, ...b, ...c);
+    if (j < 23) soup.push(...a, ...c, ...d);
+  }
+  const out = displacedPositions(soup, { pattern: "knurl", depth: 0.6, scale: 3, faces: "sides", maxTris: 40000 });
+  check("an organic mesh is remeshed, not sampled on its own facets",
+    remeshForTexture.why === "" && out.length / 9 > soup.length / 9, remeshForTexture.why || `${out.length / 9} triangles`);
+  check("...and stays watertight", isWatertight(out));
+}
+{
+  // texture() over an imported mesh reads the triangles from the STL instead
+  // of rebuilding the mesh on the JS kernel first (76 s for a 20k Benchy)
+  const { registerImport, importedMesh } = await import("../src/dsl.js");
+  // bumpy, so the import can't group its facets into a few big faces: the
+  // per-face cost is what made the old route slow
+  const ball = [];
+  const at = (i, j) => {
+    const th = (i / 96) * 2 * Math.PI, ph = (j / 48) * Math.PI;
+    const r = 15 * (1 + 0.06 * Math.sin(7 * th) * Math.sin(5 * ph));
+    return [r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), 15 + r * Math.cos(ph)];
+  };
+  for (let i = 0; i < 96; i++) for (let j = 0; j < 48; j++) {
+    const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+    if (j > 0) ball.push(a, b, c);
+    if (j < 47) ball.push(a, c, d);
+  }
+  let stl = "solid ball\n";
+  for (let i = 0; i < ball.length; i += 3) {
+    stl += "facet normal 0 0 0\nouter loop\n";
+    for (let k = 0; k < 3; k++) stl += `vertex ${ball[i + k].join(" ")}\n`;
+    stl += "endloop\nendfacet\n";
+  }
+  registerImport("texball.stl", stl + "endsolid ball\n");
+  const t0 = Date.now();
+  const r = await build(texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, importedMesh("texball.stl")));
+  const secs = (Date.now() - t0) / 1000;
+  check(`knurl over an imported ${ball.length / 3}-triangle mesh builds in under 5 s`, secs < 5 && volumeOf(r) > 10000, `${secs.toFixed(1)} s`);
+}
+{
   // and the whole thing stays interactive: a 35 mm knurled knob through the kernel
   const t0 = Date.now();
   const r = await build(texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, knobShape()));
