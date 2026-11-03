@@ -10166,7 +10166,20 @@
       if (!expr) return insertSnippet(spec);
       toggleCard(panel, openBtn, true);
       pushHistory(code.value);                       // snapshot for ◀
-      replaceModelExpr(spec.wrap.replace("$MODEL$", expr));
+      // A wrap that needs the part's size ("thicken walls" takes the original
+      // width and depth back out after doubling) gets the built model's own:
+      // the fixed numbers it used to carry were one 120 x 65 mm frame's, and
+      // on a 60 mm Benchy they stretched it away to nothing.
+      let wrap = spec.wrap;
+      if (/\$(W|D|TX|TY)\$/.test(wrap)) {
+        const box = new THREE.Box3().setFromObject(modelGroup);
+        if (box.isEmpty()) return insertSnippet(spec);
+        const r1 = (n) => String(Math.round(n * 10) / 10);
+        const size = box.getSize(new THREE.Vector3());
+        wrap = wrap.replace("$W$", r1(size.x)).replace("$D$", r1(size.y))
+          .replace("$TX$", r1(-box.min.x)).replace("$TY$", r1(-box.min.y));
+      }
+      replaceModelExpr(wrap.replace("$MODEL$", expr));
       code.focus();
       // select the first number (hole size / stretch amount) so it's easy to tweak
       const firstNum = /-?\d+(?:\.\d+)?/.exec(code.value);
@@ -13515,10 +13528,15 @@ ${joined}${SITE_TAIL}`), joined);
         + `<button id="scale-go" class="hist-btn">x factor</button> &nbsp;or make the longest side `
         + `<input id="scale-mm" type="number" step="1" min="0.1" value="${big.toFixed(1)}" style="width:84px" /> mm `
         + `<button id="scale-mm-go" class="hist-btn">Resize</button>`
-        + `<br><small style="color:var(--muted3)">An imported mesh is scaled in place. A built model `
-        + `gets a <code>scale()</code> around it in the code.</small>`;
+        + `<br><small style="color:var(--muted3)">A view-only preview (a mesh too dense to build) is scaled in place. `
+        + `Anything built, imported meshes included, gets a <code>scale()</code> around it in the code.</small>`;
       $("scale-go").onclick = () => applyScale(+$("scale-f").value);
-      $("scale-mm-go").onclick = () => applyScale((+$("scale-mm").value || big) / big);
+      // The box shows the size rounded to 0.1 mm, so Resize with it untouched
+      // used to wrap the model in scale(1.000033): 60.0 over a true 59.998.
+      $("scale-mm-go").onclick = () => {
+        const mm = +$("scale-mm").value || big;
+        applyScale(mm.toFixed(1) === big.toFixed(1) ? 1 : mm / big);
+      };
       $("scale-f").onkeydown = (e) => { if (e.key === "Enter") $("scale-go").click(); };
       $("scale-mm").onkeydown = (e) => { if (e.key === "Enter") $("scale-mm-go").click(); };
     }
@@ -14817,9 +14835,18 @@ ${joined}${SITE_TAIL}`), joined);
       const rot = `[${deg(e.x)}, ${deg(e.y)}, ${deg(e.z)}]`;
       const pt = `[${r1(p.x)}, ${r1(p.y)}, ${r1(p.z)}]`;
       const kind = codeArmedKind;
+      // Sized to the part, not a fixed 1.6 mm a square: at 1.6 the code was
+      // 51 mm (DataMatrix) to 74 mm (QR) across, wider than a whole Benchy.
+      // Up to 60% of the part's smallest dimension, over the width the default
+      // text takes with its plate at 1 mm a square (measured: DataMatrix 32,
+      // QR 46), and never under 0.8 mm a square (two lines of a 0.4 mm nozzle).
+      const dims = new THREE.Box3().setFromObject(modelGroup).getSize(new THREE.Vector3()).toArray().sort((a, b) => a - b);
+      const across = kind === "qrcode" ? 46 : 32;
+      const module = dims[0] > 0 ? Math.min(1.6, Math.max(0.8, r1((0.6 * dims[0]) / across))) : 1.6;
+      const tooBig = dims[0] > 0 && module * across > dims[0];
       pushHistory(code.value);
       replaceModelExpr(`union(\n  ${expr},\n  translate(${pt}, rotate(${rot},\n`
-        + `    ${kind}({ text: "BREPCODE", module: 1.6, base: 0.6, center: true }))),\n)`);
+        + `    ${kind}({ text: "BREPCODE", module: ${module}, base: 0.6, center: true }))),\n)`);
       setCodeArmed(false);
       code.focus();
       // select the text so it can be typed over straight away
@@ -14827,8 +14854,9 @@ ${joined}${SITE_TAIL}`), joined);
       if (m) code.setSelectionRange(m.index + m[0].length - m[1].length - 1, m.index + m[0].length - 1);
       pushHistory();
       buildAfterToolEdit();
-      hint.innerHTML = `Stamped a <b>${kind}</b> on that face. Type to replace the text; `
-        + "<code>module</code> is mm per square (1.2+ scans), <code>base</code> the backing plate. "
+      hint.innerHTML = `Stamped a <b>${kind}</b> on that face, ${module} mm a square (about ${Math.round(module * across)} mm across). Type to replace the text; `
+        + "<code>module</code> is mm per square (1.2+ scans most reliably), <code>base</code> the backing plate. "
+        + (tooBig ? `<b>It's still wider than this part</b> (${r1(dims[0])} mm): a shorter text${kind === "qrcode" ? ", or a DataMatrix (about 30% smaller for the same text)," : ""} makes it smaller. ` : "")
         + "The squares are tagged dark and the plate light, so a 2-colour 3MF prints it scannable.";
     }
 

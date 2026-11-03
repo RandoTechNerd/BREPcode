@@ -127,7 +127,9 @@ export const SPECS = [
   },
   {
     name: "thicken walls / rails", group: "Edit a part", sig: "scale up, then shrink the middle back",
-    wrap: 'translate([60, 32.5, 0],\n  stretch({ axis: "y", by: -65 },\n    stretch({ axis: "x", by: -120 },\n      scale([2, 2, 1], $MODEL$))))',
+    // $W$ / $D$ / $TX$ / $TY$: filled from the model's own size when it is
+    // wrapped (clickCheat), so it fits whatever part is in the editor
+    wrap: 'translate([$TX$, $TY$, 0],\n  stretch({ axis: "y", by: -$D$ },\n    stretch({ axis: "x", by: -$W$ },\n      scale([2, 2, 1], $MODEL$))))',
     snippet: 'translate([60, 32.5, 0],\n  stretch({ axis: "y", by: -65 },\n    stretch({ axis: "x", by: -120 },\n      scale([2, 2, 1], importedMesh("frame.stl")))))', argStart: 10,
     hint: "Makes a frame's rails (or a box's walls) thicker WITHOUT changing how big the part is. Scaling doubles the rails but doubles the outside too; the two negative stretches then take the added width and height back out of the middle, so the outside returns to its original size and only the rails stay fat. Put the part's ORIGINAL width and height in as the negative numbers, and half of each in the translate to recentre. Whatever sat in the middle — a centre bar, an inner boss — is removed; union() it back if you want it.",
   },
