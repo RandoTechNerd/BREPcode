@@ -68,6 +68,13 @@ export function toRustDialect(doc) {
       sk.points = pts.map((q, i) => ({ ...q, id: i, fixed: i === 0 }));
       sk.geometries = pts.map((_, i) => ({ id: 100 + i, type: "line", points: [i, (i + 1) % pts.length], construction: false }));
     }
+    // 1b. Big arcs beside a hole: Rust decides which loop is inside which on
+    //     a polygon that samples every arc the SHORT way round (regions.rs
+    //     clamps the sweep to +-180 degrees), so a hole inside a semicircle
+    //     or a bigger arc was taken to be outside it and dropped. With more
+    //     than one loop, such an arc is sent as two halves (same circle, no
+    //     change to the solid). A revolve's sketch is left alone (edge index).
+    if (sk && sk.geometries?.length && !doc.features.some((g) => g.type === "R" && g.inputParams?.profile === p.id)) splitBigArcs(sk);
     // IMPORT3D's STEP lane: Rust reads `stepText` and refuses a feature
     // carrying two sources; `fileToImport` is the JS kernel's copy.
     if (f.type === "IMPORT3D" && typeof p.stepText === "string") delete p.fileToImport;
@@ -101,6 +108,51 @@ export function toRustDialect(doc) {
   }
   const rounded = polygonCylinders(doc);
   return { doc, rename, rounded };
+}
+
+// the arcs of a kernel sketch record that sweep 180 degrees or more (CCW,
+// center, start, end), split at their middles when the sketch has more than
+// one loop (one loop is never tested for containment)
+function splitBigArcs(sk) {
+  const P = new Map(sk.points.map((q) => [q.id, q]));
+  const live = sk.geometries.filter((g) => !g.construction);
+  const sweep = (g) => {
+    const [c, a, b] = g.points.map((i) => P.get(i));
+    if (!c || !a || !b) return 0;
+    let d = Math.atan2(b.y - c.y, b.x - c.x) - Math.atan2(a.y - c.y, a.x - c.x);
+    while (d <= 1e-9) d += 2 * Math.PI;
+    return d;
+  };
+  const big = live.filter((g) => g.type === "arc" && sweep(g) >= Math.PI - 1e-9);
+  if (!big.length) return;
+  // loops: circles on their own, the rest joined through shared end points
+  const parent = new Map();
+  const find = (x) => { while (parent.has(x) && parent.get(x) !== x) x = parent.get(x); return x; };
+  const ends = (g) => (g.type === "arc" ? g.points.slice(1, 3) : g.type === "bezier" ? [g.points[0], g.points[g.points.length - 1]] : g.type === "line" ? g.points : []);
+  let loops = 0;
+  const seen = new Set();
+  for (const g of live) {
+    if (g.type === "circle") { loops++; continue; }
+    const [a, b] = ends(g);
+    if (a == null) continue;
+    for (const k of [a, b]) if (!parent.has(k)) parent.set(k, k);
+    parent.set(find(a), find(b));
+  }
+  for (const g of live) { const e = ends(g); if (e.length) seen.add(find(e[0])); }
+  loops += seen.size;
+  if (loops < 2) return;
+  let nextPt = Math.max(...sk.points.map((q) => +q.id || 0)) + 1;
+  let nextG = Math.max(...sk.geometries.map((g) => +g.id || 0)) + 1;
+  for (const g of big) {
+    const [c, a] = g.points.map((i) => P.get(i));
+    const r = Math.hypot(a.x - c.x, a.y - c.y);
+    const t = Math.atan2(a.y - c.y, a.x - c.x) + sweep(g) / 2;
+    const m = { id: nextPt++, x: c.x + r * Math.cos(t), y: c.y + r * Math.sin(t), fixed: false, construction: false };
+    sk.points.push(m);
+    const end = g.points[2];
+    g.points = [g.points[0], g.points[1], m.id];
+    sk.geometries.splice(sk.geometries.indexOf(g) + 1, 0, { ...g, id: nextG++, points: [g.points[0], m.id, end] });
+  }
 }
 
 // 5. Low-$fn cylinders. The JS kernel facets every cylinder with `resolution`

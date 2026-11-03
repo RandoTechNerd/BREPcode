@@ -260,8 +260,15 @@ return difference(cube([60, 40, 8]), linearExtrude({ h: 4, reverse: true, proud:
   `["bezier", a, c1, c2, b]`; a trailing `"construction"` leaves a curve out of
   the profile (an axis, a reference line).
 - `constraints`: coincident, horizontal, vertical, parallel, perpendicular,
-  tangent (line a–b touching an arc at its end p: `["tangent", a, b, center, p]`),
-  equal, fixed, onLine, midpoint. `dims`: distance, angle.
+  tangent (line a–b touching the circle or arc around `center` at p:
+  `["tangent", a, b, center, p]`, p an end they share or a touch point of the
+  rule's own), tangentArcs (two circles / arcs touching at p:
+  `["tangentArcs", centerA, centerB, p]`), tangentEnd (a spline's end running on
+  smoothly: `["tangentEnd", end, handle, c, d]`, c-d a line, the other spline's
+  last handle and end, or c a circle / arc's centre), equal, fixed, onLine, midpoint.
+  `dims`: distance, angle. The BREP.io solver has no tangent rule, so sketch()
+  sends a tangent as rules it has: p on the line (or on the line of centres),
+  p on each curve, and the radius to p square to the line.
 - The points are the solved positions (the sketcher writes them solved) and the
   starting guess. Whenever they disagree with a constraint or a dim, sketch()
   re-solves with the kernel's solver, so a dim that is a `const` is a slider.
@@ -286,27 +293,49 @@ finishes a spline, Delete removes the selection. Points snap to existing points
 (9 px) and the grid (Alt: free). A line drawn within 3° of level or plumb gets
 horizontal / vertical. In select mode, drag a point: the rest re-solves around it.
 Click a dimension label to type its value or name it (★: it becomes a `const`
-at the top, a slider). Finish as Extrude (join / cut / new body), Revolve (about
+at the top, a slider). Click a rule's symbol (━ │ ⌒ ⏚ …) to remove that rule.
+Tangent takes a line and a circle / arc, or two circles / arcs. A rule the
+change that would leave a rule unmet is refused (`attempt` in sketch-model.js):
+the panel names the rules in the way (each existing rule whose removal lets
+everything solve), shows them red, and offers "Remove … and add …". Curves are
+blue while they can still move and white once locked; the panel counts the
+rules or dimensions left (`analyse`: degrees of freedom from the rank of the
+rules' numeric Jacobian; moving the whole sketch counts, as in Fusion). The
+model fades while a sketch is open. Ctrl+Z / Ctrl+Y undo and redo inside the
+sketch; F6 looks square on again; E finishes as an extrude; F1 or the panel's
+? opens `design-help.html` (the user-facing how-to, FAQ and limits, also linked
+from the Beta tag and the About card). Trim cuts lines, arcs and circles between crossings and tangent
+touches (a trimmed circle becomes an arc and keeps its radius as a dim; a
+spline is split exactly, de Casteljau); offset takes outlines of lines, arcs
+and splines (corners meet again; a tangent joint stays tangent; a spline's
+offset is fitted, cubic pieces within `OFFSET_FIT` = 0.01 mm, split until they
+are). Finish as Extrude (join / cut / new body), Revolve (about
 the sketch's Y axis or a construction line) or the sketch alone: one undo step.
 A sketch drawn on a face joins / cuts that face's body. Editing rewrites the
 call in place.
 
 Checks: `node test/design.js` (sketch() on JS, Rust and NVIDIA; the model's
-tools; the round trip), `npm run test:design3` (Electron, real mouse clicks,
-screenshots).
+tools; the round trip), `node test/sketchdesign.js` (the design suite: whole
+parts drawn with the sketcher's calls, tangents, trims, offsets, each built on
+every kernel against an area worked out apart from the sketch; add new models
+at its end), `npm run test:design3` (Electron, real mouse clicks, screenshots).
 
 ### Known limits (phase 3)
 
-- Trim cuts lines (and deletes a whole curve otherwise); offset takes outlines
-  of straight lines and circles. Arc and spline trim/offset are not done.
-- Constraint glyphs mark each rule but cannot be clicked to delete one; Delete
-  removes curves (and the rules on their points), not single constraints.
+- Splines are tangent only at their ends, not mid-curve.
 - A face's edges are not projected into the sketch as references yet; snap is
   to the sketch's own points and the grid.
 - `on` a face is written as numbers (its plane), not as a link to the face: move
   the body and the sketch stays put.
-- The solver is the BREP.io one (iterative): a heavily over-constrained sketch
-  settles where it can and says nothing more precise than "not satisfied".
+- The solver is the BREP.io one (iterative). Adding a rule or a dimension is
+  checked (refused, culprits named); a drag is not, so a drag against locked
+  geometry settles where it can and the panel only says which kinds of rule
+  are off.
+- The Rust kernel samples sketch arcs the short way round when it decides which
+  loop is a hole (regions.rs), so a hole inside an arc of 180° or more was
+  dropped. `toRustDialect` sends such arcs as two halves when the sketch has
+  more than one loop; the upstream fix is written up in
+  `BREPcodeRustKernel/for-mm-arc-containment-2026-11-02/`.
 
 ## Ask about this…
 

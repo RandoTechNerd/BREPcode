@@ -682,7 +682,15 @@ export function region2d(outer, ...holes) {
 //                a trailing "construction" leaves a curve out of the profile
 //   constraints: ["coincident", p, q]  ["horizontal", p, q]  ["vertical", p, q]
 //                ["parallel", a, b, c, d]  ["perpendicular", a, b, c, d]
-//                ["tangent", a, b, center, p]  (line a–b touches the arc at p)
+//                ["tangent", a, b, center, p]  (line a–b touches the circle or
+//                arc around center at p: an end they share, or a point of
+//                its own, kept on both)
+//                ["tangentArcs", centerA, centerB, p]  (two circles / arcs touch
+//                at p, which is on both and on the line through the centres)
+//                ["tangentEnd", end, handle, c, d]  (a spline's end runs on
+//                smoothly: its handle square to the radius when c is a circle /
+//                arc's centre, else in line with c-d, a line or another
+//                spline's last handle; the end is kept on that curve too)
 //                ["equal", a, b, c, d]  ["fixed", p]  ["onLine", a, b, p]
 //                ["midpoint", a, b, m]
 //   dims:        ["distance", p, q, mm]  ["angle", a, b, c, d, deg]
@@ -700,9 +708,9 @@ export const hasSketchSolver = () => !!SketchSolver;
 
 const GLYPH = {
   coincident: "≡", horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂",
-  tangent: "⟂", equal: "⇌", fixed: "⏚", onLine: "⏛", midpoint: "⋯", distance: "⟺", angle: "∠",
+  tangent: "⟂", tangentArcs: "⏛", tangentEnd: "⏛", equal: "⇌", fixed: "⏚", onLine: "⏛", midpoint: "⋯", distance: "⟺", angle: "∠",
 };
-const ARITY = { coincident: 2, horizontal: 2, vertical: 2, parallel: 4, perpendicular: 4, tangent: 4, equal: 4, fixed: 1, onLine: 3, midpoint: 3, distance: 2, angle: 4 };
+const ARITY = { coincident: 2, horizontal: 2, vertical: 2, parallel: 4, perpendicular: 4, tangent: 4, tangentArcs: 3, tangentEnd: 4, equal: 4, fixed: 1, onLine: 3, midpoint: 3, distance: 2, angle: 4 };
 const CURVE_ARITY = { line: 2, arc: 3, bezier: 4 };
 
 export function sketch(spec = {}) {
@@ -762,12 +770,75 @@ function solverSketch(pts, curves, constraints, dims) {
       geometries.push({ id: 100 + i, type: c.kind, points: ids, construction: c.construction });
     }
   });
-  for (const c of constraints) cons.push({ id: cid++, type: GLYPH[c.type], points: c.ids.map((k) => k + 1) });
+  for (const c of constraints) {
+    if (c.type === "tangent" || c.type === "tangentArcs" || c.type === "tangentEnd") {
+      tangentRules(c, pts, curves).forEach((r) => cons.push({ id: cid++, ...r, points: r.points.map((k) => k + 1) }));
+      continue;
+    }
+    cons.push({ id: cid++, type: GLYPH[c.type], points: c.ids.map((k) => k + 1) });
+  }
   for (const d of dims) cons.push({ id: cid++, type: GLYPH[d.type], points: d.ids.map((k) => k + 1), value: d.value });
   return { points, geometries, constraints: cons };
 }
-// how far the points are from what the rules ask (0 = solved)
-function sketchError(pts, constraints, dims) {
+// ["tangent", a, b, center, p]: line a-b touches the circle or arc around
+// `center` at p. The solver has no tangent rule of its own, so it is three it
+// does have: p on the line (unless p is one of its ends), p on the curve
+// (unless p is an end of that arc), and the radius to p square to the line.
+// The curve is the circle / arc around `center` that p ends, else the one
+// whose radius p is nearest (concentric rings).
+// ["tangentArcs", A, B, p]: two circles / arcs (around centres A and B) touch
+// at p: p on the line through both centres, and on both curves.
+function tangentCurve(center, p, pts, curves) {
+  const round = curves.filter((c) => (c.kind === "circle" || c.kind === "arc") && c.ids[0] === center);
+  const ends = round.find((c) => c.kind === "arc" && (c.ids[1] === p || c.ids[2] === p));
+  if (ends) return ends;
+  const R = (c) => (c.kind === "circle" ? c.r : Math.hypot(pts[c.ids[1]][0] - pts[center][0], pts[c.ids[1]][1] - pts[center][1]));
+  const d = Math.hypot(pts[p][0] - pts[center][0], pts[p][1] - pts[center][1]);
+  return round.sort((u, v) => Math.abs(R(u) - d) - Math.abs(R(v) - d))[0] ?? null;
+}
+// p on the circle / arc around `center` (nothing when p is that arc's end)
+function onRound(center, p, pts, curves) {
+  const c = tangentCurve(center, p, pts, curves);
+  if (c?.kind === "circle") return [{ type: "⟺", points: [center, p], value: c.r }];
+  if (c?.kind === "arc" && c.ids[1] !== p && c.ids[2] !== p) return [{ type: "⇌", points: [center, c.ids[1], center, p] }];
+  return [];
+}
+// ["tangentEnd", end, handle, c, d] as solver rules. Smooth is a direction,
+// not just a line: "in line" alone let the solver fold a spline back on
+// itself (a cusp) when it was drawn as a sharp V. So where the curves share
+// the end it is an angle: the handle straight on from the line / the other
+// spline's handle (180°), or on along an arc the way it runs (90° to the
+// radius, its sign by which end of the arc it is).
+function endRules([end, handle, c, d], pts, curves) {
+  if (isCentre(c, curves)) {
+    const arc = curves.find((k) => k.kind === "arc" && k.ids[0] === c && (k.ids[1] === end || k.ids[2] === end));
+    if (arc) return [{ type: "∠", points: [c, end, end, handle], value: arc.ids[2] === end ? 270 : 90 }];
+    return [{ type: "⟂", points: [c, end, end, handle] }, ...onRound(c, end, pts, curves)];
+  }
+  if (end === c || end === d) return [{ type: "∠", points: [end, end === c ? d : c, end, handle], value: 180 }];
+  return [{ type: "⏛", points: [c, d, handle] }, { type: "⏛", points: [c, d, end] }];
+}
+// is c the centre of a circle / arc? (a tangentEnd onto a round curve)
+const isCentre = (c, curves) => curves.some((k) => (k.kind === "circle" || k.kind === "arc") && k.ids[0] === c);
+function tangentRules({ type, ids }, pts, curves) {
+  if (type === "tangentEnd") return endRules(ids, pts, curves);
+  if (type === "tangentArcs") {
+    const [A, B, p] = ids;
+    return [{ type: "⏛", points: [A, B, p] }, ...onRound(A, p, pts, curves), ...onRound(B, p, pts, curves)];
+  }
+  const [a, b, center, p] = ids;
+  const out = [{ type: "⟂", points: [a, b, center, p] }];
+  if (p !== a && p !== b) out.push({ type: "⏛", points: [a, b, p] });
+  return [...out, ...onRound(center, p, pts, curves)];
+}
+// a round curve's radius, as tangentCurve picks it (null: none there)
+function roundRadius(center, p, pts, curves) {
+  const k = tangentCurve(center, p, pts, curves);
+  return !k ? null : k.kind === "circle" ? k.r : Math.hypot(pts[k.ids[1]][0] - pts[center][0], pts[k.ids[1]][1] - pts[center][1]);
+}
+// how far the points are from what the rules ask (0 = solved); exported for
+// the sketcher, which asks it rule by rule to say which one could not be met
+export function sketchError(pts, constraints, dims, curves = []) {
   const P = (k) => pts[k];
   const dir = (a, b) => { const v = [P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]]; const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l]; };
   let e = 0;
@@ -778,7 +849,47 @@ function sketchError(pts, constraints, dims) {
       case "horizontal": e = Math.max(e, Math.abs(P(a)[1] - P(b)[1])); break;
       case "vertical": e = Math.max(e, Math.abs(P(a)[0] - P(b)[0])); break;
       case "parallel": { const u = dir(a, b), v = dir(cc, d); e = Math.max(e, Math.abs(u[0] * v[1] - u[1] * v[0])); break; }
-      case "perpendicular": case "tangent": { const u = dir(a, b), v = dir(cc, d); e = Math.max(e, Math.abs(u[0] * v[0] + u[1] * v[1])); break; }
+      case "perpendicular": { const u = dir(a, b), v = dir(cc, d); e = Math.max(e, Math.abs(u[0] * v[0] + u[1] * v[1])); break; }
+      case "tangent": {
+        // the line's distance from the centre against the radius, and p on both
+        const u = dir(a, b), w = [P(cc)[0] - P(a)[0], P(cc)[1] - P(a)[1]];
+        const q = [P(d)[0] - P(a)[0], P(d)[1] - P(a)[1]];
+        const r = roundRadius(cc, d, pts, curves) ?? Math.hypot(P(d)[0] - P(cc)[0], P(d)[1] - P(cc)[1]);
+        e = Math.max(e, Math.abs(Math.abs(u[0] * w[1] - u[1] * w[0]) - r), Math.abs(u[0] * q[1] - u[1] * q[0]),
+          Math.abs(Math.hypot(P(d)[0] - P(cc)[0], P(d)[1] - P(cc)[1]) - r));
+        break;
+      }
+      case "tangentEnd": {
+        // round: the handle square to the radius, the end on the curve;
+        // straight: the handle (and the end) in line with c-d
+        const u = dir(cc, a), v = dir(a, b);
+        const arc = curves.find((k) => k.kind === "arc" && k.ids[0] === cc && (k.ids[1] === a || k.ids[2] === a));
+        if (arc) {
+          // on along the arc: the handle is the radius turned +90° at its end, -90° at its start
+          const s = arc.ids[2] === a ? 1 : -1;
+          e = Math.max(e, Math.hypot(v[0] - s * -u[1], v[1] - s * u[0]));
+        } else if (isCentre(cc, curves)) {
+          const r = roundRadius(cc, a, pts, curves);
+          e = Math.max(e, Math.abs(u[0] * v[0] + u[1] * v[1]), r == null ? 0 : Math.abs(Math.hypot(P(a)[0] - P(cc)[0], P(a)[1] - P(cc)[1]) - r));
+        } else if (a === cc || a === d) {
+          // straight on: the handle points away from the other curve
+          const w = dir(a, a === cc ? d : cc);
+          e = Math.max(e, Math.hypot(v[0] + w[0], v[1] + w[1]));
+        } else {
+          const w = dir(cc, d), off = (k) => Math.abs(w[0] * (P(k)[1] - P(cc)[1]) - w[1] * (P(k)[0] - P(cc)[0]));
+          e = Math.max(e, off(b), off(a));
+        }
+        break;
+      }
+      case "tangentArcs": {
+        // p on the line of centres, and on both curves
+        const u = dir(a, b), w = [P(cc)[0] - P(a)[0], P(cc)[1] - P(a)[1]];
+        const ra = roundRadius(a, cc, pts, curves), rb = roundRadius(b, cc, pts, curves);
+        e = Math.max(e, Math.abs(u[0] * w[1] - u[1] * w[0]),
+          ra == null ? 0 : Math.abs(Math.hypot(...w) - ra),
+          rb == null ? 0 : Math.abs(Math.hypot(P(cc)[0] - P(b)[0], P(cc)[1] - P(b)[1]) - rb));
+        break;
+      }
       case "equal": e = Math.max(e, Math.abs(Math.hypot(P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]) - Math.hypot(P(d)[0] - P(cc)[0], P(d)[1] - P(cc)[1]))); break;
       case "distance": e = Math.max(e, Math.abs(Math.hypot(P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]) - c.value)); break;
       case "angle": {
@@ -798,7 +909,12 @@ function sketchError(pts, constraints, dims) {
   return e;
 }
 export function solveSketch2D(pts, curves, constraints, dims) {
-  if (!SketchSolver || sketchError(pts, constraints, dims) < 1e-6) return pts.map((p) => [...p]);
+  // an arc's end off its start's radius (drawn onto a point) needs a solve too
+  const arcOff = Math.max(0, ...curves.filter((c) => c.kind === "arc").map((c) => {
+    const [o, a, b] = c.ids.map((k) => pts[k]);
+    return Math.abs(Math.hypot(a[0] - o[0], a[1] - o[1]) - Math.hypot(b[0] - o[0], b[1] - o[1]));
+  }));
+  if (!SketchSolver || Math.max(arcOff, sketchError(pts, constraints, dims, curves)) < 1e-6) return pts.map((p) => [...p]);
   const s = new SketchSolver({ sketch: solverSketch(pts, curves, constraints, dims) });
   const out = s.solveSketch("full");
   const byId = new Map(out.points.map((p) => [p.id, p]));

@@ -24,6 +24,10 @@ const CSS = `
 body.dz-ribbon #dz-sk { top: 104px; }
 #dz-sk h3 { margin: 0; padding: 9px 12px 7px; font-size: 13px; font-weight: 650; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border, #26314a); }
 #dz-sk h3 small { color: var(--muted, #8ea0c0); font-weight: 400; }
+#dz-sk h3 .help { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border, #26314a); background: transparent; color: var(--muted, #8ea0c0); cursor: pointer; font: 600 11px system-ui, sans-serif; padding: 0; }
+#dz-sk h3 .help:hover { color: #fff; border-color: #4f9dff; }
+#dz-sk .keys { margin: 8px 12px 0; font-size: 10.5px; color: var(--muted, #8ea0c0); line-height: 1.5; }
+#dz-sk .keys kbd { font: 10px ui-monospace, Consolas, monospace; padding: 0 3px; border: 1px solid var(--border, #26314a); border-radius: 3px; }
 #dz-sk .sec { padding: 7px 12px 2px; }
 #dz-sk .sec > .k { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8ea0c0); margin-bottom: 4px; }
 #dz-sk .row { display: flex; flex-wrap: wrap; gap: 3px; }
@@ -34,6 +38,11 @@ body.dz-ribbon #dz-sk { top: 104px; }
 #dz-sk .msg { margin: 6px 12px 0; padding: 6px 8px; border-radius: 6px; font-size: 11.5px; background: rgba(127, 150, 200, 0.10); }
 #dz-sk .msg.err { background: rgba(255, 92, 92, 0.14); color: #ffb3b3; }
 #dz-sk .msg.ok { background: rgba(79, 209, 165, 0.12); color: #9ff0d2; }
+#dz-sk .msg .fix { display: block; width: 100%; margin-top: 5px; text-align: left; border: 1px solid #ff8a8a66; background: rgba(255, 92, 92, 0.12); color: #ffd0d0; border-radius: 5px; padding: 4px 6px; cursor: pointer; font: inherit; }
+#dz-sk .msg .fix:hover { background: rgba(255, 92, 92, 0.25); }
+#dz-sk .dof { margin: 6px 12px 0; font-size: 11px; color: var(--muted, #8ea0c0); display: flex; gap: 6px; align-items: center; }
+#dz-sk .dof .sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+#dz-sk .dof.done { color: #9ff0d2; }
 #dz-sk label.f { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; }
 #dz-sk label.f span { width: 70px; color: var(--muted, #8ea0c0); }
 #dz-sk input[type=number], #dz-sk select { flex: 1; min-width: 0; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border, #26314a); background: rgba(0,0,0,.22); color: inherit; font: 12px ui-monospace, Consolas, monospace; }
@@ -44,7 +53,10 @@ body.dz-ribbon #dz-sk { top: 104px; }
   color: #cfe0ff; font: 600 11px ui-monospace, Consolas, monospace; cursor: pointer; white-space: nowrap; transform: translate(-50%, -50%); }
 .dz-dim.named { border-color: #ffb35c; color: #ffd8a8; }
 .dz-dim.sel { border-color: #ffd166; }
-.dz-glyph { position: fixed; z-index: 29; font: 600 10px ui-monospace, Consolas, monospace; color: #8fd1ff; pointer-events: none; transform: translate(-50%, -50%); text-shadow: 0 0 3px #000; }
+.dz-glyph { position: fixed; z-index: 29; font: 600 10px ui-monospace, Consolas, monospace; color: #8fd1ff; cursor: pointer; padding: 1px 3px; border-radius: 4px; transform: translate(-50%, -50%); text-shadow: 0 0 3px #000; }
+.dz-glyph:hover { color: #ff9b8f; background: rgba(0, 0, 0, 0.45); }
+.dz-glyph.bad, .dz-dim.bad { color: #fff; background: #d94848; border-color: #ff8a8a; box-shadow: 0 0 0 2px #ff8a8a66; }
+.dz-glyph.hot, .dz-dim.hot { transform: translate(-50%, -50%) scale(1.6); box-shadow: 0 0 0 3px #fff; z-index: 31; }
 #dz-dim-edit { position: fixed; z-index: 41; padding: 6px 8px; display: flex; gap: 6px; align-items: center; }
 #dz-dim-edit input { width: 80px; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--border, #26314a); background: rgba(0,0,0,.25); color: inherit; font: 12px ui-monospace, Consolas, monospace; }
 #dz-dim-edit button { border: 1px solid var(--border, #26314a); background: transparent; border-radius: 5px; padding: 2px 7px; cursor: pointer; color: inherit; font-size: 11.5px; }
@@ -52,8 +64,8 @@ body.dz-ribbon #dz-sk { top: 104px; }
 
 const TOOL_KEYS = { line: "L", rect: "R", circle: "C", arc: "A", spline: "S", trim: "T", offset: "O", construction: "X" };
 const TOOL_LABEL = { line: "Line", rect: "Rectangle", circle: "Circle", arc: "Arc", spline: "Spline", trim: "Trim", offset: "Offset", construction: "Construction" };
-const CON_LABEL = { coincident: "Coincident", horizontal: "Horizontal", vertical: "Vertical", parallel: "Parallel", perpendicular: "Perpendicular", tangent: "Tangent", equal: "Equal", fixed: "Fixed" };
-const GLYPHS = { horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂", tangent: "⌒", equal: "=", fixed: "⏚", coincident: "●", onLine: "⏛", midpoint: "⋯" };
+const CON_LABEL = { coincident: "Coincident", horizontal: "Horizontal", vertical: "Vertical", parallel: "Parallel", perpendicular: "Perpendicular", tangent: "Tangent", tangentArcs: "Tangent", equal: "Equal", fixed: "Fixed" };
+const GLYPHS = { horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂", tangent: "⌒", tangentArcs: "⌒", equal: "=", fixed: "⏚", coincident: "●", onLine: "⏛", midpoint: "⋯" };
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const SNAP_PX = 9, PICK_PX = 7;
 const CLOSE_PX = 14;     // a click this near the chain's first point closes the loop
@@ -74,10 +86,12 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   group.renderOrder = 1000;
   scene.add(group);
   const mats = {
-    curve: new THREE.LineBasicMaterial({ color: 0xe8eefc, depthTest: false, transparent: true }),
+    // Fusion's colours on a dark page: blue can still move, white is locked
+    curve: new THREE.LineBasicMaterial({ color: 0xf4f7ff, depthTest: false, transparent: true }),
+    free: new THREE.LineBasicMaterial({ color: 0x4f9dff, depthTest: false, transparent: true }),
     cons: new THREE.LineDashedMaterial({ color: 0xffa94d, dashSize: 1.2, gapSize: 0.8, depthTest: false, transparent: true }),
     sel: new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false, transparent: true }),
-    hover: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true }),
+    hover: new THREE.LineBasicMaterial({ color: 0xffe9a8, depthTest: false, transparent: true }),
     rubber: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true, opacity: 0.85 }),
     close: new THREE.LineBasicMaterial({ color: 0x3ddc97, depthTest: false }),
     // drawn over the face it lies in: depth-tested, the face hid it in patches
@@ -96,7 +110,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
 
   // ---- plane <-> world <-> screen ----
   const toWorld = ([u, v]) => S.frame.origin.clone().addScaledVector(S.frame.x, u).addScaledVector(S.frame.y, v);
+  // the camera's matrices are brought up to date first: they otherwise lag
+  // until the next frame renders, so labels placed straight after the view
+  // moved (the square-on framing) landed where the old view had them
   const toScreen = (uv) => {
+    camera.updateMatrixWorld();
     const p = toWorld(uv).project(camera);
     const r = renderer.domElement.getBoundingClientRect();
     return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height];
@@ -105,6 +123,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   function fromScreen(x, y) {
     const r = renderer.domElement.getBoundingClientRect();
     const rc = new THREE.Raycaster();
+    camera.updateMatrixWorld();
     rc.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
     const hit = rc.ray.intersectPlane(plane3(), new THREE.Vector3());
     if (!hit) return null;
@@ -187,7 +206,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     const selCurves = new Set(S.sel.filter((s) => s.curve != null).map((s) => s.curve));
     const selPts = new Set(S.sel.filter((s) => s.point != null).map((s) => s.point));
     sk.curves.forEach((c, i) => {
-      const mat = selCurves.has(i) ? mats.sel : S.hover?.curve === i ? mats.hover : c.construction ? mats.cons : mats.curve;
+      const mat = selCurves.has(i) ? mats.sel : S.hover?.curve === i ? mats.hover : c.construction ? mats.cons
+        : S.an && !S.an.curveLocked[i] ? mats.free : mats.curve;
       sketchGroup.add(polyline(curvePoints(c), mat));
     });
     // points: the ends and centres curves use; a spline's Bezier handles
@@ -244,6 +264,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     for (const el of labels.splice(0)) el.remove();
     if (!S) return;
     const sk = S.sk, P = sk.points;
+    // red: the rules blocking a change; the one under the pointer's fix button, bigger
+    const blocks = (kind, k) => {
+      const i = S.blocked?.culprits.findIndex((c) => c.kind === kind && c.index === k) ?? -1;
+      return i < 0 ? "" : i === S.blocked.hot ? " bad hot" : " bad";
+    };
     sk.dims.forEach((d, k) => {
       let at;
       if (d.type === "distance") {
@@ -254,23 +279,31 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       } else {
         at = [(P[d.ids[0]][0] + P[d.ids[2]][0]) / 2, (P[d.ids[0]][1] + P[d.ids[2]][1]) / 2];
       }
-      label(at, `${d.name ? `${d.name} = ` : ""}${fmt(d.value)}${d.type === "angle" ? "°" : ""}`, d.name ? "dz-dim named" : "dz-dim", { dim: k });
+      label(at, `${d.name ? `${d.name} = ` : ""}${fmt(d.value)}${d.type === "angle" ? "°" : ""}`, (d.name ? "dz-dim named" : "dz-dim") + blocks("dim", k), { dim: k });
     });
     sk.curves.forEach((c, i) => {
       if (c.kind !== "circle") return;
       const ctr = P[c.ids[0]];
       label([ctr[0] + c.r * 0.7071, ctr[1] + c.r * 0.7071], `R ${fmt(c.r)}`, "dz-dim", { radius: i });
     });
-    // glyphs: one per constraint, by its first two points
-    sk.constraints.forEach((c) => {
+    // glyphs: one per constraint, by its first two points; a click removes it
+    sk.constraints.forEach((c, k) => {
       const g = GLYPHS[c.type];
-      if (!g) return;
+      if (!g || c.temp) return;
       const a = P[c.ids[0]], b = P[c.ids[1] ?? c.ids[0]];
-      const at = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      // two circles' tangent sits where they touch, not between the centres
+      const at = c.type === "tangentArcs" ? P[c.ids[2]] : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       const [x, y] = toScreen(at);
       const el = document.createElement("div");
-      el.className = "dz-glyph";
+      el.className = "dz-glyph" + blocks("constraint", k);
       el.textContent = g;
+      const name = CON_LABEL[c.type] ?? (c.type === "onLine" ? "Point on line" : c.type);
+      el.title = `${name}: click to remove`;
+      el.addEventListener("pointerdown", (e) => {
+        e.stopPropagation(); e.preventDefault();
+        S.sk.constraints = S.sk.constraints.filter((k) => k !== c);
+        resolve(`${name} removed.`);
+      });
       el.style.left = `${x + 8}px`;
       el.style.top = `${y - 8}px`;
       document.body.appendChild(el);
@@ -314,9 +347,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       e.preventDefault();
       const v = parseFloat(inp.value);
       if (!Number.isFinite(v) || (data.radius != null && v <= 0)) { inp.style.borderColor = "#ff6b6b"; return; }
-      if (data.dim != null) sk.dims[data.dim].value = v; else sk.curves[data.radius].r = v;
       closeDimBox();
-      resolve("Dimension set.");
+      tryChange((k) => { if (data.dim != null) k.dims[data.dim].value = v; else k.curves[data.radius].r = v; }, `Dimension ${fmt(v)}`, "Dimension set.");
     });
     box.querySelector(".pr")?.addEventListener("click", () => {
       const name = prompt("Name for this dimension (it becomes a const at the top of the code, with a slider):", cur.name || suggestName());
@@ -334,15 +366,97 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     for (let i = 1; ; i++) { const n = `d${i}`; if (!new RegExp(`\\b${n}\\b`).test(S.text) && !S.sk.dims.some((d) => d.name === n)) return n; }
   }
 
+  // The model fades while a sketch is open (as Fusion does): white and blue
+  // sketch lines over a pale body were near invisible. Shared materials are
+  // faded once and put back exactly as they were.
+  let faded = null;
+  function fadeModel(on) {
+    if (on && !faded) {
+      faded = new Map();
+      for (const m of host.modelMeshes()) {
+        for (const mat of [m.material].flat()) {
+          if (!mat || faded.has(mat)) continue;
+          faded.set(mat, { transparent: mat.transparent, opacity: mat.opacity, depthWrite: mat.depthWrite });
+          mat.transparent = true; mat.opacity = Math.min(mat.opacity ?? 1, 0.28); mat.depthWrite = false; mat.needsUpdate = true;
+        }
+      }
+    } else if (!on && faded) {
+      for (const [mat, o] of faded) { Object.assign(mat, o); mat.needsUpdate = true; }
+      faded = null;
+    }
+  }
+
   // ---- solve ----
+  // A change that would leave a rule unmet is not made: the panel names the
+  // rules that block it (red on the sketch) with a button to drop one and
+  // make the change. `what` names the change ("Tangent", "Dimension 15").
+  function tryChange(change, what, okMsg) {
+    const r = M.attempt(S.sk, change);
+    if (r.error) { setMsg(`${esc(what)}: ${esc(r.error)}.`, "err"); return r.error; }
+    if (r.ok) { S.blocked = null; resolve(okMsg); return null; }
+    S.blocked = { ...r, what };
+    study();
+    const list = r.culprits.slice(0, 3);
+    setMsg(list.length
+      ? `<b>${esc(what)}</b> can't be added: it fights ${list.length > 1 ? "these rules" : "this rule"} (red on the sketch).`
+        + list.map((c, i) => `<button type="button" class="fix" data-fix="${i}">Remove ${esc(ruleName(c))} and add ${esc(what.toLowerCase())}</button>`).join("")
+      : `<b>${esc(what)}</b> can't be met together with the rules already there, and no single rule is to blame. Remove a few rules (click their symbols) or change a dimension.`, "err");
+    draw();
+    return "blocked";
+  }
+  // "Fixed (circle centre)", "Horizontal (line)", "Dimension 30"
+  function ruleName(c) {
+    if (c.kind === "dim") return `dimension ${fmt(S.sk.dims[c.index].value)}`;
+    const role = (p) => {
+      const k = S.sk.curves.find((x) => x.ids.includes(p));
+      if (!k) return "a point";
+      if (k.kind === "circle" || ((k.kind === "arc") && k.ids[0] === p)) return `the ${k.kind}'s centre`;
+      return `a ${k.kind === "bezier" ? "spline" : k.kind} end`;
+    };
+    const name = (CON_LABEL[c.type] ?? c.type);
+    return c.type === "fixed" ? `${name} on ${role(c.ids[0])}` : name;
+  }
+  // how constrained the sketch is (colours and the count in the panel)
+  function study() {
+    try { S.an = M.analyse({ ...S.sk, constraints: S.sk.constraints.filter((c) => !c.temp) }); } catch { S.an = null; }
+  }
+  // undo inside the sketch: what it was before each change that resolve saw
+  const state = () => ({ sk: M.cloneSketch(S.sk), text: S.text });
+  const same = (a, b) => JSON.stringify(a.sk) === JSON.stringify(b.sk) && a.text === b.text;
+  function restore(st, msgText) {
+    S.sk = M.cloneSketch(st.sk); S.text = st.text; S.last = st;
+    S.sel = []; S.pending = []; S.blocked = null;
+    drawRubber([]); study(); draw(); setMsg(msgText);
+  }
+  function undo() {
+    if (!S.undo.length) { setMsg("Nothing to undo in this sketch. (Cancel drops the whole sketch.)"); return; }
+    S.redo.push(S.last); restore(S.undo.pop(), "Undone.");
+  }
+  function redo() {
+    if (!S.redo.length) { setMsg("Nothing to redo."); return; }
+    S.undo.push(S.last); restore(S.redo.pop(), "Redone.");
+  }
+  function openHelp() { window.open("design-help.html#sketch", "_blank", "noopener"); }
   function resolve(msg) {
+    S.blocked = null;
+    const now = state();
+    if (S.last && !same(S.last, now)) { S.undo.push(S.last); if (S.undo.length > 100) S.undo.shift(); S.redo = []; }
     try {
       M.solve(S.sk);
-      const p = M.profileProblem(S.sk);
-      setMsg(msg ?? (p ? `Not a closed profile yet: ${esc(p)}` : "Closed profile: ready to extrude or revolve."), p && !msg ? "" : "ok");
+      const bad = M.unmet(S.sk);
+      if (bad.length) {
+        // say so rather than "added": the rules fight (or one asks the impossible)
+        const what = [...new Set(bad.map((r) => (CON_LABEL[r.type] ?? r.type).toLowerCase()))].join(", ");
+        setMsg(`Can't meet every rule: ${esc(what)} ${bad.length > 1 ? "are" : "is"} off. Something is held too tightly: click a rule's symbol to remove it, or change a dimension.`, "err");
+      } else {
+        const p = M.profileProblem(S.sk);
+        setMsg(msg ?? (p ? `Not a closed profile yet: ${esc(p)}` : "Closed profile: ready to extrude or revolve."), p && !msg ? "" : "ok");
+      }
     } catch (e) {
       setMsg(`The solver could not satisfy that: ${esc(e.message || e)}`, "err");
     }
+    study();
+    S.last = state();
     draw();
     renderPanel();
   }
@@ -355,11 +469,14 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     const t = S.tool;
     const p = M.profileProblem(S.sk);
     const axes = S.sk.curves.map((c, i) => [c, i]).filter(([c]) => c.kind === "line" && c.construction);
-    panel.innerHTML = `<h3>Sketch <small>${esc(S.name)} · ${esc(planeLabel(S.on))}</small></h3>`
+    panel.innerHTML = `<h3>Sketch <small>${esc(S.name)} · ${esc(planeLabel(S.on))}</small><button type="button" class="help" title="How the sketcher works, its keys and its limits (F1)" aria-label="Sketch help">?</button></h3>`
       + `<div class="sec"><span class="k">Draw</span><div class="row">${M.TOOLS.map((k) => `<button type="button" data-tool="${k}" aria-pressed="${t === k}" title="${TOOL_LABEL[k]} (${TOOL_KEYS[k]})">${TOOL_LABEL[k]}<kbd>${TOOL_KEYS[k]}</kbd></button>`).join("")}`
       + `<button type="button" data-tool="dim" aria-pressed="${t === "dim"}" title="Dimension (D): a line, two points, a circle or two lines">Dimension<kbd>D</kbd></button></div></div>`
       + `<div class="sec"><span class="k">Constrain the selection</span><div class="row">${M.CONSTRAINTS.map((k) => `<button type="button" data-con="${k}" title="${CON_LABEL[k]}">${GLYPHS[k] ?? ""} ${CON_LABEL[k]}</button>`).join("")}</div></div>`
       + (msg.text ? `<div class="msg ${msg.cls}">${msg.text}</div>` : "")
+      + (S.an && S.sk.curves.length ? (S.an.dof === 0
+        ? `<div class="dof done" title="Every curve is held by a rule or a dimension">✓ Fully defined</div>`
+        : `<div class="dof" title="Blue curves can still move. Add rules (Fixed, Horizontal, Tangent…) or dimensions until it is fully defined, or leave it: a sketch does not have to be fully defined to build."><span class="sw" style="background:#4f9dff"></span>${S.an.dof} more rule${S.an.dof > 1 ? "s" : ""} or dimension${S.an.dof > 1 ? "s" : ""} to lock it</div>`) : "")
       + `<div class="sec"><span class="k">Finish as</span>`
       + `<label class="f"><span>Feature</span><select data-k="feat"><option value="extrude"${S.feat === "extrude" ? " selected" : ""}>Extrude</option><option value="revolve"${S.feat === "revolve" ? " selected" : ""}>Revolve</option><option value="none"${S.feat === "none" ? " selected" : ""}>Sketch only</option></select></label>`
       + (S.feat === "extrude" ? `<label class="f"><span>Distance</span><input type="number" data-k="h" step="1" value="${S.h}" /></label>` : "")
@@ -367,7 +484,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         + axes.map(([, i], n) => `<option value="${i}"${String(S.axis) === String(i) ? " selected" : ""}>construction line ${n + 1}</option>`).join("") + `</select></label>`
         + `<label class="f"><span>Angle</span><input type="number" data-k="angle" step="15" value="${S.angle}" /></label>` : "")
       + (S.feat !== "none" ? `<label class="f"><span>Operation</span><select data-k="op">${[["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => `<option value="${v}"${S.op === v ? " selected" : ""}${!S.body && v !== "new" ? " disabled" : ""}>${l}</option>`).join("")}</select></label>` : "")
-      + `</div><div class="ft"><button type="button" class="look" title="Square on to the sketch again">Look at</button><button type="button" class="cancel">Cancel</button><button type="button" class="ok"${S.feat !== "none" && p ? " disabled title=\"" + esc(p) + "\"" : ""}>Finish</button></div>`;
+      + `</div><div class="keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo · <kbd>Esc</kbd> stop · <kbd>Del</kbd> delete · <kbd>E</kbd> extrude · <kbd>F6</kbd> look at · <kbd>F1</kbd> help</div>`
+      + `<div class="ft"><button type="button" class="look" title="Square on to the sketch again">Look at</button><button type="button" class="cancel">Cancel</button><button type="button" class="ok"${S.feat !== "none" && p ? " disabled title=\"" + esc(p) + "\"" : ""}>Finish</button></div>`;
   }
   const planeLabel = (on) => (typeof on === "string" ? `${on} plane` : "on a face");
 
@@ -382,7 +500,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       circle: "Click the centre, then a point on the rim.",
       arc: "Click the centre, the start, then the end (counter-clockwise).",
       spline: "Click the points it passes through; Enter (or double-click) finishes.",
-      trim: "Click the piece of a line to cut away (between crossings).",
+      trim: "Click the piece of a line, arc or circle to cut away (between crossings and tangent touches).",
       offset: "Click a closed outline or a circle, then type the distance.",
       construction: "Click curves to make them construction (dashed, not part of the profile) or back.",
       dim: "Click a line, two points, a circle or two lines; then type the value.",
@@ -566,6 +684,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         S.sk.constraints.push({ type: "fixed", ids: [d.point], temp: true });
         resolve();
         S.sk.constraints = S.sk.constraints.filter((c) => !c.temp);
+        study();
         draw();
         return;
       }
@@ -592,7 +711,20 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     const el = e.target;
     const typing = !!el?.closest?.("input, select, textarea, [contenteditable]") && el.getClientRects().length > 0;
     if (typing && e.key !== "Escape") return false;
-    const k = e.key.toUpperCase();
+    const k = e.key.toUpperCase(), mod = e.ctrlKey || e.metaKey;
+    // Fusion 360's keys: undo / redo inside the sketch, F6 look at, E extrude,
+    // F1 help (the code's own Ctrl+Z takes back a whole finished sketch)
+    if (mod && k === "Z") { if (e.shiftKey) redo(); else undo(); return true; }
+    if (mod && k === "Y") { redo(); return true; }
+    if (e.key === "F6") { squareOn(); return true; }
+    if (e.key === "F1") { openHelp(); return true; }
+    if (k === "E" && !mod && !e.altKey) {
+      S.feat = "extrude";
+      const p = M.profileProblem(S.sk);
+      if (p) { setMsg(`Extrude needs a closed profile: ${esc(p)}`, "err"); return true; }
+      finish();
+      return true;
+    }
     if (e.key === "Escape") {
       if (S.pending.length) { if (S.tool === "spline") finishSpline(); S.pending = []; drawRubber([]); }
       else if (S.tool !== "select") setTool("select");
@@ -699,12 +831,13 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   // a new body: into the returned group(), beside the returned shape, or the
   // first shape of an empty model
   function newBody(text, use) {
+    text = M.returnBare(text) ?? text;
     const ret = returnExpr(text);
     if (!ret) return text.replace(/\s*$/, "") + `\nreturn ${use};\n`;
     return F.newBodyText(text, ret, use).next;
   }
-  // The top-level return's expression ({ start, end }), or a bare final
-  // expression statement (the editor's no-return form) turned into a return.
+  // The top-level return's expression ({ start, end }); newBody first makes a
+  // bare final expression (the editor's no-return form) a return.
   function returnExpr(text) {
     const m = parseCode(text);
     if (!m.ok) return null;
@@ -742,10 +875,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     S = {
       sk, on: sk.on, frame: planeFrame(sk.on), span, text, orig: text, name: name || nextName(text),
       tool: "line", pending: [], sel: [], hover: null, feat: span ? "none" : "extrude", h: 10, angle: 360, axis: "y",
-      op: body ? "join" : "new", body,
+      op: body ? "join" : "new", body, undo: [], redo: [], last: null,
     };
     const ctr = center ?? (sk.points.length ? sk.points.reduce((a, p) => [a[0] + p[0] / sk.points.length, a[1] + p[1] / sk.points.length], [0, 0]) : [0, 0]);
     lookSquare(ctr);
+    fadeModel(true);
     drawGrid();
     panel = document.createElement("div");
     panel.id = "dz-sk";
@@ -755,6 +889,13 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     document.body.appendChild(panel);
     panel.addEventListener("click", onPanelClick);
     panel.addEventListener("change", onPanelChange);
+    // a fix button points at its rule on the sketch
+    panel.addEventListener("mouseover", (e) => {
+      if (!S?.blocked) return;
+      const f = e.target.closest("[data-fix]");
+      const hot = f ? +f.dataset.fix : null;
+      if (S.blocked.hot !== hot) { S.blocked.hot = hot; drawLabels(); }
+    });
     panel.addEventListener("keydown", (e) => e.stopPropagation());
     setTool(nextTool || "line");
     nextTool = null;
@@ -762,9 +903,22 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (!span && S.tool === "line") setMsg("Draw. " + "Click points; each click ends a line and starts the next. Esc ends the chain.");
     orbit.addEventListener?.("change", onView);
     orbit.spinGate = offPad;
+    watchView(++viewLoop);
     return api;
   }
   const onView = () => { if (S) drawLabels(); };
+  // The labels follow the view: orbit's "change" covers a drag, but a camera
+  // set from code (the square-on framing, a fit after a build) or a resized
+  // window fires none, and left every dim and rule symbol stranded. Checked
+  // once a frame while the sketch is open; re-placed only when it moved.
+  let viewKey = "", viewLoop = 0;
+  function watchView(loop) {
+    if (!S || loop !== viewLoop) { viewKey = ""; return; }
+    const r = renderer.domElement.getBoundingClientRect();
+    const k = camera.matrixWorld.elements.map((v) => v.toFixed(5)).join() + `|${r.left},${r.top},${r.width},${r.height}`;
+    if (k !== viewKey) { viewKey = k; drawLabels(); }
+    requestAnimationFrame(() => watchView(loop));
+  }
   function nextName(text) {
     for (let i = 1; ; i++) if (!new RegExp(`\\bsketch${i}\\b`).test(text)) return `sketch${i}`;
   }
@@ -773,12 +927,19 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (tb) { setTool(tb.dataset.tool); renderPanel(); return; }
     const cb = e.target.closest("[data-con]");
     if (cb) {
-      const err = M.constrain(S.sk, cb.dataset.con, S.sel);
-      if (err) { setMsg(`${CON_LABEL[cb.dataset.con]}: ${err}.`, "err"); return; }
+      const sel = S.sel, type = cb.dataset.con;
       S.sel = [];
-      resolve(`${CON_LABEL[cb.dataset.con]} added.`);
+      tryChange((k) => M.constrain(k, type, sel), CON_LABEL[type], `${CON_LABEL[type]} added.`);
       return;
     }
+    const fx = e.target.closest("[data-fix]");
+    if (fx && S.blocked) {
+      const c = S.blocked.culprits[+fx.dataset.fix], what = S.blocked.what, gone = ruleName(c);
+      M.applyWithout(S.sk, S.blocked.changed, c);
+      resolve(`${gone[0].toUpperCase()}${gone.slice(1)} removed; ${what.toLowerCase()} added.`);
+      return;
+    }
+    if (e.target.closest(".help")) { openHelp(); return; }
     if (e.target.closest(".cancel")) { cancel(); return; }
     if (e.target.closest(".look")) { squareOn(); return; }
     if (e.target.closest(".ok")) finish();
@@ -807,6 +968,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   function cancel() { endChoose(); close(); host.setHint("Sketch cancelled; the code is as it was."); }
   function close() {
     if (!S) return;
+    fadeModel(false);
     closeDimBox();
     restoreCam();
     if (orbit.spinGate === offPad) orbit.spinGate = null;
@@ -890,11 +1052,14 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     clickPlane: (uv, opts = {}) => { const [x, y] = toScreen(uv); click(x, y, { detail: 1, ...opts }); },
     set: (k, v) => { S[k] = v; renderPanel(); },
     select: (list) => { S.sel = list; draw(); },
-    constrain: (type) => { const err = M.constrain(S.sk, type, S.sel); S.sel = []; resolve(err ? undefined : `${type} added.`); return err; },
+    constrain: (type) => { const sel = S.sel; S.sel = []; return tryChange((k) => M.constrain(k, type, sel), CON_LABEL[type] ?? type, `${type} added.`); },
     dimension: (sel, value, name) => {
-      const r = M.dimension(S.sk, sel, value);
-      if (name && r.dim != null) { const pr = M.promoteDim(S.text, S.sk, r.dim, name); if (pr?.error) return pr.error; S.text = pr.text; }
-      resolve(); return r.error ?? null;
+      // as the dimension box does: a size that fights the rules is refused, named
+      let r = {};
+      const out = tryChange((k) => { r = M.dimension(k, sel, value); return r.error ?? null; }, `Dimension ${fmt(value ?? 0)}`, "Dimension set.");
+      if (out || r.error) return r.error ?? out;
+      if (name && r.dim != null) { const pr = M.promoteDim(S.text, S.sk, r.dim, name); if (pr?.error) return pr.error; S.text = pr.text; resolve(); }
+      return null;
     },
     toScreen: (uv) => toScreen(uv),
     debug: () => S && { sk: JSON.parse(JSON.stringify(S.sk)), tool: S.tool, name: S.name, on: S.on, msg: msg.text.replace(/<[^>]+>/g, ""), problem: M.profileProblem(S.sk), code: (() => { try { return finishText(); } catch (e) { return `ERR ${e.message}`; } })() },

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Design Mode Help · BREPcode</title>
+<meta name="description" content="How to sketch and design in BREPcode's Design mode (beta): tools, keyboard shortcuts, constraints, a FAQ, and what does not work yet." />
+<link rel="icon" href="favicon.svg" />
+<style>
+  :root {
+    --bg: #0b0f19; --card: #121826; --card2: #161e2f; --border: #26314a; --text: #dfe6f3; --muted: #8ea0c0;
+    --accent: #1c66e5; --accent2: #4f9dff; --ok: #3ddc97; --warn: #ffb84d; --bad: #ff8a8a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent2); }
+  header.top { position: sticky; top: 0; z-index: 5; background: rgba(11, 15, 25, 0.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+  .bar { max-width: 1000px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .brand { font-weight: 700; text-decoration: none; color: var(--text); }
+  .beta { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: rgba(255, 184, 77, .18); color: var(--warn); vertical-align: 2px; }
+  .bar input { flex: 1; min-width: 180px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); font: inherit; }
+  .bar .back { color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 8px 16px 80px; display: grid; grid-template-columns: 210px 1fr; gap: 28px; }
+  nav.toc { position: sticky; top: 64px; align-self: start; font-size: 13.5px; padding-top: 18px; }
+  nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 3px 0; }
+  nav.toc a:hover { color: var(--text); }
+  main { min-width: 0; }
+  h1 { font-size: 28px; margin: 22px 0 6px; }
+  h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  .lead { color: var(--muted); font-size: 16px; margin: 0 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin: 12px 0; }
+  .note { border-left: 3px solid var(--accent2); }
+  .warn { border-left: 3px solid var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  kbd { font: 12px ui-monospace, Consolas, monospace; padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--card2); white-space: nowrap; }
+  code { font: 13px ui-monospace, Consolas, monospace; background: var(--card2); padding: 1px 4px; border-radius: 4px; }
+  ol li, ul li { margin: 4px 0; }
+  details { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin: 8px 0; }
+  summary { cursor: pointer; padding: 10px 14px; font-weight: 600; }
+  details > div { padding: 0 14px 12px; }
+  .sw { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .hidden { display: none !important; }
+  .nohits { color: var(--muted); padding: 20px 0; }
+  @media (max-width: 760px) {
+    .wrap { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { display: none; }
+    h1 { font-size: 23px; }
+    table { display: block; overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <a class="brand" href="./">BREPcode</a><span class="beta">Design · Beta</span>
+    <input id="q" type="search" placeholder="Search the help: tangent, trim, undo, blue…" aria-label="Search the help" />
+    <a class="back" href="./">Back to the app</a>
+  </div>
+</header>
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <a href="#start">Start here</a>
+    <a href="#sketch">Sketching</a>
+    <a href="#keys">Keyboard shortcuts</a>
+    <a href="#rules">Rules (constraints)</a>
+    <a href="#tangent">Tangent</a>
+    <a href="#colours">Blue, white and red</a>
+    <a href="#dims">Dimensions and sliders</a>
+    <a href="#edit">Trim, offset, construction</a>
+    <a href="#finish">Finishing a sketch</a>
+    <a href="#model">Working on the model</a>
+    <a href="#faq">FAQ</a>
+    <a href="#limits">What doesn't work yet</a>
+    <a href="#stuck">Where code-CAD gets stuck</a>
+  </nav>
+  <main id="main">
+    <h1>Design mode help</h1>
+    <p class="lead">Design mode is point-and-click CAD on top of BREPcode's code. It's in beta: most everyday sketching works, some things don't yet, and this page says which. No AI is needed for any of it.</p>
+
+    <section data-s id="start">
+      <h2>Start here</h2>
+      <p>Everything you do in Design mode is written into the model's code, and the code is what gets built. Switch to <b>Code</b> at any time to see exactly what a click did; switch back and carry on. <kbd>Ctrl</kbd>+<kbd>Z</kbd> outside a sketch takes back a whole step.</p>
+      <div class="card note">
+        <b>Your first part in six steps</b>
+        <ol>
+          <li>Press <b>Sketch</b> on the toolbar (or <kbd>S</kbd>) and pick the <b>XY plane</b>, or click a flat face of the model.</li>
+          <li>Draw with <kbd>L</kbd> line, <kbd>R</kbd> rectangle, <kbd>C</kbd> circle, <kbd>A</kbd> arc. Each click puts a point; the view snaps to the grid and to points already there.</li>
+          <li>Pick curves (click, <kbd>Shift</kbd>+click for more) and press a rule in the panel: Horizontal, Tangent, Equal…</li>
+          <li>Press <kbd>D</kbd> and click a line or circle to give it a size. Click a size label to change it.</li>
+          <li>Watch the panel: <b>✓ Fully defined</b> means every curve is held; blue curves can still move. A sketch doesn't have to be fully defined to build.</li>
+          <li>Choose Extrude (or Revolve), a distance and Join / Cut / New body, then <b>Finish</b> (or press <kbd>E</kbd>).</li>
+        </ol>
+      </div>
+    </section>
+
+    <section data-s id="sketch">
+      <h2>Sketching</h2>
+      <p>A sketch is flat curves on a plane. Closed outlines become shapes you can extrude or revolve; an outline inside another is a hole.</p>
+      <table>
+        <tr><th>Tool</th><th>How</th></tr>
+        <tr><td>Line <kbd>L</kbd></td><td>Click, click, click: each click ends a line and starts the next. Click the first point again to close. <kbd>Esc</kbd> ends the chain. A line drawn within 3° of level or plumb is made level / plumb for you.</td></tr>
+        <tr><td>Rectangle <kbd>R</kbd></td><td>Two corners (click-click, or press and drag).</td></tr>
+        <tr><td>Circle <kbd>C</kbd></td><td>The centre, then a point on the rim (or press and drag).</td></tr>
+        <tr><td>Arc <kbd>A</kbd></td><td>The centre, the start, then the end. Arcs always run counter-clockwise from start to end. Ending on a point that's already there joins it.</td></tr>
+        <tr><td>Spline <kbd>S</kbd></td><td>Click the points it passes through; <kbd>Enter</kbd> or a double-click finishes. Click the first point again for a closed loop.</td></tr>
+        <tr><td>Trim <kbd>T</kbd></td><td>Click the piece of a line, arc, circle or spline to cut away, between whatever crosses or touches it. A circle trimmed becomes an arc. A curve nothing crosses is deleted.</td></tr>
+        <tr><td>Offset <kbd>O</kbd></td><td>Click a closed outline (or a circle) and type a distance: positive grows it, negative shrinks it.</td></tr>
+        <tr><td>Construction <kbd>X</kbd></td><td>Click a curve to make it construction (dashed): a guide that isn't part of the shape, like an axis or a reference line.</td></tr>
+        <tr><td>Dimension <kbd>D</kbd></td><td>A line (its length), two points (their distance), a circle or arc (its radius), two lines (the angle).</td></tr>
+      </table>
+      <p>In the Select tool, drag a point and the rest of the sketch follows its rules. <kbd>Delete</kbd> removes the picked curves.</p>
+    </section>
+
+    <section data-s id="keys">
+      <h2>Keyboard shortcuts</h2>
+      <p>The keys follow <b>Fusion 360</b>, so they'll be familiar if you've used it. Where Fusion has no key for something, BREPcode uses the obvious letter.</p>
+      <table>
+        <tr><th>Key</th><th>In a sketch</th><th>Outside a sketch</th></tr>
+        <tr><td><kbd>L</kbd> <kbd>R</kbd> <kbd>C</kbd> <kbd>A</kbd></td><td>Line, rectangle, circle, arc</td><td></td></tr>
+        <tr><td><kbd>S</kbd></td><td>Spline</td><td>New sketch (Fusion uses S for its command search, which BREPcode doesn't have)</td></tr>
+        <tr><td><kbd>T</kbd> <kbd>O</kbd> <kbd>X</kbd> <kbd>D</kbd></td><td>Trim, offset, construction, dimension</td><td></td></tr>
+        <tr><td><kbd>E</kbd></td><td>Finish the sketch as an extrude</td><td>Extrude</td></tr>
+        <tr><td><kbd>Q</kbd> <kbd>F</kbd> <kbd>H</kbd> <kbd>M</kbd> <kbd>R</kbd></td><td></td><td>Press-pull, fillet, hole, move, rotate</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo the last change in the sketch</td><td>Undo the last step</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Redo</td><td>Redo</td></tr>
+        <tr><td><kbd>Shift</kbd>+click</td><td>Add to the selection</td><td>Add to the selection</td></tr>
+        <tr><td><kbd>Delete</kbd></td><td>Delete the picked curves</td><td>Delete the picked shape</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>End a chain, then back to Select</td><td>Back to Select</td></tr>
+        <tr><td><kbd>F6</kbd></td><td>Look square-on at the sketch again</td><td></td></tr>
+        <tr><td><kbd>F1</kbd></td><td>This page</td><td>This page</td></tr>
+        <tr><td><kbd>Alt</kbd> while drawing</td><td>Don't snap to the grid</td><td></td></tr>
+      </table>
+    </section>
+
+    <section data-s id="rules">
+      <h2>Rules (constraints)</h2>
+      <p>Rules say how curves relate, so the sketch keeps its shape when you change a size. Pick what the rule is about, then press it in the panel.</p>
+      <table>
+        <tr><th>Rule</th><th>Pick</th><th>What it does</th></tr>
+        <tr><td>━ Horizontal / │ Vertical</td><td>a line, or two points</td><td>level / plumb</td></tr>
+        <tr><td>● Coincident</td><td>two points, or a point and a line</td><td>the same place / the point on the line</td></tr>
+        <tr><td>∥ Parallel / ⟂ Perpendicular</td><td>two lines</td><td>same direction / square to each other</td></tr>
+        <tr><td>⌒ Tangent</td><td>two curves (see below)</td><td>touch without crossing, running on smoothly</td></tr>
+        <tr><td>= Equal</td><td>two lines, or two circles / arcs</td><td>same length / same radius</td></tr>
+        <tr><td>⏚ Fixed</td><td>points</td><td>pinned where they are</td></tr>
+      </table>
+      <p>Each rule shows its symbol on the sketch. <b>Click a symbol to remove that rule.</b> Hover over it to see what it is.</p>
+    </section>
+
+    <section data-s id="tangent">
+      <h2>Tangent</h2>
+      <p>Pick any two of: a line, an arc, a circle, a spline (<kbd>Shift</kbd>+click the second), then press <b>Tangent</b>. Either order works.</p>
+      <table>
+        <tr><th>Pair</th><th>Where they touch</th></tr>
+        <tr><td>Line + circle or arc</td><td>Anywhere. The line slides (or the circle moves) until it just touches. If the line ends at the arc, it runs on smoothly from that end. If a line stops short of the circle with a loose end, that end goes to where they touch, so a Trim can close the outline.</td></tr>
+        <tr><td>Circle or arc + circle or arc</td><td>Where they meet: outside each other, or one inside the other, whichever is nearer to how you drew them.</td></tr>
+        <tr><td>Spline + anything</td><td>At the spline's end, which has to be on the other curve first (draw it from there, it snaps). The spline then leaves smoothly, the way the other curve was going.</td></tr>
+      </table>
+      <div class="card note"><b>The classic way to draw a slot or a link:</b> draw two circles, draw the two lines past them, make each line tangent to each circle, then Trim the line ends and the inner sides of the circles. You get one closed outline that stays tangent when you change a radius.</div>
+    </section>
+
+    <section data-s id="colours">
+      <h2>Blue, white and red</h2>
+      <p><span class="sw" style="background:#4f9dff"></span><b>Blue</b> curves can still move: some size or position isn't set yet. <span class="sw" style="background:#f4f7ff"></span><b>White</b> curves are fully held. The panel says how many more rules or dimensions would lock the whole sketch, or <b>✓ Fully defined</b>. Moving the whole sketch counts too, so a sketch with nothing <b>Fixed</b> always has 3 left (two directions and a turn).</p>
+      <p><span class="sw" style="background:#d94848"></span><b>Red</b> appears when a rule you're adding fights the ones already there, for example a line made tangent to a circle when both are pinned too far apart. The rule isn't added. Instead the panel names the rules in the way, shows them red on the sketch (hover a button to see which), and offers <b>Remove … and add …</b> to swap one for the new rule in one click.</p>
+    </section>
+
+    <section data-s id="dims">
+      <h2>Dimensions and sliders</h2>
+      <p>Press <kbd>D</kbd> and click what to measure; type the size. Click any size label later to change it. Press <b>★ name</b> in that box to make the size a named parameter: it goes to the top of the code as <code>const width = 30;</code> and becomes a slider, so you (or anyone you share the model with) can resize the part without opening the sketch.</p>
+      <p>A circle's radius is part of the circle itself, so it's always set. Trimming a circle into an arc keeps its radius as a dimension.</p>
+    </section>
+
+    <section data-s id="edit">
+      <h2>Trim, offset, construction</h2>
+      <ul>
+        <li><b>Trim</b> cuts at every crossing and every tangent touch, so pieces that met still meet. Splines are split exactly, not re-drawn.</li>
+        <li><b>Offset</b> keeps lines straight and arcs round (same centres), and corners meet again. Splines can't be offset exactly by any CAD program, so a spline's offset is fitted: within 0.01 mm of the true offset, which is far below what a printer or a mill can see.</li>
+        <li><b>Construction</b> curves still take rules and dimensions; they just aren't part of the shape. Revolve can spin around a construction line.</li>
+      </ul>
+    </section>
+
+    <section data-s id="finish">
+      <h2>Finishing a sketch</h2>
+      <p>Pick <b>Extrude</b> (a distance) or <b>Revolve</b> (around the sketch's Y axis or a construction line), and how it meets the model: <b>Join</b> (added), <b>Cut</b> (taken away) or <b>New body</b> (a separate part). <b>Finish</b> writes it all into the code as one undo step. Finish is greyed out until the shape is a closed outline; the panel says what's open.</p>
+      <p>To change a sketch later, click it in the timeline at the bottom and choose <b>Edit sketch</b>. Finish rewrites it in place.</p>
+    </section>
+
+    <section data-s id="model">
+      <h2>Working on the model</h2>
+      <p>Outside a sketch: click a shape to pick it, then <kbd>M</kbd> move, <kbd>R</kbd> rotate, <kbd>Shift</kbd>+<kbd>S</kbd> scale with the gizmo; <kbd>Q</kbd> press-pull a face; <kbd>F</kbd> fillet and chamfer edges; <kbd>H</kbd> hole. The model browser on the left and the timeline at the bottom show every step, each linked to its line of code.</p>
+    </section>
+
+    <section data-s id="faq">
+      <h2>FAQ</h2>
+      <details><summary>I picked a circle and a line with Shift and pressed Tangent. Why won't they go tangent?</summary><div>
+        <p>In builds before November 2026 this was a real bug: Tangent only worked for a line drawn from an arc's end, and it refused circles. It's fixed. Pick both (either order) and press Tangent.</p>
+        <p>If it still doesn't happen, the panel says why: something else holds them apart (usually a <b>Fixed</b> point or a dimension). The rules in the way turn red, and <b>Remove … and add tangent</b> fixes it in one click.</p>
+      </div></details>
+      <details><summary>Why does Finish stay greyed out ("not a closed profile")?</summary><div>
+        <p>An outline has to end exactly where it starts. Usually a line stops near a point instead of on it, or a curve overhangs a corner. Draw onto the point (it snaps), or <b>Trim</b> the overhang. A stray line that's only there as a guide can be made <b>Construction</b> (<kbd>X</kbd>).</p>
+      </div></details>
+      <details><summary>Why did my other lines move when I added a rule?</summary><div>
+        <p>A rule moves whatever is free to move. Pin what should stay with <b>Fixed</b>, or give it a dimension first; blue curves are the ones that can still move.</p>
+      </div></details>
+      <details><summary>Can I undo inside a sketch?</summary><div><p>Yes: <kbd>Ctrl</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>+<kbd>Y</kbd> step through every change since the sketch opened. <b>Cancel</b> drops the whole sketch.</p></div></details>
+      <details><summary>Do I need the AI assistant?</summary><div><p>No. Everything on this page is plain clicking and typing. The assistant is an optional extra for describing a part in words.</p></div></details>
+      <details><summary>Can I type the code instead?</summary><div><p>Yes. A sketch is a <code>sketch({ points, curves, constraints, dims })</code> call, and you can edit it by hand: a tangent is <code>["tangent", lineStart, lineEnd, centre, touchPoint]</code>. While a sketch is open, though, leave the code alone: Finish would otherwise overwrite what you typed, and it tells you so.</p></div></details>
+      <details><summary>Is the spline offset exact?</summary><div><p>Within 0.01 mm. No CAD program can offset a spline exactly (the true offset of a spline isn't a spline), so all of them fit one; BREPcode tells you that it does.</p></div></details>
+      <details><summary>Is this as good as Fusion or SolidWorks?</summary><div><p>Not yet, and the next two sections say exactly where it falls short. What it does have: every click is readable code you own, works in any browser, and builds true curved surfaces (STEP-clean) when the exact kernel is used.</p></div></details>
+    </section>
+
+    <section data-s id="limits">
+      <h2>What doesn't work yet</h2>
+      <ul>
+        <li><b>Mid-spline tangency:</b> a spline is tangent only at its ends.</li>
+        <li><b>Which rule to drop:</b> when rules fight after a <i>drag</i> (not when adding a rule), the panel says what's off but not which one rule to drop.</li>
+        <li><b>Projected edges:</b> a face's edges aren't brought into the sketch as references yet; snapping is to the sketch's own points and the grid.</li>
+        <li><b>Sketch on a face:</b> the plane is stored as numbers, not as a link to the face, so moving that body later leaves the sketch where it was.</li>
+        <li><b>Driven (reference) dimensions</b> and <b>dimensions to an arc's edge</b> aren't there; dimensions measure points, lines and radii.</li>
+        <li><b>Assemblies and joints</b> aren't part of Design mode; parts are separate bodies placed by moves.</li>
+        <li><b>Text, slots, polygons and fillets inside a sketch</b> aren't tools yet (fillet edges on the 3D model instead, with <kbd>F</kbd>).</li>
+      </ul>
+    </section>
+
+    <section data-s id="stuck">
+      <h2>Where code-CAD gets stuck</h2>
+      <p>BREPcode is code-first: the text is the model, and Design mode is a careful way of writing that text by clicking. That's what makes the model shareable, diffable and scriptable, but it rubs against how traditional CAD works in a few places. We're working on each one; for now, this is where you'll feel it.</p>
+      <div class="card warn">
+        <h3>Turns, not a live session</h3>
+        <p>Traditional CAD keeps one live model and every click edits it. Here each finished step is written into the code and the whole model is rebuilt from that code. Most rebuilds take a moment, but a big model can lag a beat after each step, and a step that fails to build turns red in the timeline instead of being refused up front.</p>
+        <h3>Picking things by name</h3>
+        <p>A fillet or a sketch on a face has to say <i>which</i> edge or face, in code. BREPcode names them from how the shape was made, but a big change earlier in the history (say, a different number of holes) can rename things, and a later step can then miss its target. This is the well-known "topological naming" problem; commercial CAD fights it too, with a lot more engineering behind it.</p>
+        <h3>The solver</h3>
+        <p>Sketch rules are solved by the BREP.io solver, which moves points a little at a time until the rules hold. It's good for everyday sketches. A very large or heavily constrained sketch can settle slowly or somewhere unexpected, where commercial solvers are faster and more predictable.</p>
+        <h3>Hand edits and clicks at the same time</h3>
+        <p>You can type and click on the same model, but not both at once inside an open sketch: Finish writes the sketch back as a whole, so it checks the code hasn't changed underneath it and asks you to cancel and re-open if it has.</p>
+        <h3>The honest summary</h3>
+        <p>For a first part, a bracket, a jig or a print-ready enclosure, Design mode should get you there. For large assemblies, heavy surfacing or production drawings, a traditional CAD program will serve you better today. We'd like to close that gap, and the list above is the order we're closing it in.</p>
+      </div>
+    </section>
+    <p class="nohits hidden" id="nohits">Nothing matches. Try a single word like <i>tangent</i>, <i>trim</i> or <i>undo</i>.</p>
+  </main>
+</div>
+<script>
+  // search: show only the sections (and FAQ answers) that mention every word typed
+  const q = document.getElementById("q");
+  const secs = [...document.querySelectorAll("section[data-s]")];
+  const run = () => {
+    const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    for (const s of secs) {
+      const items = [...s.querySelectorAll("details")];
+      const hit = (el) => words.every((w) => el.textContent.toLowerCase().includes(w));
+      if (!words.length) { s.classList.remove("hidden"); items.forEach((d) => { d.classList.remove("hidden"); d.open = false; }); shown++; continue; }
+      if (items.length) {
+        let any = false;
+        for (const d of items) { const h = hit(d); d.classList.toggle("hidden", !h); d.open = h; any ||= h; }
+        s.classList.toggle("hidden", !any); if (any) shown++;
+      } else { const h = hit(s); s.classList.toggle("hidden", !h); if (h) shown++; }
+    }
+    document.getElementById("nohits").classList.toggle("hidden", shown > 0);
+  };
+  q.addEventListener("input", run);
+  // ?q=tangent opens the page filtered (a link from a video or a reply)
+  const pre = new URLSearchParams(location.search).get("q");
+  if (pre) { q.value = pre; run(); }
+</script>
+</body>
+</html>

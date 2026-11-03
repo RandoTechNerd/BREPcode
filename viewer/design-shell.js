@@ -653,7 +653,9 @@ export function initDesignShell(host) {
     if (gizmo.dragging) { const m = gizmo.fid && members(gizmo.fid); if (m?.meshes.length) gizmo.rebase(m); return; }
     host.handlesVisible?.(true);
     const target = selectedFid ?? MODEL;
-    if (!active || !GIZMO_MODE[tool] || dialog || sketcher?.active) { gizmo.detach(); closeScalePanel(); return; }
+    // no gizmo in a dialog, a sketch, or while the sketch chooser waits for a
+    // face (it sat on the face's middle and took the click meant to pick it)
+    if (!active || !GIZMO_MODE[tool] || dialog || sketcher?.active || sketcher?.choosing) { gizmo.detach(); closeScalePanel(); return; }
     if (gizmo.mode !== GIZMO_MODE[tool]) gizmo.setMode(GIZMO_MODE[tool]);
     const m = members(target);
     if (m?.shared) {
@@ -1124,6 +1126,21 @@ export function initDesignShell(host) {
 
   // Design keys (KEYS): not while typing, not while the sketcher has the keys
   addEventListener("keydown", (e) => {
+    if (active && e.key === "F1" && !sketcher?.active) { e.preventDefault(); window.open("design-help.html", "_blank", "noopener"); return; }
+    // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z): back and forward through the
+    // model's history, as in Fusion. Typing means a field you can see: a
+    // click on a part focuses the code editor even while its card is closed,
+    // and its own undo knows nothing of the steps Design mode wrote.
+    if (active && (e.ctrlKey || e.metaKey) && !e.altKey && !sketcher?.active && !dialog && /^[zy]$/i.test(e.key)) {
+      const el = document.activeElement;
+      const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && el.getClientRects().length > 0
+        && getComputedStyle(el).visibility !== "hidden" && !!el.offsetParent;
+      if (!typing) {
+        const b = document.getElementById(e.key.toLowerCase() === "y" || e.shiftKey ? "redo-btn" : "undo-btn");
+        if (b && !b.disabled) { e.preventDefault(); e.stopImmediatePropagation(); b.click(); }
+        return;
+      }
+    }
     if (!active || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     const el = document.activeElement;
     if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;

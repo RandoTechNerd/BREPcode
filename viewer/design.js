@@ -10,6 +10,9 @@
 // here changes it.
 
 export const MODE_KEY = "brepcode.mode";
+// the Design help page (how-to, keys, FAQ, limits): the Beta tag, the
+// sketch panel's ?, F1 and the About card all open it
+export const HELP_URL = "design-help.html";
 export const MODES = ["code", "design"];
 
 export function readMode() {
@@ -38,6 +41,14 @@ const CSS = `
 #mode-switch button:hover { color: var(--text, #dfe6f3); }
 #mode-switch button[aria-pressed="true"] { background: var(--accent, #1c66e5); color: #fff; }
 #mode-switch button:focus-visible { outline: 2px solid var(--accent, #1c66e5); outline-offset: 1px; }
+/* Design is still being built out: a small tag says so */
+#mode-switch .beta {
+  margin-left: 4px; padding: 1px 4px; border-radius: 4px; vertical-align: 1px;
+  font-size: 8px; letter-spacing: 0.04em; text-transform: uppercase;
+  background: rgba(255, 184, 77, 0.18); color: #ffb84d;
+}
+#mode-switch button[aria-pressed="true"] .beta { background: rgba(255, 255, 255, 0.22); color: #fff; }
+#mode-switch .beta:hover { text-decoration: underline; cursor: help; }
 `;
 
 // Builds the switch, applies the remembered mode, and returns
@@ -55,7 +66,7 @@ export function initModeSwitch({ onChange } = {}) {
   bar.setAttribute("role", "group");
   bar.setAttribute("aria-label", "Editing mode");
   bar.innerHTML = `<button type="button" data-mode="code" title="Code: write or ask for the model in text (the way BREPcode has always worked)">Code</button>`
-    + `<button type="button" data-mode="design" title="Design: point-and-click CAD on the same model: browser, timeline, move gizmo. Early preview.">Design</button>`;
+    + `<button type="button" data-mode="design" title="Design: point-and-click CAD on the same model: browser, timeline, move gizmo. Beta: still being filled out.">Design<span class="beta" title="Design mode is in beta: what works, what doesn't yet, its keys and how-tos (opens the Design help)">Beta</span></button>`;
   document.body.append(bar);
 
   let mode = null;
@@ -69,6 +80,8 @@ export function initModeSwitch({ onChange } = {}) {
     return mode;
   };
   bar.addEventListener("click", (e) => {
+    // the Beta tag opens the Design help (and still switches to Design)
+    if (e.target.closest(".beta")) window.open(HELP_URL, "_blank", "noopener");
     const b = e.target.closest("button[data-mode]");
     if (b) setMode(b.dataset.mode);
   });

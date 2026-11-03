@@ -183,6 +183,10 @@ const BUILD = `built ${stamp}`;
 writeFileSync(join(OUT, "index.html"),
   rewrite(readFileSync("viewer/index.html", "utf8")).split("BUILDSTAMP").join(BUILD));
 
+// Design mode's help page (how-to, keys, FAQ, limits), next to index.html so
+// its relative links work here and on the dev server alike
+writeFileSync(join(OUT, "design-help.html"), readFileSync("viewer/design-help.html", "utf8"));
+
 // What the running page asks for, with the cache bypassed, to find out whether
 // it is the current build. Deliberately tiny and at the site root: it is
 // fetched on every load, including on a phone over mobile data.

@@ -1,7 +1,8 @@
 // Design mode phase 3 in a real (offscreen) Electron window: the sketcher.
 // Draws with real mouse clicks, constrains and dimensions, finishes into the
 // code, drives a sketch dim from a slider-style param edit, edits a sketch in
-// place and revolves one; checks the code and the model, and screenshots.
+// place, revolves one, and makes two lines tangent to a circle then trims
+// them to a teardrop; checks the code and the model, and screenshots.
 //
 //   npm run serve                                         (port 5320)
 //   npx electron scripts/design-check.cjs --phase3 [outDir]   (npm run test:design3)
@@ -239,6 +240,189 @@ module.exports = app.whenReady().then(async () => {
     const vr = await volume();
     check("…a ring of π(14² − 10²)·6", Math.abs((vr - vb) - Math.PI * 96 * 6) < 40, `${vb} -> ${vr}`);
     await shot("09-revolved-ring");
+
+    say("\ntangent: a line and a circle, made tangent, trimmed to a teardrop (the user report)");
+    await setCode(`return cube([4, 4, 4]);`);
+    await run(`brepscript.openSketch()`);
+    await wait(700);
+    await run(`document.querySelector('#dz-sk [data-plane="XY"]').click()`);
+    await wait(700);
+    await run(`brepscript.sketcher().tool("circle")`);
+    await click(await skScreen([10, 0]));
+    await click(await skScreen([15, 0]));
+    await run(`brepscript.sketcher().tool("line")`);
+    await click(await skScreen([-12, 0.5]));
+    await click(await skScreen([18, 7]));
+    await run(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await click(await skScreen([-12, 0.5]));
+    await click(await skScreen([18, -6]));
+    await run(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await run(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    d = await sk();
+    check("a circle and two lines from one point", d.sk.curves.length === 3 && d.sk.curves[1].ids[0] === d.sk.curves[2].ids[0], JSON.stringify(d.sk.curves));
+    const gapOf = (s, li) => {
+      const P = s.points, [a, b] = s.curves[li].ids.map((k) => P[k]), C = P[s.curves[0].ids[0]];
+      const r = s.curves[0].kind === "circle" ? s.curves[0].r : Math.hypot(P[s.curves[0].ids[1]][0] - C[0], P[s.curves[0].ids[1]][1] - C[1]);
+      const u = [b[0] - a[0], b[1] - a[1]];
+      return Math.abs(Math.abs((C[0] - a[0]) * u[1] - (C[1] - a[1]) * u[0]) / Math.hypot(...u) - r);
+    };
+    // select by clicking: the line, then Shift + the circle's far side; Tangent from the palette
+    const shiftClick = async ([x, y]) => {
+      win.webContents.sendInputEvent({ type: "mouseMove", x: Math.round(x), y: Math.round(y) });
+      for (const type of ["mouseDown", "mouseUp"]) win.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: "left", clickCount: 1, modifiers: ["shift"] });
+      await wait(150);
+    };
+    for (const li of [1, 2]) {
+      const s0 = (await sk()).sk;
+      const [a, b] = s0.curves[li].ids.map((k) => s0.points[k]);
+      await click(await skScreen([a[0] + (b[0] - a[0]) * 0.25, a[1] + (b[1] - a[1]) * 0.25]));
+      const C = s0.points[s0.curves[0].ids[0]];
+      await shiftClick(await skScreen([C[0] + 5, C[1]]));
+      await run(`document.querySelector('#dz-sk [data-con="tangent"]').click()`);
+      await wait(200);
+      d = await sk();
+      check(`line ${li} made tangent to the circle from the palette`, /Tangent added/.test(d.msg) && gapOf(d.sk, li) < 1e-3, `${d.msg} gap ${gapOf(d.sk, li)}`);
+    }
+    await shot("12-tangent-lines");
+    // trim with the mouse: each line's overhang, then the circle's near side
+    await run(`brepscript.sketcher().tool("trim")`);
+    for (const li of [1, 2]) {
+      const s0 = (await sk()).sk;
+      const t = s0.constraints.find((c) => c.type === "tangent" && c.ids[0] === s0.curves[li].ids[0] && c.ids[1] === s0.curves[li].ids[1]).ids[3];
+      const T = s0.points[t], B = s0.points[s0.curves[li].ids[1]];
+      await click(await skScreen([(T[0] + B[0]) / 2, (T[1] + B[1]) / 2]));
+    }
+    {
+      const s0 = (await sk()).sk;
+      const C = s0.points[s0.curves[0].ids[0]];
+      await click(await skScreen([C[0] - 5, C[1]]));
+    }
+    d = await sk();
+    check("trimmed: one arc and two lines, a closed teardrop, still tangent", d.sk.curves.length === 3 && d.sk.curves[0].kind === "arc"
+      && d.problem === null && gapOf(d.sk, 1) < 1e-3 && gapOf(d.sk, 2) < 1e-3, JSON.stringify({ c: d.sk.curves, p: d.problem }));
+    await shot("13-trimmed-teardrop");
+    // a rule's symbol removes it
+    const glyphs = await run(`[...document.querySelectorAll(".dz-glyph")].map((e) => { const b = e.getBoundingClientRect(); return { t: e.title, x: b.left + b.width / 2, y: b.top + b.height / 2 }; })`);
+    check("each tangent has its symbol on screen", glyphs.filter((g) => /^Tangent/.test(g.t) && g.x > 0 && g.x < W && g.y > 0 && g.y < H).length === 2, JSON.stringify(glyphs));
+    const vb2 = await volume();
+    await run(`document.querySelector("#dz-sk .ok").click()`);
+    await wait(800);
+    check("it builds", await builtOk());
+    const tc = await codeText();
+    check("the tangents are in the code", (tc.match(/\["tangent", /g) || []).length === 2, tc);
+    const vt = await volume();
+    // the teardrop: hull of the R5 circle and the apex 22 mm off, extruded 10
+    check("…and the model grew by the teardrop (about 1,500 mm³)", vt - vb2 > 1000 && vt - vb2 < 2200, `${vb2} -> ${vt}`);
+    await shot("14-teardrop-built");
+
+    say("\nthe forum report: four lines, a circle, shift-pick the circle and the right line, Tangent");
+    await setCode(`return cube([4, 4, 4]);`);
+    await run(`brepscript.openSketch()`);
+    await wait(700);
+    await run(`document.querySelector('#dz-sk [data-plane="XY"]').click()`);
+    await wait(700);
+    check("the model fades while the sketch is open", await run(`brepscript.modelGroup ? [...(function* walk(o) { yield o; for (const c of o.children) yield* walk(c); })(brepscript.modelGroup)].filter((m) => m.isMesh).every((m) => [m.material].flat().every((x) => x.opacity <= 0.3)) : true`));
+    await run(`brepscript.sketcher().tool("line")`);
+    for (const p of [[-14, -8], [6, -8], [6, 8], [-14, 8], [-14, -8]]) await click(await skScreen(p));
+    await run(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await run(`brepscript.sketcher().tool("circle")`);
+    await click(await skScreen([16, 0]));
+    await click(await skScreen([21, 0]));
+    await run(`brepscript.sketcher().tool("select")`);
+    await click(await skScreen([16, 5]));                // the circle's top
+    await shiftClick(await skScreen([6, 0]));           // the right-hand line
+    await run(`document.querySelector('#dz-sk [data-con="tangent"]').click()`);
+    await wait(200);
+    d = await sk();
+    const rightGap = (s) => { const P = s.points, C = P[s.curves[4].ids[0]]; return Math.abs(Math.abs(C[0] - P[s.curves[1].ids[0]][0]) - 5); };
+    check("Tangent added: the right line touches the circle, still plumb, still closed", /Tangent added/.test(d.msg) && rightGap(d.sk) < 1e-3 && d.problem === null, `${d.msg} ${rightGap(d.sk)}`);
+    check("the panel says how much is left to lock it", await run(`/to lock it/.test(document.querySelector("#dz-sk .dof")?.textContent || "")`));
+    await shot("15-forum-report-tangent");
+
+    say("\na rule that fights: refused, named, one click to fix");
+    await run(`brepscript.sketcher().select([{ point: ${d.sk.curves[4].ids[0]} }])`);
+    await run(`document.querySelector('#dz-sk [data-con="fixed"]').click()`);
+    await run(`brepscript.sketcher().dimension([{ curve: 0 }], 20)`);
+    await run(`brepscript.sketcher().select([{ point: ${d.sk.curves[0].ids[0]} }])`);
+    await run(`document.querySelector('#dz-sk [data-con="fixed"]').click()`);
+    // the box's left corner and the circle are pinned now: a 12 wide box can't reach the circle
+    const nCons = (await sk()).sk.constraints.length;
+    await run(`brepscript.sketcher().dimension([{ curve: 0 }], 12)`);
+    d = await sk();
+    const blocked = await run(`document.querySelectorAll("#dz-sk [data-fix]").length`);
+    check("a width that can't fit is refused (nothing changed) with fix buttons", blocked > 0 && d.sk.constraints.length === nCons && /can't be added/.test(d.msg), d.msg);
+    check("…the blocking rules are red on the sketch", await run(`document.querySelectorAll(".dz-glyph.bad, .dz-dim.bad").length`) > 0);
+    await shot("16-rule-refused");
+    const fix = await run(`(() => { const b = document.querySelector("#dz-sk [data-fix]").getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })()`);
+    await click(fix);
+    d = await sk();
+    check("one click on a fix: that rule goes, the change is made, every rule met", /removed/.test(d.msg) && (await run(`document.querySelectorAll(".dz-glyph.bad").length`)) === 0, d.msg);
+
+    say("\nundo and redo inside the sketch (Fusion's keys)");
+    const ctrl = async (keyCode, shift = false) => {
+      win.webContents.focus();
+      for (const type of ["keyDown", "keyUp"]) win.webContents.sendInputEvent({ type, keyCode, modifiers: ["control", ...(shift ? ["shift"] : [])] });
+      await wait(150);
+    };
+    const k0 = (await sk()).sk.constraints.length;
+    await ctrl("Z");
+    const k1 = (await sk()).sk.constraints.length;
+    await ctrl("Y");
+    const k2 = (await sk()).sk.constraints.length;
+    check("Ctrl+Z takes the last change back, Ctrl+Y puts it again", k1 !== k0 && k2 === k0, `${k0} -> ${k1} -> ${k2}`);
+    const opened = await run(`(() => { const got = []; const o = window.open; window.open = (u) => { got.push(u); return null; }; document.querySelector("#dz-sk h3 .help").click(); window.open = o; return got; })()`);
+    check("the panel's ? opens the Design help at the sketch section", opened[0] === "design-help.html#sketch", JSON.stringify(opened));
+    await run(`brepscript.sketcher().cancel()`);
+    await wait(300);
+    check("cancelling brings the model back to full strength", await run(`[...(function* walk(o) { yield o; for (const c of o.children) yield* walk(c); })(brepscript.modelGroup)].filter((m) => m.isMesh).every((m) => [m.material].flat().every((x) => x.opacity > 0.3))`));
+
+    say("\nthe user's screenshot: a circle, three lines ending about on it; tangent both sides, trim, a cone");
+    await setCode(`return cube([4, 4, 4]);`);
+    await run(`brepscript.openSketch()`);
+    await wait(700);
+    await run(`document.querySelector('#dz-sk [data-plane="XY"]').click()`);
+    await wait(700);
+    await run(`brepscript.sketcher().tool("circle")`);
+    await click(await skScreen([0, 0]));
+    await click(await skScreen([10.6, 0]));
+    await run(`brepscript.sketcher().tool("line")`);
+    for (const p of [[-9, -5], [-4.5, -16], [5, -16], [9.5, -5.5]]) await click(await skScreen(p));
+    await run(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    await run(`brepscript.sketcher().tool("select")`);
+    d = await sk();
+    check("a circle and three lines", d.sk.curves.length === 4 && d.sk.curves[0].kind === "circle", JSON.stringify(d.sk.curves));
+    const sideGap = (s, li) => {
+      const P = s.points, [a, b] = s.curves[li].ids.map((k) => P[k]), C = P[s.curves[0].ids[0]];
+      const r = s.curves[0].kind === "circle" ? s.curves[0].r : Math.hypot(P[s.curves[0].ids[1]][0] - C[0], P[s.curves[0].ids[1]][1] - C[1]);
+      const u = [b[0] - a[0], b[1] - a[1]];
+      return Math.abs(Math.abs((C[0] - a[0]) * u[1] - (C[1] - a[1]) * u[0]) / Math.hypot(...u) - r);
+    };
+    for (const li of [1, 3]) {
+      const s0 = (await sk()).sk, C = s0.points[s0.curves[0].ids[0]], r = s0.curves[0].r;
+      const [a, b] = s0.curves[li].ids.map((k) => s0.points[k]);
+      await click(await skScreen([C[0], C[1] + r]));                               // the circle's top
+      await shiftClick(await skScreen([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]));   // the side line's middle
+      await run(`document.querySelector('#dz-sk [data-con="tangent"]').click()`);
+      await wait(200);
+      d = await sk();
+      check(`side ${li}: Tangent added, the line touching the circle`, /Tangent added/.test(d.msg) && sideGap(d.sk, li) < 1e-3, `${d.msg} ${sideGap(d.sk, li)}`);
+    }
+    await shot("17-cone-tangent");
+    await run(`brepscript.sketcher().tool("trim")`);
+    {
+      const s0 = (await sk()).sk, C = s0.points[s0.curves[0].ids[0]];
+      await click(await skScreen([C[0], C[1] - s0.curves[0].r]));
+    }
+    d = await sk();
+    check("trimming the circle's lower part leaves a closed cone, still tangent", d.sk.curves[0].kind === "arc" && d.problem === null && sideGap(d.sk, 1) < 1e-3 && sideGap(d.sk, 3) < 1e-3, JSON.stringify({ c: d.sk.curves, p: d.problem }));
+    await shot("18-cone-trimmed");
+    const vc0 = await volume();
+    await run(`document.querySelector("#dz-sk .ok").click()`);
+    await wait(800);
+    check("it builds", await builtOk());
+    const vc1 = await volume();
+    check("…a cone about 4,200 mm³ beside the cube", vc1 - vc0 > 3500 && vc1 - vc0 < 5000, `${vc0} -> ${vc1}`);
+    await shot("19-cone-built");
 
     say("\nCode mode");
     await run(`brepscript.setMode("code")`);
