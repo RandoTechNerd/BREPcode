@@ -1898,6 +1898,9 @@
     #brep-example-note .xn-look button { background: none; border: 0; padding: 0; color: var(--accent, #7fd1ff); font: inherit; font-weight: 600; cursor: pointer; }
     .hint-link { background: none; border: 0; padding: 0; color: var(--accent, #7fd1ff); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
     @media (max-width: 560px) { #brep-example-note { bottom: 92px; } #brep-example-note .xn-thumb { width: 88px; } }
+    #tools-mesh { display: flex; flex-direction: column; border-bottom: 1px solid var(--border-soft, #2a3654); margin-bottom: 4px; padding-bottom: 4px; }
+    #tools-mesh[hidden] { display: none; }
+    #tools-mesh .tools-group-head { text-transform: none; font-variant: normal; letter-spacing: 0; font-size: 11px; }
     #tools-menu .tools-group-head { font-size: 10.5px; font-weight: 600; text-transform: uppercase; font-variant: small-caps;
       letter-spacing: .1em; color: var(--muted2, #8ea0bd); padding: 8px 10px 3px; }
 
@@ -3316,6 +3319,9 @@
         </div>
         <!-- toolbox: the model-editing tools, with an icon + a word each -->
         <div id="tools-menu">
+          <!-- filled when the toolbox opens: the mesh-only tools, shown only
+               while the editor holds an imported STL / 3MF / OBJ -->
+          <div id="tools-mesh" hidden></div>
           <button data-act="drill-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -17106,6 +17112,29 @@ ${joined}${SITE_TAIL}`), joined);
           $("export-simplify")?.addEventListener("click", () => { fixnote.textContent = ""; hint.textContent = ""; simplify(); });
           return;
         }
+        // The model is an imported MESH and the precision kernel couldn't sew
+        // it. A simplified mesh is the usual one: a 226k Benchy decimated to
+        // 10k is watertight and clean, yet OCCT's STL reader still refuses it.
+        // Even sewn, it would only be triangles inside the STEP. The two ways
+        // that give real curved faces are the smooth surface and the exact
+        // rebuild, so they are offered right here instead of "try again".
+        const meshName = fmt === "step-curved" && meshImportInCode();
+        if (meshName) {
+          const smooth = () => convertImportToSmooth(meshName, null, "", retry);
+          const solid = () => convertImportAuto(meshName);
+          job.fail(`${fmtName} export failed: ${meshName} is a mesh the precision kernel couldn't sew.`,
+            { actions: [{ label: "Make it a smooth surface", run: smooth }, { label: "Open as a solid", run: solid }] });
+          setStatus("err", `${fmtName} export failed: ${meshName} is a mesh the precision kernel couldn't sew.`);
+          const btn = (id, text, title) => `<button id="${id}" title="${esc(title)}" style="font:inherit;padding:1px 8px;margin:2px 4px 2px 0;border:1px solid currentColor;border-radius:6px;background:transparent;color:var(--err);cursor:pointer;font-weight:700">${text}</button>`;
+          fixnote.innerHTML = `<span style="color:var(--err)"><b>${esc(fmtName)} export failed:</b> it's a mesh, see below</span>`;
+          hint.innerHTML = `<span style="color:var(--err)"><b>${esc(fmtName)} export failed:</b> ${esc(meshName)} is still triangles, and the precision kernel couldn't sew them into a solid. Turn it into real curved faces first, then it exports:</span><br>`
+            + btn("export-smooth", "Make it a smooth surface", "Fit smooth curved patches over it, with true planes and cylinders where the mesh really is that shape, then export the curved STEP")
+            + btn("export-solid", "Open as a solid", "Try the exact rebuild and the smooth surface at once and keep the better one")
+            + `<br><span style="color:var(--muted3)">The faceted STEP export (Surfaces: Faceted) works on any mesh as it is.</span>`;
+          $("export-smooth")?.addEventListener("click", () => { fixnote.textContent = ""; hint.textContent = ""; smooth(); });
+          $("export-solid")?.addEventListener("click", () => { fixnote.textContent = ""; hint.textContent = ""; solid(); });
+          return;
+        }
         job.fail(`${fmtName} export failed: ${why.slice(0, 160)}`, { retry });
         setStatus("err", `${fmtName} export failed: ${why.slice(0, 90)}`);
         const tip = fmt === "step-curved"
@@ -18778,7 +18807,13 @@ let SIMPLIFY_TARGET = 10000;
           const faces = CAGE_SIZES[i];
           if (i) job?.step(1);
           const unwatch = job ? watchCage(name, (ev) => { if (ev.faces === faces) job.frac(ev.stage / ev.of); }) : null;
-          try { cage = await needCage(bg, name, faces); } finally { unwatch?.(); }
+          try {
+            cage = await needCage(bg, name, faces);
+            // Nothing queued it: the layout is queued when a file is dropped,
+            // and an import that arrived another way (Simplify, a reopened
+            // project, the export's fallback) never got one. Queue it now.
+            if (!cage) { queueSmoothCage(name); cage = await needCage(bg, name, faces); }
+          } finally { unwatch?.(); }
           if (!cage) throw new Error("the surface layout didn't run (the mesh may be too large, or the device is saving data)");
           await new Promise((res) => setTimeout(res, 30));       // let the bar paint
           begun = await s.call({ op: "begin", verts: cage.verts.slice(), quads: cage.quads.slice(), stl, name: name.replace(/\.\w+$/, ""), stops: SMOOTH_STOPS.map((x) => x.pct), ...SMOOTH_HYBRID() });
@@ -21902,6 +21937,59 @@ let SIMPLIFY_TARGET = 10000;
     // Toolbox dropdown — the model-editing tools in one place. Rows click the
     // real (hidden) buttons, so each tool has exactly one implementation.
     const toolsMenu = $("tools-menu");
+
+    // The first imported MESH the editor's code uses (STL text, not an exact
+    // solid's STEP), or null. The mesh-only tools and the curved export's
+    // fallback both ask this.
+    function meshImportInCode() {
+      for (const [, n] of code.value.matchAll(/importedMesh\(\s*"([^"]+)"/g)) {
+        const t = dsl.getImport(n);
+        if (typeof t === "string" && !/^\s*ISO-10303-21/.test(t)) return n;
+      }
+      return null;
+    }
+    // Everything the drop menu offers a mesh, kept in the toolbox too: until
+    // now "Open as a solid", the smooth surface and the reshaping helpers were
+    // only reachable by dropping the file again. Built each time the toolbox
+    // opens, so it follows whatever is in the editor.
+    const MESH_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 14 5.2v5.6L8 14.2 2 10.8V5.2z" /><path d="M2 5.2 8 8.6l6-3.4M8 8.6v5.6" /></svg>';
+    function paintMeshTools() {
+      const box = $("tools-mesh");
+      const name = meshImportInCode();
+      // a file too dense to model shows as a view-only preview, with the
+      // Simplify button on the build bar; offer that here as well
+      const simplifyBtn = /Simplify/.test($("build-now-btn")?.textContent || "") ? $("build-now-btn") : null;
+      box.textContent = "";
+      box.hidden = !name && !simplifyBtn;
+      if (box.hidden) return;
+      const rows = [];
+      if (simplifyBtn && !name) {
+        rows.push(["Simplify & edit", "too dense to model: bring it down to a solid you can edit", () => simplifyBtn.click()]);
+      } else {
+        const tris = (dsl.getImport(name).match(/endfacet/g) || []).length;
+        rows.push(
+          ["Open as a solid", "tries exact and smooth at once and keeps the better one", () => convertImportAuto(name)],
+          ["Open as an exact solid", "real planes and cylinders recovered from the triangles: for CAD parts", () => convertImportToExact(name)],
+          ["Make it a smooth surface", "curved patches over the shape, true planes and cylinders where it has them", () => convertImportToSmooth(name)],
+        );
+        if (tris > 20000) rows.push([`Simplify to ${(DENSE_STEP_TARGET / 1000).toFixed(0)}k triangles`, `it's ${Math.round(tris / 1000)}k: lighter to cut and export`, () => simplifyImportForStep(name)]);
+        for (const g of DROP_TOOLS) for (const t of g.tools) {
+          if (t.id.startsWith("wrap:")) rows.push([t.label, t.desc, () => runDropTool(t.id)]);
+        }
+      }
+      const head = document.createElement("div");
+      head.className = "tools-group-head";
+      head.textContent = name ? `This mesh: ${name}` : "This mesh";
+      box.appendChild(head);
+      for (const [label, desc, run] of rows) {
+        const b = document.createElement("button");
+        b.innerHTML = `${MESH_ICON}<span><b></b><small></small></span>`;
+        b.querySelector("b").textContent = label;
+        b.querySelector("small").textContent = desc;
+        b.addEventListener("click", (e) => { e.stopPropagation(); toolsMenu.classList.remove("open"); run(); });
+        box.appendChild(b);
+      }
+    }
     $("tools-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       moreMenu.classList.remove("open");
@@ -21911,6 +21999,7 @@ let SIMPLIFY_TARGET = 10000;
           || (row.dataset.act === "measure-btn" && measureArmed)
           || (row.dataset.act === "shave-btn" && shaveArmed));
       }
+      if (!toolsMenu.classList.contains("open")) paintMeshTools();
       toolsMenu.classList.toggle("open");
     });
     toolsMenu.addEventListener("click", (e) => {
