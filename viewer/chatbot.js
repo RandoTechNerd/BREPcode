@@ -5,6 +5,7 @@ import { matchRequest, catalogSummary, rankFamilies, keyTokens, stem } from "../
 import { catalogOf, editCatalog, capabilities } from "../src/catalog/edit.js";
 import { catalogStats, FAMILIES, SPECS, CATEGORIES } from "../src/catalog/index.js";
 import { EXACT_CORE } from "../src/exactlane.js";
+import { turnInPlace } from "./rotategizmo.js";
 // SEARCH/REPLACE edit blocks in a reply (the #edits section), applied by the chat.
 export { applyEdits, parseEditBlocks, hasEditBlocks, stripEditBlocks } from "../src/codeedit.js";
 
@@ -261,7 +262,7 @@ function statementEnd(src, i) {
   return src.length;
 }
 
-function tryTransform(lower, currentCode) {
+function tryTransform(lower, currentCode, box = null) {
   // "make a box and rotate it 45" is a creation request, not a transform
   if (/\b(make|create|build|add)\b/.test(lower) && findShapes(lower).length) return null;
   let wrap = null, what = null;
@@ -276,19 +277,19 @@ function tryTransform(lower, currentCode) {
     : /around\s+y|about\s+y|y.?axis/.test(lower) ? 1 : 2;
 
   if (/\bflip\b.*\b(side|over sideways)\b/.test(lower)) {
-    wrap = (s) => `rotate([0, 180, 0], ${s})`; what = "flipped it sideways";
+    wrap = turnInPlace([0, 180, 0], box); what = "flipped it sideways";
   } else if (/\bflip\b|\bupside.?down\b/.test(lower)) {
-    wrap = (s) => `rotate([180, 0, 0], ${s})`; what = "flipped it upside down";
+    wrap = turnInPlace([180, 0, 0], box); what = "flipped it upside down";
   } else if (/\bturn (it )?(a)?round\b|\bturn (it )?180\b/.test(lower)) {
-    wrap = (s) => `rotate([0, 0, 180], ${s})`; what = "turned it around";
+    wrap = turnInPlace([0, 0, 180], box); what = "turned it around";
   } else if (/\blay (it )?(down|flat|on its side)\b/.test(lower)) {
-    wrap = (s) => `rotate([90, 0, 0], ${s})`; what = "laid it on its side";
+    wrap = turnInPlace([90, 0, 0], box); what = "laid it on its side";
   } else if (/\bstand (it )?up\b|\bupright\b/.test(lower)) {
-    wrap = (s) => `rotate([-90, 0, 0], ${s})`; what = "stood it up";
+    wrap = turnInPlace([-90, 0, 0], box); what = "stood it up";
   } else if (/\b(rotate|spin|twist)\b/.test(lower)) {
     const a = angle();
     const v = [0, 0, 0]; v[axis] = a;
-    wrap = (s) => `rotate([${v.join(", ")}], ${s})`;
+    wrap = turnInPlace(v, box);
     what = `rotated it ${a}° about ${"xyz"[axis].toUpperCase()}`;
   } else if (/\bmirror\b|\breflect\b/.test(lower)) {
     const v = /y/.test(lower.replace(/mirror|reflect/g, "")) ? [0, 1, 0] : [1, 0, 0];
@@ -1549,7 +1550,7 @@ function respondOne(text, state = {}, currentCode = "", dims = null) {
   }
 
   // ---- natural-language transforms on the current model ------------------
-  const transformed = tryTransform(lower, currentCode);
+  const transformed = tryTransform(lower, currentCode, boxOf(dims));
   if (transformed) return transformed;
 
   // ---- active guided flow: interpret this message as the answer ----------

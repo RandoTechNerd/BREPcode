@@ -416,6 +416,11 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
   check("an organic mesh is remeshed, not sampled on its own facets",
     remeshForTexture.why === "" && out.length / 9 > soup.length / 9, remeshForTexture.why || `${out.length / 9} triangles`);
   check("...and stays watertight", isWatertight(out));
+  // ...in charts: facets facing the same way flatten together, so the knurl
+  // lattice follows its creases there instead of being sampled facet by
+  // facet (sampled, a decimated Benchy's diamonds came out as crumple)
+  check("...its facets join into crease-aligned charts",
+    remeshForTexture.charts > 0 && remeshForTexture.charts < soup.length / 9 / 8, `${remeshForTexture.charts} charts`);
 }
 {
   // texture() over an imported mesh reads the triangles from the STL instead
@@ -445,6 +450,32 @@ const onSide = (f, i) => Math.abs(facetNz(f, i)) < 0.99;
   const r = await build(texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, importedMesh("texball.stl")));
   const secs = (Date.now() - t0) / 1000;
   check(`knurl over an imported ${ball.length / 3}-triangle mesh builds in under 5 s`, secs < 5 && volumeOf(r) > 10000, `${secs.toFixed(1)} s`);
+
+  // the same shortcut through a move and a scale around the import, and for
+  // the other operations that only want its surface (hull, roundedGrow): each
+  // used to rebuild the mesh on the JS kernel first
+  const { hull, roundedGrow, scale } = await import("../src/dsl.js");
+  const timed = async (what, shape, ok) => {
+    const t1 = Date.now();
+    const out = await build(shape);
+    const s = (Date.now() - t1) / 1000;
+    const pts = soupOf(out);
+    const lo = [0, 1, 2].map((k) => Math.min(...pts.map((p) => p[k])));
+    check(`${what} over an imported mesh builds in under 5 s`, s < 5 && ok(lo, out), `${s.toFixed(1)} s, min ${lo.map((n) => n.toFixed(1))}`);
+  };
+  await timed("knurl through translate + scale",
+    texture({ pattern: "knurl", depth: 0.6, scale: 3, faces: "sides" }, translate([100, 0, 0], scale(1.5, importedMesh("texball.stl")))),
+    (lo) => near(lo[0], 100 - 15 * 1.5, 2));
+  await timed("hull()", hull(translate([100, 0, 0], importedMesh("texball.stl"))), (lo) => near(lo[0], 85, 1.5));
+  // roundedGrow() declines a mesh this dense (thousands of primitives); the
+  // point is that it now says so at once instead of after the kernel rebuild
+  {
+    const t1 = Date.now();
+    let said = "";
+    try { await build(roundedGrow(1, importedMesh("texball.stl"))); } catch (e) { said = e.message; }
+    const s = (Date.now() - t1) / 1000;
+    check("roundedGrow() over a dense import answers in under 5 s", s < 5 && /primitives/.test(said), `${s.toFixed(1)} s: ${said.slice(0, 60)}`);
+  }
 }
 {
   // and the whole thing stays interactive: a 35 mm knurled knob through the kernel

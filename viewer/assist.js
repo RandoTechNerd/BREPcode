@@ -136,12 +136,14 @@ export const SPECS = [
   {
     name: "rotate / orient", group: "Edit a part", sig: "rotate([X, Y, Z], model) — stand it up",
     wrap: "rotate([90, 0, 0], $MODEL$)",
+    turn: [90, 0, 0],                    // clickCheat turns it in place
     snippet: 'rotate([90, 0, 0], importedMesh("part.stl"))', argStart: 7,
-    hint: "Turn an imported model in space — degrees about X, Y, Z. Clicking this wraps the model already in the editor, so a part that imported lying down stands up. Common: [90,0,0] tips it upright, [0,0,90] spins it flat, [180,0,0] flips it over. The rotation is baked into the mesh, so drill/split/fins all work on the new orientation. Add translate([...], …) around it to reposition.",
+    hint: "Turn an imported model in space — degrees about X, Y, Z. Clicking this wraps the model already in the editor, so a part that imported lying down stands up. Common: [90,0,0] tips it upright, [0,0,90] spins it flat, [180,0,0] flips it over. The rotation is baked into the mesh, so drill/split/fins all work on the new orientation. Clicking it turns the part about its own centre and sets it back down where it stood, so it rotates in place instead of swinging round the origin.",
   },
   {
     name: "lay flat / flip", group: "Edit a part", sig: "flip a model over (rotate 180°)",
     wrap: "rotate([180, 0, 0], $MODEL$)",
+    turn: [180, 0, 0],                    // clickCheat turns it in place
     snippet: 'rotate([180, 0, 0], importedMesh("part.stl"))', argStart: 7,
     hint: "Turn a part upside down — useful when it imported with the printable face upward. Combine with the Fins button afterwards to add supports to whichever side now needs them.",
   },

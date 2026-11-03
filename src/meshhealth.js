@@ -77,8 +77,11 @@ export function weldTriangles(coords, { places = 4 } = {}) {
   const points = [];
   const faces = [];
   const index = new Map();
+  // integer keys: toFixed wrote a hair below zero as "-0.0000", so a seam at
+  // x = 0 never met its other side (String(-0) is "0")
+  const f = 10 ** places;
   const id = (x, y, z) => {
-    const k = `${x.toFixed(places)},${y.toFixed(places)},${z.toFixed(places)}`;
+    const k = `${Math.round(x * f)},${Math.round(y * f)},${Math.round(z * f)}`;
     let i = index.get(k);
     if (i === undefined) { i = points.length; points.push([x, y, z]); index.set(k, i); }
     return i;

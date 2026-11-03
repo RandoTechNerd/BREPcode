@@ -5053,7 +5053,7 @@
       dragSpanFor, findResizeTarget, findScaleTargets, rewriteNumbers, enclosingBooleanSpan,
       drillParts, deletionSpan,
     } from "./assist.js";
-    import { ringAngle, makeAngleTracker, snapAngle, readout, rotateEdit } from "./rotategizmo.js";
+    import { ringAngle, makeAngleTracker, snapAngle, readout, rotateEdit, turnInPlace } from "./rotategizmo.js";
     // Background jobs (bgjobs.js): work nobody has asked for yet, run one at a
     // time while the app is quiet and paused while anything the user waits on
     // is going. Foreground work marks itself with bg.foreground()/bg.during();
@@ -5221,6 +5221,7 @@
         ghostParts.set(s.name, m);
       }
       if (ghostParts.size && !ghostHid) { ghostHid = true; modelGroup.visible = false; }
+      if (ghostParts.size) { buildGhost.updateMatrixWorld(true); seatGrid({ grow: true }); }
       if (u.total) setStatus("busy", `Building… step ${Math.min(u.done, u.total)} of ${u.total}`);
     }
     // an ASCII STL's triangles as a preview part
@@ -5669,8 +5670,21 @@
     // The grid is the "floor": keep it directly under the model so shapes sit
     // on it instead of being skewered by it (spheres, JSCAD's centred origin…).
     // Snapped to whole cells so the lines never appear to slide.
-    function seatGrid() {
-      const bb = new THREE.Box3().setFromObject(modelGroup);
+    // It measures everything on show: the model, a build's ghost and a
+    // view-only mesh preview. (Only modelGroup used to count, so a kit of parts
+    // streaming in, or a big STL preview, overflowed a 200 mm grid sized for
+    // the empty scene.) `grow` is for parts arriving one at a time: the grid
+    // only gets bigger, and stays put while the parts still fit on it.
+    function seatGrid({ grow = false } = {}) {
+      const bb = new THREE.Box3();
+      if (modelGroup.visible) bb.expandByObject(modelGroup);
+      bb.expandByObject(buildGhost);
+      try { bb.expandByObject(previewGroup); } catch { /* declared further down */ }
+      if (grow && !bb.isEmpty()) {
+        const half = 100 * grid.scale.x, gx = grid.position.x, gy = grid.position.y;
+        const m = half / 1.3;
+        if (bb.min.x >= gx - m && bb.max.x <= gx + m && bb.min.y >= gy - m && bb.max.y <= gy + m && bb.min.z >= grid.position.z) return;
+      }
       if (bb.isEmpty()) {
         grid.position.set(0, 0, 0);
         grid.scale.setScalar(1);
@@ -5678,7 +5692,7 @@
         return;
       }
       const span = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y);
-      const k = Math.max(1, Math.ceil((span * 1.3) / 200));
+      const k = Math.max(grow ? grid.scale.x : 1, Math.ceil((span * 1.3) / 200));
       grid.scale.setScalar(k);
       const cell = 10 * k;
       grid.position.set(
@@ -10179,7 +10193,13 @@
         wrap = wrap.replace("$W$", r1(size.x)).replace("$D$", r1(size.y))
           .replace("$TX$", r1(-box.min.x)).replace("$TY$", r1(-box.min.y));
       }
-      replaceModelExpr(wrap.replace("$MODEL$", expr));
+      // rotate / flip turn the part about its own centre and set it back on
+      // the bed, not about the origin (turnInPlace says why)
+      if (spec.turn) {
+        const box = shownModelBox();
+        const at = box.isEmpty() ? null : { min: box.min.toArray(), max: box.max.toArray() };
+        replaceModelExpr(turnInPlace(spec.turn, at)(expr));
+      } else replaceModelExpr(wrap.replace("$MODEL$", expr));
       code.focus();
       // select the first number (hole size / stretch amount) so it's easy to tweak
       const firstNum = /-?\d+(?:\.\d+)?/.exec(code.value);
@@ -11241,6 +11261,7 @@ ${joined}${SITE_TAIL}`), joined);
           }
           streamed[m.part] = meshes;
           modelGroup.updateMatrixWorld(true);
+          seatGrid({ grow: true });           // a kit can outgrow the floor part by part
           setStatus("busy", `Building… ${streamed.filter(Boolean).length} of ${m.parts} parts`);
         };
         if (json && getBuildWorker()) {
@@ -19931,6 +19952,7 @@ let SIMPLIFY_TARGET = 10000;
         previewGroup.add(new THREE.Mesh(g, m));
       });
       previewGroup.updateMatrixWorld(true);
+      seatGrid();
       frameModel(previewGroup);
       updateDims(previewGroup);      // the ruler measures what is on screen
     }

@@ -213,6 +213,24 @@ console.log("\nguided flows\n");
   const vol0 = await volumeOf(cur), vol1 = await volumeOf(flip.code);
   check("flip preserves volume", Math.abs(vol0 - vol1) < 5, `${vol0.toFixed(0)} vs ${vol1.toFixed(0)}`);
 
+  // with the model's box known, turns happen in place: about the part's own
+  // centre, and back down on the bed (a part modelled at its corner used to
+  // swing round the origin and end up under the bed)
+  const boxAt = async (code) => {
+    const stl = toSTL(await build(evalCode(code)), "t");
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    return [0, 1, 2].map((k) => [Math.min(...v.map((p) => p[k])), Math.max(...v.map((p) => p[k]))]);
+  };
+  const tall = "translate([40, 20, 0], cube([30, 10, 50]))";
+  const tallBox = { min: [40, 20, 0], max: [70, 30, 50] };
+  const near = (a, b) => a.every((r, k) => Math.abs(r[0] - b[k][0]) < 0.05 && Math.abs(r[1] - b[k][1]) < 0.05);
+  const flipIn = respond("flip it", {}, tall, tallBox);
+  check("flip turns about the part's centre, in place",
+    near(await boxAt(flipIn.code), [[40, 70], [20, 30], [0, 50]]), flipIn.code?.slice(0, 60));
+  const layIn = respond("lay it on its side", {}, tall, tallBox);
+  check("laying a tall part down keeps it centred and on the bed",
+    near(await boxAt(layIn.code), [[40, 70], [0, 50], [0, 10]]), layIn.code?.slice(0, 70));
+
   const rot = respond("rotate it 45 around y", {}, cur);
   check("rotate parses angle and axis", rot.code?.startsWith("rotate([0, 45, 0]"), rot.code?.slice(0, 30));
 

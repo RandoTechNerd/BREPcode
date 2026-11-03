@@ -351,6 +351,62 @@ export function estimateBuild(root) {
 // a large STL's every vertex each keystroke would hurt.
 const XFORM_CACHE = new Map();
 
+// The triangles of a node whose triangles are already known: an imported
+// mesh, under any translate/rotate/scale/mirror. A flat [x,y,z, ...] array,
+// three points a triangle, wound outward; null for anything else.
+//
+// texture(), hull(), roundedGrow() and smoothUnion() only want a surface. They
+// used to get it by building the child in a scratch JS-kernel history and
+// tessellating it again, which for an import is the slow way round: a
+// 20k-triangle Benchy took 76 s in the kernel's per-face metadata pass, page
+// frozen, to hand back the triangles the STL already held. This reads them
+// in milliseconds. (A centred import is left to the kernel, which does the
+// centring.)
+function knownTriangles(c, M = null) {
+  if (c?.kind === "xform") return knownTriangles(c.child, M ? M.clone().multiply(c.matrix) : c.matrix.clone());
+  if (c?.kind !== "import" || c.opts?.center) return null;
+  const t = IMPORTS.get(c.name);
+  const flat = [];
+  if (typeof t === "string" && /^\s*solid/.test(t)) {
+    for (const m of t.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) flat.push(+m[1], +m[2], +m[3]);
+  } else if (t instanceof Uint8Array && t.length >= 84) {
+    const dv = new DataView(t.buffer, t.byteOffset, t.byteLength), nt = dv.getUint32(80, true);
+    if (84 + 50 * nt !== t.length) return null;
+    for (let f = 0; f < nt; f++) for (let k = 0; k < 9; k++) flat.push(dv.getFloat32(84 + 50 * f + 12 + 4 * k, true));
+  } else return null;
+  if (flat.length < 9 || flat.length % 9) return null;
+  const W = M ? M.clone().multiply(c.fix) : c.fix;
+  if (W.equals(IDENTITY)) return flat;
+  const e = W.elements, flip = W.determinant() < 0;
+  for (let i = 0; i < flat.length; i += 3) {
+    const x = flat[i], y = flat[i + 1], z = flat[i + 2];
+    flat[i] = e[0] * x + e[4] * y + e[8] * z + e[12];
+    flat[i + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+    flat[i + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+  }
+  if (flip) {
+    for (let i = 0; i < flat.length; i += 9) {
+      for (let k = 0; k < 3; k++) { const a = flat[i + 3 + k]; flat[i + 3 + k] = flat[i + 6 + k]; flat[i + 6 + k] = a; }
+    }
+  }
+  return flat;
+}
+
+// ...and the box of one, for the ops that build a shape only to measure it
+// (clearance, colorByHeight, layout): { lo: [x,y,z], hi: [x,y,z] } or null.
+function knownBox(c) {
+  const t = knownTriangles(c);
+  if (!t) return null;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < t.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      if (t[i + k] < lo[k]) lo[k] = t[i + k];
+      if (t[i + k] > hi[k]) hi[k] = t[i + k];
+    }
+  }
+  return { lo, hi };
+}
+
 function transformedImport(name, text, matrix) {
   const key = name + "|" + matrix.elements.map((v) => v.toFixed(5)).join(",");
   const hit = XFORM_CACHE.get(key);
@@ -1896,8 +1952,31 @@ function texAmp(o, px, py, pz, nx, ny, nz, frame) {
   if (!(frame & 2) && o.pattern === "waffle") {
     return Math.max(Math.max(0, triWave(px / s) * 2 - 1), Math.max(0, triWave(py / s) * 2 - 1));
   }
+  // A curved facet of an organic mesh (a Benchy's hull, the cabin roof): no
+  // single flat layout fits, and surfaceUW switching between its angle and
+  // tangent forms as the normal swings crumpled the pattern. There it is laid
+  // out TRIPLANAR: the pattern projected along each world axis, blended by how
+  // squarely the surface faces it. Position and smoothed normal are both
+  // continuous over the surface, so the blend has no seams.
+  if ((frame & 8) && !(frame & 2)) {
+    const cx = o.knurlCx || 0, cy = o.knurlCy || 0, cz = o.knurlCz || 0;
+    const qx = (px - cx) / s + 0.5, qy = (py - cy) / s + 0.5, qz = (pz - cz) / s + 0.5;
+    let wx = nx ** 8, wy = ny ** 8, wz = nz ** 8;
+    const sum = wx + wy + wz || 1;
+    wx /= sum; wy /= sum; wz /= sum;
+    let a = 0;
+    if (wx > 1e-3) a += wx * surfacePattern(o.pattern, qy, qz);
+    if (wy > 1e-3) a += wy * surfacePattern(o.pattern, qx, qz);
+    if (wz > 1e-3) a += wz * surfacePattern(o.pattern, qx, qy);
+    return a;
+  }
   const [u, w] = surfaceUW(o, px, py, pz, nx, ny, nz, frame);
-  switch (o.pattern) {
+  return surfacePattern(o.pattern, u, w);
+}
+
+// a surface pattern's height (0..1) at (u, w), in periods
+function surfacePattern(pattern, u, w) {
+  switch (pattern) {
     case "knurl":
       // Classic diamond knurl: two sets of V-grooves crossing at +-45 degrees,
       // and the surface is whichever groove profile is LOWER, so the whole
@@ -1969,6 +2048,14 @@ function texWants(o, n) {
 function texLattice(o, reg, L) {
   if (o.map) return null;
   const s = o.scale;
+  // a chart (texmesh.js) keeps two world coordinates: the triplanar layout
+  // there is (coord - centre) / s + 1/2 in each
+  if (reg.kind === "chart") {
+    if (o.pattern !== "knurl" && o.pattern !== "studs") return null;
+    const C = [o.knurlCx || 0, o.knurlCy || 0, o.knurlCz || 0];
+    const uw = { A: [[1 / s, 0], [0, 1 / s]], off: [0.5 - C[reg.i0] / s, 0.5 - C[reg.i1] / s] };
+    return o.pattern === "knurl" ? { kind: "crossed", ...uw } : { kind: "crossed", quarter: true, ...uw };
+  }
   if (SURFACE_PATTERNS.has(o.pattern)) {
     // the affine map param -> (u, w) where surfaceUW is linear in the region
     const uw = surfaceAffine(o, reg, s);
@@ -2055,12 +2142,19 @@ export function displacedPositions(soupIn, o) {
   }
 
   let verts, faces, frame = null;
-  const re = o.remesh === false ? null : remeshForTexture(soup, {
+  const remeshOpts = {
     L: spacing,
     wants: (n) => texWants(o, n),
     lattice: (reg, L) => texLattice(o, reg, L),
     maxTris: o.maxTris || 24000,
-  });
+    // a period-sized pattern on curved facets wants ~6 samples a period
+    facetL: SURFACE_PATTERNS.has(o.pattern) ? 1 / 3 : 1,
+    charts: o.pattern === "knurl" || o.pattern === "studs",
+  };
+  let re = o.remesh === false ? null : remeshForTexture(soup, remeshOpts);
+  // charts are the newest and boldest part of the remesher: if they trip on a
+  // mesh, it is remeshed facet by facet as before rather than not at all
+  if (!re && o.remesh !== false && remeshOpts.charts) re = remeshForTexture(soup, { ...remeshOpts, charts: false });
   if (re) {
     verts = re.verts; faces = re.faces; frame = re.frame;
   } else {
@@ -3530,10 +3624,14 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // pathologically slow (a 10mm box at r=0.15 did not finish in ten
       // minutes). A clearance does not need the offset's one honest advantage,
       // its rounded corners, because the gap is smaller than the corner.
+      // an import is measured from its own triangles (knownBox), unbuilt
+      const kb = knownBox(n.child);
       const scratch = new partHistory.constructor();
-      await compile(n.child, scratch);
-      await scratch.runHistory({ throwOnFeatureError: true });
-      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      if (!kb) {
+        await compile(n.child, scratch);
+        await scratch.runHistory({ throwOnFeatureError: true });
+      }
+      const lo = kb ? kb.lo : [Infinity, Infinity, Infinity], hi = kb ? kb.hi : [-Infinity, -Infinity, -Infinity];
       const v = new Vector3();
       for (const s of (scratch.scene?.children || [])) {
         if (s.type !== "SOLID") continue;
@@ -3572,10 +3670,14 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // scratch history purely to find how tall it is, so nobody has to tell
       // it. Then cut it into bands and emit them as a GROUP — separate solids,
       // one colour each, which is the whole point (see colorByHeight).
+      // an import is measured from its own triangles (knownBox), unbuilt
+      const kb = knownBox(n.child);
       const scratch = new partHistory.constructor();
-      await compile(n.child, scratch);
-      await scratch.runHistory({ throwOnFeatureError: true });
-      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      if (!kb) {
+        await compile(n.child, scratch);
+        await scratch.runHistory({ throwOnFeatureError: true });
+      }
+      const lo = kb ? kb.lo : [Infinity, Infinity, Infinity], hi = kb ? kb.hi : [-Infinity, -Infinity, -Infinity];
       const v = new Vector3();
       for (const s of (scratch.scene?.children || [])) {
         if (s.type !== "SOLID") continue;
@@ -3636,10 +3738,13 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       let last = null;
       const v = new Vector3();
       for (const child of n.children) {
+        const kb = knownBox(child);                     // an import: measured unbuilt
         const scratch = new partHistory.constructor();
-        await compile(child, scratch);
-        await scratch.runHistory({ throwOnFeatureError: true });
-        let lo = Infinity, hi = -Infinity, floor = Infinity;
+        if (!kb) {
+          await compile(child, scratch);
+          await scratch.runHistory({ throwOnFeatureError: true });
+        }
+        let lo = kb ? kb.lo[0] : Infinity, hi = kb ? kb.hi[0] : -Infinity, floor = kb ? kb.lo[2] : Infinity;
         for (const s of (scratch.scene?.children || [])) {
           if (s.type !== "SOLID") continue;
           s.updateMatrixWorld(true);
@@ -3671,9 +3776,13 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // where its faces, rims and corners are, and then assemble the shell out
       // of primitives. Same scratch-history trick hull() uses; the child never
       // reaches the main history, so only the finished shape renders.
+      // An import's own triangles are already a soup (knownTriangles).
+      const known = knownTriangles(n.child);
       const scratch = new partHistory.constructor();
-      await compile(n.child, scratch);
-      await scratch.runHistory({ throwOnFeatureError: true });
+      if (!known) {
+        await compile(n.child, scratch);
+        await scratch.runHistory({ throwOnFeatureError: true });
+      }
 
       // Read the real TRIANGLES, which means honouring the index buffer.
       //
@@ -3686,8 +3795,8 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // then a nonsense polyhedron. It offsets perfectly happily, and the
       // kernel rejects the result as "Not manifold", which is a fair verdict on
       // the offset of a shape that was never a solid.
-      const soup = [];
-      for (const s of (scratch.scene?.children || [])) {
+      const soup = known || [];
+      for (const s of (known ? [] : scratch.scene?.children || [])) {
         if (s.type !== "SOLID") continue;
         s.updateMatrixWorld(true);
         s.traverse((o) => {
@@ -3793,11 +3902,19 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // surface vertices, take the 3D convex hull of them all, and import that
       // hull mesh as the result. Children never enter the main history, so only
       // the hull renders. ConvexGeometry is loaded on demand (hull is rare).
-      const scratch = new partHistory.constructor();
-      for (const child of n.children) await compile(child, scratch);
-      await scratch.runHistory({ throwOnFeatureError: true });
       const { ConvexGeometry } = await import("three/addons/geometries/ConvexGeometry.js");
       const pts = [];
+      // imported meshes give their points directly (knownTriangles); only the
+      // rest is built in the scratch history
+      const rest = [];
+      for (const child of n.children) {
+        const t = knownTriangles(child);
+        if (!t) { rest.push(child); continue; }
+        for (let i = 0; i < t.length; i += 3) pts.push(new Vector3(t[i], t[i + 1], t[i + 2]));
+      }
+      const scratch = new partHistory.constructor();
+      for (const child of rest) await compile(child, scratch);
+      if (rest.length) await scratch.runHistory({ throwOnFeatureError: true });
       for (const s of (scratch.scene?.children || [])) {
         if (s.type !== "SOLID") continue;
         s.updateMatrixWorld(true);
@@ -3905,22 +4022,10 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // the kernel's own tessellation via toSTL, run the displacement pipeline,
       // and import the result as a mesh solid.
       const flat = [];
-      // An imported mesh IS its triangles, so they are read straight from the
-      // STL. Building it in the scratch history only to tessellate it again
-      // cost a 20k-triangle Benchy 76 s on the JS kernel (its per-face
-      // metadata pass), with the page frozen; this takes milliseconds. A
-      // centred or binary import, or any other child, still goes the long way.
-      const meshText = (c) => {
-        if (c?.kind !== "import" || c.opts?.center) return null;
-        const t = IMPORTS.get(c.name);
-        if (typeof t !== "string" || !/^\s*solid/.test(t)) return null;
-        return c.fix.equals(IDENTITY) ? t : transformedImport(c.name, t, c.fix);
-      };
-      const direct = n.children.map(meshText);
+      // an imported mesh's triangles come straight from its STL (knownTriangles)
+      const direct = n.children.map((c) => knownTriangles(c));
       if (direct.every(Boolean)) {
-        for (const t of direct) {
-          for (const m of t.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)) flat.push(+m[1], +m[2], +m[3]);
-        }
+        for (const t of direct) for (let i = 0; i < t.length; i++) flat.push(t[i]);
       } else {
         const scratch = new partHistory.constructor();
         for (const child of n.children) await compile(child, scratch);
@@ -4000,9 +4105,17 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         // its own. Same scratch-build road as texture(), welded to an indexed
         // mesh; the fields themselves are built after the bounds are known.
         for (const child of n.children) {
+          // an import's triangles straight from its STL (knownTriangles), and
+          // too many is said BEFORE any work, not after a long build
+          const known = knownTriangles(child);
+          if (known && known.length / 9 > MAX_FACES) {
+            throw new Error(`smoothUnion(): a child has ${known.length / 9} triangles, past the ${MAX_FACES} the distance sampler handles quickly — simplify it first`);
+          }
           const scratch = new partHistory.constructor();
-          await compile(child, scratch);
-          await scratch.runHistory({ throwOnFeatureError: true });
+          if (!known) {
+            await compile(child, scratch);
+            await scratch.runHistory({ throwOnFeatureError: true });
+          }
           const index = new Map();
           const points = [], faces = [];
           const vid = (x, y, z) => {
@@ -4011,7 +4124,13 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
             if (i === undefined) { i = points.length; index.set(key, i); points.push([x, y, z]); take([x, y, z]); }
             return i;
           };
-          for (const s of (scratch.scene?.children || [])) {
+          if (known) {
+            for (let i = 0; i < known.length; i += 9) {
+              const a = vid(known[i], known[i + 1], known[i + 2]), b = vid(known[i + 3], known[i + 4], known[i + 5]), c = vid(known[i + 6], known[i + 7], known[i + 8]);
+              if (a !== b && b !== c && a !== c) faces.push([a, b, c]);
+            }
+          }
+          for (const s of (known ? [] : scratch.scene?.children || [])) {
             if (s?.type !== "SOLID" || typeof s.toSTL !== "function") continue;
             const vs = [...s.toSTL("t", 6).matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)];
             for (let i = 0; i + 2 < vs.length; i += 3) {

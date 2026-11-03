@@ -199,6 +199,7 @@ class Tri2 {
     // only a strictly convex quad can flip and stay valid
     const minA = tol.area;
     if (this.orient(a, d, c) <= minA || this.orient(d, b, c) <= minA) return false;
+    if (tol.forbid && tol.forbid(c, d)) return false;
     const ic = this.inCircle(a, b, c, d);
     if (ic > tol.circle) return true;
     if (ic < -tol.circle || !prefer) return false;
@@ -218,6 +219,87 @@ class Tri2 {
         }
       }
     }
+  }
+  // Take interior point p out: its star of k triangles becomes k-2 by ear
+  // clipping the ring round it, then Delaunay again. The two spare slots are
+  // filled from the end of the list, so triangle ids stay dense. `t0` is any
+  // triangle with p as a corner. false (nothing changed) if p is on the
+  // boundary or the ring won't clip.
+  removePoint(p, t0, tol, prefer) {
+    const { v, nb } = this;
+    const star = [], ring = [], outer = [];
+    let t = t0;
+    for (let guard = 0; guard < 64; guard++) {
+      const i = v[3 * t] === p ? 0 : v[3 * t + 1] === p ? 1 : 2;
+      if (v[3 * t + i] !== p) return false;
+      star.push(t);
+      ring.push(v[3 * t + (i + 1) % 3]);
+      outer.push(nb[3 * t + (i + 1) % 3]);             // across the edge opposite p
+      const u = nb[3 * t + (i + 2) % 3];              // next round p (edge c->p)
+      if (u < 0) return false;                        // on the boundary
+      t = u;
+      if (t === t0) break;
+    }
+    const k = ring.length;
+    if (t !== t0 || k < 3) return false;
+    // ear clipping: ring is CCW round p; an ear (a,b,c) is convex with no
+    // other ring point inside
+    const idx = ring.map((_, j) => j), tris = [];
+    const conv = (a, b, c) => this.orient(a, b, c) > tol.area;
+    const inside = (a, b, c, q) => this.orient(a, b, q) >= 0 && this.orient(b, c, q) >= 0 && this.orient(c, a, q) >= 0;
+    while (idx.length > 3) {
+      let cut = -1;
+      for (let j = 0; j < idx.length && cut < 0; j++) {
+        const a = ring[idx[(j + idx.length - 1) % idx.length]], b = ring[idx[j]], c = ring[idx[(j + 1) % idx.length]];
+        if (!conv(a, b, c) || (tol.forbid && tol.forbid(a, c))) continue;
+        let ok = true;
+        for (const q of idx) {
+          const r = ring[q];
+          if (r !== a && r !== b && r !== c && inside(a, b, c, r)) { ok = false; break; }
+        }
+        if (ok) cut = j;
+      }
+      if (cut < 0) return false;
+      const j = cut;
+      tris.push([idx[(j + idx.length - 1) % idx.length], idx[j], idx[(j + 1) % idx.length]]);
+      idx.splice(j, 1);
+    }
+    if (!conv(ring[idx[0]], ring[idx[1]], ring[idx[2]])) return false;
+    tris.push([idx[0], idx[1], idx[2]]);
+    // write the k-2 triangles into the first k-2 star slots
+    const slots = star.slice(0, k - 2);
+    const edgeOwner = new Map();                      // "a,b" ring-index edge -> [slot, side]
+    tris.forEach(([a, b, c], m) => {
+      const s = slots[m];
+      v[3 * s] = ring[a]; v[3 * s + 1] = ring[b]; v[3 * s + 2] = ring[c];
+      [[a, b], [b, c], [c, a]].forEach(([x, y], side) => {
+        if ((x + 1) % k === y) {                      // a ring edge: its outside neighbour
+          nb[3 * s + side] = outer[x];
+          if (outer[x] >= 0) {
+            const u = outer[x];
+            for (let q = 0; q < 3; q++) if (star.includes(nb[3 * u + q])) { if (v[3 * u + q] === ring[y] && v[3 * u + (q + 1) % 3] === ring[x]) nb[3 * u + q] = s; }
+          }
+        } else edgeOwner.set(`${x},${y}`, [s, side]);
+      });
+    });
+    for (const [key, [s, side]] of edgeOwner) {
+      const [x, y] = key.split(",");
+      const o = edgeOwner.get(`${y},${x}`);
+      nb[3 * s + side] = o ? o[0] : -1;
+    }
+    // drop the two spare slots: move the last triangles into them
+    const spare = star.slice(k - 2).sort((a, b) => b - a);
+    for (const d of spare) {
+      const last = this.count - 1;
+      if (d !== last) {
+        for (let q = 0; q < 3; q++) { v[3 * d + q] = v[3 * last + q]; nb[3 * d + q] = nb[3 * last + q]; }
+        for (let q = 0; q < 3; q++) this.relink(nb[3 * d + q], last, d);
+        for (let m = 0; m < slots.length; m++) if (slots[m] === last) slots[m] = d;
+      }
+      v.length -= 3; nb.length -= 3;
+    }
+    this.legalize(slots.slice(), tol, prefer);
+    return true;
   }
   // walk to the triangle containing (px,py); -1 if it's outside the region
   locate(px, py, start, eps) {
@@ -467,6 +549,7 @@ function relaxSpherePatch(P, T, faces, { c, R }, iters = 10) {
  */
 export function remeshForTexture(soup, opt) {
   remeshForTexture.why = "";
+  remeshForTexture.charts = 0;
   // why it declined, for tests and debugging (the caller just falls back)
   const fail = (why) => { remeshForTexture.why = why; return null; };
   const { P, T } = weld(soup);
@@ -556,6 +639,10 @@ export function remeshForTexture(soup, opt) {
   };
 
   const tryCyl = (tris) => {
+    // A few slivers fit SOME cylinder exactly, and unrolled round it they can
+    // fold: three 0.0003 mm2 facets on a recentred Benchy did, and sank the
+    // whole remesh. Too few to be a wall anyway; the charts take them.
+    if (tris.length < 6) return null;
     const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     for (const t of tris) {
       if (degen[t]) continue;
@@ -649,6 +736,76 @@ export function remeshForTexture(soup, opt) {
     const sph = trySphere(tris);
     const inComp = new Set(tris);
     const slivers = [];
+    // CHARTS. A decimated organic mesh (a Benchy) is almost all one-triangle
+    // facets, and a facet is too small to hold a lattice that follows the
+    // pattern's creases: it can only be sampled, and sampled knurl is grainy.
+    // So facets that face mostly the same way along one world axis join into a
+    // chart, flattened by dropping that axis. Over a chart the triplanar
+    // pattern (dsl.js texAmp) is that axis's projection, linear in the chart's
+    // own coordinates, so the lattice can sit on its creases like a plane's.
+    // (A sphere keeps its facets: those are relaxed together further down.)
+    if (!sph && opt.charts) {
+      const dom = (t) => {
+        const n = nrmOf(t);
+        let a = 0;
+        for (let k = 1; k < 3; k++) if (Math.abs(n[k]) > Math.abs(n[a])) a = k;
+        return n[a] > 0 ? 2 * a + 1 : 2 * a;
+      };
+      // Facing one way is not enough to lie flat: a patch can still fold over
+      // itself once flattened (it did, three times on a Benchy, and the
+      // overlap came out as a doubled edge that sank the whole remesh). So a
+      // facet joins only if its flattened triangle overlaps none already in.
+      let cell = 0;
+      for (const t of tris) cell += Math.sqrt(area[t]);
+      cell = Math.max(1e-6, (2 * cell) / tris.length);
+      const flat = (t, i0, i1) => [0, 1, 2].map((k) => { const p = pos(T[3 * t + k]); return [p[i0], p[i1]]; });
+      // interiors meet? separating axis over the six edges (touching is fine)
+      const overlap = (A, B) => {
+        for (const [P, Q] of [[A, B], [B, A]]) {
+          const sg = Math.sign((P[1][0] - P[0][0]) * (P[2][1] - P[0][1]) - (P[1][1] - P[0][1]) * (P[2][0] - P[0][0]));
+          for (let e = 0; e < 3; e++) {
+            const a = P[e], b = P[(e + 1) % 3];
+            const ex = b[0] - a[0], ey = b[1] - a[1], el = Math.hypot(ex, ey) || 1;
+            const tolE = el * cell * 1e-6;
+            let allOut = true;
+            for (const q of Q) if (sg * (ex * (q[1] - a[1]) - ey * (q[0] - a[0])) > tolE) { allOut = false; break; }
+            if (allOut) return false;
+          }
+        }
+        return true;
+      };
+      for (const s of tris) {
+        if (region[s] >= 0 || degen[s]) continue;
+        const key = dom(s), id = regions.length, list = [s];
+        const ax = key >> 1, i0 = (ax + 1) % 3, i1 = (ax + 2) % 3;
+        const hash = new Map();
+        const cellsOf = (F) => {
+          const out = [];
+          const x0 = Math.floor(Math.min(F[0][0], F[1][0], F[2][0]) / cell), x1 = Math.floor(Math.max(F[0][0], F[1][0], F[2][0]) / cell);
+          const y0 = Math.floor(Math.min(F[0][1], F[1][1], F[2][1]) / cell), y1 = Math.floor(Math.max(F[0][1], F[1][1], F[2][1]) / cell);
+          for (let i = x0; i <= x1; i++) for (let j = y0; j <= y1; j++) out.push(i * 73856093 + j * 19349663);
+          return out;
+        };
+        const put = (F) => { for (const k of cellsOf(F)) { const l = hash.get(k); if (l) l.push(F); else hash.set(k, [F]); } };
+        const fits = (F) => {
+          for (const k of cellsOf(F)) for (const G of hash.get(k) || []) if (overlap(F, G)) return false;
+          return true;
+        };
+        region[s] = id;
+        put(flat(s, i0, i1));
+        for (let q = 0; q < list.length; q++) {
+          const t = list[q];
+          for (let i = 0; i < 3; i++) {
+            const u = (twin[3 * t + i] / 3) | 0;
+            if (region[u] >= 0 || !inComp.has(u) || degen[u] || dom(u) !== key) continue;
+            const F = flat(u, i0, i1);
+            if (!fits(F)) continue;
+            region[u] = id; list.push(u); put(F);
+          }
+        }
+        regions.push({ kind: "chart", facet: true, chart: true, ax, sg: key & 1 ? 1 : -1, i0, i1, tris: list });
+      }
+    }
     for (const s of tris) {
       if (region[s] >= 0) continue;
       // A zero-area sliver has no plane of its own, and it used to sink the
@@ -727,6 +884,7 @@ export function remeshForTexture(soup, opt) {
   const paramOf = (reg, v, wrap) => {
     const p = pos(v);
     if (reg.kind === "plane") return [dot(p, reg.e1), dot(p, reg.e2)];
+    if (reg.kind === "chart") return [p[reg.i0], p[reg.i1]];
     let x = reg.th.get(v) - reg.cut;
     x -= Math.floor(x / (2 * Math.PI)) * 2 * Math.PI;
     if (wrap) x += 2 * Math.PI;
@@ -744,7 +902,13 @@ export function remeshForTexture(soup, opt) {
   // way to plain ones first, since they cost ~1.7x the triangles).
   let L = opt.L;
   let aligned = true;
+  // A curved facet has no lattice that follows the pattern's creases, so it
+  // is only ever SAMPLED: at the pattern's own spacing (two points a period)
+  // a knurl aliased into crumple on a Benchy's hull. opt.facetL (< 1) samples
+  // those finer.
+  const fk = opt.facetL || 1;
   const specOf = (reg, L, aligned) => {
+    if (reg.facet && !reg.chart) return { kind: "equi", L: L * fk };
     const al = aligned && opt.lattice ? opt.lattice(reg, L) : null;
     return al || { kind: "equi", L };
   };
@@ -778,6 +942,48 @@ export function remeshForTexture(soup, opt) {
   }
   return result;
 
+  // The point of a chart's surface over (x, y) in its flattened coordinates:
+  // on the original triangle there, by barycentrics. Triangles are bucketed
+  // on a grid the first time a chart is asked.
+  function chartLift(reg, x, y) {
+    if (!reg.hash) {
+      let sz = 0;
+      for (const t of reg.tris) sz = Math.max(sz, Math.sqrt(area[t]));
+      const cell = Math.max(sz, 1e-6) * 1.5, h = new Map();
+      for (const t of reg.tris) {
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (let k = 0; k < 3; k++) {
+          const p = pos(T[3 * t + k]);
+          x0 = Math.min(x0, p[reg.i0]); x1 = Math.max(x1, p[reg.i0]); y0 = Math.min(y0, p[reg.i1]); y1 = Math.max(y1, p[reg.i1]);
+        }
+        for (let i = Math.floor(x0 / cell); i <= Math.floor(x1 / cell); i++) {
+          for (let j = Math.floor(y0 / cell); j <= Math.floor(y1 / cell); j++) {
+            const k = i * 73856093 + j * 19349663;
+            const l = h.get(k); if (l) l.push(t); else h.set(k, [t]);
+          }
+        }
+      }
+      reg.hash = { cell, h };
+    }
+    const { cell, h } = reg.hash;
+    let best = null, bestOut = Infinity;
+    for (const t of h.get(Math.floor(x / cell) * 73856093 + Math.floor(y / cell) * 19349663) || []) {
+      const A = pos(T[3 * t]), B = pos(T[3 * t + 1]), C = pos(T[3 * t + 2]);
+      const ax = A[reg.i0], ay = A[reg.i1], bx = B[reg.i0], by = B[reg.i1], cx = C[reg.i0], cy = C[reg.i1];
+      const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (Math.abs(d) < 1e-18) continue;
+      const l0 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / d;
+      const l1 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / d;
+      const l2 = 1 - l0 - l1;
+      const out = -Math.min(l0, l1, l2);
+      if (out < bestOut) { bestOut = out; best = [l0, l1, l2, A, B, C]; }
+      if (out <= 0) break;
+    }
+    if (!best) return null;
+    const [l0, l1, l2, A, B, C] = best;
+    return [0, 1, 2].map((k) => l0 * A[k] + l1 * B[k] + l2 * C[k]);
+  }
+
   function meshAt(L, aligned) {
   const specFor = (reg) => specOf(reg, L, aligned);
   const Lc = L * 2.5;                        // plain faces that only need to absorb split edges
@@ -803,7 +1009,9 @@ export function remeshForTexture(soup, opt) {
       const r1 = regions[region[t]], r2 = regions[region[(twin[h] / 3) | 0]];
       if (!r1.textured && !r2.textured) { splitsOf.set(k, 1); continue; }
       const len = Math.hypot(...sub(pos(a), pos(b)));
-      splitsOf.set(k, Math.max(1, Math.ceil(len / L - 0.25)));
+      const fine = (r) => r.textured && r.facet && !r.chart;
+      const Le = fine(r1) || fine(r2) ? L * fk : L;
+      splitsOf.set(k, Math.max(1, Math.ceil(len / Le - 0.25)));
     }
   }
   for (const reg of regions) {
@@ -946,7 +1154,38 @@ export function remeshForTexture(soup, opt) {
     }
 
     // drop the lattice in
-    const tol = { area: minArea, circle: 0 };
+    // A flip must not draw a chord between two corners that another region
+    // already joins: a thin chart pinched between neighbours would end up
+    // with that edge twice.
+    const rid = region[reg.tris[0]];
+    // A chart's flattened boundary can fold back over a neighbour it turned
+    // away (see the charts above), so a corner that is reflex on the surface
+    // can look convex here, and a chord across it would cover the neighbour.
+    // Inside a chart no NEW edge joins two of its boundary points.
+    const onEdge = new Uint8Array(tri.x.length);
+    for (let t = 0; t < tri.count; t++) for (let i = 0; i < 3; i++) {
+      if (tri.nb[3 * t + i] < 0) { onEdge[tri.v[3 * t + i]] = 1; onEdge[tri.v[3 * t + (i + 1) % 3]] = 1; }
+    }
+    const forbid = (lc, ld) => {
+      if (reg.chart && onEdge[lc] && onEdge[ld]) return true;
+      const a = gid[lc], b = gid[ld];
+      if (!(a < nv && b < nv)) return false;
+      const l = edgeTris.get(ekey(a, b));
+      return !!l && !(region[(l[0] / 3) | 0] === rid && region[(l[1] / 3) | 0] === rid);
+    };
+    const tol = { area: minArea, circle: 0, forbid };
+    // A chart's own interior vertices are the input's sampling, not the
+    // pattern's: take them out so the lattice has the room (on a dense mesh
+    // they used to turn away nearly every lattice point as too close).
+    const gone = new Uint8Array(tri.x.length);       // points taken back out
+    if (reg.chart) {
+      for (let p = 0; p < onEdge.length; p++) {
+        if (onEdge[p]) continue;
+        let t0 = -1;
+        for (let t = 0; t < tri.count && t0 < 0; t++) if (tri.v[3 * t] === p || tri.v[3 * t + 1] === p || tri.v[3 * t + 2] === p) t0 = t;
+        if (t0 >= 0 && tri.removePoint(p, t0, tol, null)) gone[p] = 1;
+      }
+    }
     // cocircular tie-break toward the pattern's creases
     const prefer = spec.kind === "crossed" ? (ta, tb) => !(ta === 2 && tb === 2)
       : spec.kind === "grid" || spec.kind === "rosette" ? (ta, tb) => Math.max(ta, tb)
@@ -989,7 +1228,7 @@ export function remeshForTexture(soup, opt) {
         addToGrid(x, y, { seg: s });
       }
     }
-    for (let i = 0; i < tri.x.length; i++) addToGrid(tri.x[i], tri.y[i], { pt: i });
+    for (let i = 0; i < tri.x.length; i++) if (!gone[i]) addToGrid(tri.x[i], tri.y[i], { pt: i });
     const tooClose = (x, y) => {
       const ci = Math.floor(x / cell), cj = Math.floor(y / cell);
       for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
@@ -1043,7 +1282,9 @@ export function remeshForTexture(soup, opt) {
       // back to 3D, on the true surface
       const ux = Minv[0][0] * x + Minv[0][1] * y, uy = Minv[1][0] * x + Minv[1][1] * y;
       let g;
-      if (reg.kind === "plane") {
+      if (reg.kind === "chart") {
+        g = newVert(chartLift(reg, ux, uy));
+      } else if (reg.kind === "plane") {
         g = newVert([0, 1, 2].map((k) => reg.n[k] * reg.d + reg.e1[k] * ux + reg.e2[k] * uy));
       } else {
         const a = reg.cut + ux / reg.R, ca = Math.cos(a) * reg.R, sa = Math.sin(a) * reg.R;
@@ -1109,6 +1350,7 @@ export function remeshForTexture(soup, opt) {
   }
   const flags = new Uint8Array(nOut);
   for (let i = 0; i < frame.length; i++) if (frame[i]) flags[i] = frame[i];
+  remeshForTexture.charts = regions.filter((r) => r.chart).length;      // for tests
   return { verts: Float64Array.from(outP), faces: Uint32Array.from(outT), frame: flags, L };
   }
 }

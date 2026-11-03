@@ -126,6 +126,28 @@ export function eulerToMatrix([rx = 0, ry = 0, rz = 0]) {
   ];
 }
 
+// A rotate() that turns a part IN PLACE: about the centre of its box
+// ({ min, max } in mm), then lifted or lowered so its bottom ends where it
+// was. A bare rotate([180, 0, 0], part) turns about the ORIGIN, so a part
+// sitting away from 0,0,0 (an STL modelled at its own corner, anything on a
+// grid) swung round in a big arc and landed somewhere else, upside down
+// under the bed. Returns (expr) => the wrapped text.
+export function turnInPlace(deg, box) {
+  const ang = deg.map((n) => Number(n) || 0);
+  const head = `rotate(${fmt(ang)}, `;
+  if (!box || !box.min || !box.max) return (s) => `${head}${s})`;
+  const c = [0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2);
+  const L = eulerToMatrix(ang);
+  let low = Infinity;
+  for (let k = 0; k < 8; k++) {
+    const p = [0, 1, 2].map((i) => ((k >> i) & 1 ? box.max[i] : box.min[i]) - c[i]);
+    low = Math.min(low, L[2][0] * p[0] + L[2][1] * p[1] + L[2][2] * p[2]);
+  }
+  const dz = r2(box.min[2] - (c[2] + low));
+  const turned = (s) => `rotate(${fmt(ang)}, { about: ${fmt(c)} }, ${s})`;
+  return Math.abs(dz) < 0.01 ? turned : (s) => `translate([0, 0, ${dz}], ${turned(s)})`;
+}
+
 export function matrixToEuler(L) {
   const clamp = (n) => Math.min(Math.max(n, -1), 1);
   const y = Math.asin(clamp(L[0][2]));
