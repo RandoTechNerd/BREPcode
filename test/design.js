@@ -86,7 +86,9 @@ console.log("\nmoveText: the one writer behind the body drag and the gizmo\n");
   const tDel = deleteStepText(tsrc, { start: tsrc.indexOf("sphere(6)"), end: tsrc.indexOf("sphere(6)") + 9 });
   check("…a shape goes with the translate() that only carries it", tDel.next === "return union(cube(20));");
   check("…the shape a difference cuts from is refused", !!deleteStepText(dsrc, spanOf("union(cube(10), sphere(4))")).error);
-  check("…and so is the whole model", !!deleteStepText("return cube(10);", { start: 7, end: 15 }).error);
+  check("…the whole model: deleting it empties the plate (return and ; with it)", (() => { const r = deleteStepText("return cube(10);", { start: 7, end: 15 }); return r.how === "clear" && r.next === ""; })());
+  check("…the last shape in a difference() whose hole is gone: the plate empty", deleteStepText("difference(\n  cube([30, 30, 12]),\n)", { start: 14, end: 32 }).next === "");
+  check("…a shape kept in a const is still refused", !!deleteStepText("const a = cube(10);", { start: 10, end: 18 }).error);
   // a closed spline: the last piece runs back into the first point (one loop, no loose end)
   const csk = { points: [], curves: [], constraints: [], dims: [] };
   const segs = SM.addSpline(csk, [[0, 0], [10, 0], [10, 10], [0, 10]], { closed: true });

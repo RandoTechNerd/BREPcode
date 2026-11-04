@@ -1174,6 +1174,16 @@ function bracketArgs(text, b) {
 // hull({ exact: true }, a, b) and smoothUnion(2, a, b) have two shapes each.
 const isShapeArg = (text, a) => !/^(\{|-?[\d.])/.test(text.slice(a.start, a.end));
 
+// the span of the model's whole expression, with a `return` before it and a
+// `;` after it
+export function wholeModelSpan(text, start, end) {
+  const r = /\breturn\s*$/.exec(text.slice(0, start));
+  if (r) start = r.index;
+  const semi = /^\s*;/.exec(text.slice(end));
+  if (semi) end += semi[0].length;
+  return { start, end };
+}
+
 export function deletionSpan(text, site) {
   if (!site || !(site.end > site.start)) return { refuse: "That piece isn't one call in the code, so there is nothing to cut out. Remove it in the editor." };
   let start = site.start, end = site.end, whole = false;
@@ -1184,9 +1194,10 @@ export function deletionSpan(text, site) {
     if (!anc) {
       const before = text.slice(0, start);
       const v = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before);
-      return { refuse: v
-        ? `That shape is stored in <b>${v[1]}</b>. Delete it where <b>${v[1]}</b> is used, or remove that line in the editor.`
-        : "That's the whole model. Deleting it would leave nothing to build." };
+      if (v) return { refuse: `That shape is stored in <b>${v[1]}</b>. Delete it where <b>${v[1]}</b> is used, or remove that line in the editor.` };
+      // the last shape: deleting it is asking for an empty plate (its
+      // `return` and `;` go with it, so what is left still parses)
+      return { ...wholeModelSpan(text, start, end), removed: text.slice(start, end), whole: true, everything: true };
     }
     if (DELETE_BLOCKERS.has(anc.name)) {
       return { refuse: "That shape sits inside an if/for block, so it is safer to remove it in the editor." };

@@ -3928,6 +3928,8 @@
               <option value="rust">next.BREP.io Rust</option>
               <option value="js">BREP.io JS (deprecated, slowest)</option>
             </select></label>
+          <label class="set-row set-check" title="Off: BREPcode opens on an empty plate instead of the sample cube with a hole."><input type="checkbox" id="set-starter-cube" />
+            <span>Start with the sample cube</span></label>
           <label class="set-row set-check"><input type="checkbox" id="set-snap" />
             <span>Snap windows to edges and corners while dragging</span></label>
           <div class="set-btns">
@@ -4382,6 +4384,14 @@
           </label>
           <label class="mat-row"><span>X / Y markers</span>
             <input type="checkbox" id="grid-axes" checked />
+          </label>
+          <label class="mat-row" title="Extra faint lines that rise off the floor, so you can judge height as well as width">
+            <span>Grid style</span>
+            <select id="grid-style">
+              <option value="floor" selected>Floor</option>
+              <option value="walls">Floor + back walls</option>
+              <option value="lattice">3D lattice</option>
+            </select>
           </label>
           <div class="note" style="padding: 2px 10px 8px">
             The grid is the floor your part sits on, one square per 10mm at the
@@ -5134,6 +5144,7 @@
       editorHome: "right",     // where the editor opens: right | left | dock
       chatHome: "top",         // where the assistant opens: top | bottom (corner opposite the editor) | dock
       snapZones: true,         // drag a window to an edge or corner to snap it there
+      starterCube: true,       // a new visit opens on the sample cube (off: an empty plate)
     };
     const prefs = (() => {
       try { return { ...PREFS_DEFAULTS, ...JSON.parse(localStorage.getItem("brepcode-prefs") || "{}") }; }
@@ -5637,6 +5648,34 @@
 
     let grid = null;
     let currentTheme = "dark";
+    // The 3D grid styles: very faint lines rising off the floor, built as a
+    // child of the GridHelper so they move, scale and hide with it. In the
+    // helper's own frame the floor is XZ (±100) and +Y is up; local z = -100
+    // is the back (world +Y) and x = -100 the left.
+    let gridStyle = "floor";
+    function addGrid3D(t) {
+      grid.children.filter((c) => c.userData.grid3d).forEach((c) => { c.geometry.dispose(); c.material.dispose(); grid.remove(c); });
+      if (gridStyle === "floor") return;
+      const H = 100, v = [];
+      const seg = (a, b) => v.push(...a, ...b);
+      if (gridStyle === "walls") {
+        for (let s = -100; s <= 100; s += 10) { seg([s, 0, -100], [s, H, -100]); seg([-100, 0, s], [-100, H, s]); }
+        for (let y = 10; y <= H; y += 10) { seg([-100, y, -100], [100, y, -100]); seg([-100, y, -100], [-100, y, 100]); }
+      } else {
+        for (let x = -100; x <= 100; x += 20) for (let z = -100; z <= 100; z += 20) seg([x, 0, z], [x, H, z]);
+        for (let y = 20; y <= H; y += 20) for (let s = -100; s <= 100; s += 20) { seg([-100, y, s], [100, y, s]); seg([s, y, -100], [s, y, 100]); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
+      // Depth-tested and faint: the part hides the lines behind it, so the
+      // lattice reads as space around the part rather than a flat scribble.
+      // The floor's major-line colour, a touch lighter, kept see-through.
+      const color = new THREE.Color(t.grid1).lerp(new THREE.Color(0xffffff), 0.15);
+      const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: gridStyle === "walls" ? 0.45 : 0.28, depthWrite: false }));
+      lines.userData.grid3d = true;
+      grid.add(lines);
+    }
     function applyTheme(name) {
       const t = THEMES[name] ?? THEMES.dark;
       currentTheme = name;
@@ -5653,6 +5692,7 @@
         scene.remove(old);
       }
       scene.add(grid);
+      addGrid3D(t);
       buildAxisLabels();                        // colours come from the theme
       localStorage.setItem("brepcode-theme", name);
       document.querySelectorAll(".theme-chip").forEach((c) =>
@@ -7438,22 +7478,25 @@
     // so a first-time visitor should see it. The preference is remembered, and
     // a stored "false" is the only thing that turns either off.
     {
-      const showBox = $("grid-show"), axesBox = $("grid-axes");
+      const showBox = $("grid-show"), axesBox = $("grid-axes"), styleSel = $("grid-style");
       const stored = (() => {
         try { return JSON.parse(localStorage.getItem("brepcode-grid") || "{}"); } catch { return {}; }
       })();
       showBox.checked = stored.show !== false;
       axesBox.checked = stored.axes !== false;
+      styleSel.value = ["walls", "lattice"].includes(stored.style) ? stored.style : "floor";
 
       const applyGrid = () => {
         if (grid) grid.visible = showBox.checked;
+        if (grid && gridStyle !== styleSel.value) { gridStyle = styleSel.value; addGrid3D(THEMES[currentTheme] ?? THEMES.dark); }
         axisLabelsOn = axesBox.checked && showBox.checked;   // markers belong to the floor
         buildAxisLabels();
         localStorage.setItem("brepcode-grid",
-          JSON.stringify({ show: showBox.checked, axes: axesBox.checked }));
+          JSON.stringify({ show: showBox.checked, axes: axesBox.checked, style: styleSel.value }));
       };
       showBox.addEventListener("change", applyGrid);
       axesBox.addEventListener("change", applyGrid);
+      styleSel.addEventListener("change", applyGrid);
       applyGrid();
       // applyTheme() builds a fresh GridHelper, which starts visible — reapply
       // the preference whenever that happens, or switching theme silently turns
@@ -9229,6 +9272,7 @@
       $("set-chat-home").value = prefs.chatHome;
       $("set-snap").checked = !!prefs.snapZones;
       $("set-move-for-windows").checked = !!prefs.moveForWindows;
+      $("set-starter-cube").checked = prefs.starterCube !== false;
     }
     // Re-place every window the APP put somewhere; ones you moved stay put.
     // Design mode on or off: every open window moves to where that mode puts
@@ -9293,6 +9337,7 @@
     $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
     $("set-chat-home").addEventListener("change", (e) => { setPref("chatHome", e.target.value); rehomeWindows(); });
     $("set-snap").addEventListener("change", (e) => setPref("snapZones", e.target.checked));
+    $("set-starter-cube").addEventListener("change", (e) => setPref("starterCube", e.target.checked));
     // Turning it back on tidies up at once, rather than at the next window move.
     $("set-move-for-windows").addEventListener("change", (e) => {
       setPref("moveForWindows", e.target.checked);
@@ -10943,6 +10988,10 @@ ${joined}${SITE_TAIL}`), joined);
     // Design mode's timeline can turn that step red with the kernel's reason.
     let lastBuildFailure = null;
     const onceBuilt = (fn) => builtOnce.add(fn);
+    // standing "after every build" hooks (Design's Properties panel and
+    // exploded view re-read the model): returns a function that unhooks it
+    const builtEvery = new Set();
+    const onBuilt = (fn) => { builtEvery.add(fn); return () => builtEvery.delete(fn); };
     // `ok` says whether a model actually reached the plate.
     //
     // It matters because the failure paths below call this too — they have to,
@@ -10957,6 +11006,7 @@ ${joined}${SITE_TAIL}`), joined);
     function fireBuilt(ok = true) {
       clearBuildProgress();         // a failed build hands the old model back
       designUI?.buildResult?.(ok, ok ? null : lastBuildFailure);
+      for (const fn of [...builtEvery]) { try { fn(ok); } catch { /* a hook must not break a build */ } }
       if (!builtOnce.size) return;
       const fns = [...builtOnce];
       builtOnce.clear();
@@ -15065,8 +15115,8 @@ ${joined}${SITE_TAIL}`), joined);
       const cut = deletionSpan(code.value, site);
       if (cut.refuse) { hint.innerHTML = cut.refuse; return true; }
       const before = code.value;
-      const label = /^\s*difference\s*\(/.test(cut.removed)
-        ? `the ${site.kind} and the holes cut in it` : `the ${site.kind}`;
+      const label = cut.everything ? `the ${site.kind}: that was the last shape, so the plate is empty`
+        : /^\s*difference\s*\(/.test(cut.removed) ? `the ${site.kind} and the holes cut in it` : `the ${site.kind}`;
       clearHandles();
       shapeMenu.classList.remove("open");
       pushHistory(before);
@@ -18660,8 +18710,13 @@ let SIMPLIFY_TARGET = 10000;
         let F;
         try { F = await withLoadBar("Opening the menu…", getFizz()); } catch { F = null; }
         if (F && !F.dropSkipped()) {
-          const pick = await F.chooseDropAction(file, { groups: DROP_TOOLS });
+          // a real model (not the empty plate, not the starter cube) may be kept,
+          // the newcomer placed beside it; otherwise an import replaces the code
+          const keepable = !!code.value.trim() && code.value.trim() !== code.defaultValue.trim();
+          const pick = await F.chooseDropAction(file, { groups: DROP_TOOLS, keepable });
           if (!pick) return;
+          const kept = pick.keep && keepable ? { text: code.value, dx: besideCurrentModel() } : null;
+          const importMeshFile = async (f) => { await importMeshFileRaw(f); if (kept) keepBeside(kept, f.name); };
           if (pick.action === "fizz") return openFizz({ file });
           if (pick.action === "fins") return openFizz({ file }, "fins");
           if (pick.action === "exact") {
@@ -18796,7 +18851,7 @@ let SIMPLIFY_TARGET = 10000;
     // a real plane, cylinder, cone or sphere, those faces become true
     // analytic faces; the rest stays smooth B-spline. ?hybrid=0 turns it
     // off, to compare.
-    const SMOOTH_HYBRID = () => (/[?&]hybrid=0/.test(location.search) ? {} : { hybrid: true, rustWasmUrl: window.__BREP_RUST_WASM_URL });
+    const SMOOTH_HYBRID = () => (/[?&]hybrid=0\b/.test(location.search) ? {} : { hybrid: true, rustWasmUrl: window.__BREP_RUST_WASM_URL });
     let smoothSession = null;          // { s, name, estimates, stop } while a smooth result is on screen
     const closeSmoothSession = () => { smoothSession?.s.close(); smoothSession = null; };
 
@@ -20276,6 +20331,23 @@ let SIMPLIFY_TARGET = 10000;
       offerSimplify(hint, file.name, objects, colours, off, total);
     }
 
+    // An import replaces the code; "Keep the current model" in the drop menu
+    // puts the old code back with the newcomer placed beside it (dx measured
+    // before the import, while the old model was the one on screen).
+    function keepBeside(kept, name) {
+      if (typeof dsl.getImport(name) !== "string") return;     // view-only preview: nothing to place
+      const added = code.value.trim().replace(/^return\s+/, "").replace(/;\s*$/, "");
+      code.value = kept.text;
+      const cur = currentModelExpr();
+      if (!cur) { code.value = added; return; }
+      replaceModelExpr(groupWith(cur, kept.dx ? `translate([${kept.dx}, 0, 0], ${added})` : added));
+      pushHistory();
+      paintPartsBar();
+      hint.innerHTML = `Added <b>${esc(name)}</b> beside the model that was here`
+        + (kept.dx ? `, <b>${kept.dx}mm</b> to its right` : "") + `. Both are separate solids; move either with the gizmo or <code>translate([x, y, z], …)</code>.`;
+      buildAfterToolEdit();
+    }
+    const importMeshFileRaw = (file) => importMeshFile(file);
     async function importMeshFile(file) {
       const mb = file.size / 1048576;
       // Beyond ~150 MB even READING the file stalls the tab — refuse. Between
@@ -21489,17 +21561,20 @@ let SIMPLIFY_TARGET = 10000;
       rebuild();
     });
 
-    // Clear the editor: empties the text (◀ brings it back), clears the model.
-    $("clear-btn").addEventListener("click", () => {
-      if (!code.value) return;
+    // Clear the editor: empties the text (◀ / Ctrl+Z brings it back), clears
+    // the model. Design mode's trash (the Browser's header) calls the same.
+    function clearCode({ focus = true } = {}) {
+      if (!code.value) return false;
       pushHistory(code.value);          // snapshot so ◀ restores it
       code.value = "";
-      code.focus();
+      if (focus) code.focus();
       closeComplete();
       pushHistory();
       rebuild();                        // clears the viewport
       updateHint();
-    });
+      return true;
+    }
+    $("clear-btn").addEventListener("click", () => clearCode());
 
     // Drill tool: arm it, then click a face on the model and a hole bores in
     // along that face's normal. Works on imported meshes and any single-expression
@@ -24342,11 +24417,20 @@ let SIMPLIFY_TARGET = 10000;
         });
       },
       text: () => code.value,
+      // the untouched starter cube (a placeholder, not anyone's model)
+      starterText: () => code.defaultValue,
+      isStarter: () => code.value.trim() === code.defaultValue.trim(),
+      clearModel: () => clearCode({ focus: false }),
       lastFailure: () => lastBuildFailure,
       modelMeshes: () => modelGroup.children,
+      onBuilt,
+      openMeasure: () => setMeasureArmed(true),
       clearSelection: () => clearHandles(),
       // hidden handles are not picked either (a hidden dot is not a target)
       handlesVisible: (on) => { handleGroup.visible = on; },
+      // the exploded view: the size lines and measure marks belong to the
+      // assembled model, so they hide while the parts are apart
+      overlaysVisible: (on) => { dimsGroup.visible = on; measureGroup.visible = on; handleGroup.visible = on; },
       featureId: (mesh) => mesh?.userData?.featureId ?? null,
     });
     // Code mode's windows stay where they were. Design moves them out of its
@@ -24495,6 +24579,7 @@ let SIMPLIFY_TARGET = 10000;
     window.brepscript.modelDigest = (...a) => modelDigest(...a);
     window.brepscript.modelViewImages = (...a) => modelViewImages(...a);
     window.brepscript.modelVolume = () => modelVolume();
+    window.brepscript.modelMeshes = () => modelGroup.children;
     window.brepscript.lockKey = async (key, password, provider = "gemini", model = "", baseUrl = "") => {
       const { lockSecret } = await getLockbox();
       const blob = await lockSecret(key, password);
@@ -26694,7 +26779,9 @@ ${SC.describeSelectionContext(anchor)}` : "");
     // 30mm cube with a hole in it appear, frame itself, and then get replaced —
     // the "jump" being frameModel() running twice on two different shapes.
     if (code.value === code.defaultValue && !urlCarriesModel()) {
-      try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
+      // "Start with the sample cube" off: an empty plate instead
+      if (prefs.starterCube === false) { code.value = ""; updateHint(); }
+      else try { showStarterPlaceholder(); } catch { /* a placeholder must never break the boot */ }
     }
 
     // ---- agent bridge surface ---------------------------------------------

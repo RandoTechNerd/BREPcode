@@ -138,6 +138,40 @@ export function stepLabel(step, featureLabel) {
 const UNWRAP = new Set(["fillet", "chamfer", "shell", "translate", "rotate", "scale", "mirror", "move",
   "colorize", "color", "finish", "glass", "glow"]);
 const CUTS = new Set(["difference", "subtract", "cut"]);
+// the model's whole expression, with a `return` before it and a `;` after it
+// (assist.js has the same for the Delete key)
+function wholeModelSpan(text, start, end) {
+  const r = /\breturn\s*$/.exec(text.slice(0, start));
+  if (r) start = r.index;
+  const semi = /^\s*;/.exec(text.slice(end));
+  if (semi) end += semi[0].length;
+  return { start, end };
+}
+// suppressStepText(text, link) -> { next, how: "suppress" | "unsuppress", name } | { error }
+// Suppress: the step (with the transforms that only carry it) wrapped in
+// suppress( ), so it drops out of the union / difference / group it is in but
+// stays in the code. A step already inside a suppress( ) is unwrapped.
+export function suppressStepText(text, link) {
+  const m = parseCode(text);
+  if (!m.ok) return { error: "the code does not parse right now" };
+  let c = m.calls.find((x) => x.start === link.start && x.end === link.end) ?? callAt(m, link.start);
+  if (!c) return { error: "there is no call there" };
+  const name = c.name;
+  for (let up = c; up; up = up.parent == null ? null : m.calls[up.parent]) {
+    if (up.name === "suppress") {
+      const inner = up.args[0];
+      if (!inner) return { error: "an empty suppress()" };
+      return { next: text.slice(0, up.start) + text.slice(inner.start, inner.end) + text.slice(up.end), how: "unsuppress", name };
+    }
+  }
+  const shapeArgs = (k) => k.args.filter((a) => a.type !== "ObjectExpression" && a.type !== "ArrayExpression");
+  for (let up = c.parent == null ? null : m.calls[c.parent]; up && UNWRAP.has(up.name) && shapeArgs(up).length === 1; up = up.parent == null ? null : m.calls[up.parent]) c = up;
+  const p = c.parent == null ? null : m.calls[c.parent];
+  if (!p || shapeArgs(p).length < 2) return { error: "only a step that is one of several shapes (in a union, difference or group) can be suppressed" };
+  const a = p.args.find((x) => x.start <= c.start && x.end >= c.end);
+  if (CUTS.has(p.name) && a === shapeArgs(p)[0]) return { error: `it is the shape the ${p.name}() cuts from` };
+  return { next: text.slice(0, a.start) + "suppress(" + text.slice(a.start, a.end) + ")" + text.slice(a.end), how: "suppress", name };
+}
 export function deleteStepText(text, link) {
   const m = parseCode(text);
   if (!m.ok) return { error: "the code does not parse right now" };
@@ -164,6 +198,18 @@ export function deleteStepText(text, link) {
     const a = p.args[i];
     const [s0, s1] = i < p.args.length - 1 ? [a.start, p.args[i + 1].start] : [p.args[i - 1].end, a.end];
     return { next: text.slice(0, s0) + text.slice(s1), how: "remove", name: stepName, from: p.name };
+  }
+  // The only shape left in its combiner (difference(cube) once the hole has
+  // gone) or a wrapper: climb to the outermost call that holds nothing else.
+  // At the top that is the whole model, and deleting it means an empty plate.
+  let top = c;
+  for (let up = top.parent == null ? null : m.calls[top.parent]; up && shapeArgs(up).length === 1; up = up.parent == null ? null : m.calls[up.parent]) top = up;
+  if (top.parent == null) {
+    if (/\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*$/.test(text.slice(0, top.start))) {
+      return { error: "it is stored in a const other steps may use; edit it in the code" };
+    }
+    const span = wholeModelSpan(text, top.start, top.end);
+    return { next: text.slice(0, span.start) + text.slice(span.end), how: "clear", name: stepName };
   }
   return { error: "it is not one of several shapes (it is the whole model, or a declaration other steps use); edit it in the code" };
 }

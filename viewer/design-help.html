@@ -73,6 +73,9 @@
     <a href="#edit">Trim, offset, construction</a>
     <a href="#finish">Finishing a sketch</a>
     <a href="#model">Working on the model</a>
+    <a href="#params">Parameters and formulas</a>
+    <a href="#inspect">Measure and properties</a>
+    <a href="#assembly">Exploded view</a>
     <a href="#faq">FAQ</a>
     <a href="#limits">What doesn't work yet</a>
     <a href="#stuck">Where code-CAD gets stuck</a>
@@ -83,6 +86,7 @@
 
     <section data-s id="start">
       <h2>Start here</h2>
+      <p><b>The cube with a hole is only a sample.</b> Press the trash can at the top of the Browser for an empty plate (Ctrl+Z brings it back), drop an STL or STEP file (it replaces the sample), or start sketching on the XY plane and finish as a New body (that replaces it too). To start empty every time, turn off <b>Start with the sample cube</b> in Settings (the ⓘ button).</p>
       <p>Everything you do in Design mode is written into the model's code, and the code is what gets built. Switch to <b>Code</b> at any time to see exactly what a click did; switch back and carry on. <kbd>Ctrl</kbd>+<kbd>Z</kbd> outside a sketch takes back a whole step.</p>
       <div class="card note">
         <b>Your first part in six steps</b>
@@ -102,17 +106,30 @@
       <p>A sketch is flat curves on a plane. Closed outlines become shapes you can extrude or revolve; an outline inside another is a hole.</p>
       <table>
         <tr><th>Tool</th><th>How</th></tr>
-        <tr><td>Line <kbd>L</kbd></td><td>Click, click, click: each click ends a line and starts the next. Click the first point again to close. <kbd>Esc</kbd> ends the chain. A line drawn within 3° of level or plumb is made level / plumb for you.</td></tr>
+        <tr><td>Line <kbd>L</kbd></td><td>Click, click, click: each click ends a line and starts the next (so press <kbd>Esc</kbd> when you're done, or the next click adds another line). Click the first point again to close. <kbd>Esc</kbd> ends the chain. A line drawn within 3° of level or plumb is made level / plumb for you.</td></tr>
         <tr><td>Rectangle <kbd>R</kbd></td><td>Two corners (click-click, or press and drag).</td></tr>
         <tr><td>Circle <kbd>C</kbd></td><td>The centre, then a point on the rim (or press and drag).</td></tr>
-        <tr><td>Arc <kbd>A</kbd></td><td>The centre, the start, then the end. Arcs always run counter-clockwise from start to end. Ending on a point that's already there joins it.</td></tr>
+        <tr><td>Centre rect</td><td>The centre, then a corner. It stays centred on that point when you resize it.</td></tr>
+        <tr><td>Arc <kbd>A</kbd></td><td>The centre, the start, then the end. Arcs always run counter-clockwise from start to end. Ending on a point that's already there joins it. An arc drawn on from a line's end, running along it, is made Tangent for you.</td></tr>
+        <tr><td>3-point arc</td><td>Where it starts, where it ends, then a point it passes through (it bows toward that point).</td></tr>
+        <tr><td>Tangent arc</td><td>Click the end of a line or arc, then where the arc ends: it leaves smoothly, the way the curve was going. It keeps going from its own end, so you can chain them; <kbd>Esc</kbd> stops.</td></tr>
         <tr><td>Spline <kbd>S</kbd></td><td>Click the points it passes through; <kbd>Enter</kbd> or a double-click finishes. Click the first point again for a closed loop.</td></tr>
+        <tr><td>Slot</td><td>The two end centres, then how wide. Two half-rounds and two straight sides, kept tangent and the same radius.</td></tr>
+        <tr><td>Polygon</td><td>The centre, then a corner. Set the number of sides in the panel first. Its corners sit on a dashed circle; equal sides keep it regular.</td></tr>
+        <tr><td>Fillet <kbd>F</kbd></td><td>Set the radius in the panel, then click a corner where two lines meet. The corner is rounded with an arc tangent to both; the old sharp corner is kept (hidden), so any size measured to it still holds.</td></tr>
         <tr><td>Trim <kbd>T</kbd></td><td>Click the piece of a line, arc, circle or spline to cut away, between whatever crosses or touches it. A circle trimmed becomes an arc. A curve nothing crosses is deleted.</td></tr>
-        <tr><td>Offset <kbd>O</kbd></td><td>Click a closed outline (or a circle) and type a distance: positive grows it, negative shrinks it.</td></tr>
+        <tr><td>Offset <kbd>O</kbd></td><td>Set the distance in the panel, then click a closed outline (or a circle): positive grows it, negative shrinks it.</td></tr>
+        <tr><td>Mirror</td><td>Select the curves first (Select tool, <kbd>Shift</kbd>+click or a box), then Mirror and click the line to mirror across (a construction centre line is best). Each copy is held symmetric to its original, so change one side and the other follows.</td></tr>
+        <tr><td>Pattern</td><td>Select the curves, then Pattern. <b>Circular</b>: click the centre, the count is in the panel (a bolt circle). <b>Linear</b>: click two points for the step between copies. Copies are plain curves: change the original first, then pattern.</td></tr>
+        <tr><td>Pick regions</td><td>Click a shaded area to leave it out of the extrude (it goes clear), click again to bring it back. Where shapes overlap, each piece is its own region.</td></tr>
+        <tr><td>Project <kbd>P</kbd></td><td>Copies the part's edges that lie in the sketch's plane in as fixed, dashed construction lines, so you can snap to them. Sketch on a face, press <kbd>P</kbd>, and its outline is there.</td></tr>
         <tr><td>Construction <kbd>X</kbd></td><td>Click a curve to make it construction (dashed): a guide that isn't part of the shape, like an axis or a reference line.</td></tr>
         <tr><td>Dimension <kbd>D</kbd></td><td>A line (its length), two points (their distance), a circle or arc (its radius), two lines (the angle).</td></tr>
       </table>
-      <p>In the Select tool, drag a point and the rest of the sketch follows its rules. <kbd>Delete</kbd> removes the picked curves.</p>
+      <p>In the Select tool, drag a point and the rest of the sketch follows its rules. If the rules can't follow (a point held by its dimensions, pulled somewhere else), it goes back and the panel says so. A <b>Fixed</b> point doesn't drag at all. <kbd>Delete</kbd> removes the picked curves.</p>
+      <p><b>Box select:</b> in the Select tool, drag on empty sketch. <b>Left to right</b> (solid box) takes only what is wholly inside; <b>right to left</b> (dashed box) takes anything it touches. <kbd>Shift</kbd> adds to what's picked.</p>
+      <h3 id="snap">Snapping (inference)</h3>
+      <p>While you draw, the pointer snaps the way Fusion's does, and a green tag says to what: <b>Point</b> or <b>Centre</b> (an existing point), <b>Midpoint</b> (a line's middle), <b>Intersection</b> (where two curves cross), <b>On line</b> / <b>On circle</b> / <b>On arc</b>. The rule comes with it: a line started on a midpoint stays at the middle when the line is resized, a point dropped on a circle stays on it when the radius changes. Lining up across or down with a point already there shows a dotted guide (no rule). Hold <kbd>Alt</kbd> to place a point freely. Rules added for you show their symbols like any other; click one to remove it.</p>
     </section>
 
     <section data-s id="keys">
@@ -123,6 +140,7 @@
         <tr><td><kbd>L</kbd> <kbd>R</kbd> <kbd>C</kbd> <kbd>A</kbd></td><td>Line, rectangle, circle, arc</td><td></td></tr>
         <tr><td><kbd>S</kbd></td><td>Spline</td><td>New sketch (Fusion uses S for its command search, which BREPcode doesn't have)</td></tr>
         <tr><td><kbd>T</kbd> <kbd>O</kbd> <kbd>X</kbd> <kbd>D</kbd></td><td>Trim, offset, construction, dimension</td><td></td></tr>
+        <tr><td><kbd>F</kbd> <kbd>P</kbd></td><td>Sketch fillet, project the face's edges</td><td><kbd>F</kbd> fillets model edges</td></tr>
         <tr><td><kbd>E</kbd></td><td>Finish the sketch as an extrude</td><td>Extrude</td></tr>
         <tr><td><kbd>Q</kbd> <kbd>F</kbd> <kbd>H</kbd> <kbd>M</kbd> <kbd>R</kbd></td><td></td><td>Press-pull, fillet, hole, move, rotate</td></tr>
         <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo the last change in the sketch</td><td>Undo the last step</td></tr>
@@ -132,7 +150,8 @@
         <tr><td><kbd>Esc</kbd></td><td>End a chain, then back to Select</td><td>Back to Select</td></tr>
         <tr><td><kbd>F6</kbd></td><td>Look square-on at the sketch again</td><td></td></tr>
         <tr><td><kbd>F1</kbd></td><td>This page</td><td>This page</td></tr>
-        <tr><td><kbd>Alt</kbd> while drawing</td><td>Don't snap to the grid</td><td></td></tr>
+        <tr><td><kbd>Alt</kbd> while drawing</td><td>Don't snap (no grid, no midpoints or curves; existing points still catch)</td><td></td></tr>
+        <tr><td>Drag on empty sketch</td><td>Box select (left to right: inside; right to left: touching)</td><td></td></tr>
       </table>
     </section>
 
@@ -142,7 +161,11 @@
       <table>
         <tr><th>Rule</th><th>Pick</th><th>What it does</th></tr>
         <tr><td>━ Horizontal / │ Vertical</td><td>a line, or two points</td><td>level / plumb</td></tr>
-        <tr><td>● Coincident</td><td>two points, or a point and a line</td><td>the same place / the point on the line</td></tr>
+        <tr><td>● Coincident</td><td>two points, or a point and a line, circle or arc</td><td>the same place / the point on the curve</td></tr>
+        <tr><td>⋯ Midpoint</td><td>a point and a line</td><td>the point at the line's middle</td></tr>
+        <tr><td>⫽ Collinear</td><td>two lines</td><td>on one straight line</td></tr>
+        <tr><td>◎ Concentric</td><td>two circles / arcs</td><td>one centre</td></tr>
+        <tr><td>⇹ Symmetric</td><td>two points, two lines or two circles, then the line to mirror across</td><td>mirror images of each other across that line (circles get the same radius)</td></tr>
         <tr><td>∥ Parallel / ⟂ Perpendicular</td><td>two lines</td><td>same direction / square to each other</td></tr>
         <tr><td>⌒ Tangent</td><td>two curves (see below)</td><td>touch without crossing, running on smoothly</td></tr>
         <tr><td>= Equal</td><td>two lines, or two circles / arcs</td><td>same length / same radius</td></tr>
@@ -166,6 +189,7 @@
     <section data-s id="colours">
       <h2>Blue, white and red</h2>
       <p><span class="sw" style="background:#4f9dff"></span><b>Blue</b> curves can still move: some size or position isn't set yet. <span class="sw" style="background:#f4f7ff"></span><b>White</b> curves are fully held. The panel says how many more rules or dimensions would lock the whole sketch, or <b>✓ Fully defined</b>. Moving the whole sketch counts too, so a sketch with nothing <b>Fixed</b> always has 3 left (two directions and a turn).</p>
+      <p><span class="sw" style="background:#4f9dff;opacity:.4;height:10px"></span><b>Shaded</b> is the closed shape Finish will extrude or revolve. <span class="sw" style="background:#ff5c5c"></span><b>Red dots</b> mark where a curve ends on nothing; <b>red dashed</b> curves enclose nothing and are left out.</p>
       <p><span class="sw" style="background:#d94848"></span><b>Red</b> appears when a rule you're adding fights the ones already there, for example a line made tangent to a circle when both are pinned too far apart. The rule isn't added. Instead the panel names the rules in the way, shows them red on the sketch (hover a button to see which), and offers <b>Remove … and add …</b> to swap one for the new rule in one click.</p>
     </section>
 
@@ -187,12 +211,34 @@
     <section data-s id="finish">
       <h2>Finishing a sketch</h2>
       <p>Pick <b>Extrude</b> (a distance) or <b>Revolve</b> (around the sketch's Y axis or a construction line), and how it meets the model: <b>Join</b> (added), <b>Cut</b> (taken away) or <b>New body</b> (a separate part). <b>Finish</b> writes it all into the code as one undo step. Finish is greyed out until the shape is a closed outline; the panel says what's open.</p>
+      <p><b>Direction:</b> <b>One side</b> of the plane, <b>Symmetric</b> (half each way), or <b>Two sides</b> with a different distance each way.</p>
+      <p><b>A sketch off the part's faces:</b> when Sketch asks where, set <b>Offset</b> (mm along the plane's normal) and/or <b>Tilt</b> (degrees about the plane's own X axis) first, then pick XY / XZ / YZ or click a face: Fusion's Offset Plane and Plane at Angle. The panel then says <i>on a construction plane</i>.</p>
       <p>To change a sketch later, click it in the timeline at the bottom and choose <b>Edit sketch</b>. Finish rewrites it in place.</p>
     </section>
 
     <section data-s id="model">
       <h2>Working on the model</h2>
       <p>Outside a sketch: click a shape to pick it, then <kbd>M</kbd> move, <kbd>R</kbd> rotate, <kbd>Shift</kbd>+<kbd>S</kbd> scale with the gizmo; <kbd>Q</kbd> press-pull a face; <kbd>F</kbd> fillet and chamfer edges; <kbd>H</kbd> hole. The model browser on the left and the timeline at the bottom show every step, each linked to its line of code.</p>
+      <p><b>Roll back:</b> the timeline is every change you made, in order. Click an earlier step to go back to it; the later ones grey out, and the next change you make replaces them. (Fusion can edit an early feature and replay the rest; here the code is the model, so go back, change it, or edit the code.)</p>
+      <p><b>Suppress:</b> right-click a step in the Browser (or the timeline) → <b>Suppress</b>. It's left out of the model but stays in the code as <code>suppress(…)</code>: a hole that isn't cut, a part that isn't there. The same menu says <b>Unsuppress</b> to bring it back. The shape a hole cuts from, or the only shape, can't be suppressed (Delete it instead).</p>
+    </section>
+
+    <section data-s id="params">
+      <h2>Parameters and formulas</h2>
+      <p><b>Inspect → Parameters</b> lists the model's named sizes: every <code>const width = 40;</code> at the top of the code. Change a value and press <kbd>Enter</kbd>; everything that uses it follows. A value can be a <b>formula</b> of the parameters above it: <code>width / 2</code>, <code>depth / 5 + 1</code>, <code>Math.max(2, wall)</code>. Add new ones at the bottom of the table.</p>
+      <p>A sketch dimension takes a formula too: click its size label and type <code>width / 2</code> instead of a number. It's written into the sketch as that formula, so the sketch follows the parameter.</p>
+      <p>Only arithmetic, other parameters and Math's number functions are allowed in a formula (nothing that runs other code).</p>
+    </section>
+
+    <section data-s id="inspect">
+      <h2>Inspect: measure, properties</h2>
+      <p><b>Measure</b> snaps to corners, edges and faces: distances, angles, a face's size. <b>Properties</b> shows the part's volume, surface area, box size, centre of mass, how many bodies, and its mass in a material you pick (PLA, PETG, aluminium, steel…). It's measured on the shape as drawn on screen, so a curved part reads a hair under its true size; the mass assumes a solid part (a print with infill weighs less).</p>
+    </section>
+
+    <section data-s id="assembly">
+      <h2>Assemblies: the exploded view</h2>
+      <p>A model of several bodies (each <b>New body</b>, each shape in a <code>group(…)</code>) is an assembly. <b>Inspect → Explode</b> pulls the parts apart from the middle with a slider; <b>Expand</b> and <b>Collapse</b> animate it. It's a view only: the code doesn't change, and closing the panel puts every part back.</p>
+      <p><b>Save video…</b> records a short clip (about 9 s, WebM): the camera turns once around the part, the parts come apart, hold, and go back together. The recorder is only loaded when you press the button, and it's made in your browser (nothing is uploaded). WebM plays in browsers and most editors; YouTube takes it as it is.</p>
     </section>
 
     <section data-s id="faq">
@@ -201,8 +247,16 @@
         <p>In builds before November 2026 this was a real bug: Tangent only worked for a line drawn from an arc's end, and it refused circles. It's fixed. Pick both (either order) and press Tangent.</p>
         <p>If it still doesn't happen, the panel says why: something else holds them apart (usually a <b>Fixed</b> point or a dimension). The rules in the way turn red, and <b>Remove … and add tangent</b> fixes it in one click.</p>
       </div></details>
-      <details><summary>Why does Finish stay greyed out ("not a closed profile")?</summary><div>
-        <p>An outline has to end exactly where it starts. Usually a line stops near a point instead of on it, or a curve overhangs a corner. Draw onto the point (it snaps), or <b>Trim</b> the overhang. A stray line that's only there as a guide can be made <b>Construction</b> (<kbd>X</kbd>).</p>
+      <details><summary>How do I get rid of the cube?</summary><div>
+        <p>It's a sample, and it goes as soon as you start something of your own: drop a file onto the window, or finish a sketch drawn on the XY plane as a <b>New body</b>. To clear it (or any model) by hand, press the <b>trash can</b> at the top of the Browser; a real model asks first, and <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings it back. In Code mode the editor has the same trash can.</p>
+        <p>To never see it: Settings (the ⓘ button) → turn off <b>Start with the sample cube</b>.</p>
+      </div></details>
+      <details><summary>I dropped a file and my model disappeared. Can I keep both?</summary><div>
+        <p>A dropped file replaces what's in the editor, and <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings the old model back. To keep both, tick <b>Keep the current model and add this beside it</b> at the bottom of the menu that opens when you drop an STL, 3MF or OBJ (a STEP file opens straight away, replacing what's there). It's placed to the right of what's there, as a separate part you can move.</p>
+      </div></details>
+      <details><summary>I thought I closed it. Why does it say "not closed"? (Why does Finish stay greyed out?)</summary><div>
+        <p>Look at the sketch: whatever Finish will extrude is <b>shaded blue</b>. A <b>red dot</b> is where a curve ends on nothing, and a <b>red dashed</b> curve encloses nothing, so it's left out. If nothing is shaded, nothing is closed yet: draw onto the red dot (it snaps to points), <b>Trim</b> an overhang, or make a guide line <b>Construction</b> (<kbd>X</kbd>).</p>
+        <p>Shapes can share lines, branch and cross: an arc with two lines to its centre (a pac-man) plus more lines below it extrudes as one shape. Stray lines don't stop the rest from extruding; they're just left out (shown red).</p>
       </div></details>
       <details><summary>Why did my other lines move when I added a rule?</summary><div>
         <p>A rule moves whatever is free to move. Pin what should stay with <b>Fixed</b>, or give it a dimension first; blue curves are the ones that can still move.</p>
@@ -218,12 +272,14 @@
       <h2>What doesn't work yet</h2>
       <ul>
         <li><b>Mid-spline tangency:</b> a spline is tangent only at its ends.</li>
-        <li><b>Which rule to drop:</b> when rules fight after a <i>drag</i> (not when adding a rule), the panel says what's off but not which one rule to drop.</li>
-        <li><b>Projected edges:</b> a face's edges aren't brought into the sketch as references yet; snapping is to the sketch's own points and the grid.</li>
+        <li><b>Projected edges</b> are copies, not links: if the part changes, project again. Curved edges come in as their short facets.</li>
+        <li><b>Patterns</b> are plain copies, not a rule: change the original, then pattern.</li>
+        <li><b>Pick regions</b> can leave out a region but can't fill a hole (an outline inside another is always a hole).</li>
         <li><b>Sketch on a face:</b> the plane is stored as numbers, not as a link to the face, so moving that body later leaves the sketch where it was.</li>
         <li><b>Driven (reference) dimensions</b> and <b>dimensions to an arc's edge</b> aren't there; dimensions measure points, lines and radii.</li>
-        <li><b>Assemblies and joints</b> aren't part of Design mode; parts are separate bodies placed by moves.</li>
-        <li><b>Text, slots, polygons and fillets inside a sketch</b> aren't tools yet (fillet edges on the 3D model instead, with <kbd>F</kbd>).</li>
+        <li><b>Joints</b> (parts that hinge or slide on each other) aren't there yet: an assembly is separate bodies placed by moves, and the exploded view is a view.</li>
+        <li><b>Loft, sweep, draft, rib, split body and threads</b> aren't Design tools yet (in code: <code>tube()</code> sweeps a circle along a path, <code>helix()</code> makes a coil). An extrude can't take a <b>taper angle</b> yet, nor run <b>up to a face</b>.</li>
+        <li><b>Text</b> inside a sketch isn't a tool yet.</li>
       </ul>
     </section>
 

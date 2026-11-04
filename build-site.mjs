@@ -148,6 +148,11 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "design/features.js", "design/dialogs.js", "design/presspull.js",
   // phase 3: the sketcher and its model (lazy, on the Sketch tool)
   "design/sketcher.js", "design/sketch-model.js",
+  // Inspect and the exploded view (lazy, on their buttons; the video recorder
+  // only when "Save video" is pressed)
+  "design/inspect.js", "design/explode.js", "design/explode-video.js",
+  // the parameters table and its formula reader (the sketcher's dims use it too)
+  "design/parameters.js",
   // "Ask about this…": the pinned spot every AI path reads (lazy, on first pin)
   "selection-context.js",
   // the rotate gizmo's angle and rotate() edit arithmetic

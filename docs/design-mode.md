@@ -276,7 +276,15 @@ return difference(cube([60, 40, 8]), linearExtrude({ h: 4, reverse: true, proud:
   viewer waits for it before building code with a `sketch(`.
 - The profile: closed loops of the non-construction curves chained through
   shared points. Loops inside loops alternate outline / hole; separate outlines
-  are islands, one body each (as a difference() tool every one cuts).
+  are islands, one body each (as a difference() tool every one cuts). When
+  curves branch (three on one point) or cross, `regionLoops` splits them where
+  they meet, prunes loose ends, walks the faces of the network and keeps every
+  edge with an enclosed region on one side only: regions sharing a line
+  extrude as one shape. Curves that enclose nothing are left out, not refused
+  (`sketch().leftOut`: `strays` by curve index, `loose` points); only a sketch
+  with nothing closed is refused. A plain outline (every point on two curves,
+  nothing crossing) still chains exactly as before. The sketcher shades the
+  profile, draws strays red dashed and loose ends as red dots.
 - The kernel sketch (`persistentData.sketch`) carries the constraints and dims
   too, by the glyphs the BREP.io solver uses (━ │ ⟺ ⏚ …), mapped onto its points.
 - `revolve({ angle, axis: [i, j] }, sketch1)` spins about the line through two
@@ -320,17 +328,64 @@ parts drawn with the sketcher's calls, tangents, trims, offsets, each built on
 every kernel against an area worked out apart from the sketch; add new models
 at its end), `npm run test:design3` (Electron, real mouse clicks, screenshots).
 
+### Tier 1 (2026-11-03): sketching like a pro CAD program
+
+- **Inference** (`sketch-model.js` `inferPoint` / `applyInferred` / `inferJoin`):
+  a click snaps to a point, a line's midpoint, a crossing, a point on a curve,
+  lines up across or down with a point (dotted guide, no rule), then the grid;
+  Alt is free. The spot it snaps to brings its rule (midpoint, onLine,
+  onCurve). A chain drawn on at ~90° gets Perpendicular, an arc drawn on along
+  a line gets Tangent. The sketcher shows a green tag and a ring.
+- **New rules**, expanded in `dsl.js` solverSketch like tangent:
+  `["onCurve", centre, p]`, `["collinear", a, b, c, d]`,
+  `["symmetric", p, q, a, b, m]` (m: the midway point, kept by compact);
+  Midpoint uses the kernel's own ⋯; Concentric writes coincident centres.
+- **New tools**: centre rect, 3-point arc, tangent arc (chains), slot, polygon
+  (equal sides on a construction circle), sketch fillet (`filletCorner`; the
+  corner stays as a virtual sharp held on both lines by onLine), mirror
+  (symmetric rules per point), pattern (plain copies), Pick regions
+  (`skip: [[x, y]]` in sketch(): faces of the region walk or whole outlines
+  left out), Project (model edges in the plane as fixed construction lines).
+  Tool settings (fillet radius, offset distance, sides, pattern) sit in the
+  panel: Electron has no `prompt()`, so Offset's old prompt was broken there.
+- **Box select** (left to right window, right to left crossing) and **drags
+  checked**: a drag the rules can't follow is put back with a message; a Fixed
+  point refuses the drag.
+
+### Tier 2, Tier 3 and assemblies (2026-11-03)
+
+- **Construction planes:** the sketch chooser's Offset / Tilt fields
+  (`sketch-model.js` `offsetPlane`), written as `on: { origin, normal, x }`.
+- **Extrude direction** in the sketch's Finish: one side, symmetric
+  (`center: true`) or two sides (`linearExtrude({ h: h1 + h2, start: -h2 })`;
+  `start` is new in dsl.js).
+- **Inspect** ribbon group: Measure (the viewer's measure mode), Properties
+  (`design/inspect.js`: volume, area, box, centre of mass, mass by material),
+  Parameters (`design/parameters.js`: top-level consts with formulas, evaluated
+  by a whitelisting walker, never eval; sketch dims accept formulas and are
+  written as them), Explode (`design/explode.js`).
+- **Suppress:** `suppress(shape)` in dsl.js returns null, which every
+  combiner already skips; `design-timeline.js` `suppressStepText` wraps or
+  unwraps a step (with its carrying transforms) from the Browser/timeline menu.
+- **Exploded view:** bodies (meshes by solidName) slide from the assembly's
+  middle by a slider; never below the floor; overlays hidden while apart.
+  "Save video" lazily imports `design/explode-video.js` (MediaRecorder on the
+  canvas: a turn, explode, hold, collapse, ~9 s WebM).
+- Host additions: `onBuilt(fn)` (every build), `openMeasure()`,
+  `overlaysVisible(on)`; `brepscript.modelMeshes()` for checks.
+- Not done: loft, sweep, draft, rib, split, threads, taper angle, extrude up to
+  a face, joints.
+
 ### Known limits (phase 3)
 
 - Splines are tangent only at their ends, not mid-curve.
-- A face's edges are not projected into the sketch as references yet; snap is
-  to the sketch's own points and the grid.
+- Projected edges are copies (re-project after the part changes); curved
+  edges arrive as facets. Patterns are copies, not a rule.
 - `on` a face is written as numbers (its plane), not as a link to the face: move
   the body and the sketch stays put.
 - The solver is the BREP.io one (iterative). Adding a rule or a dimension is
-  checked (refused, culprits named); a drag is not, so a drag against locked
-  geometry settles where it can and the panel only says which kinds of rule
-  are off.
+  checked (refused, culprits named); a drag is checked as a whole (put back),
+  without naming the rule that holds it.
 - The Rust kernel samples sketch arcs the short way round when it decides which
   loop is a hole (regions.rs), so a hole inside an arc of 180° or more was
   dropped. `toRustDialect` sends such arcs as two halves when the sketch has

@@ -692,9 +692,15 @@ export function region2d(outer, ...holes) {
 //                arc's centre, else in line with c-d, a line or another
 //                spline's last handle; the end is kept on that curve too)
 //                ["equal", a, b, c, d]  ["fixed", p]  ["onLine", a, b, p]
-//                ["midpoint", a, b, m]
+//                ["midpoint", a, b, m]  ["onCurve", center, p]  (p on the circle
+//                or arc around center)  ["collinear", a, b, c, d]  (line c-d on
+//                the line through a-b)  ["symmetric", p, q, a, b, m]  (p and q
+//                mirror each other across line a-b; m is the point midway)
 //   dims:        ["distance", p, q, mm]  ["angle", a, b, c, d, deg]
 //                (a circle's radius is its own number in curves)
+//   skip:        [[x, y], …]  regions left out of the profile: each point is
+//                in a region the curves close (a shaded area in the sketcher)
+//                that is not extruded, as Fusion lets you pick profiles
 //
 // The kernel's ConstraintSolver (SketchSolver2D, the BREP.io sketcher's own)
 // solves the points against the constraints and dims whenever they disagree,
@@ -709,8 +715,12 @@ export const hasSketchSolver = () => !!SketchSolver;
 const GLYPH = {
   coincident: "≡", horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂",
   tangent: "⟂", tangentArcs: "⏛", tangentEnd: "⏛", equal: "⇌", fixed: "⏚", onLine: "⏛", midpoint: "⋯", distance: "⟺", angle: "∠",
+  onCurve: "⟺", collinear: "⏛", symmetric: "⋯",
 };
-const ARITY = { coincident: 2, horizontal: 2, vertical: 2, parallel: 4, perpendicular: 4, tangent: 4, tangentArcs: 3, tangentEnd: 4, equal: 4, fixed: 1, onLine: 3, midpoint: 3, distance: 2, angle: 4 };
+const ARITY = { coincident: 2, horizontal: 2, vertical: 2, parallel: 4, perpendicular: 4, tangent: 4, tangentArcs: 3, tangentEnd: 4, equal: 4, fixed: 1, onLine: 3, midpoint: 3, distance: 2, angle: 4,
+  onCurve: 2, collinear: 4, symmetric: 5 };
+// rules the solver has no one glyph for: written as several it does have
+const EXPANDED = new Set(["tangent", "tangentArcs", "tangentEnd", "onCurve", "collinear", "symmetric"]);
 const CURVE_ARITY = { line: 2, arc: 3, bezier: 4 };
 
 export function sketch(spec = {}) {
@@ -745,10 +755,16 @@ export function sketch(spec = {}) {
   const constraints = rule(spec.constraints, "constraint", false);
   const dims = rule(spec.dims, "dim", true);
   const solved = solveSketch2D(pts, curves, constraints, dims);
-  const profile = sketchProfile(solved, curves);
+  const skip = (spec.skip || []).map((p, i) => {
+    const x = Number(p?.[0]), y = Number(p?.[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError(`sketch(): skip ${i} isn't an [x, y] point`);
+    return [x, y];
+  });
+  const profile = sketchProfile(solved, curves, skip);
+  const left = profile.leftOut ?? { strays: [], loose: [] };
   // the rules again, by position, for the kernel's sketch record (sketchOf)
   const rules = [...constraints, ...dims].map((c) => ({ type: GLYPH[c.type], at: c.ids.map((k) => solved[k]), value: c.value ?? null }));
-  return { ...profile, on: spec.on ?? null, rules, sketch: { points: solved, curves, constraints, dims } };
+  return { ...profile, on: spec.on ?? null, rules, sketch: { points: solved, curves, constraints, dims }, ...(left.strays.length || left.loose.length ? { leftOut: left } : {}) };
 }
 
 // The solver's own sketch: point 0 is its fixed origin, so ours are id i + 1;
@@ -771,7 +787,7 @@ function solverSketch(pts, curves, constraints, dims) {
     }
   });
   for (const c of constraints) {
-    if (c.type === "tangent" || c.type === "tangentArcs" || c.type === "tangentEnd") {
+    if (EXPANDED.has(c.type)) {
       tangentRules(c, pts, curves).forEach((r) => cons.push({ id: cid++, ...r, points: r.points.map((k) => k + 1) }));
       continue;
     }
@@ -822,6 +838,13 @@ function endRules([end, handle, c, d], pts, curves) {
 const isCentre = (c, curves) => curves.some((k) => (k.kind === "circle" || k.kind === "arc") && k.ids[0] === c);
 function tangentRules({ type, ids }, pts, curves) {
   if (type === "tangentEnd") return endRules(ids, pts, curves);
+  // the rest of the composite rules ride the same path
+  if (type === "onCurve") return onRound(ids[0], ids[1], pts, curves);
+  if (type === "collinear") return [{ type: "⏛", points: [ids[0], ids[1], ids[2]] }, { type: "⏛", points: [ids[0], ids[1], ids[3]] }];
+  if (type === "symmetric") {
+    const [p, q, a, b, m] = ids;
+    return [{ type: "⋯", points: [p, q, m] }, { type: "⏛", points: [a, b, m] }, { type: "⟂", points: [a, b, p, q] }];
+  }
   if (type === "tangentArcs") {
     const [A, B, p] = ids;
     return [{ type: "⏛", points: [A, B, p] }, ...onRound(A, p, pts, curves), ...onRound(B, p, pts, curves)];
@@ -903,6 +926,22 @@ export function sketchError(pts, constraints, dims, curves = []) {
         e = Math.max(e, Math.abs(u[0] * w[1] - u[1] * w[0])); break;
       }
       case "midpoint": e = Math.max(e, Math.hypot((P(a)[0] + P(b)[0]) / 2 - P(cc)[0], (P(a)[1] + P(b)[1]) / 2 - P(cc)[1])); break;
+      case "onCurve": {
+        const r = roundRadius(a, b, pts, curves);
+        if (r != null) e = Math.max(e, Math.abs(Math.hypot(P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]) - r));
+        break;
+      }
+      case "collinear": {
+        const u = dir(a, b), off = (k) => Math.abs(u[0] * (P(k)[1] - P(a)[1]) - u[1] * (P(k)[0] - P(a)[0]));
+        e = Math.max(e, off(cc), off(d)); break;
+      }
+      case "symmetric": {
+        // [p, q, a, b, m]: m midway between p and q, on a-b, and p-q square to it
+        const m = c.ids[4], u = dir(cc, d), pq = [P(b)[0] - P(a)[0], P(b)[1] - P(a)[1]];
+        e = Math.max(e, Math.hypot((P(a)[0] + P(b)[0]) / 2 - P(m)[0], (P(a)[1] + P(b)[1]) / 2 - P(m)[1]),
+          Math.abs(u[0] * (P(m)[1] - P(cc)[1]) - u[1] * (P(m)[0] - P(cc)[0])), Math.abs(u[0] * pq[0] + u[1] * pq[1]));
+        break;
+      }
       default: break;
     }
   }
@@ -924,43 +963,45 @@ export function solveSketch2D(pts, curves, constraints, dims) {
 // The profile: closed loops of the curves that are not construction, chained
 // end to end through shared points. The biggest is the outline, the loops
 // inside it holes.
-function sketchProfile(pts, curves) {
+function sketchProfile(pts, curves, skip = []) {
   const segs = [];
-  for (const c of curves) {
-    if (c.construction) continue;
+  curves.forEach((c, ci) => {
+    if (c.construction) return;
     const P = c.ids.map((k) => pts[k]);
-    if (c.kind === "line") segs.push({ t: "line", p: [P[0], P[1]], ends: [c.ids[0], c.ids[1]] });
-    else if (c.kind === "bezier") segs.push({ t: "bezier", p: P, ends: [c.ids[0], c.ids[3]] });
-    else if (c.kind === "arc") segs.push({ t: "arc", p: [P[1], P[2]], c: P[0], cw: false, ends: [c.ids[1], c.ids[2]] });
+    if (c.kind === "line") segs.push({ t: "line", p: [P[0], P[1]], ends: [c.ids[0], c.ids[1]], ci });
+    else if (c.kind === "bezier") segs.push({ t: "bezier", p: P, ends: [c.ids[0], c.ids[3]], ci });
+    else if (c.kind === "arc") segs.push({ t: "arc", p: [P[1], P[2]], c: P[0], cw: false, ends: [c.ids[1], c.ids[2]], ci });
     else if (c.kind === "circle") {
       const ctr = P[0], rim = [ctr[0] + c.r, ctr[1]];
-      segs.push({ t: "circle", p: [rim, rim], c: ctr, cw: false, ends: null });
+      segs.push({ t: "circle", p: [rim, rim], c: ctr, cw: false, ends: null, ci });
     }
-  }
+  });
   if (!segs.length) throw new TypeError("sketch(): there is nothing to make a profile of (every curve is construction)");
-  // chain open curves into loops
-  const loops = [];
-  const used = new Set();
-  segs.forEach((s, i) => { if (!s.ends) { loops.push([s]); used.add(i); } });
-  for (let i = 0; i < segs.length; i++) {
-    if (used.has(i)) continue;
-    used.add(i);
-    const start = segs[i].ends[0];
-    let cur = segs[i].ends[1];
-    const loop = [segs[i]];
-    for (let guard = 0; cur !== start && guard < segs.length; guard++) {
-      const j = segs.findIndex((s, k) => !used.has(k) && s.ends && (s.ends[0] === cur || s.ends[1] === cur));
-      if (j < 0) break;
-      used.add(j);
-      const s = segs[j];
-      if (s.ends[0] === cur) { loop.push(s); cur = s.ends[1]; }
-      else { loop.push(reverseSeg(s)); cur = s.ends[0]; }
-    }
-    if (cur !== start) throw new TypeError("sketch(): a chain of curves does not close; every outline must end where it starts (or mark the stray curve construction)");
-    loops.push(loop);
-  }
+  // the open curves (lines, arcs, splines) as a network joined at shared
+  // points: each connected group's outline is its OUTER boundary, so regions
+  // that share a line (two closed shapes on one edge) extrude together.
+  // Curves that close nothing (a loose end, a line bridging two shapes) are
+  // left out of the profile and reported as strays.
+  // A circle that crosses or touches another curve joins the network as two
+  // half circles (so a circle over a rectangle's edge, or two overlapping
+  // circles, extrude as one shape, not two solids on top of each other); a
+  // circle on its own (a hole, a disc) stays a loop of its own, as it was.
+  const halves = (c) => {
+    const r = Math.hypot(c.p[0][0] - c.c[0], c.p[0][1] - c.c[1]), A = [c.c[0] + r, c.c[1]], B = [c.c[0] - r, c.c[1]];
+    return [{ t: "arc", p: [A, B], c: c.c, cw: false, ends: [`c${c.ci}a`, `c${c.ci}b`], ci: c.ci },
+      { t: "arc", p: [B, A], c: c.c, cw: false, ends: [`c${c.ci}b`, `c${c.ci}a`], ci: c.ci }];
+  };
+  const asArcs = new Map(segs.filter((x) => !x.ends).map((c) => [c, halves(c)]));
+  const others = (c) => segs.filter((x) => x !== c).flatMap((x) => asArcs.get(x) ?? [x]);
+  const meets = (c) => asArcs.get(c).some((h) => others(c).some((o) => segMeets(h, o).length));
+  const joined = new Set([...asArcs.keys()].filter(meets));
+  const loops = segs.filter((x) => !x.ends && !joined.has(x)).map((x) => [x]);
+  const open = [...segs.filter((x) => x.ends), ...[...joined].flatMap((c) => asArcs.get(c))];
+  const { loops: walked, strays, loose } = sketchLoops(open, skip);
+  loops.push(...walked);
+  if (!loops.length) throw new TypeError("sketch(): a chain of curves does not close; every outline must end where it starts (or mark the stray curve construction)");
   const asLoop = (segList) => {
-    const clean = segList.map(({ ends, ...s }) => s);
+    const clean = segList.map(({ ends, ci, src, ...s }) => s);
     return { pts: sampleSegs(clean), segs: clean };
   };
   const made = loops.map(asLoop).map((l) => ({ ...l, area: Math.abs(loopArea(l.pts)) }));
@@ -981,9 +1022,277 @@ function sketchProfile(pts, curves) {
     const o = ccw(l);
     return { __brepscript2d: true, pts: o.pts, segs: o.segs, ...(l.holes.length ? { holes: l.holes } : {}) };
   };
-  const [first, ...more] = outlines.map(profileOf);
+  // a whole shape picked out (skip): a point in it and not in one of its holes
+  const kept = outlines.filter((o) => !skip.some((p) => pointInLoop(p, o.pts) && !o.holes.some((h) => pointInLoop(p, h.pts))));
+  if (!kept.length) throw new TypeError("sketch(): every region is left out (skip); keep at least one");
+  const [first, ...more] = kept.map(profileOf);
   // separate outlines extrude and revolve as one body each (islands)
-  return more.length ? { ...first, islands: more } : first;
+  const out = more.length ? { ...first, islands: more } : first;
+  // what was left out, for the sketcher to show (not part of the profile)
+  Object.defineProperty(out, "leftOut", { value: { strays: [...new Set(strays.map((x) => x.ci))], loose }, enumerable: false });
+  return out;
+}
+
+// A point along a sketch segment, t 0..1 from its first end (an arc turns by
+// sweepOf: counter-clockwise, or clockwise when cw).
+function segPointAt(sg, t) {
+  if (sg.t === "line") return [sg.p[0][0] + (sg.p[1][0] - sg.p[0][0]) * t, sg.p[0][1] + (sg.p[1][1] - sg.p[0][1]) * t];
+  if (sg.t === "arc") {
+    const [a] = sg.p, c = sg.c, r = Math.hypot(a[0] - c[0], a[1] - c[1]);
+    const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]) + sweepOf(sg) * t;
+    return [c[0] + r * Math.cos(a0), c[1] + r * Math.sin(a0)];
+  }
+  const [p0, p1, p2, p3] = sg.p, u = 1 - t;
+  return [0, 1].map((k) => u * u * u * p0[k] + 3 * u * u * t * p1[k] + 3 * u * t * t * p2[k] + t * t * t * p3[k]);
+}
+// the piece of a segment between t0 and t1, exactly
+function segPiece(sg, t0, t1) {
+  if (sg.t === "line") return { t: "line", p: [segPointAt(sg, t0), segPointAt(sg, t1)] };
+  if (sg.t === "arc") return { t: "arc", p: [segPointAt(sg, t0), segPointAt(sg, t1)], c: sg.c, cw: sg.cw };
+  const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  const split = ([p0, p1, p2, p3], t) => {
+    const a = lerp(p0, p1, t), b = lerp(p1, p2, t), c = lerp(p2, p3, t), d = lerp(a, b, t), e = lerp(b, c, t), f = lerp(d, e, t);
+    return [[p0, a, d, f], [f, e, c, p3]];
+  };
+  const right = t0 > 0 ? split(sg.p, t0)[1] : sg.p;
+  return { t: "bezier", p: t1 < 1 ? split(right, (t1 - t0) / (1 - t0))[0] : right };
+}
+// where two segments meet: [[ta, tb]] (each 0..1 along its own segment).
+// Lines and arcs exactly; a spline through its polyline, refined.
+function segMeets(A, B) {
+  const out = [];
+  const add = (ta, tb) => { if (ta > -1e-9 && ta < 1 + 1e-9 && tb > -1e-9 && tb < 1 + 1e-9) out.push([Math.min(1, Math.max(0, ta)), Math.min(1, Math.max(0, tb))]); };
+  const arcT = (sg, q) => {
+    const c = sg.c, s = sweepOf(sg), a0 = Math.atan2(sg.p[0][1] - c[1], sg.p[0][0] - c[0]);
+    let d = Math.atan2(q[1] - c[1], q[0] - c[0]) - a0;
+    if (s > 0) { while (d < -1e-9) d += 2 * Math.PI; while (d > 2 * Math.PI) d -= 2 * Math.PI; }
+    else { while (d > 1e-9) d -= 2 * Math.PI; while (d < -2 * Math.PI) d += 2 * Math.PI; }
+    return d / s;
+  };
+  const lineT = (sg, q) => { const [a, b] = sg.p, d = [b[0] - a[0], b[1] - a[1]]; return ((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / (d[0] ** 2 + d[1] ** 2); };
+  const circleLine = (L, C) => {
+    const [a, b] = L.p, d = [b[0] - a[0], b[1] - a[1]], c = C.c, r = Math.hypot(C.p[0][0] - c[0], C.p[0][1] - c[1]);
+    const f = [a[0] - c[0], a[1] - c[1]], qa = d[0] ** 2 + d[1] ** 2, qb = 2 * (f[0] * d[0] + f[1] * d[1]), qc = f[0] ** 2 + f[1] ** 2 - r * r;
+    // within TANGENT_TOL of touching is a touch: one point, at the foot (a
+    // solve leaves a tangent line 1e-4 mm in or out, and two crossings
+    // 0.1 mm apart then made a sliver the region walk could not read)
+    const t0 = -qb / (2 * qa), foot = [a[0] + d[0] * t0, a[1] + d[1] * t0], h = Math.hypot(foot[0] - c[0], foot[1] - c[1]);
+    if (Math.abs(h - r) < TANGENT_TOL) return [[t0, arcT(C, foot)]];
+    if (h > r) return [];
+    const k = Math.sqrt(r * r - h * h) / Math.sqrt(qa);
+    const ts = [t0 - k, t0 + k];
+    return ts.map((t) => [t, arcT(C, [a[0] + d[0] * t, a[1] + d[1] * t])]);
+  };
+  if (A.t === "line" && B.t === "line") {
+    const [p, q] = A.p, [r, s] = B.p, d1 = [q[0] - p[0], q[1] - p[1]], d2 = [s[0] - r[0], s[1] - r[1]];
+    const den = d1[0] * d2[1] - d1[1] * d2[0];
+    if (Math.abs(den) < 1e-12 * Math.hypot(...d1) * Math.hypot(...d2)) {
+      // in line: an end of one lying on the other
+      for (const [x, own, other] of [[r, A, B], [s, A, B]]) {
+        const t = lineT(own, x), q2 = segPointAt(own, t);
+        if (Math.hypot(q2[0] - x[0], q2[1] - x[1]) < 1e-9) add(t, x === r ? 0 : 1);
+      }
+      for (const x of [p, q]) {
+        const t = lineT(B, x), q2 = segPointAt(B, t);
+        if (Math.hypot(q2[0] - x[0], q2[1] - x[1]) < 1e-9) add(x === p ? 0 : 1, t);
+      }
+      return out;
+    }
+    add(((r[0] - p[0]) * d2[1] - (r[1] - p[1]) * d2[0]) / den, ((r[0] - p[0]) * d1[1] - (r[1] - p[1]) * d1[0]) / den);
+    return out;
+  }
+  if (A.t === "line" && B.t === "arc") { for (const [ta, tb] of circleLine(A, B)) add(ta, tb); return out; }
+  if (A.t === "arc" && B.t === "line") { for (const [tb, ta] of circleLine(B, A)) add(ta, tb); return out; }
+  if (A.t === "arc" && B.t === "arc") {
+    const ca = A.c, cb = B.c, ra = Math.hypot(A.p[0][0] - ca[0], A.p[0][1] - ca[1]), rb = Math.hypot(B.p[0][0] - cb[0], B.p[0][1] - cb[1]);
+    const D = Math.hypot(cb[0] - ca[0], cb[1] - ca[1]);
+    if (D < 1e-12 || D > ra + rb + TANGENT_TOL || D < Math.abs(ra - rb) - TANGENT_TOL) return out;
+    const e = [(cb[0] - ca[0]) / D, (cb[1] - ca[1]) / D];
+    if (Math.abs(D - (ra + rb)) < TANGENT_TOL || Math.abs(D - Math.abs(ra - rb)) < TANGENT_TOL) {
+      const s1 = Math.abs(D - (ra + rb)) < TANGENT_TOL || ra >= rb ? 1 : -1, q = [ca[0] + e[0] * ra * s1, ca[1] + e[1] * ra * s1];
+      add(arcT(A, q), arcT(B, q));
+      return out;
+    }
+    const x = (D * D + ra * ra - rb * rb) / (2 * D), y = Math.sqrt(Math.max(0, ra * ra - x * x)), m = [ca[0] + e[0] * x, ca[1] + e[1] * x];
+    for (const q of [[m[0] - e[1] * y, m[1] + e[0] * y], [m[0] + e[1] * y, m[1] - e[0] * y]]) add(arcT(A, q), arcT(B, q));
+    return out;
+  }
+  // a spline on either side: its polyline, each crossing refined (Newton on
+  // the two parameters, finite differences)
+  const N = 64, poly = (sg) => Array.from({ length: N + 1 }, (_, i) => segPointAt(sg, i / N));
+  const ptsA = A.t === "bezier" ? poly(A) : null, ptsB = B.t === "bezier" ? poly(B) : null;
+  const pieces = (sg, pts) => (pts ? pts.slice(0, -1).map((q, i) => ({ t: "line", p: [q, pts[i + 1]], t0: i / N, t1: (i + 1) / N }))
+    : [{ ...sg, t0: 0, t1: 1 }]);
+  for (const a of pieces(A, ptsA)) for (const b of pieces(B, ptsB)) {
+    for (const [ua, ub] of segMeets(a, b)) {
+      let ta = a.t0 + (a.t1 - a.t0) * ua, tb = b.t0 + (b.t1 - b.t0) * ub;
+      for (let k = 0; k < 12; k++) {
+        const f = segPointAt(A, ta), g = segPointAt(B, tb), F = [f[0] - g[0], f[1] - g[1]];
+        if (Math.hypot(...F) < 1e-12) break;
+        const h = 1e-7, fa = segPointAt(A, Math.min(1, ta + h)), gb = segPointAt(B, Math.min(1, tb + h));
+        const J = [[(fa[0] - f[0]) / h, -(gb[0] - g[0]) / h], [(fa[1] - f[1]) / h, -(gb[1] - g[1]) / h]];
+        const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+        if (Math.abs(det) < 1e-14) break;
+        ta = Math.min(1, Math.max(0, ta - (J[1][1] * F[0] - J[0][1] * F[1]) / det));
+        tb = Math.min(1, Math.max(0, tb - (-J[1][0] * F[0] + J[0][0] * F[1]) / det));
+      }
+      if (!out.some(([x, y]) => Math.abs(x - ta) < 1e-6 && Math.abs(y - tb) < 1e-6)) add(ta, tb);
+    }
+  }
+  return out;
+}
+// The loops of the open curves (lines, arcs, splines), and what was left out.
+// A plain outline (every point on two curves, nothing crossing) chains as it
+// always has. Otherwise the curves are split where they cross or branch, loose
+// ends are pruned, the enclosed regions are found (walking the network: at
+// each point, turn to the next curve clockwise from the one you came in on),
+// and the outline is every edge with an enclosed region on one side only: the
+// regions of a connected group merge into one shape, nested groups still make
+// holes (even-odd, by the caller). strays: curves that enclose nothing; loose:
+// the points where a curve ends on nothing.
+// Points closer than this are one point: the solver settles rules to about
+// 1e-5 mm, so a crossing found right at a curve's end is that end.
+const SKETCH_TOL = 1e-4;
+// a line or circle this close to touching a circle touches it (mm)
+const TANGENT_TOL = 1e-3;
+// is t on sg a real cut (not within SKETCH_TOL of either of its ends)?
+function innerCut(sg, t) {
+  if (!(t > 1e-9 && t < 1 - 1e-9)) return false;
+  const q = segPointAt(sg, t), a = segPointAt(sg, 0), b = segPointAt(sg, 1);
+  return Math.hypot(q[0] - a[0], q[1] - a[1]) > SKETCH_TOL && Math.hypot(q[0] - b[0], q[1] - b[1]) > SKETCH_TOL;
+}
+function sketchLoops(open, skip = []) {
+  const deg = new Map();
+  for (const sg of open) for (const e of sg.ends) deg.set(e, (deg.get(e) ?? 0) + 1);
+  let crossing = false;
+  for (let i = 0; i < open.length && !crossing; i++) for (let j = i + 1; j < open.length && !crossing; j++) {
+    crossing = segMeets(open[i], open[j]).some(([a, b]) => innerCut(open[i], a) || innerCut(open[j], b));
+  }
+  if (!crossing && [...deg.values()].every((d) => d === 2)) return { loops: chainLoops(open), strays: [], loose: [] };
+  return regionLoops(open, skip);
+}
+function chainLoops(open) {
+  const loops = [], used = new Set();
+  for (let i = 0; i < open.length; i++) {
+    if (used.has(i)) continue;
+    used.add(i);
+    const start = open[i].ends[0];
+    let cur = open[i].ends[1];
+    const loop = [open[i]];
+    for (let guard = 0; cur !== start && guard < open.length; guard++) {
+      const j = open.findIndex((s, k) => !used.has(k) && (s.ends[0] === cur || s.ends[1] === cur));
+      if (j < 0) break;
+      used.add(j);
+      const s = open[j];
+      if (s.ends[0] === cur) { loop.push(s); cur = s.ends[1]; }
+      else { loop.push(reverseSeg(s)); cur = s.ends[0]; }
+    }
+    loops.push(loop);
+  }
+  return loops;
+}
+function regionLoops(open, skip = []) {
+  // 1. split every curve where another crosses it or ends on it
+  const cuts = open.map(() => [0, 1]);
+  for (let i = 0; i < open.length; i++) for (let j = i + 1; j < open.length; j++) {
+    for (const [a, b] of segMeets(open[i], open[j])) {
+      if (innerCut(open[i], a)) cuts[i].push(a);
+      if (innerCut(open[j], b)) cuts[j].push(b);
+    }
+  }
+  // points by position (two ends drawn onto the same spot are one point)
+  const verts = [];
+  const vkey = (q) => {
+    let k = verts.findIndex((v) => Math.hypot(v[0] - q[0], v[1] - q[1]) < SKETCH_TOL);
+    if (k < 0) { verts.push(q); k = verts.length - 1; }
+    return k;
+  };
+  let pieces = [];
+  open.forEach((sg, i) => {
+    const ts = [...new Set(cuts[i].map((t) => Math.round(t * 1e9) / 1e9))].sort((x, y) => x - y);
+    for (let k = 0; k + 1 < ts.length; k++) {
+      const pc = segPiece(sg, ts[k], ts[k + 1]);
+      const from = vkey(pc.p[0]), to = vkey(pc.t === "bezier" ? pc.p[3] : pc.p[1]);
+      if (from === to && pc.t !== "bezier" && (pc.t === "line" || Math.abs(sweepOf(pc)) < 1e-6 || ts[k + 1] - ts[k] < 1e-6)) continue;
+      pieces.push({ ...pc, ci: sg.ci, src: i, ends: [from, to] });
+    }
+  });
+  // 2. loose ends: prune what leads nowhere (and remember where it ended)
+  // (the red dots are the first round's: where a curve really ends on
+  // nothing, not the points a pruned tail leaves behind)
+  const loose = [];
+  for (let pruned = true, round = 0; pruned; round++) {
+    pruned = false;
+    const d = new Map();
+    for (const pc of pieces) for (const e of pc.ends) d.set(e, (d.get(e) ?? 0) + 1);
+    const keep = pieces.filter((pc) => pc.ends[0] === pc.ends[1] || pc.ends.every((e) => d.get(e) > 1));
+    if (keep.length < pieces.length) {
+      if (!round) for (const pc of pieces) if (!keep.includes(pc)) for (const e of pc.ends) if (d.get(e) === 1) loose.push(verts[e]);
+      pieces = keep; pruned = true;
+    }
+  }
+  // 3. the half-edges, by the direction each leaves its point
+  const half = [];
+  pieces.forEach((pc, i) => {
+    for (const fwd of [true, false]) {
+      const o = segPointAt(pc, fwd ? 0 : 1);
+      const ang = (t) => { const q = segPointAt(pc, fwd ? t : 1 - t); return Math.atan2(q[1] - o[1], q[0] - o[0]); };
+      half.push({ pc, i, fwd, from: fwd ? pc.ends[0] : pc.ends[1], to: fwd ? pc.ends[1] : pc.ends[0], a: ang(1e-5), b: ang(0.15) });
+    }
+  });
+  const out = new Map();
+  for (const h of half) { if (!out.has(h.from)) out.set(h.from, []); out.get(h.from).push(h); }
+  for (const list of out.values()) list.sort((x, y) => (Math.abs(x.a - y.a) > 1e-4 ? x.a - y.a : x.b - y.b));
+  half.forEach((h) => { h.twin = half.find((k) => k.i === h.i && k.fwd !== h.fwd); });
+  const next = (h) => { const list = out.get(h.to), j = list.indexOf(h.twin); return list[(j - 1 + list.length) % list.length]; };
+  // 4. the faces: an enclosed region walks counter-clockwise (area > 0)
+  const segOf = (h) => (h.fwd ? h.pc : reverseSeg(h.pc));
+  let face = 0;
+  const bounded = [], facePts = [];
+  for (const h0 of half) {
+    if (h0.face != null) continue;
+    const cyc = [];
+    for (let h = h0, guard = 0; h.face == null && guard <= half.length; h = next(h), guard++) { h.face = face; cyc.push(h); }
+    facePts[face] = sampleSegs(cyc.map((h) => { const { ends, ci, src, ...x } = segOf(h); return x; }));
+    bounded[face] = loopArea(facePts[face]) > 1e-9;
+    face++;
+  }
+  // a region picked out (skip) is not extruded: its edges become outline
+  // where it meets a region that is (the curves around it are not strays)
+  const closes = [...bounded];
+  bounded.forEach((b, f) => { if (b && skip.some((p) => pointInLoop(p, facePts[f]))) bounded[f] = false; });
+  // 5. the outline: edges with an enclosed region on one side only, chained
+  const edge = (h) => bounded[h.face] && !bounded[h.twin.face];
+  const loops = [], done = new Set();
+  for (const h0 of half) {
+    if (!edge(h0) || done.has(h0)) continue;
+    const loop = [];
+    for (let h = h0, guard = 0; !done.has(h) && guard <= half.length; guard++) {
+      done.add(h); loop.push(segOf(h));
+      let g = next(h);
+      for (let k = 0; !edge(g) && k <= half.length; k++) g = next(g.twin);
+      h = g;
+    }
+    loops.push(mergeRuns(loop));
+  }
+  // curves that ended up in no region at all (not on an outline, not between two regions)
+  const used = new Set(half.filter((h) => closes[h.face] || closes[h.twin.face]).map((h) => h.pc.src));
+  const strays = open.filter((_, i) => !used.has(i));
+  return { loops, strays, loose };
+}
+// consecutive pieces of one line (or one arc) on an outline back into one
+function mergeRuns(loop) {
+  const same = (a, b) => a.ci === b.ci && a.t === b.t && (a.t === "line" || (a.t === "arc" && a.cw === b.cw));
+  let k = 0;
+  while (k < loop.length && same(loop[(k - 1 + loop.length) % loop.length], loop[k]) && k < loop.length) k++;
+  if (k === loop.length) return loop;                        // one curve all the way round: leave it split
+  const rot = [...loop.slice(k), ...loop.slice(0, k)], outL = [];
+  for (const sg of rot) {
+    const last = outL[outL.length - 1];
+    if (last && same(last, sg) && last.t !== "bezier") outL[outL.length - 1] = { ...last, p: [last.p[0], sg.p[sg.p.length - 1]] };
+    else outL.push(sg);
+  }
+  return outL;
 }
 function reverseSeg(s) {
   const r = reverseSegs([s])[0];
@@ -1133,7 +1442,8 @@ export function linearExtrude(opts, profile) {
   // `proud` mm past the plane on the other side, so a cutter starting on a
   // face does not share that face (coincident faces are unreliable booleans).
   const proud = Number(o.proud) || 0;
-  let lo = o.center ? -h / 2 : o.reverse ? -h : 0;
+  // start: where along the normal it begins (a two-sided extrude: start -h2, h the whole length)
+  let lo = o.start != null && Number.isFinite(+o.start) ? +o.start : o.center ? -h / 2 : o.reverse ? -h : 0;
   let len = h;
   if (proud > 0) { if (o.reverse) len += proud; else { lo -= proud; len += proud; } }
   const placed = len !== h ? { ...n, h: len } : n;
@@ -1347,6 +1657,12 @@ const op = (operation) => (...children) => {
   if (tools.length !== rest.length || tools.some((t, i) => t !== rest[i])) return node({ kind: "op", operation, children: [head, ...tools] });
   return node({ kind: "op", operation, children: kids });
 };
+
+// suppress(shape): the shape is left out of the model but stays in the code,
+// as CAD programs suppress a feature. In a union, difference, intersection or
+// group it simply drops out (a hole that isn't cut, a part not there); take
+// the suppress( ) away to bring it back. Design mode's Suppress writes it.
+export function suppress() { return null; }
 
 export const union = op("UNION");
 export const difference = op("SUBTRACT");

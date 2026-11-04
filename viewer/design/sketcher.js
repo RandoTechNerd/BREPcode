@@ -44,6 +44,7 @@ body.dz-ribbon #dz-sk { top: 104px; }
 #dz-sk .dof .sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
 #dz-sk .dof.done { color: #9ff0d2; }
 #dz-sk label.f { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; }
+#dz-sk .hint { font-size: 11px; color: var(--muted, #8ea0c0); margin-top: 2px; }
 #dz-sk label.f span { width: 70px; color: var(--muted, #8ea0c0); }
 #dz-sk input[type=number], #dz-sk select { flex: 1; min-width: 0; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border, #26314a); background: rgba(0,0,0,.22); color: inherit; font: 12px ui-monospace, Consolas, monospace; }
 #dz-sk .ft { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 12px 12px; }
@@ -57,19 +58,39 @@ body.dz-ribbon #dz-sk { top: 104px; }
 .dz-glyph:hover { color: #ff9b8f; background: rgba(0, 0, 0, 0.45); }
 .dz-glyph.bad, .dz-dim.bad { color: #fff; background: #d94848; border-color: #ff8a8a; box-shadow: 0 0 0 2px #ff8a8a66; }
 .dz-glyph.hot, .dz-dim.hot { transform: translate(-50%, -50%) scale(1.6); box-shadow: 0 0 0 3px #fff; z-index: 31; }
+.dz-infer { position: fixed; z-index: 30; pointer-events: none; padding: 1px 6px; border-radius: 5px; background: rgba(10, 14, 24, 0.85); border: 1px solid #3ddc9799;
+  color: #bff5dc; font: 600 10.5px system-ui, sans-serif; white-space: nowrap; }
 #dz-dim-edit { position: fixed; z-index: 41; padding: 6px 8px; display: flex; gap: 6px; align-items: center; }
 #dz-dim-edit input { width: 80px; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--border, #26314a); background: rgba(0,0,0,.25); color: inherit; font: 12px ui-monospace, Consolas, monospace; }
 #dz-dim-edit button { border: 1px solid var(--border, #26314a); background: transparent; border-radius: 5px; padding: 2px 7px; cursor: pointer; color: inherit; font-size: 11.5px; }
 `;
 
-const TOOL_KEYS = { line: "L", rect: "R", circle: "C", arc: "A", spline: "S", trim: "T", offset: "O", construction: "X" };
-const TOOL_LABEL = { line: "Line", rect: "Rectangle", circle: "Circle", arc: "Arc", spline: "Spline", trim: "Trim", offset: "Offset", construction: "Construction" };
-const CON_LABEL = { coincident: "Coincident", horizontal: "Horizontal", vertical: "Vertical", parallel: "Parallel", perpendicular: "Perpendicular", tangent: "Tangent", tangentArcs: "Tangent", equal: "Equal", fixed: "Fixed" };
-const GLYPHS = { horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂", tangent: "⌒", tangentArcs: "⌒", equal: "=", fixed: "⏚", coincident: "●", onLine: "⏛", midpoint: "⋯" };
+const TOOL_KEYS = { line: "L", rect: "R", circle: "C", arc: "A", spline: "S", trim: "T", offset: "O", construction: "X", fillet: "F", project: "P" };
+const TOOL_LABEL = { line: "Line", rect: "Rectangle", circle: "Circle", arc: "Arc", spline: "Spline", trim: "Trim", offset: "Offset", construction: "Construction",
+  centerRect: "Centre rect", arc3: "3-point arc", tangentArc: "Tangent arc", slot: "Slot", polygon: "Polygon", fillet: "Fillet", mirror: "Mirror", pattern: "Pattern", regions: "Pick regions", project: "Project" };
+const TOOL_TIP = {
+  centerRect: "Rectangle from its centre: click the centre, then a corner",
+  arc: "Arc by its centre: click the centre, the start, then the end (counter-clockwise)",
+  arc3: "Arc through three clicks: its two ends, then a point it passes through",
+  tangentArc: "Arc that runs on smoothly from the end of a line or arc: click that end, then where the arc ends (keeps going; Esc stops)",
+  slot: "Slot: click the two end centres, then how wide",
+  polygon: "Regular polygon: click the centre, then a corner (the number of sides is below)",
+  fillet: "Round a corner where two lines meet: set the radius below, then click the corner",
+  mirror: "Mirror: select curves first (Select tool), then click the line to mirror across",
+  pattern: "Pattern: select curves first, then click the centre (circular) or two points for the step (linear)",
+  regions: "Pick regions: click a shaded area to leave it out of the extrude, click it again to bring it back",
+  project: "Project: copy the model's edges that lie in this sketch's plane in as fixed construction lines, to snap and line up to",
+};
+const DRAW_ROW = ["line", "rect", "centerRect", "circle", "arc", "arc3", "tangentArc", "spline", "slot", "polygon"];
+const MODIFY_ROW = ["fillet", "trim", "offset", "mirror", "pattern", "construction", "regions", "project"];
+const CON_LABEL = { coincident: "Coincident", horizontal: "Horizontal", vertical: "Vertical", parallel: "Parallel", perpendicular: "Perpendicular", tangent: "Tangent", tangentArcs: "Tangent", equal: "Equal", fixed: "Fixed",
+  midpoint: "Midpoint", collinear: "Collinear", concentric: "Concentric", symmetric: "Symmetric", onCurve: "Point on curve", onLine: "Point on line" };
+const GLYPHS = { horizontal: "━", vertical: "│", parallel: "∥", perpendicular: "⟂", tangent: "⌒", tangentArcs: "⌒", equal: "=", fixed: "⏚", coincident: "●", onLine: "⏛", midpoint: "⋯",
+  onCurve: "⏛", collinear: "⫽", concentric: "◎", symmetric: "⇹" };
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const SNAP_PX = 9, PICK_PX = 7;
 const CLOSE_PX = 14;     // a click this near the chain's first point closes the loop
-const DRAG_TOOLS = new Set(["line", "rect", "circle"]);      // press-drag draws these too
+const DRAG_TOOLS = new Set(["line", "rect", "circle", "centerRect"]);      // press-drag draws these too
 
 let cssDone = false;
 
@@ -91,9 +112,16 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     free: new THREE.LineBasicMaterial({ color: 0x4f9dff, depthTest: false, transparent: true }),
     cons: new THREE.LineDashedMaterial({ color: 0xffa94d, dashSize: 1.2, gapSize: 0.8, depthTest: false, transparent: true }),
     sel: new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false, transparent: true }),
+    // what Finish will extrude, shaded; what it leaves out, red
+    fill: new THREE.MeshBasicMaterial({ color: 0x4f9dff, transparent: true, opacity: 0.14, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+    stray: new THREE.LineDashedMaterial({ color: 0xff6b6b, dashSize: 1, gapSize: 0.7, depthTest: false, transparent: true }),
+    pointLoose: new THREE.PointsMaterial({ color: 0xff5c5c, size: 10, sizeAttenuation: false, depthTest: false, transparent: true }),
     hover: new THREE.LineBasicMaterial({ color: 0xffe9a8, depthTest: false, transparent: true }),
     rubber: new THREE.LineBasicMaterial({ color: 0x5ad1ff, depthTest: false, transparent: true, opacity: 0.85 }),
     close: new THREE.LineBasicMaterial({ color: 0x3ddc97, depthTest: false }),
+    // inference: the spot a click snaps to, and guides to points it lines up with
+    snap: new THREE.LineBasicMaterial({ color: 0x3ddc97, depthTest: false, transparent: true }),
+    guide: new THREE.LineDashedMaterial({ color: 0x9fb6e0, dashSize: 0.8, gapSize: 0.8, depthTest: false, transparent: true, opacity: 0.7 }),
     // drawn over the face it lies in: depth-tested, the face hid it in patches
     grid: new THREE.LineBasicMaterial({ color: 0x3a4a6a, transparent: true, opacity: 0.35, depthTest: false }),
     gridMajor: new THREE.LineBasicMaterial({ color: 0x5a6f98, transparent: true, opacity: 0.55, depthTest: false }),
@@ -135,16 +163,23 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     const a = toScreen([0, 0]), b = toScreen([10, 0]);
     return 10 / Math.max(1e-6, Math.hypot(b[0] - a[0], b[1] - a[1]));
   }
-  // where a click lands: an existing point (within SNAP_PX), else the grid
+  // where a click lands, as Fusion infers it: an existing point, a line's
+  // midpoint, a crossing, a point on a curve (each brings its rule), lined up
+  // with a point across or down (a dotted guide), else the grid. Alt: free.
   function snap(x, y, free) {
     const uv = fromScreen(x, y);
     if (!uv) return null;
     const k = mmPerPx();
-    const near = M.nearestPoint(S.sk, uv, SNAP_PX * k);
-    if (near >= 0) return { uv: [...S.sk.points[near]], point: near };
-    if (free) return { uv };
     const g = k > 0.5 ? 5 : k > 0.1 ? 1 : 0.5;
-    return { uv: [Math.round(uv[0] / g) * g, Math.round(uv[1] / g) * g] };
+    return M.inferPoint(S.sk, uv, SNAP_PX * k, { free, grid: g });
+  }
+  // the rules the clicks of a finished curve earned: [[uv, inference]…]
+  function keepInferred(list) {
+    for (const [uv, inf] of list) {
+      if (!inf || inf.point != null) continue;
+      const i = S.sk.points.findIndex((p) => Math.hypot(p[0] - uv[0], p[1] - uv[1]) < 1e-6);
+      M.applyInferred(S.sk, i, inf);
+    }
   }
 
   // ---- drawing the sketch ----
@@ -205,9 +240,20 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     const sk = S.sk;
     const selCurves = new Set(S.sel.filter((s) => s.curve != null).map((s) => s.curve));
     const selPts = new Set(S.sel.filter((s) => s.point != null).map((s) => s.point));
+    // the profile Finish will extrude, shaded on the plane
+    for (const loop of S.info?.loops ?? []) {
+      const shape = new THREE.Shape(loop.pts.map(([x, y]) => new THREE.Vector2(x, y)));
+      for (const h of loop.holes) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
+      const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), mats.fill);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.makeBasis(S.frame.x, S.frame.y, S.frame.n).setPosition(S.frame.origin);
+      mesh.renderOrder = 999;
+      sketchGroup.add(mesh);
+    }
+    const strays = new Set(S.info?.strays ?? []);
     sk.curves.forEach((c, i) => {
       const mat = selCurves.has(i) ? mats.sel : S.hover?.curve === i ? mats.hover : c.construction ? mats.cons
-        : S.an && !S.an.curveLocked[i] ? mats.free : mats.curve;
+        : strays.has(i) ? mats.stray : S.an && !S.an.curveLocked[i] ? mats.free : mats.curve;
       sketchGroup.add(polyline(curvePoints(c), mat));
     });
     // points: the ends and centres curves use; a spline's Bezier handles
@@ -215,7 +261,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     // spline is a smooth line, not a cloud of squares)
     const used = visiblePoints(selCurves);
     const fixed = new Set(sk.constraints.filter((c) => c.type === "fixed").flatMap((c) => c.ids));
-    const buckets = { point: [], pointSel: [], pointFixed: [] };
+    const buckets = { point: [], pointSel: [], pointFixed: [], pointLoose: (S.info?.loose ?? []).map((uv) => toWorld(uv)) };
     for (const i of used) (selPts.has(i) || S.hover?.point === i ? buckets.pointSel : fixed.has(i) ? buckets.pointFixed : buckets.point).push(toWorld(sk.points[i]));
     for (const [k, list] of Object.entries(buckets)) {
       if (!list.length) continue;
@@ -292,7 +338,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       if (!g || c.temp) return;
       const a = P[c.ids[0]], b = P[c.ids[1] ?? c.ids[0]];
       // two circles' tangent sits where they touch, not between the centres
-      const at = c.type === "tangentArcs" ? P[c.ids[2]] : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const at = c.type === "tangentArcs" ? P[c.ids[2]] : c.type === "onCurve" ? b : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       const [x, y] = toScreen(at);
       const el = document.createElement("div");
       el.className = "dz-glyph" + blocks("constraint", k);
@@ -333,7 +379,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     const box = document.createElement("form");
     box.id = "dz-dim-edit";
     box.className = "dz-ui";
-    box.innerHTML = `<input type="number" step="any" value="${esc(cur.value)}" aria-label="Value" />`
+    box.innerHTML = `<input type="text" inputmode="decimal" value="${esc(cur.name && !/^[A-Za-z_$][\w$]*$/.test(cur.name) ? cur.name : cur.value)}" aria-label="Value, or a formula of the parameters" title="A number, or a formula of the model's parameters (width / 2)" />`
       + (data.dim != null ? `<button type="button" class="pr" title="Make this dimension a named parameter (a slider)">${cur.name ? esc(cur.name) : "★ name"}</button>` : "")
       + `<button type="submit">OK</button>`;
     box.style.left = `${x + 10}px`;
@@ -345,10 +391,26 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     box.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") closeDimBox(); });
     box.addEventListener("submit", (e) => {
       e.preventDefault();
-      const v = parseFloat(inp.value);
-      if (!Number.isFinite(v) || (data.radius != null && v <= 0)) { inp.style.borderColor = "#ff6b6b"; return; }
+      // a number, or a formula of the parameters (kept as written: the size
+      // follows them)
+      const raw = inp.value.trim(), plain = /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(raw);
+      const v = plain ? parseFloat(raw) : M.evalFormula(raw, M.paramScope(S.text));
+      if (typeof v !== "number" || !Number.isFinite(v) || (data.radius != null && v <= 0)) {
+        inp.style.borderColor = "#ff6b6b"; inp.title = typeof v === "object" ? v.error : "a number above 0"; return;
+      }
       closeDimBox();
-      tryChange((k) => { if (data.dim != null) k.dims[data.dim].value = v; else k.curves[data.radius].r = v; }, `Dimension ${fmt(v)}`, "Dimension set.");
+      const formula = plain ? null : raw;
+      tryChange((k) => {
+        if (data.dim != null) {
+          const d = k.dims[data.dim];
+          d.value = v;
+          if (formula) d.name = formula; else if (d.name && !/^[A-Za-z_$][\w$]*$/.test(d.name)) delete d.name;
+        } else {
+          const c = k.curves[data.radius];
+          c.r = v;
+          if (formula) { c.rName = formula; c.rRead = v; } else if (c.rName && !/^[A-Za-z_$][\w$]*$/.test(c.rName)) delete c.rName;
+        }
+      }, `Dimension ${formula ?? fmt(v)}`, formula ? `Dimension = ${esc(formula)} (${fmt(v)}): it follows those parameters.` : "Dimension set.");
     });
     box.querySelector(".pr")?.addEventListener("click", () => {
       const name = prompt("Name for this dimension (it becomes a const at the top of the code, with a slider):", cur.name || suggestName());
@@ -419,6 +481,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   // how constrained the sketch is (colours and the count in the panel)
   function study() {
     try { S.an = M.analyse({ ...S.sk, constraints: S.sk.constraints.filter((c) => !c.temp) }); } catch { S.an = null; }
+    try { S.info = M.profileInfo(S.sk); } catch { S.info = null; }
   }
   // undo inside the sketch: what it was before each change that resolve saw
   const state = () => ({ sk: M.cloneSketch(S.sk), text: S.text });
@@ -449,8 +512,13 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         const what = [...new Set(bad.map((r) => (CON_LABEL[r.type] ?? r.type).toLowerCase()))].join(", ");
         setMsg(`Can't meet every rule: ${esc(what)} ${bad.length > 1 ? "are" : "is"} off. Something is held too tightly: click a rule's symbol to remove it, or change a dimension.`, "err");
       } else {
-        const p = M.profileProblem(S.sk);
-        setMsg(msg ?? (p ? `Not a closed profile yet: ${esc(p)}` : "Closed profile: ready to extrude or revolve."), p && !msg ? "" : "ok");
+        const info = M.profileInfo(S.sk);
+        const n = info.strays.length, dots = info.loose.length;
+        const left = n ? ` ${n} curve${n > 1 ? "s" : ""} shown red ${n > 1 ? "enclose" : "encloses"} nothing and ${n > 1 ? "are" : "is"} left out.` : "";
+        setMsg(msg ?? (info.problem
+          ? (dots ? `Not closed yet: the red dot${dots > 1 ? "s mark where curves end" : " marks where a curve ends"} on nothing. Draw onto ${dots > 1 ? "them" : "it"} to close the shape, Trim an overhang, or make a stray curve Construction (X).`
+            : `Not a closed profile yet: ${esc(info.problem)}`)
+          : `Closed profile (shaded): ready to extrude or revolve.${left}`), info.problem && !msg ? "" : "ok");
       }
     } catch (e) {
       setMsg(`The solver could not satisfy that: ${esc(e.message || e)}`, "err");
@@ -467,11 +535,12 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   function renderPanel() {
     if (!panel || !S) return;
     const t = S.tool;
-    const p = M.profileProblem(S.sk);
+    const p = S.info ? S.info.problem : M.profileProblem(S.sk);
     const axes = S.sk.curves.map((c, i) => [c, i]).filter(([c]) => c.kind === "line" && c.construction);
     panel.innerHTML = `<h3>Sketch <small>${esc(S.name)} · ${esc(planeLabel(S.on))}</small><button type="button" class="help" title="How the sketcher works, its keys and its limits (F1)" aria-label="Sketch help">?</button></h3>`
-      + `<div class="sec"><span class="k">Draw</span><div class="row">${M.TOOLS.map((k) => `<button type="button" data-tool="${k}" aria-pressed="${t === k}" title="${TOOL_LABEL[k]} (${TOOL_KEYS[k]})">${TOOL_LABEL[k]}<kbd>${TOOL_KEYS[k]}</kbd></button>`).join("")}`
-      + `<button type="button" data-tool="dim" aria-pressed="${t === "dim"}" title="Dimension (D): a line, two points, a circle or two lines">Dimension<kbd>D</kbd></button></div></div>`
+      + `<div class="sec"><span class="k">Draw</span><div class="row">${DRAW_ROW.map(toolButton).join("")}</div></div>`
+      + `<div class="sec"><span class="k">Modify</span><div class="row">${MODIFY_ROW.map(toolButton).join("")}`
+      + `<button type="button" data-tool="dim" aria-pressed="${t === "dim"}" title="Dimension (D): a line, two points, a circle or two lines">Dimension<kbd>D</kbd></button></div>${toolOptions(t)}</div>`
       + `<div class="sec"><span class="k">Constrain the selection</span><div class="row">${M.CONSTRAINTS.map((k) => `<button type="button" data-con="${k}" title="${CON_LABEL[k]}">${GLYPHS[k] ?? ""} ${CON_LABEL[k]}</button>`).join("")}</div></div>`
       + (msg.text ? `<div class="msg ${msg.cls}">${msg.text}</div>` : "")
       + (S.an && S.sk.curves.length ? (S.an.dof === 0
@@ -479,7 +548,9 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         : `<div class="dof" title="Blue curves can still move. Add rules (Fixed, Horizontal, Tangent…) or dimensions until it is fully defined, or leave it: a sketch does not have to be fully defined to build."><span class="sw" style="background:#4f9dff"></span>${S.an.dof} more rule${S.an.dof > 1 ? "s" : ""} or dimension${S.an.dof > 1 ? "s" : ""} to lock it</div>`) : "")
       + `<div class="sec"><span class="k">Finish as</span>`
       + `<label class="f"><span>Feature</span><select data-k="feat"><option value="extrude"${S.feat === "extrude" ? " selected" : ""}>Extrude</option><option value="revolve"${S.feat === "revolve" ? " selected" : ""}>Revolve</option><option value="none"${S.feat === "none" ? " selected" : ""}>Sketch only</option></select></label>`
-      + (S.feat === "extrude" ? `<label class="f"><span>Distance</span><input type="number" data-k="h" step="1" value="${S.h}" /></label>` : "")
+      + (S.feat === "extrude" ? `<label class="f"><span>Distance</span><input type="number" data-k="h" step="1" value="${S.h}" /></label>`
+        + `<label class="f" title="One side of the plane, centred on it, or a different distance each way"><span>Direction</span><select data-k="dir">${[["one", "One side"], ["sym", "Symmetric"], ["two", "Two sides"]].map(([v, l]) => `<option value="${v}"${(S.dir ?? "one") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>`
+        + ((S.dir ?? "one") === "two" ? `<label class="f" title="How far the other way"><span>Other side</span><input type="number" data-k="h2" step="1" value="${S.h2 ?? 5}" /></label>` : "") : "")
       + (S.feat === "revolve" ? `<label class="f"><span>Axis</span><select data-k="axis"><option value="y"${S.axis === "y" ? " selected" : ""}>sketch Y axis</option>`
         + axes.map(([, i], n) => `<option value="${i}"${String(S.axis) === String(i) ? " selected" : ""}>construction line ${n + 1}</option>`).join("") + `</select></label>`
         + `<label class="f"><span>Angle</span><input type="number" data-k="angle" step="15" value="${S.angle}" /></label>` : "")
@@ -487,11 +558,50 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       + `</div><div class="keys"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo · <kbd>Esc</kbd> stop · <kbd>Del</kbd> delete · <kbd>E</kbd> extrude · <kbd>F6</kbd> look at · <kbd>F1</kbd> help</div>`
       + `<div class="ft"><button type="button" class="look" title="Square on to the sketch again">Look at</button><button type="button" class="cancel">Cancel</button><button type="button" class="ok"${S.feat !== "none" && p ? " disabled title=\"" + esc(p) + "\"" : ""}>Finish</button></div>`;
   }
-  const planeLabel = (on) => (typeof on === "string" ? `${on} plane` : "on a face");
+  const planeLabel = (on) => (typeof on === "string" ? `${on} plane` : on.x ? "on a construction plane" : "on a face");
+  function toolButton(k) {
+    const key = TOOL_KEYS[k];
+    return `<button type="button" data-tool="${k}" aria-pressed="${S.tool === k}" title="${esc(TOOL_TIP[k] ?? TOOL_LABEL[k])}${key ? ` (${key})` : ""}">${TOOL_LABEL[k]}${key ? `<kbd>${key}</kbd>` : ""}</button>`;
+  }
+  // Project (an action, not a tool): the model's edges in the sketch plane
+  function projectEdges() {
+    const segs = [];
+    const tol = 0.01, n = S.frame.n, o = S.frame.origin;
+    const off = (v) => v.clone().sub(o).dot(n);
+    for (const m of host.modelMeshes()) {
+      if (!m.isMesh || !m.visible || !m.geometry) continue;
+      m.updateMatrixWorld();
+      const eg = new THREE.EdgesGeometry(m.geometry, 30), pos = eg.attributes.position;
+      const a = new THREE.Vector3(), b = new THREE.Vector3();
+      for (let k = 0; k + 1 < pos.count; k += 2) {
+        a.fromBufferAttribute(pos, k).applyMatrix4(m.matrixWorld);
+        b.fromBufferAttribute(pos, k + 1).applyMatrix4(m.matrixWorld);
+        if (Math.abs(off(a)) > tol || Math.abs(off(b)) > tol) continue;
+        const uv = (p) => { const d = p.clone().sub(o); return [Math.round(d.dot(S.frame.x) * 1e4) / 1e4, Math.round(d.dot(S.frame.y) * 1e4) / 1e4]; };
+        segs.push([uv(a), uv(b)]);
+      }
+      eg.dispose();
+    }
+    const added = M.projectSegments(S.sk, segs);
+    if (!added) { setMsg("No model edges lie in this sketch's plane. (Sketch on a face of the part to project its outline.)", "err"); return; }
+    resolve(`Projected ${added} edge${added > 1 ? "s" : ""} as fixed construction lines (dashed): snap to them to line up with the part.`);
+  }
+  // the tool's own settings, under the tool rows (no pop-up prompts: the
+  // desktop app has none)
+  function toolOptions(t) {
+    const o = S.opt, num = (k, label, step, min) => `<label class="f"><span>${label}</span><input type="number" data-o="${k}" step="${step}"${min != null ? ` min="${min}"` : ""} value="${o[k]}" /></label>`;
+    if (t === "fillet") return num("fillet", "Radius", 0.5, 0);
+    if (t === "offset") return num("offset", "Distance", 0.5) + `<div class="hint">Negative goes inward.</div>`;
+    if (t === "polygon") return num("sides", "Sides", 1, 3);
+    if (t === "pattern") return `<label class="f"><span>Kind</span><select data-o="kind"><option value="circular"${o.kind === "circular" ? " selected" : ""}>Circular</option><option value="linear"${o.kind === "linear" ? " selected" : ""}>Linear</option></select></label>` + num("count", "Count", 1, 2);
+    return "";
+  }
 
   // ---- tools ----
   function setTool(t) {
+    if (t === "project") { projectEdges(); return; }
     S.tool = t;
+    if (inferTag) inferTag.style.display = "none";
     S.pending = [];
     drawRubber([]);
     const hints = {
@@ -499,12 +609,21 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       rect: "Click two opposite corners.",
       circle: "Click the centre, then a point on the rim.",
       arc: "Click the centre, the start, then the end (counter-clockwise).",
+      centerRect: "Click the centre, then a corner.",
+      arc3: "Click where the arc starts and ends, then a point it passes through.",
+      tangentArc: "Click the end of a line or arc, then where the arc ends. It keeps going from there; Esc stops.",
+      slot: "Click the two end centres, then how wide.",
+      polygon: "Click the centre, then a corner. Sides are set below.",
+      fillet: "Click a corner where two lines meet. The radius is set below.",
+      regions: "Click a shaded area to leave it out of the extrude (it goes clear); click it again to bring it back.",
+      mirror: S.sel.some((x) => x.curve != null) ? "Click the line to mirror the selection across (a construction line is best)." : "Select the curves to mirror first (Select tool, Shift-click), then come back to Mirror.",
+      pattern: S.sel.some((x) => x.curve != null) ? "Circular: click the centre. Linear: click two points, the step between copies." : "Select the curves to copy first (Select tool, Shift-click), then come back to Pattern.",
       spline: "Click the points it passes through; Enter (or double-click) finishes.",
       trim: "Click the piece of a line, arc or circle to cut away (between crossings and tangent touches).",
-      offset: "Click a closed outline or a circle, then type the distance.",
+      offset: "Set the distance below, then click a closed outline or a circle.",
       construction: "Click curves to make them construction (dashed, not part of the profile) or back.",
       dim: "Click a line, two points, a circle or two lines; then type the value.",
-      select: "Click points or curves to select (Shift adds); drag a point to move it; Delete removes.",
+      select: "Click points or curves to select (Shift adds), or drag a box: left to right takes what is inside, right to left anything it touches. Drag a point to move it; Delete removes.",
     };
     setMsg(hints[t] ?? "");
   }
@@ -522,38 +641,127 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       if (st && nearStart(x, y, st)) sp = { uv: [...st], point: S.pending.chainStart };
       if (S.pending.length) {
         const ci = M.addLine(sk, S.pending[0], sp.uv);
-        if (ci >= 0) { resolve(); if (sp.point != null && S.pending.chainStart != null && sp.point === S.pending.chainStart) { S.pending = []; drawRubber([]); return; } }
+        if (ci >= 0) {
+          keepInferred([[S.pending[0], S.pending.inf], [sp.uv, sp]]);
+          const join = M.inferJoin(sk, ci);
+          resolve(join ? `${join} (inferred: click its symbol to remove).` : undefined);
+          if (sp.point != null && S.pending.chainStart != null && sp.point === S.pending.chainStart) { S.pending = []; drawRubber([]); return; }
+        }
         const cs = S.pending.chainStart;
         S.pending = [sk.curves[sk.curves.length - 1] ? sk.points[sk.curves[sk.curves.length - 1].ids[1]] : sp.uv];
         S.pending.chainStart = cs;
       } else {
         S.pending = [sp.uv];
+        S.pending.inf = sp;
         S.pending.chainStart = M.pointAt(sk, sp.uv);
       }
     } else if (t === "rect") {
-      if (S.pending.length) { M.addRect(sk, S.pending[0], sp.uv); S.pending = []; resolve(); } else S.pending = [sp.uv];
+      if (S.pending.length) { M.addRect(sk, S.pending[0], sp.uv); keepInferred([[S.pending[0], S.pending.inf], [sp.uv, sp]]); S.pending = []; resolve(); }
+      else { S.pending = [sp.uv]; S.pending.inf = sp; }
     } else if (t === "circle") {
       if (S.pending.length) {
         const r = Math.hypot(sp.uv[0] - S.pending[0][0], sp.uv[1] - S.pending[0][1]);
-        if (r > 1e-6) { M.addCircle(sk, S.pending[0], r); resolve(); }
+        if (r > 1e-6) { M.addCircle(sk, S.pending[0], r); keepInferred([[S.pending[0], S.pending.inf]]); resolve(); }
         S.pending = [];
-      } else S.pending = [sp.uv];
+      } else { S.pending = [sp.uv]; S.pending.inf = sp; }
     } else if (t === "arc") {
+      const infs = [...(S.pending.infs ?? []), sp];
       S.pending.push(sp.uv);
-      if (S.pending.length === 3) { M.addArc(sk, ...S.pending); S.pending = []; resolve(); }
+      S.pending.infs = infs;
+      if (S.pending.length === 3) {
+        const ci = M.addArc(sk, ...S.pending);
+        keepInferred(S.pending.map((uv, k) => [uv, infs[k]]));
+        const join = ci >= 0 ? M.inferJoin(sk, ci) : null;
+        S.pending = [];
+        resolve(join ? `${join} (inferred: click its symbol to remove).` : undefined);
+      }
     } else if (t === "spline") {
       // back on the first point: the loop closes and the spline is done
       if (S.pending.length >= 3 && nearStart(x, y, S.pending[0])) { finishSpline(true); return; }
+      const infs = [...(S.pending.infs ?? []), sp];
       S.pending.push(sp.uv);
+      S.pending.infs = infs;
       if (e?.detail >= 2 && S.pending.length >= 2) finishSpline();
+    } else if (t === "centerRect") {
+      if (S.pending.length) {
+        if (M.addCenterRect(sk, S.pending[0], sp.uv).length) { keepInferred([[S.pending[0], S.pending.inf], [sp.uv, sp]]); resolve(); }
+        S.pending = [];
+      } else { S.pending = [sp.uv]; S.pending.inf = sp; }
+    } else if (t === "arc3" || t === "slot") {
+      const infs = [...(S.pending.infs ?? []), sp];
+      S.pending.push(sp.uv);
+      S.pending.infs = infs;
+      if (S.pending.length === 3) {
+        const [a, b, c] = S.pending;
+        if (t === "arc3") {
+          const ci = M.addArc3(sk, a, b, c);
+          keepInferred([[a, infs[0]], [b, infs[1]]]);
+          const join = ci >= 0 ? M.inferJoin(sk, ci) : null;
+          S.pending = [];
+          if (ci < 0) setMsg("Those three are in a straight line: there is no arc through them.", "err");
+          else resolve(join ? `${join} (inferred: click its symbol to remove).` : undefined);
+        } else {
+          const r = slotHalf(a, b, c);
+          S.pending = [];
+          if (M.addSlot(sk, a, b, r).length) { keepInferred([[a, infs[0]], [b, infs[1]]]); resolve(); }
+        }
+      }
+    } else if (t === "tangentArc") {
+      if (!S.pending.length) {
+        const ok = sp.point != null && sk.curves.some((c) => (c.kind === "line" || c.kind === "arc") && !c.construction && (c.kind === "line" ? c.ids : c.ids.slice(1)).includes(sp.point));
+        if (!ok) { setMsg("Start a tangent arc on the end of a line or arc (it snaps when you are on one).", "err"); return; }
+        S.pending = [sp.uv];
+        S.pending.from = sp.point;
+      } else {
+        const r = M.addTangentArc(sk, S.pending.from, sp.uv);
+        if (r.error) { setMsg(r.error, "err"); return; }
+        keepInferred([[sp.uv, sp]]);
+        resolve();
+        S.pending = [sk.points[r.end]];
+        S.pending.from = r.end;
+      }
+    } else if (t === "polygon") {
+      if (S.pending.length) {
+        if (M.addPolygon(sk, S.pending[0], sp.uv, S.opt.sides).length) { keepInferred([[S.pending[0], S.pending.inf]]); resolve(); }
+        else setMsg("A polygon has 3 to 64 sides.", "err");
+        S.pending = [];
+      } else { S.pending = [sp.uv]; S.pending.inf = sp; }
+    } else if (t === "fillet") {
+      const V = M.cornerNear(sk, fromScreen(x, y), CLOSE_PX * mmPerPx());
+      if (V < 0) { setMsg("Click a corner where two lines meet.", "err"); return; }
+      const rad = S.opt.fillet;
+      tryChange((k) => { const r = M.filletCorner(k, V, rad); return typeof r === "string" ? r : null; }, `Fillet ${fmt(rad)}`, `Rounded (radius ${fmt(rad)}).`);
+    } else if (t === "mirror") {
+      const picked = S.sel.filter((q) => q.curve != null).map((q) => q.curve);
+      if (!picked.length) { setMsg("Select the curves to mirror first (Select tool, Shift-click), then come back to Mirror.", "err"); return; }
+      if (hitSel?.curve == null || sk.curves[hitSel.curve].kind !== "line") { setMsg("Click a line to mirror across.", "err"); return; }
+      const axis = hitSel.curve;
+      S.sel = [];
+      tryChange((k) => { const r = M.mirrorCurves(k, picked, axis); return typeof r === "string" ? r : null; }, "Mirror", "Mirrored: each copy is held symmetric to its original.");
+    } else if (t === "pattern") {
+      const picked = S.sel.filter((q) => q.curve != null).map((q) => q.curve);
+      if (!picked.length) { setMsg("Select the curves to copy first (Select tool, Shift-click), then come back to Pattern.", "err"); return; }
+      const go = (o) => {
+        const r = M.patternCurves(sk, picked, o);
+        if (typeof r === "string") { setMsg(r, "err"); return; }
+        S.sel = []; S.pending = [];
+        resolve(`${r.curves.length} curves copied. Copies are plain curves: they do not follow the original.`);
+      };
+      if (S.opt.kind === "circular") go({ kind: "circular", centre: sp.uv, n: S.opt.count });
+      else if (!S.pending.length) S.pending = [sp.uv];
+      else go({ kind: "linear", step: [sp.uv[0] - S.pending[0][0], sp.uv[1] - S.pending[0][1]], n: S.opt.count });
+    } else if (t === "regions") {
+      const r = M.toggleRegion(sk, fromScreen(x, y));
+      if (!r) { setMsg(S.info?.loops.length === 1 && !sk.skip?.length ? "That is the only region: it stays (Cancel if you want nothing)." : "Click inside a shaded area, or where a left-out one was.", "err"); return; }
+      resolve(r === "out" ? "Left out of the extrude. Click it again to bring it back." : "Back in the extrude.");
     } else if (t === "trim") {
       if (hitSel?.curve == null) { setMsg("Click on a curve to trim."); return; }
       const err = M.trim(sk, hitSel.curve, fromScreen(x, y));
       if (err) setMsg(err, "err"); else resolve("Trimmed.");
     } else if (t === "offset") {
       if (hitSel?.curve == null) { setMsg("Click a closed outline (or a circle) to offset."); return; }
-      const d = parseFloat(prompt("Offset distance in mm (negative goes inward):", "2"));
-      if (!Number.isFinite(d)) return;
+      const d = S.opt.offset;
+      if (!Number.isFinite(d) || d === 0) { setMsg("Set an offset distance (not 0) below first.", "err"); return; }
       const err = M.offset(sk, hitSel.curve, d);
       if (err) setMsg(err, "err"); else resolve(`Offset by ${d} mm.`);
     } else if (t === "construction") {
@@ -589,7 +797,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     rubber(x, y);
   }
   function finishSpline(closed = false) {
-    if (S.pending.length >= (closed ? 3 : 2)) { M.addSpline(S.sk, S.pending, { closed }); resolve(closed ? "Closed spline." : undefined); }
+    if (S.pending.length >= (closed ? 3 : 2)) {
+      M.addSpline(S.sk, S.pending, { closed });
+      keepInferred(S.pending.map((uv, k) => [uv, S.pending.infs?.[k]]));
+      resolve(closed ? "Closed spline." : undefined);
+    }
     S.pending = [];
     drawRubber([]);
   }
@@ -617,6 +829,25 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         drawRubber([arcPts(a, r, a0, a1, 48)]);
       }
     } else if (t === "spline") drawRubber([hot ? splinePreview(S.pending, true) : splinePreview([...S.pending, b])], ring);
+    else if (t === "centerRect") drawRubber(preview((k) => M.addCenterRect(k, a, b)));
+    else if (t === "polygon") drawRubber(preview((k) => M.addPolygon(k, a, b, S.opt.sides)));
+    else if (t === "arc3") drawRubber(S.pending.length === 1 ? [[a, b]] : preview((k) => M.addArc3(k, a, S.pending[1], b)));
+    else if (t === "slot") drawRubber(S.pending.length === 1 ? [[a, b]] : preview((k) => M.addSlot(k, a, S.pending[1], slotHalf(a, S.pending[1], b))));
+    else if (t === "tangentArc") drawRubber(preview((k) => M.addTangentArc(k, S.pending.from, b), true));
+    else if (t === "pattern" && S.opt.kind === "linear") drawRubber([[a, b]]);
+  }
+  // what a tool would add, as polylines: run it on a scratch sketch (the
+  // real one copied when the tool builds on what is there)
+  function preview(fn, onCopy = false) {
+    const k = onCopy ? M.cloneSketch(S.sk) : M.emptySketch();
+    const n0 = k.curves.length;
+    try { fn(k); } catch { return []; }
+    return k.curves.slice(n0).filter((c) => !c.construction).map((c) => curvePoints(c, k.points));
+  }
+  // a slot's half width: how far the third click is from the line of centres
+  function slotHalf(a, b, c) {
+    const d = [b[0] - a[0], b[1] - a[1]], L = Math.hypot(...d) || 1;
+    return Math.max(0.1, Math.abs((c[0] - a[0]) * d[1] - (c[1] - a[1]) * d[0]) / L);
   }
   // the point or curve under the pointer
   function pickAt(x, y) {
@@ -651,7 +882,14 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (e.button !== 0) return false;
     if (S.tool === "select") {
       const h = pickAt(e.clientX, e.clientY);
-      if (h?.point != null) { drag = { point: h.point, moved: false }; orbit.enabled = false; }
+      // a Fixed point stays put (Fixed holds it where it is, so a drag would
+      // simply carry the rule along)
+      if (h?.point != null && S.sk.constraints.some((c) => c.type === "fixed" && !c.temp && c.ids[0] === h.point)) {
+        setMsg("That point is Fixed: the rules hold that point where it is. Click its ⏚ symbol to free it first.", "err");
+        S.downAt = null;
+        return true;
+      }
+      if (h?.point != null) { drag = { point: h.point, moved: false, before: M.cloneSketch(S.sk) }; orbit.enabled = false; }
     }
     S.downAt = [e.clientX, e.clientY, e.detail, e.shiftKey, e.altKey];
     return true;
@@ -665,13 +903,73 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     }
     const h = pickAt(e.clientX, e.clientY);
     if ((h?.point ?? -1) !== (S.hover?.point ?? -1) || (h?.curve ?? -1) !== (S.hover?.curve ?? -1)) { S.hover = h; draw(); }
+    // Select: a drag on the pad draws a selection box
+    if (S.downAt && (e.buttons & 1) && S.tool === "select") {
+      const b = boxOf(S.downAt[0], S.downAt[1], e.clientX, e.clientY);
+      if (b) drawBox(b);
+      return;
+    }
     // a press-drag being drawn: the rubber band from where it went down
     if (S.downAt && (e.buttons & 1) && DRAG_TOOLS.has(S.tool) && !S.pending.length) {
       const sp = snap(S.downAt[0], S.downAt[1], S.downAt[4]);
       if (sp) { S.pending = [sp.uv]; rubber(e.clientX, e.clientY); S.pending = []; }
+      showInfer(e.clientX, e.clientY, e.altKey);
       return;
     }
     rubber(e.clientX, e.clientY);
+    showInfer(e.clientX, e.clientY, e.altKey);
+  }
+  // A selection box, as Fusion draws it: dragged left to right it is a
+  // window (only what is wholly inside), right to left a crossing (anything
+  // it touches, dashed). Screen pixels.
+  function boxOf(x0, y0, x1, y1) {
+    if (Math.hypot(x1 - x0, y1 - y0) <= 5) return null;
+    return { l: Math.min(x0, x1), r: Math.max(x0, x1), t: Math.min(y0, y1), b: Math.max(y0, y1), crossing: x1 < x0 };
+  }
+  function drawBox(b) {
+    const c = [[b.l, b.t], [b.r, b.t], [b.r, b.b], [b.l, b.b], [b.l, b.t]].map(([x, y]) => fromScreen(x, y));
+    clearGroup(rubberGroup);
+    if (c.every(Boolean)) rubberGroup.add(polyline(c, b.crossing ? mats.guide : mats.rubber));
+  }
+  function boxSelect(b, add) {
+    const inBox = ([x, y]) => x >= b.l && x <= b.r && y >= b.t && y <= b.b;
+    // a segment touching the box: an end inside, or crossing one of its sides
+    const cut = (p, q) => {
+      if (inBox(p) || inBox(q)) return true;
+      const side = [[[b.l, b.t], [b.r, b.t]], [[b.r, b.t], [b.r, b.b]], [[b.r, b.b], [b.l, b.b]], [[b.l, b.b], [b.l, b.t]]];
+      const cr = (o, a, c) => (a[0] - o[0]) * (c[1] - o[1]) - (a[1] - o[1]) * (c[0] - o[0]);
+      return side.some(([u, v]) => cr(p, q, u) * cr(p, q, v) < 0 && cr(u, v, p) * cr(u, v, q) < 0);
+    };
+    const picked = [];
+    S.sk.curves.forEach((c, i) => {
+      const pl = curvePoints(c).map(toScreen);
+      const hit = b.crossing ? pl.some((p, k) => (k ? cut(pl[k - 1], p) : inBox(p))) : pl.every(inBox);
+      if (hit) picked.push({ curve: i });
+    });
+    if (!add) S.sel = [];
+    for (const q of picked) if (!S.sel.some((x) => x.curve === q.curve)) S.sel.push(q);
+    draw();
+    setMsg(picked.length ? `${picked.length} curve${picked.length > 1 ? "s" : ""} selected${b.crossing ? " (touching the box)" : " (wholly inside the box)"}.` : "Nothing in the box. Left to right takes what is wholly inside; right to left, anything it touches.");
+  }
+  // What the click would snap to, under the pointer: a marker on the spot, a
+  // tag naming it (Midpoint, On line, Intersection…) and dotted guides to the
+  // points it lines up with. Only for the drawing tools.
+  let inferTag = null;
+  const INFER_TOOLS = new Set(["line", "rect", "circle", "arc", "spline", "centerRect", "arc3", "tangentArc", "slot", "polygon", "pattern"]);
+  function showInfer(x, y, free) {
+    const sp = INFER_TOOLS.has(S.tool) ? snap(x, y, free) : null;
+    if (!sp) { if (inferTag) inferTag.style.display = "none"; return; }
+    for (const [a, b] of sp.guides ?? []) rubberGroup.add(polyline([a, b], mats.guide));
+    if (sp.label) {
+      const r = 4 * mmPerPx(), mark = polyline(arcPts(sp.uv, r, 0, Math.PI * 2, 16), mats.snap);
+      mark.renderOrder = 1003;
+      rubberGroup.add(mark);
+    }
+    if (!inferTag) { inferTag = document.createElement("div"); inferTag.className = "dz-infer"; document.body.appendChild(inferTag); }
+    inferTag.textContent = sp.label;
+    inferTag.style.display = sp.label ? "" : "none";
+    inferTag.style.left = `${x + 14}px`;
+    inferTag.style.top = `${y + 14}px`;
   }
   function up(e) {
     if (!S) return;
@@ -680,6 +978,18 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       drag = null;
       orbit.enabled = true;
       if (d.moved) {
+        // A drag the rules can't follow (a point they hold, pulled somewhere
+        // they can't reach) is put back rather than leaving every rule off.
+        const t = M.cloneSketch(S.sk);
+        t.constraints.push({ type: "fixed", ids: [d.point] });
+        let ok = false;
+        try { M.solve(t); ok = !M.unmet(t).length; } catch { ok = false; }
+        if (!ok) {
+          S.sk = d.before;
+          study(); draw();
+          setMsg("The rules hold that point: it can't go there. Remove a rule (click its symbol) or a dimension to free it.", "err");
+          return;
+        }
         // the dragged point is held where it was let go while the rest re-solve
         S.sk.constraints.push({ type: "fixed", ids: [d.point], temp: true });
         resolve();
@@ -689,8 +999,12 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
         return;
       }
     }
-    const [x0, y0, , , alt0] = S.downAt || [e.clientX, e.clientY];
+    const [x0, y0, , shift0, alt0] = S.downAt || [e.clientX, e.clientY];
     S.downAt = null;
+    if (S.tool === "select") {
+      const b = boxOf(x0, y0, e.clientX, e.clientY);
+      if (b) { drawRubber([]); boxSelect(b, shift0 || e.shiftKey); return; }
+    }
     if (Math.hypot(e.clientX - x0, e.clientY - y0) > 5) {
       // A press-drag with a drawing tool draws (a click where it went down, a
       // click where it came up), as Fusion and SolidWorks take both; anything
@@ -804,7 +1118,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     let text = S.text;
     // a named dim's const takes its (maybe edited) value
     for (const d of sk.dims) {
-      if (!d.name) continue;
+      if (!d.name || !/^[A-Za-z_$][\w$]*$/.test(d.name)) continue;      // a formula is written as it is
       text = text.replace(new RegExp(`((?:^|\\n)\\s*(?:const|let|var)\\s+${d.name}\\s*=\\s*)(-?[\\d.]+)`), (_, a) => a + fmt(d.value));
     }
     // params live at the top, above anything the spans point at
@@ -817,7 +1131,11 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
       return text.slice(0, start) + M.sketchCode(sk, indent) + text.slice(end);
     }
     const name = S.name;
-    const use = S.feat === "extrude" ? `linearExtrude({ h: ${fmt(Math.abs(S.h))}${S.op === "cut" ? ", reverse: true, proud: 0.5" : ""} }, ${name})`
+    const h = Math.abs(S.h), h2 = Math.abs(S.h2 ?? 0);
+    const ext = S.dir === "sym" ? `h: ${fmt(h)}, center: true`
+      : S.dir === "two" ? `h: ${fmt(h + h2)}, start: ${fmt(S.op === "cut" ? -h : -h2)}`
+      : `h: ${fmt(h)}${S.op === "cut" ? ", reverse: true, proud: 0.5" : ""}`;
+    const use = S.feat === "extrude" ? `linearExtrude({ ${ext} }, ${name})`
       : S.feat === "revolve" ? `revolve({ angle: ${fmt(S.angle)}${S.axis === "y" ? "" : `, axis: [${sk.curves[S.axis].ids.join(", ")}]`} }, ${name})`
       : null;
     // the feature, against the body the sketch was drawn on (spans read from
@@ -831,6 +1149,10 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   // a new body: into the returned group(), beside the returned shape, or the
   // first shape of an empty model
   function newBody(text, use) {
+    // the untouched starter cube is a placeholder, not a model: a new body
+    // drawn beside it replaces it (sketching ON its face still joins / cuts)
+    const st = !S.body && host.isStarter?.() && host.starterText?.().trim();
+    if (st && text.trimEnd().endsWith(st)) return text.slice(0, text.trimEnd().length - st.length).replace(/\s*$/, "") + `${text.trimEnd().length > st.length ? "\n" : ""}return ${use};\n`;
     text = M.returnBare(text) ?? text;
     const ret = returnExpr(text);
     if (!ret) return text.replace(/\s*$/, "") + `\nreturn ${use};\n`;
@@ -874,8 +1196,9 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     } else sk = M.emptySketch(on);
     S = {
       sk, on: sk.on, frame: planeFrame(sk.on), span, text, orig: text, name: name || nextName(text),
-      tool: "line", pending: [], sel: [], hover: null, feat: span ? "none" : "extrude", h: 10, angle: 360, axis: "y",
+      tool: "line", pending: [], sel: [], hover: null, feat: span ? "none" : "extrude", h: 10, h2: 5, dir: "one", angle: 360, axis: "y",
       op: body ? "join" : "new", body, undo: [], redo: [], last: null,
+      opt: { fillet: 3, offset: 2, sides: 6, kind: "circular", count: 6 },
     };
     const ctr = center ?? (sk.points.length ? sk.points.reduce((a, p) => [a[0] + p[0] / sk.points.length, a[1] + p[1] / sk.points.length], [0, 0]) : [0, 0]);
     lookSquare(ctr);
@@ -945,10 +1268,12 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (e.target.closest(".ok")) finish();
   }
   function onPanelChange(e) {
+    const o = e.target.dataset.o;
+    if (o) { const v = e.target.type === "number" ? parseFloat(e.target.value) : e.target.value; if (o === "kind" || Number.isFinite(v)) S.opt[o] = v; return; }
     const k = e.target.dataset.k;
     if (!k) return;
     const v = e.target.type === "number" ? parseFloat(e.target.value) : e.target.value;
-    if (k === "h" || k === "angle") { if (Number.isFinite(v)) S[k] = v; }
+    if (k === "h" || k === "angle" || k === "h2") { if (Number.isFinite(v)) S[k] = v; }
     else S[k] = v;
     renderPanel();
   }
@@ -975,6 +1300,8 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     if (drag) { drag = null; orbit.enabled = true; }     // closed mid point-drag
     clearGroup(sketchGroup); clearGroup(gridGroup); clearGroup(rubberGroup);
     for (const el of labels.splice(0)) el.remove();
+    inferTag?.remove();
+    inferTag = null;
     panel?.remove();
     panel = null;
     orbit.removeEventListener?.("change", onView);
@@ -986,7 +1313,7 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
   // the tool a new sketch starts with (a held Sketch button's choice)
   let nextTool = null;
   function preferTool(t) {
-    if (!M.TOOLS.includes(t)) return;
+    if (!M.TOOLS.includes(t) && !TOOL_LABEL[t]) return;
     if (S) { setTool(t); renderPanel(); } else nextTool = t;
   }
   function choose({ face = null } = {}) {
@@ -1005,13 +1332,20 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     chooser.className = "dz-ui";
     chooser.innerHTML = `<h3>Sketch</h3><div class="sec"><span class="k">New sketch on</span><div class="row">`
       + ["XY", "XZ", "YZ"].map((p) => `<button type="button" data-plane="${p}">${p} plane</button>`).join("")
-      + `</div><div class="msg">…or click a flat face of the model.</div></div>`
+      + `</div><div class="msg">…or click a flat face of the model.</div>`
+      + `<label class="f" title="A construction plane: the plane (or face) moved this far along its normal"><span>Offset</span><input type="number" data-plane-k="d" step="1" value="${choosePlane.d}" /></label>`
+      + `<label class="f" title="A plane at an angle: tilted about the plane's own X axis"><span>Tilt °</span><input type="number" data-plane-k="tilt" step="15" value="${choosePlane.tilt}" /></label></div>`
       + (existing.length ? `<div class="sec"><span class="k">Edit</span><div class="row">${existing.map((e, i) => `<button type="button" data-edit="${i}">${esc(e.name)}</button>`).join("")}</div></div>` : "")
       + `<div class="ft"><button type="button" class="cancel">Cancel</button></div>`;
     document.body.appendChild(chooser);
+    chooser.addEventListener("change", (e) => {
+      const k = e.target.dataset.planeK, v = parseFloat(e.target.value);
+      if (k) choosePlane[k] = Number.isFinite(v) ? v : 0;
+    });
+    chooser.addEventListener("keydown", (e) => e.stopPropagation());
     chooser.addEventListener("click", (e) => {
       const p = e.target.closest("[data-plane]");
-      if (p) { endChoose(); open({ on: p.dataset.plane }); return; }
+      if (p) { endChoose(); open({ on: M.offsetPlane(p.dataset.plane, choosePlane.d, choosePlane.tilt) }); return; }
       const ed = e.target.closest("[data-edit]");
       if (ed) { const x = existing[+ed.dataset.edit]; endChoose(); open({ sketchCall: x, name: x.name }); return; }
       if (e.target.closest(".cancel")) endChoose();
@@ -1019,12 +1353,14 @@ export function createSketcher({ host, THREE, scene, camera, orbit, renderer }) 
     return existing.map((e) => e.name);
   }
   function endChoose() { chooser?.remove(); chooser = null; }
+  // the chooser's construction-plane settings (kept for the next sketch)
+  const choosePlane = { d: 0, tilt: 0 };
   async function openOnFace(fp) {
     const { facePlane, bodySpan } = F;
     const pl = facePlane(fp.outline);
     const text = host.text();
     const body = bodySpan(text, fp.fid, { sites: host.featureMap() || {}, trace: host.trace(), runText: host.runText() });
-    const on = { origin: pl.origin, normal: pl.normal };
+    const on = M.offsetPlane({ origin: pl.origin, normal: pl.normal }, choosePlane.d, choosePlane.tilt);
     const fr = planeFrame(on);
     const c = new THREE.Vector3(...fp.outline.point).sub(fr.origin);
     endChoose();

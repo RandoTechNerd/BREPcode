@@ -14,10 +14,14 @@
 // its value is the param's.
 
 import { Parser } from "../../vendor/acorn/acorn.mjs";
-import { solveSketch2D, sketchError, sketch as dslSketch } from "../../src/dsl.js";
+import { readParams, evalFormula } from "./parameters.js";
+export { evalFormula, paramScope, readParams } from "./parameters.js";
+import { solveSketch2D, sketchError, sketch as dslSketch, planeFrame } from "../../src/dsl.js";
 
-export const TOOLS = ["line", "rect", "circle", "arc", "spline", "trim", "offset", "construction"];
-export const CONSTRAINTS = ["coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "equal", "fixed"];
+export const TOOLS = ["line", "rect", "circle", "arc", "spline", "trim", "offset", "construction",
+  "centerRect", "arc3", "tangentArc", "slot", "polygon", "fillet", "mirror", "pattern"];
+export const CONSTRAINTS = ["coincident", "horizontal", "vertical", "parallel", "perpendicular", "tangent", "equal", "fixed",
+  "midpoint", "collinear", "concentric", "symmetric"];
 
 export const emptySketch = (on = "XY") => ({ on, points: [], curves: [], constraints: [], dims: [] });
 const r6 = (v) => { const r = Math.round(v * 1e6) / 1e6; return Object.is(r, -0) ? 0 : r; };
@@ -115,7 +119,7 @@ export function removeCurve(sk, ci) {
   sk.curves.splice(ci, 1);
   // rules on points no curve uses any more go with it
   const gone = new Set(c.ids.filter((i) => !usedPoint(sk, i)));
-  sk.constraints = sk.constraints.filter((k) => !k.ids.some((i) => gone.has(i)) && (!isTangent(k) || tangentHolds(sk, k)));
+  sk.constraints = sk.constraints.filter((k) => !k.ids.some((i) => gone.has(i)) && ruleHolds(sk, k));
   sk.dims = sk.dims.filter((k) => !k.ids.some((i) => gone.has(i)));
 }
 
@@ -132,6 +136,11 @@ function tangentHolds(sk, k) {
 }
 const isTangent = (k) => k.type === "tangent" || k.type === "tangentArcs" || k.type === "tangentEnd";
 const touchOf = (k) => k.ids[k.type === "tangentArcs" ? 2 : k.type === "tangentEnd" ? 0 : 3];
+// a rule still has the curves it is about (a point on a circle needs the circle)
+const ruleHolds = (sk, k) => (isTangent(k) ? tangentHolds(sk, k) : k.type === "onCurve" ? roundAt(sk, k.ids[0]) : true);
+// a point of the rule's own, on no curve (kept while the rule is): a tangent's
+// touch, a symmetry's midway point
+const ownPoint = (k) => (isTangent(k) ? touchOf(k) : k.type === "symmetric" ? k.ids[4] : null);
 
 // ------------------------------------------------------------ constraints
 const SAME = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -155,7 +164,24 @@ export function constrain(sk, type, sel) {
     case "coincident":
       if (points.length === 2) return addConstraint(sk, "coincident", points), null;
       if (points.length === 1 && lines.length === 1) return addConstraint(sk, "onLine", [...lines[0].ids, points[0]]), null;
-      return "pick two points, or a point and a line";
+      if (points.length === 1 && round.length === 1 && !lines.length) return onCurve(sk, round[0], points[0]);
+      return "pick two points, or a point and a line, circle or arc";
+    case "midpoint":
+      if (points.length === 1 && lines.length === 1 && curves.length === 1) {
+        if (lines[0].ids.includes(points[0])) return "pick a point that is not one of that line's own ends";
+        return addConstraint(sk, "midpoint", [...lines[0].ids, points[0]]), null;
+      }
+      return "pick a point and a line: the point goes to the middle of the line";
+    case "collinear":
+      if (lines.length === 2 && curves.length === 2) return addConstraint(sk, "collinear", [...lines[0].ids, ...lines[1].ids]), null;
+      return "pick two lines: they line up on one straight line";
+    case "concentric": {
+      if (round.length !== 2 || curves.length !== 2) return "pick two circles or arcs: they share a centre";
+      const [p, q] = [round[0].ids[0], round[1].ids[0]];
+      if (p === q) return "those two already share a centre";
+      return addConstraint(sk, "coincident", [p, q]), null;
+    }
+    case "symmetric": return symmetric(sk, sel);
     case "parallel": case "perpendicular":
       if (lines.length === 2) return addConstraint(sk, type, [...lines[0].ids, ...lines[1].ids]), null;
       return "pick two lines";
@@ -268,6 +294,48 @@ function roundTouch(sk, A, B) {
   return sk.points.length - 1;
 }
 
+// a point on a circle / arc (an arc's own end, or its centre, is refused)
+function onCurve(sk, c, p) {
+  if (c.ids.includes(p)) return c.ids[0] === p ? "that point is the centre" : "that point is already on it";
+  return addConstraint(sk, "onCurve", [c.ids[0], p]), null;
+}
+// Symmetric about a line (the last line picked, best a construction line):
+// two points; two lines (end for end, each end with the other line's end
+// nearer its mirror image); two circles / arcs (their centres, and a circle's
+// radius made the same). Each pair gets a midway point of its own.
+function symmetric(sk, sel) {
+  const P = sk.points;
+  const picked = sel.filter((x) => x.curve != null).map((x) => x.curve);
+  const axisAt = [...picked].reverse().find((ci) => sk.curves[ci].kind === "line" && sk.curves[ci].construction)
+    ?? [...picked].reverse().find((ci) => sk.curves[ci].kind === "line");
+  if (axisAt == null) return "pick what to mirror and a line to mirror it across (a construction line is best)";
+  const [a, b] = sk.curves[axisAt].ids;
+  const others = picked.filter((ci) => ci !== axisAt).map((ci) => sk.curves[ci]);
+  const pts = sel.filter((x) => x.point != null).map((x) => x.point);
+  const mirror = (q) => {
+    const A = P[a], d = [P[b][0] - A[0], P[b][1] - A[1]], L2 = d[0] ** 2 + d[1] ** 2;
+    const t = ((q[0] - A[0]) * d[0] + (q[1] - A[1]) * d[1]) / L2, f = [A[0] + d[0] * t, A[1] + d[1] * t];
+    return [2 * f[0] - q[0], 2 * f[1] - q[1]];
+  };
+  let pairs;
+  if (pts.length === 2 && !others.length) pairs = [pts];
+  else if (others.length === 2 && others.every((c) => c.kind === "line")) {
+    const [u, v] = others.map((c) => c.ids);
+    const m0 = mirror(P[u[0]]);
+    const near = dist(P[v[0]], m0) <= dist(P[v[1]], m0) ? 0 : 1;
+    pairs = [[u[0], v[near]], [u[1], v[1 - near]]];
+  } else if (others.length === 2 && others.every((c) => c.kind === "circle" || c.kind === "arc")) {
+    pairs = [[others[0].ids[0], others[1].ids[0]]];
+    if (others[0].kind === "circle" && others[1].kind === "circle") others[1].r = others[0].r;
+  } else return "pick two points, two lines or two circles / arcs, and the line to mirror them across";
+  if (pairs.some(([p, q]) => p === q || p === a || p === b || q === a || q === b)) return "the mirror line can't be one of the pair";
+  for (const [p, q] of pairs) {
+    sk.points.push([r6((P[p][0] + P[q][0]) / 2), r6((P[p][1] + P[q][1]) / 2)]);
+    addConstraint(sk, "symmetric", [p, q, a, b, sk.points.length - 1]);
+  }
+  return null;
+}
+
 // ------------------------------------------------------------------- dims
 // a dim from a selection: a line (its length), two points (their distance),
 // a circle or arc (its radius), two lines (the angle between them)
@@ -314,6 +382,54 @@ export function unmet(sk, tol = 1e-3) {
   return [...sk.constraints.map((c) => [c, [c], []]), ...sk.dims.map((d) => [d, [], [d]])]
     .map(([rule, cs, ds]) => ({ type: rule.type, ids: rule.ids, off: sketchError(sk.points, cs, ds, curves) }))
     .filter((r) => r.off > tol);
+}
+// What the sketch makes, for the sketcher to show: the shaded outline(s)
+// (loops of plane points, with holes), the curves left out (they enclose
+// nothing) and the loose ends (a curve ending on nothing), or why there is
+// no profile at all.
+export function profileInfo(sk) {
+  try {
+    const s = dslSketch(toSpec(sk));
+    const loops = [s, ...(s.islands || [])].map((o) => ({ pts: o.pts, holes: (o.holes || []).map((h) => h.pts) }));
+    return { problem: null, loops, strays: s.leftOut?.strays ?? [], loose: s.leftOut?.loose ?? [] };
+  } catch (e) {
+    return { problem: String(e.message || e).replace(/^sketch\(\):\s*/, ""), loops: [], strays: [], loose: looseEnds(sk) };
+  }
+}
+// points only one (non-construction) curve ends on
+function looseEnds(sk) {
+  const deg = new Map();
+  for (const c of sk.curves) {
+    if (c.construction) continue;
+    const ends = c.kind === "line" ? c.ids : c.kind === "arc" ? c.ids.slice(1) : c.kind === "bezier" ? [c.ids[0], c.ids[3]] : [];
+    for (const e of ends) deg.set(e, (deg.get(e) ?? 0) + 1);
+  }
+  return [...deg].filter(([, d]) => d === 1).map(([e]) => sk.points[e]);
+}
+// Pick a region in or out (Fusion's profile picking): a click in a shaded
+// region leaves it out; a click where a left-out region was brings it back.
+// -> "out" | "in" | null (the click is in no region)
+export function toggleRegion(sk, xy) {
+  const inside = (info) => info.loops.some((l) => inLoop(xy, l.pts) && !l.holes.some((h) => inLoop(xy, h)));
+  if (inside(profileInfo(sk))) {
+    const t = { ...sk, skip: [...(sk.skip ?? []), [r3(xy[0]), r3(xy[1])]] };
+    if (profileInfo(t).problem) return null;          // the last region: keep it
+    sk.skip = t.skip;
+    return "out";
+  }
+  for (let k = 0; k < (sk.skip ?? []).length; k++) {
+    const t = { ...sk, skip: sk.skip.filter((_, j) => j !== k) };
+    if (inside(profileInfo(t))) { sk.skip = t.skip; if (!sk.skip.length) delete sk.skip; return "in"; }
+  }
+  return null;
+}
+function inLoop(p, poly) {
+  let k = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) k = !k;
+  }
+  return k;
 }
 // Does it make a profile? null, or why not (sketch()'s own message).
 export function profileProblem(sk) {
@@ -362,6 +478,15 @@ function equations(sk, at) {
       case "equal": eq.push((P) => L(P, a, b) - L(P, c, d)); break;
       case "onLine": eq.push((P) => cross(P, a, b, a, c) / (L(P, a, b) || 1)); break;
       case "midpoint": eq.push((P) => (P[a][0] + P[b][0]) / 2 - P[c][0], (P) => (P[a][1] + P[b][1]) / 2 - P[c][1]); break;
+      case "onCurve": onRound(a, b); break;
+      case "collinear":
+        eq.push((P) => cross(P, a, b, a, c) / (L(P, a, b) || 1), (P) => cross(P, a, b, a, d) / (L(P, a, b) || 1)); break;
+      case "symmetric": {
+        const m = k.ids[4];
+        eq.push((P) => (P[a][0] + P[b][0]) / 2 - P[m][0], (P) => (P[a][1] + P[b][1]) / 2 - P[m][1],
+          (P) => cross(P, c, d, c, m) / (L(P, c, d) || 1), (P) => dot(P, c, d, a, b) / (L(P, c, d) || 1));
+        break;
+      }
       case "tangent":
         eq.push((P) => dot(P, a, b, c, d) / (L(P, a, b) * L(P, c, d) || 1));
         if (d !== a && d !== b) eq.push((P) => cross(P, a, b, a, d) / (L(P, a, b) || 1));
@@ -757,7 +882,7 @@ function relineRules(sk, ia, ib, pieces) {
 // rules on points no curve uses any more, and tangents whose curves are gone
 function dropOrphanRules(sk, ids) {
   const gone = new Set(ids.filter((i) => !usedPoint(sk, i)));
-  sk.constraints = sk.constraints.filter((k) => !k.ids.some((i) => gone.has(i)) && (!isTangent(k) || tangentHolds(sk, k)));
+  sk.constraints = sk.constraints.filter((k) => !k.ids.some((i) => gone.has(i)) && ruleHolds(sk, k));
   sk.dims = sk.dims.filter((k) => !k.ids.some((i) => gone.has(i)));
 }
 // a spline: split exactly at the crossings either side of `at`; the pieces
@@ -1041,6 +1166,7 @@ export function toSpec(sk) {
     curves: sk.curves.map(curveArr),
     constraints: sk.constraints.map((c) => [c.type, ...c.ids]),
     dims: sk.dims.map((d) => [d.type, ...d.ids, d.value]),
+    ...(sk.skip?.length ? { skip: sk.skip } : {}),
   };
 }
 const curveArr = (c) => [c.kind, ...c.ids, ...(c.kind === "circle" ? [c.r] : []), ...(c.construction ? ["construction"] : [])];
@@ -1050,7 +1176,13 @@ export function compact(sk) {
   const keep = new Set();
   for (const c of sk.curves) c.ids.forEach((i) => keep.add(i));
   // a tangent's own touch point is on no curve, but the rule needs it
-  for (const c of sk.constraints) if (isTangent(c) && c.ids.filter((i) => i !== touchOf(c)).every((i) => keep.has(i))) keep.add(touchOf(c));
+  for (const c of sk.constraints) {
+    const own = ownPoint(c);
+    if (own != null && c.ids.filter((i) => i !== own).every((i) => keep.has(i))) keep.add(own);
+  }
+  // a fillet's virtual sharp: the old corner, on no curve, held on both lines'
+  // runs (and whatever rules and dims were on it); kept while those lines are
+  for (const c of sk.constraints) if (c.type === "onLine" && keep.has(c.ids[0]) && keep.has(c.ids[1])) keep.add(c.ids[2]);
   const map = new Map();
   const points = [];
   sk.points.forEach((p, i) => { if (keep.has(i)) { map.set(i, points.length); points.push(p); } });
@@ -1060,6 +1192,7 @@ export function compact(sk) {
     curves: sk.curves.map((c) => ({ ...c, ids: m(c.ids) })),
     constraints: sk.constraints.filter((c) => c.ids.every((i) => map.has(i))).map((c) => ({ ...c, ids: m(c.ids) })),
     dims: sk.dims.filter((d) => d.ids.every((i) => map.has(i))).map((d) => ({ ...d, ids: m(d.ids) })),
+    ...(sk.skip?.length ? { skip: sk.skip } : {}),
   };
 }
 
@@ -1082,6 +1215,7 @@ export function sketchCode(skIn, indent = "") {
     `curves: ${list(sk.curves.map(curve))}`];
   if (sk.constraints.length) lines.push(`constraints: ${list(sk.constraints.map((c) => `[${[JSON.stringify(c.type), ...c.ids].join(", ")}]`))}`);
   if (sk.dims.length) lines.push(`dims: ${list(sk.dims.map((d) => `[${[JSON.stringify(d.type), ...d.ids, d.name ?? num(d.value)].join(", ")}]`))}`);
+  if (sk.skip?.length) lines.push(`skip: ${list(sk.skip.map((p) => `[${num(p[0])}, ${num(p[1])}]`))}`);
   return `sketch({\n${lines.map((l) => i1 + l + ",").join("\n")}\n${indent}})`;
 }
 
@@ -1102,6 +1236,11 @@ export function readSketch(text, call) {
     if (n.type === "ArrayExpression") return n.elements.map(val);
     if (n.type === "ObjectExpression") return Object.fromEntries(n.properties.map((p) => [p.key.name ?? p.key.value, val(p.value)]));
     if (n.type === "Identifier") return { name: n.name, value: consts.get(n.name) };
+    // a formula of parameters (`width / 2`): kept as written, its value worked out
+    if (n.type === "BinaryExpression" || n.type === "CallExpression" || n.type === "MemberExpression" || n.type === "UnaryExpression") {
+      const v = evalFormula(src.slice(n.start, n.end), consts);
+      return typeof v === "number" ? { name: src.slice(n.start, n.end), value: v } : undefined;
+    }
     return undefined;
   };
   const named = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : { value: v });
@@ -1129,7 +1268,8 @@ export function readSketch(text, call) {
     const v = named(d[d.length - 1]);
     return { type: d[0], ids: d.slice(1, -1), value: v.value, ...(v.name ? { name: v.name } : {}) };
   });
-  return { on: onSrc ? "XY" : on, ...(onSrc ? { onSrc } : {}), points, curves, constraints, dims };
+  const skip = (val(prop("skip")) || []).map((p) => p.map((v) => named(v).value));
+  return { on: onSrc ? "XY" : on, ...(onSrc ? { onSrc } : {}), points, curves, constraints, dims, ...(skip.length ? { skip } : {}) };
 }
 // returnBare(text) -> the text with its bare final expression (the editor's
 // no-return form, e.g. the starter model) made a `return`, or null when the
@@ -1143,19 +1283,7 @@ export function returnBare(text) {
   return text.slice(0, last.start) + "return " + text.slice(last.start);
 }
 function constValues(text) {
-  const out = new Map();
-  try {
-    const ast = Parser.parse(text, { ecmaVersion: "latest", sourceType: "script", allowReturnOutsideFunction: true });
-    for (const st of ast.body) {
-      if (st.type !== "VariableDeclaration") continue;
-      for (const d of st.declarations) {
-        const n = d.init;
-        const v = n?.type === "Literal" ? n.value : n?.type === "UnaryExpression" && n.argument.type === "Literal" ? -n.argument.value : undefined;
-        if (d.id.type === "Identifier" && typeof v === "number") out.set(d.id.name, v);
-      }
-    }
-  } catch { /* half-typed code: no names */ }
-  return out;
+  return new Map(readParams(text).map((p) => [p.name, p.value]));
 }
 
 // promote(text, sk, dimIndex, name) -> { text, sk }: the dim becomes a named
@@ -1167,4 +1295,390 @@ export function promoteDim(text, sk, k, name) {
   if (new RegExp(`(^|\\n)\\s*(const|let|var)\\s+${name}\\b`).test(text)) return { error: `there is already a ${name}` };
   d.name = name;
   return { text: `const ${name} = ${num(d.value)};\n` + text, sk };
+}
+
+// ------------------------------------------------- inference while drawing
+// Fusion's sketch inference: where a click lands, and the rule it brings.
+// inferPoint(sk, uv, tol, opts) looks, in order, for an existing point (an
+// end or a centre), a line's midpoint, a crossing of two curves, a point on
+// one curve, then lines up with an existing point across or down (a guide,
+// no rule), then the grid. tol is in mm (the sketcher passes its snap radius
+// in pixels times mm per pixel). opts: { free: true } (Alt: no snapping but
+// existing points), grid (mm), skip (point ids the curve being drawn already
+// owns, so a line's end does not snap onto its own start).
+//   -> { uv, point?, mid?, on: [ci…], label, guides: [[from, to]…] }
+export function inferPoint(sk, uv, tol, { free = false, grid = 1, skip = [] } = {}) {
+  const near = nearestPoint(sk, uv, tol);
+  if (near >= 0 && !skip.includes(near)) {
+    const centre = sk.curves.some((c) => (c.kind === "circle" || c.kind === "arc") && c.ids[0] === near);
+    return { uv: [...sk.points[near]], point: near, on: [], label: centre ? "Centre" : "Point", guides: [] };
+  }
+  if (free) return { uv: [...uv], on: [], label: "", guides: [] };
+  const P = sk.points;
+  // a line's midpoint
+  for (let ci = 0; ci < sk.curves.length; ci++) {
+    const c = sk.curves[ci];
+    if (c.kind !== "line") continue;
+    const [a, b] = c.ids.map((k) => P[k]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (dist(m, uv) <= tol) return { uv: m, mid: ci, on: [], label: "Midpoint", guides: [] };
+  }
+  // where uv lands on each curve (lines and round curves; a spline is skipped)
+  const hits = [];
+  sk.curves.forEach((c, ci) => {
+    const q = nearestOn(sk, c, uv);
+    if (q && dist(q, uv) <= tol) hits.push({ ci, q });
+  });
+  // a crossing of two of them
+  for (let i = 0; i < hits.length; i++) {
+    for (let j = i + 1; j < hits.length; j++) {
+      const x = crossings(sk, hits[i].ci, hits[j].ci).filter((xy) => dist(xy, uv) <= tol)
+        .sort((u, v) => dist(u, uv) - dist(v, uv))[0];
+      if (x) return { uv: x, on: [hits[i].ci, hits[j].ci], label: "Intersection", guides: [] };
+    }
+  }
+  if (hits.length) {
+    const h = hits.sort((u, v) => dist(u.q, uv) - dist(v.q, uv))[0];
+    return { uv: h.q, on: [h.ci], label: sk.curves[h.ci].kind === "line" ? "On line" : `On ${sk.curves[h.ci].kind}`, guides: [] };
+  }
+  // in line with a point already there, across or down: a dotted guide
+  const out = [Math.round(uv[0] / grid) * grid, Math.round(uv[1] / grid) * grid];
+  const guides = [];
+  const used = new Set(sk.curves.flatMap((c) => (c.kind === "bezier" ? [c.ids[0], c.ids[3]] : c.ids)));
+  for (const k of [0, 1]) {
+    let best = -1, bd = tol;
+    for (const i of used) { const d = Math.abs(P[i][k] - uv[k]); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) { out[k] = P[best][k]; guides.push({ from: best, axis: k }); }
+  }
+  return { uv: out, on: [], label: guides.length === 2 ? "Aligned" : "", guides: guides.map(({ from }) => [[...P[from]], out]) };
+}
+// the nearest point of curve c to xy (a line's segment, a circle, an arc's
+// span), or null for a spline
+function nearestOn(sk, c, xy) {
+  const P = sk.points;
+  if (c.kind === "line") {
+    const [a, b] = c.ids.map((k) => P[k]), d = [b[0] - a[0], b[1] - a[1]], L2 = d[0] ** 2 + d[1] ** 2;
+    if (L2 < 1e-12) return null;
+    const t = Math.max(0, Math.min(1, ((xy[0] - a[0]) * d[0] + (xy[1] - a[1]) * d[1]) / L2));
+    return [a[0] + d[0] * t, a[1] + d[1] * t];
+  }
+  if (c.kind === "circle" || c.kind === "arc") {
+    const C = P[c.ids[0]], r = roundR(sk, c), l = dist(C, xy);
+    if (l < 1e-9) return null;
+    const q = [C[0] + (xy[0] - C[0]) / l * r, C[1] + (xy[1] - C[1]) / l * r];
+    return onSpan(sk, c, q) ? q : null;
+  }
+  return null;
+}
+// where curves i and j cross (lines and round curves)
+function crossings(sk, i, j) {
+  const A = sk.curves[i], B = sk.curves[j], P = sk.points;
+  const round = (c) => c.kind === "circle" || c.kind === "arc";
+  if (A.kind === "line" && B.kind === "line") {
+    const [p, q] = A.ids.map((k) => P[k]), [r, s] = B.ids.map((k) => P[k]);
+    const d1 = [q[0] - p[0], q[1] - p[1]], d2 = [s[0] - r[0], s[1] - r[1]], den = d1[0] * d2[1] - d1[1] * d2[0];
+    if (Math.abs(den) < 1e-12) return [];
+    const t = ((r[0] - p[0]) * d2[1] - (r[1] - p[1]) * d2[0]) / den, u = ((r[0] - p[0]) * d1[1] - (r[1] - p[1]) * d1[0]) / den;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? [[p[0] + d1[0] * t, p[1] + d1[1] * t]] : [];
+  }
+  if (A.kind === "line" && round(B)) return segRound(sk, P[A.ids[0]], P[A.ids[1]], B);
+  if (round(A) && B.kind === "line") return segRound(sk, P[B.ids[0]], P[B.ids[1]], A);
+  if (round(A) && round(B)) return roundRound(sk, A, B);
+  return [];
+}
+// The rules a point drawn at an inferred spot keeps: on the line or curve it
+// landed on, at the line's midpoint. (An existing point is simply reused, and
+// a guide brings no rule: lining up while drawing is not a promise.)
+export function applyInferred(sk, i, inf) {
+  if (!inf || i < 0) return;
+  if (inf.mid != null) {
+    const c = sk.curves[inf.mid];
+    if (c && !c.ids.includes(i)) addConstraint(sk, "midpoint", [...c.ids, i]);
+  }
+  for (const ci of inf.on ?? []) {
+    const c = sk.curves[ci];
+    if (!c || c.ids.includes(i)) continue;
+    if (c.kind === "line") addConstraint(sk, "onLine", [...c.ids, i]);
+    else if (c.kind === "circle" || c.kind === "arc") addConstraint(sk, "onCurve", [c.ids[0], i]);
+  }
+}
+// After a line is drawn on from the end of another (a chain): square to it
+// within 3° (and neither already level or plumb) makes it Perpendicular.
+// After an arc is drawn from a line's end: running on along the line within
+// 3° makes it Tangent. Returns the rule's name, or null.
+export function inferJoin(sk, ci) {
+  const c = sk.curves[ci], P = sk.points;
+  if (!c) return null;
+  const hv = (ids) => sk.constraints.some((k) => (k.type === "horizontal" || k.type === "vertical") && SAME([...k.ids].sort(), [...ids].sort()));
+  const deg = (u, v) => Math.acos(Math.min(1, Math.abs(u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v) || 1))) * 180 / Math.PI;
+  const vec = (a, b) => [P[b][0] - P[a][0], P[b][1] - P[a][1]];
+  if (c.kind === "line") {
+    for (const end of c.ids) {
+      const prev = sk.curves.find((o, j) => j !== ci && o.kind === "line" && o.ids.includes(end));
+      if (!prev || hv(c.ids) || hv(prev.ids)) continue;
+      if (Math.abs(deg(vec(...c.ids), vec(...prev.ids)) - 90) < 3) {
+        addConstraint(sk, "perpendicular", [...prev.ids, ...c.ids]);
+        return "Perpendicular";
+      }
+    }
+  }
+  if (c.kind === "arc") {
+    for (const end of c.ids.slice(1)) {
+      const line = sk.curves.find((o) => o.kind === "line" && o.ids.includes(end));
+      if (!line) continue;
+      if (Math.abs(deg(vec(c.ids[0], end), vec(...line.ids)) - 90) < 3) {
+        constrain(sk, "tangent", [{ curve: sk.curves.indexOf(line) }, { curve: ci }]);
+        return "Tangent";
+      }
+    }
+  }
+  return null;
+}
+
+// ------------------------------------------------------ more drawing tools
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const unit = (v) => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l]; };
+const endsOfCurve = (c) => (c.kind === "line" ? c.ids : c.kind === "arc" ? c.ids.slice(1) : c.kind === "bezier" ? [c.ids[0], c.ids[3]] : []);
+
+// Fillet a sharp corner where two lines meet (Fusion's sketch fillet): both
+// lines are cut back to where an arc of radius r touches them, and the arc
+// goes in, tangent to each. The corner point stays as Fusion's "virtual
+// sharp", held on both lines' runs, so rules and dims on it still hold.
+export function filletCorner(sk, V, r) {
+  const lines = sk.curves.map((c, i) => [c, i]).filter(([c]) => c.kind === "line" && !c.construction && c.ids.includes(V));
+  if (lines.length !== 2) return "pick a corner where exactly two lines meet";
+  if (!(r > 0)) return "the radius must be more than 0";
+  const P = sk.points, other = lines.map(([c]) => (c.ids[0] === V ? c.ids[1] : c.ids[0]));
+  const u = other.map((k) => unit(sub(P[k], P[V])));
+  const cos = Math.max(-1, Math.min(1, u[0][0] * u[1][0] + u[0][1] * u[1][1])), th = Math.acos(cos);
+  if (th < 1e-3 || Math.PI - th < 1e-3) return "those two lines run straight on: there is no corner to round";
+  const d = r / Math.tan(th / 2);
+  if (other.some((k) => dist(P[k], P[V]) <= d + 1e-6)) return `a ${r} mm round does not fit: the lines are too short`;
+  const T = u.map((w) => [r6(P[V][0] + w[0] * d), r6(P[V][1] + w[1] * d)]);
+  const bis = unit([u[0][0] + u[1][0], u[0][1] + u[1][1]]), h = r / Math.sin(th / 2);
+  const C = [r6(P[V][0] + bis[0] * h), r6(P[V][1] + bis[1] * h)];
+  const ti = T.map((t) => { sk.points.push(t); return sk.points.length - 1; });
+  sk.points.push(C);
+  const ci = sk.points.length - 1;
+  lines.forEach(([c], k) => {
+    const was = [...c.ids];
+    c.ids = c.ids.map((id) => (id === V ? ti[k] : id));
+    // a tangent already on this line (a round at its other end) names the
+    // line by its ends: it follows the line to its new end
+    for (const t of sk.constraints) {
+      if (t.type === "tangent" && SAME([t.ids[0], t.ids[1]].sort(), [...was].sort())) t.ids = [...c.ids, t.ids[2], t.ids[3]];
+    }
+  });
+  // counter-clockwise from one touch to the other, the short way round the corner
+  const ang = (p) => Math.atan2(p[1] - C[1], p[0] - C[0]);
+  const [s, e] = wrap(ang(T[1]) - ang(T[0])) < Math.PI ? [0, 1] : [1, 0];
+  sk.curves.push({ kind: "arc", ids: [ci, ti[s], ti[e]], construction: false });
+  const arc = sk.curves.length - 1;
+  lines.forEach(([c], k) => {
+    addConstraint(sk, "onLine", [...c.ids, V]);
+    addConstraint(sk, "tangent", [c.ids[0], c.ids[1], ci, ti[k]]);
+  });
+  pushDim(sk, "distance", [ci, ti[s]], r);
+  return { arc };
+}
+// a corner near xy (within tol): a point two lines end on
+export function cornerNear(sk, xy, tol) {
+  let best = -1, bd = tol;
+  sk.points.forEach((p, i) => {
+    const n = sk.curves.filter((c) => c.kind === "line" && !c.construction && c.ids.includes(i)).length;
+    const d = dist(p, xy);
+    if (n === 2 && d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+
+// A slot (Fusion's centre-to-centre slot): two centres, the half width r.
+// Two half circles and two straight sides, each side tangent to both ends,
+// the ends the same radius.
+export function addSlot(sk, p1, p2, r) {
+  const L = dist(p1, p2);
+  if (L < 1e-6 || !(r > 0)) return [];
+  const u = unit(sub(p2, p1)), n = [-u[1], u[0]];
+  const at = (p, s) => [p[0] + n[0] * r * s, p[1] + n[1] * r * s];
+  const c1 = pointAt(sk, p1), c2 = pointAt(sk, p2);
+  const [a1, a2, b1, b2] = [at(p1, 1), at(p2, 1), at(p1, -1), at(p2, -1)].map((p) => pointAt(sk, p));
+  const out = [];
+  const push = (c) => { sk.curves.push({ ...c, construction: false }); out.push(sk.curves.length - 1); };
+  push({ kind: "line", ids: [a1, a2] });
+  push({ kind: "arc", ids: [c2, b2, a2] });
+  push({ kind: "line", ids: [b2, b1] });
+  push({ kind: "arc", ids: [c1, a1, b1] });
+  addConstraint(sk, "tangent", [a1, a2, c1, a1]);
+  addConstraint(sk, "tangent", [a1, a2, c2, a2]);
+  addConstraint(sk, "tangent", [b2, b1, c2, b2]);
+  addConstraint(sk, "tangent", [b2, b1, c1, b1]);
+  addConstraint(sk, "equal", [c1, a1, c2, a2]);
+  // drawn level or plumb: kept so
+  const ang = Math.abs(Math.atan2(u[1], u[0]) * 180 / Math.PI) % 180;
+  if (ang < 3 || ang > 177) addConstraint(sk, "horizontal", [c1, c2]);
+  else if (Math.abs(ang - 90) < 3) addConstraint(sk, "vertical", [c1, c2]);
+  return out;
+}
+
+// A regular polygon with n sides, its corners on a construction circle
+// (inscribed), the first corner where the second click was. Equal sides
+// and the corners on the circle keep it regular when it is dragged.
+export function addPolygon(sk, centre, corner, n) {
+  n = Math.round(n);
+  const r = dist(centre, corner);
+  if (n < 3 || n > 64 || r < 1e-6) return [];
+  const circ = addCircle(sk, centre, r);
+  sk.curves[circ].construction = true;
+  const a0 = Math.atan2(corner[1] - centre[1], corner[0] - centre[0]);
+  const ids = Array.from({ length: n }, (_, k) => pointAt(sk, [centre[0] + r * Math.cos(a0 + (k * TAU) / n), centre[1] + r * Math.sin(a0 + (k * TAU) / n)]));
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    sk.curves.push({ kind: "line", ids: [ids[k], ids[(k + 1) % n]], construction: false });
+    out.push(sk.curves.length - 1);
+    addConstraint(sk, "onCurve", [sk.curves[circ].ids[0], ids[k]]);
+    if (k) addConstraint(sk, "equal", [ids[0], ids[1], ids[k], ids[(k + 1) % n]]);
+  }
+  return out;
+}
+
+// A rectangle from its centre (Fusion's centre rectangle): the corners, a
+// construction diagonal and the centre held at its midpoint.
+export function addCenterRect(sk, centre, corner) {
+  const dx = corner[0] - centre[0], dy = corner[1] - centre[1];
+  if (Math.abs(dx) < 1e-6 || Math.abs(dy) < 1e-6) return [];
+  const out = addRect(sk, [centre[0] - dx, centre[1] - dy], [centre[0] + dx, centre[1] + dy]);
+  const a = sk.curves[out[0]].ids[0], c = sk.curves[out[2]].ids[0];
+  sk.curves.push({ kind: "line", ids: [a, c], construction: true });
+  addConstraint(sk, "midpoint", [a, c, pointAt(sk, centre)]);
+  return out;
+}
+
+// An arc through three clicks: its two ends, then a point it passes through.
+export function addArc3(sk, start, end, through) {
+  const [ax, ay] = start, [bx, by] = end, [cx, cy] = through;
+  const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  if (Math.abs(D) < 1e-9) return -1;        // in a straight line: no circle through them
+  const s = (p) => p[0] * p[0] + p[1] * p[1];
+  const C = [(s(start) * (by - cy) + s(end) * (cy - ay) + s(through) * (ay - by)) / D,
+    (s(start) * (cx - bx) + s(end) * (ax - cx) + s(through) * (bx - ax)) / D];
+  // counter-clockwise from start to end passes `through`, or else end to start
+  const ang = (p) => Math.atan2(p[1] - C[1], p[0] - C[0]);
+  const ccw = wrap(ang(through) - ang(start)) < wrap(ang(end) - ang(start));
+  return ccw ? addArc(sk, C, start, end) : addArc(sk, C, end, start);
+}
+
+// An arc that runs on smoothly from the end of a line or arc (the point at
+// index `from`) to `end`, made Tangent to it.
+export function addTangentArc(sk, from, end) {
+  const P = sk.points, S = P[from];
+  const prev = sk.curves.map((c, i) => [c, i]).find(([c]) => !c.construction && (c.kind === "line" || c.kind === "arc") && endsOfCurve(c).includes(from));
+  if (!prev) return { error: "start a tangent arc on the end of a line or arc" };
+  const [c] = prev;
+  // the way the curve was heading as it arrived at `from`
+  let t;
+  if (c.kind === "line") t = unit(sub(S, P[c.ids[0] === from ? c.ids[1] : c.ids[0]]));
+  else { const rad = unit(sub(S, P[c.ids[0]])); t = c.ids[2] === from ? [-rad[1], rad[0]] : [rad[1], -rad[0]]; }
+  const n = [-t[1], t[0]], w = sub(end, S), den = 2 * (w[0] * n[0] + w[1] * n[1]);
+  if (Math.abs(den) < 1e-9) return { error: "that end is straight on from the line: draw a line there" };
+  const k = (w[0] ** 2 + w[1] ** 2) / den, C = [S[0] + n[0] * k, S[1] + n[1] * k];
+  // turning left (k > 0) runs counter-clockwise from the start
+  const ci = k > 0 ? addArc(sk, C, S, end) : addArc(sk, C, end, S);
+  if (ci < 0) return { error: "that arc has no length" };
+  const arc = sk.curves[ci];
+  constrain(sk, "tangent", [{ curve: prev[1] }, { curve: ci }]);
+  return { arc: ci, end: arc.ids[k > 0 ? 2 : 1] };
+}
+
+// Mirror curves across a line (Fusion's sketch mirror): copies, each point
+// held symmetric to its original. Points on the mirror line are shared.
+export function mirrorCurves(sk, cis, axisCi) {
+  const ax = sk.curves[axisCi];
+  if (!ax || ax.kind !== "line") return "pick the curves to mirror, then the line to mirror across";
+  const list = cis.filter((ci) => ci !== axisCi && sk.curves[ci]);
+  if (!list.length) return "pick the curves to mirror as well as the line";
+  const [a, b] = ax.ids, P = sk.points, A = P[a], d = sub(P[b], A), L2 = d[0] ** 2 + d[1] ** 2;
+  const mirror = (q) => { const t = ((q[0] - A[0]) * d[0] + (q[1] - A[1]) * d[1]) / L2, f = [A[0] + d[0] * t, A[1] + d[1] * t]; return [2 * f[0] - q[0], 2 * f[1] - q[1]]; };
+  const map = new Map();
+  const image = (i) => {
+    if (map.has(i)) return map.get(i);
+    const m = mirror(P[i]);
+    let j;
+    if (dist(m, P[i]) < 1e-6) j = i;                 // on the mirror line: the same point
+    else {
+      sk.points.push([r6(m[0]), r6(m[1])]);
+      j = sk.points.length - 1;
+      sk.points.push([r6((P[i][0] + m[0]) / 2), r6((P[i][1] + m[1]) / 2)]);
+      addConstraint(sk, "symmetric", [i, j, a, b, sk.points.length - 1]);
+    }
+    map.set(i, j);
+    return j;
+  };
+  const out = [];
+  for (const ci of list) {
+    const c = sk.curves[ci];
+    let ids = c.ids.map(image);
+    if (c.kind === "arc") ids = [ids[0], ids[2], ids[1]];   // a mirror turns it the other way round
+    sk.curves.push({ ...c, ids });
+    out.push(sk.curves.length - 1);
+  }
+  return { curves: out };
+}
+
+// Copies of curves around a centre (circular, n in all, the originals
+// included) or along a step (linear). Copies are plain curves: a pattern
+// is not kept as a rule, so change the original before patterning.
+export function patternCurves(sk, cis, { kind = "circular", centre = [0, 0], n = 6, step = [10, 0] } = {}) {
+  n = Math.round(n);
+  if (n < 2 || n > 200) return "the count is 2 to 200";
+  const list = cis.filter((ci) => sk.curves[ci]);
+  if (!list.length) return "pick the curves to copy first";
+  const out = [];
+  for (let k = 1; k < n; k++) {
+    const map = new Map();
+    const move = kind === "circular"
+      ? (p) => { const a = (k * TAU) / n, c = Math.cos(a), s = Math.sin(a), x = p[0] - centre[0], y = p[1] - centre[1]; return [centre[0] + x * c - y * s, centre[1] + x * s + y * c]; }
+      : (p) => [p[0] + step[0] * k, p[1] + step[1] * k];
+    const image = (i) => {
+      if (!map.has(i)) {
+        const m = move(sk.points[i]);
+        map.set(i, kind === "circular" && dist(m, sk.points[i]) < 1e-6 ? i : pointAt(sk, m));
+      }
+      return map.get(i);
+    };
+    for (const ci of list) {
+      const c = sk.curves[ci];
+      sk.curves.push({ ...c, ids: c.ids.map(image) });
+      out.push(sk.curves.length - 1);
+    }
+  }
+  return { curves: out };
+}
+
+// Project: model edges that lie in the sketch plane, as construction lines
+// held fixed (Fusion's Project), so new curves can snap and line up to the
+// part. segs: [[[u, v], [u, v]]…] in plane coordinates. Curved edges arrive
+// as their facets' short lines. Returns how many lines were added.
+export function projectSegments(sk, segs) {
+  let n = 0;
+  for (const [a, b] of segs) {
+    if (dist(a, b) < 1e-4) continue;
+    const i = pointAt(sk, a, 1e-4), j = pointAt(sk, b, 1e-4);
+    if (i === j || sk.curves.some((c) => c.kind === "line" && SAME([...c.ids].sort(), [i, j].sort()))) continue;
+    sk.curves.push({ kind: "line", ids: [i, j], construction: true });
+    addConstraint(sk, "fixed", [i]);
+    addConstraint(sk, "fixed", [j]);
+    n++;
+  }
+  return n;
+}
+
+// A construction plane (Fusion's Offset Plane / Plane at Angle): `on` moved
+// d mm along its normal and tilted `tilt` degrees about its own x axis.
+// Nothing changed: `on` as it was ("XY" stays "XY").
+export function offsetPlane(on, d = 0, tilt = 0) {
+  if (!d && !tilt) return on;
+  const f = planeFrame(on), a = (tilt * Math.PI) / 180;
+  const n = f.n.clone().multiplyScalar(Math.cos(a)).addScaledVector(f.y, -Math.sin(a));
+  const o = f.origin.clone().addScaledVector(f.n, d);
+  const k = (v) => [v.x, v.y, v.z].map((x) => { const r = Math.round(x * 1e4) / 1e4; return Object.is(r, -0) ? 0 : r; });
+  return { origin: k(o), normal: k(n), x: k(f.x) };
 }

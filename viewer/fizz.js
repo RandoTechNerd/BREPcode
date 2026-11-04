@@ -219,7 +219,7 @@ export function dropSkipped() { return lsGet(SKIP_KEY) === "1"; }
  * groups: [{ title, tools: [{ id, label, icon, desc }] }] - every tool that works on the opened mesh
  * returns a Promise of { action: "open" | "auto" | "exact" | "smooth" | "fizz" | "fins" | "tool", tool? } or null if cancelled
  */
-export function chooseDropAction(file, { groups = [] } = {}) {
+export function chooseDropAction(file, { groups = [], keepable = false } = {}) {
   return new Promise((resolve) => {
     const { box, close } = modal("fz-pick", `${file.name}: what would you like to do?`);
     let done = false;
@@ -247,6 +247,8 @@ export function chooseDropAction(file, { groups = [] } = {}) {
         ${groups.map((g) => `<div class="fz-grp">${esc(g.title)}</div><div class="fz-tiles">${g.tools.map((t) =>
           `<button class="fz-tile" data-a="tool" data-t="${esc(t.id)}"><span class="ic">${icon(t.icon, 16)}</span><span><b>${esc(t.label)}</b>${t.desc ? `<small>${esc(t.desc)}</small>` : ""}</span></button>`).join("")}</div>`).join("")}
       </div>
+      ${keepable ? `<div class="fz-foot" style="border-top:0;padding-bottom:0"><label style="display:flex;gap:6px;align-items:center;cursor:pointer" title="Off: the file replaces what is in the editor (the old model is one Undo away)">
+        <input type="checkbox" class="fz-keep" /> Keep the current model and add this beside it</label></div>` : ""}
       <div class="fz-foot"><label style="display:flex;gap:6px;align-items:center;cursor:pointer">
         <input type="checkbox" class="fz-skip" /> Always just open (skip this menu)</label>
         <span style="margin-left:auto">${mb < 1 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${mb.toFixed(1)} MB`}</span></div>`);
@@ -266,7 +268,7 @@ export function chooseDropAction(file, { groups = [] } = {}) {
       if (i) { e.stopPropagation(); toggleInfo(i); return; }
       const b = e.target.closest("[data-a]");
       if (!b) return;
-      finish({ action: b.dataset.a, tool: b.dataset.t });
+      finish({ action: b.dataset.a, tool: b.dataset.t, keep: !!box.querySelector(".fz-keep")?.checked });
     });
     box.querySelector('[data-a="fizz"]').focus();
   });

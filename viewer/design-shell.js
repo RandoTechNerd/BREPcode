@@ -15,7 +15,7 @@
 // back to Code mode shows exactly what was done.
 
 import { buildTree, renderTree, primaryFid } from "./design-tree.js";
-import { linkFeatures, renderTimeline, deleteStepText, stepLabel, editLabel, renderHistory } from "./design-timeline.js";
+import { linkFeatures, renderTimeline, deleteStepText, suppressStepText, stepLabel, editLabel, renderHistory } from "./design-timeline.js";
 import { parseCode } from "../src/codemap.js";
 import { createMoveGizmo } from "./design-gizmo.js";
 import { parseTyped } from "./design-edit.js";
@@ -52,6 +52,12 @@ const TOOLS = [
     { id: "linear", label: "Linear", dialog: true, tip: "Copies of the selected shape in a row or grid", icon: `<rect x="2" y="2" width="4" height="4"/><rect x="10" y="2" width="4" height="4"/><rect x="2" y="10" width="4" height="4"/><rect x="10" y="10" width="4" height="4"/>` },
     { id: "circular", label: "Circular", dialog: true, tip: "Copies of the selected shape around an axis", icon: `<circle cx="8" cy="8" r="5.5" stroke-dasharray="2 2"/><circle cx="8" cy="2.5" r="1.3"/><circle cx="13" cy="10.5" r="1.3"/><circle cx="3" cy="10.5" r="1.3"/>` },
   ] },
+  { group: "Inspect", items: [
+    { id: "measure", label: "Measure", action: true, tip: "Distances, angles and sizes: click corners, edges or faces", icon: `<path d="M2 11l9-9 3 3-9 9z"/><path d="M5 8l1.5 1.5M7 6l1.5 1.5M9 4l1.5 1.5"/>` },
+    { id: "parameters", label: "Parameters", action: true, tip: "The model's named sizes in one table: change a value or type a formula (width / 2), add new ones", icon: `<path d="M3 4h10M3 8h10M3 12h10"/><circle cx="6" cy="4" r="1.3"/><circle cx="10" cy="8" r="1.3"/><circle cx="5" cy="12" r="1.3"/>` },
+    { id: "properties", label: "Properties", action: true, tip: "Volume, surface area, size, centre of mass and the mass in a material", icon: `<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M5 6h6M5 8.5h6M5 11h3.5"/>` },
+    { id: "explode", label: "Explode", action: true, tip: "Assembly view: pull the parts apart and back together with a slider, and save a short spin-and-explode video", icon: `<rect x="6" y="6" width="4" height="4"/><path d="M3 3l2 2M13 3l-2 2M3 13l2-2M13 13l-2-2"/>` },
+  ] },
 ];
 const GIZMO_MODE = { move: "translate", rotate: "rotate", scale: "scale" };
 // Design-mode keys (only while Design is on and nothing is being typed in),
@@ -62,7 +68,7 @@ const KEYS = { select: "V", move: "M", rotate: "R", scale: "Shift+S", sketch: "S
 // Press and hold a button for these: straight into a sketch tool, or a
 // dialog opened on that choice.
 const SUBS = {
-  sketch: [["line", "Line"], ["rect", "Rectangle"], ["circle", "Circle"], ["arc", "Arc"], ["spline", "Spline"]].map(([v, l]) => ({ label: l, sketchTool: v })),
+  sketch: [["line", "Line"], ["rect", "Rectangle"], ["circle", "Circle"], ["arc", "Arc"], ["spline", "Spline"], ["slot", "Slot"], ["polygon", "Polygon"]].map(([v, l]) => ({ label: l, sketchTool: v })),
   extrude: [["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
   revolve: [["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
   hole: [["simple", "Simple"], ["counterbore", "Counterbore"], ["countersink", "Countersink"]].map(([v, l]) => ({ label: l, preset: { kind: v } })),
@@ -132,6 +138,15 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 #dz-side h3 { margin: 0; padding: 8px 10px 6px; font-size: 12px; font-weight: 650; display: flex; align-items: center; gap: 6px;
   border-bottom: 1px solid var(--border, #26314a); }
 #dz-side h3 small { color: var(--muted, #8ea0c0); font-weight: 400; margin-left: auto; }
+#dz-side .dz-clear { border: 1px solid transparent; background: transparent; color: var(--muted, #8ea0c0); cursor: pointer; padding: 2px 4px; border-radius: 5px; display: inline-flex; }
+#dz-side .dz-clear:hover { color: #ff8a8a; border-color: #ff8a8a55; background: rgba(255, 92, 92, 0.1); }
+#dz-confirm { position: fixed; inset: 0; z-index: 100001; display: grid; place-items: center; background: rgba(4, 8, 16, 0.55); }
+#dz-confirm .box { width: min(360px, calc(100vw - 32px)); background: var(--card, #121826); border: 1px solid var(--border, #26314a); border-radius: 10px; padding: 14px 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text, #dfe6f3); }
+#dz-confirm h4 { margin: 0 0 6px; font-size: 14px; }
+#dz-confirm p { margin: 0 0 12px; color: var(--muted, #8ea0c0); }
+#dz-confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+#dz-confirm button { border: 1px solid var(--border, #26314a); background: transparent; color: inherit; border-radius: 6px; padding: 5px 12px; cursor: pointer; font: inherit; }
+#dz-confirm button.go { background: #d94848; border-color: #d94848; color: #fff; }
 #dz-side .dz-fold { border: 0; background: transparent; cursor: pointer; padding: 0 2px; color: var(--muted, #8ea0c0); }
 #dz-side.folded #dz-tree, #dz-side.folded #dz-sel { display: none; }
 #dz-tree { overflow: auto; padding: 4px 0 6px; flex: 1 1 auto; min-height: 40px; }
@@ -164,7 +179,9 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 #dz-split .dz-pop { position: absolute; right: 6px; top: -3px; border: 0; background: transparent; color: var(--muted, #8ea0c0);
   cursor: pointer; font-size: 11px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
 #dz-split .dz-pop:hover { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.16); }
-#dz-sel.sized { max-height: none; }
+/* a dragged size is a ceiling, not a fixed height: short text keeps its own
+   room below; longer text scrolls, fading at the edge it runs past */
+#dz-sel.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
 #dz-selwin { top: 56px; left: 284px; width: 300px; height: 360px; min-width: 200px; min-height: 120px;
   max-height: calc(100vh - 150px); display: flex; flex-direction: column; overflow: hidden; resize: both; }
 #dz-selwin:has(#dz-sel:empty) { display: none; }
@@ -173,7 +190,7 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 #dz-selwin .hd button { margin-left: auto; border: 0; background: transparent; color: var(--muted, #8ea0c0); cursor: pointer;
   font-size: 11px; padding: 2px 6px; border-radius: 4px; }
 #dz-selwin .hd button:hover { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.16); }
-#dz-selwin #dz-sel { border-top: 0; max-height: none; flex: 1 1 auto; height: auto !important; }
+#dz-selwin #dz-sel { border-top: 0; max-height: none !important; flex: 1 1 auto; height: auto !important; -webkit-mask-image: none; mask-image: none; }
 #dz-sel .k { color: var(--muted, #8ea0c0); }
 #dz-sel .dz-line { margin: 2px 0; overflow-wrap: anywhere; }
 #dz-sel code { font: 11px ui-monospace, "Cascadia Code", Consolas, monospace; }
@@ -309,11 +326,48 @@ export function initDesignShell(host) {
   const side = document.createElement("div");
   side.id = "dz-side";
   side.className = "dz-ui";
-  side.innerHTML = `<h3><button type="button" class="dz-fold" title="Fold the browser" aria-expanded="true">▾</button>Browser<small></small></h3>`
+  side.innerHTML = `<h3><button type="button" class="dz-fold" title="Fold the browser" aria-expanded="true">▾</button>Browser<small></small>`
+    + `<button type="button" class="dz-clear" title="Clear the model: start from an empty plate (Ctrl+Z brings it back)" aria-label="Clear the model">`
+    + `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`
+    + `<path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.2a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.2"/></svg></button></h3>`
     + `<div id="dz-tree" role="tree" aria-label="Model browser"></div>`
     + `<div id="dz-split" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag to resize (double-click resets)">`
     + `<button type="button" class="dz-pop" title="Pop the selection out into its own window">⇱</button></div>`
     + `<div id="dz-sel" aria-live="polite"></div>`;
+
+  // The trash: clear the model for an empty plate. The starter cube is a
+  // placeholder, so it goes at once; anything else asks first (and Ctrl+Z /
+  // the history's back arrow bring it back either way).
+  side.querySelector(".dz-clear").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!host.text().trim()) { host.setHint?.("The plate is already empty: sketch (S), drop an STL, or pick something from the catalog."); return; }
+    if (host.isStarter?.()) { host.clearModel(); host.setHint?.("Empty plate. Sketch (S), drop an STL or a STEP, or pick from the catalog."); return; }
+    confirmClear();
+  });
+  function confirmClear() {
+    document.getElementById("dz-confirm")?.remove();
+    const lines = host.text().trim().split("\n").length;
+    const wrap = document.createElement("div");
+    wrap.id = "dz-confirm";
+    wrap.className = "dz-ui";
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-modal", "true");
+    wrap.setAttribute("aria-labelledby", "dz-confirm-h");
+    wrap.innerHTML = `<div class="box"><h4 id="dz-confirm-h">Clear the whole model?</h4>`
+      + `<p>Everything goes: the shapes, sketches and features (${lines} line${lines > 1 ? "s" : ""} of code), for an empty plate. `
+      + `<b>Ctrl+Z</b> (or the history's back arrow) brings it all back.</p>`
+      + `<div class="row"><button type="button" class="no">Cancel</button><button type="button" class="go">Clear model</button></div></div>`;
+    const close = () => { wrap.remove(); removeEventListener("keydown", onKey, true); };
+    const go = () => { close(); host.clearModel(); host.setHint?.("Cleared. Ctrl+Z brings it back."); };
+    const onKey = (k) => {
+      if (k.key === "Escape") { k.preventDefault(); k.stopImmediatePropagation(); close(); }
+      else if (k.key === "Enter") { k.preventDefault(); k.stopImmediatePropagation(); go(); }
+    };
+    wrap.addEventListener("click", (k) => { if (k.target === wrap || k.target.closest(".no")) close(); else if (k.target.closest(".go")) go(); });
+    addEventListener("keydown", onKey, true);
+    document.body.appendChild(wrap);
+    wrap.querySelector(".no").focus();
+  }
 
   const time = document.createElement("div");
   time.id = "dz-time";
@@ -449,15 +503,23 @@ export function initDesignShell(host) {
   const selPrefs = (() => { try { return JSON.parse(localStorage.getItem(SEL_KEY)) || {}; } catch { return {}; } })();
   const saveSel = () => { try { localStorage.setItem(SEL_KEY, JSON.stringify(selPrefs)); } catch { /* a preference only */ } };
   const setSelHeight = (px) => {
-    if (px == null) { selEl.style.height = ""; selEl.classList.remove("sized"); delete selPrefs.h; }
+    if (px == null) { selEl.style.maxHeight = ""; selEl.classList.remove("sized"); delete selPrefs.h; }
     else {
       const room = side.getBoundingClientRect().height - 110;      // the header and some of the list stay
       px = Math.round(Math.max(60, Math.min(room, px)));
-      selEl.style.height = `${px}px`; selEl.classList.add("sized"); selPrefs.h = px;
+      selEl.style.maxHeight = `${px}px`; selEl.classList.add("sized"); selPrefs.h = px;
     }
     saveSel();
+    fadeSel();
   };
-  if (selPrefs.h) { selEl.style.height = `${selPrefs.h}px`; selEl.classList.add("sized"); }
+  if (selPrefs.h) { selEl.style.maxHeight = `${selPrefs.h}px`; selEl.classList.add("sized"); }
+  // the fade at the bottom says "there is more": only while there is
+  function fadeSel() {
+    const more = selEl.scrollHeight - selEl.clientHeight - selEl.scrollTop > 2;
+    selEl.classList.toggle("more", more);
+  }
+  selEl.addEventListener("scroll", fadeSel, { passive: true });
+  new ResizeObserver(fadeSel).observe(selEl);
   splitEl.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || e.target.closest(".dz-pop")) return;
     e.preventDefault();
@@ -827,6 +889,7 @@ export function initDesignShell(host) {
         + `Moving it moves all ${m.fids.length}: the move edits the shared call. To move one on its own, give it its own call.</div>`;
     }
     selEl.innerHTML = html;
+    requestAnimationFrame(fadeSel);
   };
   selEl.addEventListener("click", async (e) => {
     const b = e.target.closest(".dz-edge");
@@ -918,11 +981,13 @@ export function initDesignShell(host) {
     const label = stepLabel(step, host.featureLabel);
     const isSketch = /^S\d/.test(step.id ?? "") || /sketch/i.test(String(label));
     const del = step.link ? deleteStepText(host.text(), step.link) : { error: "this step has no call in the code" };
+    const sup = step.link ? suppressStepText(host.text(), step.link) : { error: "this step has no call in the code" };
     const items = [
       ["select", "Select in model", true],
       ["code", "Show in code", !!step.link],
       ...(isSketch ? [["sketch", "Edit sketch", !!step.link]] : []),
-      ["delete", del.error ? "Delete step (not possible here)" : del.how === "unwrap" ? `Delete step (keep what ${del.name}() wraps)` : "Delete step", !del.error, del.error],
+      ["suppress", sup.how === "unsuppress" ? "Unsuppress (bring it back)" : sup.error ? "Suppress (not possible here)" : "Suppress (leave out, keep in the code)", !sup.error, sup.error],
+      ["delete", del.error ? "Delete step (not possible here)" : del.how === "unwrap" ? `Delete step (keep what ${del.name}() wraps)` : del.how === "clear" ? "Delete (the last shape: empties the plate)" : "Delete step", !del.error, del.error],
       ["undo", "Undo last change", true],
     ];
     ctx = document.createElement("div");
@@ -945,12 +1010,20 @@ export function initDesignShell(host) {
       else if (k === "code") host.showCode(step.link);
       else if (k === "undo") { host.undo(); host.setHint("Undid the last change."); }
       else if (k === "sketch") { pickStep(step); await openSketchAt(step.link); }
+      else if (k === "suppress") {
+        const sp = suppressStepText(host.text(), step.link);
+        if (sp.error) { host.setHint(`Could not suppress it: ${esc(sp.error)}.`); return; }
+        const res = await host.commit(sp.next);
+        host.setHint(!res.ok ? "That change no longer builds (see the timeline); the step before it brings it back."
+          : sp.how === "suppress" ? `<code>${esc(sp.name)}()</code> is suppressed: left out of the model, still in the code as <code>suppress(…)</code>. Right-click it in the Browser and Unsuppress to bring it back.`
+          : `<code>${esc(sp.name)}()</code> is back in the model.`);
+      }
       else if (k === "delete") {
         const d = deleteStepText(host.text(), step.link);
         if (d.error) { host.setHint(`Could not delete it: ${esc(d.error)}.`); return; }
         const res = await host.commit(d.next);
         host.setHint(res.ok
-          ? `Deleted ${i >= 0 ? `step ${i + 1} ` : ""}(<code>${esc(d.name)}()</code>${d.how === "unwrap" ? ", keeping what it wrapped" : ` from its <code>${esc(d.from)}()</code>`}). The timeline's step before it brings it back.`
+          ? `Deleted ${i >= 0 ? `step ${i + 1} ` : ""}(<code>${esc(d.name)}()</code>${d.how === "unwrap" ? ", keeping what it wrapped" : d.how === "clear" ? ": it was the last shape, so the plate is empty" : ` from its <code>${esc(d.from)}()</code>`}). Ctrl+Z (or the timeline's step before it) brings it back.`
           : `Deleted it, but the model no longer builds (see the timeline); the step before it brings it back.`);
       }
     });
@@ -1048,6 +1121,7 @@ export function initDesignShell(host) {
     // a dialog or a sketch is one-off work: press-pull (a pointer mode) ends
     if ((t.dialog || t.id === "sketch") && tool === "presspull") setTool("select");
     if (t.dialog) { openFeature(t.id, sub?.preset); return; }
+    if (t.action) { runAction(t.id); return; }
     if (t.id === "sketch") { openSketch(sub?.sketchTool); return; }
     // press-pull again: off, back to Select
     if (t.id === "presspull" && tool === "presspull") { setTool("select"); host.setHint(""); return; }
@@ -1056,6 +1130,15 @@ export function initDesignShell(host) {
       loadPressPull();
       host.setHint("<b>Press-pull</b>: drag any flat face (or a round side) along its normal. Out grows, in shrinks; pushed past the shape it cuts on through. Esc or another tool to stop.");
     }
+  }
+
+  // Inspect: one-off panels that change nothing (loaded when first used)
+  async function runAction(id) {
+    if (id === "measure") { host.openMeasure?.(); return; }
+    if (id === "properties") (await import("./design/inspect.js")).openProperties({ host, THREE });
+    if (id === "parameters") (await import("./design/parameters.js")).openParameters({ host });
+    // the move gizmo belongs to the assembled part: Select, nothing picked
+    if (id === "explode") { setTool("select"); host.clearSelection?.(); (await import("./design/explode.js")).openExplode({ host, THREE }); }
   }
 
   // press and hold a button with choices: a small flyout under it

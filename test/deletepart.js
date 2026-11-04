@@ -35,7 +35,8 @@ const starter = `difference(
 }
 {
   const r = del(starter, "cube");
-  check("body of a difference: deletes the whole difference → refuses (nothing left)", !!r.refuse, JSON.stringify(r));
+  // the starter's cube is the last shape: deleting it means an empty plate
+  check("body of a difference: deletes the whole difference, the plate empty", !r.refuse && r.text === "", JSON.stringify(r));
 }
 
 const three = `union(
@@ -78,7 +79,9 @@ const nested = `union(
   check("through colorize + translate: parses", r.text && parses(r.text), r.text);
 }
 
-check("a lone shape refuses (nothing would be left)", !!del("cube([10, 10, 10])", "cube").refuse);
+check("a lone shape: deleting it empties the plate", del("cube([10, 10, 10])", "cube").text === "");
+check("…its return and ; go too, so what is left still parses", (() => { const r = del("const w = 4;\nreturn cube([w, 2, 2]);", "cube"); try { new Function(r.text); } catch { return false; } return r.text === "const w = 4;\n"; })(), JSON.stringify(del("const w = 4;\nreturn cube([w, 2, 2]);", "cube")));
+check("the last shape left in a difference (its hole deleted): empties the plate", del("difference(\n  cube([30, 30, 12]),\n)", "cube").text === "");
 {
   const r = del("const peg = cylinder({ r: 2, h: 5 });\nreturn union(cube([5,5,5]), peg);", "cylinder");
   check("a shape stored in a variable refuses and names it", r.refuse && r.refuse.includes("peg"), JSON.stringify(r));

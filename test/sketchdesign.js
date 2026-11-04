@@ -1016,5 +1016,566 @@ console.log("\nModel 11: the user's screenshot (a circle, three lines whose top 
   await onEveryKernel("the cone, extruded 10", m.src, hullArea([{ c, r: R }, { c: bl }, { c: br }]) * 10, 0.005);
 }
 
+console.log("\nRegions: curves that branch or cross (the user's pac-man screenshot)\n");
+// area of a set of shapes on a grid: inside any of `ins`, outside all of `outs`
+const gridArea = (box, inside, h = 0.02) => {
+  let n = 0;
+  for (let x = box[0]; x <= box[2]; x += h) for (let y = box[1]; y <= box[3]; y += h) if (inside(x, y)) n++;
+  return n * h * h;
+};
+const inPoly = (poly) => (x, y) => { let k = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) k = !k; } return k; };
+{
+  // the screenshot, in mm: an arc from the upper right the long way round to
+  // the right, two radius lines (a pac-man), and three more lines
+  // (centre -> bottom right -> bottom -> the arc's right end) whose first one
+  // crosses the arc
+  const C = [0, 0], S = [10.6, 11.74], E = [15.82, 0], P3 = [18.4, -15.6], P4 = [15.82, -25.7];
+  const sk = SM.emptySketch();
+  SM.addArc(sk, C, S, E);
+  SM.addLine(sk, sk.points[0], sk.points[1], { auto: false });
+  SM.addLine(sk, sk.points[0], sk.points[2], { auto: false });
+  SM.addLine(sk, sk.points[0], P3, { auto: false });
+  SM.addLine(sk, P3, P4, { auto: false });
+  SM.addLine(sk, P4, sk.points[2], { auto: false });
+  check("the screenshot's sketch: a profile now (two regions sharing a line, a line crossing the arc)", SM.profileProblem(sk) === null, SM.profileProblem(sk));
+  const R = Math.hypot(...S), a0 = Math.atan2(S[1], S[0]);
+  const inPac = (x, y) => { const r = Math.hypot(x, y); if (r > R) return false; let a = Math.atan2(y, x); if (a < 0) a += 2 * Math.PI; return a >= a0; };
+  const inQuad = inPoly([C, P3, P4, E]);
+  const area = gridArea([-R, -26, 19, R], (x, y) => inPac(x, y) || inQuad(x, y));
+  await onEveryKernel("…built: the pac-man and the shape below it, as one", asModel(sk, 3).src, area * 3, 0.01);
+  // the pac-man alone still closes, either way it is drawn
+  const pac = SM.emptySketch();
+  SM.addLine(pac, C, S, { auto: false }); SM.addLine(pac, C, E, { auto: false }); SM.addArc(pac, pac.points[0], pac.points[1], pac.points[2]);
+  check("the pac-man on its own (lines first, then the arc onto their ends) closes", SM.profileProblem(pac) === null);
+}
+{
+  // two rectangles sharing an edge: one outline, the shared edge gone
+  const sk = SM.emptySketch();
+  SM.addRect(sk, [0, 0], [20, 10]);
+  SM.addRect(sk, [20, 0], [35, 10]);
+  check("two rectangles sharing an edge: one profile", SM.profileProblem(sk) === null);
+  await onEveryKernel("…built as one 35 x 10 block", asModel(sk, 2).src, 35 * 10 * 2, 0.002);
+  // overlapping rectangles: the union
+  const ov = SM.emptySketch();
+  SM.addRect(ov, [0, 0], [20, 10]);
+  SM.addRect(ov, [10, 5], [30, 20]);
+  check("two overlapping rectangles: a profile (their union)", SM.profileProblem(ov) === null);
+  await onEveryKernel("…built: 200 + 300 - 50 overlap", asModel(ov, 2).src, (200 + 300 - 50) * 2, 0.002);
+}
+{
+  // a closed outline with a stray line beside it, and one overshooting a corner
+  const sk = SM.emptySketch();
+  SM.addRect(sk, [0, 0], [20, 10]);
+  SM.addLine(sk, [30, 0], [40, 8], { auto: false });             // stray: touches nothing
+  SM.addLine(sk, [20, 10], [26, 14], { auto: false });           // a tail from a corner
+  check("a rectangle with a stray line and a tail: still a profile", SM.profileProblem(sk) === null, SM.profileProblem(sk));
+  const s = dsl.sketch(SM.toSpec(sk));
+  check("…what was left out is reported: both lines, and their loose ends", s.leftOut && s.leftOut.strays.sort().join() === "4,5" && s.leftOut.loose.length >= 3, JSON.stringify(s.leftOut));
+  await onEveryKernel("…built: just the rectangle", asModel(sk, 2).src, 20 * 10 * 2, 0.002);
+  // a line drawn across a rectangle (corner to corner past both): splits it, still one block
+  const x = SM.emptySketch();
+  SM.addRect(x, [0, 0], [20, 10]);
+  SM.addLine(x, [-5, -2.5], [25, 12.5], { auto: false });
+  check("a line drawn right across a rectangle: still a profile (the line's ends left out)", SM.profileProblem(x) === null);
+  await onEveryKernel("…built as the whole rectangle", asModel(x, 2).src, 20 * 10 * 2, 0.002);
+  // nothing closed at all: still refused, saying so
+  const none = SM.emptySketch();
+  SM.addLine(none, [0, 0], [10, 0], { auto: false }); SM.addLine(none, [10, 0], [10, 10], { auto: false });
+  check("an open chain alone is still refused, saying so", /does not close/.test(SM.profileProblem(none) || ""));
+  // a hole inside a branched shape is still a hole (even-odd across groups)
+  const h = SM.emptySketch();
+  SM.addRect(h, [0, 0], [20, 10]); SM.addRect(h, [20, 0], [35, 10]); SM.addCircle(h, [10, 5], 3);
+  await onEveryKernel("two joined rectangles with a hole in one", asModel(h, 2).src, (350 - Math.PI * 9) * 2, 0.003);
+}
+
+console.log("\nTwo closed shapes connected (a user report): every way they can meet, against a grid count\n");
+{
+  const inR = (x0, y0, x1, y1) => (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  const inC = (cx, cy, r) => (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
+  const cases = [
+    ["sharing an edge", (sk) => { SM.addRect(sk, [0, 0], [20, 10]); SM.addRect(sk, [20, 0], [35, 10]); }, [-1, -1, 36, 11], (x, y) => inR(0, 0, 20, 10)(x, y) || inR(20, 0, 35, 10)(x, y), 1],
+    ["touching at a corner", (sk) => { SM.addRect(sk, [0, 0], [20, 10]); SM.addRect(sk, [20, 10], [35, 25]); }, [-1, -1, 36, 26], (x, y) => inR(0, 0, 20, 10)(x, y) || inR(20, 10, 35, 25)(x, y), 2],
+    ["joined by a line", (sk) => { SM.addRect(sk, [0, 0], [20, 10]); SM.addRect(sk, [30, 0], [45, 10]); SM.addLine(sk, [20, 5], [30, 5]); }, [-1, -1, 46, 11], (x, y) => inR(0, 0, 20, 10)(x, y) || inR(30, 0, 45, 10)(x, y), 2],
+    ["overlapping rectangles", (sk) => { SM.addRect(sk, [0, 0], [20, 10]); SM.addRect(sk, [10, 5], [30, 20]); }, [-1, -1, 31, 21], (x, y) => inR(0, 0, 20, 10)(x, y) || inR(10, 5, 30, 20)(x, y), 1],
+    ["a circle over a rectangle's edge", (sk) => { SM.addRect(sk, [0, 0], [20, 10]); SM.addCircle(sk, [20, 5], 6); }, [-1, -2, 27, 12], (x, y) => inR(0, 0, 20, 10)(x, y) || inC(20, 5, 6)(x, y), 1],
+    ["two overlapping circles", (sk) => { SM.addCircle(sk, [0, 0], 8); SM.addCircle(sk, [10, 0], 6); }, [-9, -9, 17, 9], (x, y) => inC(0, 0, 8)(x, y) || inC(10, 0, 6)(x, y), 1],
+    ["a circle touching a rectangle", (sk) => { SM.addRect(sk, [0, 0], [20, 10]); SM.addCircle(sk, [26, 5], 6); }, [-1, -2, 33, 12], (x, y) => inR(0, 0, 20, 10)(x, y) || inC(26, 5, 6)(x, y), 2],
+    ["a rectangle on another's top edge (T)", (sk) => { SM.addRect(sk, [0, 0], [30, 10]); SM.addRect(sk, [10, 10], [20, 20]); }, [-1, -1, 31, 21], (x, y) => inR(0, 0, 30, 10)(x, y) || inR(10, 10, 20, 20)(x, y), 1],
+    ["a rectangle drawn down into another", (sk) => { SM.addRect(sk, [0, 0], [30, 10]); SM.addRect(sk, [10, 5], [20, 20]); }, [-1, -1, 31, 21], (x, y) => inR(0, 0, 30, 10)(x, y) || inR(10, 5, 20, 20)(x, y), 1],
+  ];
+  const grid = (box, inside, h = 0.02) => { let n = 0; for (let x = box[0]; x <= box[2]; x += h) for (let y = box[1]; y <= box[3]; y += h) if (inside(x, y)) n++; return n * h * h; };
+  for (const [label, draw, box, inside, solids] of cases) {
+    const sk = SM.emptySketch();
+    draw(sk);
+    check(`${label}: a profile`, SM.profileProblem(sk) === null, SM.profileProblem(sk));
+    const s = dsl.sketch(SM.toSpec(sk));
+    check(`…${solids === 1 ? "one shape" : `${solids} shapes (they meet only along a line or a point)`}`, 1 + (s.islands?.length ?? 0) === solids, String(1 + (s.islands?.length ?? 0)));
+    await onEveryKernel(`…built (the overlap counted once)`, asModel(sk, 4).src, grid(box, inside) * 4, 0.006);
+  }
+  // a circle on its own inside a rectangle is still a hole
+  const hole = SM.emptySketch();
+  SM.addRect(hole, [0, 0], [30, 20]);
+  SM.addCircle(hole, [15, 10], 5);
+  await onEveryKernel("a circle inside a rectangle, touching nothing: still a hole", asModel(hole, 4).src, (600 - Math.PI * 25) * 4, 0.003);
+}
+
+// ------------------------------------------- Tier 1: more rules, and inference
+console.log("\nNew rules: midpoint, collinear, concentric, symmetric, point on a circle\n");
+{
+  const near = (a, b, t = 1e-3) => Math.abs(a - b) < t;
+  const met = (sk) => SM.unmet(sk).length === 0;
+  // midpoint: a line's start goes to the middle of a rectangle's bottom edge
+  {
+    const sk = SM.emptySketch();
+    const [bottom] = SM.addRect(sk, [0, 0], [40, 20]);
+    SM.constrain(sk, "fixed", [{ point: 0 }]);
+    SM.dimension(sk, [{ curve: bottom }], 40);
+    const li = SM.addLine(sk, [13, 4], [35, 30], { auto: false });
+    const dof0 = SM.analyse(sk).dof;
+    check("midpoint: a point and a line", SM.constrain(sk, "midpoint", [{ point: sk.curves[li].ids[0] }, { curve: bottom }]) === null);
+    SM.solve(sk);
+    const p = sk.points[sk.curves[li].ids[0]];
+    check("…the point sits midway along the line", met(sk) && near(p[0], 20) && near(p[1], 0), JSON.stringify(p));
+    check("…two fewer to lock", SM.analyse(sk).dof === dof0 - 2, `${dof0} -> ${SM.analyse(sk).dof}`);
+    check("…a line's own end is refused", typeof SM.constrain(sk, "midpoint", [{ point: sk.curves[bottom].ids[0] }, { curve: bottom }]) === "string");
+  }
+  // collinear: a second line swings onto the first one's line
+  {
+    const sk = SM.emptySketch();
+    const a = SM.addLine(sk, [0, 0], [10, 2], { auto: false }), b = SM.addLine(sk, [15, 6], [25, 3], { auto: false });
+    SM.constrain(sk, "fixed", [{ point: 0 }, { point: 1 }]);
+    check("collinear: two lines", SM.constrain(sk, "collinear", [{ curve: a }, { curve: b }]) === null);
+    SM.solve(sk);
+    const [p, q] = sk.curves[b].ids.map((i) => sk.points[i]);
+    const off = (pt) => Math.abs(pt[0] * 2 - pt[1] * 10) / Math.hypot(10, 2);
+    check("…both of its ends are on the first line", met(sk) && off(p) < 1e-3 && off(q) < 1e-3, JSON.stringify([p, q]));
+    check("…a circle and a line are refused", typeof SM.constrain(sk, "collinear", [{ curve: a }]) === "string");
+  }
+  // concentric: two circles share a centre
+  {
+    const sk = SM.emptySketch();
+    const a = SM.addCircle(sk, [0, 0], 5), b = SM.addCircle(sk, [3, 1], 10);
+    SM.constrain(sk, "fixed", [{ point: sk.curves[a].ids[0] }]);
+    check("concentric: two circles", SM.constrain(sk, "concentric", [{ curve: a }, { curve: b }]) === null);
+    SM.solve(sk);
+    const cb = sk.points[sk.curves[b].ids[0]];
+    check("…one centre", met(sk) && near(cb[0], 0) && near(cb[1], 0), JSON.stringify(cb));
+    const src = asModel(sk, 3).src;
+    await onEveryKernel("…builds as a ring (a washer)", src, Math.PI * (100 - 25) * 3, 0.004);
+  }
+  // point on a circle: the Coincident button with a point and a circle
+  {
+    const sk = SM.emptySketch();
+    const c = SM.addCircle(sk, [0, 0], 10);
+    SM.constrain(sk, "fixed", [{ point: sk.curves[c].ids[0] }]);
+    const li = SM.addLine(sk, [12, 3], [20, 10], { auto: false });
+    const dof0 = SM.analyse(sk).dof;
+    check("point on a circle (Coincident, a point and a circle)", SM.constrain(sk, "coincident", [{ point: sk.curves[li].ids[0] }, { curve: c }]) === null);
+    SM.solve(sk);
+    const p = sk.points[sk.curves[li].ids[0]];
+    check("…the point is on the rim", met(sk) && near(Math.hypot(...p), 10), JSON.stringify(p));
+    check("…one fewer to lock", SM.analyse(sk).dof === dof0 - 1, `${dof0} -> ${SM.analyse(sk).dof}`);
+    // and an arc: the point stays on its radius
+    const sk2 = SM.emptySketch();
+    const arc = SM.addArc(sk2, [0, 0], [8, 0], [0, 8]);
+    const l2 = SM.addLine(sk2, [5, 7], [9, 12], { auto: false });
+    SM.constrain(sk2, "coincident", [{ point: sk2.curves[l2].ids[0] }, { curve: arc }]);
+    SM.solve(sk2);
+    const r = Math.hypot(...sk2.points[sk2.curves[l2].ids[0]].map((v, k) => v - sk2.points[sk2.curves[arc].ids[0]][k]));
+    const R = Math.hypot(...sk2.points[sk2.curves[arc].ids[1]].map((v, k) => v - sk2.points[sk2.curves[arc].ids[0]][k]));
+    check("…on an arc too", met(sk2) && near(r, R), `${r} vs ${R}`);
+    // the rule goes with its circle
+    SM.removeCurve(sk, c);
+    check("…and goes when the circle is deleted", !sk.constraints.some((k) => k.type === "onCurve"));
+  }
+  // symmetric: two lines mirrored across a construction centre line
+  {
+    const sk = SM.emptySketch();
+    const axis = SM.addLine(sk, [0, -20], [0, 20]);
+    SM.toggleConstruction(sk, axis);
+    SM.constrain(sk, "fixed", sk.curves[axis].ids.map((point) => ({ point })));
+    const a = SM.addLine(sk, [-10, 0], [-5, 8], { auto: false }), b = SM.addLine(sk, [12, 1], [6, 9], { auto: false });
+    check("symmetric: two lines and the centre line", SM.constrain(sk, "symmetric", [{ curve: a }, { curve: b }, { curve: axis }]) === null);
+    SM.solve(sk);
+    const [p0, p1] = sk.curves[a].ids.map((i) => sk.points[i]), [q0, q1] = sk.curves[b].ids.map((i) => sk.points[i]);
+    check("…each end mirrors the other line's end", met(sk) && near(p0[0], -q0[0]) && near(p0[1], q0[1]) && near(p1[0], -q1[0]) && near(p1[1], q1[1]),
+      JSON.stringify([p0, p1, q0, q1]));
+    // circles: centres mirrored, the radius made the same
+    const c1 = SM.addCircle(sk, [-8, -10], 3), c2 = SM.addCircle(sk, [9, -9], 5);
+    check("…two circles", SM.constrain(sk, "symmetric", [{ curve: c1 }, { curve: c2 }, { curve: axis }]) === null);
+    SM.solve(sk);
+    const [k1, k2] = [c1, c2].map((ci) => sk.points[sk.curves[ci].ids[0]]);
+    check("…centres mirrored, same radius", met(sk) && near(k1[0], -k2[0]) && near(k1[1], k2[1]) && sk.curves[c1].r === sk.curves[c2].r, JSON.stringify([k1, k2]));
+    check("…the mirror line can't be one of the pair", typeof SM.constrain(sk, "symmetric", [{ curve: axis }]) === "string");
+  }
+  // a symmetric trapezoid, written as code, read back and built
+  {
+    const sk = SM.emptySketch();
+    const axis = SM.addLine(sk, [0, -2], [0, 12]);
+    SM.toggleConstruction(sk, axis);
+    SM.constrain(sk, "fixed", sk.curves[axis].ids.map((point) => ({ point })));
+    const c = [[-10, 0], [10, 0], [6, 8], [-5, 8]];
+    for (let k = 0; k < 4; k++) SM.addLine(sk, c[k], c[(k + 1) % 4]);
+    const ids = sk.curves[3].ids, low = sk.curves[1].ids;
+    SM.constrain(sk, "symmetric", [{ point: ids[0] }, { point: ids[1] }, { curve: axis }]);
+    SM.constrain(sk, "symmetric", [{ point: low[0] }, { point: low[1] }, { curve: axis }]);
+    SM.solve(sk);
+    const P = sk.points, poly = [1, 2, 3, 4].map((ci) => sk.curves[ci].ids[0]);
+    let area = 0;
+    for (let i = 0; i < poly.length; i++) { const [x0, y0] = P[poly[i]], [x1, y1] = P[poly[(i + 1) % poly.length]]; area += x0 * y1 - x1 * y0; }
+    area = Math.abs(area) / 2;
+    const m = asModel(sk, 5);
+    check("a symmetric trapezoid: the code reads back the same", m.roundTrip);
+    check("…the code says symmetric", /\["symmetric",/.test(m.code));
+    await onEveryKernel("…builds", m.src, area * 5, 0.004);
+  }
+}
+
+console.log("\nInference: where a click lands, and the rule it keeps\n");
+{
+  const sk = SM.emptySketch();
+  const [bottom, right] = SM.addRect(sk, [0, 0], [40, 20]);
+  const circ = SM.addCircle(sk, [60, 10], 8);
+  const at = (uv, opts) => SM.inferPoint(sk, uv, 1, opts);
+  let f = at([20.4, 0.3]);
+  check("near the bottom edge's middle: Midpoint", f.label === "Midpoint" && f.mid === bottom && f.uv[0] === 20 && f.uv[1] === 0, JSON.stringify(f));
+  f = at([11.3, 0.4]);
+  check("on the edge elsewhere: On line, on it exactly", f.label === "On line" && f.on[0] === bottom && Math.abs(f.uv[1]) < 1e-9 && Math.abs(f.uv[0] - 11.3) < 1e-9, JSON.stringify(f));
+  f = at([0.3, 0.2]);
+  check("on a corner: the corner itself", f.point != null && f.label === "Point", JSON.stringify(f));
+  f = at([60.2, 10.3]);
+  check("on a circle's centre: Centre", f.point === sk.curves[circ].ids[0] && f.label === "Centre", JSON.stringify(f));
+  f = at([68.5, 10.4]);
+  check("on its rim: On circle", f.label === "On circle" && Math.abs(Math.hypot(f.uv[0] - 60, f.uv[1] - 10) - 8) < 1e-9, JSON.stringify(f));
+  f = at([40.6, 7.3]);
+  check("on the right edge: On line", f.label === "On line" && f.on[0] === right && f.uv[0] === 40, JSON.stringify(f));
+  // a crossing: a line drawn across the rectangle's corner region
+  const cross = SM.addLine(sk, [30, -5], [50, 15], { auto: false });
+  f = at([35.3, 0.2]);
+  check("where two lines cross: Intersection", f.label === "Intersection" && f.on.length === 2 && Math.abs(f.uv[0] - 35) < 1e-9 && Math.abs(f.uv[1]) < 1e-9, JSON.stringify(f));
+  SM.removeCurve(sk, cross);
+  // out in the open: lined up with the top-right corner, a guide and no rule
+  f = at([40.4, 33.2], { grid: 1 });
+  check("in line with a corner above it: snapped across, a guide", f.uv[0] === 40 && f.uv[1] === 33 && f.guides.length === 1 && !f.on.length, JSON.stringify(f));
+  f = at([25.4, 33.4], { grid: 1 });
+  check("in line with nothing: the grid", f.uv[0] === 25 && f.uv[1] === 33 && !f.guides.length, JSON.stringify(f));
+  f = at([20.4, 0.3], { free: true });
+  check("Alt: no inference", !f.label && f.uv[0] === 20.4, JSON.stringify(f));
+
+  // drawing with it: a line from the bottom edge's middle to the top-right
+  // corner keeps "midpoint"; stretch the rectangle and it is still midway
+  const sk2 = SM.emptySketch();
+  const [b2] = SM.addRect(sk2, [0, 0], [40, 20]);
+  SM.constrain(sk2, "fixed", [{ point: 0 }]);
+  const start = SM.inferPoint(sk2, [20.3, 0.4], 1);
+  const end = SM.inferPoint(sk2, [40.2, 19.8], 1);
+  const li = SM.addLine(sk2, start.uv, end.uv);
+  SM.applyInferred(sk2, sk2.curves[li].ids[0], start);
+  SM.applyInferred(sk2, sk2.curves[li].ids[1], end);
+  check("a line from a midpoint snap keeps a Midpoint rule", sk2.constraints.some((k) => k.type === "midpoint"));
+  SM.dimension(sk2, [{ curve: b2 }], 60);
+  SM.solve(sk2);
+  const s2 = sk2.points[sk2.curves[li].ids[0]];
+  check("…the bottom made 60 long: the line's start follows to 30", SM.unmet(sk2).length === 0 && Math.abs(s2[0] - 30) < 1e-3 && Math.abs(s2[1]) < 1e-3, JSON.stringify(s2));
+  // a point dropped on a circle's rim stays on it when the circle grows
+  const sk3 = SM.emptySketch();
+  const c3 = SM.addCircle(sk3, [0, 0], 10);
+  SM.constrain(sk3, "fixed", [{ point: 0 }]);
+  const rim = SM.inferPoint(sk3, [7.2, 7.0], 1);
+  const l3 = SM.addLine(sk3, rim.uv, [25, 25]);
+  SM.applyInferred(sk3, sk3.curves[l3].ids[0], rim);
+  SM.dimension(sk3, [{ curve: c3 }], 15);
+  SM.solve(sk3);
+  check("a line started on a circle's rim stays on it when the radius changes", SM.unmet(sk3).length === 0
+    && Math.abs(Math.hypot(...sk3.points[sk3.curves[l3].ids[0]]) - 15) < 1e-3, JSON.stringify(sk3.points[sk3.curves[l3].ids[0]]));
+
+  // chains: a line drawn on square to the last becomes Perpendicular
+  const sk4 = SM.emptySketch();
+  const l4a = SM.addLine(sk4, [0, 0], [10, 5]);
+  const l4b = SM.addLine(sk4, [10, 5], [7.5, 10.05]);
+  check("a line drawn on at (nearly) 90° to the last: Perpendicular", SM.inferJoin(sk4, l4b) === "Perpendicular" && sk4.constraints.some((k) => k.type === "perpendicular"));
+  SM.solve(sk4);
+  const ua = sk4.curves[l4a].ids.map((i) => sk4.points[i]), u = [ua[1][0] - ua[0][0], ua[1][1] - ua[0][1]];
+  const v = sk4.curves[l4b].ids.map((i) => sk4.points[i]);
+  const w = [v[1][0] - v[0][0], v[1][1] - v[0][1]];
+  check("…and square after the solve", SM.unmet(sk4).length === 0 && Math.abs(u[0] * w[0] + u[1] * w[1]) / (Math.hypot(...u) * Math.hypot(...w)) < 1e-4);
+  const l4c = SM.addLine(sk4, sk4.points[sk4.curves[l4b].ids[1]], [20, 30]);
+  check("…but not at 60°", SM.inferJoin(sk4, l4c) === null);
+  // level and plumb lines are not also made perpendicular (that would be one rule too many)
+  const sk5 = SM.emptySketch();
+  SM.addLine(sk5, [0, 0], [10, 0]);
+  const l5 = SM.addLine(sk5, [10, 0], [10, 8]);
+  check("a level line then a plumb one: no extra Perpendicular", SM.inferJoin(sk5, l5) === null);
+  // an arc drawn on from a line's end, running on along it: Tangent
+  const a5 = SM.addArc(sk5, [5, 8], [10, 8], [0, 8]);
+  check("an arc drawn on from a line's end along it: Tangent", SM.inferJoin(sk5, a5) === "Tangent" && sk5.constraints.some((k) => k.type === "tangent"));
+  SM.solve(sk5);
+  check("…the rules all met", SM.unmet(sk5).length === 0, JSON.stringify(SM.unmet(sk5)));
+}
+
+console.log("\nNew tools: fillet, slot, polygon, centre rectangle, 3-point and tangent arcs, mirror, pattern\n");
+{
+  const near = (a, b, t = 1e-3) => Math.abs(a - b) < t;
+  const met = (sk) => SM.unmet(sk).length === 0;
+  const corner = (r) => r * r - (Math.PI * r * r) / 4;           // what a round takes off a square corner
+  // fillet: a 40 x 20 plate, one corner rounded 5
+  {
+    const sk = SM.emptySketch();
+    const [bottom, right] = SM.addRect(sk, [0, 0], [40, 20]);
+    SM.constrain(sk, "fixed", [{ point: 0 }]);
+    SM.dimension(sk, [{ curve: bottom }], 40);
+    SM.dimension(sk, [{ curve: right }], 20);
+    const V = SM.cornerNear(sk, [39.6, 19.7], 1);
+    check("fillet: the corner under the pointer", V >= 0 && sk.points[V][0] === 40 && sk.points[V][1] === 20);
+    const r = SM.filletCorner(sk, V, 5);
+    SM.solve(sk);
+    check("…rounded, every rule met", r.arc >= 0 && met(sk), JSON.stringify(SM.unmet(sk)));
+    check("…the arc is tangent to both lines", worstTangent(sk) < 1e-3, String(worstTangent(sk)));
+    check("…a profile", SM.profileProblem(sk) === null, SM.profileProblem(sk));
+    let m = asModel(sk, 3);
+    check("…the code reads back the same", m.roundTrip);
+    await onEveryKernel("…builds (the corner taken off)", m.src, (800 - corner(5)) * 3, 0.003);
+    // the plate made wider: the round goes with the corner
+    sk.dims.find((d) => d.value === 40).value = 50;
+    SM.solve(sk);
+    check("…made 50 wide, the round follows, still tangent", met(sk) && worstTangent(sk) < 1e-3, JSON.stringify(SM.unmet(sk)));
+    m = asModel(sk, 3);
+    await onEveryKernel("…builds 50 wide", m.src, (1000 - corner(5)) * 3, 0.003);
+    // the other three corners as well
+    for (const xy of [[0, 0], [50, 0], [0, 20]]) {
+      const v = SM.cornerNear(sk, xy, 1);
+      check(`…corner at ${xy}`, v >= 0 && SM.filletCorner(sk, v, 5).arc >= 0);
+    }
+    SM.solve(sk);
+    check("…all four rounded, every rule met", met(sk) && worstTangent(sk) < 1e-3, JSON.stringify(SM.unmet(sk)));
+    await onEveryKernel("…builds with four rounds", asModel(sk, 3).src, (1000 - 4 * corner(5)) * 3, 0.003);
+    // too big
+    const sk2 = SM.emptySketch();
+    SM.addRect(sk2, [0, 0], [40, 20]);
+    check("…a round too big for the lines is refused", typeof SM.filletCorner(sk2, SM.cornerNear(sk2, [40, 20], 1), 25) === "string");
+    check("…a point that is not a corner is refused", typeof SM.filletCorner(sk2, 99, 2) === "string");
+  }
+  // slot
+  {
+    const sk = SM.emptySketch();
+    const out = SM.addSlot(sk, [0, 0], [30, 0], 5);
+    SM.solve(sk);
+    check("slot: four curves, every rule met, ends tangent", out.length === 4 && met(sk) && worstTangent(sk) < 1e-3);
+    check("…drawn level, kept level", sk.constraints.some((k) => k.type === "horizontal"));
+    check("…a profile", SM.profileProblem(sk) === null, SM.profileProblem(sk));
+    await onEveryKernel("…builds", asModel(sk, 4).src, (300 + Math.PI * 25) * 4, 0.003);
+    // the ends' radius dimensioned: both ends change, the sides stay tangent
+    const arc = curveIndex(sk, "arc");
+    SM.dimension(sk, [{ curve: arc }], 8);
+    SM.solve(sk);
+    const rs = sk.curves.filter((c) => c.kind === "arc").map((c) => radiusOf(sk, c));
+    check("…the radius made 8: both ends 8, still tangent", met(sk) && rs.every((v) => near(v, 8)) && worstTangent(sk) < 1e-3, JSON.stringify(rs));
+  }
+  // polygon
+  {
+    const sk = SM.emptySketch();
+    const out = SM.addPolygon(sk, [0, 0], [10, 0], 6);
+    SM.solve(sk);
+    check("polygon: six sides, every rule met", out.length === 6 && met(sk));
+    check("…a profile (the circle is construction)", SM.profileProblem(sk) === null, SM.profileProblem(sk));
+    await onEveryKernel("…builds as a hexagon", asModel(sk, 2).src, 1.5 * Math.sqrt(3) * 100 * 2, 0.003);
+    // the circle made bigger: still regular
+    const circ = sk.curves.findIndex((c) => c.kind === "circle");
+    sk.curves[circ].r = 20;
+    SM.solve(sk);
+    const L = out.map((ci) => dist(...sk.curves[ci].ids.map((i) => sk.points[i])));
+    check("…the circle made 20: every side 20", met(sk) && L.every((v) => near(v, 20)), JSON.stringify(L));
+    check("…fewer than 3 sides is refused", SM.addPolygon(SM.emptySketch(), [0, 0], [5, 0], 2).length === 0);
+  }
+  // centre rectangle
+  {
+    const sk = SM.emptySketch();
+    const out = SM.addCenterRect(sk, [5, 5], [25, 15]);
+    const c = sk.points.findIndex((p) => p[0] === 5 && p[1] === 5);
+    SM.constrain(sk, "fixed", [{ point: c }]);
+    SM.solve(sk);
+    check("centre rectangle: four sides about the centre", out.length === 4 && met(sk) && sk.constraints.some((k) => k.type === "midpoint"));
+    SM.dimension(sk, [{ curve: out[0] }], 60);
+    SM.solve(sk);
+    const xs = sk.curves[out[0]].ids.map((i) => sk.points[i][0]).sort((a, b) => a - b);
+    check("…made 60 wide, it grows both ways from the centre", met(sk) && near(xs[0], -25) && near(xs[1], 35), JSON.stringify(xs));
+    await onEveryKernel("…builds", asModel(sk, 2).src, 60 * 20 * 2, 0.003);
+  }
+  // 3-point arc
+  {
+    const sk = SM.emptySketch();
+    const top = SM.addArc3(sk, [10, 0], [-10, 0], [0, 10]);
+    const C = sk.points[sk.curves[top].ids[0]];
+    check("3-point arc: centre where the three clicks put it", near(C[0], 0) && near(C[1], 0), JSON.stringify(C));
+    const mid = (ci) => { const c = sk.curves[ci], [o, s, e] = c.ids.map((i) => sk.points[i]); let a0 = Math.atan2(s[1] - o[1], s[0] - o[0]), a1 = Math.atan2(e[1] - o[1], e[0] - o[0]); if (a1 <= a0) a1 += 2 * Math.PI; const a = (a0 + a1) / 2, r = dist(o, s); return [o[0] + r * Math.cos(a), o[1] + r * Math.sin(a)]; };
+    const m1 = mid(top);
+    check("…it bows through the third click (over the top)", near(m1[0], 0) && near(m1[1], 10), JSON.stringify(m1));
+    const bottom = SM.addArc3(SM.emptySketch(), [10, 0], [-10, 0], [0, -10]);
+    void bottom;
+    const sk2 = SM.emptySketch();
+    const under = SM.addArc3(sk2, [10, 0], [-10, 0], [0, -10]);
+    const c2 = sk2.curves[under], [o2, s2, e2] = c2.ids.map((i) => sk2.points[i]);
+    let a0 = Math.atan2(s2[1] - o2[1], s2[0] - o2[0]), a1 = Math.atan2(e2[1] - o2[1], e2[0] - o2[0]);
+    if (a1 <= a0) a1 += 2 * Math.PI;
+    check("…and under, when the third click is below", Math.sin((a0 + a1) / 2) < -0.99, `${a0} ${a1}`);
+    check("…three clicks in a line make no arc", SM.addArc3(SM.emptySketch(), [0, 0], [10, 0], [5, 0]) === -1);
+  }
+  // tangent arc: a line, an arc on from its end, a line back: a D shape
+  {
+    const sk = SM.emptySketch();
+    SM.addLine(sk, [0, 0], [20, 0]);
+    const from = sk.points.findIndex((p) => p[0] === 20 && p[1] === 0);
+    const r = SM.addTangentArc(sk, from, [20, 16]);
+    check("tangent arc: runs on from the line's end", r.arc >= 0 && sk.constraints.some((k) => k.type === "tangent"), JSON.stringify(r));
+    const C = sk.points[sk.curves[r.arc].ids[0]];
+    check("…its centre square off the line, half way up", near(C[0], 20) && near(C[1], 8), JSON.stringify(C));
+    SM.addLine(sk, [20, 16], [0, 16]);
+    SM.addLine(sk, [0, 16], [0, 0]);
+    SM.solve(sk);
+    check("…the D closes, every rule met", met(sk) && SM.profileProblem(sk) === null, SM.profileProblem(sk));
+    await onEveryKernel("…builds", asModel(sk, 3).src, (320 + Math.PI * 64 / 2) * 3, 0.003);
+    // turning the other way (clockwise), and on from an arc
+    const sk2 = SM.emptySketch();
+    SM.addLine(sk2, [0, 0], [10, 0]);
+    const f2 = sk2.points.findIndex((p) => p[0] === 10);
+    const r2 = SM.addTangentArc(sk2, f2, [10, -10]);
+    const C2 = sk2.points[sk2.curves[r2.arc].ids[0]];
+    check("…turning right: centre below", near(C2[0], 10) && near(C2[1], -5), JSON.stringify(C2));
+    const r3 = SM.addTangentArc(sk2, r2.end, [-6, -22]);
+    SM.solve(sk2);
+    check("…and on again from that arc's end, every rule met", r3.arc >= 0 && met(sk2), JSON.stringify(r3));
+    check("…not from a loose point", typeof SM.addTangentArc(SM.emptySketch(), 0, [1, 1]).error === "string");
+  }
+  // mirror: half a shape and the centre line make the whole
+  {
+    const sk = SM.emptySketch();
+    const axis = SM.addLine(sk, [0, -5], [0, 20]);
+    SM.toggleConstruction(sk, axis);
+    SM.constrain(sk, "fixed", sk.curves[axis].ids.map((point) => ({ point })));
+    const half = [SM.addLine(sk, [0, 0], [10, 0]), SM.addLine(sk, [10, 0], [10, 10]), SM.addLine(sk, [10, 10], [0, 15], { auto: false })];
+    for (const p of [[0, 0], [0, 15]]) SM.constrain(sk, "coincident", [{ point: sk.points.findIndex((q) => q[0] === p[0] && q[1] === p[1]) }, { curve: axis }]);
+    const r = SM.mirrorCurves(sk, half, axis);
+    SM.solve(sk);
+    check("mirror: three lines copied across, every rule met", r.curves?.length === 3 && met(sk), JSON.stringify(SM.unmet(sk)));
+    check("…the points on the line are shared: one closed shape", SM.profileProblem(sk) === null, SM.profileProblem(sk));
+    await onEveryKernel("…builds", asModel(sk, 2).src, 250 * 2, 0.003);
+    SM.dimension(sk, [{ curve: half[0] }], 14);
+    SM.solve(sk);
+    const xs = sk.points.filter((p) => near(Math.abs(p[0]), 14)).map((p) => p[0]).sort((a, b) => a - b);
+    check("…the original made wider, the copy follows", met(sk) && xs[0] < -13.99 && xs[xs.length - 1] > 13.99, JSON.stringify(xs));
+    check("…nothing to mirror is refused", typeof SM.mirrorCurves(sk, [axis], axis) === "string");
+  }
+  // pattern: a bolt circle of six holes in a disc
+  {
+    const sk = SM.emptySketch();
+    SM.addCircle(sk, [0, 0], 30);
+    const hole = SM.addCircle(sk, [20, 0], 3);
+    const r = SM.patternCurves(sk, [hole], { kind: "circular", centre: [0, 0], n: 6 });
+    check("circular pattern: five more holes", r.curves?.length === 5);
+    const ang = sk.curves.filter((c, i) => i > 0).map((c) => Math.round(Math.atan2(sk.points[c.ids[0]][1], sk.points[c.ids[0]][0]) * 180 / Math.PI));
+    check("…every 60°", JSON.stringify(ang.map((a) => (a + 360) % 360).sort((a, b) => a - b)) === "[0,60,120,180,240,300]", JSON.stringify(ang));
+    await onEveryKernel("…builds as a disc with six holes", asModel(sk, 3).src, Math.PI * (900 - 6 * 9) * 3, 0.003);
+    const sk2 = SM.emptySketch();
+    SM.addRect(sk2, [0, 0], [50, 10]);
+    const slotR = SM.addRect(sk2, [5, 3], [9, 7]);
+    const r2 = SM.patternCurves(sk2, slotR, { kind: "linear", step: [10, 0], n: 4 });
+    check("linear pattern: three more squares", r2.curves?.length === 12);
+    await onEveryKernel("…builds as a plate with four square holes", asModel(sk2, 2).src, (500 - 4 * 16) * 2, 0.003);
+  }
+}
+
+console.log("\nPick regions: leave a shaded area out of the extrude (Fusion's profile picking)\n");
+{
+  // a rectangle with a circle over its right edge: three regions
+  const sk = SM.emptySketch();
+  SM.addRect(sk, [0, 0], [40, 20]);
+  SM.addCircle(sk, [40, 10], 6);
+  check("the bulge outside the rectangle: left out", SM.toggleRegion(sk, [44, 10]) === "out" && sk.skip?.length === 1);
+  let m = asModel(sk, 3);
+  check("…the code says skip, and reads back the same", /skip: \[\[44, 10\]\]/.test(m.code) && m.roundTrip, m.code);
+  await onEveryKernel("…builds as the rectangle alone", m.src, 800 * 3, 0.003);
+  check("the lens inside the rectangle: left out too", SM.toggleRegion(sk, [38, 10]) === "out");
+  await onEveryKernel("…builds as the rectangle with a half-round bite", asModel(sk, 3).src, (800 - Math.PI * 18) * 3, 0.003);
+  check("the bulge clicked again: back in", SM.toggleRegion(sk, [44, 10]) === "in" && sk.skip.length === 1);
+  await onEveryKernel("…builds with the bulge and the bite", asModel(sk, 3).src, (800 - Math.PI * 18 + Math.PI * 18) * 3, 0.003);
+  check("…its curves are not strays", SM.profileInfo(sk).strays.length === 0, JSON.stringify(SM.profileInfo(sk).strays));
+  // two separate shapes: one left out
+  const sk2 = SM.emptySketch();
+  SM.addRect(sk2, [0, 0], [10, 10]);
+  SM.addRect(sk2, [20, 0], [35, 10]);
+  check("two shapes: the second left out", SM.toggleRegion(sk2, [25, 5]) === "out");
+  await onEveryKernel("…builds as the first alone", asModel(sk2, 2).src, 100 * 2, 0.003);
+  check("…the first can't go as well (nothing would be left)", SM.toggleRegion(sk2, [5, 5]) === null);
+  check("a click outside every region does nothing", SM.toggleRegion(sk2, [50, 50]) === null);
+  // a plate with a hole: the plate is the only region
+  const sk3 = SM.emptySketch();
+  SM.addRect(sk3, [0, 0], [30, 20]);
+  SM.addCircle(sk3, [15, 10], 4);
+  check("a plate with a hole: the plate is the only region, it stays", SM.toggleRegion(sk3, [3, 3]) === null);
+  check("…a click in the hole is in no region", SM.toggleRegion(sk3, [15, 10]) === null);
+  check("sketch() refuses a skip that leaves nothing", (() => { try { dsl.sketch({ points: [[0, 0], [5, 0], [5, 5]], curves: [["line", 0, 1], ["line", 1, 2], ["line", 2, 0]], skip: [[3, 1]] }); return false; } catch (e) { return /left out/.test(e.message); } })());
+}
+
+console.log("\nParameters with formulas (Fusion's Change Parameters), and a dimension typed as a formula\n");
+{
+  const P = await import("../viewer/design/parameters.js");
+  const t0 = "const width = 40;\nconst depth = width / 2;\nconst wall = Math.max(2, depth / 10);\nreturn cube([width, depth, wall]);\n";
+  const list = P.readParams(t0);
+  check("the consts are read, formulas worked out top down", JSON.stringify(list.map((p) => [p.name, p.value])) === JSON.stringify([["width", 40], ["depth", 20], ["wall", 2]]), JSON.stringify(list));
+  check("…a formula is marked as one", list.map((p) => p.formula).join() === "false,true,true");
+  let r = P.setParam(t0, "width", "60");
+  check("width made 60: written, and depth follows (30)", r.text && /const width = 60;/.test(r.text) && P.readParams(r.text)[1].value === 30, JSON.stringify(r));
+  r = P.setParam(t0, "depth", "width / 4 + 1");
+  check("depth made a new formula", r.text && P.readParams(r.text)[1].value === 11, JSON.stringify(r));
+  check("…a formula using a parameter below it is refused", typeof P.setParam(t0, "width", "depth * 2").error === "string");
+  check("…anything but numbers and Math is refused", typeof P.setParam(t0, "width", "alert(1)").error === "string" && typeof P.setParam(t0, "width", '"40"').error === "string");
+  r = P.addParam(t0, "gap", "wall * 1.5");
+  check("a new parameter goes under the others", r.text && /const wall = [^\n]*;\nconst gap = wall \* 1\.5;\n/.test(r.text) && r.value === 3, JSON.stringify(r));
+  check("…a name in use is refused", typeof P.addParam(t0, "width", "3").error === "string");
+  check("…and a name that isn't one", typeof P.addParam(t0, "2x", "3").error === "string");
+  check("the model still builds after the edits", (() => { try { evaluate(P.setParam(t0, "width", "50").text); return true; } catch { return false; } })());
+
+  // a sketch dimension written as a formula: read back as that formula, its
+  // value from the parameters; the parameter changed, the sketch follows
+  const sk = SM.emptySketch();
+  const [bottom, right] = SM.addRect(sk, [0, 0], [40, 20]);
+  SM.constrain(sk, "fixed", [{ point: 0 }]);
+  SM.dimension(sk, [{ curve: bottom }], 40);
+  SM.dimension(sk, [{ curve: right }], 20);
+  sk.dims[0].name = "width";
+  sk.dims[1].name = "width / 2";
+  const code = SM.sketchCode(sk);
+  check("the code says width and width / 2", /\["distance", \d+, \d+, width\]/.test(code) && /\["distance", \d+, \d+, width \/ 2\]/.test(code), code);
+  const src = (w) => `const width = ${w};\nconst s1 = ${code};\nreturn linearExtrude({ h: 2 }, s1);`;
+  const back = SM.readSketch(src(40), codemap.parseCode(src(40)).calls.find((c) => c.name === "sketch"));
+  check("…read back: the formula kept, its value worked out", back.dims[1].name === "width / 2" && back.dims[1].value === 20, JSON.stringify(back.dims));
+  check("…and written the same again", SM.sketchCode(back) === code);
+  await onEveryKernel("width = 40: a 40 x 20 plate", src(40), 800 * 2, 0.003);
+  await onEveryKernel("width = 60: 60 x 30, the height follows the formula", src(60), 1800 * 2, 0.003);
+}
+
+console.log("\nSuppress: a step left out of the model, kept in the code\n");
+{
+  const { suppressStepText } = await import("../viewer/design-timeline.js");
+  const t = "return difference(cube([20, 20, 10]), translate([10, 10, -1], cylinder({ r: 4, h: 12 })), translate([3, 3, -1], cylinder({ r: 1, h: 12 })));";
+  const big = Math.PI * 16 * 10, small = Math.PI * 1 * 10;
+  await onEveryKernel("a plate with two holes", t, 4000 - big - small, 0.01);
+  const cyl = codemap.parseCode(t).calls.find((c) => c.name === "cylinder");
+  const s = suppressStepText(t, { start: cyl.start, end: cyl.end });
+  check("Suppress the big hole: wrapped in suppress( ), the translate with it", s.how === "suppress" && /suppress\(translate\(\[10, 10, -1\]/.test(s.next), s.next);
+  await onEveryKernel("…built: only the small hole is cut", s.next, 4000 - small, 0.01);
+  const cyl2 = codemap.parseCode(s.next).calls.find((c) => c.name === "cylinder");
+  const u = suppressStepText(s.next, { start: cyl2.start, end: cyl2.end });
+  check("…Unsuppress puts the code back exactly", u.how === "unsuppress" && u.next === t);
+  const cube = codemap.parseCode(t).calls.find((c) => c.name === "cube");
+  check("the plate the holes cut from can't be suppressed", typeof suppressStepText(t, { start: cube.start, end: cube.end }).error === "string");
+  const g = "return group(cube([10, 10, 10]), translate([20, 0, 0], sphere({ r: 5 })));";
+  const sph = codemap.parseCode(g).calls.find((c) => c.name === "sphere");
+  const gs = suppressStepText(g, { start: sph.start, end: sph.end });
+  await onEveryKernel("a part of a group suppressed: the other part alone", gs.next, 1000, 0.01);
+  const one = "return cube([10, 10, 10]);";
+  check("the only shape can't be suppressed", typeof suppressStepText(one, { start: 7, end: one.length - 1 }).error === "string");
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
