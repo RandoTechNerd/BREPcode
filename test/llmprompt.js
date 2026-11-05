@@ -41,6 +41,9 @@ const readModule = (file) => {
   for (const m of text.matchAll(/^export function ([a-zA-Z0-9_]+)/gm)) real.add(m[1]);
   for (const m of text.matchAll(/^export const ([a-zA-Z0-9_]+)\s*=/gm)) real.add(m[1]);
   for (const m of text.matchAll(/^export \* from "\.\/([a-zA-Z0-9_.-]+)"/gm)) readModule(m[1]);
+  for (const m of text.matchAll(/^export \{([^}]+)\} from "\.\/[a-zA-Z0-9_.-]+"/gm)) {
+    for (const n of m[1].split(",")) real.add(n.trim().split(/\s+as\s+/).pop());
+  }
 };
 readModule("dsl.js");                                    // export * from "./src/dsl.js"
 for (const n of ["build", "toSTL", "stats", "fromOpenSCAD", "looksLikeOpenSCAD"]) real.add(n);

@@ -73,6 +73,14 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   // GET/POST, and the handful of headers such a call legitimately carries.
   aiRelay: (req) => ipcRenderer.invoke("ai:relay", req),
 
+  // Settings > Connect your AI. The page names one of four fixed app ids
+  // (claude-desktop, claude-code, cursor, vscode); main decides every path
+  // and writes only the brepcode entry in that app's MCP config.
+  aiStatus: () => ipcRenderer.invoke("ai:status"),
+  aiConnect: (id) => ipcRenderer.invoke("ai:connect", id),
+  aiDisconnect: (id) => ipcRenderer.invoke("ai:disconnect", id),
+  aiSnippet: (id) => ipcRenderer.invoke("ai:snippet", id),
+
   // The 3-view drawing, handed to the OS so it opens in a real browser tab —
   // the exe has no tabs of its own. Text in, nothing back but ok/error.
   openBlueprint: (name, svg) => ipcRenderer.invoke("blueprint:open", { name, svg }),

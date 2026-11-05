@@ -118,6 +118,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "glblook.js",
   // reading a model's named dimensions out for the Parameters sliders
   "params.js",
+  // assembly() models: the Parts card, explode, check fit, export parts, product shot
+  "assemblyview.js",
   // click-a-strand shaving, loaded when the tool is first used
   "shave.js", "stagefit.js", "logbook.js",
   // FizzCore bubble infill + the drop menu, loaded on first drop / toolbox use

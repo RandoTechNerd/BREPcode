@@ -22,7 +22,7 @@ const NOT_RUNNING =
 // Builds are the slow part and they are the whole point, so the client-side
 // deadline has to be generous enough for a real one. It sits above the app's
 // own ceiling so the app's clearer message ("the app did not answer") wins.
-const LONG = new Set(["set_code", "edit_code", "build", "set_param", "save_stl", "catalog_find"]);
+const LONG = new Set(["set_code", "edit_code", "build", "set_param", "save_stl", "catalog_find", "check_fit", "export_parts", "render"]);
 
 function call(method, path, body) {
   return new Promise((resolve) => {
@@ -61,6 +61,8 @@ How to work:
 9. Build EXACT. get_state.engine.lane says which kernel built the model: "exact" is the fast Rust B-rep kernel (true curves, STEP-clean), "mesh" means a hull/roundedGrow/tube/texture step turned it into triangles (hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres or a few flat-sided pieces), "js" means the exact kernel refused a step and the slow fallback built it. Prefer exact constructions: a rounded box is fillet({ r, edges: "z" }, cube([x, y, z])), a rounded-off cylinder fillets its top rim then its bottom rim, a taper is cylinder({ r1, r2 }), never a hole down a revolve() axis (use cones), overlapping cutters one difference() at a time. When get_state.exactAdvice is set, the model left the exact lane for an avoidable reason: rewrite it as that says, keeping every size.
 10. "Ask about this": when get_state.selection is set, the user right-clicked a spot on the model to talk about it. "Here", "this", "this face" mean that spot: selection.point and .normal (world mm, normal pointing out), .face, .edges (the names fillet()/chamfer() take), .call (the call that made it, with its line and exact text) and .body (its body's outermost call). Edit that call or body, not the whole model: a hole there is drill(point, normal, { d, depth | through: true }) added as one more argument of the body's difference(), rounding the face is fillet({ r, edges }, body).
 
+10. A machine of several printed parts is an ASSEMBLY, not one shape: return assembly({ housing: { shape, color, print: "flip" }, pod: { shape, color, count: 12, place: polar(12, { at: [45, 0, 28], rotate: [90, 0, 90] }) } }). Model each part in the frame it PRINTS in; place moves its copies to where they sit in the machine (polar(n, …), a function (shape, i) => translate(…, rotate(…, shape)), or { translate, rotate }); print turns it for the bed ("asis", "flip", "side", "placed" or [rx, ry, rz]). get_state.assembly lists the parts. Then check_fit (every pair of parts intersected, overlaps in mm³ by name, painted red on screen: fix them before printing), export_parts (one STL per part in print pose on the bed + parts.csv, STEP per part when the exact lane built it) and render (a white-studio product shot PNG, metal/copper/matte, optional cutaway). explode slides the parts apart on screen.
+
 If a tool says BREPcode is not reachable, the app is almost certainly just closed. Ask them to open it; do not keep retrying.`;
 
 const str = { type: "string" }, num = { type: "number" };
@@ -76,6 +78,10 @@ const TOOLS = [
   { name: "screenshot", description: "A PNG of the BREPcode window as the user sees it. Take one after any change that should look different, and LOOK at it: a build can succeed and still be the wrong shape.", inputSchema: { type: "object", properties: {} } },
   { name: "save_stl", description: "Write the built model to an STL file. Fails if nothing has built yet. Ask the user before overwriting an existing file.", inputSchema: { type: "object", properties: { path: { ...str, description: "absolute path to write, ending in .stl" } }, required: ["path"] } },
   { name: "catalog_find", description: "Ask the app's catalog of 200+ tested, printable designs for a plain-words request ('a phone stand for my iPhone 16', 'a hook for my yoga mat', 'a cable clip for 3 cables'). Returns found:true with the family, title, what it was sized for, a question to relay if one is open, the dial values and the code; or found:false with suggestions. With apply:true the design is put on screen (undoable) and the state comes back. Call this BEFORE writing a common thing yourself with set_code.", inputSchema: { type: "object", properties: { text: { ...str, description: "the user's request, in their words" }, apply: { type: "boolean", description: "put the design on screen now (default false)" } }, required: ["text"] } },
+  { name: "check_fit", description: "For an assembly() model: intersect every pair of assembled parts and report each overlap with both part names and its volume in mm³ (and where it is), largest first. The clashes are painted red in the user's view. clear:true means nothing overlaps. Run it after any change to an assembly and fix every clash before export_parts.", inputSchema: { type: "object", properties: { minVolume: { ...num, description: "ignore overlaps smaller than this many mm³ (default 0.01)" } } } },
+  { name: "export_parts", description: "For an assembly() model: write one binary STL per part (not per copy) in its print orientation, centred on the bed with its lowest point at z=0, plus parts.csv (name, quantity, bounding box, volume, print setting). When the exact kernel built the model it also writes a true-curve STEP per part (step: true forces it, false skips it). path is a folder, or a file ending in .zip; without one it goes to Documents/BREPcode/<model>-parts. Existing files of the same name in that folder are replaced: ask first.", inputSchema: { type: "object", properties: { path: { ...str, description: "absolute folder path, or an absolute path ending in .zip" }, step: { description: "\"auto\" (default), true or false" } } } },
+  { name: "render", description: "A product shot of what is on screen: the assembled view (or the exploded one) re-lit on a white studio background with a soft floor shadow, returned as a PNG and optionally saved. preset: studio (each part's own finish from assembly(), else matte in its colour), metal, copper or matte for every part. cutaway: true cuts a 90° wedge out of the side facing the camera and shows the cut faces in red. Set the camera first with set_view.", inputSchema: { type: "object", properties: { preset: { ...str, enum: ["studio", "metal", "copper", "matte"] }, cutaway: { type: "boolean" }, width: { ...num, description: "pixels, default 1600" }, height: { ...num, description: "pixels, default 1200" }, view: { ...str, enum: ["home", "top", "front", "right", "left", "up", "down", "opposite"] }, explode: { ...num, description: "0..1, explode for this shot only" }, savePath: { ...str, description: "optional absolute path ending in .png" } } } },
+  { name: "explode", description: "For an assembly() model: slide its parts apart on screen, 0 (assembled) to 1 (fully exploded). Each copy moves away from the middle, or along the explode vector its part was given in assembly().", inputSchema: { type: "object", properties: { amount: { ...num, description: "0..1" } }, required: ["amount"] } },
   { name: "catalog_list", description: "What the catalog covers: every family's id, title, names and example requests, or one category's (desk, wall, storage, kitchen, bathroom, garage, garden, electronics, home, fitness, gaming, pets, travel, kids, printer, vehicle, decor, access).", inputSchema: { type: "object", properties: { category: { ...str, description: "optional category id" } } } },
 ];
 
@@ -88,12 +94,43 @@ async function runTool(name, args = {}) {
     return { content: [{ type: "image", data: r.png.toString("base64"), mimeType: "image/png" }] };
   }
   if (name === "get_state") return TEXT(await call("GET", "/state"));
+  if (name === "render") {
+    const r = await call("POST", "/command", { action: "render", ...args });
+    if (r.error || !r.png) return TEXT(r);
+    const { png, ...info } = r;
+    return { content: [{ type: "image", data: png, mimeType: "image/png" }, { type: "text", text: JSON.stringify(info) }] };
+  }
   if (name === "save_stl") {
     if (!args.path) return TEXT({ error: "save_stl needs a path" });
     return TEXT(await call("POST", "/command", { action: "get_stl", savePath: args.path }));
   }
   return TEXT(await call("POST", "/command", { action: name, ...args }));
 }
+
+// ---- who is connected ----------------------------------------------------
+// Settings > Connect your AI in the app shows which AI apps are talking to
+// it. Each config the app writes names its client in BREPCODE_CLIENT; a
+// hand-written one is guessed from the client's own name. Said on connect
+// and every 20 s after, quietly: the app being closed is not an error here.
+const CLIENT = process.env.BREPCODE_CLIENT || "";
+let clientInfo = null;
+function guessClient(info) {
+  const n = String(info?.name || "").toLowerCase();
+  if (/claude-code|claude code/.test(n)) return "claude-code";
+  if (/claude/.test(n)) return "claude-desktop";
+  if (/cursor/.test(n)) return "cursor";
+  if (/visual studio code|vscode|copilot/.test(n)) return "vscode";
+  return n.replace(/[^a-z0-9-]+/g, "-").slice(0, 40) || "unknown";
+}
+function hello(info) {
+  if (info) clientInfo = info;
+  const body = JSON.stringify({ client: CLIENT || guessClient(clientInfo), name: clientInfo?.name || "", version: clientInfo?.version || "" });
+  const req = http.request(`${BRIDGE}/hello`, { method: "POST", headers: { "Content-Type": "application/json" }, timeout: 3000 }, (res) => res.resume());
+  req.on("error", () => {});
+  req.on("timeout", () => req.destroy());
+  req.end(body);
+}
+setInterval(() => { if (clientInfo) hello(); }, 20000).unref();
 
 // ---- MCP plumbing -------------------------------------------------------
 // One JSON-RPC message per line on stdin, one per line on stdout. Notifications
@@ -109,6 +146,7 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
   if (id === undefined) return;                       // a notification
   try {
     if (method === "initialize") {
+      hello(params?.clientInfo);
       return reply(id, {
         protocolVersion: params?.protocolVersion || "2024-11-05",
         capabilities: { tools: {} },

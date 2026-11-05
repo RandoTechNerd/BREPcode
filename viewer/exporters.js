@@ -196,7 +196,7 @@ function crc32(bytes) {
 }
 
 // A stored (uncompressed) zip — all any 3MF consumer needs.
-function storedZip(entries) {
+export function storedZip(entries) {
   const enc = new TextEncoder();
   const chunks = [], central = [];
   let offset = 0;

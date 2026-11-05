@@ -101,6 +101,25 @@ scale([x, y, z], shape)        scale(s, shape)                  mirror([nx, ny, 
 hull(...shapes)                // one convex skin around everything; a mesh, see rule 9
 hull({ exact: true }, ...)     // the same hull kept exact: equal corner cylinders, coaxial discs,
                                // 2 or 8 equal spheres, or a few flat-sided pieces: see rule 9
+assembly({ name: { shape, color, count, place, print, finish, explode }, ... })
+                               // a machine of SEPARATE printed parts, see below
+polar(n, { at: [x, y, z], rotate: [rx, ry, rz] })   // n placements around Z, for assembly place:
+```
+
+A thing that is printed as several parts and put together, like a motor, a box
+with a lid or a gearbox, is an `assembly()`, not one `group()`. Draw each part in the
+frame it PRINTS in, flat side down; `place` moves its copies to where they sit
+in the finished thing; `print` turns it for the bed: `"asis"` (default),
+`"flip"`, `"side"`, `"placed"` or `[rx, ry, rz]`. The app then shows the parts
+list, explodes it, checks every pair of parts for overlap and exports one STL
+per part already on the bed.
+
+```
+return assembly({
+  base: { shape: difference(cube([40, 40, 12]), translate([3, 3, 2], cube([34, 34, 11]))), color: "#4a7bd0" },
+  lid: { shape: cube([40, 40, 3]), color: "#e0b44c", place: { translate: [0, 0, 12] } },
+  peg: { shape: cylinder({ r: 2, h: 8 }), count: 4, place: polar(4, { at: [12, 12, 2] }) },
+});
 ```
 
 ### Rounding and offsets

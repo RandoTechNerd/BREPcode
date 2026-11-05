@@ -122,6 +122,30 @@ function buildPrim(r, n) {
   }
 }
 
+// The edges a fillet()/chamfer() names, as a replicad edge filter. Without
+// one OCCT rounds EVERY edge, so fillet({ edges: "z" }, cube(...)) came out
+// with all twelve edges rounded instead of the four corners (or refused,
+// when a radius fits the corners but not the thin top rim). "x"/"y"/"z" and
+// "top"/"bottom" are matched here; anything else ("all", "convex", faces)
+// still rounds every edge, as before. `frame` turns the axes into an
+// assembly part's own, like compile() does.
+function edgePick(n, shape, frame) {
+  const axis = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }[n.edges];
+  const turn = (v) => (frame ? new Vector3(...v).transformDirection(frame) : new Vector3(...v));
+  if (axis) {
+    const d = turn(axis);
+    return (e) => e.inDirection([d.x, d.y, d.z]);
+  }
+  if (n.edges === "top" || n.edges === "bottom") {
+    const up = turn([0, 0, 1]);
+    if (Math.abs(Math.abs(up.z) - 1) > 1e-9) return undefined;    // a tilted part's top is not a world plane
+    const [lo, hi] = shape.boundingBox.bounds;
+    const wantHigh = (n.edges === "top") === (up.z > 0);
+    return (e) => e.inPlane("XY", wantHigh ? hi[2] : lo[2]);
+  }
+  return undefined;
+}
+
 export async function buildCurved(root) {
   const r = await loadReplicad();
 
@@ -296,13 +320,20 @@ export async function buildCurved(root) {
     return d.close();
   };
 
+  // Inside an assembly part (src/assembly.js) edges picked by direction mean
+  // the part's own axes, as they do in compile(); this is that part's frame.
+  let partFrame = null;
   const build = (n, matrix) => {
     if (n.kind === "xform") {
       // a stretched subtree was baked to a mesh in the pre-pass — its own
       // matrix is already in the vertices, only the OUTER matrix still applies
       const pre = stretchedShapes.get(n);
       if (pre) return applyMatrix(pre, matrix);
-      return build(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix));
+      const world = new Matrix4().multiplyMatrices(matrix, n.matrix);
+      if (!n.asmPart) return build(n.child, world);
+      const outer = partFrame;
+      partFrame = world;
+      try { return build(n.child, world); } finally { partFrame = outer; }
     }
     if (n.kind === "op") {
       let acc = build(n.children[0], matrix);
@@ -357,8 +388,9 @@ export async function buildCurved(root) {
     if (n.kind === "edgeop") {
       // OCCT rounds/bevels analytically — a curved fillet, not faceted
       let shape = build(n.child, matrix);
+      const pick = edgePick(n, shape, partFrame);
       try {
-        shape = n.code === "F" ? shape.fillet(n.amount) : shape.chamfer(n.amount);
+        shape = n.code === "F" ? shape.fillet(n.amount, pick) : shape.chamfer(n.amount, pick);
       } catch (e) {
         throw new Error(`curved ${n.code === "F" ? "fillet" : "chamfer"} failed on this shape (radius may be too large for an edge) — try the mesh export, or a smaller amount`);
       }

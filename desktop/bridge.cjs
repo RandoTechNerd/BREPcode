@@ -17,6 +17,8 @@
 //   GET  /state       -> the editor's code, status, size, params
 //   POST /command     -> { action, ... } run in the page, its result back
 //   GET  /screenshot  -> PNG of the window, what the user is looking at
+//   POST /hello       -> an MCP server saying which AI app started it, so
+//                        Settings > Connect your AI can show it as connected
 //
 // SECURITY. The listener is bound to 127.0.0.1 and every request is checked
 // against the remote address again, because binding alone has been wrong
@@ -38,10 +40,21 @@ const PORT = Number(process.env.BREPCODE_AGENT_PORT || 5757);
 // Long jobs get their own ceiling. A kernel build of a heavy part legitimately
 // runs for minutes and the default would report a timeout on a build that was
 // going perfectly well — the same mistake VidHelm's bridge made on exports.
-const LONG = new Set(["set_code", "edit_code", "build", "set_param", "get_stl", "catalog_find"]);
+const LONG = new Set(["set_code", "edit_code", "build", "set_param", "get_stl", "catalog_find", "check_fit", "export_parts", "render"]);
 const timeoutFor = (action) => (LONG.has(action) ? 10 * 60 * 1000 : 20000);
 
 let state = { listening: false, port: PORT, error: "" };
+
+// Which AI apps have an MCP server talking to us, and when each was last
+// heard from. The MCP server says hello when its client connects and then
+// every ~20 s while it runs (agent/mcp-server.mjs), so "seen in the last
+// minute" is a fair "connected".
+const clients = new Map();          // id -> { id, name, version, lastSeen }
+function sawClient({ client, name, version } = {}) {
+  const id = String(client || "").slice(0, 40) || "unknown";
+  clients.set(id, { id, name: String(name || "").slice(0, 80), version: String(version || "").slice(0, 40), lastSeen: Date.now() });
+}
+const clientList = () => [...clients.values()].map((c) => ({ ...c, ageMs: Date.now() - c.lastSeen }));
 
 function windowNow() {
   return BrowserWindow.getAllWindows().find((w) => !w.isDestroyed()) || null;
@@ -69,6 +82,62 @@ const send = (res, code, body) => {
   res.end(JSON.stringify(body));
 };
 
+// export_parts: the page hands back the files, this side puts them where the
+// assistant asked — a folder, or a .zip when the path ends in one. Without a
+// path they go to Documents/BREPcode/<model>-parts.
+const fs = require("node:fs");
+// A deflated zip from [name, Buffer] pairs. Small enough to keep here rather
+// than ship a zip library in the packaged app (main.cjs loads no npm modules
+// but nodemailer, see electron-builder.yml).
+function zipOf(entries) {
+  const zlib = require("node:zlib");
+  const parts = [], central = [];
+  let offset = 0;
+  for (const [name, data] of entries) {
+    const nm = Buffer.from(name, "utf8");
+    const packed = zlib.deflateRawSync(data);
+    const crc = zlib.crc32(data);
+    const head = Buffer.alloc(30);
+    head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(20, 4); head.writeUInt16LE(0x0800, 6);
+    head.writeUInt16LE(8, 8); head.writeUInt32LE(crc, 14);
+    head.writeUInt32LE(packed.length, 18); head.writeUInt32LE(data.length, 22); head.writeUInt16LE(nm.length, 26);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(0x0800, 8);
+    cd.writeUInt16LE(8, 10); cd.writeUInt32LE(crc, 16); cd.writeUInt32LE(packed.length, 20);
+    cd.writeUInt32LE(data.length, 24); cd.writeUInt16LE(nm.length, 28); cd.writeUInt32LE(offset, 42);
+    parts.push(head, nm, packed);
+    central.push(cd, nm);
+    offset += head.length + nm.length + packed.length;
+  }
+  const cdSize = central.reduce((n, b) => n + b.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(cdSize, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, ...central, end]);
+}
+
+async function writeParts(cmd, out) {
+  const { files, ...rest } = out;
+  let target = cmd.path || cmd.dir;
+  if (!target) target = path.join(app.getPath("documents"), "BREPcode", `${out.name || "model"}-parts`);
+  target = path.resolve(String(target));
+  try {
+    if (/\.zip$/i.test(target)) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, zipOf(files.map((f) => [f.name, Buffer.from(f.base64, "base64")])));
+      return { ...rest, saved: target, files: files.map((f) => f.name) };
+    }
+    fs.mkdirSync(target, { recursive: true });
+    const replaced = [];
+    for (const f of files) {
+      const file = path.join(target, path.basename(f.name));
+      if (fs.existsSync(file)) replaced.push(f.name);
+      fs.writeFileSync(file, Buffer.from(f.base64, "base64"));
+    }
+    return { ...rest, saved: target, files: files.map((f) => f.name), ...(replaced.length ? { replaced } : {}) };
+  } catch (e) { return { error: `could not write the parts to ${target}: ${e.message}` }; }
+}
+
 const server = http.createServer(async (req, res) => {
   const remote = req.socket.remoteAddress || "";
   if (!/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(remote)) {
@@ -78,6 +147,12 @@ const server = http.createServer(async (req, res) => {
     const url = (req.url || "").split("?")[0];
     if (req.method === "GET" && url === "/ping") return send(res, 200, await ask({ action: "ping" }));
     if (req.method === "GET" && url === "/state") return send(res, 200, await ask({ action: "get_state" }));
+    if (req.method === "POST" && url === "/hello") {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      try { sawClient(JSON.parse(Buffer.concat(chunks).toString() || "{}")); } catch { sawClient({}); }
+      return send(res, 200, { ok: true });
+    }
 
     if (req.method === "GET" && url === "/screenshot") {
       const win = windowNow();
@@ -108,6 +183,15 @@ const server = http.createServer(async (req, res) => {
           require("node:fs").writeFileSync(cmd.savePath, out.stl);
           return send(res, 200, { ok: true, saved: path.resolve(cmd.savePath), bytes: out.stl.length, name: out.name });
         } catch (e) { return send(res, 200, { error: `could not write ${cmd.savePath}: ${e.message}` }); }
+      }
+      if (cmd.action === "export_parts" && Array.isArray(out?.files)) return send(res, 200, await writeParts(cmd, out));
+      if (cmd.action === "render" && out?.png && cmd.savePath) {
+        try {
+          const file = path.resolve(cmd.savePath);
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, Buffer.from(out.png, "base64"));
+          out.saved = file;
+        } catch (e) { out.saveError = `could not write ${cmd.savePath}: ${e.message}`; }
       }
       return send(res, 200, out);
     }
@@ -175,4 +259,4 @@ const mcpServerPath = () => (app.isPackaged
   ? path.join(process.resourcesPath, "agent", "mcp-server.mjs")
   : path.join(__dirname, "..", "agent", "mcp-server.mjs"));
 
-module.exports = { register, status: () => ({ ...state, mcpServerPath: mcpServerPath() }), wanted, PORT };
+module.exports = { register, status: () => ({ ...state, mcpServerPath: mcpServerPath(), clients: clientList() }), wanted, PORT, clients: clientList, mcpServerPath };

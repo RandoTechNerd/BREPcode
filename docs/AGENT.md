@@ -48,9 +48,50 @@ opens a listening socket on 127.0.0.1 at startup. See the security note below.
 The default is a build setting, `brepcodeAgentDefault` in package.json:
 `npm run desktop:build:public` packages it off with no source change.
 
-**2. Point your Claude client at the MCP server.**
+**2. Connect your AI: one click.** Open ⓘ About > Settings > **Connect your AI**
+in the app. There is a button for each AI app that can run a local MCP server:
 
-In this repo there is nothing to do: `.mcp.json` already registers it, so
+| app | config it writes | entry |
+| --- | --- | --- |
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers.brepcode` |
+| Claude Code | `~/.claude.json` (user scope, every project) | `mcpServers.brepcode` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers.brepcode` |
+| VS Code (Copilot agent mode) | `%APPDATA%\Code\User\mcp.json` | `servers.brepcode`, `type: "stdio"` |
+
+(macOS uses `~/Library/Application Support/…` and Linux `~/.config/…` for the
+first and last.) `desktop/aiconnect.cjs` does the writing, and it is built for
+someone who will never open these files:
+
+* **No Node needed.** If `node` is on PATH the entry runs it; if not, it runs
+  BREPcode's own executable with `ELECTRON_RUN_AS_NODE=1`, which is a Node
+  runtime. Either way the server is the same zero-dependency file.
+* **The portable exe moves.** It unpacks to a new temp folder on every launch,
+  so the entry points at a copy of `mcp-server.mjs` in BREPcode's own app-data
+  folder, refreshed on every start, and an entry whose command has gone (the
+  exe moved, node was uninstalled) is re-pointed at start-up. Only entries the
+  app wrote are ever touched.
+* **Your file is yours.** Every other key and server in it is kept, the
+  previous file is saved beside it as `.bak-brepcode`, and the write is a temp
+  file plus a rename. A file it cannot parse (VS Code allows comments) is left
+  exactly as it was, with a pointer to **Copy config**, which puts the entry on
+  the clipboard to paste in yourself.
+
+Each row shows **not set up**, **set up** (the entry is in the file) or
+**connected** in green: an MCP server started by that app has said hello to
+the bridge in the last minute. The server says hello when its client
+connects and every 20 s after (`POST /hello`), naming the app from the
+`BREPCODE_CLIENT` in the entry, or guessing it from the client's own name for a
+hand-written config. **Remove** takes the brepcode entry back out.
+
+**ChatGPT cannot do this.** Neither the ChatGPT app nor chatgpt.com can start
+a local MCP server, so there is nothing on this machine for it to connect to:
+OpenAI's MCP support is for remote servers on the public internet, and the
+bridge is loopback-only by design. To use an OpenAI model with BREPcode, use
+the app's built-in assistant with an OpenAI key (`desktop/aiproxy.cjs` relays
+it), or one of the clients above that lets you pick an OpenAI model (Cursor,
+VS Code).
+
+**By hand.** In this repo there is nothing to do: `.mcp.json` already registers it, so
 `claude` started here picks it up.
 
 Anywhere else — or for Claude Desktop — add it by absolute path. In an installed
@@ -85,6 +126,10 @@ nothing can spawn a script out of an archive.
 | `save_stl` | write the built mesh to a path |
 | `catalog_find` | ask the app's catalog of 200+ tested designs for a plain-words request; `apply: true` puts it on screen |
 | `catalog_list` | what the catalog covers, all of it or one category |
+| `check_fit` | for an `assembly()`: intersect every pair of placed parts, report each overlap by part name in mm³, paint it red |
+| `export_parts` | for an `assembly()`: one STL per part in print pose on the bed, `parts.csv`, a true-curve STEP per part when the exact lane built it; to a folder or a `.zip` |
+| `render` | a product shot of the view: white studio, floor shadow, `studio`/`metal`/`copper`/`matte`, optional `cutaway` wedge; returns the PNG and can save it |
+| `explode` | slide an assembly's parts apart on screen, 0 to 1 |
 
 `set_code` returns the state *after* the build, so `status.kind === "err"` is how
 Claude finds out it wrote something that does not build — and the kernel's own
@@ -97,6 +142,43 @@ write a part itself when the catalog has nothing. A catalog model's code
 starts with a header line (`From the BREPcode catalog: phone-stand.`) and one
 `const` per dial; Claude keeps those lines when it edits the model, so your own
 chat follow-ups ("wider", "for a Pixel 9") keep working afterwards.
+
+## Assemblies: multi-part projects
+
+A printed machine is several parts, each printed on its own and put together.
+`assembly()` (src/assembly.js) says so:
+
+```js
+return assembly({
+  housing:  { shape: housing(), color: "#8a8f98", finish: "aluminium" },
+  coil_pod: { shape: coilPod(), color: "#c8702a", finish: "copper", count: 12,
+              place: polar(12, { at: [45, 0, 28], rotate: [90, -90, 0] }) },
+});
+```
+
+Each part is drawn in the frame it **prints** in. `place` moves its copies to
+where they sit in the finished thing (`polar(n, …)`, an array, a function
+`(shape, i) => translate(…, rotate(…, shape))`, or `{ translate, rotate }`; a
+place that changes the part instead of moving it is refused). `print` turns it
+for the bed: `"asis"`, `"flip"`, `"side"`, `"placed"` or `[rx, ry, rz]`.
+`finish` is the product-shot material and `explode` an optional direction in
+the part's own frame. Inside a part, `fillet({ edges: "z" })` and friends mean
+the part's own z, so a pod rotated onto its spoke rounds the same edges as the
+one lying on the bed.
+
+It compiles to a plain `group()` of transformed parts, so the per-part
+parallel build (`src/partsplit.js`) builds the copies side by side on the
+native kernel pool. compile() records which features each copy emitted, and
+that is how a face on screen or a solid in the STL becomes "coil_pod #7". In
+the app a **Parts** button appears beside Parameters: the parts list, an
+explode slider, **Check fit**, **Export parts** (a zip) and **Product shot**.
+The MCP tools above call the same functions.
+
+`examples/printmotor-assembly.js` is the worked case: the PrintMotor housing
+and its twelve stacked coil pods, matching the original Python parts' sizes
+exactly and their volumes to within 0.1%. `npm run test:assembly` builds it in
+a real window and drives every button and tool, including a deliberate clash
+between neighbouring pods.
 
 ## Ports and other apps
 
@@ -135,6 +217,9 @@ builds share it. `curl http://127.0.0.1:5757/ping` and compare with ⓘ About.
 
 ```
 npm run test:agent     # real window, real builds, 20 checks end to end
+npm run test:assembly  # the PrintMotor assembly: build, explode, fit, export, render, Connect; GUI and MCP
+node test/assembly.js  # assembly(), the fit check and print pose on the real kernel (in `npm test`)
+node test/aiconnect.js # the four config writers against a throwaway home (in `npm test`)
 node test/mcp.js       # the MCP protocol alone, no Electron (part of `npm test`)
 ```
 

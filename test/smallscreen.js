@@ -180,7 +180,7 @@ console.log("\nthe editor's option row, after the sentence came out of it\n");
     (html.match(/id="params-btn"/g) || []).length === 1
     && !/params2-btn/.test(html));
   check("...in the option row with the other state buttons",
-    /#anchor-btn, #neg-btn, #mat-btn, #params-btn \{/.test(css));
+    /#anchor-btn, #neg-btn, #mat-btn, #params-btn(, #[a-z-]+)* \{/.test(css));
   check("...lit only when the model has dimensions to turn",
     /#params-btn\.has \{/.test(css)
     && /paramsBtn\.classList\.toggle\("has", list\.length > 0\)/.test(html));

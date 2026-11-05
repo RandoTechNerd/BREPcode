@@ -1151,19 +1151,43 @@
       margin-left: auto; color: var(--warn); text-align: right;
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #anchor-btn, #neg-btn, #mat-btn, #params-btn {
+    #anchor-btn, #neg-btn, #mat-btn, #params-btn, #parts-btn {
       flex: none; display: grid; place-items: center;
       width: 24px; height: 24px; padding: 0;
       background: transparent; border: 0; border-radius: 6px;
       color: var(--muted3); cursor: pointer;
     }
-    #anchor-btn:hover, #neg-btn:hover, #mat-btn:hover, #params-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); }
+    #anchor-btn:hover, #neg-btn:hover, #mat-btn:hover, #params-btn:hover, #parts-btn:hover { color: var(--icon-hover); background: rgba(255,255,255,.07); }
     /* Lit only when this model HAS dimensions to turn. On a model without
        any it stays inert — the panel still opens and explains how to get
        them, but nothing invites the click. */
     #params-btn.has { color: var(--accent-soft); }
     #params-btn.has:hover { color: var(--accent-soft); }
     #params-btn.active { color: var(--accent-soft2); background: rgba(255,255,255,.07); }
+    #parts-btn { color: var(--accent-soft); }
+    #parts-btn.active { color: var(--accent-soft2); background: rgba(255,255,255,.07); }
+    /* Parts: what an assembly is made of, and the four things to do with it */
+    #parts-body { padding: 6px 14px 10px; font-size: 12.5px; }
+    #parts-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 220px; overflow: auto; }
+    #parts-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border-soft); }
+    #parts-list .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; border: 1px solid rgba(255,255,255,.18); }
+    #parts-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #parts-list .q, #parts-list .pr { color: var(--muted2); font-variant-numeric: tabular-nums; }
+    #parts-explode-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; }
+    #parts-explode { flex: 1; }
+    #parts-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    #parts-shot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted2); }
+    #parts-out { margin-top: 8px; line-height: 1.5; color: var(--muted); }
+    #parts-out .bad { color: var(--err); }
+    #parts-out .good { color: var(--ok); }
+    /* Connect your AI (desktop only) */
+    #set-ai .ai-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    #set-ai .ai-name { flex: 1; }
+    #set-ai .ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted3); flex: none; }
+    #set-ai .ai-dot.set { background: #e0b44c; }
+    #set-ai .ai-dot.live { background: var(--ok); }
+    #set-ai .ai-state { color: var(--muted2); font-size: 11.5px; min-width: 110px; }
+    #set-ai-note { color: var(--muted2); font-size: 11.5px; line-height: 1.5; margin-top: 4px; }
     #neg-btn.active { color: #f08c78; }
     #mat-btn.active { color: var(--accent-soft2); }
     #anchor-btn.centered { color: var(--accent-soft2); }
@@ -3580,6 +3604,14 @@
             <circle cx="6.8" cy="11.7" r="1.7" fill="var(--input-bg)" />
           </svg>
         </button>
+        <!-- Shown only while the model is an assembly() of named parts. -->
+        <button id="parts-btn" hidden title="Parts — the assembly's parts, explode, check fit, export, product shot">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none"
+               stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+            <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" />
+            <rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" />
+          </svg>
+        </button>
         <button id="neg-btn" title="Outline the negative (subtracted) shapes">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none"
                stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
@@ -3990,6 +4022,16 @@
             <button id="set-lights" class="hist-btn" title="Back to the default studio lighting">Default lighting</button>
             <button id="set-reset" class="hist-btn" title="Settings back to how they ship">Reset settings</button>
           </div>
+          <!-- Desktop only: one click writes the MCP entry that lets that AI
+               app drive this window (desktop/aiconnect.cjs). -->
+          <div id="set-ai" hidden>
+            <div class="set-title">Connect your AI</div>
+            <div id="set-ai-rows"></div>
+            <div id="set-ai-note">Connect writes a <b>brepcode</b> entry into that app's MCP settings and
+              leaves everything else in the file alone. Green means that app is talking to this window right
+              now. ChatGPT cannot run a local MCP server, so it cannot drive BREPcode; use the built-in
+              assistant with an OpenAI key instead.</div>
+          </div>
         </div>
         <div id="about-docs">
           <div class="docs-credit">
@@ -4205,6 +4247,34 @@
       </header>
       <div class="card-body" id="params-body"></div>
       <div id="params-foot">Millimetres. Changes are written straight into the code — undo still works.</div>
+    </section>
+
+    <section id="parts" class="card" aria-label="Assembly parts">
+      <header>
+        <div><strong>Parts</strong><span class="sub" id="parts-sub">the assembly's pieces</span></div>
+        <button class="close-btn" data-close="parts" title="Close">&times;</button>
+      </header>
+      <div class="card-body" id="parts-body">
+        <ul id="parts-list"></ul>
+        <label id="parts-explode-row" title="Slide the parts apart to see how it goes together">
+          <span>Explode</span><input type="range" id="parts-explode" min="0" max="1" step="0.01" value="0" />
+        </label>
+        <div id="parts-btns">
+          <button id="parts-fit" class="hist-btn" title="Intersect every pair of parts and show any overlap in red">Check fit</button>
+          <button id="parts-export" class="hist-btn" title="A zip of one STL per part in print orientation, parts.csv, and STEP per part when the exact kernel built it">Export parts</button>
+          <button id="parts-shot" class="hist-btn" title="Render the assembled view on a white studio background as a PNG">Product shot</button>
+        </div>
+        <div id="parts-shot-row">
+          <select id="parts-preset" title="How the parts are finished in the shot">
+            <option value="studio">Each part's own finish</option>
+            <option value="metal">All metal</option>
+            <option value="copper">All copper</option>
+            <option value="matte">All matte</option>
+          </select>
+          <label class="set-check"><input type="checkbox" id="parts-cutaway" /> <span>Cutaway</span></label>
+        </div>
+        <div id="parts-out"></div>
+      </div>
     </section>
 
     <section id="material" class="card" aria-label="Material and lighting">
@@ -4694,6 +4764,7 @@
     import { initDesignShell } from "./design-shell.js";
     import { createHandleDots } from "./handle-dots.js";
     import { boxCornerText, numberFieldsFor, writeNumbers } from "./design-edit.js";
+    import { createAssemblyView } from "./assemblyview.js";
     import * as mgeom from "../src/measuregeom.js";
     import { fromOpenSCAD, looksLikeOpenSCAD, getWarnings } from "../src/openscad.js";
     import { fromPython, looksLikePython } from "../src/py123d.js";
@@ -9364,7 +9435,7 @@
     const paramsBtn = $("params-btn"), paramsCard = $("params");
     const cardButtons = {
       panel: openBtn, cheatsheet: cheatBtn, about: aboutBtn,
-      history: histBtn, chat: chatBtn, material: matBtn, params: paramsBtn,
+      history: histBtn, chat: chatBtn, material: matBtn, params: paramsBtn, parts: $("parts-btn"),
     };
     matBtn.addEventListener("click", () => {
       loadSpools();                       // no-op after the first time
@@ -9495,6 +9566,67 @@
       applyMaterial(); saveMat();             // also moves the sliders
       toast(was ? "Lighting is back to the default studio setup." : "Lighting was already the default.", was ? "ok" : "info");
     });
+    // ---- Connect your AI (desktop) -----------------------------------------
+    //
+    // Four buttons, one per AI app that can run a local MCP server. The main
+    // process owns the files (desktop/aiconnect.cjs); this only draws the
+    // status it reports and refreshes it every few seconds while it is open,
+    // so "connected" turns green the moment the app actually calls in.
+    {
+      const D = window.brepcodeDesktop;
+      const box = $("set-ai"), rows = $("set-ai-rows");
+      if (D?.aiStatus && box) {
+        box.hidden = false;
+        let busy = false;
+        const paint = async () => {
+          if (busy) return;
+          busy = true;
+          try {
+            const st = await D.aiStatus();
+            rows.innerHTML = "";
+            if (!st.bridge) {
+              const p = document.createElement("div");
+              p.className = "ai-row";
+              p.textContent = `The agent bridge is off (port ${st.port}), so no AI can connect — start BREPcode without --no-agent.`;
+              rows.appendChild(p);
+            }
+            for (const c of st.clients) {
+              const row = document.createElement("div");
+              row.className = "ai-row";
+              row.dataset.ai = c.id;
+              row.innerHTML = `<span class="ai-dot"></span><span class="ai-name"></span><span class="ai-state"></span>`
+                + `<button class="hist-btn ai-go"></button><button class="hist-btn ai-copy" title="Copy the config to paste in yourself">Copy config</button>`;
+              row.querySelector(".ai-dot").classList.toggle("set", c.configured);
+              row.querySelector(".ai-dot").classList.toggle("live", c.connected);
+              row.querySelector(".ai-name").textContent = c.label + (c.installed ? "" : " (not found)");
+              row.querySelector(".ai-state").textContent = c.problem ? "can't read its config" : c.state;
+              row.title = c.problem || `${c.file}
+${c.after}`;
+              const go = row.querySelector(".ai-go");
+              go.textContent = c.configured ? "Remove" : "Connect";
+              go.addEventListener("click", async () => {
+                const r = await (c.configured ? D.aiDisconnect(c.id) : D.aiConnect(c.id));
+                if (!r?.ok) setStatus("err", r?.error || "That did not work.");
+                else setStatus("ok", c.configured ? `Removed BREPcode from ${c.label}.` : `${c.label} is set up. ${r.after || ""}`);
+                busy = false; paint();
+              });
+              row.querySelector(".ai-copy").addEventListener("click", async () => {
+                const r = await D.aiSnippet(c.id);
+                if (!r?.ok) { setStatus("err", r?.error || "No config to copy."); return; }
+                try { await navigator.clipboard.writeText(r.text); setStatus("ok", `Copied. Paste it into ${r.file}.`); }
+                catch { setStatus("err", "The clipboard refused. The config file is " + r.file); }
+              });
+              rows.appendChild(row);
+            }
+          } catch (e) { rows.textContent = `Could not read the AI app settings: ${e.message || e}`; }
+          busy = false;
+        };
+        window.brepscript.paintAiConnect = paint;
+        paint();
+        setInterval(() => { if (aboutCard.classList.contains("open")) paint(); }, 4000);
+      }
+    }
+
     $("set-reset").addEventListener("click", () => {
       Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); syncSettingsUI(); rehomeWindows();
       toast("Settings are back to how they ship.");
@@ -11211,6 +11343,87 @@ ${joined}${SITE_TAIL}`), joined);
     // The feature ids that came from the same call as fid (itself included).
     const patternIds = (fid) => featureMap?.[fid]?.pattern?.ids ?? [fid];
 
+    // ---- assemblies (viewer/assemblyview.js) ---------------------------------
+    //
+    // A model that returns assembly({...}) has named parts. After each build
+    // compile() has said which features every copy emitted; the view gives
+    // each mesh its owner and does the Parts card's four jobs: explode, check
+    // fit, export parts, product shot. The agent actions call the same code.
+    const partsBtn = $("parts-btn"), partsCard = $("parts");
+    const asm = createAssemblyView({
+      scene, modelGroup, camera,
+      exportSTL: () => exportSTL(),
+      getEngine: () => lastEngine,
+      getCurved: () => getCurved(),
+      ensureEnv: () => ensureEnv(),
+      snapView: (v) => snapView(v),
+      setStatus: (cls, msg) => setStatus(cls, msg),
+      onChange: () => paintParts(),
+      onExplode: (t) => { $("parts-explode").value = String(t); },
+    });
+    window.brepscript.assembly = asm;
+    function paintParts() {
+      const on = asm.active;
+      partsBtn.hidden = !on;
+      if (!on) {
+        if (partsCard.classList.contains("open")) toggleCard(partsCard, partsBtn, false);
+        $("parts-out").innerHTML = "";
+        return;
+      }
+      const list = $("parts-list");
+      list.innerHTML = "";
+      for (const p of asm.parts) {
+        const li = document.createElement("li");
+        const print = Array.isArray(p.print) ? p.print.join("/") : p.print;
+        li.innerHTML = `<span class="sw"></span><span class="nm"></span><span class="q">×${p.count}</span><span class="pr"></span>`;
+        li.querySelector(".sw").style.background = p.color || "#9fb4d6";
+        li.querySelector(".nm").textContent = p.name;
+        li.querySelector(".pr").textContent = print === "asis" ? "" : `prints ${print}`;
+        list.appendChild(li);
+      }
+      const copies = asm.instances.length;
+      $("parts-sub").textContent = `${asm.parts.length} part${asm.parts.length === 1 ? "" : "s"}, ${copies} piece${copies === 1 ? "" : "s"}`;
+      const f = asm.lastFit;
+      if (f) {
+        $("parts-out").innerHTML = f.clear
+          ? `<span class="good">Fit is clear</span> — ${f.pairsChecked} touching pair${f.pairsChecked === 1 ? "" : "s"} of ${f.parts} pieces intersected, no overlap.`
+          : `<span class="bad">${f.clashes.length} clash${f.clashes.length === 1 ? "" : "es"}</span>, ${f.totalOverlap} mm³ in all (red on the model):<br>`
+            + f.clashes.slice(0, 8).map((c) => `${esc(c.a)} ↔ ${esc(c.b)}: ${c.volume} mm³`).join("<br>")
+            + (f.clashes.length > 8 ? `<br>…and ${f.clashes.length - 8} more` : "");
+        if (f.notClosed.length) $("parts-out").innerHTML += `<br>Not checked (not a closed solid): ${esc(f.notClosed.join(", "))}`;
+      }
+    }
+    partsBtn.addEventListener("click", () => toggleCard(partsCard, partsBtn));
+    $("parts-explode").addEventListener("input", (e) => asm.setExplode(e.target.value));
+    $("parts-fit").addEventListener("click", async () => {
+      try {
+        setStatus("busy", "Checking fit…");
+        const r = await asm.fit();
+        setStatus(r.clear ? "ok" : "warn", r.clear ? "Fit check: no overlaps." : `Fit check: ${r.clashes.length} clash${r.clashes.length === 1 ? "" : "es"}, ${r.totalOverlap} mm³.`);
+      } catch (e) { setStatus("err", `Check fit: ${e.message || e}`); }
+    });
+    $("parts-export").addEventListener("click", async () => {
+      try {
+        setStatus("busy", "Exporting parts…");
+        const r = await asm.exportParts({ onProgress: (m) => setStatus("busy", `Exporting parts… ${m}`) });
+        const { storedZip } = await getExporters();
+        const base = safeModelName();
+        const size = download(`${base}-parts.zip`, storedZip(r.files.map((f) => [`${base}-parts/${f.name}`, f.bytes])), "application/zip");
+        const steps = r.parts.filter((p) => p.step).length;
+        setStatus("ok", `Exported ${r.parts.length} parts (${(size / 1024).toFixed(0)} KB): STL${steps ? ` + ${steps} STEP` : ""} + parts.csv.`);
+        if (r.skipped.length) $("parts-out").textContent = `Skipped: ${r.skipped.join("; ")}`;
+      } catch (e) { setStatus("err", `Export parts: ${e.message || e}`); }
+    });
+    $("parts-shot").addEventListener("click", async () => {
+      try {
+        setStatus("busy", "Rendering the product shot…");
+        const r = await asm.render({ preset: $("parts-preset").value, cutaway: $("parts-cutaway").checked });
+        const bytes = Uint8Array.from(atob(r.png), (ch) => ch.charCodeAt(0));
+        download(`${safeModelName()}-shot.png`, bytes, "image/png");
+        setStatus("ok", `Product shot: ${r.width} × ${r.height} PNG.`);
+      } catch (e) { setStatus("err", `Product shot: ${e.message || e}`); }
+    });
+
     let token = 0;
     async function rebuild() {
       // Snapshot BEFORE the kernel gets the main thread. The 20s autosave
@@ -11243,6 +11456,7 @@ ${joined}${SITE_TAIL}`), joined);
         clearSplit();
         clearOutlines();
         featureMap = null; mapText = null; lastSolids = []; workerHasModel = false;
+        asm.update(null);
         cancelWorkerBuild();          // nothing to build — stop any run in flight
         lastShape = null;
         clearNegatives();
@@ -11544,6 +11758,7 @@ ${joined}${SITE_TAIL}`), joined);
         seatGrid();
         frameModel();
         lastShape = shape;
+        asm.update(ph.assembly);              // named parts, if it is an assembly()
         refreshNegatives();                   // async, best-effort — never blocks the build
 
         // Click-to-select mapping, only against this exact text (drags against
@@ -27046,6 +27261,8 @@ ${SC.describeSelectionContext(anchor)}` : "");
           // exactAdvice is set when it left the exact lane for a reason the
           // code could avoid, and says how (src/exactlane.js).
           engine: lastEngine ? { lane: lastEngine.engine, fallback: lastEngine.fallback || null } : null,
+          // An assembly() model's named parts (null for a single shape).
+          assembly: asm.summary(),
           exactAdvice: await (async () => {
             try { return (await import("../src/exactlane.js")).exactAdvice(lastEngine, code.value)?.ask || null; }
             catch { return null; }
@@ -27155,6 +27372,38 @@ ${SC.describeSelectionContext(anchor)}` : "");
           things: (f.things || []).length, examples: (f.examples || []).slice(0, 2),
         }));
         return { ok: true, categories: CATEGORIES, families };
+      },
+
+      // ---- assemblies: the Parts card's buttons, for an outside AI --------
+      //
+      // Same functions the buttons call (viewer/assemblyview.js), so what the
+      // assistant is told and what the person sees are one answer.
+      async check_fit({ minVolume = 0.01 } = {}) {
+        if (!lastSolids.length) throw new Error("nothing built — set_code or build first");
+        toggleCard(partsCard, partsBtn, true);
+        const r = await asm.fit({ minVolume });
+        setStatus(r.clear ? "ok" : "warn", r.clear ? "Fit check: no overlaps." : `Fit check: ${r.clashes.length} clash${r.clashes.length === 1 ? "" : "es"}, ${r.totalOverlap} mm³.`);
+        return r;
+      },
+      // Files come back base64; the bridge writes them where the assistant
+      // asked (a folder, or a .zip) — the page never picks a path.
+      async export_parts({ step = "auto" } = {}) {
+        if (!lastSolids.length) throw new Error("nothing built — set_code or build first");
+        setStatus("busy", "Exporting parts…");
+        const r = await asm.exportParts({ step, onProgress: (m) => setStatus("busy", `Exporting parts… ${m}`) });
+        setStatus("ok", `Exported ${r.parts.length} parts for the assistant.`);
+        const b64 = (u8) => { let t = ""; for (let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(t); };
+        return { ok: true, name: safeModelName(), parts: r.parts, step: r.step, skipped: r.skipped, csv: r.csv,
+          files: r.files.map((f) => ({ name: f.name, base64: b64(f.bytes) })) };
+      },
+      async render(opts = {}) {
+        const { action, savePath, ...o } = opts;
+        return { ...(await asm.render(o)), name: safeModelName() };
+      },
+      explode({ amount = 0.5 } = {}) {
+        if (!asm.active) throw new Error("the model on screen is not an assembly");
+        toggleCard(partsCard, partsBtn, true);
+        return { ok: true, explode: asm.setExplode(amount) };
       },
 
       // The built mesh as STL text. The bridge writes it to disk — the page

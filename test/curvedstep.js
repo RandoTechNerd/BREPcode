@@ -228,6 +228,24 @@ console.log("\nblueprint dimensions\n");
     `${Math.min(...coords).toFixed(0)}..${Math.max(...coords).toFixed(0)}`);
 }
 
+// ---- named edges: fillet({ edges: "z" }) rounds the corners, not everything --
+console.log("\nnamed edges\n");
+{
+  const kinds = async (root) => (await buildCurved(root)).faces.map((f) => f.geomType);
+  const box = fillet({ r: 3, edges: "z" }, cube([30, 20, 2]));
+  // all twelve edges would also be rounded along the 2 mm rim, which a 3 mm
+  // radius cannot fit: it used to refuse outright, or round every edge
+  const k = await kinds(box);
+  check("edges z: four rounded corners", k.filter((t) => t === "CYLINDRE").length === 4 && k.length === 10, k.join());
+  check("...and nothing rounded along the rim", !k.includes("SPHERE"));
+  // an assembly part stood on its side keeps rounding ITS z edges
+  const part = { __brepscript: true, kind: "xform", matrix: rotate([90, 0, 0], box).matrix, child: box, asmPart: { name: "p", index: 0, count: 1 } };
+  check("...in an assembly part's own frame", (await kinds(part)).filter((t) => t === "CYLINDRE").length === 4);
+  const top = await kinds(fillet({ r: 1, edges: "top" }, cube([30, 20, 10])));
+  check("edges top: the four top edges", top.filter((t) => t === "CYLINDRE").length === 4 && !top.includes("SPHERE"), top.join());
+  check("the STEP still writes", /CYLINDRICAL_SURFACE/.test(await stepOf(box)));
+}
+
 // ---- STEP IMPORT: OCCT's own reader, round-tripped --------------------------
 console.log("\nSTEP import\n");
 {

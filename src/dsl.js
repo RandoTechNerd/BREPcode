@@ -3787,12 +3787,22 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     const site = n.site ?? style?.site ?? null;
     const name = n.userId ?? style?.name ?? null;
     const path = n.site && n.site !== style?.site ? [...(style?.path || []), n.site] : (style?.path || []);
-    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr, finish: fin, site, name, path };
+    const st = { color: col, emissive: em, emissiveInt: emi, clearOpacity: clr, finish: fin, site, name, path, frame: style?.frame ?? null };
     const tag = {};
     if (site) { tag.site = site; tag.path = path; }
     if (name) tag.name = name;
     if (n.kind === "xform") {
-      return emit(n.child, new Matrix4().multiplyMatrices(matrix, n.matrix), st);
+      const world = new Matrix4().multiplyMatrices(matrix, n.matrix);
+      if (!n.asmPart) return emit(n.child, world, st);
+      // One copy of an assembly part (src/assembly.js): note every feature it
+      // emits, so a face or a solid can be traced back to "pod #7".
+      const from = partHistory.features.length;
+      const id = await emit(n.child, world, { ...st, frame: world });
+      (partHistory.assembly ??= []).push({
+        ...n.asmPart, world: world.toArray(), solid: id,
+        ids: partHistory.features.slice(from).map((f) => f.inputParams.id),
+      });
+      return id;
     }
 
     if (n.kind === "prim") {
@@ -4752,3 +4762,8 @@ export * from "./casefinity.js";
 // Inserts for IKEA KUGGIS boxes: the case builder's other container. Tapered,
 // rounded pieces cut from the box's inside; kuggisKit() plates them.
 export { KUGGIS, KUGGIS_SIZES, kuggisEstimate, kuggisFit, kuggisKit } from "./kuggis.js";
+
+// Assemblies: named parts, each with a colour, where its copies sit in the
+// finished thing and how it prints. A group() underneath, so the per-part
+// build, colours and exports all already know it; see src/assembly.js.
+export { assembly, polar } from "./assembly.js";
