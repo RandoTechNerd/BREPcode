@@ -1170,6 +1170,8 @@
     #parts-body { padding: 6px 14px 10px; font-size: 12.5px; }
     #parts-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 220px; overflow: auto; }
     #parts-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border-soft); }
+    #parts-list .vis { margin: 0; flex: none; accent-color: var(--accent, #6ea8ff); cursor: pointer; }
+    #parts-list li.off .nm, #parts-list li.off .sw { opacity: .4; }
     #parts-list .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; border: 1px solid rgba(255,255,255,.18); }
     #parts-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #parts-list .q, #parts-list .pr { color: var(--muted2); font-variant-numeric: tabular-nums; }
@@ -5580,6 +5582,59 @@
     };
     addEventListener("pointerup", endSpin);
     addEventListener("pointercancel", endSpin);
+
+    // TWIST TO TURN. Two fingers that rotate around each other turn the part
+    // in the plane of the screen, like a photo, while OrbitControls keeps the
+    // same two fingers' pinch and pan. The camera rolls about its own line of
+    // sight through the model's centre. A small dead zone keeps a plain pinch
+    // from wobbling the view; past it the whole twist counts.
+    const twistTouches = new Map();   // pointerId -> {x, y}
+    let twist = null;                 // {a, acc, on, pivot}
+    const TWIST_DEAD = 0.1;           // radians before a twist takes over
+    const touchAngle = () => {
+      const [p, q] = [...twistTouches.values()];
+      return Math.atan2(q.y - p.y, q.x - p.x);
+    };
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" || prefs.orbit === "view") return;   // classic orbit keeps its own up
+      twistTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      twist = twistTouches.size === 2 ? { a: touchAngle(), acc: 0, on: false, pivot: null } : null;
+    });
+    addEventListener("pointermove", (e) => {
+      const t = twistTouches.get(e.pointerId);
+      if (!t) return;
+      t.x = e.clientX; t.y = e.clientY;
+      if (!twist || twistTouches.size !== 2) return;
+      const a = touchAngle();
+      let da = a - twist.a;
+      if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
+      twist.a = a;
+      if (!twist.on) {
+        twist.acc += da;
+        if (Math.abs(twist.acc) < TWIST_DEAD) return;
+        twist.on = true;
+        da = twist.acc;
+        const box = new THREE.Box3();
+        for (const m of modelGroup.children) if (m.visible) box.expandByObject(m);
+        twist.pivot = box.isEmpty() ? controls.target.clone() : box.getCenter(new THREE.Vector3());
+      }
+      // screen y runs down, so a growing angle is a clockwise twist; the part
+      // follows the fingers when the camera rolls the other way
+      const look = controls.target.clone().sub(camera.position).normalize();
+      spinQ.setFromAxisAngle(look, -da);
+      camera.position.sub(twist.pivot).applyQuaternion(spinQ).add(twist.pivot);
+      controls.target.sub(twist.pivot).applyQuaternion(spinQ).add(twist.pivot);
+      camera.up.applyQuaternion(spinQ).normalize();
+      camera.lookAt(controls.target);
+      controls.update();
+      controls.dispatchEvent({ type: "change" });
+    });
+    const endTwist = (e) => {
+      if (!twistTouches.delete(e.pointerId)) return;
+      twist = null;
+    };
+    addEventListener("pointerup", endTwist);
+    addEventListener("pointercancel", endTwist);
 
     // ---- axis labels + grid ruler -----------------------------------------
     // Which way is X? Without an answer, "take 2mm off the right" is a guess,
@@ -11361,6 +11416,7 @@ ${joined}${SITE_TAIL}`), joined);
       snapView: (v) => snapView(v),
       setStatus: (cls, msg) => setStatus(cls, msg),
       onChange: () => paintParts(),
+      onVisibility: () => refreshOutlines(),
       onExplode: (t) => {
         $("parts-explode").value = String(t);
         followParts();
@@ -11382,7 +11438,14 @@ ${joined}${SITE_TAIL}`), joined);
       for (const p of asm.parts) {
         const li = document.createElement("li");
         const print = Array.isArray(p.print) ? p.print.join("/") : p.print;
-        li.innerHTML = `<span class="sw"></span><span class="nm"></span><span class="q">×${p.count}</span><span class="pr"></span>`;
+        li.innerHTML = `<input type="checkbox" class="vis" title="Show or hide this part"><span class="sw"></span><span class="nm"></span><span class="q">×${p.count}</span><span class="pr"></span>`;
+        const vis = li.querySelector(".vis"), shown = !asm.hidden.has(p.name);
+        vis.checked = shown;
+        li.classList.toggle("off", !shown);
+        vis.addEventListener("change", () => asm.setHidden(p.name, !vis.checked));
+        // the name toggles too: a bigger target for a finger
+        li.querySelector(".nm").addEventListener("click", () => asm.setHidden(p.name, vis.checked));
+        li.querySelector(".nm").style.cursor = "pointer";
         li.querySelector(".sw").style.background = p.color || "#9fb4d6";
         li.querySelector(".nm").textContent = p.name;
         li.querySelector(".pr").textContent = print === "asis" ? "" : `prints ${print}`;
@@ -13199,7 +13262,7 @@ ${joined}${SITE_TAIL}`), joined);
         }
       }
       try {
-        return rc.intersectObjects(modelGroup.children, false);
+        return rc.intersectObjects(modelGroup.children.filter((o) => o.visible), false);
       } finally {
         for (const [m, s] of saved) m.side = s;
       }

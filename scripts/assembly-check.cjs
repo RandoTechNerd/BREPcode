@@ -170,6 +170,47 @@ app.whenReady().then(async () => {
     await run(`(() => { const s = document.getElementById("parts-explode"); s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
     check("and back together at 0", await run(`window.brepscript.modelGroup.children.every((m) => m.position.length() < 1e-9)`));
 
+    // ---- GUI: switch a part off and on -------------------------------------
+    const shownPods = () => run(`window.brepscript.modelGroup.children.filter((m) => m.isMesh && m.userData.asm >= 1 && m.visible).length`);
+    const podsShown0 = await shownPods();
+    check("every part has a show/hide box, ticked", await run(`[...document.querySelectorAll("#parts-list li")].every((li) => li.querySelector("input.vis")?.checked)`));
+    await run(`(() => { const b = document.querySelectorAll("#parts-list li")[1].querySelector("input.vis"); b.click(); })()`);
+    check("unticking coil_pod hides all 12 pods", (await shownPods()) === 0, `${await shownPods()} still shown`);
+    check("...greys its row and keeps the housing", await run(`document.querySelectorAll("#parts-list li")[1].classList.contains("off")
+      && window.brepscript.modelGroup.children.some((m) => m.userData.asm === 0 && m.visible)`));
+    await run(`document.querySelectorAll("#parts-list li")[1].querySelector(".nm").click()`);
+    check("clicking the name brings them back", podsShown0 > 0 && (await shownPods()) === podsShown0, `${await shownPods()} of ${podsShown0} shown`);
+
+    // ---- touch: two-finger twist rolls the view ------------------------------
+    {
+      // Pointer events with pointerType "touch", the way a touchscreen's
+      // fingers reach the page (CDP touch input is never acknowledged in a
+      // hidden test window).
+      const touch = (type, ang) => run(`(() => {
+        const type = ${JSON.stringify(type)}, ang = ${ang};
+        const c = document.querySelector("canvas"), r = c.getBoundingClientRect();
+        const cx = r.x + r.width * 0.55, cy = r.y + r.height * 0.6;
+        for (const i of [0, 1]) {
+          const x = cx + Math.cos(ang + i * Math.PI) * 80, y = cy + Math.sin(ang + i * Math.PI) * 80;
+          (type === "pointerdown" ? c : window).dispatchEvent(new PointerEvent(type, {
+            pointerId: 70 + i, pointerType: "touch", isPrimary: i === 0, clientX: x, clientY: y, bubbles: true, buttons: type === "pointerup" ? 0 : 1 }));
+        }
+      })()`);
+      const before = JSON.parse(await run(`JSON.stringify(window.__brepCam())`));
+      await touch("pointerdown", 0);
+      for (let k = 1; k <= 12; k++) { await touch("pointermove", k * 0.06); await wait(16); }
+      await touch("pointerup", 0.72);
+      await wait(200);
+      const after = JSON.parse(await run(`JSON.stringify(window.__brepCam())`));
+      const look = (c) => { const v = c.target.map((t, i) => t - c.pos[i]); const l = Math.hypot(...v); return v.map((x) => x / l); };
+      const lb = look(before), la = look(after);
+      const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      const roll = Math.acos(Math.min(1, Math.max(-1, dot(before.up, after.up)))) * 180 / Math.PI;
+      say(`  ..    twist: up turned ${roll.toFixed(1)} deg, view direction kept ${dot(lb, la).toFixed(4)}`);
+      check("a two-finger twist turns the part in the screen plane", roll > 25 && roll < 60 && dot(lb, la) > 0.999, `roll ${roll}`);
+      await run(`window.brepscript.snapView?.("home") ?? document.querySelector('[data-view="home"]')?.click()`).catch(() => {});
+    }
+
     // ---- GUI: check fit ---------------------------------------------------
     await run(`document.getElementById("parts-fit").click()`);
     const sf = await settle();

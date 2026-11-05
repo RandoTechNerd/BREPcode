@@ -43,6 +43,7 @@ export function createAssemblyView(ctx) {
   let explodeT = 0;
   let soupCache = null;      // instance soups for THIS build
   let lastFit = null;
+  const hidden = new Set();  // part names switched off in the Parts card (kept across rebuilds)
   const clashGroup = new THREE.Group();
   clashGroup.name = "fit-clashes";
   scene.add(clashGroup);
@@ -67,6 +68,7 @@ export function createAssemblyView(ctx) {
         parts.push(row);
       }
     });
+    for (const n of [...hidden]) if (!byName.has(n)) hidden.delete(n);
     attach();
     ctx.onChange?.();
   }
@@ -109,6 +111,7 @@ export function createAssemblyView(ctx) {
       const k = m.userData?.asm;
       if (k === undefined) continue;
       m.position.copy(explodeOffset(k, explodeT));
+      m.visible = !hidden.has(instances[k]?.name);
     }
     modelGroup.updateMatrixWorld(true);
     clashGroup.visible = explodeT === 0;
@@ -119,6 +122,15 @@ export function createAssemblyView(ctx) {
     applyExplode();
     ctx.onExplode?.(explodeT);
     return explodeT;
+  }
+
+  // Switch every copy of a named part on or off. Hidden parts drop out of the
+  // view, picking and product shots; fit check and export still use them all.
+  function setHidden(name, off) {
+    if (off) hidden.add(name); else hidden.delete(name);
+    applyExplode();
+    ctx.onVisibility?.();
+    ctx.onChange?.();
   }
 
   // ---- geometry ----------------------------------------------------------
@@ -364,14 +376,15 @@ export function createAssemblyView(ctx) {
       parts: parts.map((p) => ({ name: p.name, count: p.count, color: p.color, finish: p.finish, print: p.print })),
       copies: instances.length,
       explode: explodeT,
+      hidden: [...hidden],
       lastFit: lastFit ? { clear: lastFit.clear, clashes: lastFit.clashes.length, totalOverlap: lastFit.totalOverlap } : null,
     };
   }
 
   return {
-    update, attach, setExplode, fit, exportParts, render, summary, clearClashes,
+    update, attach, setExplode, setHidden, fit, exportParts, render, summary, clearClashes,
     get active() { return active(); }, get parts() { return parts; }, get instances() { return instances; },
-    get explode() { return explodeT; }, get lastFit() { return lastFit; },
+    get explode() { return explodeT; }, get hidden() { return hidden; }, get lastFit() { return lastFit; },
     get clashMeshes() { return clashGroup.children.filter((c) => c.isMesh).length; },
   };
 }
