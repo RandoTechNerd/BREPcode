@@ -638,6 +638,8 @@
     }
     #app-settings .set-check { justify-content: flex-start; cursor: pointer; }
     #app-settings .set-check > span { flex: 1 1 auto; }
+    #app-settings #set-advanced { padding-bottom: 0; }
+    #app-settings .set-adv { display: grid; gap: 7px; padding: 4px 0 2px; }
     #app-settings .set-btns { display: flex; flex-wrap: wrap; gap: 6px; }
     #app-settings .set-btns .hist-btn { border: 1px solid var(--border); }
     /* every press shows it landed: a small push-in */
@@ -3920,18 +3922,30 @@
               <option value="bottom">Bottom corner, opposite the editor</option>
               <option value="dock">In the stack</option>
             </select></label>
-          <!-- Desktop alpha only (hidden elsewhere): which B-rep kernel builds
-               the model. Each one falls back to the next when it refuses. -->
-          <label class="set-row" id="set-kernel-row" hidden><span>Kernel</span>
-            <select id="set-kernel">
-              <option value="nvidia">NVIDIA SMLib (alpha), then Rust</option>
-              <option value="rust">next.BREP.io Rust</option>
-              <option value="js">BREP.io JS (deprecated, slowest)</option>
-            </select></label>
           <label class="set-row set-check" title="Off: BREPcode opens on an empty plate instead of the sample cube with a hole."><input type="checkbox" id="set-starter-cube" />
             <span>Start with the sample cube</span></label>
           <label class="set-row set-check"><input type="checkbox" id="set-snap" />
             <span>Snap windows to edges and corners while dragging</span></label>
+          <!-- The less-used settings, folded away so the list stays short. -->
+          <details class="i-sec" id="set-advanced" data-sec="settings-advanced">
+            <summary>Advanced</summary>
+            <div class="set-adv">
+              <label class="set-row" title="Which side of the Code | Design switch the app starts on. A link with ?mode=design or ?mode=code still opens that mode."><span>Opens in</span>
+                <select id="set-start-mode">
+                  <option value="code">Code</option>
+                  <option value="design">Design</option>
+                  <option value="last">The mode I used last</option>
+                </select></label>
+              <!-- Desktop alpha only (hidden elsewhere): which B-rep kernel builds
+                   the model. Each one falls back to the next when it refuses. -->
+              <label class="set-row" id="set-kernel-row" hidden><span>Kernel</span>
+                <select id="set-kernel">
+                  <option value="nvidia">NVIDIA SMLib (alpha), then Rust</option>
+                  <option value="rust">next.BREP.io Rust</option>
+                  <option value="js">BREP.io JS (deprecated, slowest)</option>
+                </select></label>
+            </div>
+          </details>
           <div class="set-btns">
             <button id="set-tidy" class="hist-btn" title="Put every open window back in its spot">Tidy windows</button>
             <button id="set-lights" class="hist-btn" title="Back to the default studio lighting">Default lighting</button>
@@ -5145,6 +5159,8 @@
       chatHome: "top",         // where the assistant opens: top | bottom (corner opposite the editor) | dock
       snapZones: true,         // drag a window to an edge or corner to snap it there
       starterCube: true,       // a new visit opens on the sample cube (off: an empty plate)
+      startMode: "code",       // what the app opens in: code | design | last (the mode used last)
+      lastMode: "code",        // the Code | Design side last switched to, for startMode "last"
     };
     const prefs = (() => {
       try { return { ...PREFS_DEFAULTS, ...JSON.parse(localStorage.getItem("brepcode-prefs") || "{}") }; }
@@ -9273,6 +9289,7 @@
       $("set-snap").checked = !!prefs.snapZones;
       $("set-move-for-windows").checked = !!prefs.moveForWindows;
       $("set-starter-cube").checked = prefs.starterCube !== false;
+      $("set-start-mode").value = prefs.startMode;
     }
     // Re-place every window the APP put somewhere; ones you moved stay put.
     // Design mode on or off: every open window moves to where that mode puts
@@ -9343,6 +9360,7 @@
       setPref("moveForWindows", e.target.checked);
       if (e.target.checked) windowsChanged();
     });
+    $("set-start-mode").addEventListener("change", (e) => setPref("startMode", e.target.value));
     // Kernel: shown where SMLib ships, the desktop alpha (natively) and the
     // website (as WebAssembly), not in the standard desktop build. "js" is the
     // engine switch (JS kernel only); the other two pick the kernel the split
@@ -24461,7 +24479,11 @@ let SIMPLIFY_TARGET = 10000;
       requestAnimationFrame(unstackDocked);
       windowsChanged();
     }
-    const modeSwitch = initModeSwitch({ onChange: (m) => {
+    // Settings > Advanced > "Opens in" picks the starting side; a link's
+    // ?mode= beats it (design.js).
+    const startMode = prefs.startMode === "last" ? prefs.lastMode : prefs.startMode;
+    const modeSwitch = initModeSwitch({ start: startMode, onChange: (m) => {
+      if (prefs.lastMode !== m) setPref("lastMode", m);
       if (m === "design") rememberCodeLayout();
       designUI.setActive(m === "design");
       // after the Design panels have appeared (or gone), so they can be measured

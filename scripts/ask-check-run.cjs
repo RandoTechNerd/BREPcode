@@ -97,7 +97,7 @@ module.exports = app.whenReady().then(async () => {
 
   try {
     await win.loadURL(URL_);
-    await run(`localStorage.setItem("brepcode-welcomed", "1"); localStorage.setItem("brepcode.mode", "code")`);
+    await run(`localStorage.setItem("brepcode-welcomed", "1"); localStorage.removeItem("brepcode.mode")`);
     await win.loadURL(URL_);
     for (let i = 0; i < 120 && !(await run("!!window.brepscript?.askAbout").catch(() => false)); i++) await wait(250);
     await wait(2500);
@@ -159,8 +159,7 @@ module.exports = app.whenReady().then(async () => {
     await setCode(PLATE);
     await run(`document.querySelector('[data-mode="design"], #mode-design')?.click()`);
     if (!(await run(`document.body.classList.contains("design-mode")`))) {
-      await run(`localStorage.setItem("brepcode.mode", "design")`);
-      await win.loadURL(URL_);
+      await win.loadURL(URL_ + "?mode=design");
       for (let i = 0; i < 120 && !(await run("!!window.brepscript?.askAbout").catch(() => false)); i++) await wait(250);
       await wait(2500);
       await setCode(PLATE);

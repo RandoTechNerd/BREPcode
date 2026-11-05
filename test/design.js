@@ -369,7 +369,7 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
   check("the body drag and the gizmo share moveMembersOf", /moveMembersOf\(fid, site\)/.test(html) && /moveMembers: \(fid\) =>/.test(html));
   check("the gizmo's press stands the body drag aside", /designUI\?\.gizmoOwnsPointer\(\)/.test(html));
   check("spawnHandles / clearHandles tell the shell", /designUI\?\.onSelect\(fid\)/.test(html) && /designUI\?\.onSelect\(null\)/.test(html));
-  check("the shell is switched by the mode", /initModeSwitch\(\{ onChange: \(m\) => \{\s*if \(m === "design"\) rememberCodeLayout\(\);\s*designUI\.setActive\(m === "design"\);/.test(html));
+  check("the shell is switched by the mode", /initModeSwitch\(\{ start: startMode, onChange: \(m\) => \{\s*if \(prefs\.lastMode !== m\) setPref\("lastMode", m\);\s*if \(m === "design"\) rememberCodeLayout\(\);\s*designUI\.setActive\(m === "design"\);/.test(html));
   // windows in Design mode: a right-hand column, never on Design's own panels
   check("Design mode windows live in a right-hand column", /case "dz-right-full": case "dz-right-top": case "dz-right-bottom":/.test(html)
     && /if \(inDesign\(\)\) \{[\s\S]{0,400}"dz-right-top" : "dz-right-full"/.test(html));

@@ -4,24 +4,27 @@
 // the same model: a model browser, a timeline, selection, a move gizmo and
 // feature dialogs, every one of them editing the CODE (which stays the single
 // source of truth), so switching back shows exactly what was done. This file
-// is the switch itself, remembered per browser, and a body class
-// (`design-mode`) the Design UI hangs on (design-shell.js and the design-*.js
-// pieces it wires, phase 1). Code mode is the app as it always was; nothing
-// here changes it.
+// is the switch itself and a body class (`design-mode`) the Design UI hangs on
+// (design-shell.js and the design-*.js pieces it wires, phase 1). Code mode is
+// the app as it always was; nothing here changes it.
+//
+// The app OPENS in Code unless Settings > Advanced > "Opens in" says
+// otherwise (the page passes that in as `start`). Silently remembering the
+// last pick sent every later link (brepcode.com/tpu-box, a catalog model) into
+// Design's toolbar and panels. A link can still ask: ?mode=design or
+// #mode=design, and that beats the setting.
 
-export const MODE_KEY = "brepcode.mode";
+export const MODE_KEY = "brepcode.mode";   // the old remembered pick, cleared on load
 // the Design help page (how-to, keys, FAQ, limits): the Beta tag, the
 // sketch panel's ?, F1 and the About card all open it
 export const HELP_URL = "design-help.html";
 export const MODES = ["code", "design"];
 
-export function readMode() {
-  try {
-    const v = localStorage.getItem(MODE_KEY);
-    return MODES.includes(v) ? v : "code";
-  } catch {
-    return "code";          // private mode / storage blocked: the default
-  }
+// The mode a link asks for, else `start` (the setting), else Code.
+export function readMode(loc = globalThis.location, start = "code") {
+  const asked = /(?:^|[?#&])mode=(\w+)/.exec(`${loc?.search ?? ""}${loc?.hash ?? ""}`)?.[1];
+  if (MODES.includes(asked)) return asked;
+  return MODES.includes(start) ? start : "code";
 }
 
 const CSS = `
@@ -51,10 +54,10 @@ const CSS = `
 #mode-switch .beta:hover { text-decoration: underline; cursor: help; }
 `;
 
-// Builds the switch, applies the remembered mode, and returns
+// Builds the switch, applies the starting mode, and returns
 // { get mode(), setMode(mode) }. onChange(mode) runs after every change,
 // including the first apply.
-export function initModeSwitch({ onChange } = {}) {
+export function initModeSwitch({ start = "code", onChange } = {}) {
   if (!document.getElementById("mode-switch-css")) {
     const st = document.createElement("style");
     st.id = "mode-switch-css";
@@ -75,7 +78,6 @@ export function initModeSwitch({ onChange } = {}) {
     mode = next;
     document.body.classList.toggle("design-mode", mode === "design");
     for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
-    try { localStorage.setItem(MODE_KEY, mode); } catch { /* not remembered, still switched */ }
     onChange?.(mode);
     return mode;
   };
@@ -85,6 +87,7 @@ export function initModeSwitch({ onChange } = {}) {
     const b = e.target.closest("button[data-mode]");
     if (b) setMode(b.dataset.mode);
   });
-  setMode(readMode());
+  try { localStorage.removeItem(MODE_KEY); } catch { /* storage blocked: nothing kept anyway */ }
+  setMode(readMode(globalThis.location, start));
   return { get mode() { return mode; }, setMode };
 }

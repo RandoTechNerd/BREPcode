@@ -299,9 +299,24 @@ console.log("\nthe viewer: face names on meshes, the switch, the wiring\n");
   check("the vocabulary is wrapped by tagCall", /values = names\.map\(\(n\) => dsl\.tagCall\(vocab\[n\]\)\)/.test(html));
   check("the feature map tries exact sites first", /function buildFeatureMap[\s\S]{0,1600}codemap\.mapTraceSites/.test(html));
   check("right-click colour writes to the code", /codemap\.colorizeAt\(/.test(html));
-  check("the Code | Design switch is installed", /initModeSwitch\(\{ onChange/.test(html));
+  check("the Code | Design switch is installed", /initModeSwitch\(\{ (start: startMode, )?onChange/.test(html));
   const design = readFileSync(new URL("../viewer/design.js", import.meta.url), "utf8");
-  check("the mode is remembered as brepcode.mode", /"brepcode\.mode"/.test(design) && /design-mode/.test(design));
+  check("the app opens in Code unless the link asks for mode=design",
+    /design-mode/.test(design) && !/localStorage\.setItem/.test(design) && /mode=\(\\w\+\)/.test(design));
+  {
+    const { readMode } = await import("../viewer/design.js");
+    check("readMode: a plain link, a model link, a share link all open in Code",
+      ["", "?example=tpubox", "#m=abc"].every((q) => readMode({ search: q.startsWith("?") ? q : "", hash: q.startsWith("#") ? q : "" }) === "code"));
+    check("readMode: ?mode=design and #s=x&mode=design open Design",
+      readMode({ search: "?mode=design", hash: "" }) === "design" && readMode({ search: "", hash: "#s=x&mode=design" }) === "design");
+    check("readMode: the Opens-in setting is the start, and a link's ?mode= beats it",
+      readMode({ search: "", hash: "" }, "design") === "design" && readMode({ search: "?mode=code", hash: "" }, "design") === "code"
+      && readMode({ search: "", hash: "" }, "bogus") === "code");
+  }
+  check("Settings > Advanced (folded) holds Opens in, and the switch starts from it",
+    /<details class="i-sec" id="set-advanced"[^>]*>[^]{0,400}?id="set-start-mode"[^]{0,1500}?id="set-kernel-row"/.test(html)
+    && !/id="set-advanced"[^>]*open/.test(html)
+    && /initModeSwitch\(\{ start: startMode, onChange/.test(html));
   const build = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
   check("the site build ships acorn, design.js and faceedges.js",
     /vendor\/acorn\/acorn\.mjs/.test(build) && /"design\.js"/.test(build) && /"faceedges\.js"/.test(build));

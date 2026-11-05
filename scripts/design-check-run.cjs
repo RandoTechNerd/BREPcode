@@ -89,8 +89,8 @@ module.exports = app.whenReady().then(async () => {
 
   try {
     await win.loadURL(URL_);
-    await run(`localStorage.setItem("brepcode-welcomed", "1"); localStorage.setItem("brepcode.mode", "design"); localStorage.setItem("brepcode.ribbon", "0")`);
-    await win.loadURL(URL_);
+    await run(`localStorage.setItem("brepcode-welcomed", "1"); localStorage.setItem("brepcode.ribbon", "0")`);
+    await win.loadURL(URL_ + "?mode=design");
     for (let i = 0; i < 120 && !(await run("!!window.brepscript?.design").catch(() => false)); i++) await wait(250);
     await wait(2500);
     await setCode(PEGS);

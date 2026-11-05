@@ -72,8 +72,8 @@ module.exports = app.whenReady().then(async () => {
     // cache: the check would test old code
     await win.webContents.session.clearStorageData({ storages: ["serviceworkers", "cachestorage"] });
     await win.loadURL(URL_);
-    await run(`localStorage.setItem("brepcode-welcomed", "1"); localStorage.setItem("brepcode.mode", "design"); localStorage.setItem("brepcode.ribbon", "1")`);
-    await win.loadURL(URL_);
+    await run(`localStorage.setItem("brepcode-welcomed", "1"); localStorage.setItem("brepcode.ribbon", "1")`);
+    await win.loadURL(URL_ + "?mode=design");
     for (let i = 0; i < 120 && !(await run("!!window.brepscript?.openSketch").catch(() => false)); i++) await wait(250);
     await wait(2500);
     await run(`document.getElementById("panel").classList.contains("open") && document.getElementById("open-btn").click()`);
