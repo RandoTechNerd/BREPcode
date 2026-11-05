@@ -174,11 +174,19 @@ the app a **Parts** button appears beside Parameters: the parts list, an
 explode slider, **Check fit**, **Export parts** (a zip) and **Product shot**.
 The MCP tools above call the same functions.
 
-`examples/printmotor-assembly.js` is the worked case: the PrintMotor housing
-and its twelve stacked coil pods, matching the original Python parts' sizes
-exactly and their volumes to within 0.1%. `npm run test:assembly` builds it in
-a real window and drives every button and tool, including a deliberate clash
-between neighbouring pods.
+`examples/printmotor-assembly.js` is the worked case: the whole PrintMotor
+(housing, yoke, tooth star, twelve coil pods, rotor, shaft, spacer, busbar
+crown, three terminal lugs, lid and output hub; 24 pieces). The lid and crown
+print flipped and the pods and lugs are placed from their print frames.
+`examples/printmotor-pods.js` is the housing and pods alone, matching the
+original Python parts' sizes exactly and their volumes to within 0.1%;
+`npm run test:assembly` builds that one in a real window and drives every
+button and tool, including a deliberate clash between neighbouring pods.
+
+`examples/printmotor-hairpin.js` is PrintMotor C: a 36-slot hairpin stator (two
+crown rings of tube() bars plus a weld ring) around a 32-segment Halbach rotor,
+45 pieces. The copper parts and the housing (helical coolant groove) build on the
+mesh lane; its fit check takes about 15 minutes with 164k triangles.
 
 ## Ports and other apps
 

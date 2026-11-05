@@ -5795,6 +5795,7 @@
     }
 
     let grid = null;
+    let gridExploded = false;   // an exploded assembly hides the floor (applyGrid)
     let currentTheme = "dark";
     // The 3D grid styles: very faint lines rising off the floor, built as a
     // child of the GridHelper so they move, scale and hide with it. In the
@@ -7660,9 +7661,9 @@
       styleSel.value = ["walls", "lattice"].includes(stored.style) ? stored.style : "floor";
 
       const applyGrid = () => {
-        if (grid) grid.visible = showBox.checked;
+        if (grid) grid.visible = showBox.checked && !gridExploded;
         if (grid && gridStyle !== styleSel.value) { gridStyle = styleSel.value; addGrid3D(THEMES[currentTheme] ?? THEMES.dark); }
-        axisLabelsOn = axesBox.checked && showBox.checked;   // markers belong to the floor
+        axisLabelsOn = axesBox.checked && showBox.checked && !gridExploded;   // markers belong to the floor
         buildAxisLabels();
         localStorage.setItem("brepcode-grid",
           JSON.stringify({ show: showBox.checked, axes: axesBox.checked, style: styleSel.value }));
@@ -7670,6 +7671,7 @@
       showBox.addEventListener("change", applyGrid);
       axesBox.addEventListener("change", applyGrid);
       styleSel.addEventListener("change", applyGrid);
+      window.brepscriptApplyGrid = applyGrid;
       applyGrid();
       // applyTheme() builds a fresh GridHelper, which starts visible — reapply
       // the preference whenever that happens, or switching theme silently turns
@@ -11359,12 +11361,17 @@ ${joined}${SITE_TAIL}`), joined);
       snapView: (v) => snapView(v),
       setStatus: (cls, msg) => setStatus(cls, msg),
       onChange: () => paintParts(),
-      onExplode: (t) => { $("parts-explode").value = String(t); },
+      onExplode: (t) => {
+        $("parts-explode").value = String(t);
+        followParts();
+        if (gridExploded !== t > 0) { gridExploded = t > 0; window.brepscriptApplyGrid?.(); }
+      },
     });
     window.brepscript.assembly = asm;
     function paintParts() {
       const on = asm.active;
       partsBtn.hidden = !on;
+      if (!on && gridExploded) { gridExploded = false; window.brepscriptApplyGrid?.(); }
       if (!on) {
         if (partsCard.classList.contains("open")) toggleCard(partsCard, partsBtn, false);
         $("parts-out").innerHTML = "";
@@ -12561,6 +12568,18 @@ ${joined}${SITE_TAIL}`), joined);
         outlineGroup.add(depth, hidden);
       }
       syncHiddenEdges();
+      followParts();
+    }
+
+    // Explode moves a part's meshes by position; its outline, see-through pass
+    // and selection highlight were drawn at the assembled spot, so move them too.
+    function followParts() {
+      for (const o of outlineGroup.children) {
+        const src = o.userData.source;
+        if (src) o.position.copy(src.position);
+      }
+      try { syncSkin(); } catch { /* before the model exists */ }
+      refreshHighlight();
     }
 
     // Translucent stand-in for a cutter being dragged, so the hole's future

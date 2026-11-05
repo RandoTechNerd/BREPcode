@@ -1,5 +1,5 @@
 // Proves an assembly works in the real app, from the GUI and over MCP:
-// the PrintMotor housing + twelve coil pods (examples/printmotor-assembly.js)
+// the PrintMotor housing + twelve coil pods (examples/printmotor-pods.js)
 // builds on the native kernel pool, explodes, fit-checks (clear, then a
 // deliberate clash between neighbouring pods), exports its parts, renders a
 // product shot, and the Connect-your-AI buttons write a config an MCP server
@@ -141,7 +141,7 @@ app.whenReady().then(async () => {
     await wait(2500);                       // the native kernel pool connects a moment after boot
 
     // ---- build it ---------------------------------------------------------
-    const SRC = fs.readFileSync(path.join(ROOT, "examples", "printmotor-assembly.js"), "utf8");
+    const SRC = fs.readFileSync(path.join(ROOT, "examples", "printmotor-pods.js"), "utf8");
     const t0 = Date.now();
     const s1 = await agent({ action: "set_code", code: SRC, name: "printmotor" });
     const buildS = (Date.now() - t0) / 1000;
