@@ -11,6 +11,9 @@
 //   5.0 - 6.5 s  hold apart
 //   6.5 - 8.5 s  collapse back together
 //   8.5 - 9.0 s  hold assembled
+//
+// One body (nothing to pull apart): the turn and the rest only, 4 s. A cut
+// view that is on stays on for the whole video.
 
 const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 export const TIMELINE = { turn: 3.5, out: 1.5, hold: 1.5, back: 2, rest: 0.5 };
@@ -27,7 +30,8 @@ export function frameAt(t) {
   return { k, spin };
 }
 
-export async function recordExplode({ host, THREE, setK, getK, onProgress = () => {} }) {
+export async function recordExplode({ host, THREE, setK, getK, explode = true, frame = null, onProgress = () => {} }) {
+  const LEN = explode ? LENGTH : TIMELINE.turn + TIMELINE.rest;
   const canvas = host.renderer?.domElement;
   if (!canvas?.captureStream || typeof MediaRecorder === "undefined") throw new Error("this browser can't record the view (no MediaRecorder)");
   const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
@@ -35,6 +39,15 @@ export async function recordExplode({ host, THREE, setK, getK, onProgress = () =
   const cam = host.camera, orbit = host.orbit;
   const target = orbit.target.clone(), start = cam.position.clone(), up = cam.up.clone(), k0 = getK();
   const offset = start.clone().sub(target);
+  // far enough back that the model, exploded, stays in the picture all the
+  // way round (never nearer than the view it started from)
+  if (frame && !frame.isEmpty?.() && cam.isPerspectiveCamera) {
+    const sph = frame.getBoundingSphere(new THREE.Sphere());
+    const reach = sph.radius + sph.center.distanceTo(target);
+    const fov = (Math.min(cam.fov, cam.fov * cam.aspect) * Math.PI) / 360;
+    const need = (reach / Math.sin(fov)) * 1.08;
+    if (need > offset.length()) offset.setLength(need);
+  }
   const axis = up.clone().normalize();
   const stream = canvas.captureStream(30);
   const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 6e6 });
@@ -50,12 +63,12 @@ export async function recordExplode({ host, THREE, setK, getK, onProgress = () =
       const t0 = performance.now();
       const step = (now) => {
         const t = (now - t0) / 1000;
-        const { k, spin } = frameAt(Math.min(t, LENGTH));
-        setK(k);
+        const { k, spin } = frameAt(Math.min(t, LEN));
+        setK(explode ? k : k0);
         cam.position.copy(target).add(offset.clone().applyAxisAngle(axis, spin));
         cam.lookAt(target);
-        onProgress(Math.min(1, t / LENGTH));
-        if (t < LENGTH) requestAnimationFrame(step); else done();
+        onProgress(Math.min(1, t / LEN));
+        if (t < LEN) requestAnimationFrame(step); else done();
       };
       requestAnimationFrame(step);
     });
@@ -70,7 +83,7 @@ export async function recordExplode({ host, THREE, setK, getK, onProgress = () =
   }
   const blob = new Blob(chunks, { type: "video/webm" });
   if (!blob.size) throw new Error("nothing was recorded");
-  const name = `${(host.modelName?.() || "brepcode-assembly").replace(/[^\w-]+/g, "-")}-explode.webm`;
+  const name = `${(host.modelName?.() || (explode ? "brepcode-assembly" : "brepcode-part")).replace(/[^\w-]+/g, "-")}-${explode ? "explode" : "turntable"}.webm`;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = name;

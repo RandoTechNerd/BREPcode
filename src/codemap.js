@@ -341,38 +341,59 @@ export function mapTraceSites(trace, runText, editorText, opts = {}) {
 
 // ------------------------------------------------------------- colour → code
 //
+// A shape's look lives in the code as wrappers around its call:
+// colorize("#hex", call) for its colour and finish("Brass", call) for its
+// material. The two stack in either order (colorize("#f00", finish("Brass",
+// cube(…)))), so each writer looks up through the wrappers already on the
+// call for its own one.
+const LOOK_WRAPS = new Set(["colorize", "finish"]);
+
+// the wrapper fn already around the call at [start, end), or null
+function wrapperAt(map, start, end, fn) {
+  let me = map.calls.find((c) => c.start === start && c.end === end);
+  while (me && me.parent != null) {
+    const parent = map.calls[me.parent];
+    if (!LOOK_WRAPS.has(parent.name) || parent.args.length !== 2
+      || parent.args[1].start !== me.start || parent.args[1].end !== me.end) return null;
+    if (parent.name === fn) return parent;
+    me = parent;
+  }
+  return null;
+}
+
+// wrapAt(src, start, end, fn, value) -> new source text: the call at
+// [start, end) gets fn(value, call); when that wrapper is already on it (a
+// text value), only the value changes.
+export function wrapAt(src, start, end, fn, value) {
+  const q = JSON.stringify(String(value));
+  const map = parseCode(src);
+  if (map.ok) {
+    const w = wrapperAt(map, start, end, fn);
+    if (w && w.args[0].literal?.kind === "text") return src.slice(0, w.args[0].start) + q + src.slice(w.args[0].end);
+  }
+  return src.slice(0, start) + `${fn}(${q}, ${src.slice(start, end)})` + src.slice(end);
+}
+
+// unwrapAt(src, start, end, fn) -> new source text, or null when there is no
+// fn(…, it) around the call at [start, end) to take off.
+export function unwrapAt(src, start, end, fn) {
+  const map = parseCode(src);
+  if (!map.ok) return null;
+  const w = wrapperAt(map, start, end, fn);
+  if (!w) return null;
+  const inner = w.args[1];
+  return src.slice(0, w.start) + src.slice(inner.start, inner.end) + src.slice(w.end);
+}
+
 // colorizeAt(src, start, end, hex) -> new source text.
 // The call at [start, end) gets the colour IN THE CODE: when it is already the
 // shape argument of a colorize("…", it) the string is replaced; otherwise the
 // call is wrapped as colorize("#hex", call).
-export function colorizeAt(src, start, end, hex) {
-  const col = String(hex);
-  const q = JSON.stringify(col);
-  const map = parseCode(src);
-  if (map.ok) {
-    const me = map.calls.find((c) => c.start === start && c.end === end);
-    const parent = me && me.parent != null ? map.calls[me.parent] : null;
-    if (parent && parent.name === "colorize" && parent.args.length === 2
-      && parent.args[1].start === start && parent.args[1].end === end
-      && parent.args[0].literal?.kind === "text") {
-      const a = parent.args[0];
-      return src.slice(0, a.start) + q + src.slice(a.end);
-    }
-  }
-  return src.slice(0, start) + `colorize(${q}, ${src.slice(start, end)})` + src.slice(end);
-}
+export function colorizeAt(src, start, end, hex) { return wrapAt(src, start, end, "colorize", hex); }
 
 // uncolorizeAt(src, start, end) -> new source text, or null when the call at
 // [start, end) is not the shape argument of a colorize("…", it) to take off.
-export function uncolorizeAt(src, start, end) {
-  const map = parseCode(src);
-  if (!map.ok) return null;
-  const me = map.calls.find((c) => c.start === start && c.end === end);
-  const parent = me && me.parent != null ? map.calls[me.parent] : null;
-  if (!parent || parent.name !== "colorize" || parent.args.length !== 2
-    || parent.args[1].start !== start || parent.args[1].end !== end) return null;
-  return src.slice(0, parent.start) + src.slice(start, end) + src.slice(parent.end);
-}
+export function uncolorizeAt(src, start, end) { return unwrapAt(src, start, end, "colorize"); }
 
 // ------------------------------------------------------------- face → edges
 //

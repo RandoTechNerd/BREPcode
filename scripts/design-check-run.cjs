@@ -147,20 +147,21 @@ module.exports = app.whenReady().then(async () => {
     hs = await handles();
     let on = hs.find((h) => h.ring);
     check("hovering a dot rings it", on && on.kind === "face" && hs.filter((h) => h.ring).length === 1, JSON.stringify(on));
-    check("…no arrows before the dwell", on && on.arrows === 0);
+    // a face dot's push/pull arrows are always there (c7b429b: behind a dwell
+    // they were never found); a corner's still wait for the dwell
+    check("…a face dot's two arrows (both ways along its normal) are there at once", on?.arrows === 2, JSON.stringify(on));
     await wait(700);
-    on = (await handles()).find((h) => h.ring);
-    check("after ~600 ms a face dot shows two arrows (both ways along its normal)", on?.arrows === 2, JSON.stringify(on));
     await shot("10-handle-hover-arrows");
     const c0 = hs.find((h) => h.kind === "corner");
     await mouse("mouseMove", c0.x, c0.y);
     await wait(900);
     on = (await handles()).find((h) => h.ring);
-    check("a box corner shows two arrows (width and depth)", on?.kind === "corner" && on.arrows === 2, JSON.stringify(on));
+    check("a box corner shows two arrows (width and depth) after the dwell", on?.kind === "corner" && on.arrows === 2, JSON.stringify(on));
     await mouse("mouseMove", 800, 120);
     await wait(250);
     hs = await handles();
-    check("leaving the dot drops the ring and arrows", hs.every((h) => !h.ring && h.arrows === 0));
+    check("leaving the dot drops the ring and the corner's arrows (face arrows stay)",
+      hs.every((h) => !h.ring && (h.kind === "face" ? h.arrows === 2 : h.arrows === 0)), JSON.stringify(hs.map((h) => [h.kind, h.ring, h.arrows])));
     // drag-to-resize still writes the code: the +X face dot, pulled outwards
     const fd = (await handles()).filter((h) => h.kind === "face").sort((a, b) => b.x - a.x)[0];
     const before = await run(`document.getElementById("code").value`);
@@ -338,7 +339,10 @@ module.exports = app.whenReady().then(async () => {
     await wait(500);
     d = await run(`brepscript.design()`);
     check("the ×2 row selects a peg", /^P\.CY/.test(d.selectedFid || ""), d.selectedFid);
-    check("…and says a move moves both", /moves all 2/.test(await run(`document.getElementById("dz-sel").textContent`)));
+    // each peg(…) call is its own (b73bf5d: a move edits that helper call,
+    // not the helper), so there is no "moves all 2" note any more
+    const selTxt = await run(`document.getElementById("dz-sel").textContent`);
+    check("…and moves on its own: its own helper call, no \"moves all\" note", /peg/.test(selTxt) && !/moves all/.test(selTxt), selTxt);
     await shot("05-pattern-member");
 
     say("\nribbon");

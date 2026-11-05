@@ -1577,5 +1577,124 @@ console.log("\nSuppress: a step left out of the model, kept in the code\n");
   check("the only shape can't be suppressed", typeof suppressStepText(one, { start: 7, end: one.length - 1 }).error === "string");
 }
 
+console.log("\nEasy wins: split body, extrude up to a face, taper\n");
+{
+  const F = await import("../viewer/design/features.js");
+  // split: a 20 x 20 x 10 block cut at z = 4: two bodies, 1600 and 2400
+  const sp = "return splitBody({ normal: [0, 0, 1], at: 4 }, cube([20, 20, 10]));";
+  await onEveryKernel("split at z = 4: the volume is all still there", sp, 4000, 0.003);
+  const halves = await quiet(async () => (await buildModel(evaluate(sp), { engine: "js" })).solids.map((s) => s));
+  check("…as two bodies", halves.length === 2, String(halves.length));
+  const vols = halves.map((s) => volumeOf({ solids: [s] })).sort((a, b) => a - b);
+  check("…1600 below and 2400 above", Math.abs(vols[0] - 1600) < 2 && Math.abs(vols[1] - 2400) < 2, JSON.stringify(vols));
+  await onEveryKernel("a slanted split (a face's plane) keeps the volume", "return splitBody({ normal: [1, 0, 1], at: 12 }, cube([20, 20, 10]));", 4000, 0.003);
+  const w = F.splitText("return cube([20, 20, 10]);", { start: 7, end: 25 }, { normal: [0, 0, 1], at: 4 });
+  check("the dialog's writer wraps the body", w.next === "return splitBody({ normal: [0, 0, 1], at: 4 }, cube([20, 20, 10]));", w.next);
+
+  // up to a face: parallel faces only, and which way
+  const face = (point, normal) => ({ point, normal, loops: [[point]] });
+  let u = F.upToDistance(face([0, 0, 10], [0, 0, 1]), face([5, 5, 25], [0, 0, -1]));
+  check("up to a face 15 above: 15, outward", u.h === 15 && u.inward === false, JSON.stringify(u));
+  u = F.upToDistance(face([0, 0, 10], [0, 0, 1]), face([5, 5, 2], [0, 0, 1]));
+  check("up to a face 8 below (inside the part): 8, inward (a cut)", u.h === 8 && u.inward === true, JSON.stringify(u));
+  check("a face at an angle is refused", typeof F.upToDistance(face([0, 0, 10], [0, 0, 1]), face([0, 0, 20], [0, 1, 0])).error === "string");
+
+  // taper: a round face becomes a cone; a square shrinks evenly; a long
+  // rectangle is refused (an even shrink of it is not a draft)
+  const { worldToPlane } = dsl;
+  const toPlaneOf = (o) => { const pl = F.facePlane(o); return (p) => worldToPlane(pl, p); };
+  const ring = Array.from({ length: 64 }, (_, k) => [10 + 5 * Math.cos((k * Math.PI) / 32), 10 + 5 * Math.sin((k * Math.PI) / 32), 10]);
+  const circ = { point: [10, 10, 10], normal: [0, 0, 1], loops: [ring] };
+  const cone = F.extrudeCall(circ, { h: 10, toPlane: toPlaneOf(circ), taper: 10 });
+  const r2 = 5 - 10 * Math.tan(Math.PI / 18);
+  check("a 10° taper on a round face: a cone", /cylinder\(\{ r1: 5, r2: 3\.23\d, h: 10 \}\)/.test(cone), cone);
+  await onEveryKernel("…its volume is the cone's", `return ${cone};`, (Math.PI * 10 / 3) * (25 + 5 * r2 + r2 * r2), 0.01);
+  const sq = { point: [0, 0, 0], normal: [0, 0, 1], loops: [[[0, 0, 0], [20, 0, 0], [20, 20, 0], [0, 20, 0]]] };
+  const tsq = F.extrudeCall(sq, { h: 10, toPlane: toPlaneOf(sq), taper: 15 });
+  const side2 = 20 - 2 * 10 * Math.tan(Math.PI / 12);
+  check("a 15° taper on a square: an even shrink about its middle", /scale: 0\.732\d/.test(tsq) && /origin: \[10, 10, 0\]/.test(tsq), tsq);
+  await onEveryKernel("…its volume is the frustum's", `return ${tsq};`, (10 / 3) * (400 + side2 * side2 + 20 * side2), 0.01);
+  const rect = { point: [0, 0, 0], normal: [0, 0, 1], loops: [[[0, 0, 0], [30, 0, 0], [30, 10, 0], [0, 10, 0]]] };
+  check("a taper on a long rectangle is refused, saying why", /same distance from its middle/.test(F.extrudeCall(rect, { h: 5, toPlane: toPlaneOf(rect), taper: 5 }).error ?? ""));
+  check("…and one that closes the shape to a point", /to a point/.test(F.extrudeCall(circ, { h: 40, toPlane: toPlaneOf(circ), taper: 10 }).error ?? ""));
+}
+
+console.log("\nCut views and the Properties look\n");
+{
+  const { cutPlanes } = await import("../viewer/design/explode.js");
+  const { familyOf } = await import("../viewer/design/inspect.js");
+  // a 40 x 20 x 10 box from the origin; three's Plane keeps n·p + c >= 0
+  const box = { min: { getComponent: (a) => [0, 0, 0][a] }, max: { getComponent: (a) => [40, 20, 10][a] } };
+  const keeps = (spec, p) => {
+    const ins = spec.planes.map((pl) => pl.normal.reduce((a, v, i) => a + v * p[i], 0) + pl.constant >= 0);
+    return spec.intersect ? ins.some(Boolean) : ins.every(Boolean);
+  };
+  let c = cutPlanes("x", 0.5, false, box, [100, 0, 0]);
+  check("cut X at the middle, camera on +X: the +X half goes (x = 20)", c.planes.length === 1 && c.planes[0].constant === 20 && !keeps(c, [30, 5, 5]) && keeps(c, [10, 5, 5]), JSON.stringify(c));
+  c = cutPlanes("x", 0.5, false, box, [-100, 0, 0]);
+  check("…camera on -X: the -X half goes", keeps(c, [30, 5, 5]) && !keeps(c, [10, 5, 5]), JSON.stringify(c));
+  c = cutPlanes("x", 0.5, true, box, [100, 0, 0]);
+  check("…flipped: the other half", keeps(c, [30, 5, 5]) && !keeps(c, [10, 5, 5]), JSON.stringify(c));
+  c = cutPlanes("z", 0.25, false, box, [0, 0, 100]);
+  check("cut Z a quarter up: z = 2.5, the top goes", Math.abs(c.planes[0].constant - 2.5) < 1e-9 && keeps(c, [5, 5, 1]) && !keeps(c, [5, 5, 4]), JSON.stringify(c));
+  c = cutPlanes("quarter", 0.5, false, box, [100, 100, 50]);
+  check("quarter: only the corner facing the camera goes", c.intersect && !keeps(c, [30, 15, 5]) && keeps(c, [30, 5, 5]) && keeps(c, [10, 15, 5]) && keeps(c, [10, 5, 5]), JSON.stringify(c));
+  check("off: no planes", cutPlanes("off", 0.5, false, box).planes.length === 0);
+  check("a spool's family sets the mass material", familyOf("Filament — PETG") === "petg" && familyOf("PLA") === "pla" && familyOf("Silk (PLA)") === "pla" && familyOf("TPU 95A") === "tpu" && familyOf("Wood fill") === null);
+}
+
+console.log("\nPrimitives, materials into the code, the explode plan\n");
+{
+  const F = await import("../viewer/design/features.js");
+  const S = { w: 20, d: 10, h: 6, r: 5, rTop: 2, R: 12, tube: 3, x: 50, y: 0, z: 0 };
+  const box = F.primitiveCall("box", S).text;
+  check("a box sits centred on its point", box === "translate([40, -5, 0], cube([20, 10, 6]))", box);
+  await onEveryKernel("…and builds: 20 × 10 × 6", `return ${box};`, 1200, 0.001);
+  await onEveryKernel("a cylinder r 5 h 6", `return ${F.primitiveCall("cylinder", S).text};`, Math.PI * 25 * 6, 0.01);
+  await onEveryKernel("a cone r 5 to 2, h 6", `return ${F.primitiveCall("cone", S).text};`, (Math.PI * 6 / 3) * (25 + 10 + 4), 0.01);
+  await onEveryKernel("a sphere r 5", `return ${F.primitiveCall("sphere", S).text};`, (4 / 3) * Math.PI * 125, 0.02);
+  await onEveryKernel("a torus 12 / 3", `return ${F.primitiveCall("torus", S).text};`, 2 * Math.PI * Math.PI * 12 * 9, 0.04);
+  check("a sphere rests on its point (centre one radius up)", /translate\(\[50, 0, 5\], sphere/.test(F.primitiveCall("sphere", S).text));
+  check("a cut placed on a face sinks in (its top at the point)", F.primitiveCall("cylinder", { ...S, z: 10 }, { sink: true }).text === "translate([50, 0, 4], cylinder({ r: 5, h: 6 }))");
+  check("a torus thinner than its tube is refused", typeof F.primitiveCall("torus", { ...S, R: 2 }).error === "string");
+  let t = F.primitiveText("return cube([10, 10, 10]);", "sphere({ r: 3 })", { op: "new" });
+  check("New body: beside the model in a group()", t.next === "return group(cube([10, 10, 10]), sphere({ r: 3 }));", t.next);
+  t = F.primitiveText("return cube([10, 10, 10]);", "sphere({ r: 3 })", { op: "new", starter: "return cube([10, 10, 10]);" });
+  check("…in place of the untouched starter cube", t.next.trim() === "return sphere({ r: 3 });", t.next);
+  t = F.primitiveText("", "sphere({ r: 3 })", { op: "new" });
+  check("…the first shape of an empty model", t.next.trim() === "return sphere({ r: 3 });", t.next);
+  t = F.primitiveText("return cube([10, 10, 10]);", "sphere({ r: 3 })", { op: "cut", body: { start: 7, end: 25 } });
+  check("Cut: into a difference()", t.next === "return difference(cube([10, 10, 10]), sphere({ r: 3 }));", t.next);
+  check("Join without a body waits for one", !!F.primitiveText("return cube([10, 10, 10]);", "sphere({ r: 3 })", { op: "join" }).wait);
+
+  const cm = await import("../src/codemap.js");
+  const src = "return group(cube([20, 20, 10]), cube([8, 8, 8]));";
+  const at = (x) => [x.indexOf("cube([8"), x.indexOf("cube([8") + "cube([8, 8, 8])".length];
+  let a = cm.wrapAt(src, ...at(src), "finish", "Brass");
+  a = cm.colorizeAt(a, ...at(a), "#ff0000");
+  check("a material and a colour stack on one call", a === 'return group(cube([20, 20, 10]), finish("Brass", colorize("#ff0000", cube([8, 8, 8]))));', a);
+  a = cm.wrapAt(a, ...at(a), "finish", "Steel");
+  check("…a second material replaces the first, through the colour", /finish\("Steel", colorize\("#ff0000"/.test(a) && !/Brass/.test(a), a);
+  a = cm.unwrapAt(a, ...at(a), "finish");
+  a = cm.uncolorizeAt(a, ...at(a));
+  check("…and both come off again, back to the start", a === src, a);
+  await onEveryKernel("finish() on a part keeps its volume", 'return group(cube([20, 20, 10]), translate([30, 0, 0], finish("Brass", cube([8, 8, 8]))));', 4000 + 512, 0.001);
+
+  const { materialOf } = await import("../viewer/design/inspect.js");
+  check("a part's material names its density", materialOf("Brass") === "brass" && materialOf("Aluminum") === "al" && materialOf("aluminium") === "al" && materialOf("Oak wood") === "wood" && materialOf("Steel") === "steel" && materialOf("pink-blue-gradient") === null);
+
+  // the explode plan: a shaft, a bearing on it, a pulley round the bearing
+  // and a cap on top come off in that order, never through each other
+  const THREE = await import("three");
+  const part = (name, w, h, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, w, h)); m.position.set(x, y, z + h / 2); m.updateMatrixWorld(); m.userData.solidName = name; return m; };
+  const { explodePlan } = await import("../viewer/design/explode.js");
+  const parts = [part("base", 60, 6, 0, 0, 0), part("shaft", 8, 40, 0, 0, 6), part("bearing", 22, 7, 0, 0, 21.5), part("pulley", 40, 10, 0, 0, 20), part("cap", 14, 3, 0, 0, 46)];
+  const plan = explodePlan(parts, THREE);
+  const zAt = (n) => { const i = plan.bodies.findIndex((b) => b.meshes[0].userData.solidName === n); const b = plan.bodies[i].box; return [b.min.z + plan.moves[i].z, b.max.z + plan.moves[i].z]; };
+  const order = ["shaft", "bearing", "pulley", "cap"].map(zAt);
+  check("explode: the stack comes off in order, none overlapping", order.every((z, i) => i === 0 || z[0] >= order[i - 1][1] - 1e-6), JSON.stringify(order));
+  check("…and nothing ends up below the floor", plan.bodies.every((b, i) => b.box.min.z + plan.moves[i].z >= -1e-6));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

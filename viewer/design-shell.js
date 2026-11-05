@@ -36,6 +36,7 @@ const TOOLS = [
   ] },
   { group: "Create", items: [
     { id: "sketch", label: "Sketch", tip: "Sketch on a plane or a flat face: lines, arcs, circles, splines, constraints and dimensions", icon: `<path d="M2.5 13.5h11M3 11l7.5-7.5 2 2L5 13H3z"/>` },
+    { id: "primitive", label: "Primitive", dialog: true, tip: "A box, cylinder, cone, sphere or torus: beside the model as a new body, or on a face you click (join or cut)", icon: `<path d="M2.5 5.5 6 3.5l3.5 2v4L6 11.5l-3.5-2z"/><circle cx="11.5" cy="10.5" r="3"/>` },
     { id: "extrude", label: "Extrude", dialog: true, tip: "Extrude a flat face: join, cut or a new body", icon: `<path d="M3 11l5 2.5 5-2.5M3 11V6l5-2.5L13 6v5M8 8.5V13.5M3 6l5 2.5L13 6"/>` },
     { id: "revolve", label: "Revolve", dialog: true, tip: "Spin a flat face about one of its edges or an axis", icon: `<path d="M8 2v12"/><ellipse cx="8" cy="8" rx="5" ry="2.2"/>` },
     { id: "hole", label: "Hole", dialog: true, tip: "A simple, counterbored or countersunk hole where you click", icon: `<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/>` },
@@ -45,6 +46,7 @@ const TOOLS = [
     { id: "fillet", label: "Fillet", dialog: true, tip: "Round the edges you click", icon: `<path d="M3 13V8a5 5 0 0 1 5-5h5"/>` },
     { id: "chamfer", label: "Chamfer", dialog: true, tip: "Bevel the edges you click", icon: `<path d="M3 13V7l4-4h6"/>` },
     { id: "shell", label: "Shell", dialog: true, tip: "Hollow the selected shape, leaving the faces you click open", icon: `<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><rect x="5" y="5" width="6" height="6"/>` },
+    { id: "split", label: "Split", dialog: true, tip: "Cut a body in two along a plane or a flat face; each half is a body of its own", icon: `<rect x="2.5" y="3.5" width="11" height="9" rx="1"/><path d="M8 1.5v13" stroke-dasharray="1.6 1.4"/>` },
     { id: "combine", label: "Combine", dialog: true, tip: "Join, cut or intersect bodies", icon: `<circle cx="6" cy="8" r="4"/><circle cx="10" cy="8" r="4"/>` },
   ] },
   { group: "Pattern", items: [
@@ -72,6 +74,7 @@ const SUBS = {
   extrude: [["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
   revolve: [["join", "Join"], ["cut", "Cut"], ["new", "New body"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
   hole: [["simple", "Simple"], ["counterbore", "Counterbore"], ["countersink", "Countersink"]].map(([v, l]) => ({ label: l, preset: { kind: v } })),
+  primitive: [["box", "Box"], ["cylinder", "Cylinder"], ["cone", "Cone"], ["sphere", "Sphere"], ["torus", "Torus"]].map(([v, l]) => ({ label: l, preset: { kind: v } })),
   combine: [["union", "Join"], ["difference", "Cut"], ["intersection", "Intersect"]].map(([v, l]) => ({ label: l, preset: { op: v } })),
 };
 const HOLD_MS = 350;

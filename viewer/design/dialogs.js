@@ -122,19 +122,29 @@ export function nearestEdge(edges, point, meshes) {
 const SPECS = {
   extrude: {
     title: "Extrude",
-    help: "Pick a flat face; it is pushed out (or cut in) as its own outline.",
+    help: "Pick a flat face; it is pushed out (or cut in) as its own outline. Up to face: then click the face it should stop at.",
     picks: { kind: "face", flat: true, label: "Face" },
     fields: [
-      { key: "h", label: "Distance", type: "number", min: 0.1, step: 1, unit: "mm" },
-      { key: "symmetric", label: "Symmetric", type: "check" },
+      { key: "extent", label: "Extent", type: "seg", options: [["dist", "Distance"], ["face", "Up to face"]] },
+      { key: "h", label: "Distance", type: "number", min: 0.1, step: 1, unit: "mm", when: (s) => s.extent !== "face" },
+      { key: "symmetric", label: "Symmetric", type: "check", when: (s) => s.extent !== "face" },
+      { key: "taper", label: "Taper", type: "number", min: -45, max: 45, step: 1, unit: "°" },
       { key: "op", label: "Operation", type: "seg", options: OPS },
     ],
-    init: (env) => ({ h: 10, symmetric: false, op: "join", face: env.flatFace() }),
+    init: (env) => ({ h: 10, symmetric: false, op: "join", extent: "dist", taper: 0, face: env.flatFace(), toFace: null }),
     write(base, s, env) {
       if (!s.face?.outline) return { wait: "Click a flat face on the model." };
       const body = env.bodyOf(s.face.fid);
       if (!body) return { error: "That face has no call in the code to add to." };
-      return F.extrudeText(base, body, s.face.outline, { h: s.h, mode: s.op, symmetric: s.symmetric, toPlane: env.toPlane(s.face.outline) });
+      let h = s.h, symmetric = s.symmetric;
+      if (s.extent === "face") {
+        if (!s.toFace?.outline) return { wait: "Now click the flat face it should run up to." };
+        const r = F.upToDistance(s.face.outline, s.toFace.outline);
+        if (r.error) return r;
+        if (r.inward !== (s.op === "cut")) return { error: r.inward ? "that face is inside the part, behind this one: only a Cut reaches it" : "that face is out in front of this one: Join or New body reaches it, a Cut goes the other way" };
+        h = r.h; symmetric = false;
+      }
+      return F.extrudeText(base, body, s.face.outline, { h, mode: s.op, symmetric, taper: s.taper || 0, toPlane: env.toPlane(s.face.outline) });
     },
   },
 
@@ -159,6 +169,40 @@ const SPECS = {
       if (s.op === "cut") return F.addTool(base, body, call.text);
       if (s.op === "join") return F.addTool(base, body, call.text, "union");
       return F.newBodyText(base, body, call.text);
+    },
+  },
+
+  primitive: {
+    title: "Primitive",
+    help: "A box, cylinder, cone, sphere or torus. It goes beside the model as a New body; click a face to put it there instead (Join or Cut it into that body).",
+    picks: { kind: "point", label: "On a face", optional: true },
+    fields: [
+      { key: "kind", label: "Shape", type: "select", options: () => F.PRIMITIVES },
+      { key: "w", label: "Width (X)", type: "number", min: 0.1, step: 1, unit: "mm", when: (s) => s.kind === "box" },
+      { key: "d", label: "Depth (Y)", type: "number", min: 0.1, step: 1, unit: "mm", when: (s) => s.kind === "box" },
+      { key: "r", label: "Radius", type: "number", min: 0.1, step: 0.5, unit: "mm", when: (s) => ["cylinder", "cone", "sphere"].includes(s.kind) },
+      { key: "rTop", label: "Top radius", type: "number", min: 0, step: 0.5, unit: "mm", when: (s) => s.kind === "cone" },
+      { key: "R", label: "Ring radius", type: "number", min: 0.2, step: 1, unit: "mm", when: (s) => s.kind === "torus" },
+      { key: "tube", label: "Tube radius", type: "number", min: 0.1, step: 0.5, unit: "mm", when: (s) => s.kind === "torus" },
+      { key: "h", label: "Height", type: "number", min: 0.1, step: 1, unit: "mm", when: (s) => ["box", "cylinder", "cone"].includes(s.kind) },
+      { key: "x", label: "X", type: "number", step: 1, unit: "mm" },
+      { key: "y", label: "Y", type: "number", step: 1, unit: "mm" },
+      { key: "z", label: "Z", type: "number", step: 1, unit: "mm" },
+      { key: "op", label: "Operation", type: "seg", options: [["new", "New body"], ["join", "Join"], ["cut", "Cut"]] },
+    ],
+    init(env) {
+      // beside the model on the floor (or at the origin on an empty plate)
+      const b = env.modelBox();
+      const x = b ? Math.round(b.max[0] + 25) : 0, y = b ? Math.round((b.min[1] + b.max[1]) / 2) : 0;
+      return { kind: "box", w: 20, d: 20, h: 20, r: 10, rTop: 4, R: 12, tube: 3, x, y, z: 0, op: "new", at: null };
+    },
+    write(base, s, env) {
+      const call = F.primitiveCall(s.kind, s, { sink: s.op === "cut" && !!s.at });
+      if (call.error) return call;
+      const fid = s.at?.fid ?? env.sel?.fid;
+      const body = s.op === "new" ? null : fid ? env.bodyOf(fid) : null;
+      if (s.op !== "new" && fid && !body) return { error: "That body has no call in the code." };
+      return F.primitiveText(base, call.text, { op: s.op, body, starter: env.isStarter() ? env.starterText() : null });
     },
   },
 
@@ -274,6 +318,34 @@ const SPECS = {
     write(base, s, env) {
       if (!s.fid) return { wait: "Select a shape first." };
       return F.circularPatternText(base, env.patternTarget(s.fid), { count: s.count, axis: AXES[s.axis], center: [s.cx, s.cy, s.cz], angle: s.angle, join: s.join });
+    },
+  },
+
+  split: {
+    title: "Split body",
+    help: "Cuts the selected body in two along a plane: a world plane at an offset, or a flat face you click. Each half becomes a body of its own.",
+    picks: { kind: "face", flat: true, label: "Plane face", optional: true },
+    fields: [
+      { key: "plane", label: "Plane", type: "seg", options: [["YZ", "YZ"], ["XZ", "XZ"], ["XY", "XY"], ["face", "Face"]] },
+      { key: "at", label: "Offset", type: "number", step: 1, unit: "mm", when: (s) => s.plane !== "face" },
+    ],
+    init(env) {
+      const box = env.selBox();
+      const mid = box ? Math.round(((box.min[2] + box.max[2]) / 2) * 100) / 100 : 0;
+      return { plane: "XY", at: mid, fid: env.sel?.fid ?? null, face: null };
+    },
+    write(base, s, env) {
+      if (!s.fid) return { wait: "Select the body to split first." };
+      const target = env.patternTarget(s.fid);
+      if (!target) return { error: "That body has no call in the code." };
+      let normal, at;
+      if (s.plane === "face") {
+        if (!s.face?.outline) return { wait: "Click the flat face to split along." };
+        normal = s.face.outline.normal; at = normal.reduce((a, v, i) => a + v * s.face.outline.point[i], 0);
+      } else {
+        normal = { YZ: [1, 0, 0], XZ: [0, 1, 0], XY: [0, 0, 1] }[s.plane]; at = s.at;
+      }
+      return F.splitText(base, target, { normal, at });
     },
   },
 
@@ -402,6 +474,14 @@ export function openDialog(id, ctx) {
     },
     toPlane: (outline) => { const pl = F.facePlane(outline); return (p) => worldToPlane(pl, p); },
     flatFace: () => (ctx.sel?.face?.outline ? ctx.sel.face : null),
+    // the whole model's box ({ min, max }), or null on an empty plate
+    modelBox: () => {
+      const b = new THREE.Box3();
+      for (const m of host.modelMeshes()) if (m.isMesh && m.visible) b.expandByObject(m);
+      return b.isEmpty() ? null : { min: b.min.toArray(), max: b.max.toArray() };
+    },
+    isStarter: () => !!host.isStarter?.(),
+    starterText: () => host.starterText?.() ?? "",
     selBox: () => {
       if (!ctx.sel?.fid) return null;
       const b = host.featureBox(ctx.sel.fid);
@@ -502,7 +582,8 @@ export function openDialog(id, ctx) {
     if (f.type === "select") {
       const opts = (typeof f.options === "function" ? f.options(state) : f.options);
       return `<label class="f"><span>${esc(f.label)}</span><select id="${id}" data-k="${f.key}">`
-        + opts.map((o, i) => `<option value="${i}"${String(i) === String(state[f.key]) ? " selected" : ""}>${esc(o.label ?? o)}</option>`).join("")
+        // [value, label] pairs keep their value; anything else is by index
+        + opts.map((o, i) => { const v = Array.isArray(o) ? o[0] : i; return `<option value="${esc(v)}"${String(v) === String(state[f.key]) ? " selected" : ""}>${esc(Array.isArray(o) ? o[1] : o.label ?? o)}</option>`; }).join("")
         + `</select></label>`;
     }
     return `<label class="f"><span>${esc(f.label)}</span><span class="seg" role="group" data-k="${f.key}">`
@@ -512,7 +593,8 @@ export function openDialog(id, ctx) {
     const p = spec.picks;
     if (!p) return "";
     let what = "";
-    if (p.kind === "face") what = state.face ? `<b>${esc(state.face.name)}</b>` : "click a face";
+    if (p.kind === "face") what = (state.face ? `<b>${esc(state.face.name)}</b>` : "click a face")
+      + (id === "extrude" && state.extent === "face" ? `<br><span class="k">Up to:</span> ${state.toFace ? `<b>${esc(state.toFace.name)}</b>` : state.face ? "click the face to stop at" : "then the face to stop at"}` : "");
     else if (p.kind === "point") what = state.at ? `<b>${state.at.point.map((v) => v.toFixed(1)).join(", ")}</b> on ${esc(state.at.name)}` : "click on a face";
     else {
       const list = state[p.kind] || [];
@@ -583,7 +665,8 @@ export function openDialog(id, ctx) {
       if (!Number.isFinite(v)) return;
       state[k] = v;
     } else if (f.type === "check") { state[k] = e.target.checked; render(); }
-    else if (f.type === "select") state[k] = e.target.value;
+    // a select can change which fields show (a primitive's shape): redraw
+    else if (f.type === "select") { state[k] = e.target.value; render(); }
     schedule();
   });
   box.addEventListener("click", (e) => {
@@ -675,10 +758,16 @@ export function openDialog(id, ctx) {
     }
     if (p.kind === "face") {
       if (p.flat && !fp.outline) { setStatus("err", `${esc(fp.name)} is not flat. Pick a flat face.`); render(); return true; }
-      state.face = fp;
-      if (state.plane && state.plane !== "face" && id === "mirror") state.plane = "face";
+      // Up to face: with the face to extrude picked, the next click is where it stops
+      if (id === "extrude" && state.extent === "face" && state.face && fp.name !== state.face.name) state.toFace = fp;
+      else { state.face = fp; if (id === "extrude") state.toFace = null; }
+      if (state.plane && state.plane !== "face" && (id === "mirror" || id === "split")) state.plane = "face";
     } else if (p.kind === "point") {
       state.at = fp;
+      if (id === "primitive") {
+        [state.x, state.y, state.z] = fp.point.map((v) => Math.round(v * 10) / 10);
+        if (state.op === "new") state.op = "join";
+      }
     } else if (p.kind === "faces") {
       const i = state.faces.findIndex((f) => f.name === fp.name);
       if (i >= 0) state.faces.splice(i, 1);

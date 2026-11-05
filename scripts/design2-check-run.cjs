@@ -110,7 +110,6 @@ module.exports = app.whenReady().then(async () => {
     let d = await settle();
     check("two edges picked, by name", d.state.edges.length === 2 && d.state.edges.every((e) => /\|/.test(e.name)), JSON.stringify(d.state.edges));
     check("the preview wrote one fillet() around the body and built", d.ok === true && /^return fillet\(\{ r: 2, edges: \["P\.CU1_[A-Z]+\|P\.CU1_[A-Z]+\[0\]", "P\.CU1_[A-Z]+\|P\.CU1_[A-Z]+\[0\]"\] \}, difference\(/m.test(d.text), d.text);
-    check("…and the timeline shows the Fillet step", await run(`[...document.querySelectorAll(".dt-step")].some((b) => /Fillet/.test(b.textContent))`));
     await set("amount", 3);
     d = await settle();
     check("changing the radius rebuilds the preview", /r: 3,/.test(d.text) && d.ok === true, d.text);
@@ -118,6 +117,9 @@ module.exports = app.whenReady().then(async () => {
     await okBtn();
     const afterFillet = await codeText();
     check("OK keeps it: the code has the fillet", /fillet\(\{ r: 3, edges: \[/.test(afterFillet) && afterFillet !== before);
+    await wait(800);
+    const lit = await run(`document.querySelector(".dt-step.on")?.textContent ?? ""`);
+    check("…and the timeline (the edit history) has a Fillet step, lit as where you are now", /Fillet/.test(lit), lit);
     await run(`document.getElementById("undo-btn").click()`);
     await wait(1500);
     check("one Ctrl+Z takes it back exactly", (await codeText()) === before);
@@ -276,7 +278,9 @@ module.exports = app.whenReady().then(async () => {
     await run(`document.querySelector('#dz-bar [data-tool="scale"]').click()`);
     await wait(500);
     d = await run(`brepscript.design()`);
-    check("scale mode: the centre dot only (uniform)", d.gizmoMode === "scale" && d.gizmoHandles.scale.join() === "XYZ", JSON.stringify(d.gizmoHandles));
+    check("scale mode: the centre dot (uniform) plus a handle per axis, no plane squares", d.gizmoMode === "scale"
+      && d.gizmoHandles.scale.includes("XYZ") && ["X", "Y", "Z"].every((a) => d.gizmoHandles.scale.includes(a))
+      && d.gizmoHandles.scale.every((n) => ["X", "Y", "Z", "XYZ"].includes(n)), JSON.stringify(d.gizmoHandles));
     await shot("15-scale-gizmo");
     await run(`document.querySelector('#dz-bar [data-tool="move"]').click()`);
 
@@ -289,6 +293,34 @@ module.exports = app.whenReady().then(async () => {
     check("…on the Fillet that failed, not on the Box before it", await run(`/Fillet/.test(document.querySelector(".dt-step.fail")?.textContent || "")`),
       await run(`document.querySelector(".dt-step.fail")?.textContent`));
     await shot("16-failed-step");
+
+    say("\nextrude up to a face, with a taper; split a body");
+    await setCode(`return group(cube([20, 20, 10]), translate([30, 0, 0], cube([10, 10, 25])));`);
+    await open("extrude");
+    await pickWorld([10, 10, 10]);                     // the low block's top
+    await run(`document.querySelector('#dz-dlg .seg[data-k="extent"] button[data-v="face"]').click()`);
+    d = await settle();
+    check("Up to face: it waits for the face to stop at", /face it should run up to/.test(d.status), d.status);
+    await pickWorld([35, 5, 25]);                      // the tall block's top
+    d = await settle();
+    check("…the tall block's top, 15 above: an extrude 15 long", d.ok === true && /linearExtrude\(\{ h: 15, on:/.test(d.text), d.text);
+    await set("taper", 10);
+    d = await settle();
+    check("…with a 10° taper: the square shrinks evenly (scale), and builds", d.ok === true && /h: 15, scale: 0\.7\d+, on: \{ origin: \[10, 10, 10\]/.test(d.text), d.text);
+    await shot("18-up-to-face-taper");
+    await run(`document.querySelector('#dz-dlg .seg[data-k="op"] button[data-v="cut"]').click()`);
+    d = await settle();
+    check("…as a Cut it is refused: that face is out in front", d.ok !== true && /in front/.test(d.status), d.status);
+    await run(`brepscript.featureDialog().cancel()`);
+    await wait(1500);
+    await setCode(`return cube([20, 20, 10]);`);
+    await selectRow("cube");
+    await open("split");
+    d = await settle();
+    check("Split: across XY at the middle (z 5) by default", d.ok === true && /splitBody\(\{ normal: \[0, 0, 1\], at: 5 \}, cube/.test(d.text), d.text);
+    await shot("19-split");
+    await okBtn();
+    check("…OK: two bodies", /2 solids/.test(await run(`document.getElementById("status").textContent`)), await run(`document.getElementById("status").textContent`));
 
     say("\nCode mode");
     await setCode(PLATE);

@@ -13,6 +13,7 @@
 //   a feature on a SHAPE (hollow, rotate, scale, a pattern or mirror of a
 //   cutter) wraps that call and the transforms around it.
 
+import { planeToWorld } from "../../src/dsl.js";
 import { parseCode, offsetAt, callAt, runLineOffset } from "../../src/codemap.js";
 import { soleChild } from "../design-move.js";
 
@@ -361,28 +362,83 @@ export function polygonText(loop, toPlane) {
 // extrudeText(text, body, outline, { h, mode, symmetric, toPlane })
 //   mode: "join" | "cut" | "new". A circular face extrudes as a cylinder
 //   (round, so exact), any other flat face as its outline on its own plane.
-export function extrudeCall(outline, { h, symmetric = false, cut = false, toPlane }) {
+export function extrudeCall(outline, { h, symmetric = false, cut = false, toPlane, taper = 0 }) {
   const plane = facePlane(outline);
   const circ = circleOf(outline.loops[0]);
   const n = plane.normal;
+  // a taper (draft, degrees: positive narrows as it goes) is exact on a round
+  // face (a cone) and on an outline whose sides are all the same distance from
+  // its middle (a square, a regular polygon): shrunk evenly about that middle,
+  // every side moves in by the same amount, which is what a draft is
+  const t = Math.tan((taper * Math.PI) / 180);
+  if (taper && (symmetric || cut)) return { error: "a taper goes one way: turn off Symmetric, and taper a cut from its sketch instead" };
   if (circ && Math.abs(Math.abs(n[2]) - 1) < 1e-9) {
-    // up or down along Z: a plain cylinder, placed
+    // up or down along Z: a plain cylinder (or a cone), placed
     const z = circ.center[2];
     let lo;
     if (symmetric) lo = z - h / 2;
     else if (cut) lo = n[2] > 0 ? z - h : z - 0.5;            // into the face, 0.5 proud
     else lo = n[2] > 0 ? z : z - h;
     const height = cut && !symmetric ? h + 0.5 : h;
+    if (taper) {
+      const r2 = circ.r - h * t;
+      if (!(r2 > 0.01)) return { error: `a ${taper}° taper over ${round(h)} mm closes a ${round(circ.r * 2)} mm circle to a point: less angle, or less distance` };
+      // the narrow end is away from the face
+      const [r1, rTop] = n[2] > 0 ? [circ.r, r2] : [r2, circ.r];
+      return `translate(${vec([circ.center[0], circ.center[1], lo])}, cylinder({ r1: ${round(r1)}, r2: ${round(rTop)}, h: ${round(height)} }))`;
+    }
     return `translate(${vec([circ.center[0], circ.center[1], lo])}, cylinder({ r: ${round(circ.r)}, h: ${round(height)} }))`;
   }
   const opts = [`h: ${round(h)}`];
   if (symmetric) opts.push("center: true");
   else if (cut) opts.push("reverse: true", "proud: 0.5");
+  if (taper) {
+    const loop = outline.loops[0].map(toPlane);
+    const inr = evenSides(loop);
+    if (!inr) return { error: "a taper is exact only on a round face, or a shape whose sides are all the same distance from its middle (a square, a regular polygon); this outline isn't one" };
+    const k = (inr.a - h * t) / inr.a;
+    if (!(k > 0.01)) return { error: `a ${taper}° taper over ${round(h)} mm closes this shape to a point: less angle, or less distance` };
+    opts.push(`scale: ${round(k, 10000)}`);
+    // drawn about its middle, so it shrinks toward it
+    const c3 = planeToWorld(plane, inr.c).map((x) => round(x));
+    const pl = { origin: c3, normal: plane.normal };
+    return `linearExtrude({ ${opts.join(", ")}, on: ${onText(pl)} }, polygon([${loop.map((p) => vec([p[0] - inr.c[0], p[1] - inr.c[1]])).join(", ")}]))`;
+  }
   opts.push(`on: ${onText(plane)}`);
   return `linearExtrude({ ${opts.join(", ")} }, ${polygonText(outline.loops[0], toPlane)})`;
 }
-export function extrudeText(text, body, outline, { h, mode = "join", symmetric = false, toPlane }) {
-  const call = extrudeCall(outline, { h, symmetric, cut: mode === "cut", toPlane });
+// The middle a polygon's sides are all equally far from (its incircle's
+// centre, found from the vertex average for the shapes this is for), and
+// that distance; null when the sides are not all the same distance (1%).
+function evenSides(loop) {
+  const n = loop.length;
+  if (n < 3) return null;
+  const c = [loop.reduce((a, p) => a + p[0], 0) / n, loop.reduce((a, p) => a + p[1], 0) / n];
+  const ds = loop.map((p, i) => {
+    const q = loop[(i + 1) % n], d = [q[0] - p[0], q[1] - p[1]], L = Math.hypot(...d) || 1;
+    return Math.abs((c[0] - p[0]) * d[1] - (c[1] - p[1]) * d[0]) / L;
+  });
+  const a = ds.reduce((x, y) => x + y, 0) / n;
+  return a > 1e-6 && ds.every((d) => Math.abs(d - a) <= 0.01 * a) ? { c, a } : null;
+}
+// upTo(from, to): how far a face's extrude runs to reach another flat face
+// parallel to it -> { h, inward } (inward: the target is behind the face, so
+// only a cut reaches it) | { error }
+export function upToDistance(from, to) {
+  const n = from.normal, m = to.normal;
+  const dot = n[0] * m[0] + n[1] * m[1] + n[2] * m[2];
+  if (Math.abs(Math.abs(dot) - 1) > 1e-4) return { error: "up to a face works when that face is parallel to the one you're extruding" };
+  const d = (to.point[0] - from.point[0]) * n[0] + (to.point[1] - from.point[1]) * n[1] + (to.point[2] - from.point[2]) * n[2];
+  if (Math.abs(d) < 1e-6) return { error: "those two faces are in the same plane" };
+  return { h: Math.abs(d), inward: d < 0 };
+}
+// splitText(text, target, { normal, at }) -> the target wrapped in splitBody(…)
+export function splitText(text, target, { normal = [0, 0, 1], at = 0 }) {
+  return wrapText(text, target, `splitBody({ normal: ${vec(normal, 10000)}, at: ${round(at)} }, `);
+}
+export function extrudeText(text, body, outline, { h, mode = "join", symmetric = false, toPlane, taper = 0 }) {
+  const call = extrudeCall(outline, { h, symmetric, cut: mode === "cut", toPlane, taper });
+  if (call.error) return call;
   if (mode === "cut") return addTool(text, body, call);
   if (mode === "join") return addTool(text, body, call, "union");
   return newBodyText(text, body, call);
@@ -444,4 +500,68 @@ export function pressPullText(text, { body, outline, target = null, sign = 1, ax
   if (!outline) return { next: text, how: "none" };
   const r = extrudeText(text, body, outline, { h: Math.abs(step), mode: step > 0 ? "join" : "cut", toPlane });
   return { next: r.next, how: step > 0 ? "join" : "cut" };
+}
+
+// ------------------------------------------------------------- primitives
+//
+// primitiveCall(kind, s) -> the call text for a box, cylinder, cone, sphere
+// or torus. (s.x, s.y, s.z) is where its base sits: the middle of its bottom
+// (a sphere or torus rests on that point); with sink (a cut placed on a
+// face) its top is there instead, so it goes down into the face.
+export const PRIMITIVES = [["box", "Box"], ["cylinder", "Cylinder"], ["cone", "Cone"], ["sphere", "Sphere"], ["torus", "Torus"]];
+export function primitiveCall(kind, s, { sink = false } = {}) {
+  const r = (v) => round(v);
+  const pos = (x, y, z) => (x || y || z ? (call) => `translate(${vec([x, y, z])}, ${call})` : (call) => call);
+  const tall = kind === "sphere" ? 2 * s.r : kind === "torus" ? 2 * s.tube : s.h;
+  if (!(tall > 0)) return { error: "sizes must be more than 0" };
+  const zb = sink ? s.z - tall : s.z;
+  switch (kind) {
+    case "box":
+      if (!(s.w > 0 && s.d > 0)) return { error: "sizes must be more than 0" };
+      return { text: pos(s.x - s.w / 2, s.y - s.d / 2, zb)(`cube(${vec([s.w, s.d, s.h])})`) };
+    case "cylinder":
+      if (!(s.r > 0)) return { error: "the radius must be more than 0" };
+      return { text: pos(s.x, s.y, zb)(`cylinder({ r: ${r(s.r)}, h: ${r(s.h)} })`) };
+    case "cone":
+      if (!(s.r > 0) || !(s.rTop >= 0)) return { error: "the radii must be 0 or more (the bottom more than 0)" };
+      return { text: pos(s.x, s.y, zb)(`cylinder({ r1: ${r(s.r)}, r2: ${r(s.rTop)}, h: ${r(s.h)} })`) };
+    case "sphere":
+      if (!(s.r > 0)) return { error: "the radius must be more than 0" };
+      return { text: pos(s.x, s.y, zb + s.r)(`sphere({ r: ${r(s.r)} })`) };
+    case "torus":
+      if (!(s.R > s.tube && s.tube > 0)) return { error: "the ring radius must be more than the tube's" };
+      return { text: pos(s.x, s.y, zb + s.tube)(`torus({ r: ${r(s.R)}, tube: ${r(s.tube)} })`) };
+  }
+  return { error: `no primitive called ${kind}` };
+}
+
+// The top-level return's expression ({ start, end }), or null.
+export function returnSpan(text) {
+  const m = parseCode(text);
+  if (!m.ok) return null;
+  const re = /(^|\n)[ \t]*return\s+/g;
+  let last = null, k;
+  while ((k = re.exec(text))) last = k;
+  if (!last) return null;
+  const at = last.index + last[0].length;
+  const c = m.calls.find((x) => x.start === at);
+  return c ? { start: c.start, end: c.end } : null;
+}
+
+// primitiveText(text, call, { op, body, starter }) -> { next } : a New body
+// beside the model (or the model, when there is none, or in place of the
+// untouched starter cube), else joined to / cut from body.
+export function primitiveText(text, call, { op = "new", body = null, starter = null } = {}) {
+  if (op === "join" || op === "cut") {
+    if (!body) return { wait: `Select the body to ${op === "join" ? "join it to" : "cut it from"} (or click a face of it).` };
+    return op === "cut" ? addTool(text, body, call) : addTool(text, body, call, "union");
+  }
+  const st = starter?.trim();
+  if (st && text.trimEnd().endsWith(st)) {
+    const head = text.slice(0, text.trimEnd().length - st.length).replace(/\s*$/, "");
+    return { next: `${head}${head ? "\n" : ""}return ${call};\n` };
+  }
+  const ret = returnSpan(text);
+  if (!ret) return { next: text.replace(/\s*$/, "") + `${text.trim() ? "\n" : ""}return ${call};\n` };
+  return newBodyText(text, ret, call);
 }

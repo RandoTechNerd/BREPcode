@@ -298,7 +298,9 @@ console.log("\nthe viewer: face names on meshes, the switch, the wiring\n");
   check("evaluated code carries a sourceURL so its frames are recognisable", /sourceURL=\$\{codemap\.SITE_URL\}/.test(html));
   check("the vocabulary is wrapped by tagCall", /values = names\.map\(\(n\) => dsl\.tagCall\(vocab\[n\]\)\)/.test(html));
   check("the feature map tries exact sites first", /function buildFeatureMap[\s\S]{0,1600}codemap\.mapTraceSites/.test(html));
-  check("right-click colour writes to the code", /codemap\.colorizeAt\(/.test(html));
+  // colour as colorize("#…", …), a material as finish("…", …): one writer
+  check("right-click colour writes to the code", /codemap\.wrapAt\(/.test(html) && /queueLookToCode\(fid, "colorize", hex\)/.test(html));
+  check("…and so does a right-click material", /queueLookToCode\(fid, "finish", name \|\| null\)/.test(html));
   check("the Code | Design switch is installed", /initModeSwitch\(\{ (start: startMode, )?onChange/.test(html));
   const design = readFileSync(new URL("../viewer/design.js", import.meta.url), "utf8");
   check("the app opens in Code unless the link asks for mode=design",

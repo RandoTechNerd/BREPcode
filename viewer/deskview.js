@@ -88,7 +88,7 @@ const CSS = `
   .ar-steps { margin: 0; padding-left: 20px; color: var(--muted, #8ea0c0); font-size: 13px; }
   .ar-steps li + li { margin-top: 3px; }
   .ar-link { display: flex; gap: 8px; }
-  .ar-link input { flex: 1; min-width: 0; font: 11px ui-monospace, monospace; background: var(--panel, #121826);
+  .ar-link input { flex: 1; min-width: 0; font: 11px ui-monospace, monospace; background: var(--input-bg, #121826);
     color: var(--muted, #8ea0c0); border: 1px solid var(--border, #26314a); border-radius: 8px; padding: 6px 8px; }
   .ar-link button { flex: none; background: none; border: 1px solid var(--border, #26314a); color: var(--text, #dfe6f3);
     border-radius: 8px; padding: 0 12px; font: inherit; font-size: 13px; cursor: pointer; }
@@ -97,7 +97,7 @@ const CSS = `
   .ar-short, .ar-done { display: flex; flex-direction: column; gap: 12px; }
   #ar [hidden] { display: none !important; }
   .ar-name { display: flex; gap: 8px; }
-  .ar-name input { flex: 1; min-width: 0; font: 14px ui-monospace, monospace; background: var(--panel, #121826);
+  .ar-name input { flex: 1; min-width: 0; font: 14px ui-monospace, monospace; background: var(--input-bg, #121826);
     color: var(--text, #dfe6f3); border: 1px solid var(--border, #26314a); border-radius: 10px; padding: 9px 10px; }
   .ar-name input:focus { outline: none; border-color: var(--accent, #1c66e5); }
   .ar-make { flex: none; border: 0; border-radius: 10px; background: var(--accent, #1c66e5); color: #fff;

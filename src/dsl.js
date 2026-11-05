@@ -1668,6 +1668,24 @@ export const union = op("UNION");
 export const difference = op("SUBTRACT");
 export const intersection = op("INTERSECT");
 
+// splitBody({ normal, at, size }, shape): the shape cut in two by a plane (Fusion's
+// Split Body), as a group of the two halves: the part on the normal's side of
+// the plane (normal . p >= at) and the rest. Built from one big block on that
+// side (size mm across, 2 m by default), intersected and subtracted, so it
+// stays exact. Each half is a body of its own (move it, explode it, export it).
+export function splitBody(opts, ...children) {
+  const kids = collect(children);
+  if (kids.length !== 1) throw new TypeError("splitBody() takes one shape: splitBody({ normal: [0, 0, 1], at: 5 }, shape)");
+  const n = new Vector3(...(opts?.normal ?? [0, 0, 1]));
+  if (n.length() < 1e-9) throw new TypeError("splitBody(): normal must not be [0, 0, 0]");
+  n.normalize();
+  const at = Number(opts?.at ?? 0), L = Number(opts?.size ?? 2000);
+  if (!Number.isFinite(at) || !(L > 0)) throw new TypeError("splitBody(): at is a number (mm along the normal), size a positive number");
+  const block = linearExtrude({ h: L, on: { origin: [n.x * at, n.y * at, n.z * at], normal: [n.x, n.y, n.z] } },
+    polygon([[-L / 2, -L / 2], [L / 2, -L / 2], [L / 2, L / 2], [-L / 2, L / 2]]));
+  return group(intersection(kids[0], block), difference(kids[0], block));
+}
+
 // ---------------------------------------------------------------------- hull
 //
 // Convex hull of one or more solids — the smallest convex shape that wraps them

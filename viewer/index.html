@@ -668,6 +668,9 @@
       border: 1px solid var(--border, #26314a); box-shadow: 0 4px 14px rgba(0,0,0,.35);
       transition: right .15s ease, border-color .15s ease;
     }
+    /* light theme has no --panel: it fell back to the dark navy, with the
+       dark icon colour on top of it */
+    html.theme-light #ar-top { background: var(--card); color: var(--text2); box-shadow: 0 4px 14px rgba(40,70,140,.22); }
     #ar-top:hover { border-color: var(--accent, #1c66e5); }
     #ar-top:active { transform: scale(.95); }
     #cheat-btn, #about-btn, #hist2-btn, #chat-btn, #dz-time-btn {
@@ -760,15 +763,24 @@
     .card.floating { position: fixed; margin: 0; }
     /* resize handle in the bottom-right corner of every card */
     .card { position: relative; }
+    /* The mark stays a small 16px triangle in the corner; what you can grab
+       is a 26px square round it, and it lights up when the pointer is on it
+       (a 16px target in the very corner was easy to miss). */
     .card > .resize-grip {
-      position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
+      --grip: var(--muted3);
+      position: absolute; right: 0; bottom: 0; width: 26px; height: 26px;
       cursor: nwse-resize; z-index: 2; touch-action: none;
       background:
-        linear-gradient(135deg, transparent 50%, var(--muted3) 50%, var(--muted3) 62%, transparent 62%,
-        transparent 74%, var(--muted3) 74%, var(--muted3) 86%, transparent 86%);
-      opacity: .6; border-bottom-right-radius: 12px;
+        linear-gradient(135deg, transparent 50%, var(--grip) 50%, var(--grip) 62%, transparent 62%,
+        transparent 74%, var(--grip) 74%, var(--grip) 86%, transparent 86%)
+        right 3px bottom 3px / 16px 16px no-repeat;
+      opacity: .6; border-radius: 10px 0 12px 0;
+      transition: opacity .12s ease, background-color .12s ease;
     }
-    .card > .resize-grip:hover { opacity: 1; }
+    .card > .resize-grip:hover, .card > .resize-grip:active {
+      --grip: var(--accent, #5b8cff); opacity: 1;
+      background-color: color-mix(in srgb, var(--accent, #5b8cff) 16%, transparent);
+    }
     .card.resized > header { cursor: grab; }
     .card > header span.sub { color: var(--muted); font-size: 12px; margin-left: 8px; font-weight: 400; }
 
@@ -1214,8 +1226,18 @@
     #status .pbar { position: absolute; left: 0; right: 0; bottom: 0; }
     .pbar { height: 3px; overflow: hidden; background: color-mix(in srgb, var(--busy) 18%, transparent); }
     .pbar[hidden] { display: none; }
-    .pbar i { display: block; height: 100%; width: 0; background: var(--busy); transition: width .3s linear; }
-    .pbar.slide i { width: 28%; transition: none; animation: pbar-slide 1.25s ease-in-out infinite; }
+    /* the site's rainbow, laid across the whole track so a part-full bar
+       shows the start of it, not a squashed copy */
+    .pbar { --pbar-w: 100%; }
+    .pbar i { display: block; height: 100%; width: 0; transition: width .3s linear;
+      background: linear-gradient(90deg, #ff5f6d, #ffb347 18%, #ffe66d 34%, #5cf2a0 52%, #4fc3ff 70%, #8a7dff 86%, #e86bff);
+      background-size: var(--pbar-w) 100%; }
+    /* no fraction yet: the whole bar, the rainbow flowing along it (the
+       gradient runs round to its first colour, so the loop has no seam) */
+    .pbar.slide i { width: 100%; transition: none; animation: pbar-flow 2.2s linear infinite;
+      background-image: linear-gradient(90deg, #ff5f6d, #ffb347, #ffe66d, #5cf2a0, #4fc3ff, #8a7dff, #e86bff, #ff5f6d);
+      background-size: 200% 100%; }
+    @keyframes pbar-flow { from { background-position: 0% 0; } to { background-position: 200% 0; } }
     .pbar.fail i { background: var(--err); }
     @keyframes pbar-slide { from { transform: translateX(-110%); } to { transform: translateX(370%); } }
     .ptime { flex: none; opacity: .7; font-variant-numeric: tabular-nums; }
@@ -1227,6 +1249,23 @@
       box-shadow: 0 10px 32px rgba(0, 0, 0, .45); font-size: 12.5px;
     }
     #pcard[hidden] { display: none; }
+    /* While it runs the card is no card: a rainbow bar and the time beside
+       it, each with its own soft shadow, floating over the model. What it is
+       doing is still read out (role=status) and shown on hover. A failure
+       is the full card, with the reason and its buttons. */
+    #pcard.mini { width: auto; background: none; border: 0; box-shadow: none; overflow: visible;
+      display: flex; align-items: center; gap: 10px; }
+    #pcard.mini[hidden] { display: none; }
+    #pcard.mini .pc-row { order: 2; padding: 0; flex-wrap: nowrap; }
+    #pcard.mini .pc-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    #pcard.mini .pbar { order: 1; --pbar-w: min(260px, 56vw); width: var(--pbar-w); height: 6px; border-radius: 999px;
+      background: rgba(140, 155, 190, .22); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+    #pcard.mini .pbar i { border-radius: 999px; }
+    #pcard.mini .pc-time { opacity: 1; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+      background: var(--card); color: var(--text); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); }
+    #pcard.mini .pc-time:empty { display: none; }
+    html.theme-light #pcard.mini .pbar { background: rgba(60, 80, 120, .14); box-shadow: 0 3px 10px rgba(40, 70, 140, .25); }
+    html.theme-light #pcard.mini .pc-time { box-shadow: 0 3px 10px rgba(40, 70, 140, .22); }
     #pcard.failed { color: var(--err); }
     #pcard .pc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 12px; }
     #pcard .pc-text { flex: 1; min-width: 0; line-height: 1.35; }
@@ -1238,7 +1277,7 @@
       border: 1px solid currentColor; border-radius: 6px; padding: 1px 8px; opacity: .8; }
     #pcard button:hover { opacity: 1; }
     #pcard button[hidden] { display: none; }
-    @media (prefers-reduced-motion: reduce) { .pbar.slide i { animation-duration: 3s; } }
+    @media (prefers-reduced-motion: reduce) { .pbar.slide i { animation-duration: 6s; } }
 
     /* The ring spinner grew up into the build cube (see .bcube below) — same
        compositor guarantee, more story. #spin is just its slot now. The cube
@@ -2593,7 +2632,7 @@
        that does not need aiming; menu rows get taller for the same reason. */
     @media (pointer: coarse) {
       .hist-btn { min-width: 38px; min-height: 38px; }
-      .card > .resize-grip { width: 26px; height: 26px; }
+      .card > .resize-grip { width: 34px; height: 34px; }
       #tools-menu button, #more-menu button, #shape-menu .sm-item {
         padding-top: 10px; padding-bottom: 10px;
       }
@@ -5389,9 +5428,21 @@
       camera.up.addScaledVector(look, -camera.up.dot(look));
       if (camera.up.lengthSq() < 1e-12) camera.up.set(0, 0, 1).addScaledVector(look, -look.z);
       camera.up.normalize();
-      // exactly at a pole up.z is 0: keep the last known sign
-      if (Math.abs(camera.up.z) > 1e-6) spinSign = camera.up.z > 0 ? 1 : -1;
+      // at (or a hair off) a pole up.z is ~0 and its sign is noise: keep the
+      // last known one until the view is clearly one way up
+      if (Math.abs(camera.up.z) > 0.02) spinSign = camera.up.z > 0 ? 1 : -1;
       spinUp.set(0, 0, spinSign);
+      // NO SWIVEL AT THE TOP. Looking (nearly) straight down or up, a turn
+      // about world Z only spins the picture flat on the screen: the part
+      // swivelled clockwise under a sideways drag instead of turning. So as
+      // the view nears a pole the sideways axis slides from world Z to the
+      // screen's own vertical (camera.up), and the drag tumbles the part
+      // round as it does from the side. Level views are the turntable as
+      // before; the blend runs from 55° to 80° of tilt.
+      const steep = Math.abs(look.z);
+      const w0 = Math.min(1, Math.max(0, (steep - 0.82) / (0.985 - 0.82)));
+      const w = w0 * w0 * (3 - 2 * w0);
+      if (w > 0) spinUp.multiplyScalar(1 - w).addScaledVector(camera.up, w).normalize();
       turn(spinUp, -dx * k);
       // tilt about the camera's own right-hand axis, with no clamp
       look.copy(controls.target).sub(camera.position).normalize();
@@ -5399,6 +5450,16 @@
       if (right.lengthSq() > 1e-9 && dy) {
         right.normalize();
         turn(right, -dy * k);
+      }
+      // ...and level again: a tumble near the top leaves the picture rolled
+      // (world Z no longer straight up the screen). Away from the pole the up
+      // vector eases back to world Z as it was (the same sign, so a view
+      // rolled over the top stays the way up it is); right at the pole,
+      // where "up" has no direction to level to, it is left alone.
+      if (w < 1) {
+        look.copy(controls.target).sub(camera.position).normalize();
+        const level = new THREE.Vector3(0, 0, spinSign).addScaledVector(look, -look.z * spinSign);
+        if (level.lengthSq() > 1e-6) camera.up.lerp(level.normalize(), 1 - w);
       }
       camera.up.normalize();
       controls.update();
@@ -6335,6 +6396,12 @@
       // gets a {value} of its own here and stops following.
       kind: null,
     });
+    // A piece with its own colour (colorize() or the shape menu) under a
+    // model-wide spool: it keeps the spool's flake and sparkle (the same live
+    // uniform objects, so a spool change reaches it), but not its gradient,
+    // which would paint the spool's colours over the piece's own. Never
+    // filled: fillFxBundle only ever runs on a finish's own bundle.
+    const colourFx = { ...sharedFx, grad: { value: 0 }, kind: null };
     // One filler for both paths, so a per-part spool and the model-wide one
     // can never drift into looking different for the same filament.
     function fillFxBundle(bundle, fx, sparkle, lo, hi) {
@@ -6373,12 +6440,15 @@
         uFxSparkle: sharedFx.sparkle,
       });
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;\nvarying vec3 vFxNormalW;")
-        // WORLD position, not object position: the gradient runs bottom-to-top
-        // through the finished part, and a solid that was translate()d has an
-        // object origin nowhere near the bed.
+        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;\nvarying vec3 vFxHome;\nvarying vec3 vFxNormalW;")
+        // The gradient runs bottom-to-top through the finished part. A built
+        // mesh's own coordinates ARE the bed's (translate() is baked into the
+        // geometry; the mesh itself sits at the origin), so vFxHome is the
+        // as-built place: Explode or a drag preview moves the mesh, and its
+        // gradient and flake go with it instead of sliding through it.
+        // vFxWorld stays for the view direction.
         .replace("#include <begin_vertex>",
-          "#include <begin_vertex>\nvTexPos = position;\nvFxWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;"
+          "#include <begin_vertex>\nvTexPos = position;\nvFxWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvFxHome = transformed;"
           // the way the surface faces in the WORLD, for tri-colour filament
           + "\nvFxNormalW = normalize(mat3(modelMatrix) * objectNormal);");
 
@@ -6438,6 +6508,9 @@
         uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow, uFxSparkle;
         uniform vec3 uFxFlakeC;
         varying vec3 vFxWorld;
+        // where the point is on the part as built (its own coordinates): a
+        // part moved by Explode or a drag keeps its gradient and its flake
+        varying vec3 vFxHome;
         varying vec3 vFxNormalW;
 
         // Tri-colour (coextruded) filament: the colour is the side of the
@@ -6447,7 +6520,7 @@
         // the part's centre line instead, so a lid shows all three in wedges.
         vec3 fxTri() {
           vec3 n = normalize(vFxNormalW);
-          vec2 d = length(n.xy) > 0.25 ? n.xy : vFxWorld.xy;
+          vec2 d = length(n.xy) > 0.25 ? n.xy : vFxHome.xy;
           float u = fract(atan(d.y, d.x) / 6.28318 + 1.0) * 3.0;
           float k = floor(u), f = u - k;
           vec3 a = k < 0.5 ? uFxGradA : k < 1.5 ? uFxGradB : uFxGradC;
@@ -6461,7 +6534,7 @@
         // to three by fxFor(), so there is nothing to branch on.
         vec3 fxGradient() {
           float span = max(uFxHi - uFxLo, 0.0001);
-          float u = clamp((vFxWorld.z - uFxLo) / span, 0.0, 1.0);
+          float u = clamp((vFxHome.z - uFxLo) / span, 0.0, 1.0);
           return u < 0.5 ? mix(uFxGradA, uFxGradB, u * 2.0)
                          : mix(uFxGradB, uFxGradC, (u - 0.5) * 2.0);
         }
@@ -6543,7 +6616,7 @@
                           float cover, float sharp, float gain, float seed) {
           // where the view ray is, depth mm under the surface
           float t = depth / max(dot(Rw, -Nw), 0.25);
-          vec3 Q = (vFxWorld + Rw * t) * freq + seed;
+          vec3 Q = (vFxHome + Rw * t) * freq + seed;
           vec3 cell = floor(Q);
           if (tHash(cell) > cover) return vec3(0.0);
           // tilt: mostly along the surface (flakes lie in the flow), but each
@@ -6810,8 +6883,15 @@
 
     // Named material -> Material-panel preset, or null. Case-insensitive because
     // finish("titanium") and the menu's "Titanium" have to be the same thing.
-    const presetFor = (name) => MATERIAL_PRESETS.find(
-      (x) => x.name.toLowerCase() === String(name ?? "").trim().toLowerCase()) || null;
+    // A few everyday spellings land on the preset too: finish("aluminium"),
+    // finish("oak"), finish("carbon fibre"), finish("stainless steel").
+    const PRESET_ALIAS = { aluminium: "aluminum", oak: "oak wood", "carbon fibre": "carbon fiber",
+      "stainless steel": "steel", stainless: "steel", "glow": "glow in the dark", wood: "oak wood" };
+    const presetFor = (name) => {
+      const n = String(name ?? "").trim().toLowerCase();
+      const want = PRESET_ALIAS[n] ?? n;
+      return MATERIAL_PRESETS.find((x) => x.name.toLowerCase() === want) || null;
+    };
 
     function matForFeature(fid) {
       const c = featureColors[fid] ?? codeColors[fid];   // a manual override beats the code's colour
@@ -6832,7 +6912,7 @@
         // be read by nothing. An explicit pattern wins over the preset's own.
         const patK = pat ?? (fin ? presetFor(fin)?.texture ?? null : null);
         if (bundle && patK != null) bundle.kind = { value: patK };
-        m = makeSolidMat(c || (cl != null ? "#cfe6ef" : solidMaterial.color.clone()), bundle);
+        m = makeSolidMat(c || (cl != null ? "#cfe6ef" : solidMaterial.color.clone()), bundle ?? (c ? colourFx : null));
         m.userData.codeGlow = g || null;   // survives panel re-syncs (see syncMatProps)
         m.userData.codeClear = cl ?? null;
         m.userData.finish = fin || null;
@@ -7334,6 +7414,12 @@
 
     const pct = (v) => v / 100;
     function applyMaterial() {
+      try { applyMaterialNow(); } finally {
+        // the cut view's clipped copies follow the change
+        try { if (sectionSpec) sectionView(sectionSpec); } catch { /* before the scene exists */ }
+      }
+    }
+    function applyMaterialNow() {
       // A rebuilt model is a different height, and the gradient runs bottom to
       // top of THIS part — so the ramp is re-anchored every time.
       try { applySpoolFx(); } catch { /* before the picker exists */ }
@@ -8026,10 +8112,12 @@
     // custom picker fires on every step of a drag. Only for plain BREPcode with
     // a fresh map: colorize() is not OpenSCAD, and a stale range would wrap the
     // wrong text. A shape that cannot be placed keeps the in-memory colour only.
-    const colourPending = new Map();          // fid -> "#hex" | null (clear)
+    // A material pick (finish) rides the same queue as finish("name", call).
+    const colourPending = new Map();          // "colorize|fid" / "finish|fid" -> { fid, fn, value | null (clear) }
     let colourTimer = null, colourTries = 0;
-    function queueColourToCode(fid, hex) {
-      colourPending.set(fid, hex);
+    function queueColourToCode(fid, hex) { queueLookToCode(fid, "colorize", hex); }
+    function queueLookToCode(fid, fn, value) {
+      colourPending.set(`${fn}|${fid}`, { fid, fn, value });
       colourTries = 0;
       clearTimeout(colourTimer);
       colourTimer = setTimeout(colourToCode, 350);
@@ -8047,33 +8135,43 @@
       }
       // Every pending pick against the same text, last call first so the
       // earlier ranges are still where the map says they are.
-      const edits = [];
-      for (const [fid, hex] of colourPending) {
-        const site = featureMap[fid];
+      const edits = [], later = [];
+      for (const [k, p] of colourPending) {
+        const site = featureMap[p.fid];
         if (!site || code.value.slice(site.start, site.start + String(site.kind).length) !== site.kind) continue;
-        if (hex && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) continue;
-        if (edits.some((e) => e.site.start < site.end && site.start < e.site.end)) continue;   // same call (a pattern) or nested
-        edits.push({ fid, hex: hex ? hex.toLowerCase() : null, site });
+        if (p.fn === "colorize" && p.value && !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(p.value)) continue;
+        // same call (a pattern) or nested: a second wrapper on the same call
+        // (a colour AND a material) waits for the rebuild's fresh map
+        const clash = edits.find((e) => e.site.start < site.end && site.start < e.site.end);
+        if (clash) { if (clash.fn !== p.fn && clash.fid === p.fid) later.push([k, p]); continue; }
+        edits.push({ ...p, value: p.fn === "colorize" && p.value ? p.value.toLowerCase() : p.value, site });
       }
       colourPending.clear();
+      for (const [k, p] of later) colourPending.set(k, p);
       edits.sort((a, b) => b.site.start - a.site.start);
       let next = code.value;
       const done = [];
       for (const e of edits) {
-        const t = e.hex ? codemap.colorizeAt(next, e.site.start, e.site.end, e.hex)
-          : codemap.uncolorizeAt(next, e.site.start, e.site.end);
+        const t = e.value ? codemap.wrapAt(next, e.site.start, e.site.end, e.fn, e.value)
+          : codemap.unwrapAt(next, e.site.start, e.site.end, e.fn);
         if (t && t !== next) { next = t; done.push(e); }
       }
+      if (later.length) colourTimer = setTimeout(colourToCode, 400);
       if (!done.length) return false;
       pushHistory(code.value);
       code.value = next;
       // The code holds it now; an override left behind would hide the next
-      // edit of that colour in the text. Every instance of a pattern shares
-      // the call, so they all take it.
+      // edit of that colour (or material) in the text. Every instance of a
+      // pattern shares the call, so they all take it.
       for (const e of done) {
         for (const id of patternIds(e.fid)) {
-          delete featureColors[id];
-          if (e.hex) codeColors[id] = e.hex; else delete codeColors[id];
+          if (e.fn === "colorize") {
+            delete featureColors[id];
+            if (e.value) codeColors[id] = e.value; else delete codeColors[id];
+          } else {
+            delete featureFinish[id];
+            if (e.value) codeFinish[id] = e.value; else delete codeFinish[id];
+          }
         }
       }
       recolorMeshes();
@@ -8191,6 +8289,9 @@
       if (name) featureFinish[fid] = name; else delete featureFinish[fid];
       recolorMeshes();
       noteColourOverride();
+      // into the code as finish("name", call), like a colour: a reload, a
+      // share or an export keeps what the piece is made of
+      queueLookToCode(fid, "finish", name || null);
     }
     function setShapePattern(fid, kind) {
       if (kind != null) featurePattern[fid] = kind; else delete featurePattern[fid];
@@ -8283,9 +8384,11 @@
     });
     $("sm-matclear").addEventListener("click", () => {
       if (!shapeMenuFid) return;
+      const hadFinish = !!(featureFinish[shapeMenuFid] ?? codeFinish[shapeMenuFid]);
       delete featureFinish[shapeMenuFid];
       delete featurePattern[shapeMenuFid];
       delete featureClear[shapeMenuFid];
+      if (hadFinish) queueLookToCode(shapeMenuFid, "finish", null);
       recolorMeshes();
       syncShapeMatUI(shapeMenuFid);
     });
@@ -12033,8 +12136,67 @@ ${joined}${SITE_TAIL}`), joined);
           if (g === outlineGroup && o.userData.role !== "depth" && o.userData.role !== "hidden") o.visible = m.visible;
         }
       }
+      for (const c of sectionGroup.children) {
+        const m = c.userData.source;
+        c.position.copy(m.position); c.quaternion.copy(m.quaternion); c.scale.copy(m.scale); c.visible = m.visible;
+      }
     };
     scene.add(outlineGroup);
+
+    // Design's cut view (design/explode.js): clip planes on every model mesh
+    // and on the edge lines traced from it, plus a cap where the cut goes
+    // through material. The cap is the trick CAD viewers use without a
+    // stencil pass: the mesh's own inside (its back faces) drawn flat in a
+    // dark shade of the part's colour and clipped by the same planes, so looking through the cut you
+    // see a solid face, not a hollow shell. A view only; null takes it off.
+    // spec: { planesFor(mesh) -> THREE.Plane[] | null, intersect }
+    const sectionGroup = new THREE.Group();
+    scene.add(sectionGroup);
+    let sectionSpec = null;
+    // each part's cut in a darker shade of its own colour, so two parts that
+    // touch in the cut stay two parts (one cap colour ran them together)
+    const capColour = (m) => (m.material.color ? m.material.color.clone().multiplyScalar(0.62) : new THREE.Color(0xd9614f));
+    function sectionView(spec) {
+      for (const c of [...sectionGroup.children]) { sectionGroup.remove(c); c.material.dispose(); }
+      for (const g of [modelGroup, outlineGroup, highlightGroup]) {
+        for (const o of g.children) {
+          if (!o.userData.secOrig) continue;
+          o.material.dispose?.();
+          o.material = o.userData.secOrig;
+          delete o.userData.secOrig;
+        }
+      }
+      sectionSpec = spec || null;
+      if (!sectionSpec) return;
+      renderer.localClippingEnabled = true;
+      const clipOf = new Map();
+      for (const m of modelGroup.children) {
+        if (!m.isMesh || Array.isArray(m.material)) continue;
+        const planes = spec.planesFor(m);
+        if (!planes?.length) continue;
+        clipOf.set(m, planes);
+        m.userData.secOrig = m.material;
+        m.material = m.material.clone();
+        Object.assign(m.material, { clippingPlanes: planes, clipIntersection: !!spec.intersect });
+        const cap = new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({
+          color: capColour(m), side: THREE.BackSide, clippingPlanes: planes, clipIntersection: !!spec.intersect,
+          polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+        }));
+        cap.userData.source = m;
+        cap.raycast = () => {};            // never a pick target
+        sectionGroup.add(cap);
+      }
+      for (const g of [outlineGroup, highlightGroup]) {
+        for (const o of g.children) {
+          const planes = clipOf.get(o.userData.source);
+          if (!planes || !o.material || Array.isArray(o.material)) continue;
+          o.userData.secOrig = o.material;
+          o.material = o.material.clone();
+          Object.assign(o.material, { clippingPlanes: planes, clipIntersection: !!spec.intersect });
+        }
+      }
+      followDragPreview?.();
+    }
     // linewidth is in screen pixels (worldUnits off), so edges keep a constant
     // on-screen weight as you zoom — the way a CAD drawing behaves.
     outlineMat = new LineMaterial({
@@ -24449,6 +24611,17 @@ let SIMPLIFY_TARGET = 10000;
       // the exploded view: the size lines and measure marks belong to the
       // assembled model, so they hide while the parts are apart
       overlaysVisible: (on) => { dimsGroup.visible = on; measureGroup.visible = on; handleGroup.visible = on; },
+      sectionView: (spec) => sectionView(spec),
+      // a piece's own material (the shape menu, or finish() in the code)
+      finishOf: (fid) => (fid ? featureFinish[fid] ?? codeFinish[fid] ?? null : null),
+      // Properties' "…": the spool list, and the full Material/Lighting card
+      loadSpools: () => loadSpools(),
+      openLook: (tab = "material") => {
+        loadSpools();
+        toggleCard(matCard, matBtn, true);
+        matCard.style.zIndex = ++cardZ;   // on top of the Design panels
+        document.querySelector(`.mat-tab[data-tab="${tab}"]`)?.click();
+      },
       featureId: (mesh) => mesh?.userData?.featureId ?? null,
     });
     // Code mode's windows stay where they were. Design moves them out of its

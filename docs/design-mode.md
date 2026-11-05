@@ -373,8 +373,42 @@ at its end), `npm run test:design3` (Electron, real mouse clicks, screenshots).
   canvas: a turn, explode, hold, collapse, ~9 s WebM).
 - Host additions: `onBuilt(fn)` (every build), `openMeasure()`,
   `overlaysVisible(on)`; `brepscript.modelMeshes()` for checks.
-- Not done: loft, sweep, draft, rib, split, threads, taper angle, extrude up to
-  a face, joints.
+- Extrude dialog: Extent (distance / up to a parallel face, `F.upToDistance`)
+  and Taper (exact only: a round face becomes `cylinder({ r1, r2 })`; an outline
+  whose sides are all equally far from its middle is drawn about that middle
+  with `scale`). Split dialog writes `splitBody({ normal, at }, body)` (dsl.js: the
+  body intersected with / minus one big block, as a group of two).
+- Not done: loft, sweep, draft, rib, threads, joints; taper from a sketch's
+  Finish; up to a slanted or curved face.
+
+### Round 11 (2026-11-03): cut views, look, materials, primitives
+
+- **Cut view** in the Explode panel (`explode.js` `cutPlanes`): X / Y / Z or a
+  quarter (`clipIntersection`), the side facing the camera taken away, flip and
+  position. The viewer's `host.sectionView(spec)` clones each model mesh's
+  material with the planes, clips its edge lines, and draws a cap: the mesh's
+  back faces in a dark shade of its own colour, clipped by the same planes
+  (no stencil pass). Planes are per body and move with it when exploded.
+- **Explode plan:** parts going the same way are stacked along that line in
+  order (by where each starts; a part wrapped round another comes after it),
+  each clear of the last by a gap. The video frames the exploded box.
+- **Properties "…"**: Look and lighting rows that drive the Material window's
+  own controls; a spool also sets the mass material (`familyOf`); mass weighs
+  each solid by its own finish (`materialOf`, `host.finishOf`).
+- **Materials:** spool gradient and flake run in the mesh's own coordinates
+  (`vFxHome`), so Explode and drag previews no longer change a part's colours;
+  a coloured part under a spool keeps its colour (`colourFx`: the spool's
+  flake, not its gradient); the shape menu's Material writes
+  `finish("name", …)` into the code (`codemap.wrapAt` / `unwrapAt`, stacking
+  with `colorize`); preset aliases (aluminium, oak, carbon fibre).
+- **Create → Primitive** (`features.js` `primitiveCall` / `primitiveText`):
+  box, cylinder, cone, sphere, torus as a New body beside the model, or on a
+  clicked face joined or cut (sunk) into that body.
+- **Orbit:** near a pole the sideways drag axis blends from world Z to the
+  screen's vertical (no flat swivel), then the up vector re-levels away from
+  the pole; the up-sign test has a dead zone.
+- Light-mode AR button, a 26 px resize corner that lights up, and a rainbow
+  build bar with the time (and time left once a fraction is known).
 
 ### Known limits (phase 3)
 

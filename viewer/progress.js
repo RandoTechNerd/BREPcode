@@ -86,7 +86,11 @@ export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) 
     const c = current(now);
     const shown = c && now - c.t0 >= delayMs;
     const secs = c ? Math.floor((now - c.t0) / 1000) : 0;
-    const timeText = shown && secs >= 1 ? `${secs} s` : "";
+    // and, once a real fraction has settled (a few seconds in, past a tenth),
+    // a rough time left from the pace so far
+    const left = c && !c.slide && c.frac >= 0.1 && c.frac < 1 && secs >= 2
+      ? Math.ceil(((now - c.t0) / 1000) * (1 - c.frac) / c.frac) : null;
+    const timeText = shown && secs >= 1 ? `${secs} s${left ? ` · ~${left} s left` : ""}` : "";
     // in the editor's status line
     bar.hidden = !shown;
     if (shown) paint(bar, c, now, false);
@@ -96,6 +100,8 @@ export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) 
     if (failure && failure.until && now > failure.until) failure = null;
     if (failure && offscreen) {
       card.hidden = false;
+      card.classList.remove("mini");
+      card.title = "";
       card.classList.add("failed");
       cardText.textContent = failure.text;
       cardTime.textContent = "";
@@ -115,6 +121,8 @@ export function createProgress({ status, say, isStatusVisible, delayMs = 700 }) 
     } else if (shown && offscreen) {
       card.hidden = false;
       card.classList.remove("failed");
+      card.classList.add("mini");
+      card.title = c.text;
       cardText.textContent = c.text;
       cardTime.textContent = timeText;
       retryBtn.hidden = true; closeBtn.hidden = true;

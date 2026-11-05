@@ -220,6 +220,9 @@
       <h2>Working on the model</h2>
       <p>Outside a sketch: click a shape to pick it, then <kbd>M</kbd> move, <kbd>R</kbd> rotate, <kbd>Shift</kbd>+<kbd>S</kbd> scale with the gizmo; <kbd>Q</kbd> press-pull a face; <kbd>F</kbd> fillet and chamfer edges; <kbd>H</kbd> hole. The model browser on the left and the timeline at the bottom show every step, each linked to its line of code.</p>
       <p><b>Roll back:</b> the timeline is every change you made, in order. Click an earlier step to go back to it; the later ones grey out, and the next change you make replaces them. (Fusion can edit an early feature and replay the rest; here the code is the model, so go back, change it, or edit the code.)</p>
+      <p><b>Extrude a face</b> (the Extrude button): <b>Distance</b>, or <b>Up to face</b> and then click the face it should stop at (a parallel one: out in front for Join, inside the part for Cut). <b>Taper</b> (degrees) narrows it as it goes: a round face becomes a cone, a square or regular polygon shrinks evenly.</p>
+      <p><b>Primitive</b> (Create) adds a box, cylinder, cone, sphere or torus. It goes beside the model as a <b>New body</b>; click a face first to put it there, joined to that body, or choose <b>Cut</b> to sink it into the face as a hole or pocket. Hold the button to pick the shape straight away.</p>
+      <p><b>Split</b> cuts the selected body in two along XY, XZ or YZ at an offset, or along a flat face you click. Each half is a body of its own, written as <code>splitBody({ normal, at }, body)</code>.</p>
       <p><b>Suppress:</b> right-click a step in the Browser (or the timeline) → <b>Suppress</b>. It's left out of the model but stays in the code as <code>suppress(…)</code>: a hole that isn't cut, a part that isn't there. The same menu says <b>Unsuppress</b> to bring it back. The shape a hole cuts from, or the only shape, can't be suppressed (Delete it instead).</p>
     </section>
 
@@ -232,13 +235,16 @@
 
     <section data-s id="inspect">
       <h2>Inspect: measure, properties</h2>
-      <p><b>Measure</b> snaps to corners, edges and faces: distances, angles, a face's size. <b>Properties</b> shows the part's volume, surface area, box size, centre of mass, how many bodies, and its mass in a material you pick (PLA, PETG, aluminium, steel…). It's measured on the shape as drawn on screen, so a curved part reads a hair under its true size; the mass assumes a solid part (a print with infill weighs less).</p>
+      <p><b>Measure</b> snaps to corners, edges and faces: distances, angles, a face's size. <b>Properties</b> shows the part's volume, surface area, box size, centre of mass, how many bodies, and its mass in a material you pick (PLA, PETG, aluminium, steel…). A part with its own material (Brass, Steel…) is weighed as that. It's measured on the shape as drawn on screen, so a curved part reads a hair under its true size; the mass assumes a solid part (a print with infill weighs less).</p>
+      <p><b>… Look and lighting</b> at the bottom of Properties opens the part's look: a preset, the filament (every spool in the library; a spool also sets the mass material), the colour, metalness, roughness and opacity, and the lights. They're the same settings as the Material window (<b>All look settings…</b> opens it).</p>
+      <p><b>Per-part materials:</b> right-click a part → <b>Material</b>. The choice is written into the code as <code>finish("Brass", …)</code>, like a colour is written as <code>colorize("#…", …)</code>, so it survives a reload, a share and an export. A part with its own colour keeps it under a model-wide spool (it takes the spool's glitter, not its gradient).</p>
     </section>
 
     <section data-s id="assembly">
       <h2>Assemblies: the exploded view</h2>
-      <p>A model of several bodies (each <b>New body</b>, each shape in a <code>group(…)</code>) is an assembly. <b>Inspect → Explode</b> pulls the parts apart from the middle with a slider; <b>Expand</b> and <b>Collapse</b> animate it. It's a view only: the code doesn't change, and closing the panel puts every part back.</p>
-      <p><b>Save video…</b> records a short clip (about 9 s, WebM): the camera turns once around the part, the parts come apart, hold, and go back together. The recorder is only loaded when you press the button, and it's made in your browser (nothing is uploaded). WebM plays in browsers and most editors; YouTube takes it as it is.</p>
+      <p>A model of several bodies (each <b>New body</b>, each shape in a <code>group(…)</code>) is an assembly. <b>Inspect → Explode</b> pulls the parts apart from the middle with a slider; <b>Expand</b> and <b>Collapse</b> animate it. Parts on one line come off in order and never pass through each other: a shaft, the bearing round it, the pulley round that and a cap on top. It's a view only: the code doesn't change, and closing the panel puts every part back.</p>
+      <p><b>Cut view</b> (the same panel) slices the model open on X, Y or Z, or takes a quarter out, to show the inside. The side facing you is the one taken away; <b>Show the other side</b> flips it, and <b>Cut at</b> moves the cut. Each part's cut face is a darker shade of its own colour, and the cut stays with each part when it's exploded. Try it on <code>examples/pulley-assembly.js</code>.</p>
+      <p><b>Save video…</b> records a short clip (about 9 s, WebM): the camera turns once around the part, the parts come apart, hold, and go back together (one body: just the turn). A cut that's on stays on in the video. The recorder is only loaded when you press the button, and it's made in your browser (nothing is uploaded). WebM plays in browsers and most editors; YouTube takes it as it is.</p>
     </section>
 
     <section data-s id="faq">
@@ -278,7 +284,8 @@
         <li><b>Sketch on a face:</b> the plane is stored as numbers, not as a link to the face, so moving that body later leaves the sketch where it was.</li>
         <li><b>Driven (reference) dimensions</b> and <b>dimensions to an arc's edge</b> aren't there; dimensions measure points, lines and radii.</li>
         <li><b>Joints</b> (parts that hinge or slide on each other) aren't there yet: an assembly is separate bodies placed by moves, and the exploded view is a view.</li>
-        <li><b>Loft, sweep, draft, rib, split body and threads</b> aren't Design tools yet (in code: <code>tube()</code> sweeps a circle along a path, <code>helix()</code> makes a coil). An extrude can't take a <b>taper angle</b> yet, nor run <b>up to a face</b>.</li>
+        <li><b>Loft, sweep, draft, rib and threads</b> aren't Design tools yet (in code: <code>tube()</code> sweeps a circle along a path, <code>helix()</code> makes a coil).</li>
+        <li><b>Extrude up to a face</b> works when that face is parallel to the one you extrude; a slanted or curved target isn't supported. A <b>taper</b> is exact, so it's offered only on round faces and on shapes whose sides are all the same distance from the middle (squares, regular polygons), and only in the Extrude dialog (not yet when finishing a sketch).</li>
         <li><b>Text</b> inside a sketch isn't a tool yet.</li>
       </ul>
     </section>

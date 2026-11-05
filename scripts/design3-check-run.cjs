@@ -712,6 +712,32 @@ module.exports = app.whenReady().then(async () => {
     check("Properties: the volume, as the viewer measures it", vol && Math.abs(+vol - v21) / v21 < 0.01, props.slice(0, 200));
     check("…the mass in PLA (1.24 g/cm³), 2 bodies", /Mass\s+[\d.]+\s*g/.test(props) && /Bodies\s+2/.test(props), props);
     await shot("27-properties");
+    // "…": the look of the part, driving the viewer's own Material/Lighting controls
+    // open it (the window remembers whether it was open last time)
+    await run(`(() => { const b = document.querySelector("#dz-props .more"); if (b.getAttribute("aria-expanded") !== "true") b.click(); })()`);
+    await wait(1500);
+    let look = await run(`document.querySelector("#dz-props .lk")?.innerText || ""`);
+    check("Properties …: opens Look and lighting (filament, colour, finish, lights)", /Filament/.test(look) && /Metalness/.test(look) && /Key light/.test(look) && /Exposure/.test(look), look.slice(0, 200));
+    await run(`(() => { const r = document.querySelector('#dz-props input[data-m="mat-metal"]'); r.value = "80"; r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await wait(300);
+    check("…a Metalness drag there moves the viewer's own Metalness", await run(`document.getElementById("mat-metal").value`) === "80" && /80/.test(await run(`document.querySelector('#dz-props output[data-o="mat-metal"]').textContent`)));
+    await run(`(() => { const r = document.querySelector('#dz-props input[data-m="mat-key"]'); r.value = "220"; r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await wait(300);
+    check("…and the Key light its Key light", await run(`document.getElementById("mat-key").value`) === "220");
+    const spool = await run(`(() => { const o = [...document.querySelectorAll('#dz-props select[data-m="mat-filament"] optgroup')].find((g) => /PETG/.test(g.label))?.querySelector("option"); return o ? o.value : null; })()`);
+    check("…the filament list has the spool library (a PETG spool)", !!spool, String(spool));
+    if (spool) {
+      await run(`(() => { const s = document.querySelector('#dz-props select[data-m="mat-filament"]'); s.value = ${JSON.stringify(spool)}; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+      await wait(800);
+      const pt = await run(`document.getElementById("dz-props").innerText`);
+      check("…picking it sets the viewer's filament, and the mass to PETG", await run(`document.getElementById("mat-filament").value`) === spool && /PETG \(1\.27/.test(await run(`document.querySelector("#dz-props table + label select, #dz-props label.f select:not([data-m]):not([data-preset])").selectedOptions[0].textContent`)), pt.slice(0, 300));
+    }
+    await shot("30-properties-look");
+    await run(`document.querySelector("#dz-props .all").click()`);
+    await wait(500);
+    check("…All look settings opens the Material window", await run(`document.getElementById("material").classList.contains("open")`));
+    await run(`document.querySelector('#material [data-close="material"]')?.click(); document.getElementById("mat-reset")?.click()`);
+    await wait(500);
     await run(`document.querySelector("#dz-props .x").click()`);
 
     say("\nAssemblies: the exploded view, and its video");
@@ -748,7 +774,41 @@ module.exports = app.whenReady().then(async () => {
     await wait(600);
     const pos3 = await run(`brepscript.modelMeshes().filter((m) => m.isMesh).map((m) => m.position.toArray().join(","))`);
     check("…and afterwards the parts and the view are back", JSON.stringify(pos3) === JSON.stringify(pos0));
+
+    // cut views: X / Y / Z or a quarter out, a cap on the cut, kept per part when exploded
+    const clipState = () => run(`(() => { const ms = brepscript.modelMeshes().filter((m) => m.isMesh);
+      return { clipped: ms.filter((m) => m.material.clippingPlanes?.length).length, n: ms.length,
+        caps: brepscript.scene.children.reduce((a, g) => a + (g.children?.filter((c) => c.userData?.source && c.material?.side === 1).length || 0), 0),
+        consts: ms.map((m) => (m.material.clippingPlanes || []).map((p) => +p.constant.toFixed(3)).join("/")) }; })()`);
+    await run(`document.querySelector('#dz-explode [data-cut="x"]').click()`);
+    await wait(400);
+    let cs = await clipState();
+    check("Cut X: every part is clipped, with a cap per mesh", cs.clipped === cs.n && cs.caps === cs.n, JSON.stringify(cs));
+    check("…at the middle of the model by default (x = 19)", cs.consts.every((c) => c === "19"), JSON.stringify(cs.consts));
+    await shot("31-cut-x");
+    await run(`(() => { const r = document.querySelector('#dz-explode input[data-k="k"]'); r.value = "100"; r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await wait(300);
+    cs = await clipState();
+    check("…exploded, each part keeps its own cut (the planes move with it)", new Set(cs.consts).size > 1, JSON.stringify(cs.consts));
+    await shot("32-cut-exploded");
+    await run(`(() => { const r = document.querySelector('#dz-explode input[data-k="k"]'); r.value = "0"; r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await run(`document.querySelector('#dz-explode [data-cut="quarter"]').click()`);
+    await wait(400);
+    cs = await clipState();
+    check("Quarter: two planes, only their shared corner taken out", cs.consts.every((c) => c.split("/").length === 2)
+      && await run(`brepscript.modelMeshes().filter((m) => m.isMesh).every((m) => m.material.clipIntersection === true)`), JSON.stringify(cs.consts));
+    await shot("33-cut-quarter");
+    const nx = () => run(`brepscript.modelMeshes().filter((m) => m.isMesh)[0].material.clippingPlanes[0].normal.x`);
+    const camX = await run(`brepscript.camera.position.x`), nx0 = await nx();
+    check("…the corner taken out is the one facing the camera", (camX >= 19) === (nx0 === -1), `cam x ${camX}, normal x ${nx0}`);
+    await run(`(() => { const c = document.querySelector('#dz-explode input[data-k="flip"]'); c.checked = true; c.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+    await wait(300);
+    check("…Show the other side flips the planes", (await nx()) === -nx0);
+    check("the cut is a view only: the code is unchanged", /^return group\(cube/.test((await codeText()).trim()));
     await run(`document.querySelector("#dz-explode .x").click()`);
+    await wait(400);
+    cs = await clipState();
+    check("closing takes the cut off: no planes, no caps", cs.clipped === 0 && cs.caps === 0, JSON.stringify(cs));
 
     say("\nTier 3: the Parameters table with formulas, and Suppress");
     await setCode(`const width = 40;\nconst depth = width / 2;\nreturn difference(cube([width, depth, 6]), translate([10, 10, -1], cylinder({ r: 4, h: 8 })));`);
@@ -785,6 +845,97 @@ module.exports = app.whenReady().then(async () => {
       const vs1 = await volume();
       check("…the hole is gone from the model (the plate is solid) and suppress( ) is in the code", vs1 - vs0 > Math.PI * 16 * 6 * 0.95 && /suppress\(translate/.test(await codeText()), `${vs0} -> ${vs1}`);
     }
+
+    say("\nCreate > Primitive");
+    await setCode(`return cube([30, 20, 10]);`);
+    await run(`document.querySelector('#dz-bar [data-tool="primitive"]').click()`);
+    await wait(2500);
+    check("Primitive: a 20 mm box beside the model as a New body, previewed", /^return group\(cube\(\[30, 20, 10\]\), translate\(\[45, 0, 0\], cube\(\[20, 20, 20\]\)\)\);/.test((await codeText()).trim()), await codeText());
+    await run(`(() => { const s = document.querySelector('#dz-dlg select[data-k="kind"]'); s.value = "cylinder"; s.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await wait(400);
+    check("…Cylinder: the fields become Radius and Height", await run(`[...document.querySelectorAll("#dz-dlg label.f > span")].map((x) => x.textContent).join("|")`).then((t) => /Radius/.test(t) && /Height/.test(t) && !/Width/.test(t)));
+    await run(`(() => { const i = document.querySelector('#dz-dlg input[data-k="r"]'); i.value = "4"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await wait(1500);
+    await click(await toScreen([15, 10, 10]));
+    await wait(2500);
+    check("…a click on the box's top: there, joined to it", /^return union\(cube\(\[30, 20, 10\]\), translate\(\[1[45](\.\d)?, 10, 10\], cylinder\(\{ r: 4, h: 20 \}\)\)\);/.test((await codeText()).trim()), await codeText());
+    await run(`document.querySelector('#dz-dlg .seg[data-k="op"] button[data-v="cut"]').click()`);
+    await wait(2500);
+    check("…Cut: sunk into the face, a hole", /^return difference\(cube\(\[30, 20, 10\]\), translate\(\[1[45](\.\d)?, 10, -10\], cylinder/.test((await codeText()).trim()), await codeText());
+    await shot("34-primitive-cut");
+    await run(`document.querySelector("#dz-dlg .ok").click()`);
+    await wait(1500);
+    check("…OK keeps it", /difference\(cube/.test(await codeText()) && await builtOk());
+
+    say("\nThe pulley assembly (examples/pulley-assembly.js): explode and cut");
+    await setCode(fs.readFileSync(path.join(__dirname, "..", "examples", "pulley-assembly.js"), "utf8"));
+    check("it builds: 9 parts", /9 solids/.test(await run(`document.getElementById("status").textContent`)), await run(`document.getElementById("status").textContent`));
+    await run(`(() => { const { camera, controls } = brepscript; controls.target.set(30, 20, 60); camera.position.set(230, -190, 170); camera.up.set(0, 0, 1); controls.update(); })()`);
+    await run(`document.querySelector('#dz-bar [data-tool="explode"]').click()`);
+    await wait(900);
+    await run(`(() => { const r = document.querySelector('#dz-explode input[data-k="k"]'); r.value = "100"; r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await wait(400);
+    const stack = await run(`(() => { const B = brepscript.THREE.Box3; const by = new Map();
+      for (const m of brepscript.modelMeshes().filter((m) => m.isMesh)) { const k = m.userData.solidName; if (!by.has(k)) by.set(k, new B()); by.get(k).expandByObject(m); }
+      return [...by.values()].map((b) => [+(b.max.x - b.min.x).toFixed(1), +b.min.z.toFixed(1), +b.max.z.toFixed(1)]); })()`);
+    // by width on the shaft's line: shaft 8, bearing 22, pulley 40, cap 14
+    const zOf = (w) => stack.find((b) => Math.abs(b[0] - w) < 0.6);
+    const [sh, be, pu, ca] = [8, 22, 40, 14].map(zOf);
+    check("exploded: shaft, then the bearing above it, the pulley, the cap on top, none overlapping", sh && be && pu && ca && be[1] >= sh[2] - 0.01 && pu[1] >= be[2] - 0.01 && ca[1] >= pu[2] - 0.01, JSON.stringify(stack));
+    await shot("35-pulley-exploded");
+    await run(`(() => { const r = document.querySelector('#dz-explode input[data-k="k"]'); r.value = "0"; r.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    await run(`(() => { const { camera, controls } = brepscript; controls.target.set(30, 20, 25); camera.position.set(140, -110, 100); controls.update(); })()`);
+    await run(`document.querySelector('#dz-explode [data-cut="quarter"]').click()`);
+    await wait(500);
+    const caps = await run(`[...new Set(brepscript.scene.children.flatMap((g) => g.children || []).filter((c) => c.userData?.source && c.material?.side === 1).map((c) => c.material.color.getHexString()))].length`);
+    check("Cut ¼: every part cut, each part's cap in its own shade", caps >= 4, String(caps));
+    await shot("36-pulley-quarter");
+    await run(`document.querySelector("#dz-explode .x").click()`);
+    await wait(300);
+
+    say("\nOrbit: no swivel at the top");
+    await run(`(() => { const { camera, controls } = brepscript; controls.target.set(30, 20, 24); camera.position.set(30, 20.001, 200); camera.up.set(0, 1, 0); controls.update(); })()`);
+    await run(`document.querySelector('#dz-bar [data-tool="select"]').click()`);
+    const view = () => run(`(() => { const { camera, controls, THREE } = brepscript; const L = controls.target.clone().sub(camera.position).normalize();
+      const a = new THREE.Vector3(30, 20, 24).project(camera), z = new THREE.Vector3(30, 20, 34).project(camera);
+      return { lookZ: L.z, zUp: Math.atan2(z.y - a.y, z.x - a.x) * 180 / Math.PI }; })()`);
+    const orbit = async (from, to) => {
+      await mouse("mouseMove", from[0], from[1]); await mouse("mouseDown", from[0], from[1]);
+      for (let k = 1; k <= 10; k++) await mouse("mouseMove", from[0] + (to[0] - from[0]) * k / 10, from[1] + (to[1] - from[1]) * k / 10);
+      await mouse("mouseUp", to[0], to[1]); await wait(300);
+    };
+    const ov0 = await view();
+    await orbit([420, 820], [540, 820]);
+    const ov1 = await view();
+    check("looking straight down, a sideways drag tumbles the part (the view tilts) instead of spinning it flat", ov1.lookZ > ov0.lookZ + 0.1, JSON.stringify([ov0, ov1]));
+    check("…and the part stays upright (world Z up the screen, within 15°)", Math.abs(ov1.zUp - 90) < 15, JSON.stringify(ov1));
+    await orbit([420, 880], [420, 760]);
+    const ov2 = await view();
+    check("tilted back to the side: Z straight up the screen (level, no roll left over)", Math.abs(ov2.zUp - 90) < 2, JSON.stringify(ov2));
+    await orbit([420, 820], [560, 820]);
+    const ov3 = await view();
+    check("…and from the side a sideways drag is the turntable (still level)", Math.abs(ov3.zUp - 90) < 2, JSON.stringify(ov3));
+
+    say("\nWindows and the look");
+    await run(`document.getElementById("open-btn").click()`);
+    await wait(500);
+    const grip = await run(`(() => { const r = document.querySelector("#panel > .resize-grip").getBoundingClientRect(); return [r.width, r.height, r.right, r.bottom]; })()`);
+    check("a window's resize corner is a 26 px target", grip[0] >= 25.5 && grip[1] >= 25.5, JSON.stringify(grip));
+    await mouse("mouseMove", grip[2] - 6, grip[3] - 6);
+    await wait(300);
+    check("…that lights up under the pointer", await run(`(() => { const g = document.querySelector("#panel > .resize-grip"); return g.matches(":hover") && getComputedStyle(g).opacity === "1"; })()`));
+    await run(`document.getElementById("open-btn").click()`);
+    await run(`document.querySelector('.theme-chip[data-theme="light"]').click()`);
+    await wait(400);
+    check("light mode: the AR button is light, not the dark navy", await run(`(() => { const c = getComputedStyle(document.getElementById("ar-top")).backgroundColor.match(/\\d+/g).map(Number); return c[0] + c[1] + c[2] > 600; })()`));
+    // a slow build: the rainbow bar and the time, no card box
+    await run(`(() => { const c = document.getElementById("code"); c.value = "const b = [];\\nfor (let i = 0; i < 15; i++) for (let j = 0; j < 15; j++) b.push(translate([i * 6, j * 6, 0], sphere({ r: 4 })));\\nreturn difference(cube([96, 96, 6]), ...b);"; c.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    let bar = null;
+    for (let t = 0; t < 40 && !bar; t++) { await wait(250); bar = await run(`(() => { const p = document.getElementById("pcard"); return p && !p.hidden && p.classList.contains("mini") ? { bg: getComputedStyle(p).backgroundColor, grad: getComputedStyle(p.querySelector(".pbar i")).backgroundImage } : null; })()`); }
+    check("a slow build shows the rainbow bar (no card behind it)", !!bar && /gradient/.test(bar.grad) && /rgba\(0, 0, 0, 0\)|transparent/.test(bar.bg), JSON.stringify(bar));
+    if (bar) await shot("37-rainbow-bar-light");
+    await builtOk(60000);
+    await run(`document.querySelector('.theme-chip[data-theme="dark"]').click()`);
 
     say("\nCode mode");
     await run(`brepscript.setMode("code")`);

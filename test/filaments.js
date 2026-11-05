@@ -341,8 +341,10 @@ console.log("\nthe page can actually drive it\n");
     "uFxFlake", "uFxFlakeD", "uFxFlakeS", "uFxFlakeK", "uFxFlakeC", "uFxRainbow"]) {
     check(`${u} is declared in the shader`, HTML.includes(`uniform`) && HTML.includes(u), u);
   }
-  check("the gradient runs in WORLD z, so it is bottom-to-top of the print",
-    /vFxWorld\.z/.test(HTML));
+  // the mesh's own coordinates ARE the bed's (translate() is baked into the
+  // geometry), and they stay put when Explode or a drag moves the mesh
+  check("the gradient runs up the part as built (bed z), so it is bottom-to-top of the print and moves with an exploded part",
+    /vFxHome\.z/.test(HTML) && /vFxHome = transformed;/.test(HTML));
   check("...anchored to the model's own bounding box", /sharedFx\.lo\.value = bb\.min\.z/.test(HTML));
   check("flake is emissive, so it catches light at glancing angles",
     /totalEmissiveRadiance \+= fxFlake/.test(HTML));
@@ -490,7 +492,7 @@ console.log("\nthe glint is a real specular test against the real lights\n");
   check("flake at three depths, not one layer painted on the surface",
     (HTML.match(/fxFlakeLayer\(Nw, Vw, Rw, body,/g) || []).length === 3);
   check("...sampled along the refracted view ray (parallax)",
-    /refract\(-Vw, Nw, 1\.0 \/ 1\.5\)/.test(HTML) && /vFxWorld \+ Rw \* t/.test(HTML));
+    /refract\(-Vw, Nw, 1\.0 \/ 1\.5\)/.test(HTML) && /vFxHome \+ Rw \* t/.test(HTML));
   check("...deeper flake dimmer and tinted by the plastic it shines through",
     /vec3 through = mix\(vec3\(1\.0\), body,/.test(HTML));
   check("flakes are hexagons of mixed size, not filled grid cells",
