@@ -34,6 +34,8 @@
     "test:assembly": "node build-site.mjs && electron scripts/assembly-check.cjs",
     "test:worker": "node build-site.mjs && electron scripts/worker-check.cjs",
     "test:smlibweb": "node build-site.mjs && electron scripts/smlib-web-check.cjs",
+    "test:filament": "node build-site.mjs && electron scripts/filament-check.cjs",
+    "test:material": "node build-site.mjs && electron scripts/material-check.cjs",
     "test:api": "node scripts/api-conformance.mjs",
     "test:lessons": "electron scripts/lessons-check.cjs",
     "test:design": "electron scripts/design-check.cjs",

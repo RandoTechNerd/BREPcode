@@ -188,6 +188,7 @@ function helperCount() {
   return n;
 }
 let smlibPool = null;       // [{ worker, pending }] once started; false: helpers can't run here
+let pieceCache = new Map(); // a part's history (JSON) -> its output, from the last pooled build
 let helperSeq = 0;
 function dropPool(reason) {
   if (!smlibPool) return;
@@ -199,25 +200,45 @@ function dropPool(reason) {
   smlibPool = false;
   console.warn("[kw] SMLib helpers stopped, parts build here one at a time:", reason);
 }
+// A helper is this file with ?helper=1. It is handed the SMLib module this
+// worker already compiled, so a new one is ready in the time it takes to
+// instantiate it, not to download and compile 4 MB again: which is what makes
+// throwing a busy one away (a cancelled build) cheap.
+function spawnHelper(h = { pending: new Map() }) {
+  const url = new URL(self.location.href);
+  url.searchParams.set("helper", "1");
+  h.worker = new Worker(url, { type: "module" });
+  h.worker.onmessage = ({ data }) => {
+    const p = h.pending.get(data?.id);
+    if (!p) return;                           // ready / smlibReady / rustReady: not a reply
+    h.pending.delete(data.id);
+    if (data.ok) p.resolve(data.out);
+    else p.reject(new Error(data.error || "an SMLib helper failed"));
+  };
+  h.worker.onerror = (ev) => { ev.preventDefault?.(); dropPool(`a helper worker failed: ${ev.message || "error"}`); };
+  if (smlibModule) h.worker.postMessage({ op: "smlibModule", module: smlibModule });
+  return h;
+}
+// Stop a build that is running on the helpers: every helper with a part in
+// hand is thrown away (wasm cannot be interrupted) and replaced at once; the
+// idle ones keep going. The build itself then fails as cancelled.
+function cancelPool() {
+  if (!smlibPool) return;
+  for (const h of smlibPool) {
+    if (!h.pending.size) continue;
+    try { h.worker.terminate(); } catch { /* gone */ }
+    const err = Object.assign(new Error("build cancelled"), { cancelled: true });
+    for (const [, p] of h.pending) p.reject(err);
+    h.pending.clear();
+    spawnHelper(h);
+  }
+}
 function getSmlibPool() {
   if (smlibPool !== null) return smlibPool || null;
   const n = helperCount();
   if (n < 2 || typeof Worker === "undefined") { smlibPool = false; return null; }
   try {
-    const url = new URL(self.location.href);
-    url.searchParams.set("helper", "1");
-    smlibPool = Array.from({ length: n }, () => {
-      const h = { worker: new Worker(url, { type: "module" }), pending: new Map() };
-      h.worker.onmessage = ({ data }) => {
-        const p = h.pending.get(data?.id);
-        if (!p) return;                       // ready / smlibReady / rustReady: not a reply
-        h.pending.delete(data.id);
-        if (data.ok) p.resolve(data.out);
-        else p.reject(new Error(data.error || "an SMLib helper failed"));
-      };
-      h.worker.onerror = (ev) => { ev.preventDefault?.(); dropPool(`a helper worker failed: ${ev.message || "error"}`); };
-      return h;
-    });
+    smlibPool = Array.from({ length: n }, () => spawnHelper());
   } catch (e) {
     smlibPool = false;
     console.warn("[kw] no SMLib helpers here:", e?.message || e);
@@ -334,8 +355,9 @@ function nativeCall(msg, transfer = [], onProgress = null, slot = 0) {
 // Anything that needs the Rust kernel sooner (a refusal, an edge lookup)
 // still starts it on the spot.
 if (HELPER) {
-  // a helper only ever builds on SMLib; the Rust kernel loads if a part needs it
-  loadSmlib().catch(() => { /* recorded in smlibFailure */ });
+  // a helper only ever builds on SMLib, and its parent hands it the module it
+  // already compiled (op "smlibModule"), so it starts nothing here; the Rust
+  // kernel loads if a part needs it
 } else if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) {
   if (PARAMS.get("kernel") === "nvidia") {
     loadSmlib().catch(() => { /* recorded in smlibFailure */ })
@@ -619,9 +641,18 @@ self.onmessage = async ({ data, ports }) => {
           try {
             if (pieces && pieces.length > 1) {
               const pool = getSmlibPool();
+              // the page may stop this build with op "cancel" (see cancelPool)
+              if (pool) self.postMessage({ pooledOf: id });
               const outs = new Array(pieces.length);
+              // A part whose history is exactly what it was last build is not
+              // built again: a dial on the lid leaves the other 31 motor parts
+              // as they were. One build's worth is kept, so it costs one model.
+              const keys = pieces.map((doc) => JSON.stringify(doc));
+              let reused = 0;
               const one = async (i, h) => {
-                outs[i] = h ? await helperBuild(h, pieces[i], data) : await buildPieceSmlib(pieces[i], data);
+                const hit = pieceCache.get(keys[i]);
+                if (hit) reused++;
+                outs[i] = hit ?? (h ? await helperBuild(h, pieces[i], data) : await buildPieceSmlib(pieces[i], data));
                 postPart(outs[i], i);
               };
               if (pool) {
@@ -630,8 +661,9 @@ self.onmessage = async ({ data, ports }) => {
               } else {
                 for (let i = 0; i < pieces.length; i++) await one(i, null);
               }
+              pieceCache = new Map(keys.map((k, i) => [k, outs[i]]));
               const out = mergeOutputs(outs, performance.now() - t0, pieces);
-              out.stats = { ...out.stats, kernel: "nvidia", wasm: true, hosts: pool ? Math.min(pool.length, pieces.length) : 1 };
+              out.stats = { ...out.stats, kernel: "nvidia", wasm: true, hosts: pool ? Math.min(pool.length, pieces.length) : 1, reused };
               trace(`SMLib engine, ${pieces.length} parts on ${out.stats.hosts} helpers: ${out.lane} in ${out.stats.wallMs} ms`);
               postSplit(out);
               return;
@@ -641,6 +673,7 @@ self.onmessage = async ({ data, ports }) => {
             postSplit(out);
             return;
           } catch (e) {
+            if (e?.cancelled) throw e;           // the page moved on: say so, build nothing else
             if (!(e instanceof EngineRefusal) && e !== smlibFailure) console.warn("[kw] SMLib kernel failed, using the Rust kernel:", e);
             smlibNote = { nvidiaRefused: String(e?.message || e).slice(0, 300), smlibUnavailable: e === smlibFailure || undefined };
             trace(`SMLib engine refused: ${smlibNote.nvidiaRefused}`);
@@ -799,6 +832,12 @@ self.onmessage = async ({ data, ports }) => {
     // worker's kernel instance builds every model (src/stlexact.js).
     // a helper's one job: a part, on SMLib (its reply is copied, not
     // transferred: the engine's buffers may still be views it keeps)
+    if (op === "smlibModule") {
+      if (!smlibModule && data.module) smlibModule = data.module;
+      loadSmlib().catch(() => { /* recorded in smlibFailure */ });
+      return;
+    }
+    if (op === "cancel") { cancelPool(); return; }
     if (op === "piece") { self.postMessage({ id, ok: true, out: await buildPieceSmlib(data.json, data) }); return; }
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }
     // from the page, no reply: the desktop's native kernel arriving or going

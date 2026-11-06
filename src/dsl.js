@@ -312,7 +312,28 @@ export const getExactMesh = (name) => EXACT_MESH.get(name) ?? null;
 // is where the goggles' time actually went. Still deliberately on the high
 // side. An estimate, not a promise: its job is telling 2 seconds from 2
 // minutes, not 40s from 50s.
+//
+// A model of separate parts (group(), assembly()) builds a part at a time on
+// several kernels at once (src/partsplit.js; native hosts on the desktop,
+// SMLib helpers on the website), so its time is set by its slowest part, not
+// the sum: PrintMotor's 32 parts summed to ~93 s against a real ~6 s, and an
+// AI-written assembly was held behind the Build button for it. The sum still
+// counts, spread over three kernels, so a kit of many middling parts is not
+// waved through as if it were one.
 export function estimateBuild(root) {
+  const parts = root?.kind === "group" && root.children?.length > 1 ? root.children : null;
+  if (!parts) return estimateOne(root);
+  const each = parts.map(estimateOne);
+  const sum = each.reduce((n, e) => n + e.sec - 0.15, 0);
+  const max = Math.max(...each.map((e) => e.sec - 0.15));
+  return {
+    tris: each.reduce((n, e) => n + e.tris, 0),
+    booleans: each.reduce((n, e) => n + e.booleans, 0),
+    sec: 0.15 + Math.max(max, sum / 3),
+    parts: parts.length,
+  };
+}
+function estimateOne(root) {
   let tris = 0, booleans = 0, members = 0;
   const walk = (n) => {
     if (!n || typeof n !== "object") return;

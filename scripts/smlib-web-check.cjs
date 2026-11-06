@@ -60,6 +60,36 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     check("every part on SMLib (nothing refused to Rust)", !st.nvidiaRefused, st.nvidiaRefused);
     check("its parts spread over more than one helper", st.hosts > 1, `hosts ${st.hosts}`);
     check("the first part reached the screen before the last", first != null && first < total, `first ${first}, total ${total}`);
+
+    // a dial on one part: only the parts it changes are built again
+    const edit = (from, to) => run(`(() => { const el = document.getElementById("code"); el.value = el.value.replace(${JSON.stringify(from)}, ${JSON.stringify(to)});
+      el.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+    const until = async (re, t0, limit = 120000) => {
+      let s = "";
+      while (Date.now() - t0 < limit) {
+        s = await run(`document.getElementById("status").className + "|" + document.getElementById("status-text").textContent`);
+        if (Date.now() - t0 > 1200 && re.test(s)) break;
+        await wait(100);
+      }
+      return s;
+    };
+    let t1 = Date.now();
+    await edit("const lidT = 5;", "const lidT = 5.5;");
+    let s1 = await until(/^ok\|.*109\.0/, t1);
+    const st1 = JSON.parse(await run(`JSON.stringify(window.brepscript.lastWorkerBuild?.stats || {})`));
+    console.log(`  ..    lid dial: ${((Date.now() - t1) / 1000).toFixed(1)} s, ${st1.reused} of ${st1.parts} parts reused, worker ${st1.wallMs} ms`);
+    check("a dial on the lid rebuilds, reusing the parts it does not touch", /^ok\|/.test(s1) && st1.reused >= st1.parts - 6, JSON.stringify({ reused: st1.reused, parts: st1.parts, s1 }));
+    check("...faster than the first build", Date.now() - t1 < total, `${Date.now() - t1} vs ${total}`);
+
+    // an edit landing while a build runs: the helpers are stopped in place
+    await edit("const stack = 40;", "const stack = 41;");     // every part changes: a long build
+    for (let k = 0; k < 200; k++) { if (/busy/.test(await run(`document.getElementById("status").className`))) break; await wait(25); }
+    await wait(1800);
+    t1 = Date.now();
+    await edit("const stack = 41;", "const stack = 40;");
+    s1 = await until(/^ok\|.*109\.0/, t1);
+    console.log(`  ..    edit during a build: done ${((Date.now() - t1) / 1000).toFixed(1)} s after it`);
+    check("an edit during a build lands, without restarting the kernel", /^ok\|/.test(s1) && Date.now() - t1 < total + 3000, `${Date.now() - t1} ms | ${s1}`);
   } catch (e) { check("no harness error", false, e.stack || String(e)); }
   console.log(`${pass} passed, ${fail} failed`);
   app.exit(fail ? 1 : 0);

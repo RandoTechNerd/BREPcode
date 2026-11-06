@@ -2051,6 +2051,20 @@
       color: var(--muted2); font-variant-numeric: tabular-nums;
     }
     #shape-menu .sm-hint { font-size: 10.5px; color: var(--muted2); padding: 2px 8px 4px; }
+    /* a yes/no question about the whole model (askYesNo) */
+    #yn-ask { position: fixed; inset: 0; z-index: 150000; display: none; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.35); }
+    #yn-ask.open { display: flex; }
+    #yn-ask .yn-box { width: min(380px, calc(100vw - 32px)); padding: 16px 16px 12px; border-radius: 12px;
+      background: var(--header); color: var(--text); border: 1px solid var(--border);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55); font: 13px/1.45 system-ui, sans-serif; }
+    #yn-ask .yn-head { font-weight: 600; font-size: 14.5px; margin-bottom: 6px; overflow-wrap: anywhere; }
+    #yn-ask .yn-sub { color: var(--muted2); font-size: 12.5px; margin-bottom: 14px; overflow-wrap: anywhere; }
+    #yn-ask .yn-sub code { font-size: 11.5px; }
+    #yn-ask .yn-acts { display: flex; justify-content: flex-end; gap: 8px; }
+    #yn-ask .yn-acts button { padding: 6px 16px; border-radius: 7px; border: 1px solid var(--border); cursor: pointer;
+      font: 500 12.5px system-ui, sans-serif; background: none; color: var(--text); }
+    #yn-ask .yn-acts button.yn-yes { background: var(--accent); border-color: var(--accent); color: #fff; }
     #sm-more-caret { display: inline-block; width: 10px; }
     #sm-swaps { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 2px; }
     #sm-swaps button {
@@ -3268,6 +3282,12 @@
     <button class="sm-item" id="sm-clear">Clear this shape's colour</button>
     <button class="sm-item" id="sm-clearall">Reset all colours</button>
     <div class="sm-sep"></div>
+    <!-- a spool for this one piece, written into the code as finish("id", call) -->
+    <label class="sm-row" title="Print this piece in a real filament. It goes into the code as finish(&quot;...&quot;, ...)."><span>Filament</span>
+      <select id="sm-filament"><option value="">Follow the panel</option></select>
+    </label>
+    <div class="sm-hint" id="sm-fil-hint" hidden></div>
+    <div class="sm-sep"></div>
     <!-- Collapsed by default. Colour is the thing people came for; material and
          pattern are the deliberate extra, one click away. -->
     <button class="sm-item" id="sm-more" aria-expanded="false">
@@ -3297,6 +3317,13 @@
     <button class="sm-item sm-danger" id="sm-delete" title="Cuts this shape out of the code. Ctrl+Z brings it back.">
       Delete this part <kbd>Del</kbd>
     </button>
+  </div>
+  <div id="yn-ask" role="dialog" aria-modal="true" aria-labelledby="yn-head">
+    <div class="yn-box">
+      <div class="yn-head" id="yn-head"></div>
+      <div class="yn-sub" id="yn-sub"></div>
+      <div class="yn-acts"><button id="yn-no">Cancel</button><button class="yn-yes" id="yn-yes">Yes</button></div>
+    </div>
   </div>
 
   <!-- "See it on your desk": top-right corner, outside the dock (whose
@@ -4997,6 +5024,11 @@
             if (lastEngine?.fallbackKind === "loading") scheduleBuild();
             return;
           }
+          if (data?.pooledOf) {                 // a build running on the worker's SMLib helpers
+            pooledBuilds.clear();               // one build at a time; it can be stopped
+            pooledBuilds.add(data.pooledOf);    // without killing the worker
+            return;
+          }
           if (data?.smlibReady) {               // SMLib finished downloading: build on it now
             smlibArrived = true;
             if (lastEngine?.stats?.smlibLoading || (lastEngine?.fallbackKind === "loading" && buildKernel() === "nvidia")) scheduleBuild();
@@ -5068,6 +5100,7 @@
     // build runs straight after it. Only a build long enough to be worth the
     // respawn actually gets killed.
     let workerBuildId = 0, workerBuildStart = 0;
+    const pooledBuilds = new Set();     // build ids the worker said run on its helpers
     const CANCEL_WORTH_IT_MS = 1500;
     function cancelWorkerBuild() {
       // Only an actual BUILD is worth killing a worker over. This used to fire
@@ -5075,6 +5108,15 @@
       // the first keystroke of the session threw away the worker that was still
       // loading the kernel, over and over.
       if (!kernelWorker || !workerBuildId || !workerPending.has(workerBuildId)) return;
+      // A build on the SMLib helpers (the website) is stopped in place: the
+      // worker throws away only the busy helpers and replaces them from the
+      // module it already compiled, so it costs no reload at all, and is
+      // worth doing at once rather than after CANCEL_WORTH_IT_MS.
+      if (pooledBuilds.has(workerBuildId)) {
+        pooledBuilds.delete(workerBuildId);
+        kernelWorker.postMessage({ op: "cancel" });
+        return;
+      }
       if (performance.now() - workerBuildStart < CANCEL_WORTH_IT_MS) return;
       dropWorker("build cancelled");
     }
@@ -7103,6 +7145,23 @@
         m.thickness = spool.t ? Math.max(1, (bb.isEmpty() ? 10 : bb.getSize(new THREE.Vector3()).z)) : 0;
         m.attenuationDistance = spool.atten || Infinity;
         m.attenuationColor = new THREE.Color(spool.base);
+        // A see-through spool shaded exactly as the panel's filament is
+        // (applyFilament): the depth of the whole part, the room's reflections
+        // to give back the diffuse that transmission took, and a little alpha on
+        // both sides so you see INTO it. Without these a finish("ruby-red", ...)
+        // piece rendered as flat tinted plastic beside the same spool picked in
+        // the panel, which is how "Change all" first looked.
+        if (spool.t) {
+          m.thickness = bb.isEmpty() ? 20 : bb.getSize(new THREE.Vector3()).length() * 0.35;
+          m.envMapIntensity = spool.env ?? fam.env ?? 1.8;
+          if (mat.opacity >= 100) {
+            m.transparent = true;
+            m.opacity = spool.a ?? 0.85;
+            m.depthWrite = false;
+            m.side = THREE.DoubleSide;
+          }
+          ensureEnv().then((t) => { m.envMap = t; m.needsUpdate = true; }).catch(() => {});
+        }
         m.needsUpdate = true;
       }).catch(() => { /* a finish that will not load must not break the build */ });
     }
@@ -7872,6 +7931,14 @@
       if (!n && !mats.size && !pats.size && !myMats) { box.style.display = "none"; return; }
       box.style.display = "";
       const bits = [];
+      // finish("spool", ...) around the whole model: every piece wears it, and
+      // that is the one thing worth saying (not "72 shapes have a colour")
+      const whole = lastLang === "brepscript" ? codemap.wholeFinishOf(code.value) : null;
+      if (whole) {
+        box.innerHTML = `The whole model is <b>${esc(FILAMENTS[whole]?.label ?? whole)}</b>: `
+          + `<code>finish("${esc(whole)}", ...)</code> in the code wins over the colour picked here.`;
+        return;
+      }
       if (n) {
         bits.push(`<b>${n}</b> shape${n === 1 ? " has its" : "s have their"} own colour, `
           + `so the colour picked here is hidden.`);
@@ -8147,6 +8214,96 @@
       });
     }
 
+    // A yes/no question in the middle of the screen. Resolves true for Yes,
+    // false for Cancel, Escape or a click outside.
+    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel" }) {
+      const box = $("yn-ask");
+      // at the top of the page, over every card, whatever its markup sits in
+      if (box.parentNode !== document.body) document.body.appendChild(box);
+      $("yn-head").textContent = head;
+      $("yn-sub").innerHTML = sub;
+      $("yn-yes").textContent = yes;
+      $("yn-no").textContent = no;
+      box.classList.add("open");
+      $("yn-yes").focus();
+      return new Promise((resolve) => {
+        const done = (v) => {
+          box.classList.remove("open");
+          $("yn-yes").onclick = $("yn-no").onclick = box.onclick = null;
+          removeEventListener("keydown", key, true);
+          resolve(v);
+        };
+        const key = (e) => {
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); }
+          else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); done(true); }
+        };
+        $("yn-yes").onclick = () => done(true);
+        $("yn-no").onclick = () => done(false);
+        box.onclick = (e) => { if (e.target === box) done(false); };
+        addEventListener("keydown", key, true);
+      });
+    }
+
+    // How many shapes keep their own look whatever the panel says: a colour
+    // (right-click or colorize() in the code) or a material (finish()).
+    const ownLookCount = () => new Set([...Object.keys(featureColors), ...Object.keys(codeColors),
+      ...Object.keys(featureFinish), ...Object.keys(codeFinish)]).size;
+
+    // A spool picked in the panel only reaches the shapes with no colour of
+    // their own, so on a model that colours its pieces (every case kit, every
+    // colour 3MF) it seemed to do nothing. Offer the rest: Yes writes
+    // finish("spool", ...) around the whole model, which every shape takes.
+    async function offerWholeFilament(sp) {
+      const brep = lastLang === "brepscript";
+      if (brep && codemap.wholeFinishOf(code.value) === sp.id) return;   // already all of it
+      const own = ownLookCount();
+      if (!own) return;
+      const label = sp.label.split(" · ")[0];
+      const canWrite = brep && codemap.setWholeFinish(code.value, sp.id) != null;
+      const ok = await askYesNo({
+        head: `Change all to ${sp.label}?`,
+        sub: `${own} shape${own === 1 ? " has its" : "s have their"} own colour or material, so `
+          + `${own === 1 ? "it keeps" : "they keep"} it and only the rest turned ${label}. `
+          + (canWrite ? `Yes puts <code>finish("${sp.id}", ...)</code> around the whole model, so every piece prints in ${label}. Ctrl+Z undoes it.`
+            : `Yes shows every piece in ${label} on screen. This code isn't BREPcode, so it can't be written into it.`),
+      });
+      if (!ok) return;
+      for (const k of Object.keys(featureColors)) delete featureColors[k];
+      for (const k of Object.keys(featureFinish)) delete featureFinish[k];
+      if (canWrite) {
+        const before = code.value;
+        pushHistory(before);
+        code.value = codemap.setWholeFinish(before, sp.id);
+        pushHistory();
+        rebuild();
+      } else {
+        for (const fid of new Set([...Object.keys(codeColors), ...Object.keys(codeFinish)])) featureFinish[fid] = sp.id;
+      }
+      recolorMeshes();
+      noteColourOverride();
+      toast(`Every piece is ${label} now.`);
+    }
+    // ...and the way back: a generic filament (or none) picked while the whole
+    // model wears a spool would otherwise change nothing you can see.
+    async function offerUnwholeFilament() {
+      const whole = lastLang === "brepscript" ? codemap.wholeFinishOf(code.value) : null;
+      if (!whole) return;
+      const name = FILAMENTS[whole]?.label ?? whole;
+      const ok = await askYesNo({
+        head: `Take ${name} off the whole model?`,
+        sub: `The code puts <code>finish("${whole}", ...)</code> around everything, which wins over the panel. `
+          + `Yes takes it off, so every piece goes back to its own colour. Ctrl+Z undoes it.`,
+      });
+      if (!ok) return;
+      const before = code.value;
+      const next = codemap.setWholeFinish(before, null);
+      if (!next) return;
+      pushHistory(before);
+      code.value = next;
+      pushHistory();
+      rebuild();
+    }
+
     $("mat-filament").addEventListener("change", (e) => {
       mat.filament = e.target.value;
       // Picked BY HAND, with the result on screen — the one path where a
@@ -8176,6 +8333,7 @@
           + `is something BEHIND it: parts stacked back to front tint each other, while a single part `
           + `alone on the plate reads as tinted rather than glowing. It sets its own roughness, and `
           + `the Opacity slider above still overrides it if you want a flat x-ray instead.`;
+      if (sp) offerWholeFilament(sp); else offerUnwholeFilament();
     });
     // the colour <input>s are driven by the swatch rows above (SWATCH_ROWS), which
     // also file each pick into the palette — no separate listeners here
@@ -8233,6 +8391,71 @@
         if (m.userData.featureId) m.material = matForFeature(m.userData.featureId);
       }
     }
+    // ---- an assembly part's look, into its entry in the code ----------------
+    //
+    // A part of an assembly() is one entry, housing: { shape, color, finish },
+    // and its pieces are mostly made in helpers and loops, where no one call is
+    // the part (the motor, every case kit). So a colour or a material picked on
+    // a part is written THERE (codemap.setPartProp), every copy takes it, and
+    // the code stays the one source of truth. On screen at once, into the code
+    // a moment later (a colour drag fires every step).
+    let shapeMenuPart = null;
+    let partPending = null, partTimer = null;
+    const partFids = (part) => {
+      const out = new Set();
+      modelGroup.traverse((o) => {
+        if (o.isMesh && o.userData.featureId && o.userData.asm != null && asm.instances[o.userData.asm]?.name === part) out.add(o.userData.featureId);
+      });
+      return [...out];
+    };
+    // Can this part's look be written into the code? (a name made in a loop,
+    // or code that is not BREPcode, cannot)
+    const partWritable = (part) => !!part && lastLang === "brepscript"
+      && codemap.setPartProp(code.value, part, "__probe", "x") != null;
+    function queuePartLook(part, look) {
+      for (const fid of partFids(part)) {
+        if ("color" in look) { if (look.color) featureColors[fid] = look.color; else delete featureColors[fid]; }
+        if ("finish" in look) { if (look.finish) featureFinish[fid] = look.finish; else delete featureFinish[fid]; }
+      }
+      recolorMeshes();
+      noteColourOverride();
+      partPending = { part, look: { ...(partPending?.part === part ? partPending.look : {}), ...look } };
+      clearTimeout(partTimer);
+      partTimer = setTimeout(writePartLook, 350);
+    }
+    function writePartLook() {
+      const p = partPending;
+      partPending = null;
+      if (!p) return;
+      let next = code.value;
+      for (const [prop, value] of Object.entries(p.look)) next = codemap.setPartProp(next, p.part, prop, value ?? null) ?? next;
+      if (next === code.value) return;
+      pushHistory(code.value);
+      code.value = next;
+      pushHistory();
+      // the code holds it now; the on-screen overrides would hide its next edit
+      rebuild().then(() => {
+        for (const fid of partFids(p.part)) { delete featureColors[fid]; delete featureFinish[fid]; }
+        recolorMeshes();
+        noteColourOverride();
+      }).catch(() => {});
+    }
+    // The menu's colour and material picks: the part's entry when there is one
+    // to write, the piece's own call (setShapeColor / setShapeFinish) otherwise.
+    // A colour picked on a part that has a material clears the material, or
+    // the colour would not show (a material wins over a colour).
+    function menuColor(hex) {
+      if (!shapeMenuFid) return;
+      if (partWritable(shapeMenuPart)) queuePartLook(shapeMenuPart, hex ? { color: hex, finish: null } : { color: null });
+      else setShapeColor(shapeMenuFid, hex);
+    }
+    function menuFinish(name) {
+      if (!shapeMenuFid) return false;
+      if (partWritable(shapeMenuPart)) { queuePartLook(shapeMenuPart, { finish: name || null }); return true; }
+      setShapeFinish(shapeMenuFid, name || null);
+      return lastLang === "brepscript" && !!featureMap?.[shapeMenuFid];
+    }
+
     function setShapeColor(fid, hex) {
       if (hex) featureColors[fid] = hex; else delete featureColors[fid];
       recolorMeshes();
@@ -8385,10 +8608,10 @@
     for (const c of SHAPE_SWATCHES) {
       const b = document.createElement("button");
       b.style.background = c; b.title = c;
-      b.addEventListener("click", () => { if (shapeMenuFid) setShapeColor(shapeMenuFid, c); shapeMenu.classList.remove("open"); });
+      b.addEventListener("click", () => { menuColor(c); shapeMenu.classList.remove("open"); });
       $("sm-swatches").appendChild(b);
     }
-    $("sm-custom").addEventListener("input", (e) => { if (shapeMenuFid) setShapeColor(shapeMenuFid, e.target.value); });
+    $("sm-custom").addEventListener("input", (e) => menuColor(e.target.value));
     $("sm-auto").addEventListener("click", () => { autoColorAll(); shapeMenu.classList.remove("open"); });
     $("sm-rotate").addEventListener("click", () => {
       const fid = shapeMenuFid;
@@ -8408,7 +8631,7 @@
       recolorMeshes();
       noteColourOverride();          // the warning has to go away with them
     });
-    $("sm-clear").addEventListener("click", () => { if (shapeMenuFid) setShapeColor(shapeMenuFid, null); shapeMenu.classList.remove("open"); });
+    $("sm-clear").addEventListener("click", () => { menuColor(null); shapeMenu.classList.remove("open"); });
 
     // ---- this piece's own material and pattern ----------------------------
     //
@@ -8496,7 +8719,55 @@
       fitShapeMenu();                       // it just got taller
     });
     matSel.addEventListener("change", () => {
-      if (shapeMenuFid) setShapeFinish(shapeMenuFid, matSel.value || null);
+      menuFinish(matSel.value || null);
+      if (shapeMenuFid) syncShapeFilUI(shapeMenuFid);
+    });
+    // The Filament row: the spools only, at the top of the menu (the Material
+    // list below holds them too, folded away under "Material & pattern").
+    const filSel = $("sm-filament");
+    let smFilFilled = null;
+    function fillShapeFilaments() {
+      smFilFilled ??= (_fil ??= import("./filaments.js")).then((F) => {
+        const byFam = {};
+        for (const sp of F.SPOOLS) (byFam[sp.family] ??= []).push(sp);
+        for (const fam of Object.keys(byFam)) {
+          const g = document.createElement("optgroup");
+          g.label = fam;
+          for (const sp of byFam[fam]) {
+            const o = document.createElement("option");
+            o.value = sp.id; o.textContent = sp.label;
+            g.appendChild(o);
+          }
+          filSel.appendChild(g);
+        }
+        return F;
+      }).catch(() => null);
+      return smFilFilled;
+    }
+    function syncShapeFilUI(fid) {
+      const fin = String(featureFinish[fid] ?? codeFinish[fid] ?? "");
+      fillShapeFilaments().then((F) => {
+        if (shapeMenuFid !== fid) return;
+        const sp = fin && F?.findSpool ? F.findSpool(fin) : null;
+        filSel.value = sp ? sp.id : "";
+      });
+      $("sm-fil-hint").hidden = true;
+    }
+    filSel.addEventListener("change", () => {
+      const fid = shapeMenuFid;
+      if (!fid) return;
+      const written = menuFinish(filSel.value || null);
+      if (!$("sm-matblock").hidden) syncShapeMatUI(fid);
+      // Written into the code where there is a place for it (the part's entry,
+      // or the call that made this piece); otherwise it stays on screen.
+      const hint = $("sm-fil-hint");
+      hint.hidden = written;
+      hint.textContent = lastLang !== "brepscript"
+        ? "Shown on screen only: this code isn't BREPcode."
+        : shapeMenuPart
+          ? `Shown on screen only: the part "${shapeMenuPart}" is named in a loop, so there is no entry to write it on.`
+          : "Shown on screen only: this piece is made inside a loop or a helper, so there is no one call to write it on.";
+      fitShapeMenu();
     });
     patSel.addEventListener("change", () => {
       if (shapeMenuFid) setShapePattern(shapeMenuFid, patSel.value === "" ? null : +patSel.value);
@@ -8519,6 +8790,13 @@
     });
     $("sm-matclear").addEventListener("click", () => {
       if (!shapeMenuFid) return;
+      if (partWritable(shapeMenuPart)) {
+        delete featurePattern[shapeMenuFid];
+        delete featureClear[shapeMenuFid];
+        queuePartLook(shapeMenuPart, { finish: null });
+        syncShapeMatUI(shapeMenuFid);
+        return;
+      }
       const hadFinish = !!(featureFinish[shapeMenuFid] ?? codeFinish[shapeMenuFid]);
       delete featureFinish[shapeMenuFid];
       delete featurePattern[shapeMenuFid];
@@ -8630,6 +8908,9 @@
       if (!hit?.object.userData.featureId) { shapeMenu.classList.remove("open"); return; }
       askHit = { hit, ray: raycaster.ray.direction.clone() };
       shapeMenuFid = hit.object.userData.featureId;
+      // in an assembly, the PART this piece belongs to: its look is written on
+      // the part's entry in the code (writePartLook)
+      shapeMenuPart = asm.active ? asm.instances[hit.object.userData.asm]?.name ?? null : null;
       buildSwapChips(shapeMenuFid);
       shapeMenu.style.left = `${Math.min(clientX, innerWidth - 240)}px`;
       shapeMenu.style.top = `${Math.min(clientY, innerHeight - 200)}px`;
@@ -8637,6 +8918,7 @@
       // The material block stays open between right-clicks — somebody assigning
       // a material to six pieces should not re-open it six times.
       if (!$("sm-matblock").hidden) { fillShapeMaterials(); syncShapeMatUI(shapeMenuFid); }
+      syncShapeFilUI(shapeMenuFid);
       fitShapeMenu();
     }
 
@@ -11944,6 +12226,9 @@ ${joined}${SITE_TAIL}`), joined);
         modelGroup.updateMatrixWorld(true);
         seatGrid();
         frameModel(modelGroup, { grow: streamed ? 1.1 : 1.8 });
+        // a see-through finish() sizes its depth to the model, which was only
+        // its first part when a streamed build shaded it: shade it again whole
+        for (const m of overrideMats.values()) if (m.userData.finish) applyFinishTo(m, m.userData.finish);
         lastShape = shape;
         refreshNegatives();                   // async, best-effort — never blocks the build
 
@@ -12050,9 +12335,15 @@ ${joined}${SITE_TAIL}`), joined);
     let lastBuildMs = 0;
     // After a slow build, back off so continued typing doesn't re-freeze the
     // page on every pause — letters keep appearing, the model catches up.
-    const scheduleBuild = () => {
+    // How long to wait for the typing to stop. It grows with the last build's
+    // time so a slow model does not start (and then cancel) a build per
+    // keystroke, but only to a second: it used to reach 2.5 s, which after a
+    // 3 s build made every edit sit still for most of its own build time
+    // first. A dial (paramWriting) is a finished value, not a keystroke, so it
+    // goes almost at once; dragging one still settles as it is let go.
+    const scheduleBuild = (dial = false) => {
       clearTimeout(timer);
-      const delay = lastBuildMs > 700 ? Math.min(2500, Math.round(lastBuildMs * 1.1)) : 450;
+      const delay = dial ? 200 : lastBuildMs > 700 ? Math.min(1000, Math.round(lastBuildMs * 0.4) + 450) : 450;
       timer = setTimeout(rebuild, delay);
     };
 
@@ -15824,7 +16115,7 @@ ${joined}${SITE_TAIL}`), joined);
       // than when the rebuild lands seconds later — until then the dot would
       // be promising a blueprint of a model the user has already changed.
       paintBlueprintBtn();
-      scheduleBuild();
+      scheduleBuild(paramWriting);
       // The dials follow the text, whoever typed it — including us. Guarded
       // inside refreshParams so our own slider write cannot re-render the
       // slider being dragged, and debounced because reading the parameters out

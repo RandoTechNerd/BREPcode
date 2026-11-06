@@ -395,6 +395,102 @@ export function colorizeAt(src, start, end, hex) { return wrapAt(src, start, end
 // [start, end) is not the shape argument of a colorize("…", it) to take off.
 export function uncolorizeAt(src, start, end) { return unwrapAt(src, start, end, "colorize"); }
 
+// ------------------------------------------------------------- whole model
+//
+// The model's own look: finish("name", …) around what it returns. Every shape
+// inside takes it, over its own colorize() (src/dsl.js finish(); the viewer's
+// applyFinishTo), so it is how "print ALL of it in Ruby Red" is written.
+
+// the finish("…", …) that IS the returned value, or null
+function wholeWrap(map) {
+  if (!map.ok || !map.ret) return null;
+  const w = map.calls.find((c) => c.start === map.ret.start && c.end === map.ret.end);
+  return w && w.name === "finish" && w.args.length === 2 && w.args[0].literal?.kind === "text" ? w : null;
+}
+
+// wholeFinishOf(src) -> the name in a finish() around the whole model, or null
+export function wholeFinishOf(src) {
+  return wholeWrap(parseCode(src))?.args[0].literal.value ?? null;
+}
+
+// setWholeFinish(src, name) -> new source text with finish(name, …) around the
+// returned value (its name changed when one is already there), or with it
+// taken off when name is null. null when there is no top-level return to
+// wrap, or nothing to take off.
+export function setWholeFinish(src, name) {
+  const map = parseCode(src);
+  if (!map.ok || !map.ret) return null;
+  const w = wholeWrap(map);
+  if (name == null) {
+    if (!w) return null;
+    const inner = w.args[1];
+    return src.slice(0, w.start) + src.slice(inner.start, inner.end) + src.slice(w.end);
+  }
+  const q = JSON.stringify(String(name));
+  if (w) return src.slice(0, w.args[0].start) + q + src.slice(w.args[0].end);
+  return src.slice(0, map.ret.start) + `finish(${q}, ${src.slice(map.ret.start, map.ret.end)})` + src.slice(map.ret.end);
+}
+
+// ------------------------------------------------------------- assembly parts
+//
+// An assembly's part is an entry in the object it is built from:
+//   housing: { shape: housingC(), color: "#b9bec6", finish: "aluminium" },
+// and its look is that entry's color / finish (src/assembly.js). The part's
+// pieces are usually made in helpers and loops, where no one call is the part,
+// so this entry is where a pick on the part belongs in the code.
+//
+// setPartProp(src, part, prop, value) -> new source text with prop set to the
+// text value (replaced if written as text, added at the END of the entry
+// otherwise, so it wins over a ...spread before it), or taken off when value
+// is null. null when no entry `part: { shape: ..., ... }` is written out
+// literally (a name made in a loop), or nothing changes.
+export function setPartProp(src, part, prop, value) {
+  let ast;
+  try { ast = Parser.parse(src, PARSE_OPTS); } catch { return null; }
+  const keyOf = (p) => p.key?.type === "Identifier" && !p.computed ? p.key.name
+    : p.key?.type === "Literal" ? String(p.key.value) : null;
+  let entry = null;
+  (function walk(n) {
+    if (entry || !n || typeof n.type !== "string") return;
+    if (n.type === "Property" && keyOf(n) === part && n.value?.type === "ObjectExpression"
+      && n.value.properties.some((q) => q.type === "Property" && keyOf(q) === "shape")) { entry = n.value; return; }
+    for (const k of Object.keys(n)) {
+      const v = n[k];
+      if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === "string") walk(v);
+    }
+  })(ast);
+  if (!entry) return null;
+  const own = entry.properties.filter((q) => q.type === "Property" && keyOf(q) === prop);
+  const last = own[own.length - 1];
+  const q = value == null ? "null" : JSON.stringify(String(value));
+  // after the last ...spread, so it is the value the part ends up with
+  const wins = (p) => p && !entry.properties.slice(entry.properties.indexOf(p) + 1).some((x) => x.type === "SpreadElement");
+  const hasSpread = entry.properties.some((x) => x.type === "SpreadElement");
+  if (value == null && hasSpread) {
+    // a ...spread may carry the prop (...copper is a finish): taking ours off
+    // would hand the part back to it, so it is set to null instead
+    if (last && last.value.type === "Literal" && wins(last)) {
+      return last.value.raw === "null" ? null : src.slice(0, last.value.start) + q + src.slice(last.value.end);
+    }
+    const tail = entry.properties[entry.properties.length - 1];
+    return src.slice(0, tail.end) + `, ${prop}: null` + src.slice(tail.end);
+  }
+  if (value == null) {
+    if (!last || last.value.type !== "Literal") return null;
+    // the property and the comma that joins it to its neighbour
+    const i = entry.properties.indexOf(last);
+    const prev = entry.properties[i - 1], next = entry.properties[i + 1];
+    const from = prev ? prev.end : last.start, to = prev ? last.end : next ? next.start : last.end;
+    return src.slice(0, from) + src.slice(to);
+  }
+  if (last && last.value.type === "Literal" && wins(last)) {
+    if (last.value.raw === q) return null;
+    return src.slice(0, last.value.start) + q + src.slice(last.value.end);
+  }
+  const tail = entry.properties[entry.properties.length - 1];
+  return src.slice(0, tail.end) + `, ${prop}: ${q}` + src.slice(tail.end);
+}
+
 // ------------------------------------------------------------- face → edges
 //
 // Kernel edge names are "FACEA|FACEB[i]" (both kernels, and the names that
