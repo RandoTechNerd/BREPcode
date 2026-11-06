@@ -36,9 +36,18 @@
 //   hex pot, 6 tilted cutters in one difference()  2.5 s at 12 sides, refused at 4 and 8
 //   ...the same cutters one difference() at a time exact  66-323 ms
 //   fillet() after hull()                          JS fallback (a mesh has no edges)
+// ...and on the PrintMotor assembly (2026-11-05), exact all along but slow:
+//   12 plate windows, 34-point polygon arcs         exact  44 s
+//   ...as ring-and-box-corner sectors (true arcs)  exact  4 s
+//   lid windows, 24-point swept edges              exact  14.5 s
+//   ...as 6 bezierTo curves per edge               exact  2.1 s (within 0.01 mm)
+//
+// FAST FIRST, FINE ON REQUEST: a revision the user asks to be finer (see
+// fineTuneAsked) may use the slower forms on purpose, so the exact pass
+// leaves its mesh steps alone.
 
 // Always on: the one paragraph every request pays for.
-export const EXACT_CORE = `EXACT B-REP FIRST. Mesh verbs (plain hull, roundedGrow/minkowski(mm), tube, texture, blob/blend, importedMesh) turn the model to triangles (no fillet after); a refused step falls back to a slow kernel. Mesh only when needed, and last. hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres, or flat pieces. Rounded box: fillet({ r, edges: "z" }, cube(...)). Taper: cylinder({ r1, r2 }). No hole down a revolve() axis. Overlapping cutters: one difference() each. Fillet pieces before union, r < half the thinnest wall. #exact has the rest.`;
+export const EXACT_CORE = `EXACT B-REP FIRST. Mesh verbs (plain hull, roundedGrow/minkowski(mm), tube, texture, blob/blend, importedMesh) turn the model to triangles (no fillet after); a refused step falls back to a slow kernel. Mesh only when needed, and last. hull({ exact: true }, ...) stays exact over equal corner cylinders, coaxial discs, 2 or 8 equal spheres, or flat pieces. No hole down a revolve() axis. Overlapping cutters: one difference() each. Fillet pieces before union, r < half the thinnest wall. Curves as curves, never a 20+ point polygon (44 s vs 4 s): arcs are a ring cut by box corners, outlines path2d + bezierTo (#curves). Fast first; slow detail only if a revision asks (#finetune). #exact has the rest.`;
 
 export const EXACT_RULES = `EXACT B-REP FIRST — the app builds on an exact B-rep kernel: true planes, cylinders and cones, fast booleans, and STEP export with real curved surfaces. A model stays on it only while EVERY step is exact; one mesh step turns the rest of that branch into triangles (no fillet after it, faceted STEP), and a step the kernel refuses drops the whole model to the slow fallback kernel. So build from exact pieces and reach for a mesh verb only when the design truly needs it:
 · EXACT: cube, cylinder, cone / cylinder({r1, r2}), sphere, torus, polygon + linearExtrude, revolve, path2d, text() (true letter outlines), union / difference / intersection, fillet, chamfer, drill, the hardware parts, and the shelf parts except gridfinityBin and gridfinityBase (meshes).
@@ -53,7 +62,9 @@ export const EXACT_RULES = `EXACT B-REP FIRST — the app builds on an exact B-r
 · NO GRAZING CONTACT: two solids that only touch along an edge or a line (a flare that starts exactly at another solid's top edge) are refused. Run one 0.5-1 mm into the other, on the same surface line, so the faces truly cross.
 · FILLET PIECES, NOT JOINS: one fillet over a part where a rib, gusset or post meets a plate is refused (inside and outside corners meet), and so is a radius bigger than a face it touches. Fillet each box on its own, r under half its thinnest side, then union them; inside corners stay sharp, which is stronger anyway.
 · mirror() IS EXACT for boxes, round cylinders and cones, spheres, tori, polygon extrusions, rounded boxes and full revolves: use it freely for symmetric parts. For a $fn 3-8 cylinder or a curved path2d profile, mirror the points yourself.
-· $fn: a cylinder with $fn 3-8 is a real polygon prism (cylinder({r, h, $fn: 6}) is a hex nut); above 8 it is a true circle whatever the number. A cone with $fn 3-8 is refused: make a tapered polygon as above.`;
+· $fn: a cylinder with $fn 3-8 is a real polygon prism (cylinder({r, h, $fn: 6}) is a hex nut); above 8 it is a true circle whatever the number. A cone with $fn 3-8 is refused: make a tapered polygon as above.
+· CURVES STAY CURVES (the big speed rule): an exact solid costs per FACE, and every point of a polygon() outline is a flat face that every later boolean has to cut. A curve sampled into 20+ points is the slowest thing you can hand this kernel. An annular window or sector (an arc between two radii) is intersection(ring, rotated box corner, rotated box corner): true arcs, two cylinder faces. A free curved edge is path2d([x, y], ..., bezierTo(c1, c2, p), ...) with a handful of curves per side (6 curves hold a swept edge within 0.01 mm); a round end is a cylinder. Measured on a motor: 12 plate windows as 34-point polygons 44 s, as ring-and-box sectors 4 s; lid windows as 24-point edges 14.5 s, as 6 Bezier curves each 2.1 s, same volume within 0.04%. Keep hand-written polygons to the corners the part really has.
+· FAST FIRST, FINE ON REQUEST: the first build and every ordinary change use the fast forms above. Slower forms (dense sampled outlines, polyhedron, a mesh verb for an organic surface) are for a REVISION the user explicitly asks to be finer, smoother or a closer match, and then only on the part they named: say roughly what it will cost in build time, and keep the rest of the model fast.`;
 
 // The same rules for a model written in OpenSCAD: the translator lands these
 // forms on the exact shapes above (src/openscad.js, src/exactshapes.js).
@@ -128,6 +139,13 @@ function codeOnly(src) {
 }
 const calls = (src, words) => words.filter((w) => new RegExp(`\\b${w}\\s*\\(`).test(src));
 
+// Did the user ask for a slower, finer revision on purpose? Then the slow
+// form is their call, like a mesh verb they named.
+const FINE_TUNE_RE = /\bfine[- ]?tun|\bfiner\b|\bmore (detail|precise|accurate|faithful)|\b(higher|max(imum)?|full) (detail|resolution|fidelity)|\bcloser match|\bmatch (it |the original )?exactly|\bsmoother (curve|edge|surface|outline)s?|\btake (your|the) time|\bslow(er)? (is|are) (ok|fine)|\bdon'?t care (about|how long)/i;
+export function fineTuneAsked(request = "") {
+  return FINE_TUNE_RE.test(String(request || ""));
+}
+
 // What the fallback's message says, translated into the rule that avoids it.
 function refusalHints(msg, src, lang) {
   const hints = [];
@@ -196,6 +214,7 @@ export function exactAdvice(engine, code = "", request = "") {
     };
   }
   if (engine.engine === "mesh") {
+    if (fineTuneAsked(request)) return null;        // a finer revision they asked for
     const table = lang === "openscad" ? AVOIDABLE_SCAD : lang === "jscad" ? AVOIDABLE_JSCAD : AVOIDABLE;
     const avoidable = calls(src, Object.keys(table)).filter((w) => !asked.includes(w.toLowerCase()));
     if (!avoidable.length) return null;              // tube, texture, text...: a mesh on purpose

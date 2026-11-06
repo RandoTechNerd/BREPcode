@@ -215,6 +215,38 @@
       ]
     },
     {
+      "tag": "curves",
+      "title": "Curved outlines that build fast",
+      "file": "curves.md",
+      "match": [
+        "arc",
+        "arcs",
+        "curved",
+        "curve",
+        "curves",
+        "window",
+        "windows",
+        "spoke",
+        "spokes",
+        "sector",
+        "sectors",
+        "annular",
+        "crescent",
+        "kidney",
+        "bezier",
+        "swept edge",
+        "curved slot",
+        "arc slot",
+        "build is slow",
+        "builds slowly",
+        "slow build",
+        "takes too long",
+        "speed it up",
+        "faster build",
+        "build faster"
+      ]
+    },
+    {
       "tag": "cutterkit",
       "title": "Cutter kits — stamp, twist knob, stencil sheet, rolling stamp",
       "file": "cutterkit.md",
@@ -303,6 +335,34 @@
         "fan guard",
         "blower",
         "noctua"
+      ]
+    },
+    {
+      "tag": "finetune",
+      "title": "A finer, slower revision on request",
+      "file": "finetune.md",
+      "match": [
+        "fine tune",
+        "fine-tune",
+        "finetune",
+        "finer",
+        "more detail",
+        "more detailed",
+        "higher detail",
+        "max detail",
+        "full detail",
+        "higher resolution",
+        "closer match",
+        "match it exactly",
+        "match the original exactly",
+        "smoother curve",
+        "smoother curves",
+        "smoother edges",
+        "smoother surface",
+        "take your time",
+        "slow is fine",
+        "slower is fine",
+        "don't care how long"
       ]
     },
     {

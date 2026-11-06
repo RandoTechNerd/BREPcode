@@ -13,7 +13,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import * as dsl from "../index.js";
 import { build } from "../index.js";
-import { exactAdvice, EXACT_RULES, EXACT_CORE } from "../src/exactlane.js";
+import { exactAdvice, fineTuneAsked, EXACT_RULES, EXACT_CORE } from "../src/exactlane.js";
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -312,6 +312,47 @@ console.log("\nmirror() stays exact: the flip lands on pieces that are their own
   const hex = await lane(mirror([1, 0, 0], translate([10, 0, 0], cylinder({ r: 5, h: 3, $fn: 6 }))));
   check("a $fn 6 prism still builds when mirrored", hex.engine !== "error", hex.fallback);
 }
+
+console.log("\nfast first, fine on request\n");
+{
+  for (const q of ["fine tune the lid windows", "make the spokes finer", "smoother curves on the windows please",
+    "match the original exactly", "take your time and get more detail", "slower is fine, I want it right"])
+    check(`"${q}" opts into a finer revision`, fineTuneAsked(q));
+  for (const q of ["a phone stand for my iPhone", "add 12 windows to the plate", "make it 5 mm wider", "a curved hook"])
+    check(`"${q}" does not`, !fineTuneAsked(q));
+  check("a finer revision keeps its mesh step: no exact pass",
+    exactAdvice({ engine: "mesh" }, "return roundedGrow(2, cube([9, 9, 9]));", "fine tune it, smoother edges") === null);
+  check("...an ordinary request still gets one",
+    !!exactAdvice({ engine: "mesh" }, "return roundedGrow(2, cube([9, 9, 9]));", "make it wider"));
+  check("the always-on core teaches curves as curves and #finetune",
+    /never a 20\+ point polygon/.test(EXACT_CORE) && /#curves/.test(EXACT_CORE) && /#finetune/.test(EXACT_CORE));
+  check("...the full rules carry both", /CURVES STAY CURVES/.test(EXACT_RULES) && /FAST FIRST, FINE ON REQUEST/.test(EXACT_RULES));
+  const mcp = readFileSync(new URL("../agent/mcp-server.mjs", import.meta.url), "utf8");
+  check("...and so does the agent bridge", /curves stay curves/.test(mcp) && /only for a revision the user explicitly asks/.test(mcp));
+  const llm = readFileSync(new URL("../LLM_PROMPT.md", import.meta.url), "utf8");
+  check("...and LLM_PROMPT.md", /Curves stay curves/.test(llm) && /Fast first, fine on request/.test(llm));
+
+  // the rule is true on the engine: a plate with 8 arc windows, sampled vs true arcs
+  const { cylinder, difference, intersection, translate, rotate, cube, polygon, linearExtrude } = dsl;
+  const ring = (r0, r1, z0, z1) => translate([0, 0, z0], difference(cylinder({ r: r1, h: z1 - z0, $fn: 96 }),
+    translate([0, 0, -1], cylinder({ r: r0, h: z1 - z0 + 2, $fn: 96 }))));
+  const recipe = readFileSync(new URL("../viewer/recipes/curves.md", import.meta.url), "utf8").replace(/\r/g, "");
+  const snippet = /```js\n([\s\S]*?)```/.exec(recipe)[1];
+  const arcSector = new Function("cylinder", "difference", "intersection", "translate", "rotate", "cube",
+    snippet + "\nreturn arcSector;")(cylinder, difference, intersection, translate, rotate, cube);
+  const polySector = (r0, r1, a0, a1, z0, z1, n = 16) => {
+    const pts = [];
+    for (let i = 0; i <= n; i++) { const a = (a0 + (a1 - a0) * i / n) * Math.PI / 180; pts.push([r1 * Math.cos(a), r1 * Math.sin(a)]); }
+    for (let i = n; i >= 0; i--) { const a = (a0 + (a1 - a0) * i / n) * Math.PI / 180; pts.push([r0 * Math.cos(a), r0 * Math.sin(a)]); }
+    return translate([0, 0, z0], linearExtrude({ h: z1 - z0 }, polygon(pts)));
+  };
+  const plate = (cut) => difference(ring(20, 60, 0, 4), ...Array.from({ length: 8 }, (_, i) => cut(30, 50, i * 45 + 8, i * 45 + 37, -1, 5)));
+  const slow = await lane(plate(polySector));
+  const fast = await lane(plate(arcSector));
+  check(`the #curves sector builds exact and faster than 34-point windows (${Math.round(fast.ms)} vs ${Math.round(slow.ms)} ms)`,
+    fast.engine === "exact" && fast.ms < slow.ms, `${fast.engine} ${fast.fallback || ""} / ${slow.engine}`);
+}
+
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

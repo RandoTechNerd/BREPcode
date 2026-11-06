@@ -283,6 +283,15 @@ If the user asks for one of these, say which one is missing and offer the closes
      other.
    - `cylinder({ $fn: 6 })` is a real hex prism (3-8 sides stay polygons); a cone with `$fn` 3-8 is
      refused.
+   - Curves stay curves. An exact solid costs per face and every polygon point is a face, so a curve
+     sampled into 20+ points is the slowest thing on this lane. An arc between two radii is a ring
+     intersected with two rotated box corners; a curved outline is `path2d` with `bezierTo` (six
+     curves per side is plenty). Twelve plate windows took 44 s as 34-point polygons and 4 s as true
+     arcs.
+10. **Fast first, fine on request.** The first build and every ordinary change use the fast forms.
+   Slower, finer forms (dense outlines, `polyhedron`, a mesh verb for an organic surface) are only for
+   a revision the user explicitly asks to be finer or a closer match: change only the part they named,
+   put the fineness in a const dial, and say roughly what it adds to the build time.
 
 ## Editing a model the app's catalog made
 
