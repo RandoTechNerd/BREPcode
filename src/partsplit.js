@@ -57,14 +57,17 @@ export function splitHistory(json, { maxPieces = 32 } = {}) {
   });
   let pieces = [...groups.values()];
   if (pieces.length < 2) return null;
-  if (pieces.length > maxPieces) {
-    const per = Math.ceil(pieces.length / maxPieces);
-    const folded = [];
-    for (let i = 0; i < pieces.length; i += per) {
-      const run = pieces.slice(i, i + per);
-      folded.push({ fs: run.flatMap((g) => g.fs), last: Math.max(...run.map((g) => g.last)) });
-    }
-    pieces = folded;
+  // Too many pieces: fold the SMALLEST into a neighbour, one at a time, so the
+  // big parts stay on their own. Folding neighbours in fixed runs paired a
+  // motor's housing with its weld ring, the two slowest parts, and that one
+  // piece was the whole wait while the other kernels sat idle.
+  while (pieces.length > maxPieces) {
+    let k = 0;
+    pieces.forEach((g, i) => { if (g.fs.length < pieces[k].fs.length) k = i; });
+    const left = pieces[k - 1], right = pieces[k + 1];
+    const j = !left ? k + 1 : !right ? k - 1 : left.fs.length <= right.fs.length ? k - 1 : k + 1;
+    const [a, b] = [Math.min(j, k), Math.max(j, k)];
+    pieces.splice(a, 2, { fs: [...pieces[a].fs, ...pieces[b].fs], last: Math.max(pieces[a].last, pieces[b].last) });
   }
   // every piece keeps the document around the features (id counter,
   // expressions, metadata), so it is a complete history on its own
@@ -102,6 +105,8 @@ export function mergeOutputs(outs, wallMs, pieces = null) {
       roundedCurves: sum("roundedCurves"),
       nvidiaRefused: outs.map((o) => o.stats?.nvidiaRefused).find(Boolean) || null,
       parts: outs.length,
+      // each piece's own kernel time, in piece order: which part is the slow one
+      pieceMs: outs.map((o) => Math.round((o.stats?.exactMs || 0) + (o.stats?.meshMs || 0))),
       ...(wallMs != null ? { wallMs: Math.round(wallMs) } : {}),
     },
   };

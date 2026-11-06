@@ -1177,6 +1177,8 @@
     #parts-list .q, #parts-list .pr { color: var(--muted2); font-variant-numeric: tabular-nums; }
     #parts-explode-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; }
     #parts-explode { flex: 1; }
+    #parts-cut-row { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; cursor: pointer; }
+    #parts-cut-row input { margin: 0; accent-color: var(--accent, #6ea8ff); }
     #parts-btns { display: flex; flex-wrap: wrap; gap: 6px; }
     #parts-shot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted2); }
     #parts-out { margin-top: 8px; line-height: 1.5; color: var(--muted); }
@@ -4261,6 +4263,9 @@
         <label id="parts-explode-row" title="Slide the parts apart to see how it goes together">
           <span>Explode</span><input type="range" id="parts-explode" min="0" max="1" step="0.01" value="0" />
         </label>
+        <label class="set-check" id="parts-cut-row" title="Cut a quarter out of the assembly on the side facing you, so you can see inside. The product shot uses it too.">
+          <input type="checkbox" id="parts-cutaway" /> <span>Cut view</span>
+        </label>
         <div id="parts-btns">
           <button id="parts-fit" class="hist-btn" title="Intersect every pair of parts and show any overlap in red">Check fit</button>
           <button id="parts-export" class="hist-btn" title="A zip of one STL per part in print orientation, parts.csv, and STEP per part when the exact kernel built it">Export parts</button>
@@ -4273,7 +4278,6 @@
             <option value="copper">All copper</option>
             <option value="matte">All matte</option>
           </select>
-          <label class="set-check"><input type="checkbox" id="parts-cutaway" /> <span>Cutaway</span></label>
         </div>
         <div id="parts-out"></div>
       </div>
@@ -6118,7 +6122,10 @@
     // Always re-centre on the model. Keep whatever viewing angle and zoom the user
     // has set up, and only re-fit the distance on the first build or when the model's
     // size changes enough that the old distance would frame it badly.
-    function frameModel(target = modelGroup) {
+    // `grow`: how much bigger the model may get before the distance refits. A
+    // streamed assembly passes a tight one at the end, because it was framed on
+    // its FIRST part and the whole thing is always bigger than that.
+    function frameModel(target = modelGroup, { grow = 1.8 } = {}) {
       const box = new THREE.Box3().setFromObject(target);
       if (box.isEmpty()) return;
 
@@ -6153,7 +6160,7 @@
         return;
       }
 
-      const refit = !framedRadius || radius > framedRadius * 1.8 || radius < framedRadius / 1.8;
+      const refit = !framedRadius || radius > framedRadius * grow || radius < framedRadius / 1.8;
       if (refit) distance = fitDistance(radius);
 
       controls.target.copy(center);
@@ -11313,6 +11320,25 @@ ${joined}${SITE_TAIL}`), joined);
     // was on screen. Measured on the live site: cover gone at ~1s, first
     // successful build at 7.5s — three and a half of those seconds spent
     // looking at an empty stage.
+    // The status line while a model streams in part by part. For an assembly
+    // it names parts: the one that just landed and the ones still building,
+    // so a long wait says what it is waiting on.
+    function streamStatus(instances, streamed, total) {
+      const done = streamed.filter(Boolean);
+      const head = `Building… ${done.length} of ${total} parts`;
+      if (!Array.isArray(instances) || !instances.length) return head;
+      const seen = new Set();
+      for (const meshes of done) for (const mesh of meshes) seen.add(mesh.userData.featureId);
+      const names = (pick) => [...new Set(instances.filter(pick).map((i) => i.name))];
+      const latest = streamed.lastLanded;
+      const left = names((i) => !i.ids.some((id) => seen.has(id)));
+      const now = latest ? names((i) => i.ids.some((id) => latest.has(id))) : [];
+      let msg = head;
+      if (now.length) msg += ` · ${now.join(", ")} done`;
+      if (left.length) msg += ` · building ${left.slice(0, 3).join(", ")}${left.length > 3 ? ` +${left.length - 3} more` : ""}`;
+      return msg;
+    }
+
     function fireBuilt(ok = true) {
       clearBuildProgress();         // a failed build hands the old model back
       designUI?.buildResult?.(ok, ok ? null : lastBuildFailure);
@@ -11416,7 +11442,7 @@ ${joined}${SITE_TAIL}`), joined);
       snapView: (v) => snapView(v),
       setStatus: (cls, msg) => setStatus(cls, msg),
       onChange: () => paintParts(),
-      onVisibility: () => refreshOutlines(),
+      onVisibility: () => { refreshOutlines(); syncCutCaps(); },
       onExplode: (t) => {
         $("parts-explode").value = String(t);
         followParts();
@@ -11492,6 +11518,75 @@ ${joined}${SITE_TAIL}`), joined);
         download(`${safeModelName()}-shot.png`, bytes, "image/png");
         setStatus("ok", `Product shot: ${r.width} × ${r.height} PNG.`);
       } catch (e) { setStatus("err", `Product shot: ${e.message || e}`); }
+    });
+
+    // CUT VIEW. The same wedge the product shot cuts, live in the window: a
+    // quarter of the assembly taken out on the side facing you, so the rotor
+    // sits visibly inside the stator. The wedge turns with the camera, so the
+    // cut is always the side you are looking into. Inside faces showing
+    // through the cut are painted the section colour, which reads as the cut
+    // face of a solid part rather than an empty shell.
+    const cutPlanes = [new THREE.Plane(), new THREE.Plane()];
+    const cutGroup = new THREE.Group();
+    cutGroup.name = "cut-caps";
+    scene.add(cutGroup);
+    const cutCapMat = new THREE.MeshBasicMaterial({
+      color: 0xd8493a, side: THREE.BackSide, clippingPlanes: cutPlanes, clipIntersection: true,
+    });
+    const cutMats = new Set();      // materials currently carrying the planes
+    const cutOn = () => asm.active && $("parts-cutaway").checked;
+    const cutDir = new THREE.Vector3(1, -1, 0).normalize();
+    function aimCut() {
+      const box = new THREE.Box3();
+      for (const m of modelGroup.children) if (m.visible && m.userData?.asm !== undefined) box.expandByObject(m);
+      const c = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+      // looking straight down the axis there is no "facing" side; keep the last
+      const d = camera.position.clone().sub(c).setZ(0);
+      if (d.lengthSq() > 1e-6) cutDir.copy(d.normalize());
+      const z = new THREE.Vector3(0, 0, 1);
+      [45, -45].forEach((deg, i) => {
+        const a = cutDir.clone().applyAxisAngle(z, deg * Math.PI / 180);
+        cutPlanes[i].set(a.clone().negate(), a.dot(c));
+      });
+    }
+    function setCutOn(mat, on) {
+      if (!mat || Array.isArray(mat)) return;
+      mat.clippingPlanes = on ? cutPlanes : null;
+      mat.clipIntersection = on;
+      if (on) cutMats.add(mat);
+    }
+    function refreshCut() {
+      const on = cutOn();
+      for (const m of cutMats) setCutOn(m, false);
+      cutMats.clear();
+      for (const c of [...cutGroup.children]) cutGroup.remove(c);   // geometry is borrowed
+      if (!on) return;
+      renderer.localClippingEnabled = true;
+      aimCut();
+      for (const m of modelGroup.children) {
+        if (!m.isMesh || !m.geometry || m.userData?.asm === undefined) continue;
+        setCutOn(m.material, true);
+        const cap = new THREE.Mesh(m.geometry, cutCapMat);
+        cap.userData = { source: m };
+        cap.raycast = () => {};          // never picked: clicks go to the part itself
+        cutGroup.add(cap);
+      }
+      for (const mat of [outlineMat, outlineHiddenMat, depthOnlyMat]) setCutOn(mat, true);
+      syncCutCaps();
+    }
+    function syncCutCaps() {
+      for (const cap of cutGroup.children) {
+        const src = cap.userData.source;
+        cap.position.copy(src.position);
+        cap.visible = src.visible;
+      }
+    }
+    // Every frame, before drawing: the wedge follows the view. Cheap, two
+    // planes, and it catches every way the camera moves (orbit, glide, snap).
+    scene.onBeforeRender = () => { if (cutGroup.children.length) aimCut(); };
+    $("parts-cutaway").addEventListener("change", () => {
+      refreshCut();
+      setStatus("ok", cutOn() ? "Cut view on: a quarter of the assembly is cut away on the side facing you." : "Cut view off.");
     });
 
     let token = 0;
@@ -11715,10 +11810,26 @@ ${joined}${SITE_TAIL}`), joined);
           for (const s of m.solids) {
             for (const mesh of adoptFaceData(s.name, s.faces, validIds, true)) { modelGroup.add(mesh); meshes.push(mesh); }
           }
+          const first = !streamed.some(Boolean);
           streamed[m.part] = meshes;
+          streamed.lastLanded = new Set(meshes.map((mesh) => mesh.userData.featureId));
+          // An assembly's parts land where the explode slider has them, not
+          // stacked at their assembled spot only to jump apart at the end.
+          if (ph.assembly) {
+            if (first) asm.update(ph.assembly); else asm.attach();
+            refreshCut();
+          }
           modelGroup.updateMatrixWorld(true);
           seatGrid({ grow: true });           // a kit can outgrow the floor part by part
-          setStatus("busy", `Building… ${streamed.filter(Boolean).length} of ${m.parts} parts`);
+          // The first part on the plate is the model arriving: centre on it and
+          // take the loading cover off. The status line and the parts appearing
+          // one by one say the rest is still coming. After that the camera only
+          // moves again if the parts so far have outgrown the frame.
+          const box = new THREE.Box3().setFromObject(modelGroup);
+          const radius = box.isEmpty() ? 0 : box.getSize(new THREE.Vector3()).length() / 2;
+          if (first || radius > framedRadius * 1.8) frameModel();
+          if (first) { bootDismiss(); updateDims(); }   // not the last model's sizes over this one
+          setStatus("busy", streamStatus(ph.assembly, streamed, m.parts));
         };
         if (json && getBuildWorker()) {
           try {
@@ -11825,10 +11936,15 @@ ${joined}${SITE_TAIL}`), joined);
         // same frame, so a stretch hands over without a flicker.
         clearDragPreview();
         clearBuildProgress();
-        seatGrid();
-        frameModel();
-        lastShape = shape;
+        // Parts first, THEN the frame: the explode moves every copy, and
+        // framing the assembled motor before it opened left the exploded one
+        // hanging off the side of the view.
         asm.update(ph.assembly);              // named parts, if it is an assembly()
+        refreshCut();
+        modelGroup.updateMatrixWorld(true);
+        seatGrid();
+        frameModel(modelGroup, { grow: streamed ? 1.1 : 1.8 });
+        lastShape = shape;
         refreshNegatives();                   // async, best-effort — never blocks the build
 
         // Click-to-select mapping, only against this exact text (drags against
@@ -12641,6 +12757,7 @@ ${joined}${SITE_TAIL}`), joined);
         const src = o.userData.source;
         if (src) o.position.copy(src.position);
       }
+      try { syncCutCaps(); } catch { /* before the cut view exists */ }
       try { syncSkin(); } catch { /* before the model exists */ }
       refreshHighlight();
     }

@@ -220,6 +220,25 @@ function nativeKernel() {
 }
 // `slot` picks the host. A part always goes to the same slot, so the host
 // that built it last time still has it in its incremental cache.
+// Which kernel host builds each piece. Heaviest first, each onto the host with
+// the least work so far, so two slow parts never queue behind each other while
+// another host sits idle (PrintMotor's weld ring and housing did, 27 s on one
+// host). A piece's weight is its feature count plus extra for every boolean,
+// which is where the time goes. It only reads the history's shape, never its
+// sizes, so turning a dial sends every piece back to the host that already
+// holds its features in cache.
+function hostSlots(pieces, hosts) {
+  const weight = pieces.map((doc) => doc.features.reduce((n, f) => n + (f.type === "B" ? 4 : 1), 0));
+  const load = new Array(hosts).fill(0);
+  const slots = new Array(pieces.length);
+  for (const i of pieces.map((_, i) => i).sort((a, b) => weight[b] - weight[a] || a - b)) {
+    const h = load.indexOf(Math.min(...load));
+    slots[i] = h;
+    load[h] += weight[i];
+  }
+  return slots;
+}
+
 function nativeCall(msg, transfer = [], onProgress = null, slot = 0) {
   const id = ++nativeSeq;
   const port = nativePorts[slot % nativePorts.length] || nativePort;
@@ -447,8 +466,9 @@ self.onmessage = async ({ data, ports }) => {
       let nativeRefused = false;
       if (pieces && engine !== "js" && await nativeKernel()) {
         try {
+          const slots = hostSlots(pieces, nativePorts.length || 1);
           const outs = await Promise.all(pieces.map((doc, i) =>
-            nativeCall({ op: "build", json: JSON.stringify(doc), kernel: data.kernel }, [], null, i).then((r) => {
+            nativeCall({ op: "build", json: JSON.stringify(doc), kernel: data.kernel }, [], null, slots[i]).then((r) => {
               const out = { lane: r.lane, solids: r.solids, stats: r.stats };
               postPart(out, i);
               return out;

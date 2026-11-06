@@ -63,6 +63,15 @@ function sector(r0, r1, a0, a1, z0, z1, n = 16) {
   for (let i = n; i >= 0; i--) pts.push(pt(r0, a0 + ((a1 - a0) * i) / n, 0).slice(0, 2));
   return translate([0, 0, z0], linearExtrude({ h: z1 - z0 }, polygon(pts)));
 }
+// the same annular sector as a cutter with TRUE arcs: a ring trimmed by two
+// square corners. sector() draws its arcs as straight facets, and twelve
+// faceted windows took the exact kernel 40 s where these take about 4.
+// (a1 - a0 under 90 degrees, so one quarter-turn corner from each side covers it)
+function arcSector(r0, r1, a0, a1, z0, z1) {
+  const R = r1 + 5, h = z1 - z0 + 2;
+  const corner = (a) => rotate([0, 0, a], translate([0, 0, z0 - 1], cube([R, R, h])));
+  return intersection(ring(r0, r1, z0, z1), corner(a0), corner(a1 - 90));
+}
 const bar = (path) => tube(path, { r: barR, sides: 8, caps: "flat" });
 
 // ---- stator ----------------------------------------------------------------
@@ -105,7 +114,7 @@ function weldRing() {
     });
   }
   let plate = difference(ring(layers[0] - 2, coolR + 2.2, plateZ0, plateZ1),
-    ...ringOf(12, (a) => sector(layers[0] - 0.4, layers[3] + 1.4, a + 6, a + 24, plateZ0 - 1, plateZ1 + 1), 3));
+    ...ringOf(12, (a) => arcSector(layers[0] - 0.4, layers[3] + 1.4, a + 6, a + 24, plateZ0 - 1, plateZ1 + 1), 3));
   plate = union(plate,
     ...[pitch / 2, 120 + pitch / 2, 240 + pitch / 2].map((a) => atXY(coolR, a, union(
       disc(2.4, plateZ1 - 0.01, -0.01), disc(coolHole - 0.2, -0.2, 4)))),            // posts + pins into the core
@@ -168,15 +177,29 @@ function housingC() {
 function windows() {
   const winRi = 18, winRo = 50, nWin = 5, sweep = 0.8, spoke0 = 90;
   const spanAt = (r) => Math.min(40 * 36 / r, 360 / nWin - (9 / r) * 180 / Math.PI);
+  // each side is six smooth curves through the edge (within 0.01 mm of it),
+  // not 24 straight facets: the facets made the lid a 15 s build, this < 1 s
   return ringOf(nWin, (c0) => {
-    const c = spoke0 + c0 + 360 / nWin / 2, pts = [], n = 24;
+    const c = spoke0 + c0 + 360 / nWin / 2, n = 6;
     const edge = (j, side) => {
       const r = winRi + ((winRo - winRi) * j) / n;
       return pt(r, c + sweep * (r - winRi) + side * spanAt(r) / 2, 0).slice(0, 2);
     };
-    for (let j = 0; j <= n; j++) pts.push(edge(j, -1));
-    for (let j = n; j >= 0; j--) pts.push(edge(j, 1));
-    return translate([0, 0, front - 1], linearExtrude({ h: lidT + 2 }, polygon(pts)));
+    // the edge's direction a third of a step along, for the curve's handles
+    const lean = (j, side) => {
+      const e = 1e-3, p = edge(j - e, side), q = edge(j + e, side);
+      return [(q[0] - p[0]) / (6 * e), (q[1] - p[1]) / (6 * e)];
+    };
+    const run = (side, from, to) => {
+      const out = [], s = Math.sign(to - from);
+      for (let j = from; j !== to; j += s) {
+        const a = edge(j, side), b = edge(j + s, side), da = lean(j, side), db = lean(j + s, side);
+        out.push(bezierTo([a[0] + s * da[0], a[1] + s * da[1]], [b[0] - s * db[0], b[1] - s * db[1]], b));
+      }
+      return out;
+    };
+    const outline = path2d(edge(0, -1), ...run(-1, 0, n), edge(n, 1), ...run(1, n, 0));
+    return translate([0, 0, front - 1], linearExtrude({ h: lidT + 2 }, outline));
   });
 }
 
