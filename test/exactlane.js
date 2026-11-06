@@ -337,7 +337,7 @@ console.log("\nfast first, fine on request\n");
   const ring = (r0, r1, z0, z1) => translate([0, 0, z0], difference(cylinder({ r: r1, h: z1 - z0, $fn: 96 }),
     translate([0, 0, -1], cylinder({ r: r0, h: z1 - z0 + 2, $fn: 96 }))));
   const recipe = readFileSync(new URL("../viewer/recipes/curves.md", import.meta.url), "utf8").replace(/\r/g, "");
-  const snippet = /```js\n([\s\S]*?)```/.exec(recipe)[1];
+  const snippet = /function arcSector[\s\S]*?\n}/.exec(recipe)[0];   // the helper, not the example that uses it
   const arcSector = new Function("cylinder", "difference", "intersection", "translate", "rotate", "cube",
     snippet + "\nreturn arcSector;")(cylinder, difference, intersection, translate, rotate, cube);
   const polySector = (r0, r1, a0, a1, z0, z1, n = 16) => {

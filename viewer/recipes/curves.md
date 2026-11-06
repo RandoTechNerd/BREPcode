@@ -23,6 +23,9 @@ function arcSector(r0, r1, a0, a1, z0, z1) {
   const corner = (a) => rotate([0, 0, a], translate([0, 0, z0 - 1], cube([big, big, h + 2])));
   return intersection(ring, corner(a0), corner(a1 - 90));
 }
+// a 4 mm plate with eight arc windows
+const plate = difference(cylinder({ r: 60, h: 4, $fn: 96 }), cylinder({ r: 20, h: 10, $fn: 96 }));
+return difference(plate, ...Array.from({ length: 8 }, (_, i) => arcSector(30, 50, i * 45 + 8, i * 45 + 37, -1, 5)));
 ```
 
 A curved slot with round ends is that sector plus a cylinder at each end.
