@@ -69,7 +69,10 @@ function loadRust(wasmUrl) {
 // frees the last run's solids at the start of the next. Builds go through it
 // one at a time for the same reason (the adapter's handles are per instance).
 // NB build-site.mjs rewrites both paths below for the static site.
-const SMLIB_RECYCLE_BYTES = 768 * 1024 * 1024;
+// A helper (below) is one of several instances at once, so it gives its heap
+// back sooner.
+const HELPER = PARAMS.get("helper") === "1";
+const SMLIB_RECYCLE_BYTES = (HELPER ? 384 : 768) * 1024 * 1024;
 const SMLIB_FIRST_WAIT_MS = 1200;
 let smlibModule = null;     // the compiled WebAssembly.Module, kept across instances
 let smlibWrap = null;       // adapter.cjs's wrap()
@@ -155,6 +158,80 @@ function runSmlib(json, wasmUrl) {
   });
   smlibQueue = run.catch(() => {});
   return run;
+}
+
+// ---- SMLib on every core (the website) -----------------------------------
+// One SMLib instance builds one thing at a time, so on the website a model of
+// separate parts built as one job: its parts ran end to end, and one part SMLib
+// refused (PrintMotor's housing) sent the WHOLE model to the Rust kernel, one
+// part after another. Now each part is its own job, SMLib first and the Rust
+// kernel for that part alone if SMLib refuses it, and the parts spread over
+// helper workers (this same file with ?helper=1, each with its own SMLib
+// instance), the way the desktop spreads them over its native hosts.
+async function buildPieceSmlib(json, data) {
+  try { return await runSmlib(json, data.smlibWasmUrl); }
+  catch (e) {
+    if (e === smlibFailure) throw e;
+    if (!(e instanceof EngineRefusal)) console.warn("[kw] SMLib failed on a part, using the Rust kernel for it:", e);
+    const rust = await loadRust(data.rustWasmUrl);
+    const out = await runEngine(json, { rust, manifold: loadManifold });
+    return { ...out, stats: { ...out.stats, nvidiaRefused: String(e?.message || e).slice(0, 300) } };
+  }
+}
+// How many helpers: a core each, one left for the page, at most four (the
+// biggest part sets the time long before then), two on a small-memory device.
+function helperCount() {
+  const cores = self.navigator?.hardwareConcurrency || 2;
+  let n = Math.min(4, Math.max(1, cores - 1));
+  const mem = self.navigator?.deviceMemory;
+  if (mem && mem < 4) n = Math.min(n, 2);
+  return n;
+}
+let smlibPool = null;       // [{ worker, pending }] once started; false: helpers can't run here
+let helperSeq = 0;
+function dropPool(reason) {
+  if (!smlibPool) return;
+  const err = new Error(reason);
+  for (const h of smlibPool) {
+    for (const [, p] of h.pending) p.reject(err);
+    try { h.worker.terminate(); } catch { /* gone */ }
+  }
+  smlibPool = false;
+  console.warn("[kw] SMLib helpers stopped, parts build here one at a time:", reason);
+}
+function getSmlibPool() {
+  if (smlibPool !== null) return smlibPool || null;
+  const n = helperCount();
+  if (n < 2 || typeof Worker === "undefined") { smlibPool = false; return null; }
+  try {
+    const url = new URL(self.location.href);
+    url.searchParams.set("helper", "1");
+    smlibPool = Array.from({ length: n }, () => {
+      const h = { worker: new Worker(url, { type: "module" }), pending: new Map() };
+      h.worker.onmessage = ({ data }) => {
+        const p = h.pending.get(data?.id);
+        if (!p) return;                       // ready / smlibReady / rustReady: not a reply
+        h.pending.delete(data.id);
+        if (data.ok) p.resolve(data.out);
+        else p.reject(new Error(data.error || "an SMLib helper failed"));
+      };
+      h.worker.onerror = (ev) => { ev.preventDefault?.(); dropPool(`a helper worker failed: ${ev.message || "error"}`); };
+      return h;
+    });
+  } catch (e) {
+    smlibPool = false;
+    console.warn("[kw] no SMLib helpers here:", e?.message || e);
+    return null;
+  }
+  return smlibPool;
+}
+function helperBuild(h, json, data) {
+  const id = ++helperSeq;
+  return new Promise((resolve, reject) => {
+    h.pending.set(id, { resolve, reject });
+    try { h.worker.postMessage({ op: "piece", id, json, smlibWasmUrl: data.smlibWasmUrl, rustWasmUrl: data.rustWasmUrl }); }
+    catch (e) { h.pending.delete(id); reject(e); }
+  });
 }
 
 // The desktop app's NATIVE Rust kernel (desktop/kernel-host.cjs, a separate
@@ -256,7 +333,10 @@ function nativeCall(msg, transfer = [], onProgress = null, slot = 0) {
 // together they split the line, and SMLib took three times as long to land.
 // Anything that needs the Rust kernel sooner (a refusal, an edge lookup)
 // still starts it on the spot.
-if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) {
+if (HELPER) {
+  // a helper only ever builds on SMLib; the Rust kernel loads if a part needs it
+  loadSmlib().catch(() => { /* recorded in smlibFailure */ });
+} else if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) {
   if (PARAMS.get("kernel") === "nvidia") {
     loadSmlib().catch(() => { /* recorded in smlibFailure */ })
       .finally(() => {
@@ -268,7 +348,7 @@ if (PARAMS.get("engine") !== "js" && !NATIVE_EXPECTED) {
 // The JS kernel too, but after SMLib when SMLib is coming: parsing its 9 MB
 // holds this thread for most of a second, which is exactly when SMLib wants it
 // to finish setting up. A build that needs it sooner asks for it itself.
-if (PARAMS.get("kernel") !== "nvidia" || PARAMS.get("engine") === "js" || NATIVE_EXPECTED) {
+if (!HELPER && (PARAMS.get("kernel") !== "nvidia" || PARAMS.get("engine") === "js" || NATIVE_EXPECTED)) {
   getPartHistory().catch(() => { /* the build that needs it reports it */ });
 }
 let manifoldWasm = null;
@@ -537,6 +617,25 @@ self.onmessage = async ({ data, ports }) => {
           smlibNote = { nvidiaRefused: `the SMLib kernel didn't load: ${smlibFailure.message}`.slice(0, 300), smlibUnavailable: true };
         } else {
           try {
+            if (pieces && pieces.length > 1) {
+              const pool = getSmlibPool();
+              const outs = new Array(pieces.length);
+              const one = async (i, h) => {
+                outs[i] = h ? await helperBuild(h, pieces[i], data) : await buildPieceSmlib(pieces[i], data);
+                postPart(outs[i], i);
+              };
+              if (pool) {
+                const slots = hostSlots(pieces, pool.length);
+                await Promise.all(pieces.map((_, i) => one(i, pool[slots[i]])));
+              } else {
+                for (let i = 0; i < pieces.length; i++) await one(i, null);
+              }
+              const out = mergeOutputs(outs, performance.now() - t0, pieces);
+              out.stats = { ...out.stats, kernel: "nvidia", wasm: true, hosts: pool ? Math.min(pool.length, pieces.length) : 1 };
+              trace(`SMLib engine, ${pieces.length} parts on ${out.stats.hosts} helpers: ${out.lane} in ${out.stats.wallMs} ms`);
+              postSplit(out);
+              return;
+            }
             const out = await runSmlib(data.json, data.smlibWasmUrl);
             trace(`SMLib engine: ${out.lane} (${out.stats.exactMs} ms exact, ${out.stats.meshMs} ms mesh)`);
             postSplit(out);
@@ -698,6 +797,9 @@ self.onmessage = async ({ data, ports }) => {
     // 2026-11-01: viewer/stl2step-worker.js, one throwaway worker per attempt,
     // because the reconstruction can trap or hang on some meshes and this
     // worker's kernel instance builds every model (src/stlexact.js).
+    // a helper's one job: a part, on SMLib (its reply is copied, not
+    // transferred: the engine's buffers may still be views it keeps)
+    if (op === "piece") { self.postMessage({ id, ok: true, out: await buildPieceSmlib(data.json, data) }); return; }
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }
     // from the page, no reply: the desktop's native kernel arriving or going
     if (op === "nativePort") { if (ports?.length) setNativePort([...ports]); return; }
