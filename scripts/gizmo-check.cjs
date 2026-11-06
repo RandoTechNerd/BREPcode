@@ -8,8 +8,11 @@
 // and every control looks broken. That is an artefact of the harness, not the
 // app — this script exists so the difference is never guessed at again.
 
+process.env.BREPCODE_EMBED = "1";      // drive the shell ourselves: without it main.cjs boots the whole app too
 const { app } = require("electron");
 const shellApp = require("../desktop/main.cjs");
+// never the real BREPcode profile
+app.setPath("userData", require("node:path").join(app.getPath("temp"), "brepcode-gizmo-check"));
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0;

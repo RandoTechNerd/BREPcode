@@ -8,6 +8,14 @@ const { app } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
+// The store lives under Documents, and this check DELETES it to start clean
+// and leaves a broken one behind on purpose. So it runs in throwaway folders:
+// run against the real ones, it wiped a real learning history (2026-11-06).
+const scratch = path.join(app.getPath("temp"), "brepcode-lessons-check");
+try { fs.rmSync(scratch, { recursive: true, force: true }); } catch { /* first run */ }
+app.setPath("documents", path.join(scratch, "Documents"));
+app.setPath("userData", path.join(scratch, "userData"));
+
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
   if (ok) { pass++; console.log(`  PASS  ${label}`); }

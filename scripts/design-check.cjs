@@ -12,6 +12,16 @@
 
 const path = require("node:path");
 const fs = require("node:fs");
+// Drive the shell ourselves (without the flag main.cjs boots the whole app as
+// well and the protocol registers twice), in a throwaway profile and
+// Documents, never the real ones.
+process.env.BREPCODE_EMBED = "1";
+{
+  const { app } = require("electron");
+  const scratch = path.join(app.getPath("temp"), "brepcode-design-check");
+  app.setPath("userData", path.join(scratch, "userData"));
+  app.setPath("documents", path.join(scratch, "Documents"));
+}
 const LOG = path.join(__dirname, "..", "design-check.log");
 
 function die(kind, e) {
