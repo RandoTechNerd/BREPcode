@@ -41,16 +41,20 @@ fs.writeFileSync(path.join(stubDir, "claude.cmd"), [
 ].join("\r\n"));
 process.env.PATH = stubDir + path.delimiter + process.env.PATH;
 
+// Point userData somewhere disposable so a real saved account is never read or
+// overwritten by the test. The AI-connect configs too: on boot main re-points
+// any brepcode entry in Claude/Cursor/VS Code at ITS userData copy of the MCP
+// server, which here is this temp folder (desktop/aiconnect.cjs refresh), so
+// without this a test run rewrites the machine's real ~/.claude.json.
+const sandboxData = path.join(app.getPath("temp"), "brepcode-smoke");
+try { fs.rmSync(sandboxData, { recursive: true, force: true }); } catch { /* leftovers are overwritten anyway */ }
+process.env.BREPCODE_AICONNECT_HOME = path.join(sandboxData, "home");
 // Required up here, not inside whenReady: loading it registers the app:// scheme
 // as privileged, and Electron only accepts that before the app is ready. It only
 // boots itself when it is the entry point, so this just hands over its exports.
 const shellApp = require("../desktop/main.cjs");
-
-// Point userData somewhere disposable so a real saved account is never read or
-// overwritten by the test.
-const sandboxData = path.join(app.getPath("temp"), "brepcode-smoke");
-try { fs.rmSync(sandboxData, { recursive: true, force: true }); } catch { /* leftovers are overwritten anyway */ }
 app.setPath("userData", sandboxData);
+app.setPath("documents", path.join(sandboxData, "documents"));
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -107,8 +111,16 @@ app.whenReady().then(async () => {
     //     asked to export; lessons* read and write ONE app-owned store, with
     //     Reveal/Where handing the path to the OS file manager rather than
     //     accepting one from the page.
-    const EXPECTED_BRIDGE = "aiRelay,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
-      + "fetchModel,isDesktop,lessonsAppend,lessonsForget,lessonsLoad,lessonsReveal,"
+    //   - writes another app's config: aiConnect / aiDisconnect (and the
+    //     read-only aiStatus / aiSnippet) take only an app id, matched against
+    //     the four in desktop/aiconnect.cjs; main picks every path, writes only
+    //     the brepcode entry (the command is node or this exe, the one arg the
+    //     app's own copied server), keeps a .bak-brepcode, and leaves a file it
+    //     cannot parse alone.
+    //   - plain values, no input: kernelDefault ("rust" | "nvidia") and
+    //     kernelChoice (does NVIDIA's kernel ship), read once at load.
+    const EXPECTED_BRIDGE = "aiConnect,aiDisconnect,aiRelay,aiSnippet,aiStatus,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
+      + "fetchModel,isDesktop,kernelChoice,kernelDefault,lessonsAppend,lessonsForget,lessonsLoad,lessonsReveal,"
       + "lessonsSave,lessonsWhere,loadMail,nativeKernelPort,nativeKernelReset,onClaudeProgress,onOpenFile,openBlueprint,"
       + "openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,"
       + "sendMail,shortLink,slicerInfo,testMail";

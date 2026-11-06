@@ -202,7 +202,13 @@ function register() {
     liveClients: () => bridge.clients(),
     env: fake ? { home: fake, appData: path.join(fake, "AppData", "Roaming") } : {},
   });
-  try { conn.refresh(); } catch { /* never block startup on this */ }
+  // A run with its data in the temp folder (every check script, an exe probe
+  // with --user-data-dir) must not re-point the machine's real configs at a
+  // server copy that is about to be deleted. Real installs keep userData in
+  // AppData/Library/.config, the portable exe included.
+  const rel = path.relative(os.tmpdir(), conn.stableServer);
+  const inTemp = !!rel && !path.isAbsolute(rel) && rel.split(path.sep)[0] !== "..";
+  if (fake || !inTemp) { try { conn.refresh(); } catch { /* never block startup on this */ } }
   const bridgeOn = () => bridge.status().listening;
   ipcMain.handle("ai:status", () => ({ bridge: bridgeOn(), port: bridge.PORT, clients: conn.status() }));
   ipcMain.handle("ai:connect", (_e, id) => { try { return conn.connect(String(id)); } catch (e) { return { ok: false, error: e.message }; } });
