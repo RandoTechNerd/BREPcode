@@ -25,7 +25,7 @@
 // modules are still evaluating — every call happens later, when a user's model
 // runs, by which time both are complete and ESM's live bindings resolve.
 
-import { cube, cylinder, translate, rotate, difference, union, group } from "./dsl.js";
+import { cube, cylinder, translate, rotate, difference, union, group, thread } from "./dsl.js";
 
 // ----------------------------------------------------------------- fit
 //
@@ -86,6 +86,8 @@ export const SCREWS = {
   M5: { d: 5, pitch: 0.8, clearance: 5.5, close: 5.3, pilot: 4.6, tapDrill: 4.2, nutAF: 8, nutT: 4.7, hex: 4, socket: { d: 8.5, h: 5 }, button: { d: 9.5, h: 2.75 }, flat: { d: 10.0 } },
   M6: { d: 6, pitch: 1.0, clearance: 6.6, close: 6.4, pilot: 5.5, tapDrill: 5.0, nutAF: 10, nutT: 5.2, hex: 5, socket: { d: 10.0, h: 6 }, button: { d: 10.5, h: 3.3 }, flat: { d: 12.0 } },
   M8: { d: 8, pitch: 1.25, clearance: 9.0, close: 8.4, pilot: 7.4, tapDrill: 6.8, nutAF: 13, nutT: 6.8, hex: 6, socket: { d: 13.0, h: 8 }, button: { d: 14.0, h: 4.4 }, flat: { d: 16.0 } },
+  M10: { d: 10, pitch: 1.5, clearance: 11.0, close: 10.5, pilot: 9.3, tapDrill: 8.5, nutAF: 16, nutT: 8.4, hex: 8, socket: { d: 16.0, h: 10 }, button: { d: 17.5, h: 5.5 }, flat: { d: 20.0 } },
+  M12: { d: 12, pitch: 1.75, clearance: 13.5, close: 13.0, pilot: 11.2, tapDrill: 10.2, nutAF: 18, nutT: 10.8, hex: 10, socket: { d: 18.0, h: 12 }, button: { d: 21.0, h: 6.6 }, flat: { d: 24.0 } },
 };
 
 // ------------------------------------------------------- heat-set inserts
@@ -274,6 +276,44 @@ export function nut(size, opts = {}) {
   return difference(
     rotate([0, 0, 30], cylinder({ r: s.nutAF / 2 / Math.cos(Math.PI / 6), h: s.nutT, $fn: 6 })),
     translate([0, 0, -1], cylinder({ d: s.d, h: s.nutT + 2, $fn })),
+  );
+}
+
+// ------------------------------------------------------- modelled threads
+//
+// Real ISO threads (src/threads.js), for when the thread IS the part: a
+// printed bolt, a jar neck, a knob onto a threaded rod. They are triangles, so
+// the model goes to the mesh lane; screwHole({ tap: true }) is still the
+// better call for a hole a metal screw cuts its own thread into.
+
+// A tapped hole: the thread's cutter, cut DOWN from z = 0 like screwHole.
+export function threadedHole(size, opts = {}) {
+  const depth = opts.depth ?? opts.length ?? 12;
+  return translate([0, 0, -depth], thread({ ...opts, size, length: depth + 0.01, internal: true }));
+}
+
+// A printable bolt: head on top of z = 0, threaded shank running down.
+// head: "socket" (default), "button" or "hex".
+export function bolt(size, opts = {}) {
+  const s = screwSpec(size);
+  const len = opts.length ?? 20;
+  const head = opts.head ?? "socket";
+  const shank = translate([0, 0, -len], thread({ ...opts, size, length: len }));
+  if (head === "hex") {
+    const h = opts.headHeight ?? s.nutT;
+    return union(rotate([0, 0, 30], cylinder({ r: s.nutAF / 2 / Math.cos(Math.PI / 6), h, $fn: 6 })), shank);
+  }
+  const hd = head === "button" ? s.button : s.socket;
+  return union(cylinder({ d: hd.d, h: hd.h, $fn: SIDES }), shank);
+}
+
+// A printable nut with a real thread, sized by the same table as nutPocket.
+export function threadedNut(size, opts = {}) {
+  const s = screwSpec(size);
+  const t = opts.thickness ?? s.nutT;
+  return difference(
+    rotate([0, 0, 30], cylinder({ r: s.nutAF / 2 / Math.cos(Math.PI / 6), h: t, $fn: 6 })),
+    translate([0, 0, -0.01], thread({ ...opts, size, length: t + 0.02, internal: true })),
   );
 }
 

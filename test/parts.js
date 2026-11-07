@@ -14,9 +14,9 @@
 import {
   BEARINGS, SCREWS, INSERTS, FIT, bearing, bearingPocket, screwHole,
   insertBore, nutPocket, magnetPocket, screw, nut, partsCatalog,
-  bearingSpec, screwSpec, insertSpec,
+  bearingSpec, screwSpec, insertSpec, bolt, threadedNut, threadedHole,
 } from "../src/parts.js";
-import { difference, translate } from "../src/dsl.js";
+import { difference, translate, thread } from "../src/dsl.js";
 import { readFileSync } from "node:fs";
 import { build, toSTL } from "../index.js";
 
@@ -225,7 +225,7 @@ console.log("\nthe recipe and the tables cannot drift apart\n");
   // Every call the recipe demonstrates has to exist. A recipe that teaches a
   // function nobody wrote is worse than no recipe.
   const calls = [...md.matchAll(/^\s*([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]);
-  const api = { bearing, bearingPocket, screwHole, insertBore, nutPocket, magnetPocket, screw, nut, difference, translate };
+  const api = { bearing, bearingPocket, screwHole, insertBore, nutPocket, magnetPocket, screw, nut, difference, translate, thread, bolt, threadedNut, threadedHole };
   const missing = [...new Set(calls)].filter((c) => !(c in api) && !["cube"].includes(c));
   check("every function the recipe shows really exists", missing.length === 0, missing.join(", "));
 }

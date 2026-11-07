@@ -1,7 +1,7 @@
 ---
 tag: parts
 title: Standard hardware — bearings, screws, inserts, nuts, magnets
-match: bearing, 608, 623, 625, 626, 688, 6800, ball bearing, screw, bolt, m2, m2.5, m3, m4, m5, m6, m8, clearance hole, tap hole, tapping, countersink, countersunk, counterbore, socket head, cap screw, button head, heat set, heat-set, threaded insert, brass insert, nut, hex nut, captive nut, nut trap, nut pocket, magnet, neodymium, fastener, hardware, screw hole, pilot hole
+match: bearing, 608, 623, 625, 626, 688, 6800, ball bearing, screw, bolt, m2, m2.5, m3, m4, m5, m6, m8, clearance hole, tap hole, tapping, countersink, countersunk, counterbore, socket head, cap screw, button head, heat set, heat-set, threaded insert, brass insert, nut, hex nut, captive nut, nut trap, nut pocket, magnet, neodymium, fastener, hardware, screw hole, pilot hole, thread, threads, threaded, threaded rod, tapped hole, m10, m12, printed bolt, printed nut
 ---
 
 **Do not recall these numbers — call for them.** Every size below is in the code
@@ -30,7 +30,7 @@ difference(
   625 (5/16/5), 626 (6/19/6), 627 (7/22/7), 688 (8/16/5), 6001 (12/28/8),
   6201 (12/32/10), 6800 (10/19/5), 6801 (12/21/5), 6802 (15/24/5),
   6803 (17/26/5), MR105 (5/10/4), MR115 (5/11/4), MR126 (6/12/4).
-- **Screws**: M2, M2.5, M3, M4, M5, M6, M8 — clearance, close fit, self-tap
+- **Screws**: M2, M2.5, M3, M4, M5, M6, M8, M10, M12 — clearance, close fit, self-tap
   pilot, metal tap drill, pitch, hex key, hex nut size, and socket / button /
   countersunk head figures for each.
 - **Inserts**: M2, M2.5, M3, M4, M5, M6 brass heat-set, with the minimum boss
@@ -38,6 +38,26 @@ difference(
 
 An unknown size throws and lists the real ones, so a wrong guess is a message
 rather than a wrong part.
+
+## Real threads, when the thread is the part
+
+For a printed bolt, a nut, a jar neck or a knob that screws onto a rod, model
+the thread itself. ISO metric, the real 60° profile, coarse pitch by default:
+
+```js
+thread({ size: "M8", length: 20 })                 // a threaded rod, up from z = 0
+thread({ d: 8, pitch: 1, length: 20 })             // a fine pitch
+bolt("M6", { length: 20, head: "hex" })            // head on top, shank down
+threadedNut("M8")                                  // a printable nut
+difference(cube([30, 30, 10]),
+  translate([15, 15, 10], threadedHole("M6", { depth: 10.5 })))   // a tapped hole
+```
+
+A tapped hole is grown by `fit` (0.3 on diameter) so a rod printed from
+`thread()` of the same size goes in. Threads are triangles, so the model leaves
+the exact lane; for a hole a METAL screw cuts its own thread into, keep using
+`screwHole("M3", { tap: true })`, which stays exact and prints better at small
+sizes.
 
 ## The calls
 

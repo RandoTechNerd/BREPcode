@@ -15,6 +15,7 @@ import { remeshForTexture } from "./texmesh.js";
 // when a model runs, so the import cycle is safe (as with parts.js)
 import { exactHull, exactMinkowski } from "./exactshapes.js";
 import { twistMesh, twistRecipe } from "./twist.js";
+import { threadSpec as threadSpecOf, THREAD_FIT as THREAD_FIT_MM } from "./threads.js";
 
 const DEG = Math.PI / 180;
 
@@ -1860,6 +1861,36 @@ export function tube(path, opts = {}) {
       closed: !!(o.closed ?? o.loop),
       bend: o.bend ?? o.bendRadius ?? null,
       bendSegments: o.bendSegments ?? 6,
+    },
+    fix: IDENTITY,
+  });
+}
+
+// A modelled ISO metric screw thread (src/threads.js), axis up +Z from z = 0:
+//
+//   thread({ size: "M8", length: 20 })                  a threaded rod
+//   thread({ size: "M8", length: 12, internal: true })  the cutter for a tapped hole
+//   thread({ d: 8, pitch: 1, length: 20 })              a fine pitch
+//
+// Options: fit (diametral clearance an internal cutter grows by, default
+// 0.3), segments (around), chamfer (45° lead-in on a rod, default on),
+// leftHand. It is triangles, so it joins on the mesh lane like tube();
+// screwHole() is still the right call for a printed self-tapping hole.
+export function thread(opts = {}) {
+  const o = typeof opts === "string" ? { size: opts } : (opts || {});
+  const length = o.length ?? o.h ?? o.height;
+  if (!(length > 0)) throw new TypeError('thread() needs a length: thread({ size: "M8", length: 20 })');
+  const spec = threadSpecOf(o.size ?? o.d ?? o.diameter, o.pitch);
+  return node({
+    kind: "tube",
+    path: [],
+    thread: {
+      d: spec.d, pitch: spec.pitch, length,
+      internal: !!(o.internal ?? o.tapped ?? o.hole),
+      fit: o.fit ?? THREAD_FIT_MM,
+      segments: o.segments ?? o.$fn,
+      chamfer: o.chamfer !== false,
+      leftHand: !!(o.leftHand ?? o.left),
     },
     fix: IDENTITY,
   });
@@ -4348,8 +4379,10 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // list, so unlike hull/roundify there is no scratch history and no kernel
       // round-trip on the way in. That is why a bent wire costs about as much
       // as a cylinder.
-      const { sweepTube } = await import("./sweep.js");
-      const out = sweepTube(n.path, n.opts);
+      // thread() rides on the same road: its mesh is generated, not swept
+      const out = n.thread
+        ? (await import("./threads.js")).threadMesh(n.thread)
+        : (await import("./sweep.js")).sweepTube(n.path, n.opts);
 
       let stl = "solid tube\n";
       for (const f of out.faces) {

@@ -99,7 +99,8 @@ const AVOIDABLE_JSCAD = {
   hullChain: "hullChain() over pieces the translator cannot make exact: the same rules as hull() for every consecutive pair",
 };
 const INHERENT = ["tube", "texture", "heightmap", "blob", "smoothUnion", "blend", "text", "stencil",
-  "qrcode", "datamatrix", "barcode", "importedMesh", "creature", "freeform", "gridfinityBin", "gridfinityBase"];
+  "qrcode", "datamatrix", "barcode", "importedMesh", "creature", "freeform", "gridfinityBin", "gridfinityBase",
+  "thread", "threadedHole", "threadedNut", "bolt"];
 
 // Which language the code is in, from its shape alone (the translators' own
 // detectors live in modules this one must not pull into the chat bundle).

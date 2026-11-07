@@ -39,6 +39,7 @@ const TOOLS = [
     { id: "primitive", label: "Primitive", dialog: true, tip: "A box, cylinder, cone, sphere or torus: beside the model as a new body, or on a face you click (join or cut)", icon: `<path d="M2.5 5.5 6 3.5l3.5 2v4L6 11.5l-3.5-2z"/><circle cx="11.5" cy="10.5" r="3"/>` },
     { id: "extrude", label: "Extrude", dialog: true, tip: "Extrude a flat face: join, cut or a new body", icon: `<path d="M3 11l5 2.5 5-2.5M3 11V6l5-2.5L13 6v5M8 8.5V13.5M3 6l5 2.5L13 6"/>` },
     { id: "revolve", label: "Revolve", dialog: true, tip: "Spin a flat face about one of its edges or an axis", icon: `<path d="M8 2v12"/><ellipse cx="8" cy="8" rx="5" ry="2.2"/>` },
+    { id: "hardware", label: "Hardware", dialog: true, tip: "Screw holes, tapped holes, inserts, nut pockets and bearing seats cut into a face; or a printable bolt, nut or threaded rod", icon: `<path d="M5 2.5h6v3H5zM6.5 5.5v8M9.5 5.5v8M6.5 7.5l3 1.5M6.5 10l3 1.5"/>` },
     { id: "hole", label: "Hole", dialog: true, tip: "A simple, counterbored or countersunk hole where you click", icon: `<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/>` },
   ] },
   { group: "Modify", items: [

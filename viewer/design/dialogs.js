@@ -10,6 +10,7 @@
 
 import * as F from "./features.js";
 import { worldToPlane } from "../../src/dsl.js";
+import { SCREWS, INSERTS, BEARINGS } from "../../src/parts.js";
 import { dragSpanFor } from "../assist.js";
 
 const CSS = `
@@ -206,6 +207,41 @@ const SPECS = {
     },
   },
 
+  hardware: {
+    title: "Hardware",
+    help: "Standard fasteners from the tables (src/parts.js), fit allowances included. A pocket or hole: click the face it goes into and it cuts in square to that face. A part (a printable bolt, nut, rod or a bearing to check a fit): it goes beside the model as a New body.",
+    picks: { kind: "point", label: "On a face", optional: true },
+    fields: [
+      { key: "kind", label: "What", type: "select", options: () => HW_KINDS.map(([v, l]) => [v, l]) },
+      { key: "size", label: "Size", type: "select", options: (s) => hwSizes(s.kind) },
+      { key: "head", label: "Head", type: "select", options: (s) => s.kind === "bolt" ? [["socket", "Socket cap"], ["button", "Button"], ["hex", "Hex"]] : [["none", "None (plain)"], ["socket", "Socket cap"], ["button", "Button"], ["flat", "Countersunk"]], when: (s) => s.kind === "screwHole" || s.kind === "bolt" },
+      { key: "depth", label: "Depth", type: "number", min: 0.5, step: 1, unit: "mm", when: (s) => s.kind === "screwHole" || s.kind === "tapped" },
+      { key: "length", label: "Length", type: "number", min: 1, step: 1, unit: "mm", when: (s) => s.kind === "bolt" || s.kind === "rod" },
+      { key: "x", label: "X", type: "number", step: 1, unit: "mm" },
+      { key: "y", label: "Y", type: "number", step: 1, unit: "mm" },
+      { key: "z", label: "Z", type: "number", step: 1, unit: "mm" },
+    ],
+    init(env) {
+      const b = env.modelBox();
+      const x = b ? Math.round(b.max[0] + 20) : 0, y = b ? Math.round((b.min[1] + b.max[1]) / 2) : 0;
+      const at = env.sel?.face?.hitPoint ? { ...env.sel.face, point: env.sel.face.hitPoint } : null;
+      const p = at ? at.point.map((v) => Math.round(v * 10) / 10) : [x, y, 0];
+      return { kind: "screwHole", size: "M3", head: "socket", depth: 10, length: 16, x: p[0], y: p[1], z: p[2], at, normal: at?.normal ?? [0, 0, 1] };
+    },
+    write(base, s, env) {
+      const call = hardwareCall(s);
+      if (call.error) return call;
+      if (call.cut) {
+        const fid = s.at?.fid ?? env.sel?.fid;
+        if (!fid) return { wait: "Click the face it goes into." };
+        const body = env.bodyOf(fid);
+        if (!body) return { error: "That face has no call in the code to cut." };
+        return F.addTool(base, body, call.text);
+      }
+      return F.primitiveText(base, call.text, { op: "new", starter: env.isStarter() ? env.starterText() : null });
+    },
+  },
+
   hole: {
     title: "Hole",
     help: "Click where the hole goes on a face; click again to move it.",
@@ -366,6 +402,57 @@ const SPECS = {
     },
   },
 };
+
+// ---- the Hardware dialog's catalogue and code ------------------------------
+const HW_KINDS = [
+  ["screwHole", "Screw hole (clearance)"], ["tapped", "Tapped hole (modelled thread)"], ["insert", "Heat-set insert bore"],
+  ["nutPocket", "Nut pocket"], ["bearingSeat", "Bearing seat"],
+  ["bolt", "Bolt (printable, threaded)"], ["nut", "Nut (printable, threaded)"], ["rod", "Threaded rod"], ["bearing", "Bearing (to check a fit)"],
+];
+const HW_CUT = new Set(["screwHole", "tapped", "insert", "nutPocket", "bearingSeat"]);
+const hwLabel = (k) => k.replace("_", ".");
+function hwSizes(kind) {
+  if (kind === "insert") return Object.keys(INSERTS).map((k) => [hwLabel(k), hwLabel(k)]);
+  if (kind === "bearingSeat" || kind === "bearing") return Object.entries(BEARINGS).map(([k, b]) => [k, `${k} (${b.bore}/${b.od}/${b.w})`]);
+  return Object.keys(SCREWS).map((k) => [hwLabel(k), hwLabel(k)]);
+}
+// Turn the part's +Z onto the face normal: about Y by the tilt, then about Z.
+function orient(n, text) {
+  const [x, y, z] = n ?? [0, 0, 1];
+  const len = Math.hypot(x, y, z) || 1;
+  const tilt = Math.acos(Math.max(-1, Math.min(1, z / len))) * 180 / Math.PI;
+  if (tilt < 0.01) return text;
+  const spin = Math.atan2(y, x) * 180 / Math.PI;
+  const r = (v) => Math.round(v * 100) / 100;
+  return `rotate([0, ${r(tilt)}, ${r(spin)}], ${text})`;
+}
+export function hardwareCall(s) {
+  // a size from another kind's table (M3 after switching to a bearing) snaps
+  // to this table's first, and the state follows so the select agrees
+  const sizes = hwSizes(s.kind);
+  if (!sizes.some(([v]) => v === String(s.size))) s.size = sizes.find(([v]) => v === "M3")?.[0] ?? sizes[0][0];
+  const q = JSON.stringify(String(s.size));
+  const key = String(s.size).replace(".", "_");
+  let text;
+  switch (s.kind) {
+    case "screwHole": text = `screwHole(${q}, { depth: ${s.depth}${s.head && s.head !== "none" ? `, head: "${s.head}"` : ""} })`; break;
+    case "tapped": text = `threadedHole(${q}, { depth: ${s.depth} })`; break;
+    case "insert": text = `insertBore(${q})`; break;
+    // the pocket and the seat stand UP from z = 0, so they are sunk by their own height
+    case "nutPocket": text = `translate([0, 0, ${-Math.round((SCREWS[key].nutT + 0.3) * 100) / 100}], nutPocket(${q}))`; break;
+    case "bearingSeat": text = `translate([0, 0, ${-Math.round((BEARINGS[s.size].w + 0.2) * 100) / 100}], bearingPocket(${q}))`; break;
+    case "bolt": text = `bolt(${q}, { length: ${s.length}${s.head && s.head !== "socket" && s.head !== "none" ? `, head: "${s.head}"` : ""} })`; break;
+    case "nut": text = `threadedNut(${q})`; break;
+    case "rod": text = `thread({ size: ${q}, length: ${s.length} })`; break;
+    case "bearing": text = `bearing(${q})`; break;
+    default: return { error: `no hardware called ${s.kind}` };
+  }
+  const cut = HW_CUT.has(s.kind);
+  const placed = cut ? orient(s.normal, text) : text;
+  const r = (v) => Math.round((+v || 0) * 100) / 100;
+  const at = [r(s.x), r(s.y), r(s.z)];
+  return { cut, text: at.some((v) => v) ? `translate([${at.join(", ")}], ${placed})` : placed };
+}
 
 function edgeSpec(kind, title, label, key) {
   return {
@@ -767,6 +854,10 @@ export function openDialog(id, ctx) {
       if (id === "primitive") {
         [state.x, state.y, state.z] = fp.point.map((v) => Math.round(v * 10) / 10);
         if (state.op === "new") state.op = "join";
+      }
+      if (id === "hardware") {
+        [state.x, state.y, state.z] = fp.point.map((v) => Math.round(v * 10) / 10);
+        state.normal = fp.normal ?? [0, 0, 1];
       }
     } else if (p.kind === "faces") {
       const i = state.faces.findIndex((f) => f.name === fp.name);
