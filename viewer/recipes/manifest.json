@@ -765,7 +765,16 @@
         "fastener",
         "hardware",
         "screw hole",
-        "pilot hole"
+        "pilot hole",
+        "thread",
+        "threads",
+        "threaded",
+        "threaded rod",
+        "tapped hole",
+        "m10",
+        "m12",
+        "printed bolt",
+        "printed nut"
       ]
     },
     {

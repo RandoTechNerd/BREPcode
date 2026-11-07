@@ -1877,11 +1877,14 @@ export function tube(path, opts = {}) {
 // 0.3), segments (around), chamfer (45° lead-in on a rod, default on),
 // leftHand. It is triangles, so it joins on the mesh lane like tube();
 // screwHole() is still the right call for a printed self-tapping hole.
-export function thread(opts = {}) {
-  const o = typeof opts === "string" ? { size: opts } : (opts || {});
-  const length = o.length ?? o.h ?? o.height;
+export function thread(opts = {}, more = {}) {
+  const o = typeof opts === "string" || typeof opts === "number" ? { ...more, size: opts } : (opts || {});
+  // threadlib's designator, "M12x1.75": diameter and pitch in one string
+  const m = typeof o.size === "string" && /^M?\s*([\d.]+)\s*[x×]\s*([\d.]+)$/i.exec(o.size.trim());
+  const size = m ? +m[1] : o.size ?? o.d ?? o.diameter;
+  const spec = threadSpecOf(size, o.pitch ?? (m ? +m[2] : undefined));
+  const length = o.length ?? o.h ?? o.height ?? (o.turns > 0 ? o.turns * spec.pitch : undefined);
   if (!(length > 0)) throw new TypeError('thread() needs a length: thread({ size: "M8", length: 20 })');
-  const spec = threadSpecOf(o.size ?? o.d ?? o.diameter, o.pitch);
   return node({
     kind: "tube",
     path: [],

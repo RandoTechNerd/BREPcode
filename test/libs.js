@@ -136,11 +136,25 @@ console.log("\nunknown libraries\n");
   // error), so the rest of the model still builds.
   const shape = fromOpenSCAD(`
     include <threadlib/threadlib.scad>
-    thread("M12x1.75", turns=5);
+    tap("M12x1.75", turns=5);
     cube([10, 10, 10]);`);
   await build(shape);
   check("unbundled call is skipped with a warning, script still builds",
-    getWarnings().some((w) => /thread/.test(w)), JSON.stringify(getWarnings()));
+    getWarnings().some((w) => /tap/.test(w)), JSON.stringify(getWarnings()));
+}
+
+{
+  // threadlib's thread() lands on BREPcode's own modelled ISO thread.
+  const shape = fromOpenSCAD(`
+    include <threadlib/threadlib.scad>
+    thread("M12x1.75", turns=5);`);
+  const stl = toSTL(await build(shape), "t");
+  const tri = (stl.match(/facet/g) || []).length;
+  const p = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((v) => [+v[1], +v[2], +v[3]]);
+  const h = Math.max(...p.map((v) => v[2])) - Math.min(...p.map((v) => v[2]));
+  const r = Math.max(...p.map((v) => Math.hypot(v[0], v[1])));
+  check("threadlib thread(\"M12x1.75\", turns=5) builds a 5-turn M12 thread",
+    tri > 100 && Math.abs(h - 8.75) < 0.6 && r > 5.5 && r <= 6.01, `tri ${tri}, height ${h}, r ${r}`);
 }
 
 console.log("\nlet / assert\n");

@@ -48,7 +48,7 @@ const paddle = hull(cylinder({ r: Ro, h: ringH, $fn: 64 }), translate([Ro + leve
 // the split, and a bolt across it to close the ring on the knob
 const xb = Ro + boltD / 2 + 3;
 const split = translate([0, -1, -1], cube([xb + boltD / 2 + 6, 2, ringH + 2]));
-const bolt = translate([xb, Ro + 1, ringH / 2], rotate([90, 0, 0], cylinder({ r: boltD / 2, h: 2 * Ro + 2, $fn: 20 })));
-return translate([-(Ro + leverL - Ro) / 2, 0, 0], difference(paddle, translate([0, 0, -1], cylinder({ r: rb, h: ringH + 2, $fn: 64 })), split, bolt));
+const boltHole = translate([xb, Ro + 1, ringH / 2], rotate([90, 0, 0], cylinder({ r: boltD / 2, h: 2 * Ro + 2, $fn: 20 })));
+return translate([-(Ro + leverL - Ro) / 2, 0, 0], difference(paddle, translate([0, 0, -1], cylinder({ r: rb, h: ringH + 2, $fn: 64 })), split, boltHole));
 `,
 };

@@ -1253,6 +1253,7 @@ function evalCall(stmt, scope) {
       if (child && positional.length) out = dslFn(...positional, child);
       else if (child) out = dslFn(child, opts);
       else if (positional.length && !Object.keys(opts).length) out = dslFn(...positional);
+      else if (positional.length) out = dslFn(...positional, opts);   // thread("M12x1.75", turns = 5)
       else out = dslFn(opts);
       if (out && (out.__brepscript || out.__brepscript2d)) return out;
       warn(`${name}() ran but returned no shape`);

@@ -135,6 +135,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "deskview.js", "deskxr.js",
   // the line icons those cards and the drop menu share
   "icons.js",
+  // Settings: interface languages and the 3D mouse; IGES import (each lazy)
+  "i18n.js", "spacemouse.js", "iges.js",
   // Design mode: the Code | Design switch, and edge names for a picked face
   "design.js", "faceedges.js",
   // Design mode phase 1: the shell, model browser, timeline, move gizmo and
