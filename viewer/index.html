@@ -4090,6 +4090,17 @@
             </select></label>
           <label class="set-row set-check" title="The cube button in the top-right corner that shows the model real size through your phone's camera. Off hides it; a shared link still offers See it on your desk."><input type="checkbox" id="set-ar-cube" />
             <span>Show the corner cube (see it on your desk)</span></label>
+          <!-- A 3Dconnexion SpaceMouse over WebHID (viewer/spacemouse.js): shown
+               only where the browser has WebHID (Chrome, Edge, the desktop app). -->
+          <div class="set-row" id="set-3dmouse-row" hidden title="Push the cap to pan, pull it to zoom, twist and tilt to turn. Left button fits the view, right button looks from the top. Once connected it reconnects on its own next time.">
+            <span>3D mouse</span>
+            <span style="display:flex; gap:6px; align-items:center; min-width:0">
+              <select id="set-3dmouse-speed" title="How fast the cap moves the view">
+                <option value="0.5">Slow</option><option value="1">Normal</option><option value="2">Fast</option>
+              </select>
+              <button type="button" id="set-3dmouse" class="hist-btn">Connect</button>
+            </span>
+          </div>
           <label class="set-row set-check" title="Off: BREPcode opens on an empty plate instead of the sample cube with a hole."><input type="checkbox" id="set-starter-cube" />
             <span>Start with the sample cube</span></label>
           <label class="set-row set-check"><input type="checkbox" id="set-snap" />
@@ -9959,6 +9970,40 @@
     });
     $("set-start-mode").addEventListener("change", (e) => setPref("startMode", e.target.value));
     $("set-toolbar-side").addEventListener("change", (e) => { setPref("toolbarSide", e.target.value); applyChromePrefs(); });
+    // ---- 3D mouse ---------------------------------------------------------
+    // A device allowed once reconnects on load without asking; Connect asks
+    // (WebHID needs a click). The cap moves the camera like a drag would, so
+    // the app stops placing the view itself, exactly as after a mouse drag.
+    {
+      const row = $("set-3dmouse-row"), btn = $("set-3dmouse"), spd = $("set-3dmouse-speed");
+      import("./spacemouse.js").then(({ hidSupported, attachSpaceMouse }) => {
+        if (!hidSupported()) return;
+        row.hidden = false;
+        spd.value = String(prefs.mouse3dSpeed ?? 1);
+        spd.addEventListener("change", () => setPref("mouse3dSpeed", +spd.value));
+        const sm = attachSpaceMouse({
+          THREE, camera, controls,
+          getSpeed: () => prefs.mouse3dSpeed ?? 1,
+          onMove: () => { camGlide = null; autoPlaced = false; },
+          onButton: (bits) => { if (bits & 1) snapView("home"); else if (bits & 2) snapView("top"); },
+        });
+        const paint = (name) => {
+          btn.textContent = sm.connected ? "Disconnect" : "Connect";
+          btn.title = sm.connected ? `${name || "3D mouse"} is driving the view` : "Pick your SpaceMouse (3Dconnexion) from the list";
+        };
+        sm.reconnect().then((name) => { paint(name); if (name) toast(`${name} connected`, "info"); }).catch(() => paint());
+        btn.addEventListener("click", async () => {
+          try {
+            if (sm.connected) { await sm.disconnect(); paint(); return; }
+            const name = await sm.connect();
+            paint(name);
+            if (name) toast(`${name} connected: push to pan, pull to zoom, twist to turn.`);
+          } catch (e) {
+            toast(`3D mouse: ${String(e?.message || e).slice(0, 100)}`, "err");
+          }
+        });
+      }).catch(() => {});
+    }
     $("set-ar-cube").addEventListener("change", (e) => { setPref("arCube", e.target.checked); applyChromePrefs(); });
     // Kernel: shown where SMLib ships, the desktop alpha (natively) and the
     // website (as WebAssembly), not in the standard desktop build. "js" is the

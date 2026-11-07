@@ -215,6 +215,24 @@ if (!EMBEDDED) app.whenReady().then(() => {
   kernel.register();        // the Rust kernel as native code, beside the wasm one
   serveBundle();
 
+  // Settings > 3D mouse. A browser shows its own device chooser for WebHID;
+  // Electron shows nothing and asks the app, so pick the 3Dconnexion device
+  // here (3Dconnexion 0x256f, or Logitech 0x046d for the older units) and let
+  // the page reopen it on the next launch without asking.
+  const { session } = require("electron");
+  const SPACE_MICE = [0x256f, 0x046d];
+  session.defaultSession.on("select-hid-device", (event, details, callback) => {
+    event.preventDefault();
+    const d = details.deviceList.find((x) => SPACE_MICE.includes(x.vendorId));
+    callback(d ? d.deviceId : "");
+  });
+  // Only "hid" is decided here. Every other check returns true, which is
+  // Electron's own behaviour with no handler set, so nothing else changes.
+  session.defaultSession.setPermissionCheckHandler(() => true);
+  // ...and the only HID devices the page may open are the 3D mice
+  session.defaultSession.setDevicePermissionHandler((details) =>
+    details.deviceType === "hid" && SPACE_MICE.includes(details.device?.vendorId));
+
   // A stock menu on Windows just adds noise; keep the accelerators that matter.
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
