@@ -34,7 +34,10 @@ export function kernelBodies(rk, text) {
     return { handle, json, props, volume: Math.abs(props?.volume ?? 0), box: box(s.vertices.map((v) => [v.point.x, v.point.y, v.point.z])), used: false };
   });
 }
+// file bodies' point-test grids (coverage), by handle, until freed
+const grids = new Map();
 export function freeBodies(rk, kernel) {
+  for (const k of kernel) grids.delete(k.handle);
   for (const k of kernel) { try { if (k.handle != null) rk.free_solid(k.handle); } catch { /* gone */ } }
 }
 
@@ -186,7 +189,23 @@ function triDistance(p, a, b, c) {
   return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
 }
 const MESH_REL = 2e-4;
-const inside = (rk, X, pts) => (X.json ? classify(rk, X.json, pts) : X.mesh ? meshClassify(X.mesh, pts) : null);
+const inside = (rk, X, pts) => (X.parts ? anyOf(X.parts.map((p) => inBox(rk, p, pts))) : X.json ? classify(rk, X.json, pts) : X.mesh ? meshClassify(X.mesh, pts) : null);
+// a piece asked only about the points in its own box (a slice is thin)
+function inBox(rk, X, pts) {
+  const b = X.box ??= X.json ? box(JSON.parse(X.json).vertices.map((v) => [v.point.x, v.point.y, v.point.z])) : null;
+  if (!b) return inside(rk, X, pts);
+  const pad = 1e-6 * (1 + Math.abs(b.hi[0]) + Math.abs(b.hi[1]) + Math.abs(b.hi[2]));
+  const idx = [];
+  pts.forEach((p, i) => { if (p.every((v, k) => v >= b.lo[k] - pad && v <= b.hi[k] + pad)) idx.push(i); });
+  const out = new Array(pts.length).fill("out");
+  if (!idx.length) return out;
+  const r = inside(rk, X, idx.map((i) => pts[i]));
+  if (!r) return null;
+  idx.forEach((i, j) => { out[i] = r[j]; });
+  return out;
+}
+// a candidate in pieces (a group, never unioned): in when inside any piece
+const anyOf = (lists) => (lists.some((l) => !l) ? null : lists[0].map((_, i) => (lists.some((l) => l[i] === "in") ? "in" : lists.some((l) => l[i] === "on") ? "on" : "out")));
 
 // in or out of a closed triangle mesh: a ray along a slightly skewed
 // direction (so it does not run along an edge), crossings counted
@@ -214,6 +233,46 @@ function meshClassify({ P, I }, pts) {
   return out;
 }
 
+// in or out of a closed triangle mesh, fast: a ray along +x from each point,
+// the triangles bucketed by where they cover the (y, z) plane, so a point
+// meets only its own cell's (points nudged off the exact grid of a mesh's
+// own vertices, so the ray does not run through an edge)
+function meshGrid(P, I) {
+  const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+  for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 2; k++) { const v = P[i + 1 + k]; if (v < lo[k]) lo[k] = v; if (v > hi[k]) hi[k] = v; }
+  const n = Math.max(1, Math.min(256, Math.round(Math.sqrt(I.length / 3 / 4))));
+  const sy = (hi[0] - lo[0]) / n || 1, sz = (hi[1] - lo[1]) / n || 1;
+  const cells = Array.from({ length: n * n }, () => []);
+  for (let t = 0; t < I.length; t += 3) {
+    const ys = [P[3 * I[t] + 1], P[3 * I[t + 1] + 1], P[3 * I[t + 2] + 1]], zs = [P[3 * I[t] + 2], P[3 * I[t + 1] + 2], P[3 * I[t + 2] + 2]];
+    const y0 = Math.max(0, Math.floor((Math.min(...ys) - lo[0]) / sy)), y1 = Math.min(n - 1, Math.floor((Math.max(...ys) - lo[0]) / sy));
+    const z0 = Math.max(0, Math.floor((Math.min(...zs) - lo[1]) / sz)), z1 = Math.min(n - 1, Math.floor((Math.max(...zs) - lo[1]) / sz));
+    for (let a = y0; a <= y1; a++) for (let c = z0; c <= z1; c++) cells[a * n + c].push(t);
+  }
+  return { P, I, lo, n, sy, sz, cells, nudge: Math.max(hi[0] - lo[0], hi[1] - lo[1], 1) * 1.3e-7 };
+}
+function gridClassify(g, pts) {
+  const { P, I, lo, n, sy, sz, cells } = g;
+  return pts.map((q) => {
+    const y = q[1] + g.nudge, z = q[2] + g.nudge * 0.71;
+    const a = Math.floor((y - lo[0]) / sy), c = Math.floor((z - lo[1]) / sz);
+    if (a < 0 || c < 0 || a >= n || c >= n) return "out";
+    let hits = 0;
+    for (const t of cells[a * n + c]) {
+      const i0 = 3 * I[t], i1 = 3 * I[t + 1], i2 = 3 * I[t + 2];
+      const y0 = P[i0 + 1], z0 = P[i0 + 2], y1 = P[i1 + 1], z1 = P[i1 + 2], y2 = P[i2 + 1], z2 = P[i2 + 2];
+      // barycentric in (y, z); then where the triangle's plane is in x
+      const d = (y1 - y0) * (z2 - z0) - (y2 - y0) * (z1 - z0);
+      if (d === 0) continue;
+      const u = ((y - y0) * (z2 - z0) - (y2 - y0) * (z - z0)) / d, v = ((y1 - y0) * (z - z0) - (y - y0) * (z1 - z0)) / d;
+      if (u < 0 || v < 0 || u + v > 1) continue;
+      const x = P[i0] + u * (P[i1] - P[i0]) + v * (P[i2] - P[i0]);
+      if (x > q[0]) hits++;
+    }
+    return hits % 2 ? "in" : "out";
+  });
+}
+
 function classify(rk, json, pts) {
   try {
     const r = JSON.parse(rk.classify_points_json(`{"solid":${json},"points":${JSON.stringify(pts)}}`));
@@ -229,6 +288,50 @@ function probePoints(b, n) {
   for (let i = 0; i < n; i++) out.push([0, 1, 2].map((k) => lo[k] - pad(k) + rnd() * (hi[k] - lo[k] + 2 * pad(k))));
   return out;
 }
+
+// How much of a file body a candidate that is NOT the same shape covers, for
+// the "close" offer: points through their joint box, each in or out of both.
+// missing: the file's material the code leaves out; extra: what the code
+// adds; both as a fraction of the file body's volume. points: where they
+// disagree, [x, y, z, 0 missing | 1 extra], for the map. A mesh-measured side
+// is classified by ray casting, so it gets fewer points.
+export const CLOSE_MIN = 0.9;
+export function coverage(rk, file, cand, b, dense = false, rkCand = rk) {
+  const meshy = file.mesh || cand.mesh || cand.parts?.some((p) => p.mesh);
+  const n = meshy ? (dense ? 4096 : 2048) : dense ? 60000 : 12000;
+  // in batches, against a clock: a freeform file body answers a point test
+  // a thousand times slower than a box, and the numbers settle long before
+  const all = probePoints(b, n), budget = dense ? 8000 : 3000, t0 = Date.now();
+  const pts = [], ca = [], cb = [];
+  let side = grids.has(file.handle) ? { grid: grids.get(file.handle) } : file;
+  for (let i = 0, step = 250; i < all.length; i += step, step = 2000) {
+    const chunk = all.slice(i, i + step);
+    const t1 = Date.now();
+    const x = side.grid ? gridClassify(side.grid, chunk) : inside(rk, side, chunk), y = inside(rkCand, cand, chunk);
+    // a file body that answers slowly (B-spline faces, point by point) is
+    // asked of its own fine tessellation from then on, a chord off the face
+    if (side === file && file.handle != null && Date.now() - t1 > chunk.length * 0.5) {
+      try { const m = rk.tessellate_handle(file.handle, MESH_TOL); side = { grid: meshGrid(m.take_positions(), m.take_indices()) }; grids.set(file.handle, side.grid); } catch { /* keep asking the kernel */ }
+    }
+    if (!x || !y) return null;
+    pts.push(...chunk); ca.push(...x); cb.push(...y);
+    if (Date.now() - t0 > budget) break;
+  }
+  let inF = 0, miss = 0, extra = 0;
+  const where = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (ca[i] === "on" || cb[i] === "on") continue;
+    const f = ca[i] === "in", c = cb[i] === "in";
+    if (f) inF++;
+    if (f && !c) { miss++; where.push([...pts[i].map((v) => +v.toFixed(4)), 0]); }
+    else if (!f && c) { extra++; where.push([...pts[i].map((v) => +v.toFixed(4)), 1]); }
+  }
+  if (!inF) return null;
+  return { match: Math.max(0, 1 - (miss + extra) / inF), missing: miss / inF, extra: extra / inF, points: where.slice(0, 6000) };
+}
+// a measured file body (kernelBodies) as coverage() takes it
+export const fileSide = (k) => ({ json: k.json, volume: k.volume, handle: k.handle });
+export const boxUnion = (a, b) => ({ lo: a.lo.map((v, k) => Math.min(v, b.lo[k])), hi: a.hi.map((v, k) => Math.max(v, b.hi[k])) });
 
 // the file body this candidate is, and how far from it (below SAME_SHAPE: the same)
 export function bestMatch(rk, kernel, cand, myBox) {

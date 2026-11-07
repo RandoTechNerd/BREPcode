@@ -12,8 +12,15 @@
 //             arcs) and extruded; round holes that run through several
 //             layers become one cylinder cut, with their diameter as a dial
 //
-// Anything else (B-spline surfaces, fillets along a layer edge, cross holes)
-// is reported, and the caller keeps that body as an imported exact solid.
+//   sliced    (step2code-slice.js) exact cross-sections up the part: where
+//             a face slants or a bar lies across, that strip is rebuilt as
+//             extrudes along a direction across it
+//
+// Anything else (B-spline surfaces above all) is reported, and the caller
+// keeps that body as an imported exact solid. convertSolid also proposes
+// CLOSE versions (thin layers where nothing is exact; step2code-mesh.js
+// slices the file's own triangles as a last resort), which the checker
+// measures and offers with their missing and extra volume, never on its own.
 // None of this is trusted on its own: step2code-check.js builds every body's
 // code and compares it with the kernel's own import of the same file, and a
 // body whose difference volume is not essentially zero is kept imported.
@@ -24,6 +31,7 @@
 import { Matrix4, Euler } from "three";
 import { vec, xf } from "./stepread.js";
 import * as dsl from "./dsl.js";
+import { trySliced } from "./step2code-slice.js";
 
 const { sub, add, mul, dot, cross, len, unit } = vec;
 const TAU = 2 * Math.PI;
@@ -53,7 +61,7 @@ export function edgePoints(e, n = 24) {
   return [e.a, e.b];
 }
 
-function boundsOf(solid) {
+export function boundsOf(solid) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const f of solid.faces) for (const l of f.loops) for (const e of l.edges) for (const p of edgePoints(e, 8)) {
     for (let k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; }
@@ -63,15 +71,15 @@ function boundsOf(solid) {
 
 // a direction with a fixed sign: +Z rather than -Z, so the same axis read off
 // two faces compares equal
-function canon(d) {
+export function canon(d) {
   const k = [0, 1, 2].reduce((m, i) => (Math.abs(d[i]) > Math.abs(d[m]) ? i : m), 0);
   return d[k] < 0 ? mul(d, -1) : d;
 }
-const parallel = (a, b, tol = 1e-7) => Math.abs(Math.abs(dot(a, b)) - 1) < tol;
-const perpendicular = (a, b, tol = 1e-7) => Math.abs(dot(a, b)) < tol;
+export const parallel = (a, b, tol = 1e-7) => Math.abs(Math.abs(dot(a, b)) - 1) < tol;
+export const perpendicular = (a, b, tol = 1e-7) => Math.abs(dot(a, b)) < tol;
 
 // the in-plane x for a direction: world axes stay world axes
-function frameFor(d) {
+export function frameFor(d) {
   const ax = [0, 1, 2].findIndex((k) => Math.abs(Math.abs(d[k]) - 1) < 1e-9);
   const x = ax === 2 ? [1, 0, 0] : ax === 0 ? [0, 1, 0] : ax === 1 ? [0, 0, 1] : unit(Math.abs(d[2]) < 0.9 ? cross([0, 0, 1], d) : cross(d, [1, 0, 0]));
   const y = cross(d, x);
@@ -103,7 +111,7 @@ const near2 = (a, b, tol) => Math.abs(a[0] - b[0]) < tol && Math.abs(a[1] - b[1]
 
 // join segments end to end into closed loops; each loop item remembers
 // whether it runs reversed. null when the pieces do not close up.
-function chainLoops(segs, tol) {
+export function chainLoops(segs, tol) {
   const loops = [];
   const used = new Array(segs.length).fill(false);
   for (let i = 0; i < segs.length; i++) {
@@ -134,7 +142,7 @@ function chainLoops(segs, tol) {
 
 // a loop that is all arcs of one circle (a hole the file split at its seam,
 // or into halves) is that circle
-function circleLoops(loops, tol) {
+export function circleLoops(loops, tol) {
   return loops.map((l) => {
     if (l.length === 1 && l[0].s.t === "circle") return l;
     const s0 = l[0].s;
@@ -144,7 +152,7 @@ function circleLoops(loops, tol) {
   });
 }
 
-function loopPolygon(loop, n = 32) {
+export function loopPolygon(loop, n = 32) {
   const out = [];
   for (const { s, rev } of loop) {
     if (s.t === "line") { out.push(rev ? s.q : s.p); continue; }
@@ -178,7 +186,7 @@ function probePoint(loop) {
 }
 
 // loops -> regions: [{ outer, holes }], by how many other loops hold each one
-function nestLoops(loops) {
+export function nestLoops(loops) {
   const polys = loops.map((l) => loopPolygon(l, 64));
   const depth = loops.map((l, i) => {
     const p = probePoint(l);
@@ -199,7 +207,7 @@ function nestLoops(loops) {
 
 // a loop written as a 2D profile: circle2d, polygon, or path2d with arcTo
 // circleName(circle) -> a diameter dial's name, for a round hole that has one
-function loopCode(loop, ccw, circleName = null) {
+export function loopCode(loop, ccw, circleName = null) {
   if (loop.length === 1 && loop[0].s.t === "circle") {
     const s = loop[0].s;
     const d = circleName?.(s);
@@ -381,8 +389,13 @@ export function tryExtrude(solid, d, B = boundsOf(solid)) {
   const fr = frameFor(d);
   const H = (p) => dot(p, d);
   const P2 = (p) => [dot(p, fr.x), dot(p, fr.y)];
+  // countersinks, drill points and sideways holes come out first: cut
+  // afterwards as turned cutters, the layers trace solid where they are
+  const cut = turnedCutters(solid, d, tol);
+  if (cut.why) return { why: cut.why };
   const caps = [], walls = [], others = [];
   for (const f of solid.faces) {
+    if (cut.cutFaces.has(f)) continue;
     const s = f.surface;
     if (s.type === "plane" && parallel(s.z, d)) caps.push({ f, h: H(s.o) });
     else if (s.type === "plane" && perpendicular(s.z, d)) walls.push({ f, kind: "plane" });
@@ -393,11 +406,10 @@ export function tryExtrude(solid, d, B = boundsOf(solid)) {
   const levels = [];
   for (const c of caps) if (!levels.some((h) => Math.abs(h - c.h) < tol)) levels.push(c.h);
   levels.sort((a, b) => a - b);
-  // the rest may be the top or bottom edges rounded or bevelled: traced as
-  // if sharp (each wall run on up to the face), and rounded again in the code
-  const blend = others.length ? edgeBlends(others, d, levels, tol, H) : null;
+  // the rest may be edges rounded or bevelled: traced as if sharp (each wall
+  // run on up to the face it is rounded into), and rounded again in the code
+  const blend = others.length ? edgeBlends(solid, caps, walls, others, d, tol, H) : null;
   if (blend?.why) return { why: blend.why };
-  const snap = blend ? blend.snap : (h) => h;
 
   // each wall: its pieces of boundary, sorted into vertical runs (along d)
   // and level runs (at one height)
@@ -410,7 +422,9 @@ export function tryExtrude(solid, d, B = boundsOf(solid)) {
     const S = cyl ? (p) => { const q = P2(p); return Math.atan2(q[1] - c2[1], q[0] - c2[0]); } : (p) => dot(p, u);
     const vert = [], level = [];
     let hlo = Infinity, hhi = -Infinity;
-    for (const l of w.f.loops) for (const e of l.edges) {
+    const snap = blend ? blend.snapOf(w.f) : (h) => h;
+    // a ring where a cutter's hole comes through this wall is the cutter's
+    for (const l of w.f.loops) if (!(l.edges.length && l.edges.every((e) => cut.cutEdges.has(e.id)))) for (const e of l.edges) {
       const pts = edgePoints(e, 24);
       const hs = pts.map((p) => snap(H(p)));
       const h0 = Math.min(...hs), h1 = Math.max(...hs);
@@ -418,9 +432,12 @@ export function tryExtrude(solid, d, B = boundsOf(solid)) {
       if (h1 - h0 < tol) {
         // a run at one height: its span of s (an arc's sweep, for a cylinder)
         if (cyl) {
-          const ccw = e.curve.type === "circle" ? dot(e.curve.z, d) > 0 : true;
           const t0 = S(e.a);
           let sw = ((S(e.b) - t0) % TAU + TAU) % TAU;
+          // an arc the file wrote as a spline has no axis to say which way it
+          // runs: the way that passes through its middle point
+          const ccw = e.curve.type === "circle" ? dot(e.curve.z, d) > 0
+            : pts.length < 3 || inSweep(S(pts[Math.floor(pts.length / 2)]), t0, sw);
           if (near3(e.a, e.b, tol)) sw = TAU;
           else if (!ccw) sw = sw - TAU;
           level.push({ h: h0, s0: t0, sw });
@@ -489,27 +506,200 @@ export function tryExtrude(solid, d, B = boundsOf(solid)) {
   // cutter run along that notch, coincident cylinders, and the kernel
   // refused the subtract). The checker keeps the first that rebuilds exactly.
   const copy = () => solidGroups.map((g) => ({ ...g, regions: g.regions.map((r) => ({ ...r, holes: [...r.holes] })) }));
-  const drilled = emitExtrude(copy(), fr, tol, "drill", blend);
-  // (rounded edges: only drilled, or the round would run round each hole rim)
-  if (blend) return { ...drilled, variants: [drilled] };
-  const inOutline = emitExtrude(copy(), fr, tol, "region");
+  // (a rounded hole rim only has an edge to round in the outline variant: a
+  // drilled hole is cut after the rounding)
+  const drilled = emitExtrude(copy(), fr, tol, "drill", blend, cut.cutters);
+  const inOutline = emitExtrude(copy(), fr, tol, "region", blend, cut.cutters);
   return { ...drilled, variants: inOutline.expr === drilled.expr ? [drilled] : [drilled, inOutline] };
 }
 
 const MAX_PIECES = 40;
 
-// Faces that round or bevel the edges of the very top or very bottom face:
-// a quarter cylinder lying across d (a straight edge), a torus about d (an
-// arc edge, or where two rounded edges meet a rounded corner), a sphere
-// (three rounds at a corner); a 45 degree plane or cone (a chamfer). Each
-// side takes one size. snap(h) moves a wall's edge from where the round
-// starts to the face it rounds, so the layers trace as if the edge were
-// sharp; the code then rounds it with fillet() / chamfer() on "top" or
-// "bottom", the solid's highest and lowest edges in Z.
-function edgeBlends(faces, d, levels, tol, H) {
-  const top = levels[levels.length - 1], bottom = levels[0];
-  const side = { top: null, bottom: null };
-  for (const f of faces) {
+// Holes the layers cannot trace, cut afterwards as one turned cutter each: a
+// countersink or a drill point (a cone on the hole's axis), a chamfered or
+// stepped bore, or a hole crossing the part sideways (any axis but d). Its
+// faces (the hole's cylinders and cones, and the flat steps or bottom between
+// them) leave the layer tracing, so the layers trace solid where it is, and
+// its profile about its own axis, carried past each open end, is revolved
+// and subtracted. A plain straight hole along d is left to the layers and
+// drill(): that code reads better.
+export function turnedCutters(solid, d, tol, { all = false } = {}) {
+  const owners = new Map();
+  for (const f of solid.faces) for (const l of f.loops) for (const e of l.edges) {
+    if (e.id == null) continue;
+    if (!owners.has(e.id)) owners.set(e.id, new Set());
+    owners.get(e.id).add(f);
+  }
+  const axisOfHole = (f) => {
+    const s = f.surface;
+    if ((s.type !== "cylinder" && s.type !== "cone") || f.sense !== false) return null;   // inward-facing: a hole
+    return { o: s.o, a: canon(s.z) };
+  };
+  const sameAxis = (A, B) => parallel(A.a, B.a) && len(sub(sub(B.o, A.o), mul(A.a, dot(sub(B.o, A.o), A.a)))) < tol * 100;
+  const cutFaces = new Set(), cutters = [];
+  const done = new Set();
+  for (const f0 of solid.faces) {
+    const A = axisOfHole(f0);
+    if (!A || done.has(f0)) continue;
+    // the hole: every inward cylinder or cone on this axis joined to it, and
+    // the flat faces across the axis that only it bounds (a step, a bottom)
+    const stack = [f0];
+    done.add(f0);
+    for (let i = 0; i < stack.length; i++) for (const l of stack[i].loops) for (const e of l.edges) {
+      for (const g of owners.get(e.id) || []) {
+        if (done.has(g)) continue;
+        const B = axisOfHole(g);
+        const flatAcross = g.surface.type === "plane" && parallel(g.surface.z, A.a)
+          && g.loops.every((gl) => gl.edges.every((ge) => [...(owners.get(ge.id) || [])].some((h) => h !== g && (stack.includes(h) || (axisOfHole(h) && sameAxis(A, axisOfHole(h)))))));
+        if ((B && sameAxis(A, B)) || flatAcross) { done.add(g); stack.push(g); }
+      }
+    }
+    const cones = stack.some((f) => f.surface.type === "cone");
+    if (!all && parallel(A.a, d) && !cones) continue;    // a plain hole along d: the layers do it
+    const prof = holeProfile(stack, A, owners, tol);
+    if (prof.why) { if (all) continue; return { why: prof.why }; }
+    for (const f of stack) cutFaces.add(f);
+    cutters.push({ ...prof, stack });
+  }
+  const cutEdges = new Set();
+  for (const f of cutFaces) for (const l of f.loops) for (const e of l.edges) if (e.id != null) cutEdges.add(e.id);
+  return { cutFaces, cutEdges, cutters };
+}
+
+// a hole's profile about its axis, as a revolve() cutter: the radius up the
+// hole from face to face, out past each end that opens to the air
+function holeProfile(stack, A, owners, tol) {
+  const a = A.a, fr = frameFor(a);
+  const o = sub(A.o, mul(a, dot(A.o, a)));                       // the axis point nearest the origin
+  const Hh = (p) => dot(sub(p, o), a);
+  const R = (p) => { const q = sub(p, o); return len(sub(q, mul(a, dot(q, a)))); };
+  const segs = [];
+  let lo = Infinity, hi = -Infinity;
+  for (const f of stack) {
+    const pts = f.loops.flatMap((l) => l.edges.flatMap((e) => edgePoints(e, 24)));
+    const rh = pts.map((p) => [R(p), Hh(p)]);
+    for (const [, h] of rh) { lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (f.surface.type === "cylinder") {
+      const hs = rh.map((x) => x[1]);
+      segs.push([[f.surface.r, Math.min(...hs)], [f.surface.r, Math.max(...hs)]]);
+    } else if (f.surface.type === "cone") {
+      const a0 = rh.reduce((m, x) => (x[1] < m[1] ? x : m)), a1 = rh.reduce((m, x) => (x[1] > m[1] ? x : m));
+      // a cone run to its tip (a drill point) has one rim: the tip is on the axis
+      const rims = f.loops.filter((l) => l.edges.length).length;
+      if (rims === 1 && Math.abs(a0[1] - a1[1]) < tol * 10) {
+        const s = f.surface, k = Math.tan(s.angle) * (dot(s.z, a) > 0 ? 1 : -1);
+        const tip = [0, Hh(s.o) - s.r / k];
+        segs.push(tip[1] > a1[1] ? [a0, tip] : [tip, a1]);
+      } else segs.push([a0, a1]);
+    } else {
+      // a flat step or bottom: from its smallest radius (0 for a bottom) out
+      const h = Hh(f.surface.o), rs = rh.map((x) => x[0]);
+      const ring = f.loops.length > 1;
+      segs.push([[ring ? Math.min(...rs) : 0, h], [Math.max(...rs), h]]);
+    }
+  }
+  // the radius as h rises: the cylinder and cone pieces in order, steps between
+  const walls = segs.filter(([p, q]) => Math.abs(p[1] - q[1]) > tol * 10).sort((x, y) => Math.min(x[0][1], x[1][1]) - Math.min(y[0][1], y[1][1]));
+  if (!walls.length) return { why: "a hole with no side" };
+  const span = hi - lo, over = Math.max(1, span * 0.1);
+  // an end is closed when a flat bottom or a drill point closes it
+  const closedAt = (h) => segs.some(([p, q]) => Math.abs(p[1] - h) < tol * 10 && Math.abs(q[1] - h) < tol * 10 && Math.min(p[0], q[0]) < tol * 10)
+    || segs.some(([p, q]) => (p[0] < tol * 10 && Math.abs(p[1] - h) < tol * 10) || (q[0] < tol * 10 && Math.abs(q[1] - h) < tol * 10));
+  // the common holes read as drill(): a plain one (one cylinder), or one
+  // countersunk at an open end (a cylinder, then a cone widening to the
+  // mouth); depth runs past a far end that opens, so no cutter face lies on
+  // the part's own face
+  const openLo = !closedAt(lo), openHi = !closedAt(hi);
+  const cyl = stack.filter((f) => f.surface.type === "cylinder"), cone = stack.filter((f) => f.surface.type === "cone");
+  const flats = stack.filter((f) => f.surface.type === "plane");
+  if (cyl.length >= 1 && new Set(cyl.map((f) => num(f.surface.r))).size === 1 && cone.length <= 1 && flats.length === 0 && (openLo || openHi)) {
+    const r = cyl[0].surface.r;
+    let fromHi = openHi, csink = null;
+    if (cone.length) {
+      const [p, q] = segs[stack.indexOf(cone[0])];
+      const wide = p[0] > q[0] ? p : q, narrow = p[0] > q[0] ? q : p;
+      const mouthHi = wide[1] > narrow[1];
+      if (Math.abs(narrow[0] - r) > tol * 10 || Math.abs(wide[1] - (mouthHi ? hi : lo)) > tol * 10 || !(mouthHi ? openHi : openLo)) return walledProfile();
+      fromHi = mouthHi;
+      const angle = 2 * Math.atan2(wide[0] - narrow[0], Math.abs(wide[1] - narrow[1])) * 180 / Math.PI;
+      csink = `csink: { d: ${num(2 * wide[0])}, angle: ${num(angle)} }`;
+    }
+    const far = fromHi ? openLo : openHi;
+    const at = add(o, mul(a, fromHi ? hi : lo)), dir = mul(a, fromHi ? 1 : -1);
+    const depth = num(hi - lo + (far ? over : 0));
+    return { expr: `drill(${pt3(at)}, ${pt3(dir)}, { d: ${num(2 * r)}, depth: ${depth}${csink ? `, ${csink}` : ""} })` };
+  }
+  return walledProfile();
+
+  function walledProfile() {
+  const pts = [];
+  const first = walls[0], last = walls[walls.length - 1];
+  const bottom = first[0][1] < first[1][1] ? first[0] : first[1];
+  const top = last[0][1] > last[1][1] ? last[0] : last[1];
+  const b0 = closedAt(lo) ? [0, lo] : [0, lo - over];
+  pts.push(b0);
+  if (!closedAt(lo)) pts.push([bottom[0], lo - over]);
+  for (const [p, q] of walls) {
+    const [u, v] = p[1] < q[1] ? [p, q] : [q, p];
+    if (u[0] > tol * 10 || pts.length > 1) pts.push(u);
+    pts.push(v);
+  }
+  if (!closedAt(hi)) { pts.push([top[0], hi + over]); pts.push([0, hi + over]); }
+  else pts.push([0, hi]);
+  // tidy: drop repeats
+  const clean = pts.filter((p, i) => i === 0 || !near2(p, pts[i - 1], tol * 10));
+  if (clean.length < 3) return { why: "a hole whose profile does not close" };
+  const on = placementFor(o, a, fr.x, "revolve");
+  return { expr: `revolve(${on}, polygon([${clean.map(pt2).join(", ")}]))` };
+  }
+}
+
+// Faces that round or bevel an edge where a flat face (a cap, across d) meets
+// a wall (along d), anywhere up the part: a quarter cylinder lying across d
+// (a straight edge), a torus about d (an arc edge, or a round turning a
+// rounded corner), a sphere (three rounds meeting at a corner); a 45 degree
+// plane or cone (a chamfer). Each is found through the edges it shares: the
+// cap it runs to gives the height H of the sharp edge, the wall it leaves
+// gives the height hw where the round starts. Each wall then traces as if
+// sharp (its edges at hw moved to H: snapOf(wall)), and the code rounds the
+// sharp edge again: fillet / chamfer({ edges: { at } }) on a point at the
+// middle of it, which the kernel resolves to that edge by position.
+function edgeBlends(solid, caps, walls, others, d, tol, H) {
+  const owners = new Map();                      // edge id -> faces on it
+  for (const f of solid.faces) for (const l of f.loops) for (const e of l.edges) {
+    if (e.id == null) continue;
+    if (!owners.has(e.id)) owners.set(e.id, new Set());
+    owners.get(e.id).add(f);
+  }
+  const capOf = new Map(caps.map((c) => [c.f, c.h])), isWall = new Set(walls.map((w) => w.f));
+  const rules = new Map();                       // wall face -> [[hw, H]]
+  const blends = [];
+  // Files often split one round into pieces (a quarter round as two faces
+  // meeting at 45 degrees): pieces on the same surface that share an edge are
+  // one round here.
+  const sameSurface = (a, b) => {
+    const s = a.surface, t = b.surface;
+    if (!["plane", "cylinder", "cone", "torus", "sphere"].includes(s.type)) return false;   // a B-spline has no axis to compare
+    if (s.type !== t.type || Math.abs((s.r ?? 0) - (t.r ?? 0)) > tol * 10 || Math.abs((s.R ?? 0) - (t.R ?? 0)) > tol * 10) return false;
+    if (s.type === "plane") return parallel(s.z, t.z) && Math.abs(dot(sub(s.o, t.o), s.z)) < tol * 10;
+    if (s.type === "sphere") return near3(s.o, t.o, tol * 10);
+    if (!parallel(s.z, t.z)) return false;
+    const q = sub(t.o, s.o);
+    return len(sub(q, mul(s.z, dot(q, s.z)))) < tol * 10 && (s.type === "cylinder" || Math.abs(dot(q, s.z)) < tol * 10);
+  };
+  const groups = [];
+  const seen = new Set();
+  for (const f of others) {
+    if (seen.has(f)) continue;
+    const g = [f];
+    seen.add(f);
+    for (let i = 0; i < g.length; i++) for (const l of g[i].loops) for (const e of l.edges) {
+      for (const h of owners.get(e.id) || []) if (!seen.has(h) && others.includes(h) && sameSurface(f, h)) { seen.add(h); g.push(h); }
+    }
+    groups.push(g);
+  }
+  for (const group of groups) {
+    const f = group[0], members = new Set(group);
     const s = f.surface;
     let kind = null, size = null;
     if (s.type === "cylinder" && perpendicular(s.z, d)) { kind = "fillet"; size = s.r; }
@@ -518,28 +708,50 @@ function edgeBlends(faces, d, levels, tol, H) {
     else if (s.type === "plane" && Math.abs(Math.abs(dot(s.z, d)) - Math.SQRT1_2) < 1e-6) kind = "chamfer";
     else if (s.type === "cone" && parallel(s.z, d) && Math.abs(Math.abs(s.angle) - Math.PI / 4) < 1e-6) kind = "chamfer";
     if (!kind) return { why: `a ${s.type} face runs neither along nor across ${dirName(d)}` };
-    const hs = f.loops.flatMap((l) => l.edges.flatMap((e) => edgePoints(e, 12))).map(H);
-    const a = Math.min(...hs), b = Math.max(...hs);
-    size ??= b - a;
-    const at = Math.abs(b - top) < tol && Math.abs(b - a - size) < tol * 100 ? "top"
-      : Math.abs(a - bottom) < tol && Math.abs(b - a - size) < tol * 100 ? "bottom" : null;
-    if (!at) return { why: `a rounded or bevelled edge that is not on the very top or bottom (a ${s.type} face)` };
-    const prev = side[at];
-    if (prev && (prev.kind !== kind || Math.abs(prev.size - size) > tol * 100)) return { why: `the ${at} edges are rounded or bevelled by different amounts` };
-    side[at] = { kind, size };
+    const hs = group.flatMap((m) => m.loops.flatMap((l) => l.edges.flatMap((e) => edgePoints(e, 12)))).map(H);
+    const lo = Math.min(...hs), hi = Math.max(...hs);
+    size ??= hi - lo;
+    if (Math.abs(hi - lo - size) > tol * 100) return { why: `a ${kind === "fillet" ? "round" : "bevel"} that is not a plain quarter round or 45 degree chamfer (a ${s.type} face)` };
+    // its neighbours (outside the round itself), through the edges it shares
+    const next = new Map();                      // face -> [edges shared with it]
+    for (const m of group) for (const l of m.loops) for (const e of l.edges) {
+      for (const g of owners.get(e.id) || []) if (!members.has(g)) { if (!next.has(g)) next.set(g, []); next.get(g).push(e); }
+    }
+    // one that reaches a flat face at both its ends is a sloping wall from
+    // one face to the other (a 45 degree side), not a rounded edge
+    const touches = (h) => [...next.keys()].some((g) => capOf.has(g) && Math.abs(capOf.get(g) - h) < tol * 10);
+    if (touches(hi) && touches(lo)) return { why: `a sloping side runs from one flat face to the next (a ${s.type} face)` };
+    const cap = [...next.keys()].find((g) => capOf.has(g) && (Math.abs(capOf.get(g) - hi) < tol * 10 || Math.abs(capOf.get(g) - lo) < tol * 10));
+    if (cap == null) {
+      if (s.type === "sphere") continue;         // a corner: its three rounds carry it
+      return { why: `a ${kind === "fillet" ? "round" : "bevel"} that does not meet a flat face (a ${s.type} face)` };
+    }
+    const Hc = capOf.get(cap), hw = Math.abs(Hc - hi) < tol * 10 ? lo : hi;
+    for (const [g, es] of next) {
+      if (!isWall.has(g)) continue;
+      if (!rules.has(g)) rules.set(g, []);
+      rules.get(g).push([hw, Hc]);
+      // the sharp edge: where the wall meets the cap, i.e. the wall's edge
+      // with the round, moved from hw to H along d; its middle names it
+      for (const e of es) {
+        const P = edgePoints(e, 24);
+        // only the edge it leaves the wall along (all at hw): a bevel also
+        // meets the walls at its two sloping ends, halfway up the bevel
+        if (!P.every((p) => Math.abs(H(p) - hw) < tol * 100)) continue;
+        const m = P.length === 2 ? mul(add(P[0], P[1]), 0.5) : P[Math.floor(P.length / 2)];
+        blends.push({ kind, size, at: add(m, mul(d, Hc - hw)) });
+      }
+    }
   }
-  if (!parallel(d, [0, 0, 1])) return { why: `rounded edges on a part that does not stand along Z (fillet's "top" and "bottom" are in Z)` };
-  // a layer edge where a round starts would be moved too: too close to call
-  for (const [k, H0, sgn] of [["top", top, -1], ["bottom", bottom, 1]]) {
-    const b = side[k];
-    if (b && levels.some((h) => Math.abs(h - (H0 + sgn * b.size)) < tol * 10)) return { why: `a layer edge sits where the ${k} round starts` };
-  }
-  const snap = (h) => {
-    if (side.top && Math.abs(h - (top - side.top.size)) < tol * 10) return top;
-    if (side.bottom && Math.abs(h - (bottom + side.bottom.size)) < tol * 10) return bottom;
-    return h;
+  if (!blends.length) return { why: "rounded faces with no wall to round" };
+  // a wall's edge at the height a round starts is moved to the flat face it
+  // runs to (only that wall's: another wall's edge at that height is real)
+  const snapOf = (wall) => {
+    const rs = rules.get(wall);
+    if (!rs) return (h) => h;
+    return (h) => { for (const [hw, Hc] of rs) if (Math.abs(h - hw) < tol * 100) return Hc; return h; };
   };
-  return { ...side, snap };
+  return { blends, snapOf };
 }
 
 function inSweep(a, s0, sw) {
@@ -547,11 +759,11 @@ function inSweep(a, s0, sw) {
   return t > 1e-9 && t < Math.abs(sw) - 1e-9;
 }
 const near3 = (a, b, tol) => Math.abs(a[0] - b[0]) < tol && Math.abs(a[1] - b[1]) < tol && Math.abs(a[2] - b[2]) < tol;
-const dirName = (d) => (parallel(d, [0, 0, 1]) ? "Z" : parallel(d, [1, 0, 0]) ? "X" : parallel(d, [0, 1, 0]) ? "Y" : `[${d.map(num).join(", ")}]`);
+export const dirName = (d) => (parallel(d, [0, 0, 1]) ? "Z" : parallel(d, [1, 0, 0]) ? "X" : parallel(d, [0, 1, 0]) ? "Y" : `[${d.map(num).join(", ")}]`);
 
 // two straight pieces in a row along one line are one piece (a wall split in
 // two by the file); keeps the outlines short
-function mergeLines(segs, tol) {
+export function mergeLines(segs, tol) {
   const lines = segs.filter((s) => s.t === "line"), rest = segs.filter((s) => s.t !== "line");
   let changed = true;
   while (changed) {
@@ -574,7 +786,7 @@ function mergeLines(segs, tol) {
   return [...lines, ...rest];
 }
 
-function sectionKey(segs) {
+export function sectionKey(segs) {
   const k = (s) => s.t === "line"
     ? [pt2(s.p), pt2(s.q)].sort().join("-")
     : `${s.t}${pt2(s.c)}${num(s.r)}${s.t === "arc" ? num(s.a0) + num(s.a1) : ""}`;
@@ -582,7 +794,7 @@ function sectionKey(segs) {
 }
 
 // the plane option for a profile laid across d through the origin
-function placementFor(o, d, x, mode) {
+export function placementFor(o, d, x, mode) {
   const isZ = parallel(d, [0, 0, 1]) && dot(d, [0, 0, 1]) > 0 && near3(x, [1, 0, 0], 1e-9);
   const atOrigin = near3(o, [0, 0, 0], 1e-9);
   if (mode === "revolve") {
@@ -603,7 +815,19 @@ function holds(a, b, tol) {
   const A = polys(a), Bp = polys(b);
   const edgeNear = (p, poly) => poly.some((q, i) => segPointDist(p, q, poly[(i + 1) % poly.length]) < tol * 20);
   const inMaterial = (p, P) => P.some((r) => (inside2(p, r.outer) || edgeNear(p, r.outer)) && !r.holes.some((h) => inside2(p, h) && !edgeNear(p, h)));
-  for (const r of Bp) for (const poly of [r.outer, ...r.holes]) for (const p of poly) if (!inMaterial(p, A)) return false;
+  // along every edge, not just at its corners: a strip's long side ran
+  // straight past a notch in the layer above and was taken to sit inside it
+  const along = (poly) => poly.flatMap((p, i) => { const q = poly[(i + 1) % poly.length]; return Array.from({ length: 16 }, (_, k) => [p[0] + (q[0] - p[0]) * k / 16, p[1] + (q[1] - p[1]) * k / 16]); });
+  for (const r of Bp) for (const poly of [r.outer, ...r.holes]) for (const p of along(poly)) if (!inMaterial(p, A)) return false;
+  // ...and through its inside: a grid of points in b's material
+  for (const r of Bp) {
+    const xs = r.outer.map((p) => p[0]), ys = r.outer.map((p) => p[1]);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
+      const p = [x0 + (x1 - x0) * (i + 0.5) / 12, y0 + (y1 - y0) * (j + 0.5) / 12];
+      if (inside2(p, r.outer) && !r.holes.some((h) => inside2(p, h)) && !inMaterial(p, A)) return false;
+    }
+  }
   // a hole of a strictly inside b's material: b would fill it
   const inB = (p) => Bp.some((r) => inside2(p, r.outer) && !edgeNear(p, r.outer) && !r.holes.some((h) => inside2(p, h) || edgeNear(p, h)));
   for (const r of A) for (const h of r.holes) if (h.some(inB)) return false;
@@ -617,7 +841,7 @@ function segPointDist(p, a, b) {
 
 // mode "drill": round holes come out of the layers and are drilled; "region":
 // they stay in each layer's outline, with their diameter dials all the same
-function emitExtrude(groups0, fr, tol, mode = "drill", blend = null) {
+export function emitExtrude(groups0, fr, tol, mode = "drill", blend = null, cutters = [], extra = [], flat = false) {
   const on = placementFor([0, 0, 0], fr.d, fr.x, "extrude");
   const onPart = on ? `, on: ${on}` : "";
   // round holes running through layers in a row: pulled out of the layers,
@@ -672,17 +896,18 @@ function emitExtrude(groups0, fr, tol, mode = "drill", blend = null) {
   // thickness is a dial, and the layers above move when one changes
   const stacked = groups.every((g, i) => i === 0 || Math.abs(g.z0 - groups[i - 1].z1) < tol);
   const zName = [];
-  if (stacked) groups.forEach((g, i) => {
+  // (thin layers standing in for a slope are no dials: flat, plain numbers)
+  if (stacked && !flat) groups.forEach((g, i) => {
     const name = groups.length === 1 ? "thickness" : `t${i + 1}`;
     dials.push({ name, value: num(g.z1 - g.z0), note: groups.length === 1 ? "how thick" : `layer ${i + 1} thickness` });
     zName.push(name);
   });
-  const base = num(groups[0].z0);
+  const base = groups.length ? num(groups[0].z0) : "0";
   const sum = (terms) => (terms.length ? (base === "0" ? terms.join(" + ") : `${base} + ${terms.join(" + ")}`) : base);
   const startOf = (i) => (stacked ? sum(zName.slice(0, i)) : num(groups[i].z0));
   // a height as dials when it is a layer edge, else a number
   const zExpr = (z) => {
-    if (!stacked) return num(z);
+    if (!stacked || flat) return num(z);
     for (let i = 0; i <= groups.length; i++) {
       const edge = i < groups.length ? groups[i].z0 : groups[groups.length - 1].z1;
       if (Math.abs(edge - z) < tol) return sum(zName.slice(0, i));
@@ -717,26 +942,36 @@ function emitExtrude(groups0, fr, tol, mode = "drill", blend = null) {
       const outer = loopCode(rg.outer, true).code;
       const dialOf = mode === "region" ? (c) => holeName(num(2 * c.r)) : null;
       const prof = rg.holes.length ? `region2d(${outer}, ${rg.holes.map((h) => loopCode(h, false, dialOf).code).join(", ")})` : outer;
-      const start = startOf(stacked ? lo[i] : i);
-      const h = stacked ? zName.slice(lo[i], hi[i] + 1).join(" + ") : num(g.z1 - g.z0);
+      const start = flat ? num(groups[lo[i]].z0) : startOf(stacked ? lo[i] : i);
+      const h = flat ? num(groups[hi[i]].z1 - groups[lo[i]].z0) : stacked ? zName.slice(lo[i], hi[i] + 1).join(" + ") : num(g.z1 - g.z0);
       bodies.push(`linearExtrude({ h: ${h}${start === "0" ? "" : `, start: ${start}`}${onPart} }, ${prof})`);
     }
   });
+  // pieces running another way (step2code-slice.js: a strip across d)
+  bodies.push(...extra);
+  // a layer run down through the one below and one run up through it can
+  // come out as the same extrude: once is enough
+  bodies.splice(0, bodies.length, ...new Set(bodies));
   // one level deeper when the layers sit inside the holes' difference()
-  const pad = holes.length ? "  " : "";
+  const pad = holes.length || cutters.length ? "  " : "";
   let expr = bodies.length === 1 ? bodies[0] : `union(\n  ${pad}${bodies.join(`,\n  ${pad}`)},\n${pad})`;
-  // the rounded or bevelled top / bottom edges, before the holes are drilled
-  // (so a hole's rim stays sharp, as the file has it)
+  // the rounded and bevelled edges, before the holes are drilled (so a hole's
+  // rim stays sharp, as the file has it): one fillet() / chamfer() per size,
+  // each edge named by a point at its middle; the size is a dial
   if (blend) {
-    const sides = ["bottom", "top"].filter((k) => blend[k]);
-    for (const k of sides) {
-      const b = blend[k];
-      const name = (b.kind === "fillet" ? (sides.length > 1 ? `${k}R` : "edgeR") : (sides.length > 1 ? `${k}Chamfer` : "edgeChamfer"));
-      dials.push({ name, value: num(b.size), note: `${k} edges ${b.kind === "fillet" ? "rounded" : "chamfered"}` });
-      expr = `${b.kind}({ ${b.kind === "fillet" ? "r" : "d"}: ${name}, edges: "${k}" }, ${expr})`;
+    for (const kind of ["fillet", "chamfer"]) {
+      const sizes = [...new Set(blend.blends.filter((b) => b.kind === kind).map((b) => num(b.size)))].sort((a, b) => +a - +b);
+      sizes.forEach((sz, i) => {
+        const name = kind === "fillet" ? (sizes.length > 1 ? `roundR${i + 1}` : "roundR") : (sizes.length > 1 ? `chamferD${i + 1}` : "chamferD");
+        const at = blend.blends.filter((b) => b.kind === kind && num(b.size) === sz).map((b) => pt3(b.at));
+        const uniq = [...new Set(at)];
+        dials.push({ name, value: sz, note: `${uniq.length} edge${uniq.length > 1 ? "s" : ""} ${kind === "fillet" ? "rounded" : "chamfered"}` });
+        const list = uniq.length > 3 ? `[\n    ${uniq.join(",\n    ")},\n  ]` : `[${uniq.join(", ")}]`;
+        expr = `${kind}({ ${kind === "fillet" ? "r" : "d"}: ${name}, edges: { at: ${list} } }, ${expr})`;
+      });
     }
   }
-  if (holes.length) {
+  if (holes.length || cutters.length) {
     const cuts = holes.map((h) => {
       const d = holeName(num(2 * h.r));
       const openTop = !solidAt(h.c, h.z1, +1), openBot = !solidAt(h.c, h.z0, -1);
@@ -753,6 +988,8 @@ function emitExtrude(groups0, fr, tol, mode = "drill", blend = null) {
       if (h.cb) opts.push(`cbore: { d: ${num(2 * h.cb.r)}, depth: ${num(h.cb.depth)} }`);
       return `drill(${pointAt(h.c, fromTop ? h.z1 : h.z0)}, ${dirCode(fromTop ? 1 : -1)}, { ${opts.join(", ")} })`;
     });
+    // countersunk, pointed and sideways holes: their turned cutters
+    cuts.push(...cutters.map((c) => c.expr));
     expr = `difference(\n  ${expr},\n  ${cuts.join(",\n  ")},\n)`;
   }
   return { kind: "extrude", expr, dials };
@@ -785,11 +1022,26 @@ export function convertSolid(solid) {
   // every direction: a wrong one is turned down by the first face that runs
   // across it, which costs next to nothing (a part extruded along its 45
   // degree face was missed when only the four commonest were tried)
-  for (const d of candidateDirs(solid)) {
+  const dirs = candidateDirs(solid);
+  for (const d of dirs) {
     const ex = tryExtrude(solid, d, B);
     if (ex.expr) { tries.push(...ex.variants); if (tries.length >= 4) break; } else why.push(`extrude ${dirName(d)}: ${ex.why}`);
   }
-  return { tries, why: [...new Set(why)] };
+  // slanted and crossing faces: sectioned exactly, the changing part rebuilt
+  // across (step2code-slice.js); then, for the checker to measure and offer
+  // as a close match, the same with thin layers where nothing is exact
+  const close = [];
+  if (tries.length < 4) {
+    for (const d of dirs.slice(0, 3)) {
+      const sl = trySliced(solid, d);
+      if (sl.expr) { tries.push(sl); if (tries.length >= 4) break; } else why.push(`sliced ${dirName(d)}: ${sl.why}`);
+    }
+  }
+  for (const d of dirs.slice(0, 2)) {
+    const ap = trySliced(solid, d, { approx: true });
+    if (ap.expr && ap.approx) close.push(ap);
+  }
+  return { tries, close, why: [...new Set(why)] };
 }
 
 // one candidate as a model of its own (what the checker builds), placed
@@ -864,10 +1116,13 @@ const RESERVED = new Set(["return", "const", "let", "var", "function", "class", 
 // results: per solid, { ok: true, expr, dials, kind } or { ok: false, importName, why }
 export function toCode(read, results, { title = "part" } = {}) {
   const lines = [];
-  const conv = results.filter((r) => r.ok).length;
+  // (a kept body may carry a close version it was offered: written as code
+  // only in the close code, where withClose made it ok)
+  const conv = results.filter((r) => r.ok && !r.close).length, near = results.filter((r) => r.ok && r.close).length;
   lines.push(`// Converted from STEP: ${title}.`);
   lines.push(`// ${conv} of ${results.length} bod${results.length === 1 ? "y" : "ies"} rebuilt as code and checked against the file (same shape, to the kernel's tolerance).`);
-  if (conv < results.length) lines.push("// The rest are kept as the file's own exact solids (importedSolid): see the note on each.");
+  if (near) lines.push(`// ${near} more ${near === 1 ? "is" : "are"} CLOSE, not exact: rebuilt as near as the converter could, with what each leaves out or adds noted on it.`);
+  if (conv + near < results.length) lines.push("// The rest are kept as the file's own exact solids (importedSolid): see the note on each.");
   lines.push("");
   const used = new Set();
   // A part converted once (r.plan, the same object on every copy) is written
@@ -906,6 +1161,7 @@ export function toCode(read, results, { title = "part" } = {}) {
   if (results.length === 1) {
     const r = results[0];
     if (!r.ok) lines.push(`// ${read.solids[0].name}: kept as the file's solid (${r.why}).`);
+    if (r.ok && r.close) lines.push(closeNote(read.solids[0].name, r.close));
     if (exprs[0] == null) { lines.push("// ...and its solid could not be copied out of the file either: open it as a mesh instead."); lines.push("return group();"); }
     else lines.push(`return ${colorWrap(indent(exprs[0]), read.solids[0].color)};`);
     return lines.join("\n") + "\n";
@@ -915,12 +1171,20 @@ export function toCode(read, results, { title = "part" } = {}) {
   read.solids.forEach((s, i) => {
     const r = results[i];
     if (!r.ok) lines.push(`  // ${s.name}: kept as the file's solid (${r.why}).`);
+    if (r.ok && r.close) lines.push("  " + closeNote(s.name, r.close));
     if (exprs[i] == null) { lines.push(`  // ${s.name}: left out (its solid could not be copied out of the file).`); return; }
     lines.push(`  ${bodyName.get(i)}: { shape: ${indent(exprs[i], "  ")}${s.color ? `, color: ${JSON.stringify(s.color)}` : ""} },`);
   });
   lines.push("});");
   return lines.join("\n") + "\n";
 }
+// a result list with each close body written as its code (the "close" offer:
+// step2code-check.js, viewer/stepcode.js)
+export function withClose(results) {
+  return results.map((r) => (r.close ? { ok: true, close: r.close, kind: r.close.kind, expr: r.close.expr, dials: r.close.dials, plan: r.close.plan, T: r.close.T, why: r.why } : r));
+}
+const pct = (x) => `${x >= 0.9995 && x < 1 ? (x * 100).toFixed(2) : x < 0.0005 && x > 0 ? (x * 100).toFixed(2) : (x * 100).toFixed(1)}%`;
+const closeNote = (name, c) => `// ${name}: CLOSE, not exact: ${pct(c.match)} of the file's volume matches (${pct(c.missing)} missing, ${pct(c.extra)} extra).`;
 const indent = (e, pre = "") => e.split("\n").map((l, i) => (i ? pre + l : l)).join("\n");
 
 // rotate/translate that reproduce a placement matrix (for repeated parts)

@@ -18,7 +18,8 @@ import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.
 import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 import { trianglesStep } from "../src/facetstep.js";
 import { splitHistory, mergeOutputs } from "../src/partsplit.js";
-import { kernelBodies, freeBodies, unionAll, measure, bestMatch, placeInstances, nearestByBox, solidStep, solidStl, summarize, SAME_SHAPE } from "../src/step2code-verify.js";
+import { meshSliced } from "../src/step2code-mesh.js";
+import { kernelBodies, freeBodies, unionAll, measure, bestMatch, placeInstances, nearestByBox, solidStep, solidStl, summarize, coverage, fileSide, boxUnion, SAME_SHAPE, CLOSE_MIN } from "../src/step2code-verify.js";
 
 // The split engine (src/engine.js): the Rust kernel for exact parts, manifold
 // for meshes, this file's JS kernel when either refuses. Both wasm modules are
@@ -37,6 +38,21 @@ const getPartHistory = () => (partHistoryLoad ??= import("/node_modules/brep-io-
 let rustKernel = null;         // the load promise, once started
 let rustModule = null;         // set when the load has finished
 let rustFailure = null;        // set when it failed: not retried this session
+// A throwaway Rust kernel for STEP -> code's CLOSE candidates (stair layers,
+// a mesh's slices): ragged outlines, and one that traps the wasm
+// ("unreachable") leaves that instance's solid registry unusable, which must
+// not be the instance every later build runs on. A trap drops it; the next
+// close candidate gets a fresh one.
+let sliceKernels = 0, isoRust = null;
+async function isoKernel(wasmUrl) {
+  if (!isoRust) {
+    const mod = await import(`/vendor/brep-kernel-rust/brep_kernel.js?close=${++sliceKernels}`);
+    await mod.default({ module_or_path: wasmUrl || PARAMS.get("rust") || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href) });
+    isoRust = mod;
+  }
+  return isoRust;
+}
+const trapped = (e) => { if (/unreachable|RuntimeError|memory access/i.test(String(e?.message || e))) isoRust = null; };
 function loadRust(wasmUrl) {
   if (rustFailure) return Promise.reject(rustFailure);
   rustKernel ??= (async () => {
@@ -843,7 +859,10 @@ self.onmessage = async ({ data, ports }) => {
     // compared with the kernel's own import of the file, then each other copy
     // is found where its placement puts it; a copy with no exact match comes
     // back as its own STEP, to be kept as an importedSolid
-    // (src/step2code-verify.js).
+    // (src/step2code-verify.js). A body with no exact match may come back
+    // with a close one: the candidate (an exact try that missed, or one the
+    // page marked close) covering most of it, its missing and extra volume,
+    // and where they are (close.points), for the page to offer.
     if (op === "step2code") {
       const rust = await loadRust(data.rustWasmUrl);
       const kernel = kernelBodies(rust, data.step);
@@ -860,23 +879,36 @@ self.onmessage = async ({ data, ports }) => {
       try {
         for (const b of data.bodies) {
           const why = [...(b.why || [])];
-          let done = null, cand = null;
-          for (let i = 0; i < b.candidates.length && !done; i++) {
+          let done = null, cand = null, best = null;
+          const near = (i, x, kr = rust) => {
+            const k = nearestByBox(kernel, b.box);
+            let cov = null;
+            try { cov = k?.json ? coverage(rust, fileSide(k), x, boxUnion(k.box, b.box), false, kr) : null; } catch (e) { trapped(e); }
+            if (cov && cov.match >= CLOSE_MIN && (!best || cov.match > best.cov.match)) best = { i, cov, x, k, kr };
+          };
+          const order = [...b.candidates.keys()].sort((i, j) => (b.candidates[i].close ? 1 : 0) - (b.candidates[j].close ? 1 : 0));
+          for (const i of order) {
             const c = b.candidates[i];
-            if (!c.json) { why.push(`${c.kind}: ${c.error || "did not compile"}`); continue; }
-            let h, made = false;
+            if (done || (c.close && best?.cov.match === 1)) break;
+            if (!c.json) { if (!c.close) why.push(`${c.kind}: ${c.error || "did not compile"}`); continue; }
+            let h, made = false, x = null;
             try {
-              const r = await runEngine(c.json, { rust, manifold: loadManifold });
+              // a close candidate: its layers each on their own (a group,
+              // never unioned), on the throwaway kernel
+              const kr = c.close ? await isoKernel(data.rustWasmUrl) : rust;
+              const r = await runEngine(c.json, { rust: kr, manifold: loadManifold });
               if (r.lane !== "exact" || !r.solids.length || r.solids.some((x) => x.handle == null)) throw new Error(`not exact (${r.lane})`);
-              h = unionAll(rust, r.solids.map((x) => x.handle));
-              made = r.solids.length > 1;
-            } catch (e) { why.push(`${c.kind}: did not build (${String(e?.message || e).slice(0, 120)})`); continue; }
+              if (c.close) x = { parts: r.solids.map((s) => measure(kr, s.handle)) };
+              else { h = unionAll(rust, r.solids.map((x) => x.handle)); made = r.solids.length > 1; }
+            } catch (e) { if (c.close) trapped(e); else why.push(`${c.kind}: did not build (${String(e?.message || e).slice(0, 120)})`); continue; }
             let m = null;
-            try { cand = measure(rust, h); m = bestMatch(rust, kernel, cand, b.box); }
+            try { if (!c.close) { x = measure(rust, h); m = bestMatch(rust, kernel, x, b.box); } }
             catch (e) { why.push(`${c.kind}: the check failed (${String(e?.message || e).slice(0, 100)})`); continue; }
             finally { if (made) { try { rust.free_solid(h); } catch { /* gone */ } } }
-            if (m && m.rel < SAME_SHAPE) { m.k.used = true; done = { ok: true, pick: i, diff: m.rel }; }
-            else why.push(`${c.kind}: built, but it is not the same shape as the file (off by ${m ? (m.rel * 100).toPrecision(2) + "%" : "an unknown amount"})`);
+            if (!c.close) cand = x;
+            if (m && m.rel < SAME_SHAPE) { m.k.used = true; done = { ok: true, pick: i, diff: m.rel }; break; }
+            if (!c.close) why.push(`${c.kind}: built, but it is not the same shape as the file (off by ${m ? (m.rel * 100).toPrecision(2) + "%" : "an unknown amount"})`);
+            near(i, x, c.close ? isoRust : rust);
           }
           const copies = b.copies || [];
           if (done) {
@@ -884,11 +916,67 @@ self.onmessage = async ({ data, ports }) => {
             const found = placeInstances(kernel, cand, b.T, copies.map((x) => x.T), b.box);
             done.copies = copies.map((x, i) => (found[i] ? { ok: true } : { ok: false, ...keepOf(x.box, b.name), why: "this copy is not where the assembly's placement puts the part" }));
           } else {
+            // nothing near enough (a freeform body): its own triangles,
+            // sliced (src/step2code-mesh.js), for the page to compile and
+            // send back to "step2codeSlices"
+            let slices = null;
+            if (!(best?.cov.match > 0.995)) {
+              const k = nearestByBox(kernel, b.box);
+              try {
+                if (k?.handle != null) {
+                  const size = Math.hypot(k.box.hi[0] - k.box.lo[0], k.box.hi[1] - k.box.lo[1], k.box.hi[2] - k.box.lo[2]) || 1;
+                  const m = rust.tessellate_handle(k.handle, Math.max(0.01, size * 3e-4));
+                  slices = meshSliced({ P: m.take_positions(), I: m.take_indices() }, b.T).pieces || null;
+                }
+              } catch { /* no slices */ }
+            }
             const first = keepOf(b.box, b.name);
             if (first.err) why.push(first.err);
             done = { ok: false, step: first.step, mesh: first.mesh, why: summarize(why), copies: copies.map((x) => ({ ok: false, ...keepOf(x.box, b.name), why: summarize(why) })) };
+            if (best) {
+              // the one offered, measured again finer for its numbers and its map
+              let cov = best.cov;
+              try { cov = coverage(rust, fileSide(best.k), best.x, boxUnion(best.k.box, b.box), true, best.kr === isoRust || best.kr === rust ? best.kr : rust) || best.cov; } catch (e) { trapped(e); }
+              done.close = { pick: best.i, match: cov.match, missing: cov.missing, extra: cov.extra, points: cov.points };
+            }
+            if (slices) done.slices = slices;
           }
           out.push(done);
+        }
+      } finally { freeBodies(rust, kernel); }
+      self.postMessage({ id, ok: true, bodies: out });
+      return;
+    }
+    // the slices the page compiled (op "step2code" sent them as code): each
+    // built on its own, the first way of it that builds kept, and the lot
+    // measured against the file body, as one close candidate
+    // (each slice built on the throwaway kernel: isoKernel)
+    if (op === "step2codeSlices") {
+      const rust = await loadRust(data.rustWasmUrl);
+      const kernel = kernelBodies(rust, data.step);
+      const out = [];
+      try {
+        for (const b of data.bodies) {
+          const keep = [], parts = [];
+          for (const ways of b.pieces) {
+            let pick = -1;
+            for (let w = 0; w < ways.length && pick < 0; w++) {
+              if (!ways[w]) continue;
+              try {
+                const iso = await isoKernel(data.rustWasmUrl);
+                const r = await runEngine(ways[w], { rust: iso, manifold: loadManifold });
+                if (r.lane !== "exact" || !r.solids.length || r.solids.some((x) => x.handle == null)) continue;
+                parts.push(...r.solids.map((x) => measure(iso, x.handle)));
+                pick = w;
+              } catch (e) { trapped(e); /* the next way */ }
+            }
+            keep.push(pick);
+          }
+          const k = nearestByBox(kernel, b.box);
+          let cov = null;
+          try { cov = parts.length && k?.json && isoRust ? coverage(rust, fileSide(k), { parts }, boxUnion(k.box, b.box), true, isoRust) : null; } catch (e) { trapped(e); }
+          if (k) k.used = true;
+          out.push(cov ? { keep, match: cov.match, missing: cov.missing, extra: cov.extra, points: cov.points } : null);
         }
       } finally { freeBodies(rust, kernel); }
       self.postMessage({ id, ok: true, bodies: out });

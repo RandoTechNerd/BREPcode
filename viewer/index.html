@@ -19889,6 +19889,11 @@ let SIMPLIFY_TARGET = 10000;
         yes: "Open as code", no: "Import as a mesh",
       });
       if (!yes) return false;
+      window.__stepOpening = (window.__stepOpening || 0) + 1;     // for scripts/step2code-web-check.cjs
+      try { return await stepAsCode(file); } finally { window.__stepOpening--; }
+    }
+    async function stepAsCode(file) {
+      hideCloseMap();                     // the last file's dots
       const text = (await file.text()).replace(/^\uFEFF/, "");
       const title = file.name.replace(/\.(step|stp)$/i, "").slice(0, 60);
       let r;
@@ -19920,16 +19925,76 @@ let SIMPLIFY_TARGET = 10000;
           + kept.slice(0, 3).map((b) => `<b>${esc(b.name)}</b> (${esc(String(b.why).split(";")[0])})`).join(", ")
           + (kept.length > 3 ? `, and ${kept.length - 3} more (see the notes in the code)` : "") + "." : "");
       scheduleBuild();
+      if (r.closeCode) await offerCloseCode(r);
       return true;
     }
+
+    // Bodies with no exact rebuild that came CLOSE (viewer/stepcode.js): how
+    // much of each one's volume the close code leaves out and adds, the map
+    // of where on the model, and the person's call. No keeps the file's own
+    // exact solids, as before; yes writes the close code, its notes saying
+    // it is not exact.
+    async function offerCloseCode(r) {
+      const near = r.bodies.filter((b) => b.close);
+      const pct = (x) => `${(x * 100).toFixed(x > 0.999 && x < 1 ? 2 : x > 0 && x < 0.001 ? 2 : 1)}%`;
+      showCloseMap(r.closeMap);
+      const list = near.slice(0, 4).map((b) => `<b>${esc(b.name)}</b>: ${pct(b.close.match)} of its volume matches `
+        + `(${pct(b.close.missing)} missing, ${pct(b.close.extra)} extra)`).join("<br>") + (near.length > 4 ? `<br>and ${near.length - 4} more` : "");
+      const yes = await askYesNo({
+        head: `${near.length === 1 ? "One body" : `${near.length} bodies`} can only be rebuilt approximately. Use the close code?`,
+        sub: `${list}<br><br>The dots show where: <b style="color:#ff3b30">red</b> is the file's material the close code leaves out, `
+          + `<b style="color:#2f8cff">blue</b> is material it adds. Keep them exact and they stay the file's own solids.`,
+        yes: "Use the close code", no: "Keep them exact",
+      });
+      if (!yes) { hideCloseMap(); return; }
+      pushHistory(code.value);
+      code.value = r.closeCode;
+      pushHistory();
+      updateHint();
+      const worst = near.reduce((m, b) => Math.min(m, b.close.match), 1);
+      hint.innerHTML += ` ${near.length === 1 ? "One body is" : `${near.length} bodies are`} close, not exact (the least ${pct(worst)} of its volume): `
+        + `the dots mark where it differs, until the next edit.`;
+      scheduleBuild();
+    }
+    // the close map: one dot per probe point the two solids disagree on, drawn
+    // through the model (a sliver inside it still shows); gone with the next
+    // edit or the next STEP
+    let closeMap = null;
+    function showCloseMap(maps) {
+      hideCloseMap();
+      const pts = (maps || []).flatMap((m) => m.points);
+      if (!pts.length) return;
+      const pos = new Float32Array(pts.length * 3), col = new Float32Array(pts.length * 3);
+      const red = new THREE.Color(0xff3b30), blue = new THREE.Color(0x2f8cff);
+      pts.forEach((p, i) => { pos.set([p[0], p[1], p[2]], 3 * i); const c = p[3] ? blue : red; col.set([c.r, c.g, c.b], 3 * i); });
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      closeMap = new THREE.Points(g, new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, vertexColors: true, depthTest: false, transparent: true, opacity: 0.9 }));
+      closeMap.name = "step-close-map";
+      closeMap.renderOrder = 999;
+      scene.add(closeMap);
+      window.__closeMapSeen = pts.length;      // for scripts/step2code-web-check.cjs
+    }
+    function hideCloseMap() {
+      if (!closeMap) return;
+      scene.remove(closeMap);
+      closeMap.geometry.dispose();
+      closeMap.material.dispose();
+      closeMap = null;
+    }
+    code.addEventListener("input", () => hideCloseMap());
     // a candidate's history for the worker: the editor's own evaluate and
-    // compile, without the build (no fillets, so no face lookups)
+    // compile, without the build. A rounded or bevelled edge names its edge
+    // by a point (edges: { at }), which compile resolves against the edges
+    // the worker's Rust kernel lists, as the editor's own builds do.
     async function compileForCheck(src) {
       const shape = evaluate(src);
       if (!shape?.__brepscript) throw new Error("the code did not make a shape");
       const { PartHistory } = await getKernel();
       const ph = new PartHistory();
-      await dsl.compile(shape, ph);
+      const edgeNames = async (json) => (await workerCall({ op: "edges", json, rustWasmUrl: window.__BREP_RUST_WASM_URL })).solids;
+      await dsl.compile(shape, ph, null, { edgeNames });
       return await ph.toJSON();
     }
 

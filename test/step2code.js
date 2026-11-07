@@ -45,6 +45,30 @@ const MODELS = [
     kind: "extrude", has: [/arcTo\(\[5\.118034, 5\], \{ center: \[4, 4\], cw: true \}\)/, /linearExtrude\(\{ h: t1 \+ t2 \+ t3 \}/, /drill\(\[4, 4, t1\], \[0, 0, 1\], \{ d: holeD1, through: true \}\)/],
   },
   {
+    // a cone on the hole's axis: the layers cannot trace it, so the hole is
+    // a turned cutter, written as the drill() it is
+    name: "a countersunk hole",
+    src: `return difference(cube([30, 20, 6]), drill([10, 10, 6], [0, 0, 1], { d: 3.4, through: true, csink: { d: 7, angle: 90 } }));`,
+    kind: "extrude", has: [/drill\(\[10, 10, 6\], \[0, 0, 1\], \{ d: 3\.4, depth: \d+(\.\d+)?, csink: \{ d: 7, angle: 90 \} \}\)/],
+  },
+  {
+    // holes down through the base and sideways through the upright, and a
+    // countersink: one extrude, holes in two directions
+    name: "an L bracket with holes two ways",
+    src: `return difference(union(cube([40, 30, 4]), cube([4, 30, 25])),
+      translate([20, 10, -1], cylinder({ r: 2, h: 6 })), translate([20, 22, -1], cylinder({ r: 2, h: 6 })),
+      translate([-1, 15, 16], rotate([0, 90, 0], cylinder({ r: 2.5, h: 6 }))),
+      drill([30, 15, 4], [0, 0, 1], { d: 3, through: true, csink: { d: 6, angle: 90 } }));`,
+    kind: "extrude", has: [/drill\(\[4, 15, 16\], \[1, 0, 0\], \{ d: 5, depth: 5 \}\)/, /csink: \{ d: 6, angle: 90 \}/, /drill\(\[20, 10, t1\]/],
+  },
+  {
+    // a 45 degree chamfer part way up (where a block meets the base): rebuilt
+    // sharp, chamfered again on the edge named by a point
+    name: "a chamfer part way up",
+    src: `return union(cube([40, 30, 4]), chamfer({ d: 1, edges: "top" }, translate([10, 5, 4], cube([20, 20, 10]))));`,
+    kind: "extrude", has: [/chamfer\(\{ d: chamferD, edges: \{ at: \[/],
+  },
+  {
     name: "blind hole from the top",
     src: `return difference(cube([20, 20, 10]), translate([10, 10, 4], cylinder({ r: 2.5, h: 10 })));`,
     kind: "extrude", has: [/depth: 6/],
@@ -58,6 +82,31 @@ const MODELS = [
     name: "stepped shaft (turned)",
     src: `return union(cylinder({ r: 10, h: 5 }), translate([0, 0, 5], cylinder({ r: 6, h: 12 })), translate([0, 0, 17], cylinder({ r1: 6, r2: 3, h: 4 })));`,
     kind: "revolve",
+  },
+  {
+    // the bar's arcs reach the file as spline edges: traced the way they
+    // run (through their middle point), not assumed counter-clockwise
+    name: "a round bar lying across a plate",
+    src: `return union(cube([40, 20, 4]), translate([0, 10, 4], rotate([0, 90, 0], cylinder({ r: 3, h: 40 }))));`,
+    kind: "extrude", has: [/arcTo\(\[7, 4\], \{ center: \[10, 4\] \}\)/],
+  },
+  {
+    name: "a half-round end on an upright tab",
+    src: `return union(cube([30, 6, 20]), translate([15, 0, 20], rotate([-90, 0, 0], cylinder({ r: 15, h: 6 }))));`,
+    kind: "extrude",
+  },
+  {
+    name: "a side slanted at 30 degrees",
+    src: `return difference(cube([40, 20, 10]), translate([40, -1, 0], rotate([0, -30, 0], cube([20, 22, 30]))));`,
+    kind: "extrude",
+  },
+  {
+    // the slant (along Y) and the bar (along X) change the section in two
+    // runs of height: each rebuilt across, as extrudes along its own way,
+    // and the hole drilled through after (step2code-slice.js)
+    name: "a bar and a slanted end, rebuilt in strips",
+    src: `return difference(union(cube([40, 20, 4]), translate([10, 10, 4], rotate([0, 90, 0], cylinder({ r: 3, h: 20 })))), translate([40, -1, 0], rotate([0, -30, 0], cube([20, 22, 30]))), translate([5, 5, -1], cylinder({ r: 1.5, h: 10 })));`,
+    kind: "extrude", has: [/on: \{ normal: \[0, 1, 0\], x: \[1, 0, 0\] \}/, /drill\(/],
   },
   {
     name: "a ring with a cone face, off the origin",
@@ -81,6 +130,24 @@ for (const m of MODELS) {
     const out = await build(runEditorCode(r.code).shape, { engine: "split" });
     check(`${m.name}: the written code builds exact`, out.engine === "exact" && out.kernel === "rust", `${out.engine}/${out.kernel}`);
   } catch (e) { check(`${m.name}: the written code builds`, false, String(e?.message || e).slice(0, 200)); }
+}
+
+// CLOSE: a body with no exact rebuild comes back with a close version (a
+// dome is a sphere, no extrude), measured: what it leaves out and adds, and
+// where. The plain code keeps the file's solid; closeCode writes it as code
+// noted as not exact, and that builds.
+{
+  const r = await convertStep(await stepOf(`return union(cube([20, 20, 4]), translate([10, 10, 4], sphere({ r: 5 })));`, "dome"), { title: "dome" });
+  const b = r.bodies[0];
+  check("close: a dome is not exact, but comes back close", !b.ok && b.close && b.close.match > 0.99, JSON.stringify(b.close));
+  check("close: missing and extra add up to what does not match", b.close && Math.abs(1 - b.close.match - b.close.missing - b.close.extra) < 1e-9);
+  check("close: the plain code keeps the file's solid, with no close note", /importedSolid\("dome-/.test(r.code) && !/CLOSE/.test(r.code), r.code.slice(0, 400));
+  check("close: closeCode writes it as code, noted as not exact", /CLOSE, not exact: [\d.]+% of the file's volume matches \([\d.]+% missing, [\d.]+% extra\)/.test(r.closeCode || "") && !/importedSolid/.test(r.closeCode || ""), (r.closeCode || "").slice(0, 400));
+  check("close: a map of where it differs", r.closeMap.length === 1 && r.closeMap[0].points.every((p) => p.length === 4));
+  try {
+    const out = await build(runEditorCode(r.closeCode).shape, { engine: "split" });
+    check("close: the close code builds", out.solids.length >= 1 && out.engine === "exact", `${out.engine}`);
+  } catch (e) { check("close: the close code builds", false, String(e?.message || e).slice(0, 200)); }
 }
 
 // a body the converter cannot rebuild stays the file's own solid, and the
@@ -215,6 +282,19 @@ const box = (o, id0) => {
   const E = parsePart21(HEAD + `#1=PRODUCT('it''s a /* not a comment */ name','x','',());\n/* a comment; with a semicolon */\n#2=( BOUNDED_CURVE() B_SPLINE_CURVE(2,(#3,#4,#5),.UNSPECIFIED.,.F.,.F.) CURVE() );\nENDSEC;\n`);
   check("a quote and a comment inside a string survive", E.get(1)?.args?.[0] === "it's a /* not a comment */ name", JSON.stringify(E.get(1)));
   check("a complex entity keeps each part", E.get(2)?.type === "(complex)" && E.get(2).parts.B_SPLINE_CURVE?.[0] === 2);
+}
+{
+  // fillet / chamfer edges: { at: points }: the edge nearest each point, found
+  // where the shape is placed; a point near no edge is an error
+  const base = `union(linearExtrude({ h: 5 }, polygon([[0,0],[30,0],[30,20],[0,20]])), linearExtrude({ h: 12 }, polygon([[5,5],[15,5],[15,15],[5,15]])))`;
+  const r1 = await build(runEditorCode(`return fillet({ r: 1, edges: { at: [[10, 0, 5], [15, 10, 12]] } }, ${base});`).shape, { engine: "split" });
+  const picked = r1.partHistory.features.filter((f) => f.type === "F").flatMap((f) => f.inputParams.edges);
+  check("edges: { at }: one edge per point", picked.length === 2 && r1.engine === "exact", JSON.stringify(picked));
+  const r2 = await build(runEditorCode(`return translate([100, 0, 0], rotate([0, 0, 90], fillet({ r: 1, edges: { at: [[10, 0, 5]] } }, ${base})));`).shape, { engine: "split" });
+  check("edges: { at }: points are the shape's own, wherever it is placed", r2.partHistory.features.filter((f) => f.type === "F").flatMap((f) => f.inputParams.edges).length === 1);
+  let err = "";
+  try { await build(runEditorCode(`return fillet({ r: 1, edges: { at: [[10, 3, 5]] } }, ${base});`).shape, { engine: "split" }); } catch (e) { err = String(e.message); }
+  check("edges: { at }: a point near no edge says so", /no edge at \[10, 3, 5\]/.test(err), err);
 }
 {
   // a part named after a BREPcode word must not hide it from its own code

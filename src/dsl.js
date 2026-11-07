@@ -1606,6 +1606,12 @@ function reflectDown(n, M) {
     const rigid = [0, 1, 2].every((i) => Math.abs(Math.hypot(...col(i)) - 1) < 1e-9)
       && Math.abs(col(0)[0] * col(1)[0] + col(0)[1] * col(1)[1] + col(0)[2] * col(1)[2]) < 1e-9;
     if (!rigid || (n.faces && n.faces !== "all") || Array.isArray(n.edges)) return null;
+    // edges picked by points: the points turn over with the part
+    if (n.edges && typeof n.edges === "object") {
+      const child = reflectDown(n.child, M);
+      const at = n.edges.at.map((p) => { const v = new Vector3(...p).applyMatrix4(M); return [v.x, v.y, v.z]; });
+      return child ? { ...n, edges: { at }, child } : null;
+    }
     let edges = n.edges;
     const axis = { x: 0, y: 1, z: 2 }[edges];
     if (axis != null && Math.abs(Math.abs(col(axis)[axis]) - 1) > 1e-9) return null;
@@ -3167,7 +3173,7 @@ function innerOf(n, wall, open, world) {
     for (const e of ends) { h += over; if (e.sign < 0) z0 -= over; }
     return translate([0, 0, z0], node({ kind: "prism", pts, segs: null, h, fix: IDENTITY }));
   }
-  if (n.kind === "edgeop" && !Array.isArray(n.edges) && !n.shrink && n.child.kind === "prim" && n.child.code === "P.CU") {
+  if (n.kind === "edgeop" && (n.edges == null || typeof n.edges === "string") && !n.shrink && n.child.kind === "prim" && n.child.code === "P.CU") {
     // a rounded box's true offset is a box rounded by r - wall (sharp past that)
     const inner = innerOf(n.child, wall, open, world);
     const r = Math.round((n.amount - wall) * 1000) / 1000;
@@ -3585,14 +3591,24 @@ function edgeOp(code, opts, children, amountKey, verb) {
   // arrive here.
   // …or the edges by name, as Design mode picks them on the model:
   // edges: ["P.CU1_PZ|P.CU1_PX[0]", …] (or one name)
+  // …or by where they are: edges: { at: [[x, y, z], …] } takes the edge
+  // nearest each point (within half a millimetre). Build order cannot stale
+  // it the way names do, so code that rounds a part's own edges keeps
+  // working when shapes are added before it (the STEP converter writes these).
   let edges = o.edges ?? null;
   if (typeof edges === "string" && edges.includes("|")) edges = [edges];
-  if (Array.isArray(edges)) {
+  if (edges && typeof edges === "object" && !Array.isArray(edges)) {
+    const at = edges.at;
+    if (!Array.isArray(at) || !at.length || at.some((p) => !Array.isArray(p) || p.length !== 3 || p.some((v) => !Number.isFinite(+v)))) {
+      throw new TypeError(`${verb}() edges: { at: [[x, y, z], …] } names each edge by a point on it (got ${JSON.stringify(edges)})`);
+    }
+    edges = { at: at.map((p) => p.map(Number)) };
+  } else if (Array.isArray(edges)) {
     if (!edges.length || edges.some((e) => typeof e !== "string" || !e.includes("|"))) {
       throw new TypeError(`${verb}() edges: a list of edge names like "P.CU1_PZ|P.CU1_PX[0]" (got ${JSON.stringify(edges)})`);
     }
   } else if (edges != null && !["x", "y", "z", "top", "bottom", "convex", "all"].includes(edges)) {
-    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom", "convex", "all" or a list of edge names (got ${JSON.stringify(edges)})`);
+    throw new TypeError(`${verb}() edges: must be "x", "y", "z", "top", "bottom", "convex", "all", a list of edge names, or { at: [[x, y, z], …] } (got ${JSON.stringify(edges)})`);
   }
   // pieces: true = round each box the part is built from, then union them and
   // cut the holes. The chat's "round the edges" uses it on finished designs.
@@ -3649,6 +3665,8 @@ function edgeOp(code, opts, children, amountKey, verb) {
   return node({ kind: "edgeop", code, amount, faces, edges, child });
 }
 
+// how far a point in fillet/chamfer's edges: { at } may be from the edge it means
+const EDGE_AT_TOL = 0.5;
 export function fillet(opts, ...children) { return edgeOp("F", opts, children, "radius", "fillet"); }
 export function chamfer(opts, ...children) { return edgeOp("CH", opts, children, "distance", "chamfer"); }
 
@@ -3819,6 +3837,29 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       if (spec === "convex") return convexEdgeNames(solid, edges);
     }
     if (spec === "all") return edges.map((e) => e.name);
+    // { at: points }: the edge nearest each point, placed as the shape is. A
+    // point with no edge close by is an error, not the nearest edge anywhere:
+    // rounding some other edge would be a silent lie.
+    if (spec && typeof spec === "object" && Array.isArray(spec.at)) {
+      const near = (p, pts) => {
+        let best = Infinity;
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = pts[i], b = pts[i + 1], d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+          const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1] + (p[2] - a[2]) * d[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1)));
+          best = Math.min(best, Math.hypot(p[0] - a[0] - t * d[0], p[1] - a[1] - t * d[1], p[2] - a[2] - t * d[2]));
+        }
+        return best;
+      };
+      const picked = [];
+      for (const q of spec.at) {
+        const w = new Vector3(...q).applyMatrix4(matrix), p = [w.x, w.y, w.z];
+        let name = null, dist = Infinity;
+        for (const e of edges) { const d = near(p, e.pts); if (d < dist) { dist = d; name = e.name; } }
+        if (name == null || dist > EDGE_AT_TOL) throw new Error(`no edge at [${q.join(", ")}] (the nearest is ${dist === Infinity ? "nowhere" : dist.toFixed(2) + " mm away"})`);
+        if (!picked.includes(name)) picked.push(name);
+      }
+      return picked;
+    }
     const axis = (v) => { const a = new Vector3(...v).transformDirection(matrix); return [a.x, a.y, a.z]; };
     const along = (p, u) => p[0] * u[0] + p[1] * u[1] + p[2] * u[2];
     if (spec === "top" || spec === "bottom") {

@@ -19,6 +19,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
     else if (a === "--info") out.info = true;
+    else if (a === "--close") out.close = true;
     else if (a === "-o" || a === "--output") out.output = argv[++i];
     else if (a === "--step") out.step = argv[++i];
     else if (a === "-t" || a === "--tolerance") out.tolerance = Number(argv[++i]);
@@ -45,14 +46,16 @@ const HELP = `brepscript — OpenSCAD-style CLI for the BREP.io kernel
 
 Usage:
   brepscript <model.js|model.scad> [-o out.stl] [-D key=value]... [--info]
-  brepscript <part.step> [-o part.bcode | -o part.js]
+  brepscript <part.step> [-o part.bcode | -o part.js] [--close]
 
 A STEP file is rebuilt as editable BREPcode: each body as extrudes with
 drilled holes, or a turned profile, with its sizes as dials, every body
 checked against the file. A body that cannot be rebuilt exactly stays the
 file's own solid (importedSolid). Default output: <part>.bcode, which carries
 those solids and opens in the app; -o part.js writes the code alone, with each
-kept solid as part-<body>.step beside it.
+kept solid as part-<body>.step beside it. A kept body that came CLOSE is listed
+with how much of its volume the close code leaves out and adds; --close writes
+those bodies as their close code instead (noted in the code as not exact).
 
 Options:
   -o, --output FILE     Write STL here (default: <model>.stl)
@@ -175,9 +178,16 @@ async function fromStep(inputPath, args) {
   const name = basename(inputPath, extname(inputPath));
   const t0 = Date.now();
   const r = await convertStep(readFileSync(inputPath, "utf8"), { title: name });
-  for (const b of r.bodies) console.error(`  ${b.name}: ${b.ok ? `code (${b.kind === "revolve" ? "turned" : "extruded"})` : `kept as the file's solid: ${b.why}`}`);
-  const ok = r.bodies.filter((b) => b.ok).length;
+  const pct = (x) => `${(x * 100).toFixed(2)}%`;
+  for (const b of r.bodies) console.error(`  ${b.name}: ${b.ok ? `code (${b.kind === "revolve" ? "turned" : "extruded"})` : `kept as the file's solid: ${b.why}`}`
+    + (b.close ? `\n    close: ${pct(b.close.match)} of its volume matches (${pct(b.close.missing)} missing, ${pct(b.close.extra)} extra)${args.close ? ": written as its close code" : ""}` : ""));
+  const ok = r.bodies.filter((b) => b.ok).length, near = r.bodies.filter((b) => b.close).length;
   console.error(`  ${ok} of ${r.bodies.length} bod${r.bodies.length === 1 ? "y" : "ies"} rebuilt as code, each checked against the file`);
+  if (near && !args.close) console.error(`  ${near} more came close: --close writes ${near === 1 ? "it" : "them"} as code`);
+  if (args.close && r.closeCode) {
+    r.code = r.closeCode;
+    r.imports = r.imports.filter((i) => r.code.includes(JSON.stringify(i.name)));    // a body written close needs no solid
+  }
   const out = resolve(process.cwd(), args.output || join(dirname(inputPath), `${name}.bcode`));
   if (/\.bcode$/i.test(out)) {
     const { bcodeFile, packMeshes } = await import("../viewer/exporters.js");

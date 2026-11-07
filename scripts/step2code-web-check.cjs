@@ -5,8 +5,11 @@
 //
 //   a counterbored bracket -> every body rebuilt as code, drill() and dials
 //   in the editor, the hint says so, and the code builds
-//   a part nothing can rebuild -> kept as the file's own solid: importedSolid
-//   in the code, its STEP registered, and the code still builds
+//   a part nothing can rebuild exactly -> kept as the file's own solid:
+//   importedSolid in the code, its STEP registered, and the code still
+//   builds; it came close, so the page offers the close code with its
+//   missing and extra volume and a map of where (no keeps it exact, yes
+//   writes the close code, noted as not exact, and it builds)
 //
 // and "Import as a mesh" still opens a STEP the old way.
 //
@@ -34,7 +37,12 @@ const seen = [];
 const check = (l, ok, d = "") => { ok ? pass++ : fail++; console.log(`  ${ok ? "PASS" : "FAIL"}  ${l}${!ok && d ? "  -- " + d : ""}`); };
 
 const BRACKET = `return difference(union(cube([40, 30, 5]), translate([5, 5, 5], cube([30, 20, 8]))), translate([20, 15, -1], cylinder({ r: 2, h: 20 })), translate([20, 15, 10], cylinder({ r: 4, h: 5 })), translate([3, 3, -1], cylinder({ r: 1.5, h: 10 })));`;
-const ODD = `return rotate([20, 30, 0], difference(cube([10, 10, 10]), translate([5, 5, 5], sphere({ r: 6.5 }))));`;
+// a 45 degree chamfer part way up: the code names the edge by a point, which
+// the page's compile resolves through the worker's edge list
+const CHAMFERED = `return union(cube([40, 30, 4]), chamfer({ d: 1, edges: "top" }, translate([10, 5, 4], cube([20, 20, 10]))));`;
+const ODD =`return rotate([20, 30, 0], difference(cube([10, 10, 10]), translate([5, 5, 5], sphere({ r: 6.5 }))));`;
+// a dome on a plate: no exact rebuild (a sphere), but sliced it comes close
+const DOME = `return union(cube([20, 20, 4]), translate([10, 10, 4], sphere({ r: 5 })));`;
 
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
@@ -45,11 +53,11 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     const { build } = await import(pathToFileURL(path.join(ROOT, "src/render.js")).href);
     const { exactSTEP } = await import(pathToFileURL(path.join(ROOT, "src/stepexport.js")).href);
     const stepOf = async (src, name) => exactSTEP(await build(runEditorCode(src).shape, { engine: "split" }), name);
-    const files = { bracket: await stepOf(BRACKET, "bracket"), odd: await stepOf(ODD, "odd") };
+    const files = { bracket: await stepOf(BRACKET, "bracket"), odd: await stepOf(ODD, "odd"), chamfered: await stepOf(CHAMFERED, "chamfered"), dome: await stepOf(DOME, "dome") };
 
     const win = new BrowserWindow({ width: 1400, height: 900, show: false, webPreferences: { backgroundThrottling: false } });
     const run = (js) => win.webContents.executeJavaScript(js, true);
-    win.webContents.on("console-message", (_e, level, msg) => { if (level >= 3 && /step2code|stepcode|step/i.test(msg)) console.log("  [page]", msg.slice(0, 300)); });
+    win.webContents.on("console-message", (_e, level, msg) => { if (level >= 3 && (process.env.ALLMSG || /step2code|stepcode|step/i.test(msg))) console.log("  [page]", msg.slice(0, 300)); });
     await win.loadURL(`http://127.0.0.1:${server.address().port}/index.html`);
     for (let i = 0; i < 240; i++) { if (await run("!!(window.brepscript && document.getElementById('code'))").catch(() => false)) break; await wait(250); }
     for (let i = 0; i < 160; i++) { if (await run(`/^ok/.test(document.getElementById("status").className)`).catch(() => false)) break; await wait(250); }
@@ -59,11 +67,28 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     const give = (name, text) => run(`(() => { const input = document.getElementById("import-file"); const dt = new DataTransfer();
       dt.items.add(new File([${JSON.stringify(text)}], ${JSON.stringify(name)}, { type: "application/step" }));
       input.files = dt.files; input.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
-    const answer = async (yes) => {
-      for (let i = 0; i < 80; i++) { if (await run(`document.getElementById("yn-ask")?.classList.contains("open")`)) break; await wait(100); }
+    const answer = async (yes, ms = 8000) => {
+      for (let i = 0; i < ms / 100; i++) { if (await run(`document.getElementById("yn-ask")?.classList.contains("open")`)) break; await wait(100); }
       const head = await run(`document.getElementById("yn-head")?.textContent || ""`);
       await run(`document.getElementById(${JSON.stringify(yes ? "yn-yes" : "yn-no")}).click(); true`);
       return head;
+    };
+    // until the page is done opening the file (window.__stepOpening), each
+    // question it asks on the way answered from the list (then "no"); the
+    // questions it asked
+    const drain = async (answers = []) => {
+      const heads = [];
+      await wait(300);
+      for (let i = 0; i < 1800; i++) {
+        if (await run(`document.getElementById("yn-ask")?.classList.contains("open")`)) {
+          heads.push(await run(`document.getElementById("yn-head")?.textContent || ""`));
+          // SHOT=dir: a picture of each question as it is asked
+          if (process.env.SHOT) { await run(`document.querySelectorAll(".wl-card, .wl-next").forEach((e) => e.remove()); true`); await wait(2500); fs.writeFileSync(path.join(process.env.SHOT, `ask-${heads.length}-${Date.now()}.png`), (await win.webContents.capturePage()).toPNG()); }
+          await run(`document.getElementById(${JSON.stringify(answers.shift() ? "yn-yes" : "yn-no")}).click(); true`);
+        } else if (!(await run(`window.__stepOpening || 0`))) break;
+        await wait(100);
+      }
+      return heads;
     };
     // every status the page shows on the way (a warning can be painted over
     // by the next step), so a failure says what it was
@@ -85,6 +110,7 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     await give("bracket.step", files.bracket);
     const head = await answer(true);
     check("a STEP file asks to open as code", /Open bracket\.step as editable code\?/.test(head), head);
+    await drain();
     let s = await settle(t0);
     const codeText = await run(`document.getElementById("code").value`);
     const hint = await run(`document.getElementById("hint")?.textContent || ""`);
@@ -96,10 +122,12 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     check("the hint says what was rebuilt", /bracket\.step: 1 of 1 body rebuilt as code \(1 extruded\), each checked against the file/.test(hint), hint);
     check("the code builds", /^ok\|/.test(s), s);
 
-    // 2. a body nothing can rebuild: kept as the file's solid
+    // 2. a body nothing can rebuild exactly: kept as the file's solid (a
+    // close offer, if it comes, turned down)
     t0 = Date.now();
     await give("odd.step", files.odd);
     await answer(true);
+    await drain([false]);
     s = await settle(t0);
     const code2 = await run(`document.getElementById("code").value`);
     const hint2 = await run(`document.getElementById("hint")?.textContent || ""`);
@@ -108,6 +136,21 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     check("...the hint says it stays the file's solid", /One stays the file's own exact solid/.test(hint2), hint2);
     check("...and the code builds", /^ok\|/.test(s), s);
 
+    // 2b. a dome on a plate: offered close, with the map shown while it is
+    // asked; taken, it is written as code, noted as not exact
+    t0 = Date.now();
+    await run(`window.__closeMapSeen = 0; true`);
+    await give("dome.step", files.dome);
+    await answer(true);
+    const closeHead = (await drain([true])).join(" | ");
+    const mapShown = await run(`window.__closeMapSeen || 0`);
+    s = await settle(t0);
+    check("a body with no exact rebuild is offered as close code", /can only be rebuilt approximately\. Use the close code\?/.test(closeHead), closeHead);
+    check("...with the map of where it differs", mapShown > 0, String(mapShown));
+    const code2b = await run(`document.getElementById("code").value`);
+    check("taking the close code writes the body as code, noted as not exact", /CLOSE, not exact: \d+(\.\d+)?% of the file's volume matches/.test(code2b) && !/importedSolid/.test(code2b), code2b.slice(0, process.env.ALLMSG ? 3000 : 400));
+    check("...and it builds", /^ok\|/.test(s), s);
+
     // 3. an assembly (test/fixtures/step2code-assembly.step, written by
     // test/step2code.js): one part placed twice, the second moved and turned.
     // The part is written once and each copy placed, and the worker found the
@@ -115,13 +158,24 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     t0 = Date.now();
     await give("asm.step", fs.readFileSync(path.join(ROOT, "test/fixtures/step2code-assembly.step"), "utf8"));
     await answer(true);
+    await drain();
     s = await settle(t0);
     const code4 = await run(`document.getElementById("code").value`);
     check("an assembly: both copies rebuilt as code", /2 of 2 bodies rebuilt as code/.test(code4), code4);
     check("...the part written once, the copy moved and turned", /const cube_Part = \(\) => /.test(code4) && /translate\(\[50, 0, 0\], rotate\(\[0, 0, 90\], cube_Part\(\)\)\)/.test(code4), code4);
     check("...and it builds", /^ok\|/.test(s), s);
 
-    // 4. "Import as a mesh": the old way
+    // 4. a chamfer part way up: written as chamfer({ edges: { at } })
+    t0 = Date.now();
+    await give("chamfered.step", files.chamfered);
+    await answer(true);
+    await drain();
+    s = await settle(t0);
+    const code5 = await run(`document.getElementById("code").value`);
+    check("a chamfer part way up is rebuilt as code", /1 of 1 body rebuilt as code/.test(code5) && /chamfer\(\{ d: chamferD, edges: \{ at: /.test(code5), code5);
+    check("...and it builds", /^ok\|/.test(s), s);
+
+    // 5. "Import as a mesh": the old way
     t0 = Date.now();
     await give("bracket.step", files.bracket);
     await answer(false);

@@ -30,8 +30,14 @@ now four ways into the same model, and you can move between them mid-build:
   hole sizes and thicknesses as dials. Every body is rebuilt on the exact kernel
   and checked against the file (volume, area, centroid, inertia and thousands
   of inside/outside points); one that doesn't match exactly stays the file's
-  own solid, so the code never quietly differs from the part. Also on the CLI:
-  `brepscript part.step` writes `part.bcode`.
+  own solid, so the code never quietly differs from the part. Slanted faces at
+  any angle, bars and half-rounds lying across a part, and fillets or chamfers
+  anywhere come back exact too, the changing part rebuilt as extrudes along its
+  own direction. A body with no exact rebuild (a freeform one) can come back
+  **close**: you're told how much of its volume the close code leaves out and
+  adds, with red and blue dots on the model where, and asked before it's used.
+  Also on the CLI: `brepscript part.step` writes `part.bcode` (`--close` takes
+  the close versions).
 
 Plus a live 3D viewer with materials, lighting and CAD outlines, exports to STL,
 OBJ, multi-colour 3MF, GLB, curved-surface STEP and a 3-view blueprint, and a
