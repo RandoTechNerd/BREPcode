@@ -1840,6 +1840,7 @@ export function roundedGrow(opts, ...children) {
 //   caps   "round" (default) or "flat"
 export function tube(path, opts = {}) {
   const o = typeof opts === "number" ? { r: opts } : (opts || {});
+  if (path && !Array.isArray(path) && typeof path.points === "function") path = path.points();   // a path3d()
   if (!Array.isArray(path) || path.length === 0) {
     throw new TypeError(
       "tube() sweeps a round profile along a path: tube([[0,0,0], [40,0,0], [40,40,0]], { r: 2 })");
@@ -1917,6 +1918,74 @@ export function helix({
     pts.push([rad * Math.cos(a), rad * Math.sin(a), rise * i]);
   }
   return pts;
+}
+
+// A path drawn in space, not on a plane: tube frames, wire runs, handrails.
+//
+//   tube(path3d([0, 0, 0])
+//     .lineTo([60, 0, 0])
+//     .arcThrough([80, 20, 10], [60, 40, 20])     // a true circular arc, any plane
+//     .splineTo([[30, 60, 30], [0, 40, 10]])      // smooth through every point
+//     .line([0, -40, 0]),                        // relative move
+//   { r: 4 })
+//
+// The builder is plain points underneath (points() hands them over), so it
+// composes with anything that takes a list; tube() takes the builder itself.
+export function path3d(start = [0, 0, 0]) {
+  const P = (p) => {
+    if (!Array.isArray(p) || p.length < 2 || !p.every((v) => Number.isFinite(+v))) throw new TypeError(`path3d(): a point is [x, y, z], got ${JSON.stringify(p)}`);
+    return [+p[0], +p[1], +(p[2] ?? 0)];
+  };
+  const pts = [P(start)];
+  const last = () => pts[pts.length - 1];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const api = {
+    lineTo(p) { pts.push(P(p)); return api; },
+    line(d) { const l = last(), v = P(d); pts.push([l[0] + v[0], l[1] + v[1], l[2] + v[2]]); return api; },
+    // the circle through here, `mid` and `end`, walked from here past mid to end
+    arcThrough(mid, end, { steps = 16 } = {}) {
+      const a = last(), b = P(mid), c = P(end);
+      const u = sub(b, a), v = sub(c, a), w = cross(u, v);
+      const ww = dot(w, w);
+      if (ww < 1e-12) return api.lineTo(c);                       // in a line: no arc to draw
+      const k = cross(sub(v.map((x) => x * dot(u, u)), u.map((x) => x * dot(v, v))), w);
+      const ctr = [a[0] + k[0] / (2 * ww), a[1] + k[1] / (2 * ww), a[2] + k[2] / (2 * ww)];
+      const ra = sub(a, ctr), R = Math.sqrt(dot(ra, ra));
+      const n = w.map((x) => x / Math.sqrt(ww));
+      const e1 = ra.map((x) => x / R), e2 = cross(n, e1);
+      const rc = sub(c, ctr);
+      let sweep = Math.atan2(dot(rc, e2), dot(rc, e1));
+      if (sweep <= 0) sweep += Math.PI * 2;
+      const nSteps = Math.max(2, Math.round(steps * sweep / Math.PI));
+      for (let i = 1; i <= nSteps; i++) {
+        const t = sweep * i / nSteps, cs = Math.cos(t) * R, sn = Math.sin(t) * R;
+        pts.push([ctr[0] + e1[0] * cs + e2[0] * sn, ctr[1] + e1[1] * cs + e2[1] * sn, ctr[2] + e1[2] * cs + e2[2] * sn]);
+      }
+      pts[pts.length - 1] = c;
+      return api;
+    },
+    // a Catmull-Rom curve from here through every point in turn
+    splineTo(points, { steps = 8 } = {}) {
+      const ctl = [last(), ...points.map(P)];
+      const at = (i) => ctl[Math.max(0, Math.min(ctl.length - 1, i))];
+      for (let i = 0; i < ctl.length - 1; i++) {
+        const p0 = i === 0 ? sub(at(0), sub(at(1), at(0))) : at(i - 1);
+        const p1 = at(i), p2 = at(i + 1);
+        const p3 = i + 2 < ctl.length ? at(i + 2) : [2 * p2[0] - p1[0], 2 * p2[1] - p1[1], 2 * p2[2] - p1[2]];
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps, t2 = t * t, t3 = t2 * t;
+          pts.push([0, 1, 2].map((j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t
+            + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3)));
+        }
+      }
+      return api;
+    },
+    points() { return pts.map((p) => p.slice()); },
+    get length() { return pts.length; },
+  };
+  return api;
 }
 
 // A circle as a point list, for a hoop: tube(circlePath({ r: 30 }), { r: 3, closed: true })

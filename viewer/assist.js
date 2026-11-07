@@ -247,7 +247,7 @@ export const SPECS = [
     // one per joint, and a visible kink at every bend.
     name: "tube", group: "Combine", sig: "tube(path, { r })",
     snippet: "tube([\n  [0, 0, 0],\n  [40, 0, 0],\n  [40, 30, 0],\n], { r: 2 })", argStart: 0,
-    hint: "Sweeps a round profile along a list of points — cables, bowden tubes, handles, hoops, bent rod. ONE solid however many bends, and the corners are real arcs. Options: sides (facets, default 16), bend (corner radius, defaults to 1.5x r), closed: true to join the ends into a loop, caps: \"flat\", and r as a LIST of radii to taper.",
+    hint: "Sweeps a round profile along a list of points — cables, bowden tubes, handles, hoops, bent rod. ONE solid however many bends, and the corners are real arcs. Options: sides (facets, default 16), bend (corner radius, defaults to 1.5x r), closed: true to join the ends into a loop, caps: \"flat\", and r as a LIST of radii to taper. For a path drawn in space, pass path3d([0,0,0]).lineTo([..]).arcThrough(mid, end).splineTo([[..], [..]]).",
   },
   {
     name: "helix", group: "Combine", sig: "helix({ r, turns, pitch })",
