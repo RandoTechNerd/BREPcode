@@ -77,6 +77,15 @@ export async function loadBrowserModel(model, onProgress) {
     } else {
       engine = await webllm.CreateMLCEngine(model, { initProgressCallback: cb }, chatOpts);
     }
+    // The FIRST generation after a load builds the GPU pipelines: 31 s on an
+    // integrated GPU for the 1.5B, then under a second a reply. Paid here,
+    // under the progress bar the user is already watching, rather than on
+    // their first message, where it looked like the model had hung.
+    onProgress?.({ pct: 100, text: "Warming up the model on your GPU (once per load)…" });
+    await engine.chat.completions.create({
+      stream: false, max_tokens: 1, ...noThinking(model),
+      messages: [{ role: "user", content: "hi" }],
+    });
     loadedModel = model;
     return engine;
   })();
@@ -91,21 +100,44 @@ export async function loadBrowserModel(model, onProgress) {
   }
 }
 
+// Qwen3-family models think out loud before answering unless told not to: a
+// few hundred hidden tokens on every reply, at 10-30 tokens a second. The
+// code-CAD replies here gain nothing from it, so it is off.
+const thinks = (model) => /^qwen3/i.test(model);
+const noThinking = (model) => (thinks(model) ? { extra_body: { enable_thinking: false } } : {});
+// an opening fence, its code, and the closing fence on a line of its own
+const FENCE_DONE = /```[\w-]*\n[\s\S]*?\n```(?:\s*\n|\s*$)/;
+// Sixteen finished lines in a row that are the same once their numbers are
+// ignored ("translate([10, 80, -1], ..." then "[10, 120, -1]"): a loop. Real
+// code repeats a line a handful of times (four corner holes, a row of eight),
+// and a bigger pattern is a loop in the code, not sixteen lines of it.
+export function looping(text, run = 16) {
+  const lines = String(text).split("\n").slice(0, -1).map((l) => l.trim().replace(/-?\d+(\.\d+)?/g, "#")).filter(Boolean);
+  if (lines.length < run) return false;
+  const tail = lines.slice(-run);
+  return tail[0].length > 6 && tail.every((l) => l === tail[0]);
+}
+
 // The chat call, OpenAI-shaped like the local provider. Streams so the UI can
 // show characters arriving; returns the final text.
-export async function browserChat({ model, system, messages, onDelta }) {
+//   grammar: an EBNF the reply must follow (WebLLM's xgrammar), e.g. the
+//            one-sentence-then-one-fence shape in chatbot.js REPLY_GRAMMAR
+//   prior:   example turns sent before the conversation, [{ role, text }]
+export async function browserChat({ model, system, messages, onDelta, grammar = null, prior = [] }) {
   const eng = await loadBrowserModel(model, null);   // no-op when already loaded
   const chunks = await eng.chat.completions.create({
     stream: true,
+    ...noThinking(model),
     // small models ramble; a temperature nudge keeps the code deterministic-ish
     temperature: 0.3,
     // A complete BREPcode model is rarely 800 tokens; 2000 leaves generous
     // room while halving the worst case — the 0.5B once spent 4+ minutes
     // free-associating its way to a 3000-token cap at ~20 tokens/s.
     max_tokens: 2000,
+    ...(grammar ? { response_format: { type: "grammar", grammar } } : {}),
     messages: [
       { role: "system", content: system },
-      ...messages.map((m) => ({
+      ...[...prior, ...messages].map((m) => ({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.text,
       })),
@@ -117,10 +149,43 @@ export async function browserChat({ model, system, messages, onDelta }) {
     if (delta) {
       text += delta;
       onDelta?.({ phase: /```/.test(text) ? "writing" : "thinking", chars: text.length });
+      // The reply is done when its code block closes: every harness here
+      // asks for nothing after the fence, and what small models write there
+      // anyway (the same model again, a tutorial, the request back) is all
+      // waiting. At 11-16 tokens a second on an integrated GPU the 1.5B ran
+      // on to its 2000-token cap, two minutes a reply.
+      if (FENCE_DONE.test(text)) { engine.interruptGenerate?.(); break; }
+      // ...and it is stuck when it writes the same line over and over: the
+      // 1.5B, asked for two holes an arm, wrote the same translate() line to
+      // y = 800 mm and on until the cap. Nothing after that point is a model.
+      // Stopping at 16 saves about 1,500 tokens, a minute and a half here.
+      if (delta.includes("\n") && looping(text)) {
+        engine.interruptGenerate?.();
+        throw new Error("the in-browser model got stuck repeating one line. Try sending it again, or pick a bigger model in ⚙");
+      }
     }
   }
   if (!text.trim()) throw new Error("the in-browser model returned nothing — try re-sending, or a bigger model");
   return text;
+}
+
+// One short answer held to a JSON schema by WebLLM's grammar: the model
+// cannot reply with anything the schema does not allow, so a one-word choice
+// from a list comes back as exactly that. Used by viewer/catalogroute.js.
+// Only for a model that is already loaded: a choice is never worth a download.
+// maxTokens: a few names fit in 40; a filled form of six numbers did not,
+// and a JSON cut off mid-field reads as no answer at all.
+export async function browserPick({ model, system, user, schema, maxTokens = 40 }) {
+  if (loadedModel !== model || !engine) throw new Error("the in-browser model is not loaded");
+  const r = await engine.chat.completions.create({
+    stream: false,
+    ...noThinking(model),
+    temperature: 0,
+    max_tokens: maxTokens,
+    response_format: { type: "json_object", schema: JSON.stringify(schema) },
+    messages: [{ role: "system", content: system }, { role: "user", content: user }],
+  });
+  return r?.choices?.[0]?.message?.content || "";
 }
 
 // Free the GPU. The downloaded weights stay in the browser cache, so loading

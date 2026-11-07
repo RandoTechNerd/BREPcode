@@ -477,6 +477,40 @@ console.log("\nmodel ranking\n");
   check("...and protects what already works",
     /ALREADY BUILDS/.test(PH) && /EXACTLY as it is/.test(PH));
   check("...while staying compact too", PH.length < 2200, `${PH.length} chars`);
+  // In-browser replies (measured on the 1.5B Coder, Intel iGPU): the catalog
+  // rule sent on a fresh request had it open every model with a fake catalog
+  // header; without a grammar four replies in six had no fence; uncapped, a
+  // vague request ran one 7,000-character line; without the example turn it
+  // put its consts in the sentence slot, outside the code.
+  check("the catalog rule rides only with catalog code",
+    !/From the BREPcode catalog/.test(M.browserMission({ code: "return cube(10);" }))
+    && /From the BREPcode catalog/.test(M.browserMission({ code: "// From the BREPcode catalog: phone-stand.\nconst a = 1;" })));
+  check("the reply grammar is one capped sentence, then one js fence that ends the reply",
+    /^root ::= sentence "\\n```js\\n" code "```"$/m.test(M.REPLY_GRAMMAR) && /sentence ::= \[\^\\n`\]\{1,200\}/.test(M.REPLY_GRAMMAR));
+  check("the example turn is a request and a reply in that shape",
+    M.BROWSER_EXAMPLE.length === 2 && M.BROWSER_EXAMPLE[0].role === "user"
+    && /^[^\n`]{1,200}\n```js\n[\s\S]*\n```$/.test(M.BROWSER_EXAMPLE[1].text));
+  check("...and a reply that hands it back is caught", M.copiesExample(M.BROWSER_EXAMPLE[1].text)
+    && !M.copiesExample("A plate.\n```js\nreturn cube([10, 10, 2]);\n```") && !M.copiesExample("no code here"));
+  check("every structural example has the same request-then-reply shape",
+    M.BROWSER_EXAMPLES.every((e) => e.turns[0].role === "user" && /^[^\n`]{1,200}\n```js\n[\s\S]*\n```$/.test(e.turns[1].text)));
+  check("...is picked by the request's structure, the slotted block otherwise",
+    /plus-shaped/.test(M.pickBrowserExample("a T shaped plate 60 mm across")[0].text)
+    && /stem/.test(M.pickBrowserExample("a stepped cylinder, 30 then 15 mm across")[0].text)
+    && /ramp/.test(M.pickBrowserExample("a wedge 50 mm long")[0].text)
+    && M.pickBrowserExample("a hexagonal nut") === M.BROWSER_EXAMPLE);
+  check("...and any example handed back is caught", M.BROWSER_EXAMPLES.every((e) => M.copiesExample(e.turns[1].text)));
+  check("a request with sizes is a custom part", M.sizedRequest("a wedge 50 mm long, 30 mm wide") && !M.sizedRequest("something to hold my keys"));
+  // the 1.5B wrote the ramp pattern and closed three of its four calls
+  const bent = "const L = 50, W = 30, H = 20;\nreturn translate([0, W, 0], rotate([90, 0, 0], linearExtrude({ h: W }, polygon([[0, 0], [L, 0], [L, H]])));\n";
+  check("a reply one bracket short is mended", /\]\]\)\)\)\);/.test(M.closeBrackets(bent))
+    && /\]\]\)\)\)\);/.test(M.mendReply("A wedge.\n```js\n" + bent + "```")));
+  check("...while good code and over-closed code are left alone",
+    M.closeBrackets("return cube([1, 2, 3]);") === "return cube([1, 2, 3]);" && M.closeBrackets("return cube(1));") === "return cube(1));");
+  const { looping } = await import("../viewer/webllm.js");
+  const holeLines = (n) => Array.from({ length: n }, (_, i) => `  translate([10, ${40 * i}, -1], cylinder({ r: 2.5, h: 6 })),`).join("\n") + "\n";
+  check("a runaway line is a loop", looping(`const a = 1;\n${holeLines(20)}`));
+  check("...but a row of eight holes is not", !looping(`const a = 1;\n${holeLines(8)}`));
   check("browser models rank by size",
     rank([
       "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
@@ -1866,7 +1900,9 @@ console.log("\nhearing a newcomer\n");
     check("an all-over round/bevel that changed the size is taken back after its build",
       /const v = CHAT\?\.sizeGuardVerdict\?\.\(r\.sizeGuard\.before, after, r\.sizeGuard\);/.test(HTML)
       && /if \(!undoBtn\.disabled\) undoBtn\.click\(\);/.test(HTML)
-      && (HTML.match(/const said = addMsg\("bot", /g) || []).length === 3);
+      // the no-AI chat, catalog-first, the in-browser model's plain part and
+      // its catalog pick, and local-first
+      && (HTML.match(/const said = addMsg\("bot", /g) || []).length === 5);
     check("a catalog design brings the sliders forward, not the code", /if \(ok && show === "params"\) \{/.test(HTML)
       && /toggleCard\(paramsCard, paramsBtn, true\); refreshParams\(true\);/.test(HTML));
     check("answered chips retire when the next message is sent", /\.quick-row:not\(\.action-row\):not\(\.spent\)/.test(HTML)

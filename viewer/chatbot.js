@@ -819,6 +819,7 @@ export function noopVerdict(beforeVol, afterVol, guard) {
 // with a model open, a request has to sound like a new thing ("I want…",
 // "make me…", "a…") — "make the shelf deeper" is about the open model.
 const NEW_THING = /\b(want|need|like|make me|make a|make an|make us|build|print|design|create|new|another|give me|how about|got a|got an|do a|do an|something|anything|some thing|a thing|a way to)\b|^(a|an|some)\s/;
+export const asksForNewThing = (text) => NEW_THING.test(String(text).toLowerCase());
 const EDIT_THIS = /^(make|turn|set|change)\s+(it|this|that|the)\b|\b(it|this|that)\b.*\b(wider|narrower|taller|shorter|deeper|longer|bigger|smaller|thicker|thinner)\b/;
 // A message about the model already on screen ("add a hole for the
 // charger", "make it taller", "cut a heart in the back"), as opposed to a
@@ -1106,7 +1107,9 @@ export function catalogSuggest(text) {
   return {
     reply: `I know a few things like that. Which did you mean? Tap one, or say what it is for (“a hook for my yoga mat”) and I'll size it to that.`,
     chips: [...picks.map((f) => `${article(f.names[0])} ${f.names[0]}`), "what can you make"],
-    fromCatalog: true, asked: true,
+    // a guess from shared words, not a match: the in-browser model gets to
+    // name the thing first (catalogroute.js), and this is the fallback
+    fromCatalog: true, asked: true, guess: true,
   };
 }
 
@@ -1798,12 +1801,17 @@ function respondOne(text, state = {}, currentCode = "", dims = null) {
 // runs (vs OpenSCAD, which the model has actually SEEN in pretraining) that
 // produced code that BUILT. Rounding, colour and fancier forms come in the
 // Polish pass below, on code that already works.
+// No catalog line here: sent on every fresh request, "keep a leading From the
+// BREPcode catalog header" had the 1.5B open EVERY new model with "From the
+// BREPcode catalog: 1000." CATALOG_KEEP is added only while the editor holds
+// a catalog design (browserMission below).
 export const COMPACT_HARNESS = `You write BREPcode: JavaScript that RETURNS one shape. Millimetres. Z is up. Parts sit on z=0.
-CATALOG CODE: keep a leading "From the BREPcode catalog: <id>." header, its "// Sized for" line and the const dials above the model exactly as they are; the app's follow-ups read them.
 SHAPES (the ONLY primitives): cube([x,y,z]) corner at origin · cylinder({r,h,$fn:48}) rises +Z from origin · sphere({r}).
 COMBINE: union(a,b,...) welds · difference(base, ...cutters) cuts holes · group(...parts) keeps parts separate — end multi-part assemblies with group(), never one big union.
 MOVE: translate([x,y,z], shape) · rotate([rx,ry,rz], shape) degrees.
-RULES: sizes as named const at the top · cutters poke THROUGH faces (start 1mm below, end 1mm past) · keep it blocky and correct — rounding and colour come in a later Polish pass · there is no hole()/screw()/text()/fillet() here — build from the shapes above.
+RULES: sizes as named const at the top · cutters poke THROUGH faces (start 1mm below, end 1mm past) · keep it blocky and correct — rounding and colour come in a later Polish pass · there is no hole()/screw()/text()/fillet() here — build from the shapes above · a row or grid of holes is a loop (Array.from), not a line per hole.
+SIZES: "N mm across" or "N mm diameter" is cylinder({ r: N / 2, h }) — r is HALF the size; every cylinder needs h. A hexagon N mm across flats is cylinder({ r: N / 1.732, h, $fn: 6 }).
+SHAPES FROM PIECES: an L, T or cross shape is a union() of cubes placed edge to edge; a stepped round part is a union() of cylinders stacked with translate([0, 0, z]); a hollow box is difference() of the outer cube and an inner cube moved in by the wall; a wedge, triangle or any flat outline is linearExtrude({ h }, polygon([[x, y], ...])), stood up with rotate([90, 0, 0]) when the outline is a side view.
 THIS IS JAVASCRIPT: call the functions and nest shapes as arguments. NEVER OpenSCAD-style {} blocks after translate/rotate, NEVER shapes inside a string — return the shape object itself.
 EXAMPLE (a plate with one screw hole):
 const W = 40, D = 20, T = 5;
@@ -1812,6 +1820,111 @@ return difference(
   translate([10, 10, -1], cylinder({ r: 2.5, h: T + 2 }))
 );
 REPLY SHAPE: one short sentence, then ONE fenced code block of complete runnable code ending in a return. Nothing after the fence. Never repeat the request back, never introduce yourself — build.`;
+
+export const CATALOG_KEEP = `CATALOG CODE: keep a leading "From the BREPcode catalog: <id>." header, its "// Sized for" line and the const dials above the model exactly as they are; the app's follow-ups read them.`;
+
+// One finished turn the in-browser model sees before the real request: a
+// small model copies a reply it has SEEN far more faithfully than one it was
+// told about, and this is the shape every reply has to have. Deliberately
+// unlike the parts people ask for most, so it is copied for its shape and
+// not its contents.
+export const BROWSER_EXAMPLE = [
+  { role: "user", text: "a block 50 by 30 by 20 mm with a 10 mm wide slot across the top, 8 mm deep" },
+  { role: "assistant", text: "A 50 x 30 x 20 mm block with a 10 mm slot cut across its top.\n```js\n"
+    + "const L = 50, W = 30, H = 20;\nconst SLOT_W = 10, SLOT_D = 8;\n\n"
+    + "return difference(\n  cube([L, W, H]),\n  translate([(L - SLOT_W) / 2, -1, H - SLOT_D], cube([SLOT_W, W + 2, SLOT_D + 1]))\n);\n```" },
+];
+
+// The example turn is chosen per request: the one closest in STRUCTURE (a
+// shape made of joined bars, a stack of round tiers, a profile stood up and
+// extruded), never in contents. The plain parts these would also cover go to
+// browserparts.js templates first, so what reaches this pass is the odd
+// shapes, and the 1.5B builds those far better from a worked case of the same
+// construction than from the slotted block.
+export const BROWSER_EXAMPLES = [
+  {
+    when: /\b(?:[ltxu+]|plus|cross|letter)[- ]?shaped?\b|\bcross\b|\bplus\b|\barms?\b|\bbars?\b/i,
+    turns: [
+      { role: "user", text: "a plus-shaped plate 50 mm across, arms 12 mm wide, 3 mm thick" },
+      { role: "assistant", text: "A plus-shaped plate: two 50 x 12 mm bars crossing, 3 mm thick.\n```js\n"
+        + "const SPAN = 50, ARM = 12, T = 3;\n\nreturn union(\n  translate([0, (SPAN - ARM) / 2, 0], cube([SPAN, ARM, T])),\n"
+        + "  translate([(SPAN - ARM) / 2, 0, 0], cube([ARM, SPAN, T]))\n);\n```" },
+    ],
+  },
+  {
+    when: /\bstep(?:s|ped)?\b|\btiers?\b|\bstem\b|\bthen\b|\bshoulder\b|\bstacked\b|\bknob\b/i,
+    turns: [
+      { role: "user", text: "a round knob 25 mm across and 8 mm tall with a 12 mm wide stem 10 mm tall on top" },
+      { role: "assistant", text: "A 25 mm knob, 8 mm tall, with a 12 mm stem rising 10 mm from its top.\n```js\n"
+        + "const KNOB_D = 25, KNOB_H = 8;\nconst STEM_D = 12, STEM_H = 10;\n\nreturn union(\n  cylinder({ r: KNOB_D / 2, h: KNOB_H }),\n"
+        + "  translate([0, 0, KNOB_H], cylinder({ r: STEM_D / 2, h: STEM_H }))\n);\n```" },
+    ],
+  },
+  {
+    when: /\bwedge\b|\bramp\b|\bslope[sd]?\b|\brising\b|\btriang\w*\b|\bprofile\b|\bincline\w*\b|\bchock\b/i,
+    turns: [
+      { role: "user", text: "a ramp 60 mm long and 25 mm wide that rises to 15 mm at one end" },
+      { role: "assistant", text: "A 60 x 25 mm ramp rising from 0 to 15 mm along its length.\n```js\n"
+        + "const L = 60, W = 25, H = 15;\n\n// the side profile, stood up and extruded across the width\n"
+        + "return translate([0, W, 0], rotate([90, 0, 0], linearExtrude({ h: W }, polygon([[0, 0], [L, 0], [L, H]]))));\n```" },
+    ],
+  },
+];
+// A reply whose code is short of closing brackets, mended. The 1.5B wrote the
+// ramp pattern correctly and then closed three of its four calls; the build
+// then fails on "missing ) after argument list" and a retry costs a whole
+// reply. Only code that does not parse is touched, the closers go in before
+// the final ";", and the mend is kept only if the result parses.
+const parses = (src) => { try { new Function(src); return true; } catch { return false; } };
+export function closeBrackets(src) {
+  if (parses(src)) return src;
+  const open = [], pairs = { "(": ")", "[": "]", "{": "}" };
+  let quote = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) { if (c === "\\") i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; }
+    else if (pairs[c]) open.push(pairs[c]);
+    else if (")]}".includes(c)) { if (open[open.length - 1] !== c) return src; open.pop(); }
+  }
+  if (!open.length || quote) return src;
+  const close = open.reverse().join("");
+  const body = src.replace(/\s+$/, "");
+  const mended = body.endsWith(";") ? `${body.slice(0, -1)}${close};\n` : `${body}${close}\n`;
+  return parses(mended) ? mended : src;
+}
+export const mendReply = (answer) => String(answer).replace(/(```[\w-]*\n)([\s\S]*?)(```)/, (m, a, code, b) => a + closeBrackets(code) + b);
+
+// Two or more sizes in millimetres: a custom part, not a vague ask.
+export const sizedRequest = (text) => (String(text).match(/\d+(?:\.\d+)?\s*mm\b/gi) || []).length >= 2;
+export const pickBrowserExample = (text) => BROWSER_EXAMPLES.find((e) => e.when.test(String(text)))?.turns || BROWSER_EXAMPLE;
+
+// The reply shape as a grammar WebLLM decodes under: one sentence, one js
+// fence, and the reply ENDS when the fence closes, so there is nothing after
+// it to wait for. The 1.5B left out the fence on four replies in six without
+// it, and the app then had no code to build.
+// The sentence is capped: uncapped, a vague request ("stop hair going down
+// the plughole") had the 1.5B write one 7,000-character line restating
+// itself, which no line-based loop check sees.
+export const REPLY_GRAMMAR = String.raw`root ::= sentence "\n` + "```js" + String.raw`\n" code "` + "```" + String.raw`"
+sentence ::= [^\n` + "`" + String.raw`]{1,200}
+code ::= ([^` + "`" + String.raw`] | "` + "`" + String.raw`" [^` + "`" + String.raw`])*`;
+
+// A reply that hands the example back. Given a request that names no shape
+// ("stop hair going down the plughole", when the catalog had nothing either),
+// the 1.5B returned the slotted block above word for word. That is never what
+// was asked for, so the app says so instead of building it.
+const codeOf = (s) => (/```[\w-]*\n([\s\S]*?)```/.exec(String(s || ""))?.[1] || "").replace(/\s+/g, "");
+export const copiesExample = (answer) => !!codeOf(answer)
+  && [BROWSER_EXAMPLE, ...BROWSER_EXAMPLES.map((e) => e.turns)].some((t) => codeOf(answer) === codeOf(t[1].text));
+
+// The in-browser mission for one request: the compact primer (or the polish
+// one), with the catalog rule only while the editor holds a catalog design.
+export function browserMission({ polishing = false, code = "" } = {}) {
+  const base = polishing ? POLISH_HARNESS : COMPACT_HARNESS;
+  return /From the BREPcode catalog: [\w-]+\./.test(code) && !polishing ? `${base}\n${CATALOG_KEEP}` : base;
+}
 
 // Pass 2: POLISH. Runs only on code that already builds, so the model edits
 // instead of inventing — the easier job. This is where the wider vocabulary

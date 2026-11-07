@@ -1,0 +1,20 @@
+{
+  "about": "Held-out requests: written after the main set's tuning, never tuned against. Same format as webllm-eval.json. A score here says whether the gains carry over to requests the harness was not shaped around.",
+  "requests": [
+    { "text": "a 25 mm round standoff 12 mm tall with an M3 hole", "want": { "size": [12, 25, 25], "holes": 1 } },
+    { "text": "a spacer plate 70 by 30 mm, 6 mm thick, with four M4 holes", "want": { "size": [6, 30, 70], "holes": 4 } },
+    { "text": "an angle bracket 40 x 40 mm, 25 mm wide, 3 mm thick, three holes per side", "want": { "size": [25, 40, 40], "holes": 6 } },
+    { "text": "a shallow tray 120 by 80 mm and 20 mm deep with 2 mm walls", "want": { "size": [20, 80, 120], "holes": 0, "hollow": true } },
+    { "text": "a 3 mm thick round plate 60 mm across with a 10 mm hole in the middle", "want": { "size": [3, 60, 60], "holes": 1 } },
+    { "text": "a sign blank 150 x 50 x 3 mm", "want": { "size": [3, 50, 150], "holes": 0 } },
+    { "text": "a cube 40 mm with a 20 mm hole through the middle", "want": { "size": [40, 40, 40], "holes": 1 } },
+    { "text": "a lid 60 mm across, 3 mm thick, with a 15 mm knob 10 mm tall", "want": { "size": [13, 60, 60], "holes": 0 } },
+    { "text": "a ring 30 mm outside and 26 mm inside, 10 mm tall", "want": { "size": [10, 30, 30], "holes": 1 } },
+    { "text": "a cross shaped plate 80 mm across with 20 mm wide arms, 5 mm thick", "want": { "size": [5, 80, 80], "holes": 0, "fill": [0.36, 0.52] } },
+    { "text": "an L shaped plate, 50 mm by 50 mm, legs 15 mm wide, 4 mm thick", "want": { "size": [4, 50, 50], "holes": 0, "fill": [0.42, 0.6] } },
+    { "text": "a triangular plate with 40 mm sides, 4 mm thick", "want": { "size": [4, 34.64, 40], "holes": 0, "fill": [0.42, 0.58] } },
+    { "text": "a two-tier round stand: 60 mm across and 10 mm tall, with a 40 mm across 10 mm tall tier on top", "want": { "size": [20, 60, 60], "holes": 0, "fill": [0.48, 0.66] } },
+    { "text": "a hex standoff 8 mm across flats, 20 mm long, with a 3 mm hole", "want": { "size": [8, 9.24, 20], "holes": 1 } },
+    { "text": "a door stop wedge 120 mm long, 40 mm wide, 25 mm tall", "want": { "size": [25, 40, 120], "holes": 0 } }
+  ]
+}

@@ -26135,6 +26135,14 @@ let SIMPLIFY_TARGET = 10000;
       // The probe runs on a copy of the chat state, so a guided flow it might
       // start is not left behind to swallow the next AI-bound message.
       let withPicture = false;     // a catalog design just went up for a picture to be added to
+      // THE IN-BROWSER MODEL AS INTERPRETER (see below): worked out here, so
+      // the catalog's own "which did you mean?" guess can wait for it.
+      const librarianModel = (!house && !forceAI && !anchor && !pendingImgs.length && aiProvider.value === "browser"
+          && text !== RETRY_TEXT && text !== EXACT_TEXT && !/^Polish the current model\b/.test(text)
+          && !aiCfg.harness?.trim() && aiHarness.value.trim() === (CHAT.DEFAULT_HARNESS || "").trim()
+          && (!code.value.trim() || code.value.trim() === code.defaultValue.trim() || CHAT.asksForNewThing(text))
+          && (await getWebllm()).loadedBrowserModel() === aiModel.value.trim()) ? aiModel.value.trim() : null;
+      let heldGuess = null;        // the catalog's guess, shown only if the model finds nothing better
       // The app's own follow-ups (the auto-fix retry, the exact pass) are for
       // the model that wrote the code. The catalog read "Fix it and return the
       // corrected complete model" as a vague request and answered it with a
@@ -26159,6 +26167,11 @@ let SIMPLIFY_TARGET = 10000;
           chatLog.push({ role: "assistant", text: local.reply });
           await applyHelperCode(text, local.code, "params", local);
           withPicture = true;
+        } else if (local.guess && librarianModel) {
+          // "which did you mean: a coin tube, a feeding ring?" for "squeeze
+          // the last of the toothpaste" is a guess from shared words; the
+          // model names it (toothpaste squeezer) and the catalog has it
+          heldGuess = { local, probe };
         } else if ((local.fromCatalog && (local.code !== undefined || !local.cantDo)) || acts) {
           Object.assign(botState, probe);
           if (local.clearPending) botState.pending = null;
@@ -26168,6 +26181,78 @@ let SIMPLIFY_TARGET = 10000;
           for (const act of local.run || []) runChatAction(act);
           replyExtras(local);
           if (!acts) quickReplies([`ask the AI instead: ${text}`], ["Ask the AI instead"], ["spark"]);
+          return;
+        }
+      }
+
+      // THE IN-BROWSER MODEL AS INTERPRETER. The catalog above only knows a
+      // request by its words; "squeeze the last bit out of the toothpaste"
+      // scores nothing there and would go to a small model writing code from
+      // scratch, its worst job. Naming the thing is its best one: three shop
+      // names as one JSON line held to that shape by WebLLM's grammar, about a
+      // second, and the catalog's matcher decides whether a tested design is
+      // that object (viewer/catalogroute.js). Only for a new thing (an open
+      // model being edited is the code pass's), a model already loaded, and
+      // the untouched mission; no match carries on as before.
+      if (librarianModel) {
+        const w = await getWebllm();
+        const looking = addMsg("bot", "Looking through the catalog for a tested design…");
+        try {
+          const R = await import("./catalogroute.js");
+          const ask = (q) => w.browserPick({ model: librarianModel, ...q });
+          // One of the plain parts (a plate with holes, an L bracket, an open
+          // box, a tube...): the model fills in the sizes and the part is
+          // written for it, right by construction (viewer/browserparts.js);
+          // it wrote the right shape far less often than code that built. A
+          // part the request NAMES comes first; then a catalog design by the
+          // model's names, then a part by its names. ("a round lid" is a lid,
+          // not the lid RACK its third name, "round lid holder", found.)
+          const P = await import("./browserparts.js");
+          let part = P.templateFor(text) ? await P.fillTemplate(text, [], ask) : null;
+          let names = [], pick = null;
+          if (!part) {
+            names = await R.nameRequest(text, ask);
+            pick = R.routeNames(names);
+            if (!pick) part = await P.fillTemplate(text, names, ask);
+          }
+          if (part) {
+            looking.remove();
+            const said = addMsg("bot", `${part.say} Every size is a slider.  · the in-browser model read your sizes into a tested ${part.template.id} template`);
+            chatLog.push({ role: "assistant", text: part.say });
+            applyHelperCode(text, part.code, "params", null, said);
+            quickReplies([`ask the AI instead: ${text}`], ["Not it: write it from scratch"], ["spark"]);
+            return;
+          }
+          if (pick) {
+            const probe = { ...botState };
+            const local = botRespond(R.catalogPhrase(pick.family, text), probe, code.value, modelDims);
+            if (R.pickedFamilyOf(local.code) === pick.family.id) {
+              looking.remove();
+              Object.assign(botState, probe);
+              if (local.clearPending) botState.pending = null;
+              const said = addMsg("bot", `${local.reply}  · a tested design: the in-browser model called it “${pick.name}”`);
+              chatLog.push({ role: "assistant", text: local.reply });
+              applyHelperCode(text, local.code, "params", local, said);
+              replyExtras(local);
+              quickReplies([`ask the AI instead: ${text}`], ["Not it: write it from scratch"], ["spark"]);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("[chat] catalog pick failed, writing code instead:", e);
+        }
+        looking.remove();
+        // nothing named: the catalog's own "which did you mean?" after all,
+        // unless the request gives sizes ("a wedge 50 mm long, 30 mm wide"):
+        // that is a custom part, and "a door stop or a laptop stand?" is no
+        // answer to it, so the model writes it
+        if (heldGuess && !CHAT.sizedRequest(text)) {
+          Object.assign(botState, heldGuess.probe);
+          if (heldGuess.local.clearPending) botState.pending = null;
+          addMsg("bot", `${heldGuess.local.reply}  · from the catalog`);
+          chatLog.push({ role: "assistant", text: heldGuess.local.reply });
+          replyExtras(heldGuess.local);
+          quickReplies([`ask the AI instead: ${text}`], ["Ask the AI instead"], ["spark"]);
           return;
         }
       }
@@ -26582,7 +26667,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
           // rounding/colour vocabulary. A user-edited mission overrides both.
           const polishing = /^Polish the current model\b/.test(text);
           if (untouchedMission) {
-            ho.harness = polishing ? CHAT.POLISH_HARNESS : CHAT.COMPACT_HARNESS;
+            ho.harness = CHAT.browserMission({ polishing, code: code.value });
             // Every token of system noise costs a small model accuracy — and
             // the name-preference line made the 1.5B ROLE-PLAY: it prefixed
             // "Rando." and echoed the request instead of building.
@@ -26600,8 +26685,13 @@ ${SC.describeSelectionContext(anchor)}` : "");
             : msgs;
           logLine(`generating in this tab — ${cfg.model}${untouchedMission ? (polishing ? " (polish pass)" : " (base pass)") : ""}`);
           let lastPaint = 0;
+          // The untouched mission's reply is held to its shape by WebLLM's
+          // grammar (one sentence, one fence, done) and the base pass sees one
+          // finished example turn first (CHAT.REPLY_GRAMMAR, BROWSER_EXAMPLE).
           answer = await w.browserChat({
             model: cfg.model, system, messages: msgsForModel,
+            grammar: untouchedMission ? CHAT.REPLY_GRAMMAR : null,
+            prior: untouchedMission && !polishing ? CHAT.pickBrowserExample(text) : [],
             onDelta: ({ phase, chars, text }) => {
               liveState = { phase, chars, text };
               const now = performance.now();
@@ -26609,6 +26699,13 @@ ${SC.describeSelectionContext(anchor)}` : "");
             },
           });
           logLine("response ← in-browser model");
+          // it handed the example back: it could not tell what to build
+          if (untouchedMission && !polishing && CHAT.copiesExample(answer)) {
+            // (the error line shows 140 characters)
+            throw new Error("it couldn't tell what to build from that. Say the shape and sizes, like “a 60 mm disc, 3 mm thick, with a 20 mm hole”.");
+          }
+          // a call or two left unclosed is mended here rather than costing a retry
+          if (untouchedMission) answer = CHAT.mendReply(answer);
         } else {
           // Gemini: ask for the model's thoughts too. Models that don't support
           // thinkingConfig reject the whole request — retry once without it.
