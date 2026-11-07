@@ -271,32 +271,34 @@ function outputHub() {
 }
 
 // ---- the assembly ----------------------------------------------------------
+// Listed from the inside out, so the motor builds outward on screen: shaft and
+// rotor first, then the stator and its copper, the housing last. Order never
+// changes the build time (the kernel hosts are balanced by size, heaviest
+// first); it only changes which part lands first.
 // Explode opens the stack along the axis: housing and weld ring drop back,
 // the crowns lift off the core, and the rotor rises out through the front with
 // its magnet segments fanning outward.
 const copper = { color: "#c8702a", finish: "copper" };
 const metal = { color: "#c9ccd1", finish: "metal" };
-const parts = {
-  housing: { shape: housingC(), color: "#b9bec6", finish: "aluminium", explode: [0, 0, -130] },
-  weld_ring: { shape: weldRing(), ...copper, explode: [0, 0, -65] },
+// eight of each segment type; copy i of type k is segment 4i + k round the rotor
+const magnets = Object.fromEntries(segTypes.map((kind, k) => [`magnet_${kind}`, {
+  shape: segment(kind), count: segs / 4, color: kind === "out" || kind === "in" ? "#4a4f57" : "#b23a2e", finish: "metal",
+  place: (s, i) => rotate([0, 0, segAngle(4 * i + k)], s),
+  explode: [14, 0, 225],          // in the segment's own frame: outward, then up with the hub
+}]));
+return assembly({
+  shaft: { shape: shaftC(), ...metal, explode: [0, 0, 225] },
+  spacer_rear: { shape: ring(4.15, 6, rearBrgZ + brgW, -2), ...metal, explode: [0, 0, 195] },
+  spacer_front: { shape: ring(4.15, 6, stack + 2, frontBrgZ), ...metal, explode: [0, 0, 330] },
+  output_hub: { shape: outputHub(), ...metal, explode: [0, 0, 400] },
+  rotor_hub: { shape: rotorHub(), ...metal, explode: [0, 0, 225] },
+  ...magnets,
+  sleeve: { shape: ring(sleeveRi, sleeveRo, 0, stack), color: "#1c1f24", finish: "gloss", explode: [0, 0, 270] },
+  rotor_cap: { shape: rotorCap(), ...metal, print: "flip", explode: [0, 0, 300] },
   stator_core: { shape: statorCore(), color: "#6f7680", finish: "steel" },
   crown_inner: { shape: crownRing(0, 1, riseInner), ...copper, print: "flip", explode: [0, 0, 60] },
   crown_outer: { shape: crownRing(2, 3, riseOuter), ...copper, print: "flip", explode: [0, 0, 135] },
-  rotor_hub: { shape: rotorHub(), ...metal, explode: [0, 0, 225] },
-  shaft: { shape: shaftC(), ...metal, explode: [0, 0, 225] },
-  sleeve: { shape: ring(sleeveRi, sleeveRo, 0, stack), color: "#1c1f24", finish: "gloss", explode: [0, 0, 270] },
-  rotor_cap: { shape: rotorCap(), ...metal, print: "flip", explode: [0, 0, 300] },
-  spacer_rear: { shape: ring(4.15, 6, rearBrgZ + brgW, -2), ...metal, explode: [0, 0, 195] },
-  spacer_front: { shape: ring(4.15, 6, stack + 2, frontBrgZ), ...metal, explode: [0, 0, 330] },
+  weld_ring: { shape: weldRing(), ...copper, explode: [0, 0, -65] },
   lid: { shape: lidC(), color: "#1c1f24", finish: "gloss", print: "flip", explode: [0, 0, 360] },
-  output_hub: { shape: outputHub(), ...metal, explode: [0, 0, 400] },
-};
-// eight of each segment type; copy i of type k is segment 4i + k round the rotor
-segTypes.forEach((kind, k) => {
-  parts[`magnet_${kind}`] = {
-    shape: segment(kind), count: segs / 4, color: kind === "out" || kind === "in" ? "#4a4f57" : "#b23a2e", finish: "metal",
-    place: (s, i) => rotate([0, 0, segAngle(4 * i + k)], s),
-    explode: [14, 0, 225],          // in the segment's own frame: outward, then up with the hub
-  };
+  housing: { shape: housingC(), color: "#b9bec6", finish: "aluminium", explode: [0, 0, -130] },
 });
-return assembly(parts);

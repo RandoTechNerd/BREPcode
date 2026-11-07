@@ -150,11 +150,16 @@ A printed machine is several parts, each printed on its own and put together.
 
 ```js
 return assembly({
-  housing:  { shape: housing(), color: "#8a8f98", finish: "aluminium" },
   coil_pod: { shape: coilPod(), color: "#c8702a", finish: "copper", count: 12,
               place: polar(12, { at: [45, 0, 28], rotate: [90, -90, 0] }) },
+  housing:  { shape: housing(), color: "#8a8f98", finish: "aluminium" },
 });
 ```
+
+Parts build onto the screen in the order they are listed, so list them from
+the inside out: shaft and core first, housing and lid last. The order costs
+nothing: the kernel hosts are shared out by size, heaviest part first,
+whatever order the code lists them in.
 
 Each part is drawn in the frame it **prints** in. `place` moves its copies to
 where they sit in the finished thing (`polar(n, …)`, an array, a function

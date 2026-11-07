@@ -112,7 +112,9 @@ frame it PRINTS in, flat side down; `place` moves its copies to where they sit
 in the finished thing; `print` turns it for the bed: `"asis"` (default),
 `"flip"`, `"side"`, `"placed"` or `[rx, ry, rz]`. The app then shows the parts
 list, explodes it, checks every pair of parts for overlap and exports one STL
-per part already on the bed.
+per part already on the bed. List the parts from the inside out, shaft and core
+first and the housing and lid last: they build onto the screen in that order, and
+the order never changes how long the build takes.
 
 ```
 return assembly({
