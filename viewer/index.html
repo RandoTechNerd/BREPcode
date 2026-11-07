@@ -2686,6 +2686,36 @@
     body.design-mode #dz-dlg, body.design-mode #dz-sk, body.design-mode #dz-num { z-index: 100000 !important; }
     body.design-mode #dz-dlg, body.design-mode #dz-sk { right: calc(12px + var(--dz-rcol, 0px)) !important; }
     body.design-mode #dz-time { right: max(340px, calc(var(--dz-rcol, 0px) + 12px)) !important; }
+
+    /* Settings > corner cube off (the default): the button goes, and the
+       Design toolbar, which used to stop short of it, may run to the edge. */
+    body.ar-off #ar-top { display: none; }
+    body.ar-off.design-mode #dz-bar { right: 12px; }
+
+    /* Settings > Tool bar: down the left side. A column under the Code |
+       Design switch, the browser and timeline stepping right of it. Wide
+       screens only: a phone keeps its top-right strip and menu. fitBar()
+       measures height instead of width in this layout, so tools that do not
+       fit still go into the "more" menu rather than running under the view
+       cube. */
+    @media (min-width: 701px) {
+      body.bar-left.design-mode #dz-bar {
+        top: 64px; left: 12px; right: auto; bottom: auto;
+        max-width: none; max-height: calc(100vh - 64px - 150px);
+        flex-direction: column; border-radius: 14px; padding: 4px 3px;
+      }
+      body.bar-left.design-mode #dz-bar .dz-g,
+      body.bar-left.design-mode #dz-bar .dz-gi { flex-direction: column; }
+      body.bar-left.design-mode #dz-bar .dz-g + .dz-g { border-left: 0; padding-left: 0; border-top: 1px solid var(--border, #26314a); padding-top: 3px; }
+      body.bar-left.design-mode #dz-bar .dz-t { justify-content: center; }
+      body.bar-left.design-mode #dz-bar .dz-snap { padding: 5px 2px; font-size: 11px; }
+      /* the ribbon in a column: each tool's name beside its icon */
+      body.bar-left.design-mode #dz-bar.ribbon { padding: 6px; gap: 6px; overflow-y: auto; overflow-x: hidden; }
+      body.bar-left.design-mode #dz-bar.ribbon .dz-g + .dz-g { padding-left: 0; padding-top: 6px; }
+      body.bar-left.design-mode #dz-bar.ribbon .dz-t { flex-direction: row; justify-content: flex-start; min-width: 0; }
+      body.bar-left.design-mode #dz-side { top: 64px; left: 62px; max-height: calc(100vh - 200px); }
+      body.bar-left.design-mode.dz-ribbon #dz-side { top: 64px; left: 160px; }
+    }
   </style>
 </head>
 <body>
@@ -3007,6 +3037,35 @@
               <option value="stl">STL - universal, geometry only</option>
               <option value="obj">OBJ - DCC and games</option>
             </select>
+          </label>
+          <!-- The drawing's own options: how it looks, which projection, which
+               units, and what the title block says. Saved per browser. -->
+          <label id="dw-look-row" hidden>
+            <span>Sheet</span>
+            <select id="dw-style" title="How the sheet looks">
+              <option value="blueprint">Blueprint</option>
+              <option value="white">White (prints black)</option>
+              <option value="dark">Dark</option>
+            </select>
+            <select id="dw-standard" title="ANSI = third-angle (top view above the front); ISO = first-angle (top view below)">
+              <option value="ansi">ANSI</option>
+              <option value="iso">ISO</option>
+            </select>
+            <select id="dw-units" title="The numbers on the sheet (the model stays in mm)">
+              <option value="mm">mm</option>
+              <option value="in">inches</option>
+            </select>
+          </label>
+          <label id="dw-title-row" hidden>
+            <span>Title block</span>
+            <input id="dw-material" placeholder="Material" style="width: 110px" title="Material (empty: the one picked in Properties)" />
+            <input id="dw-author" placeholder="Drawn by" style="width: 90px" />
+            <input id="dw-rev" placeholder="Rev" style="width: 40px" />
+          </label>
+          <label id="dw-print-row" hidden>
+            <span>Paper</span>
+            <button type="button" id="dw-print" class="hist-btn" title="Opens the print dialog with the drawing on its own page: print it, or pick Save as PDF">Print / PDF</button>
+            <input type="checkbox" id="dw-holes" checked /> <span style="min-width: 0">Hole callouts</span>
           </label>
           <!-- Faceted STEP is triangles wearing a solid's clothes; curved is the
                real thing, at the cost of an 11 MB kernel download. -->
@@ -3400,7 +3459,7 @@
               <path d="M8 10.2V2.2M4.8 5.4L8 2.2l3.2 3.2M2.8 13.2h10.4" />
             </svg>
           </button>
-          <input type="file" id="import-file" accept=".bcode,.js,.scad,.py,.stl,.3mf,.obj,.svg,.step,.stp" style="display: none" />
+          <input type="file" id="import-file" accept=".bcode,.js,.scad,.py,.stl,.3mf,.obj,.svg,.step,.stp,.igs,.iges" style="display: none" />
           <button id="export-btn" class="hist-btn ovf" title="Download STL">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
@@ -4024,6 +4083,13 @@
               <option value="bottom">Bottom corner, opposite the editor</option>
               <option value="dock">In the stack</option>
             </select></label>
+          <label class="set-row" title="Where Design mode's tool bar sits: a strip along the top, or a column down the left edge (more room above the model on a wide screen)"><span>Tool bar</span>
+            <select id="set-toolbar-side">
+              <option value="top">Along the top</option>
+              <option value="left">Down the left side</option>
+            </select></label>
+          <label class="set-row set-check" title="The cube button in the top-right corner that shows the model real size through your phone's camera. Off hides it; a shared link still offers See it on your desk."><input type="checkbox" id="set-ar-cube" />
+            <span>Show the corner cube (see it on your desk)</span></label>
           <label class="set-row set-check" title="Off: BREPcode opens on an empty plate instead of the sample cube with a hole."><input type="checkbox" id="set-starter-cube" />
             <span>Start with the sample cube</span></label>
           <label class="set-row set-check"><input type="checkbox" id="set-snap" />
@@ -5319,6 +5385,8 @@
       starterCube: true,       // a new visit opens on the sample cube (off: an empty plate)
       startMode: "code",       // what the app opens in: code | design | last (the mode used last)
       lastMode: "code",        // the Code | Design side last switched to, for startMode "last"
+      toolbarSide: "top",      // Design mode's tool bar: top (a strip) | left (a column down the left edge)
+      arCube: false,           // the top-right "see it on your desk" cube; hidden unless turned on
     };
     const prefs = (() => {
       try { return { ...PREFS_DEFAULTS, ...JSON.parse(localStorage.getItem("brepcode-prefs") || "{}") }; }
@@ -9810,7 +9878,16 @@
       $("set-move-for-windows").checked = !!prefs.moveForWindows;
       $("set-starter-cube").checked = prefs.starterCube !== false;
       $("set-start-mode").value = prefs.startMode;
+      $("set-toolbar-side").value = prefs.toolbarSide;
+      $("set-ar-cube").checked = !!prefs.arCube;
     }
+    // Both are body classes: the Design toolbar refits on any body class
+    // change (design-shell.js), and CSS does the rest.
+    function applyChromePrefs() {
+      document.body.classList.toggle("bar-left", prefs.toolbarSide === "left");
+      document.body.classList.toggle("ar-off", !prefs.arCube);
+    }
+    applyChromePrefs();
     // Re-place every window the APP put somewhere; ones you moved stay put.
     // Design mode on or off: every open window moves to where that mode puts
     // it (Design: the right column, never over Design's own panels; Code: its
@@ -9881,6 +9958,8 @@
       if (e.target.checked) windowsChanged();
     });
     $("set-start-mode").addEventListener("change", (e) => setPref("startMode", e.target.value));
+    $("set-toolbar-side").addEventListener("change", (e) => { setPref("toolbarSide", e.target.value); applyChromePrefs(); });
+    $("set-ar-cube").addEventListener("change", (e) => { setPref("arCube", e.target.checked); applyChromePrefs(); });
     // Kernel: shown where SMLib ships, the desktop alpha (natively) and the
     // website (as WebAssembly), not in the standard desktop build. "js" is the
     // engine switch (JS kernel only); the other two pick the kernel the split
@@ -9974,7 +10053,7 @@ ${c.after}`;
     }
 
     $("set-reset").addEventListener("click", () => {
-      Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); syncSettingsUI(); rehomeWindows();
+      Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); applyChromePrefs(); syncSettingsUI(); rehomeWindows();
       toast("Settings are back to how they ship.");
     });
     syncSettingsUI();
@@ -17821,7 +17900,7 @@ ${joined}${SITE_TAIL}`), joined);
           // blueprint export down with it, always, silently caught.
           const dims = bb.isEmpty() ? null
             : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
-          const svg = await curved.curvedDrawingSVG(lastShape, { title: base, size: dims });
+          const svg = await curved.curvedDrawingSVG(lastShape, { title: base, size: dims, ...drawingOpts() });
           size = download(`${base}-drawing.svg`, svg, "image/svg+xml");
         } else if (fmt === "glb") {
           setStatus("busy", "Packing GLB for the web…");
@@ -18146,6 +18225,74 @@ ${joined}${SITE_TAIL}`), joined);
     // It is not built ahead on your first visit: nobody should pay an 11 MB
     // download for a button they never press. The first press earns the right,
     // and from then on every rebuild quietly refreshes the drawing.
+    // The export dialog's drawing options (style, ANSI/ISO, units, title
+    // block, hole callouts), remembered per browser.
+    const DW_KEY = "brepcode-drawing";
+    function drawingOpts() {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(DW_KEY) || "{}"); } catch { /* private window */ }
+      const val = (id, k) => { const el = $(id); return el ? (el.type === "checkbox" ? el.checked : el.value.trim()) : saved[k]; };
+      let fallbackMat = "";
+      try {
+        const k = localStorage.getItem("brepcode.propsMaterial");
+        fallbackMat = { pla: "PLA", petg: "PETG", abs: "ABS", asa: "ASA", nylon: "Nylon", tpu: "TPU", pc: "Polycarbonate", al: "Aluminium 6061",
+          steel: "Mild steel", stainless: "Stainless 304", ti: "Ti-6Al-4V", brass: "Brass", copper: "Copper", castiron: "Cast iron",
+          pom: "Acetal (Delrin)", glass: "Glass", wood: "Pine", resin: "Resin" }[k] || "";
+      } catch { /* none */ }
+      return {
+        style: val("dw-style", "style") || "blueprint", standard: val("dw-standard", "standard") || "ansi",
+        units: val("dw-units", "units") || "mm", material: val("dw-material", "material") || fallbackMat,
+        author: val("dw-author", "author") || "", rev: val("dw-rev", "rev") || "", holes: val("dw-holes", "holes") !== false,
+      };
+    }
+    {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(DW_KEY) || "{}"); } catch { /* private window */ }
+      const ids = { style: "dw-style", standard: "dw-standard", units: "dw-units", material: "dw-material", author: "dw-author", rev: "dw-rev", holes: "dw-holes" };
+      for (const [k, id] of Object.entries(ids)) {
+        const el = $(id);
+        if (!el) continue;
+        if (saved[k] !== undefined) { if (el.type === "checkbox") el.checked = !!saved[k]; else el.value = saved[k]; }
+        el.addEventListener("change", () => {
+          const o = drawingOpts();
+          try { localStorage.setItem(DW_KEY, JSON.stringify({ ...o, material: $("dw-material").value.trim() })); } catch { /* private window */ }
+        });
+      }
+      // Print / PDF: the drawing alone in a hidden frame, one page sized to
+      // its own proportions, then the system print dialog (which offers Save
+      // as PDF everywhere). White sheets print as they are; the dark ones keep
+      // their background, so "Background graphics" must be on to see them.
+      $("dw-print")?.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (!lastShape) { setStatus("err", "Build the model first."); return; }
+        try {
+          setStatus("busy", "Projecting the drawing to print…");
+          const curved = await getCurved();
+          await curved.loadReplicad();
+          const bb = new THREE.Box3().setFromObject(modelGroup);
+          const dims = bb.isEmpty() ? null : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
+          const svg = await curved.curvedDrawingSVG(lastShape, { title: safeModelName(), size: dims, ...drawingOpts() });
+          const [w, h] = (/viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg) || [0, 1400, 1000]).slice(1).map(Number);
+          const frame = document.createElement("iframe");
+          frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+          document.body.appendChild(frame);
+          const doc = frame.contentDocument;
+          doc.open();
+          doc.write(`<!doctype html><meta charset="utf-8"><title>${esc(safeModelName())} drawing</title>`
+            + `<style>@page { size: ${w >= h ? "landscape" : "portrait"}; margin: 8mm; } html, body { margin: 0; }`
+            + ` svg { width: 100%; height: auto; max-height: 100vh; display: block; -webkit-print-color-adjust: exact; print-color-adjust: exact; }</style>`
+            + svg.replace(/^<\?xml[^>]*>\s*/, ""));
+          doc.close();
+          await new Promise((r) => setTimeout(r, 120));
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+          setStatus("ok", "Drawing sent to the print dialog. Pick Save as PDF there for a PDF.");
+          setTimeout(() => frame.remove(), 60_000);
+        } catch (err) {
+          setStatus("err", `The drawing didn't print: ${String(err?.message || err).slice(0, 120)}`);
+        }
+      });
+    }
     const BP_WARM_KEY = "brepcode-blueprint-warm";
     let bpWarm = localStorage.getItem(BP_WARM_KEY) === "1";
     let bp = null;            // the drawing on hand: { source, svg, url }
@@ -18197,7 +18344,7 @@ ${joined}${SITE_TAIL}`), joined);
         // overstates curved solids (see curvedDrawingSVG).
         const bb = new THREE.Box3().setFromObject(modelGroup);
         const dims = bb.isEmpty() ? null : ["x", "y", "z"].map((a) => bb.max[a] - bb.min[a]);
-        const svg = await curved.curvedDrawingSVG(lastShape, { title: safeModelName(), size: dims });
+        const svg = await curved.curvedDrawingSVG(lastShape, { title: safeModelName(), size: dims, ...drawingOpts() });
         bpDrop();
         bp = { source, svg, url: URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })) };
         // A projection this slow must never fire itself again — the next one
@@ -18249,7 +18396,7 @@ ${joined}${SITE_TAIL}`), joined);
       gcode: { kind: "slice", desc: "BETA - check the preview before you print it. Sliced here, with BRICK-STAGGERED perimeters: the outer wall stays put so the part measures right, while the inner walls alternate half a bead each layer so they interlock instead of stacking. Drag the slider to scrub the real toolpath layer by layer - what you see is read back out of the file itself. Enlarge to paint where support may and may not go.", opts: ["printer-row", "nozzle-row", "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row", "skin-row", "stagger-row", "supports-row", "style-row", "angle-row", "gcode-row", "gcode-text-row"] },
       step: { kind: "mono", ext: ".step", opts: ["step-variant-row"], desc: "CAD interchange as a faceted solid - opens in Fusion, FreeCAD, SolidWorks. Surfaces are triangulated." },
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
-      svg: { kind: "lines", ext: "-drawing.svg", desc: "A 3-view engineering drawing - front, top, side - as line art. Needs the precision kernel (first use downloads ~11 MB)." },
+      svg: { kind: "lines", ext: "-drawing.svg", opts: ["dw-look-row", "dw-title-row", "dw-print-row"], desc: "A 3-view engineering drawing - front, top, side and an isometric - with overall dimensions, hole callouts and a title block. Blueprint, white or dark; ANSI or ISO; mm or inches. Print / PDF puts it on paper. Needs the precision kernel (first use downloads ~11 MB)." },
       glb: { kind: "color", ext: ".glb", opts: ["glb-wrap-row"], desc: "The web's 3D format, colours and materials included - drops into <model-viewer>, three.js, Babylon, Blender." },
       embed: { kind: "color", ext: ".html", opts: ["glb-wrap-row"], desc: "A single self-contained HTML page with the model and a viewer inside - host it anywhere, no dependencies." },
     };
@@ -19204,7 +19351,7 @@ ${joined}${SITE_TAIL}`), joined);
       }
       syncGroupControls(fmt);
       $("exp-desc").textContent = spec.desc;
-      for (const row of ["mesh-variant-row", "step-variant-row", "glb-wrap-row",
+      for (const row of ["mesh-variant-row", "step-variant-row", "glb-wrap-row", "dw-look-row", "dw-title-row", "dw-print-row",
         "short-row", "publish-row", "mf-colour-row", "mf-printer-row", "mf-nozzle-row", "plate-row", "printer-row", "nozzle-row",
         "layer-row", "linewidth-row", "flow-row", "walls-row", "infill-row", "pattern-row",
         "skin-row", "stagger-row",
@@ -19536,7 +19683,7 @@ let SIMPLIFY_TARGET = 10000;
         + "align-items:center; justify-content:center; font:600 20px/1.5 system-ui;"
         + "color:#eaf3ff; text-align:center; pointer-events:none";
       overlay.innerHTML = `<div>Drop to open<div style="font:400 14px/1.6 system-ui; color:#bcd8f5; margin-top:6px">`
-        + `.bcode restores the editable model · .js / .scad / .py open as code · .step opens as code · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
+        + `.bcode restores the editable model · .js / .scad / .py open as code · .step opens as code · .stl / .3mf / .obj / .svg / .step / .igs import as a mesh</div></div>`;
       document.body.appendChild(overlay);
       const show = (on) => { overlay.style.display = on ? "flex" : "none"; };
 
@@ -19560,7 +19707,7 @@ let SIMPLIFY_TARGET = 10000;
     // and go straight to a tool; "Always just open" restores the old
     // straight-in import. A ?tool= link has already said what it came for, so
     // its file skips the question.
-    const INCOMING = /\.(bcode|stl|3mf|obj|svg|step|stp|js|mjs|jscad|scad|py|txt)$/i;
+    const INCOMING = /\.(bcode|stl|3mf|obj|svg|step|stp|igs|iges|js|mjs|jscad|scad|py|txt)$/i;
     async function openScript(file) {
       const text = (await file.text()).replace(/^\uFEFF/, "");
       if (!text.trim()) { setStatus("err", `${file.name} is empty.`); return; }
@@ -19578,7 +19725,7 @@ let SIMPLIFY_TARGET = 10000;
     }
     async function handleIncomingFile(file) {
       if (!INCOMING.test(file.name)) {
-        setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .js, .scad, .py, .stl, .3mf, .obj, .svg, or .step.`);
+        setStatus("err", `${file.name} isn't a file BREPcode can open — try .bcode, .js, .scad, .py, .stl, .3mf, .obj, .svg, .step or .igs.`);
         return;
       }
       if (/\.bcode$/i.test(file.name)) return openProject(file, await file.arrayBuffer());
@@ -20448,7 +20595,7 @@ let SIMPLIFY_TARGET = 10000;
     function pickAFile() {
       const inp = document.createElement("input");
       inp.type = "file";
-      inp.accept = ".stl,.3mf,.obj,.bcode,.step,.stp,.svg";
+      inp.accept = ".stl,.3mf,.obj,.bcode,.step,.stp,.igs,.iges,.svg";
       inp.onchange = () => { const f = inp.files?.[0]; if (f) handleIncomingFile(f); };
       inp.click();
     }
@@ -21395,6 +21542,14 @@ let SIMPLIFY_TARGET = 10000;
           const cv = await getCurved();
           stepStats = {};
           contents = await cv.stepToStl(buf, file.name, { stats: stepStats });
+        } else if (ext === "igs" || ext === "iges") {
+          // IGES: OCCT's reader again, from occt-import-js (viewer/iges.js;
+          // ~7 MB on first use), tessellated at the same 0.05 mm
+          setStatus("busy", "Reading IGES — loading the IGES reader…");
+          await new Promise((r) => setTimeout(r, 30));
+          const { igesToStl } = await import("./iges.js");
+          stepStats = {};
+          contents = await igesToStl(buf, file.name, { stats: stepStats });
         } else if (ext === "obj") {
           // Coloured OBJs (vertex colours — BREPcode's own exports carry them,
           // and so do Blender's) take the parts road so the colour SURVIVES:
@@ -21679,7 +21834,9 @@ let SIMPLIFY_TARGET = 10000;
           // rather than let it fail later with something less explicable.
           ? `Imported <b>${esc(file.name)}</b> (${size}), but it came back as an <b>open shell</b> — `
             + `${stepStats.openEdges.toLocaleString()} unjoined edges, so it is a surface, not a solid. `
-            + `That happens with STEP files carrying <i>tessellated</i> geometry rather than real surfaces. `
+            + (/\.ig(e)?s$/i.test(file.name)
+              ? `IGES files often carry trimmed surfaces rather than a solid. `
+              : `That happens with STEP files carrying <i>tessellated</i> geometry rather than real surfaces. `)
             + `You can look at it and measure it, but booleans and slicing need a closed solid — `
             + `re-export it from the source CAD as a solid STEP (AP203/AP214/AP242 b-rep) if you need to cut it.`
           : `Imported <b>${esc(file.name)}</b> (${size}) — it's a real solid now. Edit it: wrap in <code>difference(…, cylinder(…))</code> to drill holes, <code>union(…)</code> to add a frame, or <code>stretch({ axis:'x', by:25 }, …)</code> to make it longer. Press <b>K</b> → “Edit a part” for snippets.`

@@ -1,6 +1,6 @@
 # Desktop builds: BREPcode (standard, Rust kernel) and BREPcode Alpha (NVIDIA's
 # SMLib kernel first, Rust and the JS kernel as fallbacks), for Apple Silicon
-# and Windows. Every run uploads the apps as workflow artifacts; a v* tag also
+# Windows and Linux (AppImage). Every run uploads the apps as workflow artifacts; a v* tag also
 # puts them on a DRAFT GitHub release, which stays private until published.
 name: Desktop builds
 
@@ -26,6 +26,7 @@ jobs:
           - { label: "Mac Alpha (NVIDIA kernel)",  os: macos-14,       script: "desktop:build:mac:alpha", nvidia: true,  out: "dist-desktop/*.dmg" }
           - { label: "Windows",                    os: windows-latest, script: "desktop:build:public",    nvidia: false, out: "dist-desktop/*.exe" }
           - { label: "Windows Alpha (NVIDIA kernel)", os: windows-latest, script: "desktop:build:alpha", nvidia: true,  out: "dist-desktop/*.exe" }
+          - { label: "Linux (AppImage)",           os: ubuntu-22.04,   script: "desktop:build:linux",     nvidia: false, out: "dist-desktop/*.AppImage" }
     env:
       # unsigned builds: don't go looking for a signing identity
       CSC_IDENTITY_AUTO_DISCOVERY: "false"

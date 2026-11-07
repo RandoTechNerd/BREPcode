@@ -421,8 +421,16 @@ export function initDesignShell(host) {
     if (on) {
       paintPmenu();
       const r = bar.getBoundingClientRect();
-      pmenu.style.top = `${Math.round(r.bottom + 6)}px`;
-      pmenu.style.right = `${Math.max(10, Math.round(innerWidth - r.right))}px`;
+      if (column()) {                                   // beside the column, level with its button
+        const b = pmore.getBoundingClientRect();
+        pmenu.style.right = "auto";
+        pmenu.style.left = `${Math.round(r.right + 6)}px`;
+        pmenu.style.top = `${Math.round(Math.max(10, Math.min(b.top, innerHeight - 320)))}px`;
+      } else {
+        pmenu.style.left = "auto";
+        pmenu.style.top = `${Math.round(r.bottom + 6)}px`;
+        pmenu.style.right = `${Math.max(10, Math.round(innerWidth - r.right))}px`;
+      }
     }
     pmenu.classList.toggle("open", on);
     pmore.setAttribute("aria-expanded", String(on));
@@ -448,6 +456,10 @@ export function initDesignShell(host) {
   // Fit the thin toolbar to the room it has: tools come off the END into the
   // menu (snap first, then the last tool, and so on; the Select group always
   // stays) until the rest fits. Re-run whenever that room can change.
+  // Settings > Tool bar "Down the left side" (body.bar-left, wide screens):
+  // the bar is a column, so it runs out of HEIGHT, not width.
+  const column = () => document.body.classList.contains("bar-left") && !phone.matches;
+  const overflows = () => column() ? bar.scrollHeight > bar.clientHeight + 1 : bar.scrollWidth > bar.clientWidth + 1;
   function fitBar() {
     for (const el of bar.querySelectorAll(".dz-over")) el.classList.remove("dz-over");
     bar.classList.remove("dz-overflow");
@@ -455,14 +467,14 @@ export function initDesignShell(host) {
     // a phone always has the menu (everything past the first group is in it);
     // on a thin one the first group gives up its last tools too
     if (phone.matches) bar.classList.add("dz-overflow");
-    if (bar.scrollWidth <= bar.clientWidth + 1) { markPmore(); return; }
+    if (!overflows()) { markPmore(); return; }
     bar.classList.add("dz-overflow");
     const groups = [...bar.querySelectorAll(".dz-g")];
     const queue = phone.matches
       ? [...groups[0].querySelectorAll(".dz-t")].slice(1).reverse()
       : [groups[groups.length - 1], ...groups.slice(1, -1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse()];
     for (const el of queue) {
-      if (bar.scrollWidth <= bar.clientWidth + 1) break;
+      if (!overflows()) break;
       el.classList.add("dz-over");
       const g = el.closest(".dz-g");          // a group with nothing left goes too (its divider with it)
       if (g && el !== g && !g.querySelector(".dz-t:not(.dz-over)")) g.classList.add("dz-over");
@@ -1157,8 +1169,9 @@ export function initDesignShell(host) {
     fly.setAttribute("role", "menu");
     fly.innerHTML = subs.map((s, i) => `<button type="button" role="menuitem" data-i="${i}">${esc(s.label)}</button>`).join("");
     const r = b.getBoundingClientRect();
-    fly.style.left = `${Math.round(r.left)}px`;
-    fly.style.top = `${Math.round(r.bottom + 6)}px`;
+    const side = column();                    // a column toolbar: the flyout opens to its right
+    fly.style.left = `${Math.round(side ? r.right + 8 : r.left)}px`;
+    fly.style.top = `${Math.round(side ? r.top : r.bottom + 6)}px`;
     document.body.appendChild(fly);
     fly.addEventListener("click", (e) => {
       const i = e.target.closest("[data-i]")?.dataset.i;

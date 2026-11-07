@@ -107,3 +107,17 @@ mac:
 
 dmg:
   title: ${productName}
+
+# Linux: one AppImage per arch, the Linux counterpart of the portable exe (no
+# install, no root: chmod +x and run). glibc 2.31+ (Ubuntu 20.04 and newer),
+# set by the runner it is built on. Built on CI (ubuntu runners), not here.
+# x64 only for now: the native Rust kernel is compiled for the runner's own
+# arch, so an arm64 AppImage would carry an x64 addon.
+linux:
+  icon: desktop/icon.png
+  category: Graphics
+  synopsis: Code-CAD with an exact B-rep kernel
+  target:
+    - target: AppImage
+      arch: [x64]
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}

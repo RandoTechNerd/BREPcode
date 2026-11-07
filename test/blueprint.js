@@ -223,5 +223,39 @@ console.log("\nthe dimensions say the part's real size\n");
   check("...and which projection it is", /Third-angle/.test(svg));
 }
 
+// Hole callouts, read off the faces: a through hole, a blind one, and a
+// counterbore riding on the hole under it. The part also has a boss, so it is
+// taller than the plate: "through" must not mean "reaches the overall top".
+console.log("\nhole callouts, sheet styles, ISO and inches\n");
+{
+  let part = cube([80, 50, 12]);
+  for (const [x, y] of [[10, 10], [70, 10], [10, 40], [70, 40]]) part = difference(part, translate([x, y, -1], cylinder({ r: 3, h: 20, $fn: 32 })));
+  part = difference(part, translate([55, 25, 4], cylinder({ r: 8, h: 20, $fn: 48 })));
+  part = difference(part, translate([25, 25, -1], cylinder({ r: 2.5, h: 20, $fn: 32 })));
+  part = difference(part, translate([25, 25, 7], cylinder({ r: 5, h: 10, $fn: 32 })));
+  part = union(part, translate([40, 45, 12], cylinder({ r: 3, h: 6, $fn: 32 })));
+  const size = [80, 50, 18];
+  const svg = await curvedDrawingSVG(part, { size, title: "holes" });
+  check("four through holes are one callout", svg.includes(">4× Ø6.0 THRU<"), [...svg.matchAll(/>([^<]*(THRU|↧)[^<]*)</g)].map((m) => m[1]).join(" | "));
+  check("a blind hole gives its depth", svg.includes(">Ø16.0 ↧ 8.0<"));
+  check("a counterbore rides on its hole", svg.includes(">Ø5.0 THRU ⌴ Ø10.0 ↧ 5.0<"));
+  check("the boss is not called a hole", !/Ø6\.0 ↧/.test(svg));
+  const s = sheetOf(svg);
+  check("...and the callouts stay on the sheet", s.ink[2] <= s.w && s.ink[3] <= s.h, JSON.stringify(s.ink));
+  const off = await curvedDrawingSVG(part, { size, holes: false });
+  check("holes: false leaves them off", !/THRU/.test(off));
+
+  const white = await curvedDrawingSVG(part, { size, style: "white", standard: "iso", units: "in", material: "Brass", author: "RTN", rev: "C" });
+  check("white style is black on white", white.includes('fill="#ffffff"') && !white.includes("#0d2c52"));
+  check("ISO says first-angle", /First-angle projection/.test(white));
+  check("ISO draws the view from the left", white.includes(">LEFT<") && !white.includes(">RIGHT<"));
+  check("ISO puts the top view under the front", (() => {
+    const y = (lbl) => Number(new RegExp(`y="([\\d.]+)"[^>]*>${lbl}<`).exec(white)?.[1]);
+    return y("TOP") > y("FRONT");
+  })());
+  check("inches: the sheet says so and converts", /Units: in/.test(white) && white.includes(">3.150<"));
+  check("the title block carries material, author and rev", /Material: Brass/.test(white) && /Drawn: RTN/.test(white) && /Rev C/.test(white));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -567,9 +567,101 @@ ${pathsOf(hid)}
 // right) laid out in third-angle projection with a border and a title block —
 // visible edges solid, hidden edges dashed. Views share scale and align by their
 // common dimensions (front↔top share width, front↔right share height).
+//
+// opts (all optional):
+//   style     "blueprint" (white on blue, the default) | "white" (black on
+//             white, the traditional print) | "dark"
+//   standard  "ansi" (third-angle, the default) | "iso" (first-angle: the top
+//             view goes UNDER the front, and the view from the left sits to
+//             its right)
+//   units     "mm" (default) | "in": every number on the sheet, model stays mm
+//   holes     false turns off the hole callouts on the top view
+//   material, author, rev, date   title block fields
+export const DRAWING_STYLES = {
+  blueprint: { bg: "#0d2c52", border: "#8fb8e6", vis: "#eaf3ff", hid: "#7fb0e0", label: "#bcd8f5", dim: "#8fb8e6", dimText: "#dbe9fb", title: "#ffffff" },
+  white: { bg: "#ffffff", border: "#1a1a1a", vis: "#111111", hid: "#808080", label: "#333333", dim: "#333333", dimText: "#111111", title: "#000000" },
+  dark: { bg: "#121722", border: "#5a6b88", vis: "#e6ecf5", hid: "#7a8aa8", label: "#aab6cc", dim: "#8ea0c0", dimText: "#dfe6f3", title: "#ffffff" },
+};
+
+// The round holes in a solid that run along Z (what a top view shows end on):
+// [{ x, y, r, z0, z1, floor }] in model mm, one per hole, rims merged. A hole,
+// not a boss: the cylinder's outward normal points IN at its own axis.
+// floor: "thru" (the bottom rim opens onto a face that runs on outward),
+// "blind" (a flat disc closes it) or "step" (it stands on a ring around a
+// smaller coaxial hole: a counterbore). Read from the faces because this OCCT
+// build has no point-in-solid classifier.
+const zCircle = (e) => {
+  if (e.geomType !== "CIRCLE") return null;
+  const a = e.pointAt(0), b = e.pointAt(0.5), q = e.pointAt(0.25);
+  if (Math.abs(a.z - b.z) > 1e-4 || Math.abs(a.z - q.z) > 1e-4) return null;      // axis not along Z
+  const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
+  const r = Math.hypot(a.x - x, a.y - y);
+  return r < 1e-3 ? null : { x, y, r, z: a.z, p: a };
+};
+const sameCircle = (c, d) => Math.abs(c.x - d.x) < 1e-3 && Math.abs(c.y - d.y) < 1e-3 && Math.abs(c.z - d.z) < 1e-3 && Math.abs(c.r - d.r) < 1e-3;
+export function zHoles(shape) {
+  const out = [];
+  const key = (x, y, r) => `${x.toFixed(2)},${y.toFixed(2)},${r.toFixed(3)}`;
+  const seen = new Map();
+  let faces = [];
+  try { faces = shape.faces; } catch { return out; }
+  // every flat face with its circles and how many edges it has in all
+  const flats = [];
+  for (const f of faces) {
+    try {
+      if (f.geomType !== "PLANE") continue;
+      const edges = f.edges;
+      flats.push({ n: edges.length, circles: edges.map(zCircle).filter(Boolean) });
+    } catch { /* skip a face that will not answer */ }
+  }
+  const floorOf = (c) => {
+    const flat = flats.find((fl) => fl.circles.some((d) => sameCircle(c, d)));
+    if (!flat) return "thru";
+    if (flat.n === 1) return "blind";
+    if (flat.n === 2 && flat.circles.length === 2) {
+      const o = flat.circles.find((d) => !sameCircle(c, d));
+      if (o && Math.abs(o.x - c.x) < 1e-3 && Math.abs(o.y - c.y) < 1e-3 && o.r < c.r) return "step";
+    }
+    return "thru";
+  };
+  for (const f of faces) {
+    let kind = "";
+    try { kind = f.geomType; } catch { continue; }
+    if (kind !== "CYLINDRE") continue;
+    let circles = [];
+    try { circles = f.edges.map(zCircle).filter(Boolean); } catch { continue; }
+    if (!circles.length) continue;
+    const c0 = circles[0];
+    const zs = circles.map((c) => c.z);
+    const z0 = Math.min(...zs), z1 = Math.max(...zs);
+    // the outward normal halfway up the wall, against the way to the axis
+    let isHole = false;
+    try {
+      const n = f.normalAt([c0.p.x, c0.p.y, (z0 + z1) / 2]);
+      isHole = n.x * (c0.p.x - c0.x) + n.y * (c0.p.y - c0.y) < 0;
+    } catch { /* no normal: leave it out rather than call a boss a hole */ }
+    if (!isHole) continue;
+    const k = key(c0.x, c0.y, c0.r);
+    const was = seen.get(k);
+    const bottom = circles.find((c) => c.z === z0);
+    if (was) {
+      if (z0 < was.z0) { was.z0 = z0; was.floor = floorOf(bottom); }
+      was.z1 = Math.max(was.z1, z1);
+      continue;
+    }
+    const h = { x: c0.x, y: c0.y, r: c0.r, z0, z1, floor: floorOf(bottom) };
+    seen.set(k, h);
+    out.push(h);
+  }
+  return out;
+}
+
 export async function curvedDrawingSVG(root, opts = {}) {
   const r = await loadReplicad();
   const shape = await buildCurved(root);
+  const C = DRAWING_STYLES[opts.style] || DRAWING_STYLES.blueprint;
+  const isoStd = String(opts.standard || "").toLowerCase() === "iso";
+  const inches = String(opts.units || "").toLowerCase() === "in";
 
   const pathsOf = mergeSvgPaths;
   // A projection can legitimately come back with nothing in it — a sphere seen
@@ -592,7 +684,7 @@ export async function curvedDrawingSVG(root, opts = {}) {
     const [x, y, w, h] = (vis.match(/viewBox="([^"]+)"/)?.[1] || "0 0 10 10").split(/\s+/).map(Number);
     return { x, y, w: w || 10, h: h || 10, vis: pathsOf(vis), hid: pathsOf(hid) };
   };
-  const front = project("front"), top = project("top"), right = project("right");
+  const front = project("front"), top = project("top"), right = project(isoStd ? "left" : "right");
   // an isometric pictorial view from the [1,1,1] corner for the spare corner
   const isoCam = new r.ProjectionCamera([100, 100, 100]);
   isoCam.lookAt([0, 0, 0]);
@@ -612,22 +704,53 @@ export async function curvedDrawingSVG(root, opts = {}) {
   // aligned when the part's proportions change.
   const LBL = 56;                                       // view label + dimension band
   const DIMPAD = 48;                                    // side band for vertical dimensions
+  // ---- hole callouts, worked out before the layout ------------------------
+  // Each size of hole once, with a count: "4× Ø6.0 THRU", "Ø10.0 ↧ 8.0", and
+  // a counterbore rides on the hole it stands over: "Ø6 THRU ⌴ Ø11 ↧ 6".
+  // Their text width decides where the isometric may go, so it comes first.
+  const fmt = inches ? (v) => (v / 25.4).toFixed(3) : (v) => (Math.round(v * 10) / 10).toFixed(1);
+  const holeGroups = [];
+  if (opts.holes !== false) {
+    const all = zHoles(shape);
+    const steps = all.filter((h) => h.floor === "step");
+    const under = (h) => steps.find((s) => Math.abs(s.x - h.x) < 1e-3 && Math.abs(s.y - h.y) < 1e-3 && s.r > h.r && Math.abs(s.z0 - h.z1) < 1e-3);
+    const groups = new Map();
+    for (const h of all) {
+      if (h.floor === "step" && all.some((o) => o !== h && under(o) === h)) continue;
+      const thru = h.floor === "thru";
+      const cb = under(h);
+      const k = `${(h.r * 2).toFixed(2)}|${thru ? "T" : (h.z1 - h.z0).toFixed(2)}|${cb ? `${(cb.r * 2).toFixed(2)}/${(cb.z1 - cb.z0).toFixed(2)}` : ""}`;
+      if (!groups.has(k)) groups.set(k, { d: h.r * 2, thru, depth: h.z1 - h.z0, cb, at: [] });
+      groups.get(k).at.push(h);
+    }
+    for (const g of [...groups.values()].slice(0, 8)) {
+      g.text = `${g.at.length > 1 ? `${g.at.length}× ` : ""}Ø${fmt(g.d)} ${g.thru ? "THRU" : `↧ ${fmt(g.depth)}`}`
+        + (g.cb ? ` ⌴ Ø${fmt(g.cb.r * 2)} ↧ ${fmt(g.cb.z1 - g.cb.z0)}` : "");
+      holeGroups.push(g);
+    }
+  }
+  const CALLOUT_W = holeGroups.reduce((w, g) => Math.max(w, g.text.length * 12 * 0.62), 0);
+
   const fW = front.w * S, fH = front.h * S;
   const tW = top.w * S, tH = top.h * S, rW = right.w * S, rH = right.h * S;
   // third-angle: TOP above FRONT (shared width), RIGHT to the right of FRONT (shared height)
+  // first-angle (ISO): TOP under FRONT, the view from the LEFT to its right
   const LEFT = M + DIMPAD;
-  const topX = LEFT, topY = M;
-  const frontX = LEFT, frontY = topY + tH + LBL + G;
+  let topX, topY, frontX, frontY;
+  if (isoStd) { frontX = LEFT; frontY = M; topX = LEFT; topY = frontY + fH + LBL + G; }
+  else { topX = LEFT; topY = M; frontX = LEFT; frontY = topY + tH + LBL + G; }
   const rightX = LEFT + Math.max(fW, tW) + G, rightY = frontY;
 
   let sheetW = Math.max(rightX + rW + DIMPAD, frontX + fW, topX + tW) + M;
-  const titleH = 90;
-  let sheetH = frontY + fH + LBL + 20 + titleH + M / 2;
+  const titleH = 112;
+  let sheetH = Math.max(frontY + fH, topY + tH) + LBL + 20 + titleH + M / 2;
 
-  // the isometric drops into the spare corner: right of TOP, above the RIGHT view
-  const isoBoxX = rightX, isoBoxY = topY;
-  const isoBoxW = sheetW - M - isoBoxX;
-  const isoBoxH = frontY - topY - G;
+  // the isometric drops into the spare corner: right of TOP, beside the side view
+  // ...unless the top view's hole callouts need that room: then it steps right
+  // of their column (and the sheet, sized from the ink, grows to match)
+  const isoBoxX = Math.max(rightX, CALLOUT_W ? topX + tW + 18 + 16 + CALLOUT_W + G / 2 : 0), isoBoxY = topY;
+  const isoBoxW = Math.max(sheetW - M - isoBoxX, rW, 160);
+  const isoBoxH = isoStd ? tH + LBL : frontY - topY - G;
   const isoS = 0.9 * Math.min(isoBoxW / iso.w, isoBoxH / iso.h);
   const isoPX = isoBoxX + (isoBoxW - iso.w * isoS) / 2;
   const isoPY = isoBoxY + (isoBoxH - iso.h * isoS) / 2;
@@ -669,16 +792,16 @@ export async function curvedDrawingSVG(root, opts = {}) {
     const sw = 1.1 / sc;                                 // constant on-paper weight
     const t = `translate(${px} ${py}) scale(${sc}) translate(${-p.x} ${-p.y})`;
     return `<g transform="${t}">
-    <g fill="none" stroke="#eaf3ff" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${p.vis}</g>
-    <g fill="none" stroke="#7fb0e0" stroke-width="${sw * 0.7}" stroke-dasharray="${sw * 4} ${sw * 3}">${p.hid}</g>
+    <g fill="none" stroke="${C.vis}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${p.vis}</g>
+    <g fill="none" stroke="${C.hid}" stroke-width="${sw * 0.7}" stroke-dasharray="${sw * 4} ${sw * 3}">${p.hid}</g>
   </g>
-  <text x="${px}" y="${py + p.h * sc + 22}" fill="#bcd8f5" font-family="monospace" font-size="15">${label}</text>`;
+  <text x="${px}" y="${py + p.h * sc + 22}" fill="${C.label}" font-family="monospace" font-size="15">${label}</text>`;
   };
 
   // Dimensions, in real model units. `sc` converts model units to paper units,
   // so the numbers are the part's actual size regardless of sheet scale.
-  const mm = (v) => (Math.round(v * 10) / 10).toFixed(1);
-  const DIM_G = `stroke="#8fb8e6" stroke-width="1" fill="#dbe9fb" font-family="monospace" font-size="12"`;
+  const mm = fmt;
+  const DIM_G = `stroke="${C.dim}" stroke-width="1" fill="${C.dimText}" font-family="monospace" font-size="12"`;
   const dimH = (px, py, w, value) => (noteBox(px, py - 7, w, 12),
     noteText(px + w / 2, py - 7, mm(value), 12, 0), `
   <g ${DIM_G}>
@@ -821,15 +944,51 @@ export async function curvedDrawingSVG(root, opts = {}) {
   const viewsSVG = [
     view(front, frontX, frontY, "FRONT"),
     view(top, topX, topY, "TOP"),
-    view(right, rightX, rightY, "RIGHT"),
+    view(right, rightX, rightY, isoStd ? "LEFT" : "RIGHT"),
     view(iso, isoPX, isoPY, "ISOMETRIC", isoS),
   ].join("\n");
+
+  // ---- hole callouts on the top view --------------------------------------
+  // Each size of hole once, with a count: "4× Ø6.0 THRU", "Ø10.0 ↧ 8.0".
+  // The leader starts on the first hole's rim and runs up and right clear of
+  // the view; later callouts stack under one another so they never collide.
+  // The top view draws model X, Y straight onto its own x, y (measured).
+  // The labels were measured before the layout (holeGroups, CALLOUT_W), so the
+  // isometric has already stepped right to leave them their column. Sorted
+  // top to bottom by where each leader starts, and each shelf at least one
+  // line under the last, so neither the text nor the leaders cross.
+  let holesSVG = "";
+  {
+    const toTop = (x, y) => [topX + (x - top.x) * S, topY + (y - top.y) * S];
+    const placed = holeGroups.map((g) => {
+      const h = g.at[0];
+      const [cx, cy] = toTop(h.x, h.y);
+      const rr = h.r * S;
+      return { g, ax: cx + rr * Math.SQRT1_2, ay: cy - rr * Math.SQRT1_2 };
+    }).sort((a, b) => a.ay - b.ay);
+    let lastBy = -Infinity;
+    for (const { g, ax, ay } of placed) {
+      const bx = topX + tW + 18;
+      const by = Math.max(topY - 6, ay - 26, lastBy + 18);
+      lastBy = by;
+      const text = g.text;
+      note(ax, ay); note(bx, by);
+      noteText(bx + 16, by + 4, text, 12);
+      holesSVG += `
+  <g ${DIM_G}>
+    <circle cx="${ax.toFixed(2)}" cy="${ay.toFixed(2)}" r="1.8" stroke="none"/>
+    <polyline fill="none" points="${ax.toFixed(2)},${ay.toFixed(2)} ${bx.toFixed(2)},${by.toFixed(2)} ${(bx + 12).toFixed(2)},${by.toFixed(2)}"/>
+    <text x="${(bx + 16).toFixed(2)}" y="${(by + 4).toFixed(2)}" stroke="none">${text}</text>
+  </g>`;
+    }
+  }
 
   const dimensions = [
     hDim(top, topX, topY + tH + 44, sizeX),      vDim(top, topX - 24, topY, sizeY),
     hDim(front, frontX, frontY + fH + 44, sizeX), vDim(front, frontX - 24, frontY, sizeZ),
     hDim(right, rightX, rightY + rH + 44, sizeY), vDim(right, rightX + rW + 24, rightY, sizeZ),
     isoDims,
+    holesSVG,
   ].join("\n");
 
   // THE SHEET IS SIZED LAST, from everything that was actually drawn.
@@ -838,8 +997,9 @@ export async function curvedDrawingSVG(root, opts = {}) {
   // `ink` now holds the true extent of the drawing — including the isometric's
   // dimensions, which is what used to fall off the edge. The page expands to
   // fit the drawing rather than the drawing being trusted to fit the page.
-  const name = (opts.title || "BREPcode model").replace(/[<&>]/g, "");
-  const tbW = 360;
+  const clean = (t) => String(t || "").replace(/[<&>]/g, "").slice(0, 40);
+  const name = clean(opts.title || "BREPcode model");
+  const tbW = 420;
   // A sheet narrower than the title block cannot hold it — that is how a
   // Ø10x200 rod ended up with its title block starting at x = -58.
   const inkW = Math.max(ink.x1 - ink.x0, 1), inkH = Math.max(ink.y1 - ink.y0, 1);
@@ -850,16 +1010,20 @@ export async function curvedDrawingSVG(root, opts = {}) {
   sheetW = wantW; sheetH = wantH;
   const tbR = sheetW - M / 2, tbB = sheetH - M / 2;      // inner border edges
   const tbx = tbR - tbW, tb = tbB - titleH;
+  const date = clean(opts.date || new Date().toISOString().slice(0, 10));
+  const drawn = clean(opts.author);
   const titleBlock = `
-  <g font-family="monospace" fill="#dbe9fb">
-    <rect x="${tbx}" y="${tb}" width="${tbW}" height="${titleH}" fill="none" stroke="#8fb8e6" stroke-width="1.5"/>
-    <line x1="${tbx}" y1="${tb + 34}" x2="${tbR}" y2="${tb + 34}" stroke="#8fb8e6" stroke-width="1"/>
-    <line x1="${tbR - 140}" y1="${tb + 34}" x2="${tbR - 140}" y2="${tbB}" stroke="#8fb8e6" stroke-width="1"/>
-    <text x="${tbx + 12}" y="${tb + 23}" font-size="18" fill="#ffffff">${name}</text>
-    <text x="${tbx + 12}" y="${tb + 56}" font-size="12">Units: mm</text>
-    <text x="${tbx + 12}" y="${tb + 78}" font-size="12">Third-angle projection</text>
-    <text x="${tbR - 128}" y="${tb + 56}" font-size="12">Scale ${S >= 1 ? S.toFixed(2) : "1:" + (1 / S).toFixed(1)}</text>
-    <text x="${tbR - 128}" y="${tb + 78}" font-size="12">BREPcode</text>
+  <g font-family="monospace" fill="${C.dimText}">
+    <rect x="${tbx}" y="${tb}" width="${tbW}" height="${titleH}" fill="none" stroke="${C.border}" stroke-width="1.5"/>
+    <line x1="${tbx}" y1="${tb + 34}" x2="${tbR}" y2="${tb + 34}" stroke="${C.border}" stroke-width="1"/>
+    <line x1="${tbR - 170}" y1="${tb + 34}" x2="${tbR - 170}" y2="${tbB}" stroke="${C.border}" stroke-width="1"/>
+    <text x="${tbx + 12}" y="${tb + 23}" font-size="18" fill="${C.title}">${name}</text>
+    <text x="${tbx + 12}" y="${tb + 54}" font-size="12">Units: ${inches ? "in" : "mm"}</text>
+    <text x="${tbx + 12}" y="${tb + 74}" font-size="12">${isoStd ? "First-angle projection (ISO)" : "Third-angle projection"}</text>
+    <text x="${tbx + 12}" y="${tb + 94}" font-size="12">Material: ${clean(opts.material) || "-"}</text>
+    <text x="${tbR - 158}" y="${tb + 54}" font-size="12">Scale ${S >= 1 ? S.toFixed(2) : "1:" + (1 / S).toFixed(1)}</text>
+    <text x="${tbR - 158}" y="${tb + 74}" font-size="12">Rev ${clean(opts.rev) || "A"} · ${date}</text>
+    <text x="${tbR - 158}" y="${tb + 94}" font-size="12">${drawn ? `Drawn: ${drawn}` : "BREPcode"}</text>
   </g>`;
 
   // The drawing is shifted as one group so nothing has to be re-placed: the
@@ -870,8 +1034,8 @@ export async function curvedDrawingSVG(root, opts = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sheetW.toFixed(0)} ${sheetH.toFixed(0)}" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" data-ink="${
     [ink.x0 + shiftX, ink.y0 + shiftY, ink.x1 + shiftX, ink.y1 + shiftY].map((n) => n.toFixed(1)).join(" ")}">
-  <rect x="0" y="0" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" fill="#0d2c52"/>
-  <rect x="${M / 2}" y="${M / 2}" width="${sheetW - M}" height="${sheetH - M}" fill="none" stroke="#8fb8e6" stroke-width="2"/>
+  <rect x="0" y="0" width="${sheetW.toFixed(0)}" height="${sheetH.toFixed(0)}" fill="${C.bg}"/>
+  <rect x="${M / 2}" y="${M / 2}" width="${sheetW - M}" height="${sheetH - M}" fill="none" stroke="${C.border}" stroke-width="2"/>
   <g transform="translate(${shiftX.toFixed(2)} ${shiftY.toFixed(2)})">
   ${viewsSVG}
   ${dimensions}

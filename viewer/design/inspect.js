@@ -40,10 +40,11 @@ const LIGHTS = [["mat-ambient", "Ambient"], ["mat-key", "Key light"], ["mat-fill
 
 // A piece's own material name (finish("Brass", …), a preset, a spool) as one
 // of MATERIALS, or null: "Brass" -> brass, "Aluminium" / "aluminum" -> al,
-// "Stainless steel" -> steel, "Balsa" / "Oak" -> wood, "Silk PLA" -> pla.
+// "Stainless steel" -> stainless, "Balsa" / "Oak" -> wood, "Silk PLA" -> pla.
 export function materialOf(name) {
   const t = String(name || "");
-  for (const [k, re] of [["brass", /brass|bronze/i], ["al", /alumin/i], ["steel", /steel|iron|titanium/i], ["wood", /wood|balsa|oak|pine|walnut|maple/i]]) {
+  for (const [k, re] of [["brass", /brass|bronze/i], ["al", /alumin/i], ["stainless", /stainless/i], ["castiron", /cast iron/i], ["ti", /titanium/i],
+    ["copper", /copper/i], ["steel", /steel|iron/i], ["pom", /acetal|delrin|\bPOM\b/i], ["glass", /glass/i], ["wood", /wood|balsa|oak|pine|walnut|maple/i]]) {
     if (re.test(t)) return k;
   }
   return familyOf(t);
@@ -53,7 +54,7 @@ export function materialOf(name) {
 // "Filament — PETG" / "PETG - glossy" -> petg. null when it says no family.
 export function familyOf(text) {
   const t = String(text || "");
-  for (const [k, re] of [["petg", /\bPETG\b/i], ["pla", /\bPLA\b/i], ["abs", /\bABS\b/i], ["asa", /\bASA\b/i], ["tpu", /\bTPU\b/i], ["nylon", /\b(nylon|PA\d*)\b/i], ["resin", /\bresin\b/i]]) {
+  for (const [k, re] of [["petg", /\bPETG\b/i], ["pla", /\bPLA\b/i], ["abs", /\bABS\b/i], ["asa", /\bASA\b/i], ["tpu", /\bTPU\b/i], ["pc", /\b(PC|polycarbonate)\b/i], ["nylon", /\b(nylon|PA\d*)\b/i], ["resin", /\bresin\b/i]]) {
     if (re.test(t)) return k;
   }
   return null;
@@ -62,7 +63,10 @@ export function familyOf(text) {
 // g/cm³
 export const MATERIALS = [
   ["pla", "PLA", 1.24], ["petg", "PETG", 1.27], ["abs", "ABS", 1.04], ["asa", "ASA", 1.07], ["nylon", "Nylon", 1.14], ["tpu", "TPU", 1.21],
-  ["resin", "Resin (standard)", 1.15], ["al", "Aluminium", 2.7], ["steel", "Steel", 7.85], ["brass", "Brass", 8.5], ["wood", "Wood (pine)", 0.5],
+  ["pc", "Polycarbonate", 1.2], ["resin", "Resin (standard)", 1.15],
+  ["al", "Aluminium (6061)", 2.7], ["steel", "Steel (mild)", 7.85], ["stainless", "Stainless steel (304)", 8.0], ["castiron", "Cast iron", 7.2],
+  ["ti", "Titanium (Ti-6Al-4V)", 4.43], ["brass", "Brass", 8.5], ["copper", "Copper", 8.96],
+  ["pom", "Acetal (Delrin)", 1.41], ["glass", "Glass", 2.5], ["wood", "Wood (pine)", 0.5],
 ];
 
 // Volume, area, box and centre of mass of triangle meshes (world space).
