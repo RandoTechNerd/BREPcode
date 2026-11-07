@@ -4,10 +4,11 @@
 //   brepscript model.js -o part.stl
 //   brepscript model.js -D size=30 -D holes=4
 //   brepscript model.js --info
+//   brepscript part.step              (STEP -> editable code, as part.bcode)
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { resolve, basename, extname } from "node:path";
+import { resolve, basename, extname, dirname, join } from "node:path";
 import { build, toSTL, stats } from "./render.js";
 import { fromOpenSCAD, looksLikeOpenSCAD } from "./openscad.js";
 import { exactSTEP } from "./stepexport.js";
@@ -44,6 +45,14 @@ const HELP = `brepscript — OpenSCAD-style CLI for the BREP.io kernel
 
 Usage:
   brepscript <model.js|model.scad> [-o out.stl] [-D key=value]... [--info]
+  brepscript <part.step> [-o part.bcode | -o part.js]
+
+A STEP file is rebuilt as editable BREPcode: each body as extrudes with
+drilled holes, or a turned profile, with its sizes as dials, every body
+checked against the file. A body that cannot be rebuilt exactly stays the
+file's own solid (importedSolid). Default output: <part>.bcode, which carries
+those solids and opens in the app; -o part.js writes the code alone, with each
+kept solid as part-<body>.step beside it.
 
 Options:
   -o, --output FILE     Write STL here (default: <model>.stl)
@@ -84,6 +93,7 @@ async function main() {
   }
 
   const inputPath = resolve(process.cwd(), args.input);
+  if (/\.(step|stp)$/i.test(args.input)) return fromStep(inputPath, args);
 
   // .scad files (or --lang openscad) are translated; everything else is a JS module.
   let isScad = args.lang === "openscad" || args.lang === "scad";
@@ -156,6 +166,33 @@ async function main() {
   const outPath = resolve(process.cwd(), args.output ?? `${name}.stl`);
   writeFileSync(outPath, toSTL(result, name));
   console.error(`wrote ${outPath} in ${ms}ms`);
+}
+
+// STEP -> code (src/step2code-check.js): the per-body report on stderr, the
+// code (and the bodies kept as solids) written out
+async function fromStep(inputPath, args) {
+  const { convertStep } = await import("./step2code-check.js");
+  const name = basename(inputPath, extname(inputPath));
+  const t0 = Date.now();
+  const r = await convertStep(readFileSync(inputPath, "utf8"), { title: name });
+  for (const b of r.bodies) console.error(`  ${b.name}: ${b.ok ? `code (${b.kind === "revolve" ? "turned" : "extruded"})` : `kept as the file's solid: ${b.why}`}`);
+  const ok = r.bodies.filter((b) => b.ok).length;
+  console.error(`  ${ok} of ${r.bodies.length} bod${r.bodies.length === 1 ? "y" : "ies"} rebuilt as code, each checked against the file`);
+  const out = resolve(process.cwd(), args.output || join(dirname(inputPath), `${name}.bcode`));
+  if (/\.bcode$/i.test(out)) {
+    const { bcodeFile, packMeshes } = await import("../viewer/exporters.js");
+    // each kept solid's STEP, and its mesh as "<name>::mesh" (the app's own
+    // pairing: the mesh is what a kernel with no STEP reader builds from)
+    const files = new Map();
+    for (const i of r.imports) { files.set(i.name, i.step); if (i.mesh) files.set(`${i.name}::mesh`, i.mesh); }
+    const meshes = await packMeshes([...files.keys()], (n) => files.get(n));
+    writeFileSync(out, bcodeFile(r.code, { name, meshes }));
+  } else {
+    writeFileSync(out, r.code);
+    for (const im of r.imports) writeFileSync(join(dirname(out), im.name), im.step);
+    if (r.imports.length) console.error(`  ...and ${r.imports.length} kept solid${r.imports.length > 1 ? "s" : ""} beside it (${r.imports.map((i) => i.name).join(", ")}): import them in the app before building`);
+  }
+  console.error(`wrote ${out} in ${Date.now() - t0}ms`);
 }
 
 // Exit explicitly: the kernels leave timers/wasm workers alive, so the process

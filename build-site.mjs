@@ -108,7 +108,7 @@ const rewrite = (text) => rewrites.reduce((t, [a, b]) => t.split(a).join(b), tex
 const WITH_KEY = process.argv.includes("--with-locked-key");
 const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "curved.js",
   "trace.js", "lockbox.js", "codes.js", "svg.js", "recipes.js", "webllm.js", "catalogroute.js", "browserparts.js", "simplify.js", "tour.js", "filaments.js", "cutterkit.js",
-  "slicer.js",
+  "slicer.js", "stepcode.js",
   // short links. Only fetched when someone ticks the box, but leaving it out
   // ships a site where ticking it 404s — see test/shortlink.js, which checks
   // this list against every dynamic import in index.html so the next module

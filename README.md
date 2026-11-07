@@ -25,6 +25,13 @@ now four ways into the same model, and you can move between them mid-build:
 - **🧰 Import and edit it.** Bring in an STL, 3MF, OBJ or SVG, then drill it,
   stand it up, split and fill it, thicken its walls, shave the feet off, or add
   removable support fins.
+- **📐 Open a STEP file as code.** Each body comes back as BREPcode: layers of
+  extrudes with drilled and counterbored holes, or a turned profile, with its
+  hole sizes and thicknesses as dials. Every body is rebuilt on the exact kernel
+  and checked against the file (volume, area, centroid, inertia and thousands
+  of inside/outside points); one that doesn't match exactly stays the file's
+  own solid, so the code never quietly differs from the part. Also on the CLI:
+  `brepscript part.step` writes `part.bcode`.
 
 Plus a live 3D viewer with materials, lighting and CAD outlines, exports to STL,
 OBJ, multi-colour 3MF, GLB, curved-surface STEP and a 3-view blueprint, and a

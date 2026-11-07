@@ -19392,6 +19392,7 @@ ${joined}${SITE_TAIL}`), joined);
       e.target.value = "";
       if (!file) return;
       if (/\.(js|mjs|jscad|scad|py|txt)$/i.test(file.name)) return openScript(file);
+      if (/\.(step|stp)$/i.test(file.name) && await openStepAsCode(file)) return;
       await importMeshFile(file);
     });
     // How many triangles are we really being handed? File size lies: a binary
@@ -19535,7 +19536,7 @@ let SIMPLIFY_TARGET = 10000;
         + "align-items:center; justify-content:center; font:600 20px/1.5 system-ui;"
         + "color:#eaf3ff; text-align:center; pointer-events:none";
       overlay.innerHTML = `<div>Drop to open<div style="font:400 14px/1.6 system-ui; color:#bcd8f5; margin-top:6px">`
-        + `.bcode restores the editable model · .js / .scad / .py open as code · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
+        + `.bcode restores the editable model · .js / .scad / .py open as code · .step opens as code · .stl / .3mf / .obj / .svg / .step import as a mesh</div></div>`;
       document.body.appendChild(overlay);
       const show = (on) => { overlay.style.display = on ? "flex" : "none"; };
 
@@ -19655,8 +19656,67 @@ let SIMPLIFY_TARGET = 10000;
           return;
         }
       }
+      if (/\.(step|stp)$/i.test(file.name) && await openStepAsCode(file)) return;
       await importMeshFile(file);
       if (/\.(stl|3mf|obj)$/i.test(file.name)) queueSmoothCage(file.name);
+    }
+
+    // A STEP file as editable code (viewer/stepcode.js): each body rebuilt as
+    // BREPcode (layers of extrudes with drilled holes, or a turned profile),
+    // built on the Rust kernel and checked against the kernel's own import of
+    // the file. A body that doesn't match stays the file's own exact solid
+    // (importedSolid), so the code never quietly differs from the file.
+    // False: the person chose the mesh import, or this could not run.
+    async function openStepAsCode(file) {
+      const yes = await askYesNo({
+        head: `Open ${file.name} as editable code?`,
+        sub: "BREPcode rebuilds each body as code, with its holes and thicknesses as dials, and checks every one against the file. "
+          + "A body it can't rebuild exactly stays the file's own solid.",
+        yes: "Open as code", no: "Import as a mesh",
+      });
+      if (!yes) return false;
+      const text = (await file.text()).replace(/^\uFEFF/, "");
+      const title = file.name.replace(/\.(step|stp)$/i, "").slice(0, 60);
+      let r;
+      try {
+        const { convertStepInApp } = await import("./stepcode.js");
+        r = await withLoadBar("Rebuilding the bodies as code…", convertStepInApp(text, {
+          title, compile: compileForCheck, workerCall, rustWasmUrl: window.__BREP_RUST_WASM_URL,
+          onStage: (t) => setStatus("busy", `${file.name}: ${t}…`),
+        }));
+      } catch (e) {
+        setStatus("warn", `${file.name} couldn't be rebuilt as code (${String(e?.message || e).slice(0, 160)}), so it opens as a mesh.`);
+        return false;
+      }
+      for (const im of r.imports) dsl.registerImport(im.name, im.step, im.mesh ? { mesh: im.mesh } : {});
+      logEvent("step2code", file.name, { bodies: r.bodies.length, code: r.bodies.filter((b) => b.ok).length });
+      pushHistory(code.value);
+      code.value = r.code;
+      pushHistory();
+      modelName = title; ownName(modelName); paintName();
+      updateHint();
+      if (!panel.classList.contains("open")) openBtn.click();
+      else { code.scrollTop = 0; code.scrollLeft = 0; }
+      const ok = r.bodies.filter((b) => b.ok), kept = r.bodies.filter((b) => !b.ok);
+      const kinds = ["extrude", "revolve"].map((k) => [k, ok.filter((b) => b.kind === k).length]).filter(([, n]) => n)
+        .map(([k, n]) => `${n} ${k === "revolve" ? "turned" : "extruded"}`).join(", ");
+      hint.innerHTML = `<b>${esc(file.name)}</b>: ${ok.length} of ${r.bodies.length} bod${r.bodies.length === 1 ? "y" : "ies"} rebuilt as code`
+        + `${kinds ? ` (${kinds})` : ""}, each checked against the file.`
+        + (kept.length ? ` ${kept.length === 1 ? "One stays" : `${kept.length} stay`} the file's own exact solid: `
+          + kept.slice(0, 3).map((b) => `<b>${esc(b.name)}</b> (${esc(String(b.why).split(";")[0])})`).join(", ")
+          + (kept.length > 3 ? `, and ${kept.length - 3} more (see the notes in the code)` : "") + "." : "");
+      scheduleBuild();
+      return true;
+    }
+    // a candidate's history for the worker: the editor's own evaluate and
+    // compile, without the build (no fillets, so no face lookups)
+    async function compileForCheck(src) {
+      const shape = evaluate(src);
+      if (!shape?.__brepscript) throw new Error("the code did not make a shape");
+      const { PartHistory } = await getKernel();
+      const ph = new PartHistory();
+      await dsl.compile(shape, ph);
+      return await ph.toJSON();
     }
 
     // A dropped mesh gets its smooth-surface cage built in the background

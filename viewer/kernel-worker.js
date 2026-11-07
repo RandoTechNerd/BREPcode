@@ -18,6 +18,7 @@ import { adoptHistory, featureTimestamps, countRebuilt } from "../src/rehistory.
 import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 import { trianglesStep } from "../src/facetstep.js";
 import { splitHistory, mergeOutputs } from "../src/partsplit.js";
+import { kernelBodies, freeBodies, unionAll, measure, bestMatch, placeInstances, nearestByBox, solidStep, solidStl, summarize, SAME_SHAPE } from "../src/step2code-verify.js";
 
 // The split engine (src/engine.js): the Rust kernel for exact parts, manifold
 // for meshes, this file's JS kernel when either refuses. Both wasm modules are
@@ -835,6 +836,62 @@ self.onmessage = async ({ data, ports }) => {
     if (op === "smlibModule") {
       if (!smlibModule && data.module) smlibModule = data.module;
       loadSmlib().catch(() => { /* recorded in smlibFailure */ });
+      return;
+    }
+    // STEP -> code (viewer/stepcode.js): every candidate part the page
+    // compiled (placed as its first copy) is built on the Rust kernel and
+    // compared with the kernel's own import of the file, then each other copy
+    // is found where its placement puts it; a copy with no exact match comes
+    // back as its own STEP, to be kept as an importedSolid
+    // (src/step2code-verify.js).
+    if (op === "step2code") {
+      const rust = await loadRust(data.rustWasmUrl);
+      const kernel = kernelBodies(rust, data.step);
+      const out = [];
+      const keepOf = (box, name) => {
+        const k = nearestByBox(kernel, box);
+        let step = null, mesh = null, err = null;
+        if (k) {
+          try { step = solidStep(rust, k.handle, name || "body"); k.used = true; } catch (e) { err = `its STEP could not be written: ${String(e?.message || e).slice(0, 80)}`; }
+          if (step) { try { mesh = solidStl(rust, k.handle, name || "body"); } catch { /* the STEP alone */ } }
+        }
+        return { step, mesh, err };
+      };
+      try {
+        for (const b of data.bodies) {
+          const why = [...(b.why || [])];
+          let done = null, cand = null;
+          for (let i = 0; i < b.candidates.length && !done; i++) {
+            const c = b.candidates[i];
+            if (!c.json) { why.push(`${c.kind}: ${c.error || "did not compile"}`); continue; }
+            let h, made = false;
+            try {
+              const r = await runEngine(c.json, { rust, manifold: loadManifold });
+              if (r.lane !== "exact" || !r.solids.length || r.solids.some((x) => x.handle == null)) throw new Error(`not exact (${r.lane})`);
+              h = unionAll(rust, r.solids.map((x) => x.handle));
+              made = r.solids.length > 1;
+            } catch (e) { why.push(`${c.kind}: did not build (${String(e?.message || e).slice(0, 120)})`); continue; }
+            let m = null;
+            try { cand = measure(rust, h); m = bestMatch(rust, kernel, cand, b.box); }
+            catch (e) { why.push(`${c.kind}: the check failed (${String(e?.message || e).slice(0, 100)})`); continue; }
+            finally { if (made) { try { rust.free_solid(h); } catch { /* gone */ } } }
+            if (m && m.rel < SAME_SHAPE) { m.k.used = true; done = { ok: true, pick: i, diff: m.rel }; }
+            else why.push(`${c.kind}: built, but it is not the same shape as the file (off by ${m ? (m.rel * 100).toPrecision(2) + "%" : "an unknown amount"})`);
+          }
+          const copies = b.copies || [];
+          if (done) {
+            // the other copies: where their placement puts the part
+            const found = placeInstances(kernel, cand, b.T, copies.map((x) => x.T), b.box);
+            done.copies = copies.map((x, i) => (found[i] ? { ok: true } : { ok: false, ...keepOf(x.box, b.name), why: "this copy is not where the assembly's placement puts the part" }));
+          } else {
+            const first = keepOf(b.box, b.name);
+            if (first.err) why.push(first.err);
+            done = { ok: false, step: first.step, mesh: first.mesh, why: summarize(why), copies: copies.map((x) => ({ ok: false, ...keepOf(x.box, b.name), why: summarize(why) })) };
+          }
+          out.push(done);
+        }
+      } finally { freeBodies(rust, kernel); }
+      self.postMessage({ id, ok: true, bodies: out });
       return;
     }
     if (op === "cancel") { cancelPool(); return; }
