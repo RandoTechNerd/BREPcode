@@ -4064,6 +4064,12 @@
         <!-- Settings: the few app-wide defaults. Saved per browser. -->
         <div id="app-settings">
           <div class="set-title">Settings</div>
+          <!-- viewer/i18n.js: the interface's own labels; the assistant answers in
+               whatever language it is asked in regardless -->
+          <label class="set-row" title="The language of the buttons, menus and settings. Help text, the code and the assistant's answers are not affected (ask the assistant in any language)."><span>Language</span>
+            <select id="set-lang">
+              <option value="auto">Match my system</option>
+            </select></label>
           <label class="set-row"><span>Rotate around</span>
             <select id="set-orbit">
               <option value="model">The model's centre</option>
@@ -5394,6 +5400,7 @@
       chatHome: "top",         // where the assistant opens: top | bottom (corner opposite the editor) | dock
       snapZones: true,         // drag a window to an edge or corner to snap it there
       starterCube: true,       // a new visit opens on the sample cube (off: an empty plate)
+      lang: "auto",            // interface language: auto (the system's) | en | es | fr | de | it | pt | ja | zh | ko | pl | tr
       startMode: "code",       // what the app opens in: code | design | last (the mode used last)
       lastMode: "code",        // the Code | Design side last switched to, for startMode "last"
       toolbarSide: "top",      // Design mode's tool bar: top (a strip) | left (a column down the left edge)
@@ -9899,6 +9906,20 @@
       document.body.classList.toggle("ar-off", !prefs.arCube);
     }
     applyChromePrefs();
+    // Interface language. Loaded on demand, so an English session costs nothing
+    // beyond the select being filled.
+    let i18n = null;
+    async function applyLangPref() {
+      i18n ??= await import("./i18n.js");
+      const sel = $("set-lang");
+      if (sel.options.length < 2) {
+        for (const [v, name] of i18n.LANGS) sel.add(new Option(name, v));
+        for (const o of sel.options) if (o.value !== "auto") o.dataset.noI18n = "";
+      }
+      sel.value = prefs.lang || "auto";
+      i18n.applyLanguage(i18n.resolveLang(prefs.lang));
+    }
+    applyLangPref().catch(() => {});
     // Re-place every window the APP put somewhere; ones you moved stay put.
     // Design mode on or off: every open window moves to where that mode puts
     // it (Design: the right column, never over Design's own panels; Code: its
@@ -9970,6 +9991,7 @@
     });
     $("set-start-mode").addEventListener("change", (e) => setPref("startMode", e.target.value));
     $("set-toolbar-side").addEventListener("change", (e) => { setPref("toolbarSide", e.target.value); applyChromePrefs(); });
+    $("set-lang").addEventListener("change", (e) => { setPref("lang", e.target.value); applyLangPref(); });
     // ---- 3D mouse ---------------------------------------------------------
     // A device allowed once reconnects on load without asking; Connect asks
     // (WebHID needs a click). The cap moves the camera like a drag would, so
@@ -10098,7 +10120,7 @@ ${c.after}`;
     }
 
     $("set-reset").addEventListener("click", () => {
-      Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); applyChromePrefs(); syncSettingsUI(); rehomeWindows();
+      Object.assign(prefs, PREFS_DEFAULTS); savePrefs(); applyOrbitPref(); applyChromePrefs(); applyLangPref(); syncSettingsUI(); rehomeWindows();
       toast("Settings are back to how they ship.");
     });
     syncSettingsUI();
