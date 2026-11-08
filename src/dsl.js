@@ -535,7 +535,8 @@ export function importedMesh(name, opts = {}) {
 // reconstructed from the mesh (the drop menu's "Open as an exact solid"), held
 // in the registry as STEP text. Same call shape as importedMesh; the
 // difference is that it cuts exactly and exports as true curved STEP
-// (fillet() on it still falls back to the mesh: see BREPcodeRustKernel/README).
+// fillet()/chamfer() and the face edits (pushFace, moveFace, deleteFace) work
+// on it exactly (kernel 0.11 and later).
 export function importedSolid(name, opts = {}) {
   if (typeof name !== "string" || !name) {
     throw new TypeError('importedSolid() needs the converted file name, e.g. importedSolid("part.step")');
@@ -2917,8 +2918,10 @@ function mapAmp(o, px, py, pz, nx, ny, nz, bb) {
 }
 
 // The wrapped-label sampler. u runs around the can: the label's LEFT edge sits
-// at `start`° (CCW from +X) and the image runs rightward AS SEEN FROM OUTSIDE
-// — which is decreasing θ — so text reads correctly instead of mirrored.
+// at `start`° (CCW from +X) and the image runs rightward AS SEEN FROM OUTSIDE,
+// which is INCREASING θ (standing outside at +X, Z up, your right hand points
+// to +Y), so text reads correctly. It ran the other way until 2026-11-08 and
+// every label came out mirrored.
 // v runs down the label over the shape's full height. Outside the arc, or on
 // a face with no outward radial component (caps), the amplitude is zero.
 function wrapAmp(o, px, py, pz, nx, ny, nz, bb, cx, cy) {
@@ -2927,7 +2930,7 @@ function wrapAmp(o, px, py, pz, nx, ny, nz, bb, cx, cy) {
   const facing = (nx * rx + ny * ry) / rl;       // outward-facing walls only
   if (facing <= 0) return 0;
   const theta = Math.atan2(ry, rx) * 180 / Math.PI;
-  const rel = ((o.start - theta) % 360 + 360) % 360;
+  const rel = ((theta - o.start) % 360 + 360) % 360;
   if (rel > (o.arc || 360)) return 0;            // off the label's edge
   const u = rel / (o.arc || 360);
   const zSpan = bb.max[2] - bb.min[2] || 1;
@@ -3668,6 +3671,48 @@ function edgeOp(code, opts, children, amountKey, verb) {
 // how far a point in fillet/chamfer's edges: { at } may be from the edge it means
 const EDGE_AT_TOL = 0.5;
 export function fillet(opts, ...children) { return edgeOp("F", opts, children, "radius", "fillet"); }
+
+// Direct face edits (the Rust kernel's synchronous modelling): they work on any
+// exact solid, an imported STEP included, by the faces' names as Design mode
+// picks them on the model ("IMPORT3D1_Face_4"). The solid keeps its id, so
+// what comes after still refers to it.
+//   pushFace({ faces, by: 2 }, part)        each face along its own normal (+ grows)
+//   moveFace({ faces, by: [0, 0, 3] }, part) the faces as a group, the rest following
+//   moveFace({ faces, turn: [5, 0, 0] }, part) tilts them (degrees about x, y, z, turned
+//                                           about the picked faces' centre, or pivot: [x, y, z])
+//   deleteFace({ faces }, part)             removes them and heals the solid shut
+//                                           (a hole filled, a fillet or chamfer sharp again)
+function faceOp(code, verb, opts, children) {
+  const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
+  let faces = o.faces ?? o.face;
+  if (typeof faces === "string") faces = [faces];
+  if (!Array.isArray(faces) || !faces.length || faces.some((f) => typeof f !== "string" || !f)) {
+    throw new TypeError(`${verb}() needs faces: ["IMPORT3D1_Face_4", …], the names Design mode shows when you pick a face`);
+  }
+  const kids = collect(children);
+  if (!kids.length) throw new Error(`${verb}() needs a shape to work on`);
+  const child = kids.length === 1 ? kids[0] : union(kids);
+  let by = o.by ?? o.distance ?? null;
+  if (code === "PF" && !Number.isFinite(+by)) throw new TypeError(`${verb}() needs by: a distance in mm (+ out, - in)`);
+  const vec3 = (v) => Array.isArray(v) && v.length === 3 && v.every((q) => Number.isFinite(+q));
+  let turn = null, pivot = null;
+  if (code === "TF") {
+    turn = o.turn ?? o.tilt ?? null;
+    if (turn != null && !vec3(turn)) throw new TypeError(`${verb}() turn: [x, y, z] in degrees (got ${JSON.stringify(turn)})`);
+    if (by == null && turn) by = [0, 0, 0];
+    if (!vec3(by)) throw new TypeError(`${verb}() needs by: [x, y, z] in mm, or turn: [x, y, z] in degrees`);
+    by = by.map(Number);
+    turn = turn ? turn.map(Number) : null;
+    if (o.pivot != null) {
+      if (!vec3(o.pivot)) throw new TypeError(`${verb}() pivot: [x, y, z] in mm`);
+      pivot = o.pivot.map(Number);
+    }
+  }
+  return node({ kind: "faceop", code, verb, faces: [...new Set(faces)], by: code === "PF" ? +by : by, turn, pivot, child });
+}
+export function pushFace(opts, ...children) { return faceOp("PF", "pushFace", opts, children); }
+export function moveFace(opts, ...children) { return faceOp("TF", "moveFace", opts, children); }
+export function deleteFace(opts, ...children) { return faceOp("DF", "deleteFace", opts, children); }
 export function chamfer(opts, ...children) { return edgeOp("CH", opts, children, "distance", "chamfer"); }
 
 // ------------------------------------------------------------- revolve
@@ -4087,6 +4132,36 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       if (n.opts.split ?? n.opts.separate) f.inputParams.extractMultipleSolids = true;
       trace?.push({ ...tag, id: f.inputParams.id, code: "IMPORT3D", color: col, emissive: em, emissiveInt: emi, clear: clr, finish: fin });
       return f.inputParams.id;
+    }
+
+    if (n.kind === "faceop") {
+      const start = Array.isArray(partHistory.features) ? partHistory.features.length : 0;
+      const childId = await emit(n.child, matrix, st);
+      // every face must be on the shape: a face name goes stale when a shape
+      // is added before it, and editing whatever face now has it would be a lie
+      // (checked against the kernel's own face list; the JS replay can't read
+      // an imported STEP, so without that list the kernel itself is the check)
+      const listed = await fastFaceNames(childId);
+      const have = new Set(listed || []);
+      const missing = listed ? n.faces.filter((f) => !have.has(f)) : [];
+      if (missing.length) {
+        throw new Error(`${n.verb}(): no face ${missing.map((f) => JSON.stringify(f)).join(", ")} on this shape (face names follow the build order; pick the face again)`);
+      }
+      // The JS kernel registers Push Face but not Move / Delete Face, and
+      // only the Rust kernel runs any of them: those two ride in under PF's
+      // registration, retagged (the history JSON is all the kernel reads).
+      const f = await partHistory.newFeature("PF");
+      if (n.code !== "PF") {
+        f.type = n.code;
+        f.inputParams = { id: String(f.inputParams.id).replace(/^PF/, n.code) };
+      }
+      f.inputParams.faces = n.faces;
+      if (n.code === "PF") f.inputParams.distance = n.by;
+      if (n.code === "TF") {
+        f.inputParams.transform = { position: n.by, rotationEuler: n.turn || [0, 0, 0], scale: [1, 1, 1] };
+        if (n.pivot) f.inputParams.pivot = n.pivot;
+      }
+      return childId;
     }
 
     if (n.kind === "edgeop") {

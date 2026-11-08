@@ -110,6 +110,20 @@ export function edgeOpText(text, body, { kind = "fillet", amount = 1, edges = []
   return wrapText(text, body, `${kind}({ ${key}: ${round(amount)}, edges: [${list}] }, `);
 }
 
+// --------------------------------------------------------------- face edits
+// pushFace / moveFace / deleteFace around a body, by the faces' kernel names
+// (any exact solid, an imported STEP included)
+export function faceOpText(text, body, { mode = "push", faces = [], by = 1, vec = [0, 0, 1], angle = 5, axis = "x" }) {
+  const list = faces.map((f) => JSON.stringify(f)).join(", ");
+  if (mode === "delete") return wrapText(text, body, `deleteFace({ faces: [${list}] }, `);
+  if (mode === "tilt") {
+    const turn = ["x", "y", "z"].map((a) => (a === axis ? round(angle) : 0));
+    return wrapText(text, body, `moveFace({ faces: [${list}], turn: [${turn.join(", ")}] }, `);
+  }
+  if (mode === "move") return wrapText(text, body, `moveFace({ faces: [${list}], by: [${vec.map((v) => round(v)).join(", ")}] }, `);
+  return wrapText(text, body, `pushFace({ faces: [${list}], by: ${round(by)} }, `);
+}
+
 // ------------------------------------------------------------------- hollow
 // open: face normals ([x, y, z], world) of the faces to leave open
 export function openKeys(normals) {

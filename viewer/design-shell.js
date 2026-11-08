@@ -47,6 +47,7 @@ const TOOLS = [
     { id: "presspull", label: "Press-pull", tip: "Drag a face along its normal: out grows, in shrinks, past the shape cuts", icon: `<path d="M3 10h10v3H3zM8 2v6M6 4l2-2 2 2"/>` },
     { id: "fillet", label: "Fillet", dialog: true, tip: "Round the edges you click", icon: `<path d="M3 13V8a5 5 0 0 1 5-5h5"/>` },
     { id: "chamfer", label: "Chamfer", dialog: true, tip: "Bevel the edges you click", icon: `<path d="M3 13V7l4-4h6"/>` },
+    { id: "faceedit", label: "Face edit", dialog: true, tip: "Push, move or delete the faces you click, on any solid, an imported STEP included", icon: `<path d="M3 5.5 8 3l5 2.5v5L8 13l-5-2.5z"/><path d="M8 8v5M8 8l5-2.5" stroke-dasharray="1.6 1.4"/>` },
     { id: "shell", label: "Shell", dialog: true, tip: "Hollow the selected shape, leaving the faces you click open", icon: `<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><rect x="5" y="5" width="6" height="6"/>` },
     { id: "split", label: "Split", dialog: true, tip: "Cut a body in two along a plane or a flat face; each half is a body of its own", icon: `<rect x="2.5" y="3.5" width="11" height="9" rx="1"/><path d="M8 1.5v13" stroke-dasharray="1.6 1.4"/>` },
     { id: "combine", label: "Combine", dialog: true, tip: "Join, cut or intersect bodies", icon: `<circle cx="6" cy="8" r="4"/><circle cx="10" cy="8" r="4"/>` },

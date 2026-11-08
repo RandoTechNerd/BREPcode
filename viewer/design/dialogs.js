@@ -267,6 +267,36 @@ const SPECS = {
   },
 
   fillet: edgeSpec("fillet", "Fillet", "Radius", "r"),
+  // Direct edits by face: push / move / delete-and-heal, on any exact solid,
+  // an imported STEP included (the kernel's synchronous modelling)
+  faceedit: {
+    title: "Face edit",
+    help: "Click faces on the model. Push moves each along its own normal, Move shifts them together, Tilt turns them about their centre, Delete removes them and heals the solid (fills a hole, takes a fillet off).",
+    picks: { kind: "faces", label: "Faces" },
+    fields: [
+      { key: "mode", label: "Edit", type: "seg", options: [["push", "Push / pull"], ["move", "Move"], ["tilt", "Tilt"], ["delete", "Delete & heal"]] },
+      { key: "by", label: "Distance", type: "number", step: 0.5, unit: "mm", when: (s) => s.mode === "push" },
+      { key: "dx", label: "X", type: "number", step: 0.5, unit: "mm", when: (s) => s.mode === "move" },
+      { key: "dy", label: "Y", type: "number", step: 0.5, unit: "mm", when: (s) => s.mode === "move" },
+      { key: "dz", label: "Z", type: "number", step: 0.5, unit: "mm", when: (s) => s.mode === "move" },
+      { key: "angle", label: "Angle", type: "number", step: 1, unit: "°", when: (s) => s.mode === "tilt" },
+      { key: "axis", label: "About", type: "seg", options: [["x", "X"], ["y", "Y"], ["z", "Z"]], when: (s) => s.mode === "tilt" },
+    ],
+    init: () => ({ mode: "push", by: 1, dx: 0, dy: 0, dz: 1, angle: 5, axis: "x", faces: [] }),
+    write(base, s, env) {
+      if (!s.faces.length) return { wait: "Click the faces to edit." };
+      const fid = s.faces[0].fid;
+      const body = env.bodyOf(fid);
+      if (!body) return { error: "That face's shape has no call in the code." };
+      if (s.faces.some((f) => { const b = env.bodyOf(f.fid); return !b || b.start !== body.start || b.end !== body.end; })) {
+        return { error: "All the faces must be on one body." };
+      }
+      if (s.mode === "push" && !(Math.abs(+s.by) > 0)) return { wait: "Set a distance (+ out, - in)." };
+      const faces = [...new Set(s.faces.map((f) => f.name))];
+      if (s.mode === "tilt" && !(Math.abs(+s.angle) > 0)) return { wait: "Set an angle." };
+      return F.faceOpText(base, body, { mode: s.mode, faces, by: +s.by, vec: [+s.dx || 0, +s.dy || 0, +s.dz || 0], angle: +s.angle, axis: s.axis });
+    },
+  },
   chamfer: edgeSpec("chamfer", "Chamfer", "Distance", "d"),
 
   shell: {
