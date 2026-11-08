@@ -64,6 +64,7 @@ const trapped = (e) => { if (/unreachable|RuntimeError|memory access/i.test(Stri
 // The compiled Rust module, kept so helper workers (the website's parts pool)
 // instantiate it instead of downloading and compiling 16 MB each.
 let rustWasmModule = null;
+let rustWaitCancel = null;   // stops a build that is waiting for the kernel's download
 async function compileRust(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`the Rust kernel didn't download (HTTP ${res.status})`);
@@ -425,7 +426,9 @@ if (HELPER) {
 // The JS kernel too, but after SMLib when SMLib is coming: parsing its 9 MB
 // holds this thread for most of a second, which is exactly when SMLib wants it
 // to finish setting up. A build that needs it sooner asks for it itself.
-if (!HELPER && (PARAMS.get("kernel") !== "nvidia" || PARAMS.get("engine") === "js" || NATIVE_EXPECTED)) {
+// Not on the website's Rust default: there the build waits for the Rust kernel,
+// and the JS kernel loads only if a model needs it (a refusal, or no Rust).
+if (!HELPER && (PARAMS.get("engine") === "js" || NATIVE_EXPECTED)) {
   getPartHistory().catch(() => { /* the build that needs it reports it */ });
 }
 let manifoldWasm = null;
@@ -737,6 +740,27 @@ self.onmessage = async ({ data, ports }) => {
       }
       // auto never waits for the kernel download: until it lands, the JS
       // kernel builds (and the badge says so). split waits, by definition.
+      // The website waits for the Rust kernel rather than building on the JS
+      // one while it downloads. The JS build cost a phone (and OrcaSlicer's
+      // tab) its CPU right when the kernel wanted it, the worker could not
+      // switch until that build finished, and on some models (cartorgb) the
+      // JS kernel failed outright, leaving the page on its error even after
+      // Rust arrived. The wait shows as a pooled build, so the page stops it
+      // in place (op "cancel") instead of killing the worker and the download.
+      // The JS kernel stays the fallback for a refusal or a kernel that
+      // cannot load at all. The desktop (native kernel) is unchanged.
+      if (engine === "auto" && !rustModule && !rustFailure && !nativeRefused && !NATIVE_EXPECTED && !smlibNote?.smlibLoading) {
+        self.postMessage({ pooledOf: id });
+        try {
+          await Promise.race([
+            loadRust(data.rustWasmUrl),
+            new Promise((_, no) => { rustWaitCancel = () => no(Object.assign(new Error("build cancelled"), { cancelled: true })); }),
+          ]);
+        } catch (e) {
+          if (e?.cancelled) throw e;            // the page moved on
+          // failed to load: rustFailure is set and the JS kernel builds below
+        } finally { rustWaitCancel = null; }
+      }
       const rustPending = engine === "auto" && !rustModule && !rustFailure;
       if (nativeRefused) {
         // decided above: the JS kernel below builds it
@@ -1086,7 +1110,7 @@ self.onmessage = async ({ data, ports }) => {
       self.postMessage({ id, ok: true, bodies: out });
       return;
     }
-    if (op === "cancel") { cancelPool(); return; }
+    if (op === "cancel") { cancelPool(); rustWaitCancel?.(); return; }
     if (op === "piece") {
       const out = data.kernel === "rust" ? await buildPieceRust(data.json, data) : await buildPieceSmlib(data.json, data);
       self.postMessage({ id, ok: true, out });
