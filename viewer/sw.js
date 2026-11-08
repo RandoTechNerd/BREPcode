@@ -62,7 +62,14 @@ async function fromCache(url, name = CACHE) {
   if (hit) return hit;
   let pending = inflight.get(url);
   if (!pending) {
-    pending = fetch(url, { credentials: "same-origin" }).then((res) => {
+    // cache: "no-cache": ask the server, never the browser's own HTTP cache.
+    // The host sends no cache headers, so the browser guesses how long a file
+    // stays fresh, and a new build's cache was being filled with the LAST
+    // build's copies of files whose names did not change (the Rust kernel's
+    // loader among them: old loader + new kernel = no Rust kernel, every
+    // build on the slow JS one). A hard refresh fixed it; this is that,
+    // for every visitor.
+    pending = fetch(url, { credentials: "same-origin", cache: "no-cache" }).then((res) => {
       // stored in the background: the asker gets the stream as it arrives
       if (res.ok && !res.redirected) cache.put(url, res.clone()).catch(() => {});
       return res;
@@ -87,7 +94,7 @@ async function servePage(event) {
 }
 
 async function appFile(req) {
-  if (await caches.has(STALE)) return fetch(req);
+  if (await caches.has(STALE)) return fetch(req, { cache: "no-cache" });
   return fromCache(req.url, APP_CACHE);
 }
 

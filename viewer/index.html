@@ -39,6 +39,25 @@
     //   - the model in the editor is untouched; autosave has already stored it
     // window.__bcStale records what the check decided, so "why didn't it
     // update?" is answerable from a phone's console instead of by guesswork.
+    // A reload that does what a hard refresh does, for people who don't know
+    // the keys (OrcaSlicer's tab has none): the app's offline caches go first,
+    // so every file comes fresh from the server, then the page reloads with
+    // the build in the address. Used by the stale check below, the "updated"
+    // bar and Settings > Reload.
+    window.__brepFreshReload = function (build, href) {
+      var go = function () {
+        var u = new URL(href || location.href);
+        u.searchParams.set("b", String(build || Date.now()).replace(/[^\w.-]+/g, "-"));
+        location.replace(u.toString());
+      };
+      try {
+        if (!window.caches) return go();
+        caches.keys().then(function (ks) {
+          return Promise.all(ks.filter(function (k) { return /^brep-/.test(k); }).map(function (k) { return caches.delete(k); }));
+        }).then(go, go);
+        setTimeout(go, 3000);     // never stuck waiting on the cache API
+      } catch (e) { go(); }
+    };
     (function () {
       var S = (window.__bcStale = { step: "start" });
       try {
@@ -86,9 +105,7 @@
             if (sessionStorage.getItem("bc-freshened") === v.build) { S.step = "already refreshed to this build"; return; }
             S.step = "stale — refreshing";
             sessionStorage.setItem("bc-freshened", v.build);
-            var u = new URL(arrived);
-            u.searchParams.set("b", String(v.build).replace(/[^\w.-]+/g, "-"));
-            location.replace(u.toString());
+            window.__brepFreshReload(v.build, arrived);
           })
           .catch(function (e) { S.step = "fetch failed"; S.err = String(e); });
       } catch (e) { S.step = "threw"; S.err = String(e); }
@@ -4201,6 +4218,7 @@
             <button id="set-tidy" class="hist-btn" title="Put every open window back in its spot">Tidy windows</button>
             <button id="set-lights" class="hist-btn" title="Back to the default studio lighting">Default lighting</button>
             <button id="set-reset" class="hist-btn" title="Settings back to how they ship">Reset settings</button>
+            <button id="set-reload" class="hist-btn" title="Load a fresh copy of BREPcode, the same as a hard refresh: use it if something looks stuck or out of date. Your model is kept.">Reload BREPcode</button>
           </div>
           <!-- Desktop only: one click writes the MCP entry that lets that AI
                app drive this window (desktop/aiconnect.cjs). -->
@@ -5218,6 +5236,12 @@
         // inside the first build, where the cancel heuristic would kill it
         // mid-download), so it needs the engine and the wasm's URL up front.
         url.searchParams.set("engine", buildEngine());
+        // the build's own fingerprint: a worker URL with a query skips the
+        // offline cache, so without it the browser's own cache could hand a
+        // new page the last build's worker (brepcode.com sends no cache
+        // headers); a new build is a new URL, fetched fresh
+        const appBuild = document.querySelector('meta[name="brep-app"]')?.content;
+        if (appBuild) url.searchParams.set("b", appBuild);
         if (window.__BREP_RUST_WASM_URL) url.searchParams.set("rust", window.__BREP_RUST_WASM_URL);
         // and SMLib's, when it is the kernel picked
         url.searchParams.set("kernel", buildKernel());
@@ -10304,11 +10328,8 @@
           bar.id = "update-bar";
           bar.setAttribute("role", "status");
           bar.innerHTML = 'BREPcode was updated. <button type="button">Reload</button><button type="button" class="x" aria-label="Not now">&times;</button>';
-          bar.querySelector("button").onclick = () => {
-            const u = new URL(location.href);
-            u.searchParams.set("b", String(v.build).replace(/[^\w.-]+/g, "-"));
-            location.replace(u.toString());
-          };
+          // the model on screen comes back after it (see Settings > Reload)
+          bar.querySelector("button").onclick = () => $("set-reload").click();
           bar.querySelector(".x").onclick = () => bar.remove();
           document.body.appendChild(bar);
         } catch { /* offline, or the host is mid-publish: try again later */ }
@@ -10387,6 +10408,15 @@
         rebuild();
       });
     }
+    // a hard refresh without the keys (OrcaSlicer's tab has none); the model
+    // survives through the autosave, so it is flushed first
+    // The model rides across in sessionStorage (this tab only): a plain load
+    // opens on the starter, and the autosave is only offered after a crash.
+    $("set-reload").addEventListener("click", async () => {
+      try { await saveSnapshot(); } catch { /* the autosave keeps the last good copy */ }
+      try { sessionStorage.setItem("brepcode-reload-carry", JSON.stringify({ code: code.value, name: modelName || "" })); } catch { /* private mode */ }
+      window.__brepFreshReload(document.querySelector('meta[name="brepcode-build"]')?.content);
+    });
     $("set-tidy").addEventListener("click", () => {
       const n = rehomeWindows({ all: true });
       toast(n ? `Tidied ${n} window${n === 1 ? "" : "s"} back to ${n === 1 ? "its spot" : "their spots"}.` : "Windows are already in their spots.", n ? "ok" : "info");
@@ -21042,6 +21072,8 @@ let SIMPLIFY_TARGET = 10000;
       return new Promise((resolve) => {
         const url = new URL("./stl2step-worker.js", import.meta.url);
         url.searchParams.set("engine", engine);
+        const appBuild = document.querySelector('meta[name="brep-app"]')?.content;
+        if (appBuild) url.searchParams.set("b", appBuild);   // fresh per build (see the build worker)
         const wasm = engine === "legacy" ? window.__BREP_STL2STEP_LEGACY_URL : window.__BREP_RUST_WASM_URL;
         if (wasm) url.searchParams.set("wasm", wasm);
         const w = new Worker(url, { type: "module" });
@@ -28681,7 +28713,19 @@ ${SC.describeSelectionContext(anchor)}` : "");
       }
       return hit;
     })();
-    if (plainApp) {
+    // Settings > Reload BREPcode: the model that was on screen comes back
+    let carried = null;
+    try {
+      carried = JSON.parse(sessionStorage.getItem("brepcode-reload-carry") || "null");
+      sessionStorage.removeItem("brepcode-reload-carry");
+    } catch { carried = null; }
+    if (carried?.code && !urlCarriesModel()) {
+      pushHistory(code.value);
+      code.value = carried.code;
+      pushHistory();
+      if (carried.name) { modelName = carried.name.slice(0, 60); paintName(); }
+      rebuild();
+    } else if (plainApp) {
       // nothing to open: the app as it is
     } else if (tourRequested()) {
       // A frame normally; a timer as well, because a tab opened in the
