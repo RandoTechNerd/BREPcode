@@ -19,6 +19,11 @@
 //   a/b are the edge's start/end points in the loop's direction; `pts` are
 //   samples along it (a curved edge), start to end.
 
+import { fitSurface } from "./step2code-fit.js";
+
+// how far (mm) a spline may stray from the plain shape it is taken for
+const FIT_TOL = 1e-4;
+
 // ---------------------------------------------------------------- Part 21
 
 // Statements of the DATA section, as { id -> { type, args } }. A complex
@@ -196,7 +201,7 @@ export const vec = { sub, add, mul, dot, cross, len, unit };
 
 // ---------------------------------------------------------------- reader
 
-export function readStep(text) {
+export function readStep(text, { fitTol = FIT_TOL } = {}) {
   const E = parsePart21(text);
   const get = (r) => (r && r.ref != null ? E.get(r.ref) : null);
   const typeOf = (r) => get(r)?.type;
@@ -240,7 +245,12 @@ export function readStep(text) {
   }
 
   // ---- surfaces
+  const surfCache = new Map();
   function surface(r) {
+    if (!surfCache.has(r?.ref)) surfCache.set(r?.ref, surfaceOf(r));
+    return surfCache.get(r?.ref);
+  }
+  function surfaceOf(r) {
     const e = get(r);
     switch (e?.type) {
       case "PLANE": return { type: "plane", ...placement(e.args[1]) };
@@ -256,8 +266,29 @@ export function readStep(text) {
         const ax = get(e.args[2]);
         return { type: "revolution", o: point(ax?.args?.[1]), z: direction(ax?.args?.[2]) || [0, 0, 1] };
       }
-      default: return { type: e?.type === "(complex)" || /B_SPLINE/.test(e?.type || "") ? "bspline" : "other" };
+      default: {
+        const spl = splineOf(e);
+        if (!spl) return { type: "other" };
+        // exporters write many plain cylinders, cones and fillet tori as
+        // splines: hand back the true shape when the spline is one
+        let fit = null;
+        try { fit = fitSurface(spl, fitTol); } catch { /* not a shape we know */ }
+        return fit ? { ...fit.surface, fromSpline: true, flip: fit.flip } : { type: "bspline" };
+      }
     }
+  }
+  function splineOf(e) {
+    const grid = (rows) => rows.map((r) => r.map(point));
+    const knots = (m, k) => { const U = []; m.forEach((c, i) => { for (let j = 0; j < c; j++) U.push(k[i]); }); return U; };
+    try {
+      if (e?.type === "B_SPLINE_SURFACE_WITH_KNOTS") {
+        const a = e.args;
+        return { du: a[1], dv: a[2], P: grid(a[3]), W: null, U: knots(a[8], a[10]), V: knots(a[9], a[11]) };
+      }
+      const b = e?.parts?.B_SPLINE_SURFACE, k = e?.parts?.B_SPLINE_SURFACE_WITH_KNOTS;
+      if (b && k) return { du: b[0], dv: b[1], P: grid(b[2]), W: e.parts.RATIONAL_B_SPLINE_SURFACE?.[0] || null, U: knots(k[0], k[2]), V: knots(k[1], k[3]) };
+    } catch { /* malformed */ }
+    return null;
   }
 
   // ---- B-spline curve sampling (for edges that are not lines or circles)
@@ -304,7 +335,7 @@ export function readStep(text) {
         const f = get(fr);
         if (!f || (f.type !== "ADVANCED_FACE" && f.type !== "FACE_SURFACE")) continue;
         const surf = placeSurface(surface(f.args[2]), T);
-        const sense = f.args[3] !== false;
+        const sense = (f.args[3] !== false) !== !!surf.flip;
         const loops = [];
         for (const br of f.args[1] || []) {
           const b = get(br);

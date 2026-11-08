@@ -125,6 +125,7 @@ body.dz-ribbon #dz-scale { top: 104px; }
 #dz-bar .dz-t:hover { color: var(--text, #dfe6f3); background: rgba(127, 150, 200, 0.12); }
 #dz-bar .dz-t[aria-pressed="true"] { background: var(--accent, #1c66e5); color: #fff; }
 #dz-bar .dz-t.p2 { opacity: 0.55; }
+#dz-bar .dz-h:disabled { opacity: 0.35; cursor: default; background: transparent; }
 #dz-bar .dz-t.has-subs { position: relative; }
 #dz-bar .dz-t.has-subs::after { content: ""; position: absolute; right: 3px; bottom: 3px; border: 3px solid transparent;
   border-right-color: currentColor; border-bottom-color: currentColor; opacity: 0.55; }
@@ -318,7 +319,15 @@ export function initDesignShell(host) {
   bar.className = "dz-ui";
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Design tools");
-  bar.innerHTML = TOOLS.map((g) => `<div class="dz-g"><div class="dz-gl">${g.group}</div><div class="dz-gi">`
+  // Back and Forward first: the model's own history (the code card's
+  // ◀ ▶, the same steps as Ctrl+Z / Ctrl+Y), here so they are in reach
+  // while the card is closed
+  const histBtn = (dir, label, tip, icon) => `<button type="button" class="dz-t dz-h" data-hist="${dir}" title="${tip}" aria-label="${label}" disabled>${svg(icon)}<span>${label}</span></button>`;
+  bar.innerHTML = `<div class="dz-g dz-hist"><div class="dz-gl">History</div><div class="dz-gi">`
+      + histBtn("undo-btn", "Back", "Back one step (Ctrl+Z)", `<path d="M6 3.5 2.5 7 6 10.5"/><path d="M2.5 7H10a3.5 3.5 0 0 1 0 7H8"/>`)
+      + histBtn("redo-btn", "Forward", "Forward one step (Ctrl+Y)", `<path d="M10 3.5 13.5 7 10 10.5"/><path d="M13.5 7H6a3.5 3.5 0 0 0 0 7h2"/>`)
+      + `</div></div>`
+    + TOOLS.map((g) => `<div class="dz-g"><div class="dz-gl">${g.group}</div><div class="dz-gi">`
       + g.items.map((t) => `<button type="button" class="dz-t${SUBS[t.id] ? " has-subs" : ""}" data-tool="${t.id}" title="${esc(tipFor(t))}"`
         + `${t.dialog ? "" : ` aria-pressed="false"`}>${svg(t.icon)}<span>${t.label}</span></button>`).join("")
       + `</div></div>`).join("")
@@ -326,6 +335,14 @@ export function initDesignShell(host) {
     + `<button type="button" class="dz-more" title="Show the full ribbon (or double-click the toolbar)" aria-expanded="false">▾</button>`
     + `<button type="button" class="dz-pmore" title="More tools" aria-label="More tools" aria-haspopup="menu" aria-expanded="false">`
     + `${svg(`<circle cx="3.5" cy="8" r="1.1" fill="currentColor"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor"/>`)}</button>`;
+  // greyed whenever the card's own button is
+  for (const h of bar.querySelectorAll(".dz-h")) {
+    const b = document.getElementById(h.dataset.hist);
+    if (!b) { h.remove(); continue; }
+    const sync = () => { h.disabled = b.disabled; };
+    sync();
+    new MutationObserver(sync).observe(b, { attributes: true, attributeFilter: ["disabled"] });
+  }
 
   const side = document.createElement("div");
   side.id = "dz-side";
@@ -470,7 +487,7 @@ export function initDesignShell(host) {
     if (phone.matches) bar.classList.add("dz-overflow");
     if (!overflows()) { markPmore(); return; }
     bar.classList.add("dz-overflow");
-    const groups = [...bar.querySelectorAll(".dz-g")];
+    const groups = [...bar.querySelectorAll(".dz-g:not(.dz-hist)")];
     const queue = phone.matches
       ? [...groups[0].querySelectorAll(".dz-t")].slice(1).reverse()
       : [groups[groups.length - 1], ...groups.slice(1, -1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse()];
@@ -1117,6 +1134,8 @@ export function initDesignShell(host) {
     queueFit();
   };
   bar.addEventListener("click", (e) => {
+    const h = e.target.closest(".dz-h");
+    if (h) { const b = document.getElementById(h.dataset.hist); if (b && !b.disabled) b.click(); return; }
     if (e.target.closest(".dz-more")) { setRibbon(!ribbon); return; }
     if (e.target.closest(".dz-snap")) {
       snapIx = (snapIx + 1) % SNAPS.length;

@@ -102,13 +102,21 @@ export function meshSliced({ P, I: I0 }, T = null) {
     if (count <= POINTS) break;
     tolXY *= 2.5;
   }
-  // neighbours that came out the same are one layer
+  // neighbours whose outlines lie within the outline tolerance of each other
+  // are one layer (the one written is the run's middle section): fewer,
+  // taller slices build, export and edit faster; tighter and the same wall
+  // simplified two ways does not merge, looser and a gentle slope merges
+  // into steps that show in the match
+  const near = tolXY;
   const merged = [];
   for (const L of layers) {
-    const key = JSON.stringify(L.loops.map((l) => l.map((p) => [r3(p[0]), r3(p[1])])));
     const last = merged[merged.length - 1];
-    if (last && last.key === key && Math.abs(last.b - L.a) < eps * 10) last.b = L.b;
-    else merged.push({ ...L, key });
+    if (last && Math.abs(last.b - L.a) < eps * 10 && sameLoops(last.first, L.loops, near)) { last.b = L.b; last.run.push(L); }
+    else merged.push({ a: L.a, b: L.b, first: L.loops, run: [L] });
+  }
+  for (const M of merged) {
+    const mid = (M.a + M.b) / 2;
+    M.loops = M.run.reduce((x, L) => (Math.abs((L.a + L.b) / 2 - mid) < Math.abs((x.a + x.b) / 2 - mid) ? L : x)).loops;
   }
   // the slices are a group, never unioned: a union of dozens of outlines
   // stacked face to face is what the kernel's boolean is weakest at, and the
@@ -127,7 +135,20 @@ export function meshSliced({ P, I: I0 }, T = null) {
       // profile's holes with a boolean that a mesh's ragged outline can
       // upset, so then each hole cut on its own, and last the outline alone
       const h = L.b - start, more = Math.max(h * 0.1, 0.01);
+      // first: one outline, each hole joined to the outside by a slit a hair
+      // wide, so the slice is a plain extrude with no boolean to fail (and
+      // nothing for a STEP export to fuse)
+      const w = Math.max(size * 2e-5, 0.002);
+      // an outline that crosses itself (strands stitched across a gap) fails
+      // every boolean, slowly: then only the slit outline, or the outline alone
+      if (crosses(rg.outer)) {
+        const one = bridged(rg.outer, rg.holes, w, true);
+        pieces.push([...(one ? [ex(h, start, poly(one, true))] : []), ex(h, start, poly(rg.outer, true))]);
+        continue;
+      }
+      const one = bridged(rg.outer, rg.holes, w);
       pieces.push([
+        ...(one ? [ex(h, start, poly(one, true))] : []),
         ex(h, start, `region2d(${poly(rg.outer, true)}, ${rg.holes.map((x) => poly(x, false)).join(", ")})`),
         `difference(${ex(h, start, poly(rg.outer, true))}, ${rg.holes.map((x) => ex(h + 2 * more, start - more, poly(x, true))).join(", ")})`,
         ex(h, start, poly(rg.outer, true)),
@@ -146,7 +167,7 @@ const r3 = (v) => { const r = Math.round(v * 1e4) / 1e4; return Object.is(r, -0)
 
 // a section loop made fit to write: repeats dropped, simplified to tol, and
 // only if it does not cross itself (less simplified, or as it came, if it does)
-function clean(loop, tol) {
+export function clean(loop, tol) {
   const pts = loop.filter((p, i) => { const q = loop[(i + loop.length - 1) % loop.length]; return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6; });
   if (pts.length < 3) return null;
   for (const t of [tol, tol / 4, 0]) {
@@ -177,7 +198,7 @@ function tidy(l) {
   return out;
 }
 // does a closed loop cross itself (any two edges that are not neighbours)
-function crosses(l) {
+export function crosses(l) {
   const n = l.length;
   if (n > 3000) return false;
   const o = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
@@ -197,7 +218,7 @@ function crosses(l) {
 
 // the loops where the plane (axis ax) = h cuts the triangles: each crossing
 // sits on a mesh edge, named by its two vertices, so the pieces chain exactly
-function sectionLoops(V, I, ax, ux, uy, h, gap = Infinity) {
+export function sectionLoops(V, I, ax, ux, uy, h, gap = Infinity) {
   const next = new Map(), pt = new Map();
   const key = (i, j) => (i < j ? `${i},${j}` : `${j},${i}`);
   const at = (i, j) => {
@@ -255,10 +276,66 @@ function stitch(strands, gap) {
   }
   return out;
 }
+// An outline with holes as ONE loop: each hole (rightmost first) is joined
+// to the outline by a slit w wide, from its rightmost point straight across
+// to the nearest edge on its right (nothing can sit between: holes further
+// left come later, the ones further right are already part of the outline).
+// Null when the result crosses itself (unless loose: the outline already did).
+export function bridged(outer, holes, w, loose = false) {
+  const ccw = (l, want) => ((area2(l) > 0) === want ? l : [...l].reverse());
+  let out = ccw(outer, true).map((p) => [p[0], p[1]]);
+  const order = holes.map((h) => ccw(h, false)).sort((a, b) => Math.max(...b.map((p) => p[0])) - Math.max(...a.map((p) => p[0])));
+  const near = (p, q, d) => { const l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, t = Math.min(d, l / 3) / l; return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]; };
+  for (const hole of order) {
+    const hi = hole.reduce((m, p, i) => (p[0] > hole[m][0] ? i : m), 0), H = hole[hi];
+    // the nearest edge the ray y = H.y, x > H.x crosses
+    let best = -1, bx = Infinity;
+    for (let i = 0; i < out.length; i++) {
+      const a = out[i], b = out[(i + 1) % out.length];
+      if ((a[1] > H[1]) === (b[1] > H[1])) continue;
+      const x = a[0] + (H[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+      if (x > H[0] && x < bx) { bx = x; best = i; }
+    }
+    if (best < 0) return null;
+    const A = out[best], B = out[(best + 1) % out.length], M = [bx, H[1]];
+    const n = hole.length, Hn = hole[(hi + 1) % n], Hp = hole[(hi + n - 1) % n];
+    const loop = [near(M, A, w / 2)];
+    loop.push(near(H, Hn, w / 2));
+    for (let k = 1; k < n; k++) loop.push(hole[(hi + k) % n]);
+    loop.push(near(H, Hp, w / 2), near(M, B, w / 2));
+    out = [...out.slice(0, best + 1), ...loop, ...out.slice(best + 1)];
+  }
+  out = tidy(out.map((p) => [r3(p[0]), r3(p[1])]));
+  // its area must be the outline's less the holes' (less the slits): a hole
+  // the slit did not open (a strand the stitching ran the wrong way) fills in
+  const want = Math.abs(area2(outer)) - holes.reduce((m, h) => m + Math.abs(area2(h)), 0);
+  if (!(Math.abs(area2(out) - want) <= Math.max(want * 5e-3, w * perimeter(outer) * 2))) return null;
+  return out.length >= 3 && (loose || !crosses(out)) ? out : null;
+}
+// two layers' loops, one for one, each point within d of the other's outline
+function sameLoops(A, B, d) {
+  if (A.length !== B.length) return false;
+  const used = new Set();
+  for (const a of A) {
+    const j = B.findIndex((b, k) => !used.has(k) && Math.abs(Math.abs(area2(a)) - Math.abs(area2(b))) <= d * perimeter(a) && within(a, b, d) && within(b, a, d));
+    if (j < 0) return false;
+    used.add(j);
+  }
+  return true;
+}
+function perimeter(l) { let m = 0; for (let i = 0; i < l.length; i++) { const p = l[i], q = l[(i + 1) % l.length]; m += Math.hypot(p[0] - q[0], p[1] - q[1]); } return m; }
+function within(a, b, d) {
+  for (const p of a) {
+    let ok = false;
+    for (let i = 0; i < b.length && !ok; i++) if (segDist(p, b[i], b[(i + 1) % b.length]) <= d) ok = true;
+    if (!ok) return false;
+  }
+  return true;
+}
 function sectionArea(V, I, ax, ux, uy, h) {
   return sectionLoops(V, I, ax, ux, uy, h, Infinity).reduce((m, l) => m + area2(l), 0);
 }
-function area2(l) {
+export function area2(l) {
   let a = 0;
   for (let i = 0; i < l.length; i++) { const p = l[i], q = l[(i + 1) % l.length]; a += p[0] * q[1] - q[0] * p[1]; }
   return a / 2;
@@ -294,7 +371,7 @@ function inside(p, poly) {
   return c;
 }
 // loops -> outers with their holes, by how many others hold each
-function nest(loops) {
+export function nest(loops) {
   const depth = loops.map((l, i) => loops.reduce((n, m, j) => n + (j !== i && inside(l[0], m) ? 1 : 0), 0));
   const out = loops.map((l, i) => ({ l, d: depth[i] })).filter((x) => x.d % 2 === 0).map((x) => ({ outer: x.l, d: x.d, holes: [] }));
   loops.forEach((l, i) => {
@@ -305,7 +382,7 @@ function nest(loops) {
   return out;
 }
 
-function weld(P, I) {
+export function weld(P, I) {
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < P.length; i++) { if (P[i] < lo) lo = P[i]; if (P[i] > hi) hi = P[i]; }
   const q = Math.max(hi - lo, 1) * 1e-7;
@@ -326,7 +403,7 @@ function weld(P, I) {
 
 // the frame of the biggest flat face's direction, when that is not one of
 // the part's own axes (rows: in-plane x, in-plane y, normal); else null
-function dominantFrame(V, I) {
+export function dominantFrame(V, I) {
   const bins = new Map();
   for (let t = 0; t < I.length; t += 3) {
     const a = 3 * I[t], b = 3 * I[t + 1], c = 3 * I[t + 2];

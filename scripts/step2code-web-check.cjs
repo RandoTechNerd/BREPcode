@@ -151,6 +151,40 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     check("taking the close code writes the body as code, noted as not exact", /CLOSE, not exact: \d+(\.\d+)?% of the file's volume matches/.test(code2b) && !/importedSolid/.test(code2b), code2b.slice(0, process.env.ALLMSG ? 3000 : 400));
     check("...and it builds", /^ok\|/.test(s), s);
 
+    // 2c. the same, turned down: a click beside the card does not answer it
+    // (it took a while to come); no keeps the file's solid and leaves a link
+    // that offers it again; taken, the close code exports as curved STEP
+    t0 = Date.now();
+    await give("dome.step", files.dome);
+    await answer(true);
+    let asked = false;
+    for (let i = 0; i < 1200 && !asked; i++) { asked = await run(`document.getElementById("yn-ask")?.classList.contains("open") && /approximately/.test(document.getElementById("yn-head").textContent)`); if (!asked) await wait(100); }
+    await run(`document.getElementById("yn-ask").click(); true`);
+    check("the close offer stays up after a click beside it", await run(`document.getElementById("yn-ask").classList.contains("open")`));
+    check("...its no says what it keeps", (await run(`document.getElementById("yn-no").textContent`)) === "Keep the file's solid");
+    await run(`document.getElementById("yn-no").click(); true`);
+    await drain();
+    s = await settle(t0);
+    check("turned down, the code keeps the file's solid", /importedSolid\("dome-/.test(await run(`document.getElementById("code").value`)));
+    check("...and the hint offers the close code again", await run(`!!document.getElementById("close-offer-again")`), await run(`document.getElementById("hint")?.textContent || ""`));
+    await run(`document.getElementById("close-offer-again").click(); true`);
+    const again = await answer(true, 4000);
+    check("...which asks again", /can only be rebuilt approximately/.test(again), again);
+    t0 = Date.now();
+    s = await settle(t0);
+    check("...and taken, writes the close code", /CLOSE, not exact/.test(await run(`document.getElementById("code").value`)) && /^ok\|/.test(s), s);
+    let dl = null;
+    win.webContents.session.once("will-download", (_e, item) => {
+      item.setSavePath(path.join(require("node:os").tmpdir(), `s2c-web-${process.pid}-${item.getFilename()}`));
+      dl = { state: "going" };
+      item.once("done", (_e2, state) => { dl.state = state; dl.path = item.getSavePath(); });
+    });
+    await run(`(() => { const v = document.getElementById("step-variant"); v.value = "step-curved"; v.dispatchEvent(new Event("change", { bubbles: true })); document.getElementById("exp-go").click(); return true; })()`);
+    for (let i = 0; i < 1200 && !(dl && dl.state !== "going"); i++) await wait(100);
+    const stepText = dl?.state === "completed" ? fs.readFileSync(dl.path, "latin1") : "";
+    if (dl?.path) { try { fs.unlinkSync(dl.path); } catch { /* gone */ } }
+    check("the close code exports as curved STEP", /MANIFOLD_SOLID_BREP/.test(stepText), JSON.stringify(dl));
+
     // 3. an assembly (test/fixtures/step2code-assembly.step, written by
     // test/step2code.js): one part placed twice, the second moved and turned.
     // The part is written once and each copy placed, and the worker found the

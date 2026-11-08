@@ -35,7 +35,16 @@ now four ways into the same model, and you can move between them mid-build:
   anywhere come back exact too, the changing part rebuilt as extrudes along its
   own direction. A body with no exact rebuild (a freeform one) can come back
   **close**: you're told how much of its volume the close code leaves out and
-  adds, with red and blue dots on the model where, and asked before it's used.
+  adds, with red and blue dots on the model where, and asked before it's used
+  (the exact code is on screen first; the offer follows when it's ready). Close
+  code is plain extrudes with no booleans, so it builds in seconds and exports
+  as curved STEP. Where it comes within a point of the thin-layer version, it
+  is a handful of extrude blocks instead, each along its own axis (slanted
+  walls too), with the file's own fillets and round holes written as true
+  arcs and circles: a bracket comes back as 14 blocks, not 72 layers. A
+  spline face that is really a cylinder, cone, sphere or torus (exporters
+  often write fillets that way) is read as the shape it is. A copy the file
+  writes out as a separate body is converted once and placed where it sits.
   Also on the CLI: `brepscript part.step` writes `part.bcode` (`--close` takes
   the close versions).
 

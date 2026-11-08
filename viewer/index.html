@@ -8302,7 +8302,7 @@
 
     // A yes/no question in the middle of the screen. Resolves true for Yes,
     // false for Cancel, Escape or a click outside.
-    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel" }) {
+    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel", sticky = false }) {
       const box = $("yn-ask");
       // at the top of the page, over every card, whatever its markup sits in
       if (box.parentNode !== document.body) document.body.appendChild(box);
@@ -8325,7 +8325,9 @@
         };
         $("yn-yes").onclick = () => done(true);
         $("yn-no").onclick = () => done(false);
-        box.onclick = (e) => { if (e.target === box) done(false); };
+        // sticky: a click beside the card does not answer it (a question that
+        // took a minute to reach should not vanish on a stray click)
+        box.onclick = (e) => { if (e.target === box && !sticky) done(false); };
         addEventListener("keydown", key, true);
       });
     }
@@ -19894,19 +19896,37 @@ let SIMPLIFY_TARGET = 10000;
     }
     async function stepAsCode(file) {
       hideCloseMap();                     // the last file's dots
+      closeOffer = null;
       const text = (await file.text()).replace(/^\uFEFF/, "");
       const title = file.name.replace(/\.(step|stp)$/i, "").slice(0, 60);
-      let r;
+      const mine = ++stepRun;
+      let r, shown = false;
+      // the exact result goes on screen as soon as it is known; a freeform
+      // body's close version is worked out after it, and offered when ready
+      const show = (x) => { if (!shown && mine === stepRun) { shown = true; showStepCode(file, title, x); } };
       try {
         const { convertStepInApp } = await import("./stepcode.js");
         r = await withLoadBar("Rebuilding the bodies as code…", convertStepInApp(text, {
           title, compile: compileForCheck, workerCall, rustWasmUrl: window.__BREP_RUST_WASM_URL,
-          onStage: (t) => setStatus("busy", `${file.name}: ${t}…`),
+          onStage: (t) => { if (mine === stepRun) setStatus("busy", `${file.name}: ${t}…`); },
+          onExact: (x) => { show(x); setTimeout(() => { if (mine === stepRun) setStatus("busy", `${file.name}: working out a close version of the freeform body…`); }, 50); },
         }));
       } catch (e) {
+        if (shown) { setStatus("warn", `${file.name}: no close version (${String(e?.message || e).slice(0, 160)}).`); return true; }
         setStatus("warn", `${file.name} couldn't be rebuilt as code (${String(e?.message || e).slice(0, 160)}), so it opens as a mesh.`);
         return false;
       }
+      if (mine !== stepRun) return true;          // another file opened meanwhile
+      show(r);
+      if (!r.closeCode) return true;
+      // asked as soon as it is known, the file's own solid still building
+      // behind it if need be (in the worker: the card answers at once)
+      await new Promise((ok) => setTimeout(ok, 300));
+      if (mine === stepRun) await offerCloseCode(r);
+      return true;
+    }
+    let stepRun = 0;
+    function showStepCode(file, title, r) {
       for (const im of r.imports) dsl.registerImport(im.name, im.step, im.mesh ? { mesh: im.mesh } : {});
       logEvent("step2code", file.name, { bodies: r.bodies.length, code: r.bodies.filter((b) => b.ok).length });
       pushHistory(code.value);
@@ -19925,8 +19945,6 @@ let SIMPLIFY_TARGET = 10000;
           + kept.slice(0, 3).map((b) => `<b>${esc(b.name)}</b> (${esc(String(b.why).split(";")[0])})`).join(", ")
           + (kept.length > 3 ? `, and ${kept.length - 3} more (see the notes in the code)` : "") + "." : "");
       scheduleBuild();
-      if (r.closeCode) await offerCloseCode(r);
-      return true;
     }
 
     // Bodies with no exact rebuild that came CLOSE (viewer/stepcode.js): how
@@ -19939,14 +19957,22 @@ let SIMPLIFY_TARGET = 10000;
       const pct = (x) => `${(x * 100).toFixed(x > 0.999 && x < 1 ? 2 : x > 0 && x < 0.001 ? 2 : 1)}%`;
       showCloseMap(r.closeMap);
       const list = near.slice(0, 4).map((b) => `<b>${esc(b.name)}</b>: ${pct(b.close.match)} of its volume matches `
-        + `(${pct(b.close.missing)} missing, ${pct(b.close.extra)} extra)`).join("<br>") + (near.length > 4 ? `<br>and ${near.length - 4} more` : "");
+        + `(${pct(b.close.missing)} missing, ${pct(b.close.extra)} extra)${b.close.prim && b.close.pieces ? `, as ${b.close.pieces} extrude block${b.close.pieces === 1 ? "" : "s"}` : ""}`).join("<br>") + (near.length > 4 ? `<br>and ${near.length - 4} more` : "");
       const yes = await askYesNo({
         head: `${near.length === 1 ? "One body" : `${near.length} bodies`} can only be rebuilt approximately. Use the close code?`,
         sub: `${list}<br><br>The dots show where: <b style="color:#ff3b30">red</b> is the file's material the close code leaves out, `
-          + `<b style="color:#2f8cff">blue</b> is material it adds. Keep them exact and they stay the file's own solids.`,
-        yes: "Use the close code", no: "Keep them exact",
+          + `<b style="color:#2f8cff">blue</b> is material it adds. Keep the file's solid and they stay exactly as the file has them.`,
+        yes: "Use the close code", no: "Keep the file's solid", sticky: true,
       });
-      if (!yes) { hideCloseMap(); return; }
+      if (!yes) {
+        hideCloseMap();
+        // still there to take, until the next file
+        closeOffer = r;
+        const best = near.reduce((m, b) => Math.max(m, b.close.match), 0);
+        hint.insertAdjacentHTML("beforeend", ` <a href="#" id="close-offer-again">Use the close code instead (${pct(best)} match)</a>`);
+        return;
+      }
+      closeOffer = null;
       pushHistory(code.value);
       code.value = r.closeCode;
       pushHistory();
@@ -19956,6 +19982,12 @@ let SIMPLIFY_TARGET = 10000;
         + `the dots mark where it differs, until the next edit.`;
       scheduleBuild();
     }
+    let closeOffer = null;
+    document.addEventListener("click", (e) => {
+      if (e.target?.id !== "close-offer-again" || !closeOffer) return;
+      e.preventDefault();
+      offerCloseCode(closeOffer);
+    });
     // the close map: one dot per probe point the two solids disagree on, drawn
     // through the model (a sliver inside it still shows); gone with the next
     // edit or the next STEP

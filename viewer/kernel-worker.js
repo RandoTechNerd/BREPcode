@@ -19,6 +19,7 @@ import { runEngine, solidsToSTL, EngineRefusal } from "../src/engine.js";
 import { trianglesStep } from "../src/facetstep.js";
 import { splitHistory, mergeOutputs } from "../src/partsplit.js";
 import { meshSliced } from "../src/step2code-mesh.js";
+import { primCandidate } from "../src/step2code-prim.js";
 import { kernelBodies, freeBodies, unionAll, measure, bestMatch, placeInstances, nearestByBox, solidStep, solidStl, summarize, coverage, fileSide, boxUnion, SAME_SHAPE, CLOSE_MIN } from "../src/step2code-verify.js";
 
 // The split engine (src/engine.js): the Rust kernel for exact parts, manifold
@@ -38,6 +39,13 @@ const getPartHistory = () => (partHistoryLoad ??= import("/node_modules/brep-io-
 let rustKernel = null;         // the load promise, once started
 let rustModule = null;         // set when the load has finished
 let rustFailure = null;        // set when it failed: not retried this session
+// a STEP file's own bodies, kept from "step2code" for its "step2codeSlices"
+let stepBodies = null;
+function dropStepBodies(rust) {
+  if (!stepBodies) return;
+  try { freeBodies(rust, stepBodies.kernel); } catch { /* gone */ }
+  stepBodies = null;
+}
 // A throwaway Rust kernel for STEP -> code's CLOSE candidates (stair layers,
 // a mesh's slices): ragged outlines, and one that traps the wasm
 // ("unreachable") leaves that instance's solid registry unusable, which must
@@ -865,7 +873,9 @@ self.onmessage = async ({ data, ports }) => {
     // and where they are (close.points), for the page to offer.
     if (op === "step2code") {
       const rust = await loadRust(data.rustWasmUrl);
+      dropStepBodies(rust);
       const kernel = kernelBodies(rust, data.step);
+      let sliced = false;
       const out = [];
       const keepOf = (box, name) => {
         const k = nearestByBox(kernel, box);
@@ -919,7 +929,7 @@ self.onmessage = async ({ data, ports }) => {
             // nothing near enough (a freeform body): its own triangles,
             // sliced (src/step2code-mesh.js), for the page to compile and
             // send back to "step2codeSlices"
-            let slices = null;
+            let slices = null, prims = null;
             if (!(best?.cov.match > 0.995)) {
               const k = nearestByBox(kernel, b.box);
               try {
@@ -929,6 +939,8 @@ self.onmessage = async ({ data, ports }) => {
                   slices = meshSliced({ P: m.take_positions(), I: m.take_indices() }, b.T).pieces || null;
                 }
               } catch { /* no slices */ }
+              // and as a few primitive blocks (src/step2code-prim.js)
+              try { const pc = primCandidate(rust, k, b.T, b.solid || null); if (pc) prims = pc; } catch { /* no blocks */ }
             }
             const first = keepOf(b.box, b.name);
             if (first.err) why.push(first.err);
@@ -939,11 +951,17 @@ self.onmessage = async ({ data, ports }) => {
               try { cov = coverage(rust, fileSide(best.k), best.x, boxUnion(best.k.box, b.box), true, best.kr === isoRust || best.kr === rust ? best.kr : rust) || best.cov; } catch (e) { trapped(e); }
               done.close = { pick: best.i, match: cov.match, missing: cov.missing, extra: cov.extra, points: cov.points };
             }
-            if (slices) done.slices = slices;
+            if (slices) { done.slices = slices; sliced = true; }
+            if (prims) { done.prims = prims.pieces; done.primMethod = prims.method; sliced = true; }
           }
           out.push(done);
         }
-      } finally { freeBodies(rust, kernel); }
+      } finally {
+        // slices to come back ("step2codeSlices"): the file's bodies stay, so
+        // the file is not imported twice (seconds, on a freeform body)
+        if (sliced) stepBodies = { text: data.step, kernel };
+        else freeBodies(rust, kernel);
+      }
       self.postMessage({ id, ok: true, bodies: out });
       return;
     }
@@ -953,12 +971,34 @@ self.onmessage = async ({ data, ports }) => {
     // (each slice built on the throwaway kernel: isoKernel)
     if (op === "step2codeSlices") {
       const rust = await loadRust(data.rustWasmUrl);
-      const kernel = kernelBodies(rust, data.step);
+      let kernel;
+      if (stepBodies?.text === data.step) { kernel = stepBodies.kernel; stepBodies = null; for (const k of kernel) k.used = false; }
+      else { dropStepBodies(rust); kernel = kernelBodies(rust, data.step); }
       const out = [];
+      // one body can come twice (its slices, then its blocks): the file's
+      // body found for it the first time is the one measured against again
+      const found = new Map();
       try {
         for (const b of data.bodies) {
           const keep = [], parts = [];
-          for (const ways of b.pieces) {
+          // the plain slices in one build (b.plain: one group, the pieces it
+          // holds); refused, the page sends every slice on its own instead
+          if (b.plain) {
+            let ok = false;
+            try {
+              const iso = await isoKernel(data.rustWasmUrl);
+              const r = await runEngine(b.plain.json, { rust: iso, manifold: loadManifold });
+              if (r.lane === "exact" && r.solids.length === b.plain.of.length && r.solids.every((x) => x.handle != null)) {
+                parts.push(...r.solids.map((x) => measure(iso, x.handle)));
+                ok = true;
+              }
+            } catch (e) { trapped(e); }
+            if (!ok) { out.push({ plainRefused: true }); continue; }
+          }
+          const plainOf = new Set(b.plain?.of || []);
+          b.pieces.forEach((_, k) => { if (plainOf.has(k)) keep[k] = 0; });
+          for (const [n, ways] of b.pieces.entries()) {
+            if (plainOf.has(n)) continue;
             let pick = -1;
             for (let w = 0; w < ways.length && pick < 0; w++) {
               if (!ways[w]) continue;
@@ -970,9 +1010,11 @@ self.onmessage = async ({ data, ports }) => {
                 pick = w;
               } catch (e) { trapped(e); /* the next way */ }
             }
-            keep.push(pick);
+            keep[n] = pick;
           }
-          const k = nearestByBox(kernel, b.box);
+          const key = JSON.stringify(b.box);
+          const k = found.get(key) ?? nearestByBox(kernel, b.box);
+          if (k) found.set(key, k);
           let cov = null;
           try { cov = parts.length && k?.json && isoRust ? coverage(rust, fileSide(k), { parts }, boxUnion(k.box, b.box), true, isoRust) : null; } catch (e) { trapped(e); }
           if (k) k.used = true;

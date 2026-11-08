@@ -23,6 +23,7 @@
 
 import { readStep } from "./stepread.js";
 import { meshSliced, slicesOf } from "./step2code-mesh.js";
+import { primCandidate } from "./step2code-prim.js";
 import { convertSolid, toCode, sourceFor, keptName, planBodies, withClose } from "./step2code.js";
 import { kernelBodies, freeBodies, unionAll, measure, bestMatch, placeInstances, nearestByBox, solidStep, solidStl, boxOfSolid, summarize, coverage, fileSide, boxUnion, SAME_SHAPE, CLOSE_MIN } from "./step2code-verify.js";
 import { loadRustKernel } from "./engine-node.js";
@@ -39,9 +40,9 @@ export function runCode(src) {
 
 export { SAME_SHAPE };
 
-export async function convertStep(text, { title = "part", maxTries = 6, close = true } = {}) {
+export async function convertStep(text, { title = "part", maxTries = 6, close = true, fitTol } = {}) {
   const rk = await loadRustKernel();
-  const read = readStep(text);
+  const read = readStep(text, { fitTol });
   const kernel = kernelBodies(rk, text);
   const results = new Array(read.solids.length), ms = new Array(read.solids.length).fill(0), imports = [];
   const usedNames = new Set();
@@ -65,10 +66,11 @@ export async function convertStep(text, { title = "part", maxTries = 6, close = 
     let done = null, cand = null, best = null;
     const myBox = boxOfSolid(first);
     // the closest a near miss comes: measured against the file body it sits on
-    const near = (t, c) => {
+    // edge: what being simpler is worth, in match (primitive blocks over slices)
+    const near = (t, c, edge = 0) => {
       const k = nearestByBox(kernel, myBox);
       const cov = k?.json ? coverage(rk, fileSide(k), c, boxUnion(k.box, myBox)) : null;
-      if (cov && cov.match >= CLOSE_MIN && (!best || cov.match > best.cov.match)) best = { t, cov, c, k };
+      if (cov && cov.match >= CLOSE_MIN && (!best || cov.match + edge > best.cov.match + best.edge)) best = { t, cov, c, k, edge };
     };
     const tryOne = async (t) => {
       let h, made = false;
@@ -94,23 +96,16 @@ export async function convertStep(text, { title = "part", maxTries = 6, close = 
       if (close) near(t, c);
     }
     if (!done && close) for (const t of conv.close || []) { const got = await tryOne(t); if (got) near(t, got.c); }
-    // nothing near enough (a freeform body): the file's own triangles, sliced
+    // nothing near enough (a freeform body): the file's own triangles, sliced,
+    // and the same body as a few primitive blocks (step2code-prim.js); the
+    // blocks are offered when they come within a point of the slices, being
+    // a handful of extrudes rather than dozens of layers
     if (!done && close && !(best?.cov.match > 0.995)) {
-      const t = meshCandidate(rk, nearestByBox(kernel, myBox), first.matrix);
-      // each slice built on its own: one the kernel refuses is left out
-      if (t) {
-        const keep = [], parts = [];
-        for (const ways of t.pieces) for (const piece of ways) {
-          try {
-            const r = await build(runCode(sourceFor({ expr: piece }, first.matrix)), { engine: "split" });
-            if (r.kernel !== "rust" || r.engine !== "exact" || r.solids.some((x) => x.handle == null)) continue;
-            parts.push(...r.solids.map((x) => measure(rk, x.handle)));
-            keep.push(piece);
-            break;
-          } catch { /* the next way, or left out */ }
-        }
-        if (keep.length) near(slicesOf(keep), { parts });
-      }
+      const k = nearestByBox(kernel, myBox);
+      const t = meshCandidate(rk, k, first.matrix);
+      if (t) { const g = await buildPieces(t.pieces, first.matrix); if (g.keep.length) near(slicesOf(g.keep), { parts: g.parts }); }
+      const pc = primCandidate(rk, k, first.matrix, first);
+      if (pc) { const g = await buildPieces(pc.pieces.map((p) => [p]), first.matrix); if (g.keep.length) near({ ...slicesOf(g.keep), prim: pc.method }, { parts: g.parts }, PRIM_EDGE); }
     }
     // the one offered: measured again, finer, for its numbers and its map
     if (!done && best) best.cov = coverage(rk, fileSide(best.k), best.c, boxUnion(best.k.box, myBox), true) || best.cov;
@@ -120,7 +115,7 @@ export async function convertStep(text, { title = "part", maxTries = 6, close = 
       rest.forEach((s, i) => { results[s.id] = found[i] ? { ...done, T: s.matrix } : keep(s, ["this copy is not where the assembly's placement puts the part"]); });
     } else for (const s of plan.instances) {
       results[s.id] = keep(s, why);
-      if (best) results[s.id].close = { kind: best.t.kind, expr: best.t.expr, dials: best.t.dials, plan, T: s.matrix, match: best.cov.match, missing: best.cov.missing, extra: best.cov.extra, points: s === first ? best.cov.points : null };
+      if (best) results[s.id].close = { kind: best.t.kind, expr: best.t.expr, dials: best.t.dials, plan, T: s.matrix, match: best.cov.match, missing: best.cov.missing, extra: best.cov.extra, points: s === first ? best.cov.points : null, prim: best.t.prim || null, pieces: (best.t.expr.match(/linearExtrude\(/g) || []).length };
     }
     const each = (performance.now() - t0) / plan.instances.length;
     for (const s of plan.instances) ms[s.id] = Math.round(each);
@@ -135,7 +130,39 @@ export async function convertStep(text, { title = "part", maxTries = 6, close = 
   };
 }
 
-const closeNumbers = (c) => (c ? { match: c.match, missing: c.missing, extra: c.extra } : null);
+// what fewer, plainer pieces are worth against the slices, in match
+const PRIM_EDGE = 0.01;
+
+// pieces (each its ways of being written, best first) built as one group:
+// the plain ones (one outline, no boolean) in one build, the rest, and all
+// of them if that fails, one at a time, each by the first of its ways that
+// builds; a piece the kernel refuses is left out
+async function buildPieces(pieces, T) {
+  const rk = await loadRustKernel();
+  const keep = [], parts = [];
+  const plain = pieces.filter((w) => !/region2d|difference/.test(w[0]));
+  let rest = pieces.filter((w) => !plain.includes(w));
+  if (plain.length > 1) {
+    try {
+      const r = await build(runCode(sourceFor(slicesOf(plain.map((w) => w[0])), T)), { engine: "split" });
+      if (r.kernel !== "rust" || r.engine !== "exact" || r.solids.length !== plain.length || r.solids.some((x) => x.handle == null)) throw new Error("not one exact solid per piece");
+      parts.push(...r.solids.map((x) => measure(rk, x.handle)));
+      keep.push(...plain.map((w) => w[0]));
+    } catch { rest = pieces; parts.length = 0; keep.length = 0; }
+  } else rest = pieces;
+  for (const ways of rest) for (const piece of ways) {
+    try {
+      const r = await build(runCode(sourceFor({ expr: piece }, T)), { engine: "split" });
+      if (r.kernel !== "rust" || r.engine !== "exact" || r.solids.some((x) => x.handle == null)) continue;
+      parts.push(...r.solids.map((x) => measure(rk, x.handle)));
+      keep.push(piece);
+      break;
+    } catch { /* the next way, or left out */ }
+  }
+  return { keep, parts };
+}
+
+const closeNumbers = (c) => (c ? { match: c.match, missing: c.missing, extra: c.extra, prim: c.prim || null, pieces: c.pieces ?? null } : null);
 
 // the file body's own tessellation, sliced into layers (step2code-mesh.js),
 // written in the part's own frame like every other candidate

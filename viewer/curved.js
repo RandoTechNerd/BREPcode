@@ -379,6 +379,10 @@ export async function buildCurved(root) {
         }
       });
       if (!parts.length) throw new Error("curved export: group() is empty — there is nothing to draw");
+      // many parts (a STEP file's close slices: 200 thin layers face to face)
+      // are written side by side as one compound: fusing them one after
+      // another froze the page and gains nothing in a STEP file
+      if (parts.length > 8 && r.makeCompound) return r.makeCompound(parts);
       return parts.reduce((acc, p) => acc.fuse(p));
     }
     if (n.kind === "prim") return applyMatrix(buildPrim(r, n), matrix);

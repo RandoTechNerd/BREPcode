@@ -1057,19 +1057,98 @@ export function sourceFor(t, T = null) {
 // OWN frame (as it was drawn: square to its axes, round numbers), with every
 // place the assembly puts a copy of it. A screw used eight times is converted
 // once and placed eight times; a part the assembly turned 30 degrees is still
-// written square, inside one rotate().
+// written square, inside one rotate(). So is a copy written out as a separate
+// body (congruent): every copy is still checked where it lands.
 export function planBodies(read) {
   const byBrep = new Map();
   for (const s of read.solids) {
     if (!byBrep.has(s.brep)) byBrep.set(s.brep, []);
     byBrep.get(s.brep).push(s);
   }
-  return [...byBrep.values()].map((instances) => ({
+  // A copy the file wrote out as a body of its own (many exporters do, with
+  // no shared definition) is the same part moved and turned: it joins the
+  // first one's copies, converted once. Mirror images stay bodies of their
+  // own (a mirror() pushes most shapes off the exact kernel).
+  const groups = [];
+  for (const instances of byBrep.values()) {
+    const sig = shapeSig(instances[0]);
+    const g = sig && groups.find((x) => x.sig && x.sig.key === sig.key && x.instances[0].color === instances[0].color);
+    const M = g && congruent(g.sig, sig);
+    if (M) g.instances.push(...instances.map((s) => ({ ...s, matrix: xf.compose(s.matrix, xf.compose(xf.invert(instances[0].matrix), xf.compose(M, g.instances[0].matrix))) })));
+    else groups.push({ sig, instances: [...instances] });
+  }
+  return groups.map(({ instances }) => ({
     name: instances[0].name,
     color: instances[0].color,
     instances,
     local: placeSolid(instances[0], xf.invert(instances[0].matrix)),
   }));
+}
+// A body's corners (in the file's frame), their centre and principal axes:
+// enough to tell two bodies are one part, and how one sits on the other.
+function shapeSig(s) {
+  const seen = new Map();
+  for (const f of s.faces) for (const l of f.loops) for (const e of l.edges) for (const p of [e.a, e.b]) {
+    if (p) seen.set(p.map((v) => v.toFixed(5)).join(","), p);
+  }
+  const P = [...seen.values()];
+  if (P.length < 4) return null;
+  const c = [0, 1, 2].map((k) => P.reduce((m, p) => m + p[k], 0) / P.length);
+  const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (const p of P) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i][j] += (p[i] - c[i]) * (p[j] - c[j]) / P.length;
+  const { values, vectors } = eig3(C);
+  const scale = Math.sqrt(Math.max(values[0], 1e-12));
+  // equal spreads leave the axes undecided: no match is tried (never a wrong one)
+  if (Math.abs(values[0] - values[1]) < 1e-3 * values[0] || Math.abs(values[1] - values[2]) < 1e-3 * values[0]) return null;
+  const types = s.faces.map((f) => f.surface?.type || "?").sort().join(",");
+  const key = `${P.length}|${s.faces.length}|${types}|${values.map((v) => Math.sqrt(v).toPrecision(5)).join(",")}`;
+  return { P, c, axes: vectors, scale, key };
+}
+// the move (a turn, no mirror) that puts body a's corners on body b's, or null
+function congruent(a, b) {
+  const tol = Math.max(a.scale * 1e-5, 1e-6);
+  const grid = new Map(), cell = tol * 4;
+  const at = (p) => p.map((v) => Math.floor(v / cell));
+  for (const p of b.P) { const k = at(p).join(","); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(p); }
+  const has = (q) => {
+    const [x, y, z] = at(q);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+      for (const p of grid.get(`${x + i},${y + j},${z + k}`) || []) if (Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) <= tol) return true;
+    }
+    return false;
+  };
+  for (const sx of [1, -1]) for (const sy of [1, -1]) {
+    // the third axis follows from the first two: a turn, never a mirror
+    const A = a.axes, B = [b.axes[0].map((v) => v * sx), b.axes[1].map((v) => v * sy)];
+    B.push(vec.cross(B[0], B[1]));
+    const A3 = [A[0], A[1], vec.cross(A[0], A[1])];
+    // R = B^T A: a's axis k onto b's axis k
+    const R = [0, 1, 2].map((i) => [0, 1, 2].map((j) => B[0][i] * A3[0][j] + B[1][i] * A3[1][j] + B[2][i] * A3[2][j]));
+    const t = [0, 1, 2].map((i) => b.c[i] - (R[i][0] * a.c[0] + R[i][1] * a.c[1] + R[i][2] * a.c[2]));
+    const M = { R, t };
+    if (a.P.every((p) => has(xf.apply(M, p)))) return M;
+  }
+  return null;
+}
+// a symmetric 3x3's eigenvalues (largest first) and unit eigenvectors (Jacobi)
+function eig3(S) {
+  const A = S.map((r) => r.slice()), V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 50; sweep++) {
+    let off = 0;
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) off += A[i][j] * A[i][j];
+    if (off < 1e-30) break;
+    for (let p = 0; p < 3; p++) for (let q = p + 1; q < 3; q++) {
+      if (Math.abs(A[p][q]) < 1e-300) continue;
+      const th = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+      const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < 3; k++) { const akp = A[k][p], akq = A[k][q]; A[k][p] = c * akp - s * akq; A[k][q] = s * akp + c * akq; }
+      for (let k = 0; k < 3; k++) { const apk = A[p][k], aqk = A[q][k]; A[p][k] = c * apk - s * aqk; A[q][k] = s * apk + c * aqk; }
+      for (let k = 0; k < 3; k++) { const vkp = V[k][p], vkq = V[k][q]; V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq; }
+    }
+  }
+  const order = [0, 1, 2].sort((i, j) => A[j][j] - A[i][i]);
+  return { values: order.map((i) => A[i][i]), vectors: order.map((i) => [V[0][i], V[1][i], V[2][i]]) };
 }
 // a body read by stepread moved by T (its faces, edges and surfaces)
 export function placeSolid(s, T) {
@@ -1184,7 +1263,7 @@ export function withClose(results) {
   return results.map((r) => (r.close ? { ok: true, close: r.close, kind: r.close.kind, expr: r.close.expr, dials: r.close.dials, plan: r.close.plan, T: r.close.T, why: r.why } : r));
 }
 const pct = (x) => `${x >= 0.9995 && x < 1 ? (x * 100).toFixed(2) : x < 0.0005 && x > 0 ? (x * 100).toFixed(2) : (x * 100).toFixed(1)}%`;
-const closeNote = (name, c) => `// ${name}: CLOSE, not exact: ${pct(c.match)} of the file's volume matches (${pct(c.missing)} missing, ${pct(c.extra)} extra).`;
+const closeNote = (name, c) => `// ${name}: CLOSE, not exact: ${pct(c.match)} of the file's volume matches (${pct(c.missing)} missing, ${pct(c.extra)} extra)${c.prim && c.pieces ? `, as ${c.pieces} extrude block${c.pieces === 1 ? "" : "s"}` : ""}.`;
 const indent = (e, pre = "") => e.split("\n").map((l, i) => (i ? pre + l : l)).join("\n");
 
 // rotate/translate that reproduce a placement matrix (for repeated parts)

@@ -28,10 +28,21 @@ export function kernelBodies(rk, text) {
   try { list = JSON.parse(rk.import_step_json(text)); } catch { list = []; }
   return list.map((s) => {
     const json = JSON.stringify(s);
-    let handle = null, props = null;
+    let handle = null;
     try { handle = rk.register_solid_json(json); } catch { /* not a closed solid */ }
-    try { props = JSON.parse(rk.solid_mass_properties_full_json(json)); } catch { /* no volume */ }
-    return { handle, json, props, volume: Math.abs(props?.volume ?? 0), box: box(s.vertices.map((v) => [v.point.x, v.point.y, v.point.z])), used: false };
+    // the full mass properties only when something compares against them: on
+    // a B-spline body they cost seconds, and a body only offered close never
+    // needs them
+    let props;
+    const propsOf = () => {
+      if (props === undefined) { try { props = JSON.parse(rk.solid_mass_properties_full_json(json)); } catch { props = null; } }
+      return props;
+    };
+    return {
+      handle, json, box: box(s.vertices.map((v) => [v.point.x, v.point.y, v.point.z])), used: false,
+      get props() { return propsOf(); },
+      get volume() { return Math.abs(propsOf()?.volume ?? 0); },
+    };
   });
 }
 // file bodies' point-test grids (coverage), by handle, until freed
@@ -192,7 +203,7 @@ const MESH_REL = 2e-4;
 const inside = (rk, X, pts) => (X.parts ? anyOf(X.parts.map((p) => inBox(rk, p, pts))) : X.json ? classify(rk, X.json, pts) : X.mesh ? meshClassify(X.mesh, pts) : null);
 // a piece asked only about the points in its own box (a slice is thin)
 function inBox(rk, X, pts) {
-  const b = X.box ??= X.json ? box(JSON.parse(X.json).vertices.map((v) => [v.point.x, v.point.y, v.point.z])) : null;
+  const b = X.box ??= X.json ? boxOfJson(JSON.parse(X.json)) : null;
   if (!b) return inside(rk, X, pts);
   const pad = 1e-6 * (1 + Math.abs(b.hi[0]) + Math.abs(b.hi[1]) + Math.abs(b.hi[2]));
   const idx = [];
@@ -237,7 +248,7 @@ function meshClassify({ P, I }, pts) {
 // the triangles bucketed by where they cover the (y, z) plane, so a point
 // meets only its own cell's (points nudged off the exact grid of a mesh's
 // own vertices, so the ray does not run through an edge)
-function meshGrid(P, I) {
+export function meshGrid(P, I) {
   const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
   for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 2; k++) { const v = P[i + 1 + k]; if (v < lo[k]) lo[k] = v; if (v > hi[k]) hi[k] = v; }
   const n = Math.max(1, Math.min(256, Math.round(Math.sqrt(I.length / 3 / 4))));
@@ -251,7 +262,7 @@ function meshGrid(P, I) {
   }
   return { P, I, lo, n, sy, sz, cells, nudge: Math.max(hi[0] - lo[0], hi[1] - lo[1], 1) * 1.3e-7 };
 }
-function gridClassify(g, pts) {
+export function gridClassify(g, pts) {
   const { P, I, lo, n, sy, sz, cells } = g;
   return pts.map((q) => {
     const y = q[1] + g.nudge, z = q[2] + g.nudge * 0.71;
@@ -316,6 +327,12 @@ export function coverage(rk, file, cand, b, dense = false, rkCand = rk) {
     if (!x || !y) return null;
     pts.push(...chunk); ca.push(...x); cb.push(...y);
     if (Date.now() - t0 > budget) break;
+    // ...or once the share settles: its standard error under a tenth of a
+    // percent (dense) or a third of one, on a fair number of points
+    let f = 0, d = 0;
+    for (let j = 0; j < ca.length; j++) { if (ca[j] === "on" || cb[j] === "on") continue; if (ca[j] === "in") f++; if ((ca[j] === "in") !== (cb[j] === "in")) d++; }
+    const q = f ? Math.min(d / f, 1) : 1;
+    if (f > 2000 && Math.sqrt(Math.max(q * (1 - q), 1 / f) / f) < (dense ? 0.001 : 0.003)) break;
   }
   let inF = 0, miss = 0, extra = 0;
   const where = [];
@@ -330,7 +347,7 @@ export function coverage(rk, file, cand, b, dense = false, rkCand = rk) {
   return { match: Math.max(0, 1 - (miss + extra) / inF), missing: miss / inF, extra: extra / inF, points: where.slice(0, 6000) };
 }
 // a measured file body (kernelBodies) as coverage() takes it
-export const fileSide = (k) => ({ json: k.json, volume: k.volume, handle: k.handle });
+export const fileSide = (k) => ({ json: k.json, handle: k.handle, get volume() { return k.volume; } });
 export const boxUnion = (a, b) => ({ lo: a.lo.map((v, k) => Math.min(v, b.lo[k])), hi: a.hi.map((v, k) => Math.max(v, b.hi[k])) });
 
 // the file body this candidate is, and how far from it (below SAME_SHAPE: the same)
@@ -403,6 +420,14 @@ export function solidStl(rk, handle, name, tolerance = 0.05) {
   return out.join("\n");
 }
 
+// a kernel solid's box: its vertices and every edge's control points (a
+// curve stays inside its control points; a full circle has one vertex, so
+// its vertices alone box a line)
+export function boxOfJson(j) {
+  const P = j.vertices.map((v) => [v.point.x, v.point.y, v.point.z]);
+  for (const e of j.edges || []) for (const c of e.curve?.control_points || []) P.push([c.x, c.y, c.z]);
+  return box(P);
+}
 export function box(P) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const p of P) for (let k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; }

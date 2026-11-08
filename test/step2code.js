@@ -14,7 +14,12 @@ import { build } from "../src/render.js";
 import { exactSTEP } from "../src/stepexport.js";
 import { readStep, parsePart21 } from "../src/stepread.js";
 import { convertStep } from "../src/step2code-check.js";
-import { tryRevolve, toCode } from "../src/step2code.js";
+import { tryRevolve, toCode, planBodies } from "../src/step2code.js";
+import { meshSliced } from "../src/step2code-mesh.js";
+import { loadRustKernel } from "../src/engine-node.js";
+import { fitSurface } from "../src/step2code-fit.js";
+import { primCandidate } from "../src/step2code-prim.js";
+import { kernelBodies, coverage, fileSide, measure } from "../src/step2code-verify.js";
 
 let pass = 0, fail = 0;
 const check = (label, ok, detail = "") => {
@@ -306,6 +311,88 @@ const box = (o, id0) => {
   // the turned-profile recogniser refuses a part that is not turned
   const r = readStep(await stepOf(`return cube([10, 10, 10]);`, "c"));
   check("a box is not taken for a turned part", !tryRevolve(r.solids[0]).expr);
+}
+
+{
+  // a copy written out as a body of its own is the same part: converted
+  // once, placed where it sits; a mirror image stays a body of its own
+  const part = `difference(cube([30, 12, 6]), translate([6, 6, -1], cylinder({ r: 2, h: 10 })), translate([24, 6, 3], cylinder({ r: 3.5, h: 10 })))`;
+  const step = await stepOf(`return group(${part}, translate([60, 5, 0], rotate([0, 0, 90], ${part})), translate([0, 40, 0], rotate([90, 0, 30], ${part})), mirror([1, 0, 0], translate([10, -40, 0], ${part})));`, "copies");
+  const rd = readStep(step);
+  const plans = planBodies(rd);
+  check("copies: separate bodies that are one part turned are planned once", new Set(rd.solids.map((s) => s.brep)).size === 4 && plans.length === 2 && plans[0].instances.length === 3, `${plans.length} plans`);
+  const r = await convertStep(step, { title: "copies" });
+  check("copies: every copy is checked and written as code", r.bodies.every((b) => b.ok), r.bodies.map((b) => b.why).join(" | "));
+  const back = await build(runEditorCode(r.code).shape, { engine: "split" });
+  check("copies: the code builds, exact, one solid per body", back.engine === "exact" && back.solids.length === 4, `${back.engine} ${back.solids.length}`);
+}
+{
+  // close slices: a slice with holes is one outline (each hole joined to the
+  // outside by a hair-wide slit), a plain extrude with no boolean
+  const rk = await loadRustKernel();
+  const plate = await build(runEditorCode(`return difference(cube([30, 20, 5]), translate([8, 10, -1], cylinder({ r: 3, h: 7 })), translate([20, 10, -1], cylinder({ r: 4, h: 7 })));`).shape, { engine: "split" });
+  const m = rk.tessellate_handle(plate.solids[0].handle, 0.01);
+  const t = meshSliced({ P: m.take_positions(), I: m.take_indices() });
+  check("close slices: a plate with two holes is one slice, written as one outline", t.pieces.length === 1 && /^linearExtrude\(\{[^}]*\}, polygon\(/.test(t.pieces[0][0]), t.pieces.map((w) => w[0].slice(0, 80)).join(" | "));
+  const one = await build(runEditorCode(`return ${t.pieces[0][0]};`).shape, { engine: "split" });
+  const v = JSON.parse(rk.mass_properties_handle(one.solids[0].handle)).volume, want = 30 * 20 * 5 - Math.PI * 25 * 5;
+  check("close slices: ...and holds the plate's volume, holes and all", Math.abs(v - want) / want < 0.002, `${v} vs ${want}`);
+}
+{
+  // spline faces that are really plain shapes: exporters write cylinders and
+  // fillet tori as rational splines, and those must come back as the shape
+  const h = Math.SQRT1_2;
+  const arc = [[1, 0], [1, 1], [0, 1]], aw = [1, h, 1];
+  const K2 = [0, 0, 0, 1, 1, 1], K1 = [0, 0, 1, 1];
+  const cyl = { du: 2, dv: 1, U: K2, V: K1, P: arc.map(([x, y]) => [[5 * x + 1, 5 * y + 2, 0], [5 * x + 1, 5 * y + 2, 12]]), W: aw.map((w) => [w, w]) };
+  const c = fitSurface(cyl, 1e-6);
+  check("spline fit: a rational quarter cylinder is a cylinder of r 5 about its axis",
+    c?.surface.type === "cylinder" && Math.abs(c.surface.r - 5) < 1e-6 && Math.abs(Math.abs(c.surface.z[2]) - 1) < 1e-9 && Math.hypot(c.surface.o[0] - 1, c.surface.o[1] - 2) < 1e-6 && !c.flip,
+    JSON.stringify(c));
+  const back = fitSurface({ ...cyl, P: cyl.P.map((r) => r.slice().reverse()), W: cyl.W.map((r) => r.slice().reverse()) }, 1e-6);
+  check("spline fit: ...and a spline facing inward says so (the face sense flips)", back?.surface.type === "cylinder" && back.flip === true, JSON.stringify(back));
+  const tube = arc.map(([x, z]) => [10 + 2 * x, 2 * z]);
+  const tor = { du: 2, dv: 2, U: K2, V: K2, P: arc.map(([ax, ay]) => tube.map(([rho, z]) => [rho * ax, rho * ay, z])), W: aw.map((wi) => aw.map((wj) => wi * wj)) };
+  const t = fitSurface(tor, 1e-6);
+  check("spline fit: a rational torus patch is a torus R 10 r 2", t?.surface.type === "torus" && Math.abs(t.surface.R - 10) < 1e-6 && Math.abs(t.surface.r - 2) < 1e-6, JSON.stringify(t?.surface));
+  const saddle = { du: 2, dv: 2, U: K2, V: K2, P: [0, 1, 2].map((i) => [0, 1, 2].map((j) => [i * 5, j * 5, (i - 1) * (i - 1) * 4 - (j - 1) * (j - 1) * 3])), W: null };
+  check("spline fit: a freeform saddle stays a spline", fitSurface(saddle, 1e-3) === null);
+}
+for (const [name, src, kind] of [
+  ["a puck with a rounded top rim", `return fillet({ r: 2, edges: "top" }, cylinder({ r: 10, h: 8 }));`, "revolve"],
+  ["a box with rounded upright edges", `return fillet({ r: 3, edges: "z" }, cube([40, 30, 10]));`, "extrude"],
+]) {
+  // the kernel's own STEP writes these fillets as B-spline surfaces
+  const step = await stepOf(src, "t");
+  const splines = readStep(step).solids[0].faces.filter((f) => f.surface.fromSpline).length;
+  const r = await convertStep(step, { title: "t", close: false });
+  check(`spline fit: ${name}, written with spline fillets, converts as ${kind}`, splines > 0 && r.bodies[0]?.ok && r.bodies[0].kind === kind, `${splines} spline faces; ${r.bodies[0]?.kind} ${r.bodies[0]?.why || ""}`);
+}
+{
+  // close code as primitive blocks (src/step2code-prim.js): a few extrudes,
+  // each along its own axis, the file's cylinders written as true arcs
+  const rk = await loadRustKernel();
+  const blocksOf = async (src) => {
+    const step = await stepOf(src, "t");
+    const k = kernelBodies(rk, step)[0], solid = readStep(step).solids[0];
+    const pc = primCandidate(rk, k, null, solid, { method: "blocksSlant" });
+    const g = await build(runEditorCode(`return group(${pc.pieces.join(", ")});`).shape, { engine: "split" });
+    const cov = coverage(rk, fileSide(k), { parts: g.solids.map((x) => measure(rk, x.handle)) }, k.box, true);
+    return { pc, cov, code: pc.pieces.join("\n") };
+  };
+  const a = await blocksOf(`return union(difference(cube([40, 30, 5]), translate([30, 15, -1], cylinder({ r: 4, h: 7 }))), translate([10, 15, 5], cylinder({ r: 6, h: 10 })));`);
+  check("primitive blocks: a plate with a hole and a boss is two blocks, the hole and the boss true circles",
+    a.pc.pieces.length === 2 && a.cov.match > 0.999 && /circle2d\(\{ r: 4, center: \[30, 15\] \}\)/.test(a.code) && /circle2d\(\{ r: 6, center: \[10, 15\] \}\)/.test(a.code), `${a.pc.pieces.length} ${a.cov.match}\n${a.code}`);
+  const w = await blocksOf(`return difference(cube([40, 20, 20]), translate([0, -1, 20], rotate([0, 30, 0], cube([60, 22, 30]))));`);
+  check("primitive blocks: a wedge cut at 30 degrees is one block along its own slope", w.pc.pieces.length === 1 && w.cov.match > 0.999, `${w.pc.pieces.length} ${w.cov.match}\n${w.code}`);
+  const f = await blocksOf(`return fillet({ r: 3, edges: "z" }, cube([40, 30, 10]));`);
+  check("primitive blocks: a box with rounded corners is one block with four exact arcs", f.pc.pieces.length === 1 && (f.code.match(/arcTo\(/g) || []).length === 4 && f.cov.match > 0.999, `${f.cov.match}\n${f.code}`);
+  // a piece with a full circle has one vertex per circle: the coverage test
+  // must still see inside it (it boxed a piece by its vertices alone)
+  const cyl = await build(runEditorCode(`return linearExtrude({ h: 10, start: 0 }, circle2d({ r: 5, center: [0, 0] }));`).shape, { engine: "split" });
+  const kc = kernelBodies(rk, await exactSTEP(cyl, "c"))[0];
+  const cc = coverage(rk, fileSide(kc), { parts: [measure(rk, cyl.solids[0].handle)] }, kc.box, true);
+  check("coverage: a round piece in a group is measured whole", cc.match > 0.999, JSON.stringify(cc.match));
 }
 
 console.log(`\nstep2code: ${pass} passed, ${fail} failed`);
