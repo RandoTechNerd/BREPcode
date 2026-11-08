@@ -86,6 +86,14 @@ Three files live on brepcode.com and never in the zip:
   The 0.9.0 asset at `34d5b7bb-...` must stay: it is `__BREP_STL2STEP_LEGACY_URL`,
   the build "Open as an exact solid" falls back to (`vendor/brep-stl2step-legacy`).
 
+  2026-11-08, kernel 0.13.2: uploaded to
+  `/__l5e/assets-v1/2cdd7e11-f64f-4014-9068-4e5d202f218f/brep_kernel_bg.wasm`
+  (18,516,050 bytes, sha256 f6357371..., downloaded back and checked byte for
+  byte, served as application/wasm) and set as `RUST_0132_ASSET` in
+  `viewer/index.html`, which overrides the 0.11 address. Its glue does not match
+  the 0.11 file, so a zip built with this glue must not point at `cc79d90c-...`.
+  The website's default kernel is now Rust; SMLib stays a choice in Settings.
+
 Not host-owned: the SMLib kernel as WebAssembly,
 `vendor/brep-kernel-smlib/smlib.wasm` (4.4 MB; the website's default kernel,
 Settings > Kernel > "SMLib (alpha), then Rust"). It fits in `/brep/`, so it ships in the zip and the

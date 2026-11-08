@@ -156,13 +156,11 @@
       // 2026-11-01: kernel 0.11.0 (16.6 MB, sha256 1f188c7e...), uploaded the
       // same day. The 0.9.0 asset (34d5b7bb-...) stays, as the STL -> STEP
       // second opinion below.
-      // 2026-11-08: kernel 0.13.2 (18.5 MB, sha256 f6357371...). Its glue
-      // (vendor/brep-kernel-rust/brep_kernel.js) does NOT match the 0.11 file
-      // above, so the old address must not be reused. Upload the new
-      // brep_kernel_bg.wasm to the asset store and put its address here. Until
-      // then this stays null, the worker asks for the zip's own copy, and a host
-      // that can't serve it builds on the JS kernel ("Rust unavailable").
-      const RUST_0132_ASSET = null;   // "/__l5e/assets-v1/<id>/brep_kernel_bg.wasm"
+      // 2026-11-08: kernel 0.13.2 (18,516,050 bytes, sha256 f6357371...),
+      // uploaded the same day and checked byte for byte from the live address.
+      // Its glue (vendor/brep-kernel-rust/brep_kernel.js) does NOT match the
+      // 0.11 file above: a rebuilt kernel needs a new upload and a new address.
+      const RUST_0132_ASSET = "/__l5e/assets-v1/2cdd7e11-f64f-4014-9068-4e5d202f218f/brep_kernel_bg.wasm";
       if (RUST_0132_ASSET) window.__BREP_RUST_WASM_URL = RUST_0132_ASSET;
       // The 0.9.0 build kept as the STL -> STEP second opinion
       // (vendor/brep-stl2step-legacy, 14.5 MB, src/stlexact.js) is the file
