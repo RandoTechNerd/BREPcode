@@ -481,8 +481,10 @@ export function showCaseBuilder(hooks = {}) {
 
   // the editor's own caseKit() model wins over the remembered one: it is
   // what is on screen, and reopening should pick up exactly that
-  const fromCode = parseKitCode(hooks.currentCode?.() || "");
-  const S = fromCode || load();
+  // hooks.preset: opened FOR something (the photo tool insert): a plain case
+  // sized round it, inside measurements, nothing painted in it
+  const fromCode = hooks.preset ? null : parseKitCode(hooks.currentCode?.() || "");
+  const S = hooks.preset ? { ...load(), regions: [], inside: true, ...hooks.preset } : (fromCode || load());
   // the gasket is never pre-ticked: only code on screen that asks for it
   if (!fromCode) S.gasket = false;
   // First visit: the empty case, nothing painted. It used to open on "Big +

@@ -2101,7 +2101,7 @@
     #yn-ask .yn-head { font-weight: 600; font-size: 14.5px; margin-bottom: 6px; overflow-wrap: anywhere; }
     #yn-ask .yn-sub { color: var(--muted2); font-size: 12.5px; margin-bottom: 14px; overflow-wrap: anywhere; }
     #yn-ask .yn-sub code { font-size: 11.5px; }
-    #yn-ask .yn-acts { display: flex; justify-content: flex-end; gap: 8px; }
+    #yn-ask .yn-acts { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
     #yn-ask .yn-acts button { padding: 6px 16px; border-radius: 7px; border: 1px solid var(--border); cursor: pointer;
       font: 500 12.5px system-ui, sans-serif; background: none; color: var(--text); }
     #yn-ask .yn-acts button.yn-yes { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -2212,6 +2212,10 @@
     #chat-input::placeholder { color: var(--muted2); opacity: .6; }
     .msg.bot.thinking { color: var(--muted); font-style: italic; }
     #chat-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); position: relative; }
+    /* sharing the dock's height (fitDock): the messages give way, never the
+       box you type in */
+    #chat > :not(#chat-msgs) { flex-shrink: 0; }
+    #chat[data-dock-fit] #chat-msgs { min-height: 36px; }
     /* # and / autocomplete. Opens UPWARD: the chat input sits at the bottom of
        the card, so a list dropping down would fall off it. */
     #chat-complete {
@@ -2466,6 +2470,14 @@
       margin-bottom: 10px; image-rendering: auto;
     }
     #trace-stat { margin-top: 8px; font-size: 11.5px; color: var(--muted2); min-height: 16px; }
+    #toolins-canvas { width: 100%; max-height: 240px; object-fit: contain; display: block; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--input-bg); margin-bottom: 10px; }
+    #toolins-stat { margin-top: 8px; font-size: 11.5px; color: var(--muted2); min-height: 16px; }
+    #toolins-stat .bad { color: var(--err); }
+    #toolins-foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--border); }
+    #toolins-foot .hist-btn { font-size: 12.5px; }
+    #toolins-foot .hist-btn:disabled { color: var(--disabled); cursor: default; }
+    #toolins input[type="number"] { width: 70px; }
     #trace-foot { padding: 8px 14px; border-top: 1px solid var(--border); }
     #trace-foot .hist-btn { font-size: 12.5px; }
     #trace-foot .hist-btn:disabled { color: var(--disabled); cursor: default; }
@@ -3422,7 +3434,7 @@
     <div class="yn-box">
       <div class="yn-head" id="yn-head"></div>
       <div class="yn-sub" id="yn-sub"></div>
-      <div class="yn-acts"><button id="yn-no">Cancel</button><button class="yn-yes" id="yn-yes">Yes</button></div>
+      <div class="yn-acts"><button id="yn-no">Cancel</button><button id="yn-alt" hidden></button><button class="yn-yes" id="yn-yes">Yes</button></div>
     </div>
   </div>
 
@@ -3492,6 +3504,8 @@
                real button, just hidden — the toolbox row clicks it, same as
                drill and the others above. -->
           <button id="trace-btn" hidden></button>
+          <button id="toolins-btn" hidden></button>
+          <input type="file" id="toolins-file" accept="image/*" style="display: none" />
           <input type="file" id="trace-file" accept="image/*" style="display: none" />
           <button id="import-btn" class="hist-btn ovf" title="Import STL / 3MF / OBJ">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
@@ -3576,6 +3590,13 @@
               <circle cx="6" cy="6" r="1.3" /><path d="M3 12l3.4-3.4 2.3 2.3 2.4-2.6 2 2.2" />
             </svg>
             <span><b>Place an image</b><small>PNG / JPG traced into an outline you can extrude</small></span>
+          </button>
+          <button data-act="toolins-btn">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.8" y="3.5" width="12.4" height="9" rx="1.5" /><path d="M4.5 9.5h4l1.5-2h1.5" />
+            </svg>
+            <span><b>Tool insert from a photo</b><small>a tool on paper, photographed → a pocket that fits it, and a case</small></span>
           </button>
           <button data-act="code-dm-btn">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="none">
@@ -3681,6 +3702,7 @@
           <button data-act="params-btn">Parameters…</button>
           <button data-act="tools-btn">Toolbox…</button>
           <button data-act="trace-btn">Trace image…</button>
+          <button data-act="toolins-btn">Tool insert from a photo…</button>
           <button data-act="import-btn">Import STL / OBJ / 3MF…</button>
           <button data-act="export-btn">Export…</button>
           <button data-act="refresh-btn">Rebuild now</button>
@@ -4725,6 +4747,50 @@
         <div id="trace-stat"></div>
       </div>
       <div id="trace-foot"><button id="trace-insert" class="hist-btn">Insert as model</button></div>
+    </section>
+
+    <!-- tool insert from a photo (viewer/toolinsert.js) -->
+    <section id="toolins" class="card" aria-label="Tool insert from a photo">
+      <header>
+        <div><strong>Tool insert</strong><span class="sub" id="toolins-name">from a photo</span></div>
+        <button class="close-btn" data-close="toolins" title="Close">&times;</button>
+      </header>
+      <div class="card-body" id="toolins-body">
+        <canvas id="toolins-canvas"></canvas>
+        <div class="mat-row"><span>Real length</span>
+          <input type="number" id="toolins-length" min="5" max="1000" step="1" value="150" /><small>mm, the tool's longest side</small>
+        </div>
+        <div class="mat-row"><span>Threshold</span>
+          <input type="range" id="toolins-thresh" min="0" max="255" value="128" />
+          <output id="toolins-thresh-o">auto</output>
+        </div>
+        <label class="mat-row check"><span>Invert</span>
+          <input type="checkbox" id="toolins-invert" /><small>a light tool on a dark sheet</small>
+        </label>
+        <div class="mat-row"><span>Smoothness</span>
+          <input type="range" id="toolins-detail" min="5" max="60" value="15" />
+          <output id="toolins-detail-o">1.5</output>
+        </div>
+        <div class="mat-row"><span>Clearance</span>
+          <input type="number" id="toolins-clear" min="0" max="10" step="0.25" value="1" /><small>mm round the tool</small>
+        </div>
+        <div class="mat-row"><span>Pocket depth</span>
+          <input type="number" id="toolins-depth" min="1" max="200" step="1" value="15" /><small>mm</small>
+        </div>
+        <div class="mat-row"><span>Floor / margin</span>
+          <input type="number" id="toolins-floor" min="0.6" max="50" step="0.5" value="3" />
+          <input type="number" id="toolins-margin" min="2" max="100" step="1" value="10" /><small>mm</small>
+        </div>
+        <label class="mat-row check"><span>Finger scoop</span>
+          <input type="checkbox" id="toolins-scoop" checked /><small>a dip across the middle to lift it out</small>
+        </label>
+        <div id="toolins-stat"></div>
+      </div>
+      <div id="toolins-foot">
+        <button id="toolins-make" class="hist-btn" disabled>Make insert</button>
+        <button id="toolins-case" class="hist-btn" disabled title="Open the case builder sized to hold this insert">Make a case for it</button>
+        <button id="toolins-photo" class="hist-btn">Another photo…</button>
+      </div>
     </section>
 
     <!-- the parts shelf: browse what is already written instead of modelling
@@ -8356,7 +8422,8 @@
 
     // A yes/no question in the middle of the screen. Resolves true for Yes,
     // false for Cancel, Escape or a click outside.
-    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel", sticky = false }) {
+    // alt: an optional third answer, between the two; its button resolves "alt"
+    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel", alt = null, sticky = false }) {
       const box = $("yn-ask");
       // at the top of the page, over every card, whatever its markup sits in
       if (box.parentNode !== document.body) document.body.appendChild(box);
@@ -8364,12 +8431,14 @@
       $("yn-sub").innerHTML = sub;
       $("yn-yes").textContent = yes;
       $("yn-no").textContent = no;
+      $("yn-alt").hidden = !alt;
+      $("yn-alt").textContent = alt || "";
       box.classList.add("open");
       $("yn-yes").focus();
       return new Promise((resolve) => {
         const done = (v) => {
           box.classList.remove("open");
-          $("yn-yes").onclick = $("yn-no").onclick = box.onclick = null;
+          $("yn-yes").onclick = $("yn-no").onclick = $("yn-alt").onclick = box.onclick = null;
           removeEventListener("keydown", key, true);
           resolve(v);
         };
@@ -8379,6 +8448,7 @@
         };
         $("yn-yes").onclick = () => done(true);
         $("yn-no").onclick = () => done(false);
+        $("yn-alt").onclick = () => done("alt");
         // sticky: a click beside the card does not answer it (a question that
         // took a minute to reach should not vanish on a stray click)
         box.onclick = (e) => { if (e.target === box && !sticky) done(false); };
@@ -11208,13 +11278,19 @@ ${c.after}`;
       // the fixed numbers it used to carry were one 120 x 65 mm frame's, and
       // on a 60 mm Benchy they stretched it away to nothing.
       let wrap = spec.wrap;
-      if (/\$(W|D|TX|TY)\$/.test(wrap)) {
+      if (/\$(W|D|TX|TY|CX|W3)\$/.test(wrap)) {
         const box = new THREE.Box3().setFromObject(modelGroup);
         if (box.isEmpty()) return insertSnippet(spec);
         const r1 = (n) => String(Math.round(n * 10) / 10);
         const size = box.getSize(new THREE.Vector3());
         wrap = wrap.replace("$W$", r1(size.x)).replace("$D$", r1(size.y))
-          .replace("$TX$", r1(-box.min.x)).replace("$TY$", r1(-box.min.y));
+          .replace("$TX$", r1(-box.min.x)).replace("$TY$", r1(-box.min.y))
+          // the middle of the part: a stretch cut at x = 0 sat ON the face of
+          // a part that starts there, and the kernel refused the slab
+          .replace("$CX$", r1((box.min.x + box.max.x) / 2))
+          // "cut the middle out": a third of the part's width (a fixed 25 mm
+          // left a 30 mm part 5 mm wide)
+          .replace("$W3$", r1(size.x / 3));
       }
       // rotate / flip turn the part about its own centre and set it back on
       // the bed, not about the origin (turnInPlace says why)
@@ -20241,9 +20317,11 @@ let SIMPLIFY_TARGET = 10000;
       const yes = await askYesNo({
         head: `Open ${file.name} as editable code?`,
         sub: "BREPcode rebuilds each body as code, with its holes and thicknesses as dials, and checks every one against the file. "
-          + "A body it can't rebuild exactly stays the file's own solid.",
-        yes: "Open as code", no: "Import as a mesh",
+          + "A body it can't rebuild exactly stays the file's own solid.<br><b>Editable solid</b> keeps the file exactly as it is, "
+          + "ready to fillet edges and push, move or delete faces (Design mode's Face edit).",
+        yes: "Open as code", alt: "Editable solid", no: "Import as a mesh",
       });
+      if (yes === "alt") return stepAsSolid(file);
       if (!yes) return false;
       window.__stepOpening = (window.__stepOpening || 0) + 1;     // for scripts/step2code-web-check.cjs
       try { return await stepAsCode(file); } finally { window.__stepOpening--; }
@@ -20277,6 +20355,35 @@ let SIMPLIFY_TARGET = 10000;
       // behind it if need be (in the worker: the card answers at once)
       await new Promise((ok) => setTimeout(ok, 300));
       if (mine === stepRun) await offerCloseCode(r);
+      return true;
+    }
+    // The STEP file's own exact solid, no rebuild: importedSolid() carries
+    // its B-rep to the Rust kernel as it is, faces named IMPORT3D<n>_Face_<k>,
+    // and fillet / chamfer / pushFace / moveFace / deleteFace work on it.
+    // False (the mesh import runs instead) if the kernel can't read it.
+    async function stepAsSolid(file) {
+      const text = (await file.text()).replace(/^\uFEFF/, "");
+      const name = file.name.replace(/[^\w.-]+/g, "_");
+      dsl.registerImport(name, text);
+      const title = file.name.replace(/\.(step|stp)$/i, "").slice(0, 60);
+      pushHistory(code.value);
+      code.value = `// ${file.name}, as the file's own exact solid. Round its edges with
+`
+        + `// fillet({ r: 1, edges: [...] }, ...) and edit its faces with pushFace / moveFace /
+`
+        + `// deleteFace: Design mode's Fillet and Face edit write them when you click the model.
+`
+        + `importedSolid(${JSON.stringify(name)})
+`;
+      pushHistory();
+      modelName = title; ownName(modelName); paintName();
+      await rebuild();
+      if (lastEngine && lastEngine.engine !== "exact") {
+        setStatus("warn", `${file.name}: the exact kernel couldn't read it, so it opens as a mesh.`);
+        return false;
+      }
+      hint.innerHTML = `<b>${esc(file.name)}</b> is open as its own exact solid. In Design mode, <b>Fillet</b> rounds the edges you click `
+        + `and <b>Face edit</b> pushes, moves or deletes the faces you click.`;
       return true;
     }
     let stepRun = 0;
@@ -21245,7 +21352,7 @@ let SIMPLIFY_TARGET = 10000;
     // The case builder (viewer/casebuilder.js): from the Toolbox, from /case,
     // and from its own "Back to the grid". Build puts a caseKit() model in the
     // editor, undoable like any other change, with the size sliders forward.
-    async function openCaseBuilder() {
+    async function openCaseBuilder(preset = null) {
       let C;
       try { C = await import("./casebuilder.js"); } catch (e) {
         setStatus("err", `Couldn't open the case builder: ${e?.message || e}`);
@@ -21275,6 +21382,7 @@ let SIMPLIFY_TARGET = 10000;
         exportStl: () => { $("export-btn").click(); expShow("stl"); },
         currentCode: () => code.value,
         plate: () => { try { return currentPlate() ?? null; } catch { return null; } },
+        preset,
       });
     }
     // brepcode.com/seedstarter (a folder bouncing to ?seedstarter=1),
@@ -23082,6 +23190,110 @@ let SIMPLIFY_TARGET = 10000;
       $("inv-max").title = on ? "Exit fullscreen" : "Fullscreen";
     });
 
+    // ---- tool insert from a photo (viewer/toolinsert.js) -----------------
+    // A tool on plain paper, photographed from above: its outline is found on
+    // its own, scaled to the length typed in, grown by the clearance, and cut
+    // as a pocket in a block; "Make a case for it" opens the case builder
+    // sized round the block. Threshold starts automatic; moving it takes over.
+    const tiCard = $("toolins"), tiCanvas = $("toolins-canvas");
+    let tiImg = null, tiMod = null, tiFound = null, tiThreshManual = false, tiFile = "tool";
+    const tiPocket = () => {
+      if (!tiFound?.ring) return null;
+      const mm = tiMod.outlineMm(tiFound.ring, Math.max(5, +$("toolins-length").value || 150));
+      return tiMod.offsetRing(mm, Math.max(0, +$("toolins-clear").value || 0));
+    };
+    const tiOpts = () => ({ clearance: +$("toolins-clear").value || 0, depth: Math.max(1, +$("toolins-depth").value || 15),
+      floor: Math.max(0.6, +$("toolins-floor").value || 3), margin: Math.max(2, +$("toolins-margin").value || 10), scoop: $("toolins-scoop").checked });
+    $("toolins-btn").addEventListener("click", () => $("toolins-file").click());
+    $("toolins-photo").addEventListener("click", () => $("toolins-file").click());
+    $("toolins-file").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      tiMod ??= await import("./toolinsert.js");
+      const img = new Image();
+      img.onload = () => {
+        tiImg = img;
+        tiFile = file.name.replace(/\.[^.]+$/, "").slice(0, 40) || "tool";
+        $("toolins-name").textContent = file.name;
+        tiThreshManual = false;
+        $("toolins-invert").checked = false;
+        toggleCard(tiCard, null, true);
+        runToolInsert(true);
+      };
+      img.onerror = () => setStatus("err", "Couldn't read that photo.");
+      img.src = URL.createObjectURL(file);
+    });
+    function runToolInsert(auto = false) {
+      if (!tiImg || !tiMod) return;
+      const scale = Math.min(1, 700 / Math.max(tiImg.width, tiImg.height));
+      const w = Math.max(1, Math.round(tiImg.width * scale)), h = Math.max(1, Math.round(tiImg.height * scale));
+      const off = document.createElement("canvas");
+      off.width = w; off.height = h;
+      const octx = off.getContext("2d", { willReadFrequently: true });
+      octx.drawImage(tiImg, 0, 0, w, h);
+      const imageData = octx.getImageData(0, 0, w, h);
+      tiFound = tiMod.detectTool(imageData, {
+        threshold: tiThreshManual ? +$("toolins-thresh").value : null,
+        invert: auto ? null : $("toolins-invert").checked,
+        simplify: +$("toolins-detail").value / 10,
+      });
+      if (!tiThreshManual) { $("toolins-thresh").value = Math.round(tiFound.threshold); $("toolins-thresh-o").textContent = "auto"; }
+      $("toolins-invert").checked = !!tiFound.invert;
+      // the photo, dimmed; the tool's outline (green) and the pocket with its clearance (blue)
+      tiCanvas.width = w; tiCanvas.height = h;
+      const ctx = tiCanvas.getContext("2d");
+      ctx.drawImage(off, 0, 0);
+      ctx.fillStyle = "rgba(11,15,22,.4)";
+      ctx.fillRect(0, 0, w, h);
+      const ring = tiFound.ring;
+      const stat = $("toolins-stat");
+      $("toolins-make").disabled = $("toolins-case").disabled = !ring;
+      if (!ring) { stat.innerHTML = `<span class="bad">${esc(tiFound.why)}</span>`; return; }
+      const path = (pts, color, width) => {
+        ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = "round";
+        ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+        for (const [x, y] of pts) ctx.lineTo(x, y);
+        ctx.closePath(); ctx.stroke();
+      };
+      const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+      const pxSpan = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) || 1;
+      const pxPerMm = pxSpan / Math.max(5, +$("toolins-length").value || 150);
+      // the clearance drawn in pixels: grow the (clockwise, Y-down) ring as its CCW mirror
+      const flip = (pts) => pts.map(([x, y]) => [x, -y]);
+      const ccw = (pts) => { let a = 0; for (let i = 0; i < pts.length; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length]; a += x0 * y1 - x1 * y0; } return a > 0 ? pts : pts.slice().reverse(); };
+      const grownPx = flip(tiMod.offsetRing(ccw(flip(ring)), (+$("toolins-clear").value || 0) * pxPerMm));
+      path(grownPx, "#7fd3ff", 1.6);
+      path(ring, "#3ddc97", 2);
+      const size = tiMod.insertSize(tiPocket(), tiOpts());
+      stat.textContent = `${ring.length} points · insert ${size.width} × ${size.depth} × ${size.height} mm · green: the tool, blue: the pocket`;
+    }
+    for (const [id, ev] of [["toolins-length", "input"], ["toolins-detail", "input"], ["toolins-clear", "input"], ["toolins-depth", "input"],
+      ["toolins-floor", "input"], ["toolins-margin", "input"], ["toolins-scoop", "change"]]) {
+      $(id).addEventListener(ev, () => {
+        if (id === "toolins-detail") $("toolins-detail-o").textContent = (+$(id).value / 10).toFixed(1);
+        runToolInsert();
+      });
+    }
+    $("toolins-thresh").addEventListener("input", (e) => { tiThreshManual = true; $("toolins-thresh-o").textContent = e.target.value; runToolInsert(); });
+    $("toolins-invert").addEventListener("change", () => { tiThreshManual = false; runToolInsert(); });
+    $("toolins-make").addEventListener("click", async () => {
+      const pocket = tiPocket();
+      if (!pocket) return;
+      const src = tiMod.insertCode(pocket, tiOpts(), { name: tiFile, length: +$("toolins-length").value || 150 });
+      pushHistory(code.value);
+      await applyGeneratedCode(src, { show: "none" });
+      modelName = `${tiFile} insert`.slice(0, 60); ownName(modelName); paintName();
+      setStatus("ok", "Tool insert made: the pocket is the photo's outline plus the clearance.");
+    });
+    $("toolins-case").addEventListener("click", () => {
+      const pocket = tiPocket();
+      if (!pocket) return;
+      const c = tiMod.caseSize(tiMod.insertSize(pocket, tiOpts()));
+      openCaseBuilder({ width: c.width, depth: c.depth, height: c.height, inside: true });
+      setStatus("ok", `Case builder open at ${c.width} × ${c.depth} × ${c.height} mm inside: room for the insert and the lid. Build the case, then print the insert to sit in it.`);
+    });
+
     // ---- image trace: PNG/JPG -> extrudable 2D outline -------------------
     const traceCard = $("trace"), traceCanvas = $("trace-canvas");
     let traceImg = null, traceContours = null, TR = null;   // TR = the loaded trace.js module
@@ -23599,7 +23811,20 @@ let SIMPLIFY_TARGET = 10000;
       const isCylWall = /\.CY\d*$/i.test(fid) && Math.abs(n.z) < 0.7;
       pushHistory(code.value);
       if (isCylWall) {
-        replaceModelExpr(`heightmap({\n  // ${grid.name} — ${grid.w}×${grid.h} luminance grid, wrapped like a can label\n  map: "${grid.map}",\n  w: ${grid.w}, h: ${grid.h}, side: "wrap", depth: 1.2,\n  arc: 360,   // degrees the label covers — 180 = half way round\n}, ${expr})`);
+        // As far round as keeps the picture's own proportions over the wall's
+        // height (a square logo on a 30 mm can is about 150°, not stretched
+        // round the whole can); a wide picture still goes all the way.
+        // ...and centred on where you clicked: `start` is its left edge
+        let arc = 360, start = 0;
+        try {
+          const b = new THREE.Box3().setFromObject(hit.object), sz = b.getSize(new THREE.Vector3());
+          const r = Math.max(sz.x, sz.y) / 2, hgt = sz.z;
+          if (r > 0 && hgt > 0) arc = Math.max(30, Math.min(360, Math.round((grid.w / grid.h) * hgt / r * 180 / Math.PI / 5) * 5));
+          const c = b.getCenter(new THREE.Vector3());
+          const at = Math.atan2(hit.point.y - c.y, hit.point.x - c.x) * 180 / Math.PI;
+          if (arc < 360) start = Math.round((((at - arc / 2) % 360) + 360) % 360);
+        } catch { /* keep 360 from +X */ }
+        replaceModelExpr(`heightmap({\n  // ${grid.name} — ${grid.w}×${grid.h} luminance grid, wrapped like a can label\n  map: "${grid.map}",\n  w: ${grid.w}, h: ${grid.h}, side: "wrap", depth: 1.2,\n  arc: ${arc},   // degrees the label covers (360 = all the way round)\n  start: ${start}, // where its left edge sits, degrees round from +X\n}, ${expr})`);
       } else {
         const ax = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
         const dom = ax.indexOf(Math.max(...ax));

@@ -47,6 +47,7 @@ export const TOOL_LINKS = {
   flip: { run: "wrap:lay flat / flip", kind: "mesh", icon: "flip", title: "Flip it over", line: "Upside down, printable face down." },
   measure: { run: "measure-btn", kind: "mesh", icon: "measure", title: "Measure an STL", line: "Click corners, edges or faces for real numbers." },
   gridfinity: { run: "gfin-row", kind: "panel", icon: "gridfinity", title: "Gridfinity generator", line: "Drag out a bin or a baseplate." },
+  toolinsert: { run: "toolins-btn", kind: "panel", icon: "gridfinity", title: "Tool insert from a photo", line: "Photograph a tool on paper: get a pocket that fits it, and a case round it." },
   "cookie-cutter": { run: "cutter-row", kind: "panel", icon: "cutter", title: "Cookie cutter maker", line: "Search a shape and get a blade, stamp, stencil or roller." },
   parts: { run: "shelf-row", kind: "panel", icon: "shelf", title: "Parts shelf", line: "Hinges, snaps, vents and standoffs, already written." },
   chat: { run: "chat-btn", kind: "panel", icon: "chat", title: "Describe a part", line: "Say what you want and get editable code." },

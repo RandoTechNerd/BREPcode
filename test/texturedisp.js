@@ -162,13 +162,29 @@ console.log("\nDisplacement textures\n");
     cylinder({ r: 10, h: 12, $fn: 96 }),
   ));
   const pts = soupOf(r).filter((p) => p[2] > 1 && p[2] < 11);
-  // start 0, running rightward-from-outside = θ in [-90°, 0°]: x>0, y<0 quadrant
-  const inLabel = pts.filter((p) => p[0] > 0 && p[1] < 0).map((p) => Math.hypot(p[0], p[1]));
+  // start 0, running rightward as seen from outside = θ in [0°, 90°]: x>0, y>0
+  const inLabel = pts.filter((p) => p[0] > 0 && p[1] > 0).map((p) => Math.hypot(p[0], p[1]));
   const offLabel = pts.filter((p) => p[0] < 0).map((p) => Math.hypot(p[0], p[1]));
   check("a 90° label raises its own quadrant", Math.max(...inLabel) > 11.5,
     `max in-label r ${Math.max(...inLabel).toFixed(2)}`);
   check("...and leaves the far side of the can alone", Math.max(...offLabel) < 10.1,
     `max off-label r ${Math.max(...offLabel).toFixed(2)}`);
+}
+{
+  // reads left to right from outside, not mirrored: a label dark on its LEFT
+  // half only, 90° from start 0, must raise the first 45° (from +X toward +Y);
+  // the two pixels either side of 45° blend, so each half is read clear of it
+  const leftDark = Buffer.from(new Uint8Array([0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255])).toString("base64");
+  const r = await build(heightmap(
+    { map: leftDark, w: 4, h: 4, side: "wrap", depth: 2, arc: 90, start: 0 },
+    cylinder({ r: 10, h: 12, $fn: 96 }),
+  ));
+  const pts = soupOf(r).filter((p) => p[2] > 1 && p[2] < 11);
+  const deg = (p) => Math.atan2(p[1], p[0]) * 180 / Math.PI;
+  const firstHalf = pts.filter((p) => deg(p) > 5 && deg(p) < 30).map((p) => Math.hypot(p[0], p[1]));
+  const secondHalf = pts.filter((p) => deg(p) > 60 && deg(p) < 85).map((p) => Math.hypot(p[0], p[1]));
+  check("a label reads left to right from outside (not mirrored)", Math.max(...firstHalf) > 11.5 && Math.max(...secondHalf) < 10.3,
+    `first half r ${Math.max(...firstHalf).toFixed(2)}, second half r ${Math.max(...secondHalf).toFixed(2)}`);
 }
 
 // ---- guard rails ----------------------------------------------------------
