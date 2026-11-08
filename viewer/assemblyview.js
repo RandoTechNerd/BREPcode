@@ -311,7 +311,14 @@ export function createAssemblyView(ctx) {
     }
 
     const made = [];
-    const section = new THREE.MeshBasicMaterial({ color: 0xd8493a, side: THREE.BackSide, clippingPlanes: planes, clipIntersection: true });
+    // inside faces: the part's own colour lightly tinted red, as in the live cut view
+    const section = (m) => {
+      const src = Array.isArray(m.material) ? m.material[0] : m.material;
+      const base = src?.color ? src.color.clone() : new THREE.Color(0xc8ccd4);
+      const mat = new THREE.MeshLambertMaterial({ color: base.lerp(new THREE.Color(0xff4a3d), 0.28), side: THREE.BackSide, clippingPlanes: planes, clipIntersection: true });
+      made.push(mat);
+      return mat;
+    };
     for (const m of modelGroup.children) {
       if (!m.isMesh || !m.visible || !m.geometry) continue;
       const mat = shotMaterial(m, preset, planes);
@@ -324,7 +331,7 @@ export function createAssemblyView(ctx) {
         shot.add(s);
       };
       add(mat);
-      if (cutaway) add(section);      // inside faces, seen only through the cut: reads as a solid section
+      if (cutaway) add(section(m));      // inside faces, seen only through the cut: reads as a solid section
     }
 
     // studio: a soft sky/floor fill, a key that casts the floor shadow, a rim

@@ -156,7 +156,14 @@
       // 2026-11-01: kernel 0.11.0 (16.6 MB, sha256 1f188c7e...), uploaded the
       // same day. The 0.9.0 asset (34d5b7bb-...) stays, as the STL -> STEP
       // second opinion below.
-      window.__BREP_RUST_WASM_URL = "/__l5e/assets-v1/cc79d90c-f532-409d-a73c-62eea681aa5d/brep_kernel_bg.wasm";
+      // 2026-11-08: kernel 0.13.2 (18.5 MB, sha256 f6357371...). Its glue
+      // (vendor/brep-kernel-rust/brep_kernel.js) does NOT match the 0.11 file
+      // above, so the old address must not be reused. Upload the new
+      // brep_kernel_bg.wasm to the asset store and put its address here. Until
+      // then this stays null, the worker asks for the zip's own copy, and a host
+      // that can't serve it builds on the JS kernel ("Rust unavailable").
+      const RUST_0132_ASSET = null;   // "/__l5e/assets-v1/<id>/brep_kernel_bg.wasm"
+      if (RUST_0132_ASSET) window.__BREP_RUST_WASM_URL = RUST_0132_ASSET;
       // The 0.9.0 build kept as the STL -> STEP second opinion
       // (vendor/brep-stl2step-legacy, 14.5 MB, src/stlexact.js) is the file
       // the asset store has held since 2026-10-27 (byte-identical), so it reuses that.
@@ -789,6 +796,20 @@
       --grip: var(--accent, #5b8cff); opacity: 1;
       background-color: color-mix(in srgb, var(--accent, #5b8cff) 16%, transparent);
     }
+    /* and a dragger on the TOP edge: a window docked above the toolbar (or
+       opened in a short pane, like OrcaSlicer's) has no room to grow down,
+       so the corner grip alone could never make it taller. Drag this up. */
+    .card > .top-grip {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 72px; height: 12px; z-index: 3; cursor: ns-resize; touch-action: none;
+      display: grid; place-items: center; border-radius: 0 0 8px 8px;
+    }
+    .card > .top-grip::before {
+      content: ""; width: 36px; height: 4px; border-radius: 2px;
+      background: var(--muted3); opacity: .7; transition: background-color .12s ease, opacity .12s ease;
+    }
+    .card > .top-grip:hover::before, .card > .top-grip:active::before { background: var(--accent, #5b8cff); opacity: 1; }
+    .card.expanded > .top-grip, .card.maxed > .top-grip { display: none; }
     .card.resized > header { cursor: grab; }
     .card > header span.sub { color: var(--muted); font-size: 12px; margin-left: 8px; font-weight: 400; }
 
@@ -1177,6 +1198,12 @@
     /* Parts: what an assembly is made of, and the four things to do with it */
     #parts-body { padding: 6px 14px 10px; font-size: 12.5px; }
     #parts-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 220px; overflow: auto; }
+    /* Made taller (dragged, maximised, fullscreen) the window's extra height
+       goes to the list, not to empty space under the buttons. */
+    #parts-body { display: flex; flex-direction: column; }
+    #parts-body > * { flex: none; }
+    #parts.resized > #parts-body, #parts.expanded > #parts-body, #parts.maxed > #parts-body { flex: 1 1 auto; }
+    #parts.resized #parts-list, #parts.expanded #parts-list, #parts.maxed #parts-list { flex: 1 1 auto; max-height: none; min-height: 88px; }
     #parts-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border-soft); }
     #parts-list .vis { margin: 0; flex: none; accent-color: var(--accent, #6ea8ff); cursor: pointer; }
     #parts-list li.off .nm, #parts-list li.off .sw { opacity: .4; }
@@ -1192,6 +1219,11 @@
     #parts-out { margin-top: 8px; line-height: 1.5; color: var(--muted); }
     #parts-out .bad { color: var(--err); }
     #parts-out .good { color: var(--ok); }
+    #parts-open { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
+    #parts-open label { color: var(--muted2); font: 12px ui-monospace, monospace; white-space: nowrap; }
+    #parts-open input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--input-bg, rgba(255,255,255,.04)); color: var(--text); font: 12.5px ui-monospace, monospace; }
+    #parts-open input:focus { outline: none; border-color: var(--accent, #6ea8ff); }
     /* Connect your AI (desktop only) */
     #set-ai .ai-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
     #set-ai .ai-name { flex: 1; }
@@ -4403,6 +4435,11 @@
           </select>
         </div>
         <div id="parts-out"></div>
+        <form id="parts-open" title="Open a model by its short link name, or paste any brepcode.com link. In the chat, type /m/ to pick from the catalog and examples.">
+          <label for="parts-open-name">brepcode.com/m/</label>
+          <input id="parts-open-name" type="text" placeholder="model-name or a link" autocomplete="off" spellcheck="false" />
+          <button type="submit" class="hist-btn">Open</button>
+        </form>
       </div>
     </section>
 
@@ -5016,11 +5053,11 @@
     const KERNELS = ["nvidia", "rust"];
     // the website's build of SMLib is WebAssembly, not the desktop's addon
     const SMLIB_NAME = window.brepcodeDesktop ? "NVIDIA" : "SMLib";
-    // The website starts on SMLib: a first visit gets a fast kernel after a
-    // 1.6 MB download rather than the Rust wasm's 5 MB (the Rust kernel still
-    // downloads behind it and builds whatever SMLib refuses). The desktop
-    // keeps its build's own default.
-    const KERNEL_DEFAULT = !window.brepcodeDesktop || window.brepcodeDesktop.kernelDefault === "nvidia" ? "nvidia" : "rust";
+    // The website starts on the Rust kernel (0.13.2, 2026-11-08): on
+    // brep-bench it builds 243 cases to SMLib's 37, gets none wrong, and as
+    // wasm beats SMLib on 36 of SMLib's own 37. SMLib stays a choice in
+    // Settings. The desktop keeps its build's own default.
+    const KERNEL_DEFAULT = window.brepcodeDesktop?.kernelDefault === "nvidia" ? "nvidia" : "rust";
     function buildKernel() {
       const q = /[?&]kernel=(\w+)/.exec(location.search)?.[1];
       if (KERNELS.includes(q)) return q;
@@ -9534,6 +9571,57 @@
       const inColumn = document.querySelectorAll(".card.open:not(.floating)").length;
       $("dock").classList.toggle("multi", inColumn > 1);
       syncDockClip();
+      // and again once a window just opened has its real height (its body
+      // fills in a frame later, and the open animation runs ~200 ms)
+      requestAnimationFrame(syncDockClip);
+      clearTimeout(markDockShared.t);
+      markDockShared.t = setTimeout(syncDockClip, 260);
+    }
+
+    // Windows sharing the dock column share its HEIGHT. Left to scroll, a
+    // stack taller than the screen showed the last window as a header strip
+    // pinned behind the toolbar (the rest scrolled out of sight under it),
+    // which read as a window that opened broken. Now each docked window is
+    // capped to its share of the room (a window shorter than its share keeps
+    // its size and the rest goes to the others) and its body scrolls inside
+    // it. Only when even DOCK_FIT_MIN each doesn't fit does the column scroll.
+    // Phones keep their own rules (#dock.multi in the small-screen CSS).
+    const DOCK_FIT_MIN = 160;
+    function fitDock(d) {
+      const cards = [...d.querySelectorAll(":scope > .card.open:not(.floating):not(.expanded):not(.maxed)")];
+      for (const c of d.querySelectorAll(":scope > .card[data-dock-fit]")) {
+        c.style.maxHeight = "";
+        delete c.dataset.dockFit;
+      }
+      // phones keep their own rules; everything wider shares, short panes
+      // (OrcaSlicer's plugin page) most of all
+      if (cards.length < 2 || innerWidth < 700) return;
+      const gap = parseFloat(getComputedStyle(d).rowGap) || 10;
+      const buttons = $("buttons")?.getBoundingClientRect().height || 0;
+      // a window sized by hand keeps its size; the others share what is left
+      const fixed = cards.filter((c) => c.dataset.userSized);
+      const room = innerHeight - 40 - buttons - gap * cards.length
+        - fixed.reduce((a, c) => a + c.getBoundingClientRect().height, 0);
+      const fit = cards.filter((c) => !c.dataset.userSized);
+      if (!fit.length) return;
+      const want = fit.map((c) => c.getBoundingClientRect().height);
+      if (want.reduce((a, b) => a + b, 0) <= room) return;
+      // water-fill: the shortest windows keep their height, the rest split what is left
+      const order = fit.map((_, i) => i).sort((a, b) => want[a] - want[b]);
+      let left = room, n = fit.length;
+      const cap = new Array(fit.length);
+      const floor = Math.min(DOCK_FIT_MIN, Math.max(110, room / fit.length));
+      for (const i of order) {
+        const share = Math.max(floor, left / n);
+        cap[i] = Math.min(want[i], share);
+        left -= cap[i];
+        n--;
+      }
+      fit.forEach((c, i) => {
+        if (cap[i] >= want[i] - 1) return;
+        c.style.maxHeight = `${Math.floor(cap[i])}px`;
+        c.dataset.dockFit = "1";
+      });
     }
 
     // Clip only when there is genuinely something to scroll.
@@ -9549,6 +9637,7 @@
     function syncDockClip() {
       const d = $("dock");
       if (!d) return;
+      fitDock(d);
       d.classList.remove("scrolls");
       if (d.scrollHeight > d.clientHeight + 1) d.classList.add("scrolls");
     }
@@ -9686,6 +9775,7 @@
       card._preRoomy = null;
       card._preSnap = null;
       delete card.dataset.placed;
+      delete card.dataset.userSized;
       card.style.left = card.style.top = card.style.width = card.style.height = card.style.zIndex = "";
       const b = mainScroll(card);
       if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
@@ -9902,6 +9992,7 @@
       clearTimeout(reclampT);
       reclampT = setTimeout(() => {
         syncDockClear();
+        syncDockClip();          // the column's height changed: re-share it
         for (const card of document.querySelectorAll(".card.floating.open:not(.maxed)")) {
           if (card.dataset.placed) { applyZone(card, homeZone(card) || card.dataset.placed); continue; }
           const r = card.getBoundingClientRect();
@@ -9924,6 +10015,51 @@
     // .card-body, and the editor panel's textarea is the one exception.
     const mainScroll = (card) => card.querySelector(":scope > .card-body") || card.querySelector("#code");
     for (const card of document.querySelectorAll(".card")) {
+      // the top edge: taller upward (its bottom stays where it is)
+      const top = document.createElement("div");
+      top.className = "top-grip"; top.title = "Drag up to make this window taller";
+      card.appendChild(top);
+      top.addEventListener("pointerdown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (card.classList.contains("maxed") || card.classList.contains("expanded")) return;
+        card._preRoomy = null;
+        const rect = card.getBoundingClientRect();
+        const floating = card.classList.contains("floating");
+        card.classList.add("resized");
+        card.dataset.userSized = "1";            // the dock's sharing leaves it alone
+        card.style.maxHeight = "";
+        const body = mainScroll(card);
+        if (body) { body.style.flex = "1 1 auto"; body.style.minHeight = "0"; body.style.maxHeight = "none"; }
+        // Floating: up to near the top of the screen. Docked: the column grows
+        // up from the toolbar, so it may take what the column holds less a
+        // minimum for every other window in it (or they'd be pushed off).
+        let maxH = rect.bottom - 8;
+        if (!floating && card.parentElement?.id === "dock") {
+          const d = card.parentElement;
+          const others = [...d.querySelectorAll(":scope > .card.open:not(.floating):not(.expanded):not(.maxed)")].filter((c) => c !== card);
+          const gap = parseFloat(getComputedStyle(d).rowGap) || 10;
+          const buttons = $("buttons")?.getBoundingClientRect().height || 0;
+          const room = innerHeight - 40 - buttons - gap * (others.length + 1);
+          maxH = Math.min(maxH, room - others.reduce((a, c) => a + (c.dataset.userSized ? c.getBoundingClientRect().height : Math.min(110, c.getBoundingClientRect().height)), 0));
+        }
+        const startH = rect.height, startTop = rect.top, sy = e.clientY;
+        try { top.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+        const move = (ev) => {
+          const h = Math.max(Math.min(150, maxH), Math.min(startH - (ev.clientY - sy), maxH));
+          card.style.height = `${h}px`;
+          if (floating) card.style.top = `${startTop + startH - h}px`;
+        };
+        const up = () => {
+          top.removeEventListener("pointermove", move);
+          top.removeEventListener("pointerup", up);
+          top.removeEventListener("pointercancel", up);
+          syncDockClip();
+          windowsChanged();
+        };
+        top.addEventListener("pointermove", move);
+        top.addEventListener("pointerup", up);
+        top.addEventListener("pointercancel", up);
+      });
       const grip = document.createElement("div");
       grip.className = "resize-grip"; grip.title = "Drag to resize";
       card.appendChild(grip);
@@ -9933,6 +10069,8 @@
         card._preRoomy = null;                   // sized by hand: its own size now
         const rect = card.getBoundingClientRect();
         card.classList.add("resized");
+        card.dataset.userSized = "1";
+        card.style.maxHeight = "";
         const body = mainScroll(card);
         if (body) { body.style.flex = "1 1 auto"; body.style.minHeight = "0"; body.style.maxHeight = "none"; }
         const startW = rect.width, startH = rect.height, sx = e.clientX, sy = e.clientY;
@@ -10128,6 +10266,7 @@
       $("set-kernel-row").hidden = false;
       if (!window.brepcodeDesktop) {
         $("set-kernel").querySelector('option[value="nvidia"]').textContent = "SMLib (alpha), then Rust";
+        $("set-kernel").querySelector('option[value="rust"]').textContent = "next.BREP.io Rust (default)";
         $("set-kernel").title = "SMLib: the B-rep kernel from NVIDIA's open-source usd-brep, as WebAssembly (a 1.2 MB download the first time you pick it). What it can't build goes to the Rust kernel.";
       }
       const shown = () => (buildEngine() === "js" ? "js" : buildKernel());
@@ -12051,9 +12190,24 @@ ${joined}${SITE_TAIL}`), joined);
     const cutGroup = new THREE.Group();
     cutGroup.name = "cut-caps";
     scene.add(cutGroup);
-    const cutCapMat = new THREE.MeshBasicMaterial({
-      color: 0xd8493a, side: THREE.BackSide, clippingPlanes: cutPlanes, clipIntersection: true,
-    });
+    // The inside faces seen through the cut: each part's own colour with a
+    // light red tint, lit, so the cut reads as a cut without flattening the
+    // part into a solid red block (which hid its colour and every detail).
+    const CUT_TINT = new THREE.Color(0xff4a3d), CUT_TINT_MIX = 0.28;
+    const cutCapMats = new Map();   // part material -> its tinted cap material
+    function cutCapMat(src) {
+      const key = Array.isArray(src) ? src[0] : src;
+      let mat = cutCapMats.get(key);
+      if (!mat) {
+        const base = key?.color ? key.color.clone() : new THREE.Color(0xc8ccd4);
+        mat = new THREE.MeshLambertMaterial({
+          color: base.lerp(CUT_TINT, CUT_TINT_MIX), side: THREE.BackSide,
+          clippingPlanes: cutPlanes, clipIntersection: true,
+        });
+        cutCapMats.set(key, mat);
+      }
+      return mat;
+    }
     const cutMats = new Set();      // materials currently carrying the planes
     const cutOn = () => asm.active && $("parts-cutaway").checked;
     const cutDir = new THREE.Vector3(1, -1, 0).normalize();
@@ -12081,13 +12235,15 @@ ${joined}${SITE_TAIL}`), joined);
       for (const m of cutMats) setCutOn(m, false);
       cutMats.clear();
       for (const c of [...cutGroup.children]) cutGroup.remove(c);   // geometry is borrowed
+      for (const mat of cutCapMats.values()) mat.dispose();         // colours may have changed
+      cutCapMats.clear();
       if (!on) return;
       renderer.localClippingEnabled = true;
       aimCut();
       for (const m of modelGroup.children) {
         if (!m.isMesh || !m.geometry || m.userData?.asm === undefined) continue;
         setCutOn(m.material, true);
-        const cap = new THREE.Mesh(m.geometry, cutCapMat);
+        const cap = new THREE.Mesh(m.geometry, cutCapMat(m.material));
         cap.userData = { source: m };
         cap.raycast = () => {};          // never picked: clicks go to the part itself
         cutGroup.add(cap);
@@ -12105,6 +12261,18 @@ ${joined}${SITE_TAIL}`), joined);
     // Every frame, before drawing: the wedge follows the view. Cheap, two
     // planes, and it catches every way the camera moves (orbit, glide, snap).
     scene.onBeforeRender = () => { if (cutGroup.children.length) aimCut(); };
+    $("parts-open").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const box = $("parts-open-name");
+      setStatus("busy", "Opening that model…");
+      try {
+        const what = await openModelRef(box.value);
+        box.value = "";
+        setStatus("ok", `Opened ${what}.`);
+      } catch (err) {
+        setStatus("err", `Couldn't open it: ${err?.message || err}`);
+      }
+    });
     $("parts-cutaway").addEventListener("change", () => {
       refreshCut();
       setStatus("ok", cutOn() ? "Cut view on: a quarter of the assembly is cut away on the side facing you." : "Cut view off.");
@@ -17363,6 +17531,66 @@ ${joined}${SITE_TAIL}`), joined);
         setStatus("err", `See it on your desk did not open: ${e?.message || e}`);
         toast(`See it on your desk did not open: ${e?.message || e}`, "err");
       }
+    }
+
+    // Open a model from whatever someone typed or pasted: a short link name
+    // ("fish-bowl"), brepcode.com/m/fish-bowl, a #s= or #m= link, a welcome
+    // example ("tpubox", ?example=tpubox) or a catalog design's id. Used by
+    // the Parts card's brepcode.com/m/ box and the chat's /m/ command.
+    // -> a short description of what opened, or throws with why not.
+    async function openModelRef(input) {
+      let t = String(input || "").trim();
+      if (!t) throw new Error("type a model name or paste a link");
+      // a long link carries the model itself: hand its fragment to the share path
+      const frag = /#(?:.*&)?m=.*/.exec(t)?.[0];
+      if (frag) {
+        history.replaceState(null, "", location.pathname + location.search + frag);
+        if (!(await openSharedModel())) throw new Error("that link did not carry a readable model");
+        return "the linked model";
+      }
+      const example = /[?&#]example=([\w-]+)/i.exec(t)?.[1];
+      t = (example || t).replace(/^https?:\/\//i, "").replace(/^[^/#?]*brepcode\.com/i, "")
+        .replace(/^\/?(brep\/)?(index\.html)?/i, "").replace(/^#?s=/i, "").replace(/^\/?m\//i, "")
+        .replace(/[/?#].*$/, "").trim();
+      const id = t.toLowerCase();
+      if (!/^[a-z0-9._-]{1,64}$/.test(id)) throw new Error(`"${t}" is not a model name`);
+      const W = await import("./welcome.js");
+      if (W.EXAMPLES[id]) {
+        const ex = W.EXAMPLES[id];
+        frontDoorHooks(W).loadExample(ex.code, ex.title, ex.coach, ex.note);
+        return ex.title;
+      }
+      const [cat, schema] = await Promise.all([import("../src/catalog/index.js"), import("../src/catalog/schema.js")]);
+      const fam = cat.familyById(id);
+      if (fam) {
+        await agentActions.set_code({ code: schema.familyCode(fam, schema.resolveParams(fam, {}).values), name: fam.title });
+        return fam.title;
+      }
+      // anything else is a short link name; openSharedModel says it if it is dead
+      history.replaceState(null, "", location.pathname + location.search + "#s=" + encodeURIComponent(id));
+      if (!(await openSharedModel())) throw new Error(`no model called "${id}" (short links can be renamed or removed)`);
+      return `brepcode.com/m/${id}`;
+    }
+    // What /m/ offers in the chat: the examples, every catalog design, and the
+    // short links made in this browser. There is no public list of everyone's
+    // links (the cloud only answers a name you already know), so any other
+    // name typed after /m/ still opens as a short link.
+    async function modelRefOptions(word) {
+      const w = word.toLowerCase();
+      const [W, cat] = await Promise.all([import("./welcome.js"), import("../src/catalog/index.js")]);
+      // the links this browser made (cloudlink.js keeps their owner tokens)
+      let mine = [];
+      try { mine = Object.keys(JSON.parse(localStorage.getItem("brepcode-shortlink-owner") || "{}")); } catch { /* private mode */ }
+      const all = [
+        ...mine.map((k) => ({ id: k, hint: "your short link" })),
+        ...Object.entries(W.EXAMPLES).map(([k, v]) => ({ id: k, hint: `example: ${v.title}` })),
+        ...cat.FAMILIES.map((f) => ({ id: f.id, hint: `${f.category}: ${f.title}` })),
+      ];
+      const seen = new Set();
+      return all.filter((o) => !seen.has(o.id) && seen.add(o.id))
+        .filter((o) => !w || o.id.includes(w) || o.hint.toLowerCase().includes(w))
+        .sort((a, b) => (b.id.startsWith(w) - a.id.startsWith(w)))
+        .map((o) => ({ insert: `/m/${o.id}`, label: `/m/${o.id}`, hint: o.hint, model: o.id }));
     }
 
     async function openSharedModel() {
@@ -27864,9 +28092,22 @@ ${SC.describeSelectionContext(anchor)}` : "");
       chatComplete.querySelector("button.on")?.scrollIntoView({ block: "nearest" });
     }
 
+    // "/m/name" on its own opens that model rather than going to the chat
+    async function openModelFromChat(ref) {
+      chatInput.value = "";
+      closeChatComplete();
+      addMsg("user", `/m/${ref}`);
+      try {
+        const what = await openModelRef(ref);
+        addMsg("bot", `Opened ${what}. Change it in words, or open the editor.`);
+      } catch (e) {
+        addMsg("bot", `Couldn't open /m/${ref}: ${e?.message || e}. Type /m/ to see what's there.`);
+      }
+    }
     function acceptChatComplete(i) {
       const it = ccItems[i];
       if (!it) return;
+      if (it.model) { openModelFromChat(it.model); return; }
       const v = chatInput.value;
       const caret = chatInput.selectionStart ?? v.length;
       chatInput.value = v.slice(0, ccFrom) + it.insert + " " + v.slice(caret);
@@ -27880,6 +28121,20 @@ ${SC.describeSelectionContext(anchor)}` : "");
     chatInput.addEventListener("input", async () => {
       const v = chatInput.value;
       const caret = chatInput.selectionStart ?? v.length;
+      // /m/ opens a model: the examples, the catalog and this browser's short
+      // links, filtered as you type; Enter or a click opens the one picked.
+      const mm = /(^|\s)\/m\/([a-z0-9._-]*)$/i.exec(v.slice(0, caret));
+      if (mm) {
+        ccFrom = caret - 3 - mm[2].length;
+        const mine = ++ccSeq;
+        let opts = [];
+        try { opts = await modelRefOptions(mm[2]); } catch { /* no catalog, no list */ }
+        if (mine !== ccSeq) return;
+        ccItems = opts.slice(0, 60);
+        ccIndex = 0;
+        paintChatComplete();
+        return;
+      }
       // The token being typed RIGHT NOW: a # or / that starts a word, back from
       // the caret. Anchoring to the caret rather than the whole field is what
       // lets someone go back and fix a tag mid-sentence.
@@ -27910,6 +28165,8 @@ ${SC.describeSelectionContext(anchor)}` : "");
         if (e.key === "Escape") { e.preventDefault(); closeChatComplete(); return; }
       }
       if (e.key !== "Enter") return;
+      const ref = /^\s*\/m\/([^\s]+)\s*$/i.exec(chatInput.value)?.[1];
+      if (ref) { e.preventDefault(); openModelFromChat(ref); return; }
       // Empty input + a ✓ chip waiting = Enter IS the go-ahead. Only the
       // newest row counts: an old ✓ further up the chat is not this answer.
       if (!chatInput.value.trim()) {
