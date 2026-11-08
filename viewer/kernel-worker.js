@@ -61,11 +61,25 @@ async function isoKernel(wasmUrl) {
   return isoRust;
 }
 const trapped = (e) => { if (/unreachable|RuntimeError|memory access/i.test(String(e?.message || e))) isoRust = null; };
+// The compiled Rust module, kept so helper workers (the website's parts pool)
+// instantiate it instead of downloading and compiling 16 MB each.
+let rustWasmModule = null;
+async function compileRust(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`the Rust kernel didn't download (HTTP ${res.status})`);
+  // compileStreaming wants application/wasm, which not every host sends
+  if (WebAssembly.compileStreaming && /wasm/.test(res.headers.get("content-type") || "")) {
+    return WebAssembly.compileStreaming(res);
+  }
+  return WebAssembly.compile(await res.arrayBuffer());
+}
 function loadRust(wasmUrl) {
   if (rustFailure) return Promise.reject(rustFailure);
   rustKernel ??= (async () => {
-    const mod = await import("/vendor/brep-kernel-rust/brep_kernel.js");
-    await mod.default({ module_or_path: wasmUrl || PARAMS.get("rust") || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href) });
+    const url = wasmUrl || PARAMS.get("rust") || new URL("/vendor/brep-kernel-rust/brep_kernel_bg.wasm", self.location.href).href;
+    const [mod, module] = await Promise.all([import("/vendor/brep-kernel-rust/brep_kernel.js"), rustWasmModule || compileRust(url)]);
+    rustWasmModule = module;
+    await mod.default({ module_or_path: module });
     rustModule = mod;
     // builds that ran on the JS kernel while this downloaded can now be redone
     self.postMessage({ rustReady: true });
@@ -203,6 +217,12 @@ async function buildPieceSmlib(json, data) {
     return { ...out, stats: { ...out.stats, nvidiaRefused: String(e?.message || e).slice(0, 300) } };
   }
 }
+// A part on the Rust kernel alone (the website's default since 0.13.2). A
+// refusal is not caught here: the parent's build falls back as a whole.
+async function buildPieceRust(json, data) {
+  const rust = await loadRust(data.rustWasmUrl);
+  return runEngine(json, { rust, manifold: loadManifold });
+}
 // How many helpers: a core each, one left for the page, at most four (the
 // biggest part sets the time long before then), two on a small-memory device.
 function helperCount() {
@@ -242,6 +262,7 @@ function spawnHelper(h = { pending: new Map() }) {
   };
   h.worker.onerror = (ev) => { ev.preventDefault?.(); dropPool(`a helper worker failed: ${ev.message || "error"}`); };
   if (smlibModule) h.worker.postMessage({ op: "smlibModule", module: smlibModule });
+  if (rustWasmModule) h.worker.postMessage({ op: "rustModule", module: rustWasmModule });
   return h;
 }
 // Stop a build that is running on the helpers: every helper with a part in
@@ -275,7 +296,7 @@ function helperBuild(h, json, data) {
   const id = ++helperSeq;
   return new Promise((resolve, reject) => {
     h.pending.set(id, { resolve, reject });
-    try { h.worker.postMessage({ op: "piece", id, json, smlibWasmUrl: data.smlibWasmUrl, rustWasmUrl: data.rustWasmUrl }); }
+    try { h.worker.postMessage({ op: "piece", id, json, kernel: data.kernel === "rust" ? "rust" : "nvidia", smlibWasmUrl: data.smlibWasmUrl, rustWasmUrl: data.rustWasmUrl }); }
     catch (e) { h.pending.delete(id); reject(e); }
   });
 }
@@ -720,7 +741,32 @@ self.onmessage = async ({ data, ports }) => {
         try {
           const rust = await loadRust(data.rustWasmUrl);
           let out;
-          if (pieces) {
+          if (pieces && pieces.length > 1 && !nativePort && data.kernel === "rust") {
+            // the website on Rust: the parts spread over the helper pool, as
+            // they do for SMLib (a refusal anywhere sends the whole model to
+            // the JS kernel below, as one build would)
+            const pool = getSmlibPool();
+            if (pool) self.postMessage({ pooledOf: id });
+            for (const h of pool || []) if (rustWasmModule && !h.rustSent) { h.rustSent = true; h.worker.postMessage({ op: "rustModule", module: rustWasmModule }); }
+            const outs = new Array(pieces.length);
+            const keys = pieces.map((doc) => JSON.stringify(doc));
+            let reused = 0;
+            const one = async (i, h) => {
+              const hit = pieceCache.get(keys[i]);
+              if (hit) reused++;
+              outs[i] = hit ?? (h ? await helperBuild(h, pieces[i], data) : await runEngine(pieces[i], { rust, manifold: loadManifold }));
+              postPart(outs[i], i);
+            };
+            if (pool) {
+              const slots = hostSlots(pieces, pool.length);
+              await Promise.all(pieces.map((_, i) => one(i, pool[slots[i]])));
+            } else {
+              for (let i = 0; i < pieces.length; i++) await one(i, null);
+            }
+            pieceCache = new Map(keys.map((k, i) => [k, outs[i]]));
+            out = mergeOutputs(outs, performance.now() - t0, pieces);
+            out.stats = { ...out.stats, hosts: pool ? Math.min(pool.length, pieces.length) : 1, reused };
+          } else if (pieces) {
             // one kernel here, so one part after another, but each still
             // reaches the screen as soon as it is built
             const outs = [];
@@ -740,6 +786,7 @@ self.onmessage = async ({ data, ports }) => {
           // A refusal is the engine saying "not this model"; the JS kernel
           // below gets it. Anything else (a wasm that failed to load) is
           // also worth a JS attempt in auto mode, but is reported.
+          if (e?.cancelled) throw e;             // the page moved on (the parts pool)
           if (engine === "split") throw e;
           fallback = String(e?.message || e).slice(0, 300);
           fallbackKind = e === rustFailure ? "unavailable" : "refused";
@@ -860,6 +907,12 @@ self.onmessage = async ({ data, ports }) => {
     if (op === "smlibModule") {
       if (!smlibModule && data.module) smlibModule = data.module;
       loadSmlib().catch(() => { /* recorded in smlibFailure */ });
+      return;
+    }
+    // the same for the Rust kernel, when the parts pool builds on it
+    if (op === "rustModule") {
+      if (!rustWasmModule && data.module) rustWasmModule = data.module;
+      loadRust(data.rustWasmUrl).catch(() => { /* recorded in rustFailure */ });
       return;
     }
     // STEP -> code (viewer/stepcode.js): every candidate part the page
@@ -1025,7 +1078,11 @@ self.onmessage = async ({ data, ports }) => {
       return;
     }
     if (op === "cancel") { cancelPool(); return; }
-    if (op === "piece") { self.postMessage({ id, ok: true, out: await buildPieceSmlib(data.json, data) }); return; }
+    if (op === "piece") {
+      const out = data.kernel === "rust" ? await buildPieceRust(data.json, data) : await buildPieceSmlib(data.json, data);
+      self.postMessage({ id, ok: true, out });
+      return;
+    }
     if (op === "ping") { self.postMessage({ id, ok: true }); return; }
     // from the page, no reply: the desktop's native kernel arriving or going
     if (op === "nativePort") { if (ports?.length) setNativePort([...ports]); return; }

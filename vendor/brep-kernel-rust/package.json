@@ -2,7 +2,7 @@
   "name": "BREP_kernel",
   "type": "module",
   "description": "A boundary representation (BREP) geometry kernel for building CAD applications.",
-  "version": "0.11.0",
+  "version": "0.13.2",
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
     "type": "git",

@@ -436,7 +436,8 @@ export function import_obj_solid(text: string, tolerance: number): string;
 export function import_step_json(step_text: string): string;
 
 /**
- * Import binary-STL bytes as a faceted (planar-triangle) BREP solid.
+ * Import binary or ASCII STL bytes ([`read_stl`]) as a faceted
+ * (planar-triangle) BREP solid.
  * `tolerance <= 0` derives the vertex-weld band from the model's
  * bounding-box diagonal.
  */
@@ -512,6 +513,10 @@ export function project_surface_json(request_json: string): string;
 
 export function pyramid_brep_json(corner_x: number, corner_y: number, corner_z: number, side_length: number, height: number, sides: number): string;
 
+/**
+ * Read binary or ASCII STL bytes ([`read_stl`]) as `{tri_count,
+ * positions, format}` JSON.
+ */
 export function read_stl_json(data: Uint8Array | number[]): string;
 
 /**

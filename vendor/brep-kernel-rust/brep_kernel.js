@@ -2412,7 +2412,8 @@ export function import_step_json(step_text) {
 }
 
 /**
- * Import binary-STL bytes as a faceted (planar-triangle) BREP solid.
+ * Import binary or ASCII STL bytes ([`read_stl`]) as a faceted
+ * (planar-triangle) BREP solid.
  * `tolerance <= 0` derives the vertex-weld band from the model's
  * bounding-box diagonal.
  * @param {Uint8Array | number[]} data
@@ -3136,6 +3137,8 @@ export function pyramid_brep_json(corner_x, corner_y, corner_z, side_length, hei
 }
 
 /**
+ * Read binary or ASCII STL bytes ([`read_stl`]) as `{tri_count,
+ * positions, format}` JSON.
  * @param {Uint8Array | number[]} data
  * @returns {string}
  */
@@ -4365,7 +4368,7 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbg_error_a27dc054c00464da: function(arg0, arg1) {
+        __wbg_error_94aebed9c253fd63: function(arg0, arg1) {
             let deferred0_0;
             let deferred0_1;
             try {
@@ -4376,7 +4379,7 @@ function __wbg_get_imports() {
                 wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
             }
         },
-        __wbg_new_eb9fa55eef220a59: function() {
+        __wbg_new_2e82cff2e3c1a947: function() {
             const ret = new Error();
             return ret;
         },
@@ -4388,7 +4391,7 @@ function __wbg_get_imports() {
             const ret = arg0.performance;
             return ret;
         },
-        __wbg_stack_64765c3e01b4e551: function(arg0, arg1) {
+        __wbg_stack_e3a6ca9ae3f870ab: function(arg0, arg1) {
             const ret = arg1.stack;
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len1 = WASM_VECTOR_LEN;
