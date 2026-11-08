@@ -127,6 +127,13 @@ function style() {
     font: 600 15px system-ui, sans-serif; padding: 0 20px; cursor: pointer; }
   .mk-go:hover { background: var(--accent-hover, #2e76f2); }
   /* the one way to see more: a plain button, centred, that unfolds the rest */
+  /* the way past the door, always in sight: "Open the full editor" sits
+     inside the folded extras, and Escape lands in the chat */
+  .mk-row { align-self: center; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 14px; margin-top: 18px; }
+  .mk-row .mk-more { margin: 0; }
+  .mk-skip { background: none; border: 1px solid transparent; border-radius: 999px; padding: 6px 12px; cursor: pointer;
+    color: var(--muted2, #8b97ad); font: 13px system-ui, sans-serif; }
+  .mk-skip:hover, .mk-skip:focus-visible { color: var(--text, #dfe6f3); border-color: var(--border, #26314a); outline: none; }
   .mk-more { align-self: center; margin: 18px 0 0; background: none; border: 1px solid transparent; border-radius: 999px;
     padding: 7px 14px; font: 14px system-ui, sans-serif; color: var(--muted, #8ea0c0); cursor: pointer;
     display: inline-flex; align-items: center; gap: 7px; }
@@ -197,7 +204,10 @@ export function showMake(hooks = {}) {
         <input id="mk-q" type="text" autocomplete="off" enterkeyhint="go" aria-label="What do you want to build?" placeholder="${esc(PLACEHOLDER)}" />
         <button class="mk-go" type="submit">Make it</button>
       </form>
-      <button class="mk-more" type="button" aria-expanded="false" aria-controls="mk-extra">What can I make?<span class="chev" aria-hidden="true">&#9662;</span></button>
+      <div class="mk-row">
+        <button class="mk-more" type="button" aria-expanded="false" aria-controls="mk-extra">What can I make?<span class="chev" aria-hidden="true">&#9662;</span></button>
+        <button class="mk-skip" type="button" data-mk="skip" title="Close this and go straight to the app (bookmark brepcode.com/app to always start there)">Skip to the app &rsaquo;</button>
+      </div>
       <div class="mk-extra" id="mk-extra" hidden>
         <p class="mk-sub">Real things people print, as tested designs with every size on a slider. Tap one, or say what yours is for.</p>
         <div class="mk-chips" aria-label="Examples"></div>
@@ -245,6 +255,7 @@ export function showMake(hooks = {}) {
     else if (how === "stl") hooks.pickFile?.();
     else if (how === "tour") hooks.startTour?.();
     else if (how === "full") (hooks.openEditor || hooks.openChat)?.();
+    else if (how === "skip") { /* just the app, as it is under the door */ }
     else hooks.openChat?.();
   };
 

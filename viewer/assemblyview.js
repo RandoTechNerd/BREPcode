@@ -366,8 +366,7 @@ export function createAssemblyView(ctx) {
       const dataUrl = renderer.domElement.toDataURL("image/png");
       return { ok: true, width, height, preset, cutaway: !!cutaway, png: dataUrl.slice(dataUrl.indexOf(",") + 1) };
     } finally {
-      for (const m of made) m.dispose();
-      section.dispose();
+      for (const m of made) m.dispose();     // the section materials are in here too
       floor.geometry.dispose(); floor.material.dispose();
       key.shadow.map?.dispose();
       env.dispose(); pmrem.dispose(); room.dispose?.();

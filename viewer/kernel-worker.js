@@ -219,9 +219,18 @@ async function buildPieceSmlib(json, data) {
 }
 // A part on the Rust kernel alone (the website's default since 0.13.2). A
 // refusal is not caught here: the parent's build falls back as a whole.
-async function buildPieceRust(json, data) {
-  const rust = await loadRust(data.rustWasmUrl);
-  return runEngine(json, { rust, manifold: loadManifold });
+// One at a time, like SMLib's queue: the page hands a helper all of its parts
+// at once, and two builds interleaving on one kernel instance (runEngine
+// awaits between features) tangled its solid registry and the model never
+// came back.
+let rustQueue = Promise.resolve();
+function buildPieceRust(json, data) {
+  const run = rustQueue.then(async () => {
+    const rust = await loadRust(data.rustWasmUrl);
+    return runEngine(json, { rust, manifold: loadManifold });
+  });
+  rustQueue = run.catch(() => {});
+  return run;
 }
 // How many helpers: a core each, one left for the page, at most four (the
 // biggest part sets the time long before then), two on a small-memory device.

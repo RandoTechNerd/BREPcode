@@ -649,6 +649,11 @@
     #app-settings .set-btns .hist-btn { border: 1px solid var(--border); }
     /* every press shows it landed: a small push-in */
     .hist-btn:active:not(:disabled), .dz-ui button:active:not(:disabled) { transform: translateY(1px) scale(0.97); }
+    #update-bar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 200001; display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px 8px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--accent, #5b8cff); color: var(--text);
+      font: 13px system-ui, sans-serif; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+    #update-bar button { border: 0; border-radius: 7px; padding: 5px 12px; cursor: pointer; background: var(--accent, #5b8cff); color: #fff; font: 600 12.5px system-ui, sans-serif; }
+    #update-bar button.x { background: none; color: var(--muted2); padding: 2px 6px; font-size: 16px; }
     #app-toast { position: fixed; left: 50%; bottom: 72px; transform: translate(-50%, 8px); z-index: 200000; pointer-events: none;
       max-width: min(520px, calc(100vw - 32px)); padding: 7px 14px; border-radius: 9px; font: 500 12.5px/1.35 system-ui, sans-serif;
       background: rgba(12, 17, 28, 0.94); color: #dfe6f3; border: 1px solid rgba(127, 150, 200, 0.35);
@@ -10277,6 +10282,40 @@
     }
     window.brepscript = window.brepscript || {};
     window.brepscript.toast = toast;
+
+    // A newer build published while this page stays open (OrcaSlicer's tab
+    // can stay up for days, and has no hard refresh): the load-time check in
+    // <head> only runs once, so look again every 30 minutes and whenever the
+    // tab comes back into view, and offer the reload rather than doing it,
+    // so nothing being worked on is thrown away. Moves forwards only.
+    (function watchForUpdate() {
+      const here = document.querySelector('meta[name="brepcode-build"]')?.content;
+      if (!here || here === "BUILD" + "STAMP") return;          // a dev build
+      const when = (b) => /(\d{4}-\d\d-\d\d \d\d:\d\d)/.exec(b || "")?.[1] || "";
+      let shown = false, last = 0;
+      const check = async () => {
+        if (shown || Date.now() - last < 60000) return;
+        last = Date.now();
+        try {
+          const v = await (await fetch("version.json", { cache: "no-store" })).json();
+          if (!v?.build || v.build === here || !(when(v.build) > when(here))) return;
+          shown = true;
+          const bar = document.createElement("div");
+          bar.id = "update-bar";
+          bar.setAttribute("role", "status");
+          bar.innerHTML = 'BREPcode was updated. <button type="button">Reload</button><button type="button" class="x" aria-label="Not now">&times;</button>';
+          bar.querySelector("button").onclick = () => {
+            const u = new URL(location.href);
+            u.searchParams.set("b", String(v.build).replace(/[^\w.-]+/g, "-"));
+            location.replace(u.toString());
+          };
+          bar.querySelector(".x").onclick = () => bar.remove();
+          document.body.appendChild(bar);
+        } catch { /* offline, or the host is mid-publish: try again later */ }
+      };
+      setInterval(check, 30 * 60 * 1000);
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+    })();
     const setPref = (k, v) => { prefs[k] = v; savePrefs(); };
     $("set-orbit").addEventListener("change", (e) => { setPref("orbit", e.target.value); applyOrbitPref(); });
     $("set-editor-home").addEventListener("change", (e) => { setPref("editorHome", e.target.value); rehomeWindows(); });
@@ -28622,7 +28661,29 @@ ${SC.describeSelectionContext(anchor)}` : "");
         try { (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash); } catch { /* cross-origin */ }
       }
     }
-    if (tourRequested()) {
+    // ?app=1 or #app (brepcode.com/app): straight into the app, no front door
+    // at all: not the quick door, not the welcome card, not the desktop's
+    // first-launch door. The way past /make for a link, a bookmark or a host
+    // (OrcaSlicer's tab) that only wants the workbench. The flag comes off the
+    // address once read, like the others.
+    const plainApp = (() => {
+      let hit = false;
+      for (const L of hostLocations()) {
+        if (!/[?&]app=1(&|$)/.test(L.search) && !/^#app$/i.test(L.hash)
+            && !(/(^|\/)app\/?(index\.html)?$/i.test(L.pathname) && !/(^|\/)m\/app\/?$/i.test(L.pathname))) continue;
+        hit = true;
+        try {
+          const u = new URL(L.href);
+          u.searchParams.delete("app");
+          if (/^#app$/i.test(u.hash)) u.hash = "";
+          (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
+        } catch { /* cross-origin frame */ }
+      }
+      return hit;
+    })();
+    if (plainApp) {
+      // nothing to open: the app as it is
+    } else if (tourRequested()) {
       // A frame normally; a timer as well, because a tab opened in the
       // background (a link middle-clicked from an article) gets no animation
       // frames until it is shown, and the tour would never start. Once only.
