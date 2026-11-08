@@ -673,6 +673,14 @@
     html.theme-light #ar-top { background: var(--card); color: var(--text2); box-shadow: 0 4px 14px rgba(40,70,140,.22); }
     #ar-top:hover { border-color: var(--accent, #1c66e5); }
     #ar-top:active { transform: scale(.95); }
+    /* only inside OrcaSlicer's BREPcode tab */
+    #orca-send-btn {
+      display: flex; align-items: center; gap: 6px; align-self: center; height: 34px; padding: 0 12px 0 10px;
+      border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--text);
+      font: 600 13px/1 system-ui, sans-serif; cursor: pointer;
+    }
+    #orca-send-btn:hover { border-color: var(--accent, #1c66e5); }
+    #orca-send-btn[hidden] { display: none; }
     #cheat-btn, #about-btn, #hist2-btn, #chat-btn, #dz-time-btn {
       display: grid; place-items: center; padding: 0;
       width: 30px; height: 30px; align-self: center;
@@ -2976,6 +2984,7 @@
         <div class="exp-group">Drawing / Web</div>
         <button data-fmt="svg">SVG blueprint<small>3-view drawing</small></button>
         <button data-fmt="glb" data-group="glb">GLB<small>web viewers</small></button>
+        <button data-fmt="desk">See it on your desk<small>QR code, phone camera</small></button>
       </div>
       <div id="exp-side">
         <div id="exp-preview"><canvas id="exp-canvas" width="300" height="190"></canvas><pre id="exp-code" hidden></pre>
@@ -4148,6 +4157,10 @@
           </div>
         </div>
         <div id="about-docs">
+          <div class="docs-sec"><b>Where things are</b>: the <b>FAQ</b> and how-tos are under
+            <b>Design help</b> (top of this window); <b>credits and licences</b>, <b>links</b> and
+            <b>contact</b> (email, Discord) are further down here; the layout (tool bar, where windows
+            open) is in <b>Settings</b> above. The <b>Tour</b> walks through all of it.</div>
           <div class="docs-credit">
             <strong>Documentation</strong> — every modelling capability below is the
             <a href="https://brep.io" target="_blank" rel="noopener">BREP.io</a> CAD engine, built by
@@ -4819,6 +4832,10 @@
 
     <div id="buttons">
       <span id="dock-spin" hidden title="Building…" aria-live="polite" aria-label="Building"></span>
+      <button id="orca-send-btn" type="button" hidden title="Send this model to OrcaSlicer's plate (the Prepare tab)">
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 2.5v7M5 6.5l3 3 3-3"/><path d="M2.5 11.5h11l-1.2 2h-8.6z"/>
+        </svg>To plate</button>
       <button id="open-btn" class="dock-btn"><span class="plus">+</span> Editor</button>
       <button id="cheat-btn" title="What can I type?" aria-label="Cheat sheet">
         <svg viewBox="0 0 16 16" width="15" height="15" fill="none"
@@ -9588,6 +9605,77 @@
       return true;
     }
 
+    // Double-click on a header: normal -> roomy -> full screen -> normal. Roomy
+    // is the step in between for arranging windows: about 1.6x bigger, placed
+    // where it covers the least of the other open windows and toolbars. The
+    // max button still goes straight to full screen.
+    function headerStep(card) {
+      const pre = card._preRoomy;
+      if (card.classList.contains("expanded")) {
+        toggleExpand(card);
+        if (pre) unRoomy(card);           // full screen -> where it was before roomy
+        return;
+      }
+      if (pre) { toggleExpand(card); return; }    // roomy -> full screen
+      makeRoomy(card);
+    }
+    function makeRoomy(card) {
+      const now = card.getBoundingClientRect();
+      const b = mainScroll(card);
+      card._preRoomy = {
+        floating: card.classList.contains("floating"), resized: card.classList.contains("resized"),
+        placed: card.dataset.placed, preSnap: card._preSnap,
+        left: card.style.left, top: card.style.top, width: card.style.width, height: card.style.height,
+        body: b ? { flex: b.style.flex, minHeight: b.style.minHeight, maxHeight: b.style.maxHeight } : null,
+      };
+      const W = innerWidth, H = innerHeight, M = 12;
+      // what it should keep clear of: other open windows, Design's panels, the dock row
+      const avoid = [...document.querySelectorAll(".card.open:not(.expanded), #dz-bar, #dz-side, #dz-time, #buttons, #ar-top")]
+        .filter((el) => el !== card && !el.hidden && getComputedStyle(el).display !== "none")
+        .map((el) => el.getBoundingClientRect()).filter((r) => r.width && r.height);
+      const over = (x, y, w, h) => avoid.reduce((a, r) =>
+        a + Math.max(0, Math.min(x + w, r.right) - Math.max(x, r.left)) * Math.max(0, Math.min(y + h, r.bottom) - Math.max(y, r.top)), 0);
+      const maxW = W - 2 * M, maxH = H - 2 * M;
+      const goalW = Math.min(maxW, Math.max(now.width * 1.6, Math.min(560, maxW)), Math.round(W * 0.72));
+      const goalH = Math.min(maxH, Math.max(now.height * 1.6, Math.min(420, maxH)), Math.round(H * 0.8));
+      let best = null;
+      for (let f = 1; f >= 0.55; f -= 0.075) {
+        const w = Math.round(Math.max(now.width, goalW * f)), h = Math.round(Math.max(now.height, goalH * f));
+        const xs = [now.left, now.right - w, now.left - (w - now.width) / 2, M, W - M - w, ...avoid.flatMap((r) => [r.right + 8, r.left - 8 - w])];
+        const ys = [now.top, now.bottom - h, now.top - (h - now.height) / 2, M, H - M - h, ...avoid.flatMap((r) => [r.bottom + 8, r.top - 8 - h])];
+        for (const x0 of xs) for (const y0 of ys) {
+          const x = Math.round(Math.min(Math.max(M, x0), W - M - w)), y = Math.round(Math.min(Math.max(M, y0), H - M - h));
+          // least covered first, then the biggest, then the least moved
+          const score = over(x, y, w, h) * 4 - w * h + Math.hypot(x - now.left, y - now.top) * 2;
+          if (!best || score < best.score) best = { x, y, w, h, score };
+        }
+      }
+      if (!card.classList.contains("floating")) card.classList.add("floating");
+      card.classList.add("resized");
+      if (b) { b.style.flex = "1 1 auto"; b.style.minHeight = "0"; b.style.maxHeight = "none"; }
+      card._preSnap = null;
+      delete card.dataset.placed;
+      Object.assign(card.style, { left: `${best.x}px`, top: `${best.y}px`, width: `${best.w}px`, height: `${best.h}px`, zIndex: ++cardZ });
+      markDockShared();
+      syncWindowChrome(card);
+      windowsChanged();
+    }
+    function unRoomy(card) {
+      const p = card._preRoomy;
+      card._preRoomy = null;
+      if (!p) return;
+      card.classList.toggle("floating", p.floating);
+      card.classList.toggle("resized", p.resized);
+      card._preSnap = p.preSnap;
+      if (p.placed) card.dataset.placed = p.placed; else delete card.dataset.placed;
+      for (const k of ["left", "top", "width", "height"]) card.style[k] = p[k];
+      const b = mainScroll(card);
+      if (b && p.body) Object.assign(b.style, p.body);
+      markDockShared();
+      syncWindowChrome(card);
+      windowsChanged();
+    }
+
     // Put a loose window back in the stack at the bottom-right. Dragging is how
     // a window leaves the column, so there has to be a way back that is equally
     // plain — this used to be a second double-click handler fighting the expand
@@ -9595,6 +9683,7 @@
     function redockCard(card) {
       card.classList.remove("floating", "resized", "expanded");
       preExpand.delete(card);
+      card._preRoomy = null;
       card._preSnap = null;
       delete card.dataset.placed;
       card.style.left = card.style.top = card.style.width = card.style.height = card.style.zIndex = "";
@@ -9624,7 +9713,7 @@
         exp.innerHTML = big ? WIN_ICONS.restore : WIN_ICONS.max;
         exp.title = big
           ? "Back to its own size (or double-click the header)"
-          : "Fill the screen (or double-click the header)";
+          : "Fill the screen (double-clicking the header makes it bigger first, then fills the screen)";
         exp.setAttribute("aria-label", exp.title);
       }
       if (dock) dock.hidden = big || !card.classList.contains("floating") || !!card.dataset.placed;
@@ -9700,7 +9789,7 @@
       const ownControl = (e) => e.target.closest("button, input, select, a, #model-name, #model-name-input");
       headerEl.addEventListener("dblclick", (e) => {
         if (ownControl(e)) return;
-        toggleExpand(card);
+        headerStep(card);
       });
       headerEl.addEventListener("contextmenu", (e) => {
         if (ownControl(e)) return;
@@ -9720,6 +9809,7 @@
         // and carry it across the screen.
         if (e.target.closest("#tools-menu, #more-menu, #shape-menu")) return;
         if (card.classList.contains("maxed") || card.classList.contains("expanded")) return;
+        card._preRoomy = null;                     // moved by hand: its own size now
         const rect = card.getBoundingClientRect();
         if (!card.classList.contains("floating")) {
           card.style.width = `${rect.width}px`;    // flex sizing goes away with the dock
@@ -9840,6 +9930,7 @@
       grip.addEventListener("pointerdown", (e) => {
         e.preventDefault(); e.stopPropagation();
         if (card.classList.contains("maxed")) return;
+        card._preRoomy = null;                   // sized by hand: its own size now
         const rect = card.getBoundingClientRect();
         card.classList.add("resized");
         const body = mainScroll(card);
@@ -17763,14 +17854,32 @@ ${joined}${SITE_TAIL}`), joined);
     // and the version tag we used to add was what invited Orca's version
     // comparison in the first place. See the note in exporters.js.
     let slicerInfo = null;
+
+    // Inside OrcaSlicer's BREPcode tab (the BREPcodeOrca plugin), Orca hands
+    // the page a window.orca bridge to the plugin. The plugin cannot reach the
+    // plate through Orca's API, so it saves the 3MF and has Orca's own window
+    // open it, the way a second Orca does, and answers {type: "sent"}.
+    const orcaTab = typeof window.orca?.postMessage === "function" ? window.orca : null;
+    let orcaReply = null;
+    orcaTab?.onMessage?.((d) => {
+      if (d?.type === "sent" && orcaReply) { orcaReply(d); orcaReply = null; }
+    });
+    function sendToOrcaTab(name, base64) {
+      return new Promise((resolve) => {
+        const t = setTimeout(() => { orcaReply = null; resolve({ ok: false, error: "OrcaSlicer did not answer" }); }, 20000);
+        orcaReply = (d) => { clearTimeout(t); resolve(d); };
+        orcaTab.postMessage({ type: "brepcode:send", name, ext: "3mf", base64 });
+      });
+    }
+
     async function openInSlicer() {
-      if (!window.brepcodeDesktop?.openInSlicer) return;
+      if (!window.brepcodeDesktop?.openInSlicer && !orcaTab) return;
       if (!lastSolids.length) { setStatus("err", "Nothing to send — build a model first."); return; }
       setStatus("busy", "Packing the model for the slicer…");
       try {
         const exp = await getExporters();
         const base = safeModelName();
-        slicerInfo = slicerInfo || await window.brepcodeDesktop.slicerInfo();
+        if (!orcaTab) slicerInfo = slicerInfo || await window.brepcodeDesktop.slicerInfo();
         const groups = colorGroupsForExport();
         const distinct = new Set(groups.map((g) => g.color)).size;
         const slicerPrinter = $("mf-printer")?.value || "";
@@ -17781,9 +17890,11 @@ ${joined}${SITE_TAIL}`), joined);
         };
         const bytes = distinct > 1 || isBambu(slicerPrinter, exp) ? exp.colored3MF(groups, base, opts)
                                    : exp.stlTo3MF(await exportSTL(), base, opts);
-        const r = await window.brepcodeDesktop.openInSlicer(base, await toBase64(new Blob([bytes])));
+        const b64 = await toBase64(new Blob([bytes]));
+        const r = orcaTab ? await sendToOrcaTab(base, b64) : await window.brepcodeDesktop.openInSlicer(base, b64);
         if (!r?.ok) { setStatus("err", `Couldn't open the slicer: ${r?.error || "unknown error"}`); return; }
-        setStatus("ok", `Opened ${base}.3mf in ${r.via === "orca" ? "OrcaSlicer" : "your default 3MF app"}.`);
+        setStatus("ok", orcaTab ? `Sent ${base}.3mf to the plate. It's on the Prepare tab.`
+          : `Opened ${base}.3mf in ${r.via === "orca" ? "OrcaSlicer" : "your default 3MF app"}.`);
         fixnote.innerHTML = `<span style="color:var(--muted3)">`
           + `The model carries its BREPcode, so this 3MF can be dropped back on BREPcode `
           + `and reopened as editable code rather than a frozen mesh.</span>`;
@@ -17792,8 +17903,19 @@ ${joined}${SITE_TAIL}`), joined);
       }
     }
 
+    // In Orca's tab the plate is right there: one button beside the Editor
+    // pill, and the export list's entry says where it goes.
+    if (orcaTab) {
+      const btn = $("slicer-btn");
+      btn.style.display = "";
+      btn.firstChild.textContent = "Send to plate";
+      btn.querySelector("small").textContent = "OrcaSlicer, this window";
+      const send = $("orca-send-btn");
+      send.hidden = false;
+      send.addEventListener("click", () => exportAs("slicer"));
+    }
     // Desktop only — and only worth offering once we know something can open it.
-    if (window.brepcodeDesktop?.slicerInfo) {
+    else if (window.brepcodeDesktop?.slicerInfo) {
       window.brepcodeDesktop.slicerInfo().then((info) => {
         slicerInfo = info;
         const btn = $("slicer-btn");
@@ -17811,6 +17933,7 @@ ${joined}${SITE_TAIL}`), joined);
       // possible moment to be strict.
       if (fmt === "bcode") return exportProject();
       if (fmt === "slicer") return openInSlicer();
+      if (fmt === "desk") return seeOnDesk();
       if (!lastSolids.length) { setStatus("err", "Nothing to export — build a model first."); return; }
       const base = safeModelName();
       // The progress bar for this export: a curved STEP knows its steps (the
@@ -18456,7 +18579,8 @@ ${joined}${SITE_TAIL}`), joined);
     const EXPORT_FORMATS = {
       bcode: { kind: "code", desc: "The project itself - your source as editable text, with the scene and undo history riding inside. The one export that can come back and be changed." },
       share: { kind: "code", opts: ["short-row"], desc: "A link that IS the model. The whole recipe is compressed into the URL, so anyone who opens it gets your part - no upload, no account, nothing stored. Copied to your clipboard, ready to send." },
-      slicer: { kind: "color", desc: "Writes a colour 3MF and hands it straight to OrcaSlicer." },
+      slicer: { kind: "color", desc: orcaTab ? "Writes a colour 3MF that carries its BREPcode and puts it on this OrcaSlicer's plate (the Prepare tab)."
+        : "Writes a colour 3MF and hands it straight to OrcaSlicer." },
       publish: { kind: "color", desc: "Puts this model on the site at brepcode.com/<name> (source, thumbnail and a viewer page) and adds it to the stashed gallery. The stash lives on the site itself, not in this browser: it survives clearing local data, and anyone who unlocks the stash sees it there. The mesh travels with the page, so it works for anyone you send it to. Private until you share the link.", opts: ["publish-row"] },
       stl: { kind: "mono", ext: ".stl", opts: ["mesh-variant-row"], desc: "Triangles, one material. The universal 3D-print interchange - geometry only, so any colours are dropped." },
       obj: { kind: "mono", ext: ".obj", opts: ["mesh-variant-row"], desc: "Mesh for DCC and game tools (Blender, Maya, engines). Geometry only." },
@@ -18467,6 +18591,7 @@ ${joined}${SITE_TAIL}`), joined);
       "step-curved": { kind: "mono", ext: "-curved.step", opts: ["step-variant-row"], desc: "True B-rep STEP: cylinders as cylinders, not triangle fans. Rebuilt in a precision kernel (first use downloads ~11 MB)." },
       svg: { kind: "lines", ext: "-drawing.svg", opts: ["dw-look-row", "dw-title-row", "dw-print-row"], desc: "A 3-view engineering drawing - front, top, side and an isometric - with overall dimensions, hole callouts and a title block. Blueprint, white or dark; ANSI or ISO; mm or inches. Print / PDF puts it on paper. Needs the precision kernel (first use downloads ~11 MB)." },
       glb: { kind: "color", ext: ".glb", opts: ["glb-wrap-row"], desc: "The web's 3D format, colours and materials included - drops into <model-viewer>, three.js, Babylon, Blender." },
+      desk: { kind: "color", desc: "Real size on your desk, through your phone's camera. On a computer this shows a QR code: scan it and the phone opens the model straight into its camera view. On a phone it opens the camera view directly." },
       embed: { kind: "color", ext: ".html", opts: ["glb-wrap-row"], desc: "A single self-contained HTML page with the model and a viewer inside - host it anywhere, no dependencies." },
     };
     // ---- one list entry, several files it could write ----------------------
@@ -18521,6 +18646,7 @@ ${joined}${SITE_TAIL}`), joined);
       if (fmt === "share") { el.innerHTML = "Copies a <b>link</b> to your clipboard — no file."; return; }
       if (fmt === "publish") { el.innerHTML = "Puts up a <b>page</b> on the site — no file."; return; }
       if (fmt === "slicer") { el.innerHTML = "Hands a <b>3MF</b> straight to the slicer."; return; }
+      if (fmt === "desk") { el.innerHTML = "Shows a <b>QR code</b> for your phone — no file."; return; }
       const base = safeModelName();
       if (fmt === "bcode") { el.innerHTML = `Saves <b>${esc(base)}.bcode</b>`; return; }
       if (fmt === "gcode") { el.innerHTML = `Saves <b>${esc(base)}.gcode</b>`; return; }

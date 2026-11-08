@@ -372,8 +372,9 @@ console.log("\nthe shared page is a way IN, not a dead end\n");
 
   const listRows = [...HTML.matchAll(/<button data-fmt="([^"]+)"(?:\s+data-group="([^"]+)")?/g)]
     .map((m) => ({ fmt: m[1], group: m[2] || null }));
-  check("the list is down to nine rows (four of them conditional)",
-    listRows.length === 9, `${listRows.length}: ${listRows.map((r) => r.fmt).join(", ")}`);
+  // ten since "See it on your desk" moved in from the top-right corner
+  check("the list is down to ten rows (four of them conditional)",
+    listRows.length === 10, `${listRows.length}: ${listRows.map((r) => r.fmt).join(", ")}`);
   for (const gone of ["stl", "obj", "3mf-parts", "step-curved", "embed"]) {
     check(`"${gone}" no longer has a row of its own`,
       !listRows.some((r) => r.fmt === gone));

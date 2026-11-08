@@ -23,6 +23,7 @@ import { rotateText, scaleText, shapeSpan } from "./design/features.js";
 import { failedSteps } from "./design-timeline.js";
 
 const RIBBON_KEY = "brepcode.ribbon";
+const SIDE_MIN_KEY = "brepcode.design.browserMin";
 const SNAPS = [1, 0.5, 0.1, 0];
 
 // The ribbon. `dialog` tools open a feature dialog (design/dialogs.js, loaded
@@ -154,6 +155,9 @@ body.dz-ribbon #dz-side { top: 104px; max-height: calc(100vh - 238px); }
 #dz-confirm button.go { background: #d94848; border-color: #d94848; color: #fff; }
 #dz-side .dz-fold { border: 0; background: transparent; cursor: pointer; padding: 0 2px; color: var(--muted, #8ea0c0); }
 #dz-side.folded #dz-tree, #dz-side.folded #dz-sel { display: none; }
+/* double-click the fold: the browser tucks away into a toolbar button after Forward */
+html body #dz-side.dz-min { display: none !important; }
+#dz-bar .dz-side-min[hidden] { display: none; }
 #dz-tree { overflow: auto; padding: 4px 0 6px; flex: 1 1 auto; min-height: 40px; }
 .dz-group { padding: 6px 10px 2px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8ea0c0); }
 .dz-group small { text-transform: none; letter-spacing: 0; opacity: .8; }
@@ -1278,6 +1282,31 @@ export function initDesignShell(host) {
     e.currentTarget.textContent = folded ? "▸" : "▾";
     e.currentTarget.setAttribute("aria-expanded", String(!folded));
   });
+  // Double-click the fold to tuck the whole browser away into one toolbar
+  // button after Forward, for a cleaner screen. Only an OPEN browser does: the
+  // two clicks ahead of a dblclick fold and unfold it, so an open one is open
+  // again by now and a folded one is folded again and left alone.
+  const sideMin = document.createElement("button");
+  sideMin.type = "button";
+  sideMin.className = "dz-t dz-side-min";
+  sideMin.hidden = true;
+  sideMin.title = "Browser: click to bring it back";
+  sideMin.setAttribute("aria-label", "Show the browser");
+  sideMin.innerHTML = `${svg(`<path d="M3 3.5h10M5.5 8H13M5.5 12.5H13M3 3.5v9h2.5M3 8h2.5"/>`)}<span>Browser</span>`;
+  // in the History group right after Forward: under it when the toolbar runs
+  // down the left, beside it when it runs along the top
+  const fwd = bar.querySelector('[data-hist="redo-btn"]');
+  if (fwd) fwd.after(sideMin); else bar.querySelector(".dz-gi")?.append(sideMin);
+  const setSideMin = (on) => {
+    side.classList.toggle("dz-min", on);
+    sideMin.hidden = !on;
+    try { localStorage.setItem(SIDE_MIN_KEY, on ? "1" : "0"); } catch { /* not remembered */ }
+  };
+  side.querySelector(".dz-fold").addEventListener("dblclick", () => {
+    if (!side.classList.contains("folded")) setSideMin(true);
+  });
+  sideMin.addEventListener("click", () => setSideMin(false));
+  try { if (localStorage.getItem(SIDE_MIN_KEY) === "1") setSideMin(true); } catch { /* starts open */ }
   setRibbon(ribbon);
   setTool(tool);
 

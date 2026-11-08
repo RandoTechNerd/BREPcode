@@ -272,6 +272,18 @@
       <details><summary>Can I type the code instead?</summary><div><p>Yes. A sketch is a <code>sketch({ points, curves, constraints, dims })</code> call, and you can edit it by hand: a tangent is <code>["tangent", lineStart, lineEnd, centre, touchPoint]</code>. While a sketch is open, though, leave the code alone: Finish would otherwise overwrite what you typed, and it tells you so.</p></div></details>
       <details><summary>Is the spline offset exact?</summary><div><p>Within 0.01 mm. No CAD program can offset a spline exactly (the true offset of a spline isn't a spline), so all of them fit one; BREPcode tells you that it does.</p></div></details>
       <details><summary>Is this as good as Fusion or SolidWorks?</summary><div><p>Not yet, and the next two sections say exactly where it falls short. What it does have: every click is readable code you own, works in any browser, and builds true curved surfaces (STEP-clean) when the exact kernel is used.</p></div></details>
+      <details><summary>How do I send a model to OrcaSlicer?</summary><div>
+        <p>Install the <b>BREPcode</b> plugin in OrcaSlicer 2.5 or newer and open its <b>BREPcode</b> tab. Build the model, then press <b>To plate</b> (bottom right, beside the Editor button) or Export &rarr; <b>Send to plate</b>. It lands on the Prepare tab's plate as a 3MF with your colours, and the 3MF carries the code, so dropping it back on BREPcode reopens it as an editable model.</p>
+        <p>Outside OrcaSlicer, Export &rarr; <b>Mesh</b> saves the same 3MF to open in any slicer.</p>
+      </div></details>
+      <details><summary>The windows are in each other's way. How do I tidy up?</summary><div>
+        <p>Double-click a window's title bar: the first time it grows to a roomier size placed where it covers the least of the other windows; the second time it fills the screen; the third puts it back where it was. Drag the corner to size it by hand.</p>
+        <p>In Design, double-click the <b>&#9662;</b> at the top of the Browser to tuck it into the toolbar after Forward; click that button to bring it back. Settings (the &#9432; button) moves the tool bar down the left and chooses where the editor and chat open.</p>
+      </div></details>
+      <details open><summary>Still stuck, found a bug, or want to say thanks?</summary><div>
+        <p>Email me at <a href="mailto:RandoTechNerd@gmail.com?subject=BREPcode">RandoTechNerd@gmail.com</a>, or ask in the <a href="https://discord.gg/8fjQHDX8PQ" target="_blank" rel="noopener">Discord</a>. A screenshot and the model's share link help a lot.</p>
+        <p>BREPcode is free. If it saved you some time, you can <a href="https://buymeacoffee.com/randotechnerd" target="_blank" rel="noopener">buy me a coffee</a>.</p>
+      </div></details>
     </section>
 
     <section data-s id="limits">

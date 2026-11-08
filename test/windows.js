@@ -35,7 +35,14 @@ console.log("\none gesture, one meaning\n");
   const upTo = hdrLoop.slice(0, hdrLoop.indexOf("\n    }\n"));
   const dbl = (upTo.match(/headerEl\.addEventListener\("dblclick"/g) || []).length;
   check("a card header has exactly one dblclick listener", dbl === 1, `${dbl} found`);
-  check("...and it is the expand one", /dblclick[\s\S]{0,160}toggleExpand\(card\)/.test(upTo));
+  check("...and it is the size step (roomy, then full screen)", /dblclick[\s\S]{0,160}headerStep\(card\)/.test(upTo));
+  const step = HTML.slice(HTML.indexOf("function headerStep(card)"), HTML.indexOf("function makeRoomy(card)"));
+  check("full screen comes back to where it was before the roomy step",
+    /expanded[\s\S]{0,120}toggleExpand\(card\);[\s\S]{0,60}unRoomy\(card\)/.test(step));
+  check("roomy goes on to full screen", /if \(pre\) \{ toggleExpand\(card\); return; \}/.test(step));
+  check("a normal window goes roomy first", /makeRoomy\(card\);\s*\}/.test(step));
+  check("dragging or resizing by hand forgets the roomy size",
+    (HTML.match(/card\._preRoomy = null;\s*\/\/ (moved|sized) by hand/g) || []).length === 2);
   check("re-docking moved to its own named action", /function redockCard\(card\)/.test(HTML));
   check("...reachable from a button, not a rival gesture",
     /mk\("win-dock", \(\) => redockCard\(card\)\)/.test(HTML));
@@ -44,7 +51,7 @@ console.log("\none gesture, one meaning\n");
 
 console.log("\nexpand, then come back to exactly where you were\n");
 {
-  const fn = HTML.slice(HTML.indexOf("function toggleExpand(card)"), HTML.indexOf("function redockCard"));
+  const fn = HTML.slice(HTML.indexOf("function toggleExpand(card)"), HTML.indexOf("function headerStep(card)"));
   check("what is saved includes whether it was floating", /floating: card\.classList\.contains\("floating"\)/.test(fn),
     "without this a docked window returns as a loose one");
   check("...and the geometry", /left: card\.style\.left, top: card\.style\.top/.test(fn));

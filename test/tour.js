@@ -21,6 +21,8 @@ const check = (label, ok, detail = "") => {
 };
 
 const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+const RUNTIME_IDS = new Set(["design.js", "design-shell.js"].flatMap((f) =>
+  [...readFileSync(new URL(`../viewer/${f}`, import.meta.url), "utf8").matchAll(/\.id = "([\w-]+)"/g)].map((m) => m[1])));
 
 console.log("\nevery step points at something that still exists\n");
 {
@@ -29,8 +31,10 @@ console.log("\nevery step points at something that still exists\n");
   for (const step of tourPlan()) {
     if (!step.sel) continue;
     const id = step.sel.replace(/^#/, "");
+    // a few anchors are built by the viewer's modules rather than typed into
+    // the page (Design's mode switch): those must be declared there instead
     check(`${step.sel} is in index.html`,
-      HTML.includes(`id="${id}"`), `nothing declares id="${id}"`);
+      HTML.includes(`id="${id}"`) || RUNTIME_IDS.has(id), `nothing declares id="${id}"`);
   }
   // Cards a step asks to open must exist too.
   for (const step of tourPlan()) {

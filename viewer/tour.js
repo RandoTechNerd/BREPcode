@@ -44,7 +44,7 @@ export const TOUR_STEPS = [
     sel: "#panel",
     open: "panel",
     title: "The editor",
-    body: "Type here and the model rebuilds as you go. Sizes are millimetres, angles are degrees, and Z is up. You never press Save - the model IS the text.",
+    body: "Type here and the model rebuilds as you go. Sizes are millimetres, angles are degrees, and Z is up. You never press Save - the model IS the text. Double-click any window's title bar to make it bigger without covering the others, again to fill the screen, and once more to put it back.",
   },
   {
     sel: "#code",
@@ -56,6 +56,12 @@ export const TOUR_STEPS = [
     sel: "#stage",
     title: "The model, and its handles",
     body: "Click a shape to select it. Drag a face handle and the NUMBER IN THE CODE changes to match. Code and mouse are two views of one model - use whichever is quicker.",
+  },
+  {
+    // created by design.js, not typed into index.html (the test knows)
+    sel: "#mode-switch",
+    title: "Code or Design",
+    body: "Design is point-and-click CAD on the same model: a browser of every part, a timeline, sketches and a move gizmo, all written back as code you can read. To clear the screen in Design, double-click the browser's ▾ and it tucks into the toolbar after Forward; click it there to bring it back.",
   },
   {
     sel: "#chat-btn",
@@ -108,6 +114,13 @@ export const TOUR_STEPS = [
     body: "STL, OBJ, 3MF, GLB or STEP. A 3MF carries your colours as separate filaments AND hides the source code inside, so the file reopens here as editable code months later.",
   },
   {
+    // only inside OrcaSlicer's BREPcode tab, where the button exists
+    sel: "#orca-send-btn",
+    when: (doc) => doc.getElementById("orca-send-btn")?.hidden === false,
+    title: "Send it to the plate",
+    body: "You're inside OrcaSlicer: this puts the model on the Prepare tab's plate, as a 3MF with your colours that also carries the code, so it reopens here as an editable model. Export has it too, as Send to plate.",
+  },
+  {
     sel: "#slicer-btn",
     title: "Slice it here",
     body: "Layer preview, infill, supports and toolpaths without leaving the tab - enough to catch a part that will not print before you commit to it.",
@@ -118,9 +131,21 @@ export const TOUR_STEPS = [
     body: "AI provider and key, the instructions the assistant follows, your preferences, and email. Keys are stored on this machine and never leave it.",
   },
   {
+    sel: "#app-settings",
+    open: "about",
+    title: "Arrange it your way",
+    body: "The ⓘ window starts with Settings: the tool bar along the top or down the left, where the editor and chat open, Code or Design at start, the corner cube, language and theme. Saved in this browser.",
+  },
+  {
+    sel: "#about-design-help-btn",
+    open: "about",
+    title: "Help, FAQ, credits and contact",
+    body: "Docs lists what it can do; Design help has the how-tos and the FAQ, which ends with how to reach me. Further down this window: links (email, Discord, YouTube), keyboard shortcuts, and the credits and licences for the kernels it is built on.",
+  },
+  {
     sel: "#about-btn",
     title: "And back here",
-    body: "Docs, links, and this tour whenever you want it again. Now three quick ones on the other languages you can paste.",
+    body: "Settings, docs, links, and this tour whenever you want it again. Now three quick ones on the other languages you can paste.",
   },
 ];
 
@@ -270,9 +295,11 @@ export const COACHES = {
 };
 
 // The whole run, in order, so the driver and the tests agree on the length.
-export function tourPlan() {
+// A step with `when` only runs where it applies (the OrcaSlicer step needs the
+// plugin's tab); with no document to ask, every step stays in.
+export function tourPlan(doc = null) {
   return [
-    ...TOUR_STEPS,
+    ...TOUR_STEPS.filter((s) => !s.when || !doc || s.when(doc)),
     // Every language step OPENS the editor first. Without this the sample was
     // pasted into a closed card: the tour said "look at this code" while the
     // panel holding it was not on screen.
@@ -494,7 +521,7 @@ export function startTour({
   steps = null,                   // a COACHES walk instead of the full tour
 } = {}) {
   styles(doc);
-  const plan = steps || tourPlan();
+  const plan = steps || tourPlan(doc);
   // a coach is not the tour: finishing it neither celebrates nor marks the
   // tour as done
   const coach = !!steps;
