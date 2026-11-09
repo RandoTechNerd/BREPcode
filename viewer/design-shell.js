@@ -109,9 +109,9 @@ body.dz-ribbon #dz-scale { top: 104px; }
 #dz-scale .ft .ok { background: var(--accent, #3b6ef5); border-color: transparent; color: #fff; }
 
 /* toolbar / ribbon */
-#dz-bar { top: 12px; left: 168px; right: calc(var(--ar-right, 12px) + 48px); max-width: max-content; display: flex; align-items: stretch;
+#dz-bar { top: 12px; left: calc(var(--ms-right, 157px) + 11px); right: calc(var(--ar-right, 12px) + 48px); max-width: max-content; display: flex; align-items: stretch;
   padding: 3px; gap: 2px; border-radius: 999px; user-select: none; overflow: hidden; }
-#dz-bar.ribbon { border-radius: 10px; padding: 6px; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+#dz-bar.ribbon { border-radius: 10px; padding: 6px; gap: 8px; overflow: hidden; }
 #dz-bar .dz-g { display: flex; gap: 2px; align-items: stretch; }
 #dz-bar .dz-g + .dz-g { border-left: 1px solid var(--border, #26314a); padding-left: 4px; }
 #dz-bar.ribbon .dz-g { flex-direction: column; gap: 4px; }
@@ -476,9 +476,10 @@ export function initDesignShell(host) {
   addEventListener("keydown", (e) => { if (e.key === "Escape" && pmenu.classList.contains("open")) setPmenu(false); });
   phone.addEventListener("change", () => { if (!phone.matches) setPmenu(false); });
 
-  // Fit the thin toolbar to the room it has: tools come off the END into the
-  // menu (snap first, then the last tool, and so on; the Select group always
-  // stays) until the rest fits. Re-run whenever that room can change.
+  // Fit the toolbar (thin or the full ribbon) to the room it has: tools come
+  // off the END into the menu (snap first, then the last tool, and so on; the
+  // Select group always stays) until the rest fits, so it never shows half a
+  // button. Re-run whenever that room can change.
   // Settings > Tool bar "Down the left side" (body.bar-left, wide screens):
   // the bar is a column, so it runs out of HEIGHT, not width.
   const column = () => document.body.classList.contains("bar-left") && !phone.matches;
@@ -486,7 +487,7 @@ export function initDesignShell(host) {
   function fitBar() {
     for (const el of bar.querySelectorAll(".dz-over")) el.classList.remove("dz-over");
     bar.classList.remove("dz-overflow");
-    if (!active || ribbon) { markPmore(); return; }
+    if (!active) { markPmore(); return; }
     // a phone always has the menu (everything past the first group is in it);
     // on a thin one the first group gives up its last tools too
     if (phone.matches) bar.classList.add("dz-overflow");
@@ -891,16 +892,25 @@ export function initDesignShell(host) {
   // measured, so it never runs under either.
   function fitTimeline() {
     if (!active) return;
-    if (matchMedia("(max-width: 760px)").matches) { time.style.left = ""; time.style.right = ""; return; }
+    // the right edge goes through --dz-time-r: the page's own rule keeps it
+    // clear of the window column too, and would override a plain style.right
+    const reset = () => { time.style.left = ""; time.style.removeProperty("--dz-time-r"); };
+    if (matchMedia("(max-width: 760px)").matches) { reset(); return; }
     const hintR = document.getElementById("hint-corner")?.getBoundingClientRect();
     const btnL = document.getElementById("buttons")?.getBoundingClientRect();
     const left = hintR?.width ? Math.round(hintR.right + 12) : 172;
     const right = btnL?.width ? Math.round(innerWidth - btnL.left + 12) : 340;
-    if (innerWidth - left - right < 260) { time.style.left = ""; time.style.right = ""; return; }
+    if (innerWidth - left - right < 260) { reset(); return; }
     time.style.left = `${left}px`;
-    time.style.right = `${right}px`;
+    time.style.setProperty("--dz-time-r", `${right}px`);
   }
   addEventListener("resize", () => requestAnimationFrame(fitTimeline));
+  // ...and when the dock buttons change width: OrcaSlicer's To plate button
+  // appears after the first fit, and the timeline ran under it
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => requestAnimationFrame(fitTimeline));
+    for (const id of ["buttons", "hint-corner"]) { const el = document.getElementById(id); if (el) ro.observe(el); }
+  }
 
   const drawSelection = () => {
     if (!selectedFid) { selEl.textContent = ""; return; }

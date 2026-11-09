@@ -2775,7 +2775,7 @@
     body.design-mode #dz-bar, body.design-mode #dz-side, body.design-mode #dz-time,
     body.design-mode #dz-dlg, body.design-mode #dz-sk, body.design-mode #dz-num { z-index: 100000 !important; }
     body.design-mode #dz-dlg, body.design-mode #dz-sk { right: calc(12px + var(--dz-rcol, 0px)) !important; }
-    body.design-mode #dz-time { right: max(340px, calc(var(--dz-rcol, 0px) + 12px)) !important; }
+    body.design-mode #dz-time { right: max(340px, var(--dz-time-r, 0px), calc(var(--dz-rcol, 0px) + 12px)) !important; }
 
     /* Settings > corner cube off (the default): the button goes, and the
        Design toolbar, which used to stop short of it, may run to the edge. */
@@ -2800,7 +2800,7 @@
       body.bar-left.design-mode #dz-bar .dz-t { justify-content: center; }
       body.bar-left.design-mode #dz-bar .dz-snap { padding: 5px 2px; font-size: 11px; }
       /* the ribbon in a column: each tool's name beside its icon */
-      body.bar-left.design-mode #dz-bar.ribbon { padding: 6px; gap: 6px; overflow-y: auto; overflow-x: hidden; }
+      body.bar-left.design-mode #dz-bar.ribbon { padding: 6px; gap: 6px; overflow: hidden; }
       body.bar-left.design-mode #dz-bar.ribbon .dz-g + .dz-g { padding-left: 0; padding-top: 6px; }
       body.bar-left.design-mode #dz-bar.ribbon .dz-t { flex-direction: row; justify-content: flex-start; min-width: 0; }
       body.bar-left.design-mode #dz-side { top: 64px; left: 62px; max-height: calc(100vh - 200px); }
@@ -9584,9 +9584,13 @@
       const vis = (id) => { const e = document.getElementById(id); if (!e || e.hidden || getComputedStyle(e).display === "none") return null; const r = e.getBoundingClientRect(); return r.width && r.height ? r : null; };
       const bar = vis("dz-bar");
       const col = Math.round(Math.min(Math.max(W * 0.32, 380), 560));
+      // Below the toolbar only where the toolbar reaches over the column: the
+      // tool bar down the left side ends near the bottom of the screen, and
+      // starting the column under THAT left the editor a 42px strip.
+      const under = bar && bar.right > W - ZM - col;
       // the timeline steps left of the column (CSS below), so the column can
       // run down to the dock buttons
-      return { top: Math.round((bar ? bar.bottom : 56) + ZM), bottom: H - ZM, col };
+      return { top: Math.round((under ? bar.bottom : bar ? 0 : 56 - ZM) + ZM), bottom: H - ZM, col };
     }
     const inDesign = () => document.body.classList.contains("design-mode");
     // Which right-column cards are open, so the editor can give the bottom

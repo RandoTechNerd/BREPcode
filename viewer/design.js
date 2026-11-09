@@ -52,6 +52,16 @@ const CSS = `
 }
 #mode-switch button[aria-pressed="true"] .beta { background: rgba(255, 255, 255, 0.22); color: #fff; }
 #mode-switch .beta:hover { text-decoration: underline; cursor: help; }
+/* A few seconds after the last look it folds to C | D for the room; pointing
+   at it (or tabbing into it) opens it back up, over whatever is beside it */
+#mode-switch .ms-rest, #mode-switch .beta {
+  display: inline-block; vertical-align: top; overflow: hidden; white-space: nowrap; max-width: 6em;
+  transition: max-width 0.22s ease, opacity 0.18s ease, margin 0.22s ease, padding 0.22s ease;
+}
+#mode-switch.compact:not(:hover):not(:focus-within) .ms-rest { max-width: 0; opacity: 0; }
+#mode-switch.compact:not(:hover):not(:focus-within) .beta { max-width: 0; opacity: 0; margin-left: 0; padding-left: 0; padding-right: 0; }
+#mode-switch.compact:not(:hover):not(:focus-within) button { padding-left: 10px; padding-right: 10px; }
+#mode-switch:hover, #mode-switch:focus-within { z-index: 100003; }
 `;
 
 // Builds the switch, applies the starting mode, and returns
@@ -68,9 +78,24 @@ export function initModeSwitch({ start = "code", onChange } = {}) {
   bar.id = "mode-switch";
   bar.setAttribute("role", "group");
   bar.setAttribute("aria-label", "Editing mode");
-  bar.innerHTML = `<button type="button" data-mode="code" title="Code: write or ask for the model in text (the way BREPcode has always worked)">Code</button>`
-    + `<button type="button" data-mode="design" title="Design: point-and-click CAD on the same model: browser, timeline, move gizmo. Beta: still being filled out.">Design<span class="beta" title="Design mode is in beta: what works, what doesn't yet, its keys and how-tos (opens the Design help)">Beta</span></button>`;
+  bar.innerHTML = `<button type="button" data-mode="code" aria-label="Code" title="Code: write or ask for the model in text (the way BREPcode has always worked)">C<span class="ms-rest">ode</span></button>`
+    + `<button type="button" data-mode="design" aria-label="Design" title="Design: point-and-click CAD on the same model: browser, timeline, move gizmo. Beta: still being filled out.">D<span class="ms-rest">esign</span><span class="beta" title="Design mode is in beta: what works, what doesn't yet, its keys and how-tos (opens the Design help)">Beta</span></button>`;
   document.body.append(bar);
+
+  // Fold to C | D after a few seconds left alone. --ms-right (its folded right
+  // edge) is what the Design toolbar lines up against, so the bar keeps its
+  // place while the switch opens over it on hover.
+  const FOLD_MS = 3000;
+  let foldT = 0;
+  const markRight = () => {
+    const r = bar.getBoundingClientRect();
+    if (r.width) document.documentElement.style.setProperty("--ms-right", `${Math.round(r.right)}px`);
+  };
+  const fold = () => { bar.classList.add("compact"); setTimeout(markRight, 260); };
+  const armFold = () => { clearTimeout(foldT); foldT = setTimeout(fold, FOLD_MS); };
+  bar.addEventListener("pointerleave", armFold);
+  bar.addEventListener("focusout", () => { if (!bar.matches(":focus-within")) armFold(); });
+  armFold();
 
   let mode = null;
   const setMode = (next) => {
