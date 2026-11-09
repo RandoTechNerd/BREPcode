@@ -753,6 +753,10 @@
        then cut with an ellipsis rather than running under the buttons (it
        did in the About window, whose header holds seven of them) */
     .card > header .hdr-over { display: none !important; }
+    .card > header.tight { padding-left: 10px; padding-right: 8px; }
+    .card > header.tight .mat-tabs { gap: 0; }
+    .card > header.tight .mat-tab { padding: 4px 5px 5px; font-size: 12px; }
+    .card > header.tight .win-btn, .card > header.tight .hdr-more { padding-left: 4px; padding-right: 4px; }
     .card > header .hdr-more { font-size: 15px; line-height: 1; padding: 2px 7px; }
     #hdr-menu { position: fixed; display: none; flex-direction: column; min-width: 160px; padding: 4px;
       background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
@@ -10106,6 +10110,7 @@
       // the editor fits its own header (its ⋮ menu); two menus fought there
       if (!more || card.id === "panel" || !card.classList.contains("open")) return;
       for (const b of h.querySelectorAll(".hdr-over")) b.classList.remove("hdr-over");
+      h.classList.remove("tight");
       more.hidden = true;
       const titleBox = h.querySelector(":scope > div:first-child");
       const title = titleBox?.querySelector("strong");
@@ -10116,12 +10121,15 @@
       if (!crowded()) return;
       const extras = [...h.querySelectorAll("button")].filter((b) => !b.matches(HDR_KEEP) && !b.hidden
         && !(titleBox && titleBox.contains(b)) && b.getClientRects().length);
-      if (!extras.length) return;
+      if (!extras.length) { h.classList.add("tight"); return; }
       more.hidden = false;
       for (const b of extras.reverse()) {
         if (!crowded()) break;
         b.classList.add("hdr-over");
       }
+      // still too tight (Materials' three tabs at the narrowest window): the
+      // header packs closer rather than clip a tab
+      if (crowded()) h.classList.add("tight");
     }
     let hdrMenu = null;
     function openHdrMenu(card, more) {
@@ -12914,7 +12922,7 @@ ${joined}${SITE_TAIL}`), joined);
         let rebuiltNote = "";
         let json = null;
         if (!workerOut) { try { json = await ph.toJSON(); } catch { json = null; } }
-        if (WORKER_DEBUG) console.log(`[page] history serialized: ${json ? json.length + " chars" : "FAILED"}`);
+        if (WORKER_DEBUG) console.log(`[page] history serialized: ${json ? json.length + " chars" : workerOut ? "skipped (no worker: building here)" : "FAILED"}`);
         // An older build still running is dropped — for real, mid-boolean —
         // rather than left to finish into a result nobody wants while this one
         // queues behind it.

@@ -78,6 +78,10 @@ return union(...s);`;
 app.whenReady().then(async () => {
   shellApp.serveBundle();
   const win = shellApp.createWindow();       // visible: rAF must actually run
+  // ...and keeps running when another window covers it: Windows throttles a
+  // covered window to one timer a second and no frames, and the frame and
+  // stall checks below then measure the desktop, not the app
+  win.webContents.setBackgroundThrottling(false);
   const run = (js) => win.webContents.executeJavaScript(js, true);
   win.webContents.on("did-fail-load", (_e, code, desc, url) =>
     say(`  ..    load failed ${code} ${desc} — ${url}`));
@@ -369,6 +373,10 @@ app.whenReady().then(async () => {
       dt.items.add(new File([buf], "huge-benchy.stl", { type: "model/stl" }));
       window.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
       window.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+      // a dropped mesh asks what it is for first (open, FizzCore, a tool...):
+      // answer "open", as a person would, or the drop waits on that menu forever
+      for (let i = 0; i < 60 && !document.querySelector('.fz-opt[data-a="open"]'); i++) await new Promise((r) => setTimeout(r, 100));
+      document.querySelector('.fz-opt[data-a="open"]')?.click();
       for (let i = 0; i < 120; i++) {
         await new Promise((r) => setTimeout(r, 250));
         if (/view-only preview/.test(document.getElementById("status-text").textContent)) break;
