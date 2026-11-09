@@ -5177,6 +5177,17 @@
       return KERNEL_DEFAULT;
     }
     let lastEngine = null;
+    // dsl.estimateBuild() is calibrated on the JS kernel. The exact kernels
+    // in the worker build the same tree far faster: PrintMotor was estimated
+    // at 76 s and builds in 9 s (14 s on a slow phone), so it sat behind the
+    // "heavy model, press Build" gate for no reason. Scale the guess to the
+    // engine that will actually run it; the JS fallback keeps the raw number.
+    const EXACT_SPEEDUP = 6;
+    function estimateHeavy(tree) {
+      const est = dsl.estimateBuild(tree);
+      if (workerOut || (lastEngine?.engine === "js" && lastEngine.fallbackKind !== "loading")) return est;
+      return { ...est, sec: est.sec / EXACT_SPEEDUP };
+    }
     // SMLib finished downloading. Kept, because it can land while the first
     // build (on the JS kernel meanwhile) is still running, and then that
     // build's reply is the moment to rebuild on it, not the smlibReady.
@@ -11229,7 +11240,7 @@ ${c.after}`;
     // which is indistinguishable from the tool having crashed the app.
     async function buildAfterToolEdit() {
       try {
-        const est = dsl.estimateBuild(evaluate(code.value));
+        const est = estimateHeavy(evaluate(code.value));
         if (est.sec > (!workerOut ? 45 : 18)) {
           toggleCard(panel, openBtn, true);
           holdHeavyBuild(est);
@@ -26804,7 +26815,7 @@ let SIMPLIFY_TARGET = 10000;
       // This is the exact failure that ate the goggles: code applied, build
       // froze, user assumed a crash. Estimated off the tree, no kernel.
       try {
-        const est = dsl.estimateBuild(evaluate(newCode));
+        const est = estimateHeavy(evaluate(newCode));
         // With the build off the main thread there is nothing to protect the
         // user from until it gets genuinely long, so the gate moves out of the
         // way. It stays tight on the fallback path, where a build really does
@@ -27110,6 +27121,10 @@ let SIMPLIFY_TARGET = 10000;
     async function sendChat() {
       const raw = chatInput.value.trim();
       if (!raw) return;
+      // "/m/name" opens that model whichever way it is sent (Enter has its own
+      // check; the Send button used to hand it to the chat as words)
+      const modelRef = /^\/m\/([^\s]+)$/i.exec(raw)?.[1];
+      if (modelRef) { openModelFromChat(modelRef); return; }
       chatInput.value = "";
       // the house AI's one request (offerHouseAI), consumed here
       let house = houseNext;
