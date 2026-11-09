@@ -9461,6 +9461,45 @@
       card.style.left = `${l}px`; card.style.top = `${t}px`;
     }
 
+    // No window opens as a header strip. However it got there (a size left
+    // over from a drag in a crowded stack, a cap from the dock's sharing), a
+    // window opening shorter than its header plus a few rows gets its own
+    // size back; if the stack still squeezes it, it floats to a clear spot.
+    const STRIP_MIN = 120;
+    function unsquash(card) {
+      const r = card.getBoundingClientRect();
+      // phones have their own stacking rules (#dock.multi in the small-screen CSS)
+      if (!r.height || innerWidth < 700 || card.classList.contains("expanded") || card.classList.contains("maxed")) return;
+      const head = card.querySelector(":scope > header")?.getBoundingClientRect().height || 44;
+      const min = Math.min(head + STRIP_MIN, innerHeight - 16);
+      if (r.height >= min) return;
+      const body = mainScroll(card);
+      // Nothing more to show (a genuinely short window) is not a squash.
+      if (body && body.scrollHeight <= body.clientHeight + 2 && !card.style.height && !card.style.maxHeight) return;
+      if (parseFloat(card.style.height) < min + 1) {
+        card.style.height = "";
+        card.classList.remove("resized");
+        delete card.dataset.userSized;
+        if (body) body.style.flex = body.style.minHeight = body.style.maxHeight = "";
+      }
+      card.style.maxHeight = "";
+      delete card.dataset.dockFit;
+      // Docked beside others, the dock's sharing would only cap it again:
+      // float it instead. Alone or already loose, its own size is enough.
+      const shared = !card.classList.contains("floating") && $("dock").classList.contains("multi");
+      if (!shared && card.getBoundingClientRect().height >= min) { syncDockClip(); return; }
+      if (!card.classList.contains("floating")) {
+        const w = card.getBoundingClientRect();
+        card.style.width = `${w.width}px`;
+        card.style.left = `${w.left}px`; card.style.top = `${Math.max(8, innerHeight - w.height - 80)}px`;
+        card.classList.add("floating");
+        card.style.zIndex = ++cardZ;
+        markDockShared();
+      }
+      placeCardClear(card);
+      syncWindowChrome(card);
+    }
+
     // A card dragged near the top, or simply taller than a phone, can open with
     // its header above y=0 — and the header is the only part you can grab, so
     // the window becomes both unmovable and unclosable. Float it and centre it:
@@ -9675,7 +9714,9 @@
       // After placement, and measured — so it rescues a card however it ended
       // up out of reach, not only the cases anyone thought of.
       if (next && !card.classList.contains("maxed")) {
-        requestAnimationFrame(() => ensureCardVisible(card));
+        requestAnimationFrame(() => { unsquash(card); ensureCardVisible(card); });
+        // and once its body has filled in (some load their rows a beat later)
+        setTimeout(() => card.classList.contains("open") && unsquash(card), 300);
       }
       markDockShared();
       syncWindowChrome(card);
@@ -10167,7 +10208,11 @@
         const startH = rect.height, startTop = rect.top, sy = e.clientY;
         try { top.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
         const move = (ev) => {
-          const h = Math.max(Math.min(150, maxH), Math.min(startH - (ev.clientY - sy), maxH));
+          // 150 is the floor even when the stack is full: a docked window
+          // dragged into a crowded column used to be clamped to whatever was
+          // left, which could be a header strip, and it kept that size on
+          // every reopen. The column scrolls instead.
+          const h = Math.max(150, Math.min(startH - (ev.clientY - sy), Math.max(150, maxH)));
           card.style.height = `${h}px`;
           if (floating) card.style.top = `${startTop + startH - h}px`;
         };

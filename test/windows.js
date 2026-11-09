@@ -308,6 +308,12 @@ console.log("\n\"Move model for windows\" can be turned off\n");
   // Asked for by name: the model kept sliding away from the windows. Off must
   // stop it everywhere, which is why the gate sits inside keepModelClear —
   // the one function that moves the camera for a window — not on each caller.
+  // A docked window dragged into a full stack was clamped to what was left
+  // (a header strip) and kept that size on every reopen.
+  check("the top dragger never makes a window shorter than 150 px",
+    /const h = Math\.max\(150, Math\.min\(startH - \(ev\.clientY - sy\), Math\.max\(150, maxH\)\)\);/.test(HTML));
+  check("a window that opens as a header strip gets its size back",
+    /function unsquash\(card\)/.test(HTML) && /unsquash\(card\); ensureCardVisible\(card\);/.test(HTML));
   check("the setting ships OFF: the camera stays where you put it",
     /moveForWindows: false,/.test(HTML));
   check("it sits in Settings as a checkbox",
