@@ -749,8 +749,20 @@
     .card > header > div:first-child {
       display: flex; align-items: baseline; gap: 6px; min-width: 0;
     }
-    .card > header strong { flex: none; }
-    .card > header .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* the title gives way too, last: kept whole while the subtitle shrinks,
+       then cut with an ellipsis rather than running under the buttons (it
+       did in the About window, whose header holds seven of them) */
+    .card > header .hdr-over { display: none !important; }
+    .card > header .hdr-more { font-size: 15px; line-height: 1; padding: 2px 7px; }
+    #hdr-menu { position: fixed; display: none; flex-direction: column; min-width: 160px; padding: 4px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+      font: 13px/1.3 system-ui, sans-serif; }
+    #hdr-menu.open { display: flex; }
+    #hdr-menu button { border: 0; background: transparent; color: var(--text); text-align: left; padding: 7px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+    #hdr-menu button:hover, #hdr-menu button:focus-visible { background: rgba(127, 150, 200, 0.16); outline: none; }
+    .card > header strong { flex: 0 1 auto; min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card > header > div:first-child { overflow: hidden; }
+    .card > header .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 100 auto; min-width: 0; }
     /* Rebuild rides with the name, so it reads as part of the title row rather
        than as one more tool. Smaller and quieter than the run on the right. */
     #panel-title #refresh-btn {
@@ -9433,8 +9445,16 @@
     function placeCardClear(card) {
       const w = card.offsetWidth, h = card.offsetHeight;
       if (!w || !h) return;
-      // things to stay off: the dock's button row, and every other open card
+      // things to stay off: the dock's button row, the Code | Design switch,
+      // and every other open card
       const blockers = [$("buttons").getBoundingClientRect()];
+      const sw = $("mode-switch")?.getBoundingClientRect();
+      if (sw?.width) blockers.push(sw);
+      if (inDesign()) for (const id of ["dz-bar", "dz-side", "dz-time"]) {
+        const e = document.getElementById(id);
+        const r = e && !e.hidden && getComputedStyle(e).display !== "none" ? e.getBoundingClientRect() : null;
+        if (r?.width && r.height) blockers.push(r);
+      }
       for (const other of document.querySelectorAll(".card.open")) {
         if (other !== card) blockers.push(other.getBoundingClientRect());
       }
@@ -9464,6 +9484,31 @@
           }
         }
       }
+      // Nowhere clear at its full size (a short pane, or big windows already
+      // open): try it smaller, down to a usable size, before giving up and
+      // letting it overlap. Leaving it where it opened stacked a third window
+      // squarely on top of the editor.
+      const head = card.querySelector(":scope > header")?.getBoundingClientRect().height || 44;
+      const minH = Math.min(h, head + STRIP_MIN + 40), minW = Math.min(w, 280);
+      for (const fw of [w, Math.round(w * 0.8), minW]) {
+        for (let fh = h; fh >= minH; fh = fh > minH && fh - 40 < minH ? minH : fh - 40) {
+          if (fw === w && fh === h) continue;
+          const mL = Math.max(0, innerWidth - fw - 8), mT = Math.max(0, innerHeight - fh - 8);
+          for (let ct = 8; ct <= mT; ct += STEP) {
+            for (let cl = 8; cl <= mL + STEP - 1; cl += STEP) {
+              const x = Math.min(cl, mL);
+              if (blockers.some((b) => overlaps(boxAt(x, ct, fw, fh), b))) continue;
+              card.style.left = `${x}px`; card.style.top = `${ct}px`;
+              card.style.width = `${fw}px`; card.style.height = `${fh}px`;
+              card.classList.add("resized");
+              const body = mainScroll(card);
+              if (body) { body.style.flex = "1 1 auto"; body.style.minHeight = "0"; body.style.maxHeight = "none"; }
+              return;
+            }
+          }
+          if (fh === minH) break;
+        }
+      }
       // nowhere is fully clear (small screen / many windows) — at minimum keep
       // it off the buttons, since those are how you get anywhere else
       const btns = blockers[0];
@@ -9476,7 +9521,7 @@
     // over from a drag in a crowded stack, a cap from the dock's sharing), a
     // window opening shorter than its header plus a few rows gets its own
     // size back; if the stack still squeezes it, it floats to a clear spot.
-    const STRIP_MIN = 120;
+    const STRIP_MIN = 100;           // header + about four rows; COL_SLOT_MIN and the dock floor sit above it
     function unsquash(card) {
       const r = card.getBoundingClientRect();
       // phones have their own stacking rules (#dock.multi in the small-screen CSS)
@@ -9548,6 +9593,9 @@
       const corner = Math.round(Math.min(Math.max(W * 0.3, 340), 480));
       const midL = Math.round((ZM + botL) / 2), midR = Math.round((ZM + botR) / 2);
       const R = (l, t, r, b) => ({ l, t, w: r - l, h: b - t });
+      // the left-hand homes start below the Code | Design switch in that corner
+      const swR = $("mode-switch")?.getBoundingClientRect();
+      const swB = swR?.height ? Math.round(swR.bottom + ZM) : ZM;
       switch (z) {
         case "max": return R(0, 0, W, H - clear);
         case "left": return R(ZM, ZM, half - ZM / 2, botL);
@@ -9558,23 +9606,46 @@
         case "bottomright": return R(half + ZM / 2, midR + ZM / 2, W - ZM, botR);
         // home spots: a full-height editor column, a corner for the assistant
         case "home-right": return R(W - ZM - side, ZM, W - ZM, botR);
-        case "home-left": return R(ZM, ZM, ZM + side, botL);
-        case "home-top-left": return R(ZM, ZM, ZM + corner, Math.round(H * 0.56));
+        case "home-left": return R(ZM, swB, ZM + side, botL);
+        case "home-top-left": return R(ZM, swB, ZM + corner, Math.round(H * 0.56));
         case "home-bottom-left": return R(ZM, Math.round(H * 0.44), ZM + corner, botL);
         case "home-top-right": return R(W - ZM - corner, ZM, W - ZM, Math.round(H * 0.56));
         case "home-bottom-right": return R(W - ZM - corner, Math.round(H * 0.44), W - ZM, botR);
-        // Design mode: one column on the right, below the toolbar and clear
-        // of the timeline, the editor on top and everything else under it
-        case "dz-right-full": case "dz-right-top": case "dz-right-bottom": {
+      }
+      // A column of windows sharing its height ("dz-col:..." in Design mode,
+      // "cc-col:..." in Code mode): slot i of n, e = 1 when the editor is
+      // slot 0 and takes the bigger share. Past what fits, null: that window
+      // floats to a clear spot instead of being squeezed or stacked.
+      const col = /^(dz|cc)-col:(left|right):(\d+):(\d+):(\d)$/.exec(z || "");
+      if (col) {
+        const [, kind, at, i, n, e] = col; const k = +i;
+        let l, r, top, bot;
+        if (kind === "dz") {
           const f = designFrame();
-          const l = W - ZM - f.col, top = f.top, bot = Math.min(botR, f.bottom);
-          const split = Math.round(top + (bot - top) * 0.58);
-          if (z === "dz-right-top") return R(l, top, W - ZM, split - ZM / 2);
-          if (z === "dz-right-bottom") return R(l, split + ZM / 2, W - ZM, bot);
-          return R(l, top, W - ZM, bot);
+          l = W - ZM - f.col; r = W - ZM; top = f.top; bot = Math.min(botR, f.bottom);
+        } else if (at === "left") {
+          l = ZM; r = ZM + corner; top = swB; bot = botL;
+        } else {
+          l = W - ZM - corner; r = W - ZM; top = ZM; bot = botR;
         }
+        const fit = colFit(bot - top, +n, +e);
+        if (k >= fit) return null;
+        const weights = Array.from({ length: fit }, (_, q) => (+e && q === 0 && fit > 1 ? 1.4 : 1));
+        const unit = (bot - top - ZM * (fit - 1)) / weights.reduce((a, b) => a + b, 0);
+        let t = top;
+        for (let q = 0; q < k; q++) t += weights[q] * unit + ZM;
+        return R(l, Math.round(t), r, Math.round(t + weights[k] * unit));
       }
       return null;
+    }
+    // How many windows a column of height h holds while every one keeps at
+    // least COL_SLOT_MIN (the editor's bigger share counted).
+    const COL_SLOT_MIN = 150;
+    function colFit(h, n, e) {
+      let fit = Math.max(1, n);
+      const plain = (f) => (h - ZM * (f - 1)) / (f + (e && f > 1 ? 0.4 : 0));
+      while (fit > 1 && plain(fit) < COL_SLOT_MIN) fit--;
+      return fit;
     }
     // The space Design mode's own panels leave: below its toolbar, above its
     // timeline, and the width of the right-hand window column. Measured, so it
@@ -9583,7 +9654,11 @@
       const W = innerWidth, H = innerHeight;
       const vis = (id) => { const e = document.getElementById(id); if (!e || e.hidden || getComputedStyle(e).display === "none") return null; const r = e.getBoundingClientRect(); return r.width && r.height ? r : null; };
       const bar = vis("dz-bar");
-      const col = Math.round(Math.min(Math.max(W * 0.32, 380), 560));
+      // ...and never over the browser on the left (the labelled toolbar
+      // pushes it right, and on a narrow pane it reached into the column)
+      const side = vis("dz-side");
+      const room = side ? W - side.right - 2 * ZM : W;
+      const col = Math.round(Math.max(Math.min(Math.max(W * 0.32, 380), 560, room), Math.min(280, W - 2 * ZM)));
       // Below the toolbar only where the toolbar reaches over the column: the
       // tool bar down the left side ends near the bottom of the screen, and
       // starting the column under THAT left the editor a 42px strip.
@@ -9603,24 +9678,36 @@
     // Where a window opens when nobody has put it anywhere yet. The editor
     // takes a side, the assistant the top or bottom corner on the OTHER side,
     // so the two never land on each other. Phones keep the stacked dock.
-    const roomForHomes = () => innerWidth >= 900 && innerHeight >= 560;
+    // Design mode keeps its column down to a narrower pane: without it the
+    // windows fell back to the stack, which runs over the Design toolbar
+    const roomForHomes = () => (inDesign() ? innerWidth >= 700 && innerHeight >= 480 : innerWidth >= 900 && innerHeight >= 560);
+    let colSeq = 0;
     function homeZone(card) {
       if (!roomForHomes()) return null;
+      // Windows share a column instead of each grabbing a fixed spot: three
+      // used to open squarely on top of each other (every non-editor window
+      // had the same "bottom" slot in Design mode; in Code mode they stacked
+      // bottom-right, which is where the editor lives).
+      const live = (c) => c.classList.contains("open") && !c.classList.contains("expanded") && !c.classList.contains("maxed");
+      const byOpen = (a, b) => (a._colSeq ?? Infinity) - (b._colSeq ?? Infinity);
       if (inDesign()) {
-        // the editor on top, the rest (assistant, info, params, ...) below it;
-        // whichever is alone takes the whole column
-        const editorOpen = $("panel")?.classList.contains("open");
-        const othersOpen = [...document.querySelectorAll(".card.open")].some((c) => c.id !== "panel" && !c.classList.contains("expanded"));
-        if (card.id === "panel") return othersOpen ? "dz-right-top" : "dz-right-full";
-        return editorOpen ? "dz-right-bottom" : "dz-right-full";
+        // Design: one column on the right, the editor on top with the bigger
+        // share, the rest under it in the order they were opened
+        const members = [...document.querySelectorAll(".card")].filter((c) => live(c) && (c === card || c.dataset.placed?.startsWith("dz-")));
+        members.sort((a, b) => (a.id === "panel" ? -1 : b.id === "panel" ? 1 : byOpen(a, b)));
+        return `dz-col:right:${members.indexOf(card)}:${members.length}:${members[0]?.id === "panel" ? 1 : 0}`;
       }
+      // Code: the editor has its side; everything else (the assistant first,
+      // or last with "bottom") shares the column on the other side
       const edSide = prefs.editorHome === "left" ? "left" : "right";
+      const other = edSide === "right" ? "left" : "right";
       if (card.id === "panel") return prefs.editorHome === "dock" ? null : `home-${edSide}`;
-      if (card.id === "chat") {
-        if (prefs.chatHome === "dock") return null;
-        const other = edSide === "right" ? "left" : "right";
-        return `home-${prefs.chatHome === "bottom" ? "bottom" : "top"}-${other}`;
-      }
+      const inCol = (c) => c.id !== "panel" && !(c.id === "chat" && prefs.chatHome === "dock");
+      if (!inCol(card)) return null;
+      const members = [...document.querySelectorAll(".card")].filter((c) => live(c) && inCol(c) && (c === card || c.dataset.placed?.startsWith("cc-")));
+      const chatAt = prefs.chatHome === "bottom" ? 1 : -1;
+      members.sort((a, b) => (a.id === "chat" ? chatAt : b.id === "chat" ? -chatAt : byOpen(a, b)));
+      return `cc-col:${other}:${members.indexOf(card)}:${members.length}:0`;
       return null;
     }
     // Put a window into a zone, sized to it, its body filling the height.
@@ -9641,7 +9728,10 @@
     }
     function placeHome(card) {
       const z = homeZone(card);
-      if (!z || !applyZone(card, z)) return false;
+      if (!z || !applyZone(card, z)) {
+        if (/^(dz|cc)-col:/.test(card.dataset.placed || "")) delete card.dataset.placed;
+        return false;
+      }
       card.dataset.placed = z;            // app-placed: free to move it again
       return true;
     }
@@ -9702,11 +9792,13 @@
       if (!next && card.id === "panel" && card.classList.contains("open")) rememberEditorScroll();
       card.classList.toggle("open", next);
       btn?.classList.toggle("active", next);
+      if (next) card._colSeq ??= ++colSeq;       // its place in a shared column: after those already open
       if (!next) {
         // Never reopen a window stuck fullscreen — and drop the geometry it
         // was holding to go back to, which belonged to a session that is over.
         card.classList.remove("maxed", "expanded");
         preExpand.delete(card);
+        card._colSeq = null;              // reopened, it joins the end of its column
       }
       // minimised while maximised: come back maximised
       if (next && card._restoreExpanded) {
@@ -9725,11 +9817,12 @@
         placeCardClear(card);
       }
       if (inDesign()) relayoutForDesign();
+      else relayoutCodeColumn();
       if (next) requestAnimationFrame(unstackDocked);
       // After placement, and measured — so it rescues a card however it ended
       // up out of reach, not only the cases anyone thought of.
       if (next && !card.classList.contains("maxed")) {
-        requestAnimationFrame(() => { unsquash(card); ensureCardVisible(card); });
+        requestAnimationFrame(() => { unsquash(card); ensureCardVisible(card); unclutter(card); });
         // and once its body has filled in (some load their rows a beat later)
         setTimeout(() => card.classList.contains("open") && unsquash(card), 300);
       }
@@ -9739,6 +9832,28 @@
       // back into. Both are worth a look.
       windowsChanged();
       return next;
+    }
+
+    // The last word on a window that just opened: if, however it got there,
+    // it lies over another window or Design mode's own panels, move it to a
+    // clear spot (smaller if it has to be). A spot the user chose is theirs.
+    function unclutter(card) {
+      if (!card.classList.contains("open") || card.classList.contains("expanded") || card.classList.contains("maxed") || card.dataset.userMoved) return;
+      const r = card.getBoundingClientRect();
+      if (!r.width) return;
+      const hit = (o) => o && o.width && Math.max(0, Math.min(r.right, o.right) - Math.max(r.left, o.left)) * Math.max(0, Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top)) > 40;
+      const others = [...document.querySelectorAll(".card.open")].filter((c) => c !== card).map((c) => c.getBoundingClientRect());
+      if (inDesign()) for (const id of ["dz-bar", "dz-side", "dz-time"]) { const e = document.getElementById(id); if (e && !e.hidden && getComputedStyle(e).display !== "none") others.push(e.getBoundingClientRect()); }
+      if (!others.some(hit)) return;
+      if (!card.classList.contains("floating")) {
+        card.style.width = `${r.width}px`; card.style.left = `${r.left}px`; card.style.top = `${r.top}px`;
+        card.classList.add("floating");
+        card.style.zIndex = ++cardZ;
+        markDockShared();
+      }
+      if (/^(dz|cc)-col:/.test(card.dataset.placed || "")) delete card.dataset.placed;
+      placeCardClear(card);
+      syncWindowChrome(card);
     }
 
     // Is anything SHARING the dock column? On a phone the answer decides how
@@ -9788,7 +9903,7 @@
       const order = fit.map((_, i) => i).sort((a, b) => want[a] - want[b]);
       let left = room, n = fit.length;
       const cap = new Array(fit.length);
-      const floor = Math.min(DOCK_FIT_MIN, Math.max(110, room / fit.length));
+      const floor = Math.min(DOCK_FIT_MIN, Math.max(150, room / fit.length));
       for (const i of order) {
         const share = Math.max(floor, left / n);
         cap[i] = Math.min(want[i], share);
@@ -9954,6 +10069,7 @@
       card._preSnap = null;
       delete card.dataset.placed;
       delete card.dataset.userSized;
+      delete card.dataset.userMoved;
       card.style.left = card.style.top = card.style.width = card.style.height = card.style.zIndex = "";
       const b = mainScroll(card);
       if (b) { b.style.flex = b.style.minHeight = b.style.maxHeight = ""; }
@@ -9971,6 +10087,70 @@
       restore: '<svg viewBox="0 0 10 10"><rect x=".6" y="2.6" width="6.8" height="6.8"/><path d="M2.6 2.6V.6h6.8v6.8h-2"/></svg>',
       close: '<svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg>',
     };
+    // A header too narrow for its buttons: the title stays readable and the
+    // window controls stay put; the extra buttons, last first, go into the
+    // header's ⋯ menu. Before this the About window's title ran under seven
+    // buttons, and a squeezed header never shows half a button.
+    const HDR_KEEP = ".win-btn, .close-btn, .win-dock, .hdr-more";
+    function fitHeader(card) {
+      const h = card.querySelector(":scope > header");
+      const more = h?.querySelector(".hdr-more");
+      // the editor fits its own header (its ⋮ menu); two menus fought there
+      if (!more || card.id === "panel" || !card.classList.contains("open")) return;
+      for (const b of h.querySelectorAll(".hdr-over")) b.classList.remove("hdr-over");
+      more.hidden = true;
+      const titleBox = h.querySelector(":scope > div:first-child");
+      const title = titleBox?.querySelector("strong");
+      // crowded: something runs past the edge, the title is cut, or the
+      // title box (Materials' tabs) is clipping what it holds
+      const crowded = () => h.scrollWidth > h.clientWidth + 1 || (title && title.scrollWidth > title.clientWidth + 1)
+        || (!title && titleBox && titleBox.scrollWidth > titleBox.clientWidth + 1);
+      if (!crowded()) return;
+      const extras = [...h.querySelectorAll("button")].filter((b) => !b.matches(HDR_KEEP) && !b.hidden
+        && !(titleBox && titleBox.contains(b)) && b.getClientRects().length);
+      if (!extras.length) return;
+      more.hidden = false;
+      for (const b of extras.reverse()) {
+        if (!crowded()) break;
+        b.classList.add("hdr-over");
+      }
+    }
+    let hdrMenu = null;
+    function openHdrMenu(card, more) {
+      if (!hdrMenu) {
+        hdrMenu = document.createElement("div");
+        hdrMenu.id = "hdr-menu";
+        hdrMenu.setAttribute("role", "menu");
+        document.body.appendChild(hdrMenu);
+        addEventListener("pointerdown", (e) => { if (!hdrMenu.contains(e.target) && !e.target.closest(".hdr-more")) hdrMenu.classList.remove("open"); }, true);
+        addEventListener("keydown", (e) => { if (e.key === "Escape") hdrMenu.classList.remove("open"); });
+      }
+      if (hdrMenu.classList.contains("open") && hdrMenu._for === card) { hdrMenu.classList.remove("open"); return; }
+      hdrMenu._for = card;
+      hdrMenu.innerHTML = "";
+      for (const b of card.querySelectorAll(":scope > header .hdr-over")) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.setAttribute("role", "menuitem");
+        // a word on the button is its name; an icon or symbol borrows its tooltip
+        const text = b.textContent.trim();
+        item.textContent = (/[a-z]{2}/i.test(text) ? text : "") || b.getAttribute("aria-label") || b.title || text || "…";
+        if (b.title) item.title = b.title;
+        item.addEventListener("click", () => { hdrMenu.classList.remove("open"); b.click(); });
+        hdrMenu.appendChild(item);
+      }
+      const r = more.getBoundingClientRect();
+      hdrMenu.style.zIndex = String(cardZ + 1000);
+      hdrMenu.classList.add("open");
+      const w = hdrMenu.offsetWidth;
+      hdrMenu.style.left = `${Math.max(8, Math.min(r.right - w, innerWidth - w - 8))}px`;
+      hdrMenu.style.top = `${Math.round(r.bottom + 4)}px`;
+    }
+    if (typeof ResizeObserver === "function") {
+      const hro = new ResizeObserver((entries) => requestAnimationFrame(() => { for (const e of entries) fitHeader(e.target); }));
+      for (const c of document.querySelectorAll(".card")) hro.observe(c);
+    }
+
     function syncWindowChrome(card) {
       // Descendant of the header, not a child of it — see the insert below:
       // some headers keep their controls in a wrapper div.
@@ -10048,6 +10228,14 @@
       group.insertBefore(dock, close || null);
       group.insertBefore(min, close || null);
       group.insertBefore(exp, close || null);
+      // a narrow window's extra header buttons go into this menu (fitHeader)
+      const more = mk("hdr-more", () => openHdrMenu(card, more));
+      more.textContent = "⋯";
+      more.title = "More";
+      more.setAttribute("aria-label", "More");
+      more.setAttribute("aria-haspopup", "menu");
+      more.hidden = true;
+      group.insertBefore(more, dock);
       if (close) { close.innerHTML = WIN_ICONS.close; close.classList.add("win-btn"); }
       syncWindowChrome(card);
     }
@@ -10085,6 +10273,7 @@
         markDockShared();   // it left the column, so the others may grow
         }
         delete card.dataset.placed;                // the user is placing it now
+        card.dataset.userMoved = "1";              // ...and it stays where they put it
         let zone = null;
         // Pulling a snapped window out gives it back the size it had before,
         // keeping the header under the pointer.
@@ -10346,14 +10535,28 @@
         const r = c.getBoundingClientRect();
         const onChrome = inDesign() && chrome.some((d) => overlaps(r, d));
         const appPlaced = !!c.dataset.placed;
-        if (!appPlaced && !onChrome && c.classList.contains("floating")) continue;   // the user's own spot
-        if (homeZone(c)) { c._preSnap = null; placeHome(c); }
+        // the user's own spot; a window the app floated (its column was
+        // full) goes back in when there is room
+        if (!appPlaced && !onChrome && c.classList.contains("floating") && c.dataset.userMoved) continue;
+        if (homeZone(c)) { c._preSnap = null; if (!placeHome(c) && appPlaced) redockCard(c); }
         else if (appPlaced) redockCard(c);
       }
       layoutDesignColumn();
       markDockShared();
       requestAnimationFrame(unstackDocked);
       windowsChanged();
+    }
+    // Code mode's shared column: re-split it between the windows still in it
+    function relayoutCodeColumn() {
+      for (const c of document.querySelectorAll(".card.open")) {
+        if (c.classList.contains("expanded") || c.classList.contains("maxed") || c.id === "panel") continue;
+        const inCol = c.dataset.placed?.startsWith("cc-");
+        // a window the app floated because the column was full rejoins it
+        const floated = !c.dataset.placed && c.classList.contains("floating") && !c.dataset.userMoved;
+        if (!inCol && !floated) continue;
+        c._preSnap = null;
+        if (!placeHome(c) && inCol) redockCard(c);
+      }
     }
     // -> how many open windows it actually moved (for the button's feedback)
     function rehomeWindows({ all = false } = {}) {

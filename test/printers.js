@@ -107,7 +107,9 @@ console.log("\nevery Bambu id matches a preset the installed slicer ships\n");
     `${appdata}/BambuStudio/system/BBL`,
     "C:/Program Files/OrcaSlicer/resources/profiles/BBL",
     "/Applications/OrcaSlicer.app/Contents/Resources/profiles/BBL",
-  ].filter((r) => appdata || !r.startsWith("/")).filter((r) => existsSync(r));
+  // OrcaSlicer 2.5 packs its profiles into BBL.opc and leaves the BBL folder
+  // holding only cover images, so a root counts only with its machine/ folder
+  ].filter((r) => appdata || !r.startsWith("/")).filter((r) => existsSync(`${r}/machine`));
   if (!roots.length) {
     skip("checked against an installed Bambu Studio or OrcaSlicer", "neither found here");
   }
@@ -184,9 +186,11 @@ console.log("\nevery id matches a preset OrcaSlicer actually ships\n");
     "C:/Program Files (x86)/OrcaSlicer/resources/profiles",
     "/Applications/OrcaSlicer.app/Contents/Resources/profiles",
   ];
-  const root = roots.find((r) => existsSync(r));
+  // OrcaSlicer 2.5 packs each vendor into a .opc file; only unpacked
+  // vendor folders (2.4 and earlier) can be read here
+  const root = roots.find((r) => existsSync(`${r}/Snapmaker/machine`));
   if (!root) {
-    skip("checked against the installed OrcaSlicer", "no OrcaSlicer install found here");
+    skip("checked against the installed OrcaSlicer", "no OrcaSlicer install with unpacked profiles found here");
   } else {
     // Every preset name the vendor defines, from the profile files themselves.
     const names = (vendor, kind) => {

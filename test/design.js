@@ -371,8 +371,8 @@ console.log("\nthe viewer: wiring, Code mode untouched\n");
   check("spawnHandles / clearHandles tell the shell", /designUI\?\.onSelect\(fid\)/.test(html) && /designUI\?\.onSelect\(null\)/.test(html));
   check("the shell is switched by the mode", /initModeSwitch\(\{ start: startMode, onChange: \(m\) => \{\s*if \(prefs\.lastMode !== m\) setPref\("lastMode", m\);\s*if \(m === "design"\) rememberCodeLayout\(\);\s*designUI\.setActive\(m === "design"\);/.test(html));
   // windows in Design mode: a right-hand column, never on Design's own panels
-  check("Design mode windows live in a right-hand column", /case "dz-right-full": case "dz-right-top": case "dz-right-bottom":/.test(html)
-    && /if \(inDesign\(\)\) \{[\s\S]{0,400}"dz-right-top" : "dz-right-full"/.test(html));
+  check("Design mode windows share a right-hand column", /\(dz\|cc\)-col:\(left\|right\)/.test(html)
+    && /`dz-col:right:\$\{members\.indexOf\(card\)\}/.test(html));
   check("switching to Design moves the open windows; back to Code puts them back", /if \(m === "design"\) \{ relayoutForDesign\(\); noteDesignLayout\(\); \}\s*else restoreCodeLayout\(\);/.test(html)
     && /if \(s\.after != null && spot\(c\) !== s\.after\) continue;/.test(html)
     && /if \(inDesign\(\)\) relayoutForDesign\(\);/.test(html));
