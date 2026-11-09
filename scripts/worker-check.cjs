@@ -68,10 +68,12 @@ const SIMPLE = "return difference(cube([30, 30, 12]), translate([15, 15, -1], cy
 // with a boolean), while still finishing inside a test's patience. Anything
 // smaller no longer trips the gate, which is the point of the recalibration:
 // a 2-second sphere used to be estimated at 49s and held.
-const MONSTER = `return difference(
-  sphere({ r: 30, $fn: 220 }),
-  cylinder({ r: 4, h: 80, $fn: 64, center: true })
-);`;
+// Heavy for the exact kernel too: it makes faceted $fn curves true, so a
+// fine sphere minus a rod (the old monster) now builds in a fraction of a second.
+const MONSTER = `let s = [];
+for (let i = 0; i < 14; i++) for (let j = 0; j < 14; j++)
+  s.push(translate([i * 12, j * 12, 0], sphere({ r: 7, $fn: 160 })));
+return union(...s);`;
 
 app.whenReady().then(async () => {
   shellApp.serveBundle();

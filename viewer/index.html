@@ -5194,11 +5194,19 @@
     // at 76 s and builds in 9 s (14 s on a slow phone), so it sat behind the
     // "heavy model, press Build" gate for no reason. Scale the guess to the
     // engine that will actually run it; the JS fallback keeps the raw number.
+    // But the exact kernel's cost is in its CUTS, not its triangles (curves
+    // stay curves), and it grows faster than the cut count on one solid: a
+    // plate with 900 holes took 83 s while the scaled guess said 14, so it ran
+    // with no gate at all. So the cuts set a floor: per part, 0.003 s x
+    // (cuts)^1.5, parts sharing about three builders (PrintMotor's 714 cuts in
+    // 45 parts come to ~3 s, so its scaled 13 s stands; the plate comes to 81).
     const EXACT_SPEEDUP = 6;
     function estimateHeavy(tree) {
       const est = dsl.estimateBuild(tree);
       if (workerOut || (lastEngine?.engine === "js" && lastEngine.fallbackKind !== "loading")) return est;
-      return { ...est, sec: est.sec / EXACT_SPEEDUP };
+      const parts = Math.max(1, est.parts || 1), cuts = (est.booleans || 0) / parts;
+      const byCuts = 0.15 + 0.003 * parts * cuts ** 1.5 / Math.min(parts, 3);
+      return { ...est, sec: Math.max(est.sec / EXACT_SPEEDUP, byCuts) };
     }
     // SMLib finished downloading. Kept, because it can land while the first
     // build (on the JS kernel meanwhile) is still running, and then that
