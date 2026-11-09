@@ -269,6 +269,30 @@ export async function resolveShort(slug) {
   return { text: row.payload, name: row.name, slug };
 }
 
+// Every name on the server, for the model picker. GET ?list=1 answers
+// {links:[{slug,name,updated_at}]} with no payloads. A server without the
+// listing (or the desktop bridge, which only knows the three calls above)
+// answers null, and the picker falls back to this browser's own links.
+let listCache = null;
+export async function listShort({ fresh = false } = {}) {
+  if (!cloudReady() || bridge() || typeof fetch !== "function") return null;
+  if (listCache && !fresh) return listCache;
+  listCache = (async () => {
+    try {
+      const r = await fetch(`${cloudConfig().url.replace(/\/+$/, "")}?list=1`, { headers: { Accept: "application/json" } });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const rows = Array.isArray(j) ? j : j?.links;
+      if (!Array.isArray(rows)) return null;
+      return rows.filter((x) => x && typeof x.slug === "string" && new RegExp(`^${SLUG}$`).test(x.slug))
+        .map((x) => ({ slug: x.slug, name: String(x.name || x.slug).slice(0, 80), at: x.updated_at || x.created_at || null }));
+    } catch { return null; }
+  })();
+  const out = await listCache;
+  if (!out) listCache = null;     // ask again next time rather than remember a failure
+  return out;
+}
+
 // Pull the name out of a link. Same shape as the #m= reader so the loader
 // can ask both the same way.
 //

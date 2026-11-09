@@ -2552,7 +2552,25 @@
       color: #fff; border-radius: 7px; padding: 6px 0; cursor: pointer;
       font: 12.5px system-ui, sans-serif;
     }
-    #shelf-body { padding: 10px 12px; overflow-y: auto; max-height: min(64vh, 560px); width: 330px; }
+    /* The body is a column: the toggle and search stay put, the list scrolls.
+       A window the user has sized (or expanded) gives the list all of it, and
+       the rows flow into as many columns as the width holds. */
+    #shelf-body { padding: 10px 12px; max-height: min(64vh, 560px); display: flex; flex-direction: column; overflow: hidden; }
+    #shelf-body > * { flex: none; }
+    #shelf.resized > #shelf-body, #shelf.expanded > #shelf-body, #shelf.maxed > #shelf-body { flex: 1 1 auto; max-height: none; }
+    #shelf-list {
+      flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 2px 8px; align-content: start;
+      scrollbar-width: thin; scrollbar-color: var(--muted3) transparent;
+    }
+    #shelf-list > h4, #shelf-list > #shelf-none, #shelf-list > .shelf-more { grid-column: 1 / -1; }
+    #shelf-kind { margin-bottom: 8px; }
+    /* the other kind, listed after a search's real answers: still pickable */
+    #shelf-list button.other { opacity: .55; }
+    #shelf-list button.other:hover, #shelf-list button.other.on { opacity: .85; }
+    #shelf-list .shelf-more { font-size: 11px; color: var(--muted3); border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 8px; }
+    #shelf-list .mdl { flex: none; font: 600 9.5px system-ui, sans-serif; letter-spacing: .04em; color: var(--muted2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; text-transform: uppercase; }
+    #shelf-foot [hidden] { display: none; }
     #shelf-q {
       width: 100%; box-sizing: border-box; padding: 6px 9px; border-radius: 6px;
       border: 1px solid var(--border); background: var(--input-bg, var(--panel));
@@ -3641,7 +3659,7 @@
               <rect x="3" y="1.4" width="3.2" height="2.1" /><rect x="8.4" y="1.4" width="4.6" height="2.1" />
               <rect x="3" y="5.9" width="4.6" height="2.1" /><rect x="9.8" y="5.9" width="3.2" height="2.1" />
             </svg>
-            <span><b>Parts shelf</b><small>hinges, snaps, vents, standoffs — already written</small></span>
+            <span><b>Parts &amp; models</b><small>hinges, snaps, vents, standoffs, and every /m/ model</small></span>
           </button>
           <!-- Gridfinity. Its own row rather than a shelf entry, because the
                thing you have to choose is a SIZE, and a size is picked far
@@ -4819,17 +4837,24 @@
          added there appears here with no second edit. -->
     <section id="shelf" class="card" aria-label="Parts shelf">
       <header>
-        <div><strong>Parts shelf</strong><span class="sub" id="shelf-sub">already written, already building</span></div>
+        <div><strong>Parts &amp; models</strong><span class="sub" id="shelf-sub">already written, already building</span></div>
         <button class="close-btn" data-close="shelf" title="Close">&times;</button>
       </header>
       <div class="card-body" id="shelf-body">
+        <div class="gfin-seg" id="shelf-kind" role="tablist" aria-label="Show">
+          <button type="button" role="tab" data-kind="parts" class="on" aria-selected="true">Parts</button>
+          <button type="button" role="tab" data-kind="models" aria-selected="false">Models</button>
+        </div>
         <input id="shelf-q" type="search" placeholder="search — hinge, vent, standoff, knob…"
                autocomplete="off" spellcheck="false" />
         <div id="shelf-list" aria-live="polite"></div>
       </div>
       <div id="shelf-foot">
-        <small>Click a part to drop its call into the editor. Everything is
+        <small data-for="parts">Click a part to drop its call into the editor. Everything is
         parametric — change the numbers after. <b>CUT</b> parts get subtracted.</small>
+        <small data-for="models" hidden>Click a model to open it (Ctrl+Z brings back what you had).
+        Every model saved as a share link (brepcode.com/m/<i>name</i>) shows up here for
+        everyone, because anyone with the name can open it. Don't save anything private as a link.</small>
       </div>
     </section>
 
@@ -17720,12 +17745,14 @@ ${joined}${SITE_TAIL}`), joined);
     // name typed after /m/ still opens as a short link.
     async function modelRefOptions(word) {
       const w = word.toLowerCase();
-      const [W, cat] = await Promise.all([import("./welcome.js"), import("../src/catalog/index.js")]);
+      const [W, cat, cl] = await Promise.all([import("./welcome.js"), import("../src/catalog/index.js"), import("./cloudlink.js")]);
+      const shared = (await cl.listShort().catch(() => null)) || [];
       // the links this browser made (cloudlink.js keeps their owner tokens)
       let mine = [];
       try { mine = Object.keys(JSON.parse(localStorage.getItem("brepcode-shortlink-owner") || "{}")); } catch { /* private mode */ }
       const all = [
         ...mine.map((k) => ({ id: k, hint: "your short link" })),
+        ...shared.map((x) => ({ id: x.slug, hint: `shared: ${x.name || x.slug}` })),
         ...Object.entries(W.EXAMPLES).map(([k, v]) => ({ id: k, hint: `example: ${v.title}` })),
         ...cat.FAMILIES.map((f) => ({ id: f.id, hint: `${f.category}: ${f.title}` })),
       ];
@@ -21228,7 +21255,7 @@ let SIMPLIFY_TARGET = 10000;
       { title: "Print & check", tools: [
         { id: "fins-btn", icon: "fins", label: "Fins in the editor", desc: "click a face, editable fins() code" },
         { id: "measure-btn", icon: "measure", label: "Measure", desc: "click corners, edges or faces" },
-        { id: "shelf-row", icon: "shelf", label: "Add parts from the shelf", desc: "hinges, snaps, vents, standoffs" },
+        { id: "shelf-row", icon: "shelf", label: "Parts & models", desc: "hinges, snaps, vents, standoffs, every /m/ model" },
       ] },
     ];
     // run one of those after the import has landed
@@ -24096,49 +24123,132 @@ let SIMPLIFY_TARGET = 10000;
         all[active]?.scrollIntoView({ block: "nearest" });
       };
 
+      // Two kinds in one window: parts (a call dropped into the editor) and
+      // models (anything that opens by /m/name: shared links, examples, the
+      // catalog). The toggle picks which is listed first, but a search always
+      // looks through both, and the other kind's hits come after, dimmed, so
+      // typing "phone stand" in Parts still finds the model.
+      let kind = "parts";
+      try { if (localStorage.getItem("brepcode-shelf-kind") === "models") kind = "models"; } catch { /* private mode */ }
+      let MODELS = null, modelsLoading = null;
+      const loadModels = () => modelsLoading ||= (async () => {
+        const [W, cat, cl] = await Promise.all([import("./welcome.js"), import("../src/catalog/index.js"), import("./cloudlink.js")]);
+        let mine = [];
+        try { mine = Object.keys(JSON.parse(localStorage.getItem("brepcode-shortlink-owner") || "{}")); } catch { /* private mode */ }
+        const shared = (await cl.listShort().catch(() => null)) || [];
+        const all = [
+          ...mine.map((k) => ({ id: k, label: k, blurb: "a share link you made in this browser", group: "Your links" })),
+          ...shared.map((x) => ({ id: x.slug, label: x.name || x.slug, blurb: "shared link", group: "Shared links" })),
+          ...W.EXAMPLE_ORDER.map((k) => ({ id: k, label: W.EXAMPLES[k].title, blurb: "example", group: "Examples" })),
+          ...cat.FAMILIES.map((f) => ({ id: f.id, label: f.title, blurb: f.category, group: "Catalog" })),
+        ];
+        const seen = new Set();
+        MODELS = all.filter((m) => !seen.has(m.id) && seen.add(m.id)).map((m) => ({ ...m, kind: "model", sample: `/m/${m.id}` }));
+        if (!shared.length) MODELS.sharedMissing = true;
+        if (shelfCard.classList.contains("open")) paintShelf();
+      })().catch(() => { MODELS = []; });
+
+      const openModel = async (m) => {
+        toggleCard(shelfCard, null, false);
+        setStatus("busy", `Opening ${m.label}…`);
+        try { setStatus("ok", `Opened ${await openModelRef(m.id)}.`); }
+        catch (err) { setStatus("err", `Couldn't open it: ${err?.message || err}`); }
+      };
+
+      const rowFor = (p, other) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.title = p.sample;
+        if (other) b.classList.add("other");
+        b.innerHTML = `<span class="row"><b></b></span><small></small><code></code>`;
+        b.querySelector("b").textContent = p.label;
+        b.querySelector("small").textContent = p.blurb;
+        b.querySelector("code").textContent = p.sample;
+        const tagText = p.kind === "model" ? (other ? "model" : "") : (p.cut ? "CUT" : (other ? "part" : ""));
+        if (tagText) {
+          const tag = document.createElement("span");
+          tag.className = tagText === "CUT" ? "cut" : "mdl";
+          tag.textContent = tagText;
+          b.querySelector(".row").appendChild(tag);
+        }
+        b.addEventListener("click", () => {
+          if (p.kind === "model") return openModel(p);
+          insertPart(p); toggleCard(shelfCard, null, false);
+        });
+        return b;
+      };
+
       function paintShelf() {
         const q = shelfQ.value.trim().toLowerCase();
         // Keywords are in here because people search for the thing, not the
         // function: "arduino" used to find nothing while pcbStandoffs("uno")
         // sat on the shelf.
         const hit = (p) => !q || [p.label, p.blurb, p.id, p.group, p.keywords || ""]
-          .some((s) => s.toLowerCase().includes(q));
+          .some((s) => String(s).toLowerCase().includes(q));
+        const partsOf = () => (SHELF || []).map((p) => ({ ...p, kind: "part" }));
+        const first = kind === "parts" ? partsOf() : (MODELS || []);
+        const second = kind === "parts" ? (MODELS || []) : partsOf();
         shelfList.textContent = "";
-        let shown = 0;
-        for (const g of [...new Set(SHELF.map((p) => p.group))]) {
-          const parts = SHELF.filter((p) => p.group === g && hit(p));
-          if (!parts.length) continue;
-          const h = document.createElement("h4");
-          h.textContent = g;
-          shelfList.appendChild(h);
-          for (const p of parts) {
-            shown++;
-            const b = document.createElement("button");
-            b.type = "button";
-            b.title = p.sample;
-            b.innerHTML = `<span class="row"><b></b></span><small></small><code></code>`;
-            b.querySelector("b").textContent = p.label;
-            b.querySelector("small").textContent = p.blurb;
-            b.querySelector("code").textContent = p.sample;
-            if (p.cut) {
-              const tag = document.createElement("span");
-              tag.className = "cut";
-              tag.textContent = "CUT";
-              b.querySelector(".row").appendChild(tag);
-            }
-            b.addEventListener("click", () => { insertPart(p); toggleCard(shelfCard, null, false); });
-            shelfList.appendChild(b);
+        const paint = (items, other) => {
+          let n = 0;
+          for (const g of [...new Set(items.map((p) => p.group))]) {
+            const inG = items.filter((p) => p.group === g);
+            const h = document.createElement("h4");
+            h.textContent = g;
+            shelfList.appendChild(h);
+            for (const p of inG) { shelfList.appendChild(rowFor(p, other)); n++; }
+          }
+          return n;
+        };
+        let shown = paint(first.filter(hit), false);
+        if (kind === "models" && !MODELS) {
+          const wait = document.createElement("div");
+          wait.id = "shelf-none";
+          wait.textContent = "Loading the models…";
+          shelfList.appendChild(wait);
+        }
+        if (q) {
+          const extra = second.filter(hit);
+          if (extra.length) {
+            const more = document.createElement("div");
+            more.className = "shelf-more";
+            more.textContent = shown
+              ? `Also matching in ${kind === "parts" ? "Models" : "Parts"}:`
+              : `No ${kind} match "${shelfQ.value.trim()}". In ${kind === "parts" ? "Models" : "Parts"}:`;
+            shelfList.appendChild(more);
+            shown += paint(extra, true);
           }
         }
-        if (!shown) {
+        if (!shown && !(kind === "models" && !MODELS)) {
           const none = document.createElement("div");
           none.id = "shelf-none";
-          none.textContent = `Nothing matches "${shelfQ.value.trim()}".`;
+          none.textContent = q ? `Nothing matches "${shelfQ.value.trim()}".` : "Nothing here yet.";
           shelfList.appendChild(none);
         }
         active = 0;
         highlight();
       }
+
+      const setKind = (k) => {
+        kind = k;
+        try { localStorage.setItem("brepcode-shelf-kind", k); } catch { /* private mode */ }
+        for (const b of $("shelf-kind").querySelectorAll("button")) {
+          b.classList.toggle("on", b.dataset.kind === k);
+          b.setAttribute("aria-selected", String(b.dataset.kind === k));
+        }
+        for (const el of $("shelf-foot").querySelectorAll("[data-for]")) el.hidden = el.dataset.for !== k;
+        shelfQ.placeholder = k === "parts" ? "search — hinge, vent, standoff, knob…" : "search — phone stand, hook, printmotor…";
+        const n = k === "parts" ? `${SHELF?.length ?? ""} parts` : (MODELS ? `${MODELS.length} models` : "models");
+        $("shelf-sub").textContent = `${n}, ${k === "parts" ? "already building" : "open by /m/name"}`;
+        if (SHELF) paintShelf();
+      };
+      $("shelf-kind").addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-kind]");
+        if (!b) return;
+        setKind(b.dataset.kind);
+        if (b.dataset.kind === "models") loadModels().then(() => kind === "models" && setKind("models"));
+        shelfQ.focus();
+      });
 
       // The Examples group at the bottom of the toolbox: one row per example
       // model. A click loads it the same way the welcome card does (into the
@@ -24165,9 +24275,10 @@ let SIMPLIFY_TARGET = 10000;
         if (!SHELF) {
           const m = await import("../src/shelf.js");
           SHELF = m.shelfIndex();
-          $("shelf-sub").textContent = `${SHELF.length} parts, already building`;
         }
-        paintShelf();
+        setKind(kind);
+        // the models load in the background so a search in Parts can find them too
+        loadModels().then(() => setKind(kind));
         toggleCard(shelfCard, null, true);
         shelfQ.focus();
         shelfQ.select();
