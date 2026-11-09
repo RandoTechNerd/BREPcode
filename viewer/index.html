@@ -5567,7 +5567,7 @@
     // material Reset never touches how the app behaves.
     const PREFS_DEFAULTS = {
       orbit: "model",          // "model": spin the part about its own centre; "view": classic orbit
-      moveForWindows: true,    // slide the model out from under windows as they open and close
+      moveForWindows: false,   // slide the model out from under windows as they open and close (off: the camera stays put)
       editorHome: "right",     // where the editor opens: right | left | dock
       chatHome: "top",         // where the assistant opens: top | bottom (corner opposite the editor) | dock
       snapZones: true,         // drag a window to an edge or corner to snap it there
@@ -5575,7 +5575,7 @@
       lang: "auto",            // interface language: auto (the system's) | en | es | fr | de | it | pt | ja | zh | ko | pl | tr
       startMode: "code",       // what the app opens in: code | design | last (the mode used last)
       lastMode: "code",        // the Code | Design side last switched to, for startMode "last"
-      toolbarSide: "top",      // Design mode's tool bar: top (a strip) | left (a column down the left edge)
+      toolbarSide: "left",     // Design mode's tool bar: top (a strip) | left (a column down the left edge)
       arCube: false,           // the top-right "see it on your desk" cube; hidden unless turned on
     };
     const prefs = (() => {

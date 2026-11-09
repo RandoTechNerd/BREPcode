@@ -308,8 +308,8 @@ console.log("\n\"Move model for windows\" can be turned off\n");
   // Asked for by name: the model kept sliding away from the windows. Off must
   // stop it everywhere, which is why the gate sits inside keepModelClear —
   // the one function that moves the camera for a window — not on each caller.
-  check("the setting ships ON, so nothing changes for anyone else",
-    /moveForWindows: true,/.test(HTML));
+  check("the setting ships OFF: the camera stays where you put it",
+    /moveForWindows: false,/.test(HTML));
   check("it sits in Settings as a checkbox",
     /<input type="checkbox" id="set-move-for-windows" \/>\s*<span>Move model for windows<\/span>/.test(HTML));
   const fn = HTML.slice(HTML.indexOf("function keepModelClear("), HTML.indexOf("const free = stageFreeRect();", HTML.indexOf("function keepModelClear(")));
