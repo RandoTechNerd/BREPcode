@@ -130,6 +130,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "make.js",
   // the case builder (/case and the Toolbox): a Casefinity case painted on a grid
   "casebuilder.js",
+  // the cookie-cutter shelf (/cutter and the Toolbox): popular shapes, then the search
+  "cutterdoor.js",
   // the seed starter configurator (/seedstarter): watering chooser + dials
   "seedstarter.js",
   "deskview.js", "deskxr.js",
@@ -252,6 +254,13 @@ bounce("make", "make=1", "BREPcode: what do you want to 3D print?",
 bounce("case", "case=1", "BREPcode case builder: a printable case with a Casefinity grid",
   "Size a 3D-printable hinged case, paint its grid with boxes, lidded boxes and separators, and download every part laid out to print as 3MF or STL. Grid: Casefinity by Chris Agocs, on Gridfinity for Hardcases by the Unemployed Architect.",
   "Opening the case builder");
+// ---- /cutter : cookie cutters ---------------------------------------------
+// A shelf of popular shapes, each one click from a printable cutter, and
+// "Design your own": the icon search and the choice of cutter, stamp, stencil
+// or roller (viewer/cutterdoor.js, started by ?cutter=1).
+bounce("cutter", "cutter=1", "BREPcode cookie cutters: pick a shape or design your own",
+  "Make a 3D-printable cookie cutter in a click: stars, hearts, trees and more, or search thousands of shapes and choose a cutter, a cutter with a stamp, a stencil or a rolling stamp. Free, no account.",
+  "Opening the cookie cutters");
 // ---- /seedstarter : the self-watering seed starter -----------------------
 // The catalog's seed starter (src/catalog/garden/seed-starter.js) built on
 // the plate, with a card to pick the watering (pour-in spout or a twist-in

@@ -22123,6 +22123,23 @@ let SIMPLIFY_TARGET = 10000;
     // brepcode.com/case (a folder bouncing to ?case=1), ?case=1 or #case: the
     // case builder, at once. Same rules as the quick door above: the flag
     // comes off the address, and /m/case is a model, not this.
+    // brepcode.com/cutter (a folder bouncing to ?cutter=1), ?cutter=1 or
+    // #cutter: the cookie-cutter shelf, at once. Same rules as /case.
+    function cutterRequested() {
+      let hit = false;
+      for (const L of hostLocations()) {
+        if (!/[?&]cutter=1(&|$)/.test(L.search) && !/^#cutter$/i.test(L.hash)
+            && !(/(^|\/)cutter\/?(index\.html)?$/i.test(L.pathname) && !/(^|\/)m\/cutter\/?$/i.test(L.pathname))) continue;
+        hit = true;
+        try {
+          const u = new URL(L.href);
+          u.searchParams.delete("cutter");
+          if (/^#cutter$/i.test(u.hash)) u.hash = "";
+          (L === location ? window : window.parent).history.replaceState(null, "", u.pathname + u.search + u.hash);
+        } catch { /* cross-origin frame */ }
+      }
+      return hit;
+    }
     function caseRequested() {
       let hit = false;
       for (const L of hostLocations()) {
@@ -25233,6 +25250,53 @@ let SIMPLIFY_TARGET = 10000;
         }
       }
 
+      // The front door (viewer/cutterdoor.js): a shelf of popular shapes, each
+      // one click from being a cutter on the plate, and "Design your own",
+      // which is the search card below. From brepcode.com/cutter, and from
+      // the Toolbox row when there is no outline on the plate to start from.
+      async function openCutterDoor() {
+        let D;
+        try { D = await import("./cutterdoor.js"); } catch { openSearch(); return; }
+        const { KINDS } = await getCK();
+        D.showCutterDoor({
+          kinds: KINDS.map((k) => ({ id: k.id, label: k.label, blurb: k.blurb })),
+          onPick: async (ex, kind = "cutter") => {
+            if (!ex) return;
+            const what = KINDS.find((k) => k.id === kind)?.label || "Cutter";
+            modelName = `${ex.label} ${what.toLowerCase()}`; ownName(modelName); paintName();
+            await emit(kind, ex.loops, { size: 70 });
+            hint.innerHTML = `<b>${esc(ex.label)}</b>, as a ${esc(what.toLowerCase())}, 70 mm across. Change its numbers in the code, or open <b>Toolbox › Cookie cutter</b> for another shape or kit.`;
+          },
+          onCustom: () => openSearch(),
+          // an SVG of their own goes down the same road as a searched icon:
+          // into the card, with the size, the options and the kits to choose
+          onSvg: async (text, name) => {
+            openSearch();
+            stat.textContent = `Reading ${name}…`;
+            try {
+              iconSrc = text;
+              await reloops();
+              $("cutter-sub").textContent = name;
+              opts.hidden = false;
+              await fillKinds();
+              const { pieceNote } = await getCK();
+              stat.textContent = pieceNote(iconLoops) || `${iconLoops.length} loop${iconLoops.length === 1 ? "" : "s"}: pick a kit`;
+            } catch (err) {
+              opts.hidden = true;
+              stat.textContent = String(err.message || err);
+            }
+          },
+          // a photo or a drawing goes to the tracer; the outline it leaves on
+          // the plate is what Toolbox › Cookie cutter then cuts round
+          onPicture: () => {
+            $("trace-file").click();
+            hint.innerHTML = "Trace the picture, then open <b>Toolbox › Cookie cutter</b>: it makes the cutter from the outline on the plate.";
+          },
+        });
+      }
+      window.brepscript = window.brepscript || {};
+      window.brepscript.openCutterDoor = openCutterDoor;
+
       // The submenu, built from KINDS so a kit added there appears here.
       async function fillSubRows(loops) {
         const { KINDS } = await getCK();
@@ -25260,6 +25324,15 @@ let SIMPLIFY_TARGET = 10000;
           openSearch();
         });
         subRows.appendChild(other);
+        const shelf = document.createElement("button");
+        shelf.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.8l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.2 4.3 13.3l.8-4.2L2 6.2l4.2-.5z"/></svg>
+          <span><b>Popular shapes…</b><small>star, heart, tree and more, ready made</small></span>`;
+        shelf.addEventListener("click", () => {
+          toolsMenu.classList.remove("open");
+          subRows.classList.remove("open");
+          openCutterDoor();
+        });
+        subRows.appendChild(shelf);
       }
 
       function openSearch() {
@@ -25274,7 +25347,7 @@ let SIMPLIFY_TARGET = 10000;
         if (!loops.length) {
           toolsMenu.classList.remove("open");
           subRows.classList.remove("open");
-          openSearch();
+          openCutterDoor();            // nothing on the plate to cut around: the shelf, with the search under it
           return;
         }
         const open = !subRows.classList.contains("open");
@@ -29663,6 +29736,9 @@ ${SC.describeSelectionContext(anchor)}` : "");
       try { return !localStorage.getItem("brepcode-welcomed"); } catch { return false; }
     })()) {
       openMakeDoor(import("./welcome.js"), { offerTour: true });
+    } else if (!urlCarriesModel() && cutterRequested()) {
+      // brepcode.com/cutter: the cookie-cutter shelf is the front door for this visitor
+      window.brepscript.openCutterDoor();
     } else if (!urlCarriesModel() && caseRequested()) {
       // brepcode.com/case: the builder is the front door for this visitor
       openCaseBuilder();

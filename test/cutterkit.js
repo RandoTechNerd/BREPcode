@@ -391,8 +391,8 @@ console.log("\nthe Toolbox entry is wired to things that exist\n");
     /aria-expanded/.test(rowTag.slice(0, rowTag.indexOf(">"))));
 
   // Both halves of the behaviour the user specified have to be reachable.
-  check("no outline on the plate opens the icon search",
-    /if \(!loops\.length\)[\s\S]{0,180}openSearch\(\)/.test(block));
+  check("no outline on the plate opens the shelf, which has the icon search under it",
+    /if \(!loops\.length\)[\s\S]{0,180}openCutterDoor\(\)/.test(block));
   check("an outline on the plate expands the kits instead",
     /fillSubRows\(loops\)/.test(block));
   check("the kits are built from KINDS rather than typed twice",
@@ -440,6 +440,58 @@ console.log("\nthe choices a cutter designer offers\n");
   check("the card has the controls", ["cutter-height", "cutter-wall", "cutter-sharp", "cutter-handle", "cutter-bars", "cutter-mirror"].every((id) => H.includes(`id="${id}"`)));
   check("...remembered choices are applied once, never over what was just set", /if \(cutterOptsFilled\) return;/.test(H));
   check("...and every way of making a kit uses them", /makeKit\(kind, loops, \{ \.\.\.cutterExtras\(\), \.\.\.extra \}\)/.test(H));
+}
+
+console.log("\nthe shelf of popular shapes\n");
+{
+  const D = await import("../viewer/cutterdoor.js");
+  check("there is a shelf of shapes", D.EXAMPLES.length >= 8, String(D.EXAMPLES.length));
+  check("every one has a name people would search for", D.EXAMPLES.every((e) => e.label && e.blurb && /^[a-z]+$/.test(e.id)));
+  const segs = (p) => p.map((a, i) => [a, p[(i + 1) % p.length]]);
+  const cross = ([a, b], [c, d]) => {
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+  };
+  for (const e of D.EXAMPLES) {
+    const p = e.loops[0].points;
+    const xs = p.map((q) => q[0]), ys = p.map((q) => q[1]);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    check(`${e.id}: one outline, about a cookie across`, e.loops.length === 1 && Math.max(w, h) > 55 && Math.max(w, h) < 95 && Math.min(w, h) > 35, `${w.toFixed(0)} x ${h.toFixed(0)}`);
+    const S = segs(p);
+    let hits = 0;
+    for (let i = 0; i < S.length; i++) for (let j = i + 2; j < S.length; j++) { if (i === 0 && j === S.length - 1) continue; if (cross(S[i], S[j])) hits++; }
+    check(`${e.id}: the outline never crosses itself`, hits === 0, `${hits} crossings`);
+    let ok = false, detail = "";
+    try {
+      const stl = toSTL(await build(fromOpenSCAD(cutterScad(e.loops, { size: 70 }))), "t");
+      ok = (stl.match(/^solid /gm) || []).length === 1 && (stl.match(/facet normal/g) || []).length > 40;
+    } catch (err) { detail = String(err.message || err).slice(0, 160); }
+    check(`${e.id}: builds as one cutter`, ok, detail);
+    // round out, sharp or flat in: an outline the exact kernel takes, so the
+    // shelf's first build is a fraction of a second and not a fallback
+    const fast = await build(fromOpenSCAD(cutterScad(e.loops, { size: 70 })));
+    check(`${e.id}: builds on the exact kernel, no fallback`, fast.engine === "exact", `${fast.engine} ${String(fast.fallback || "").slice(0, 80)}`);
+    const svg = D.previewSvg(e.loops);
+    check(`${e.id}: has a picture, drawn standing up`, /^<svg /.test(svg) && (svg.match(/<defs><path /g) || []).length === 1 && (svg.match(/<use /g) || []).length > 30 && (svg.match(/<circle /g) || []).length > 20 && !/NaN|Infinity|undefined/.test(svg));
+  }
+  const H2 = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const B = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
+  check("/cutter opens the shelf", /bounce\("cutter", "cutter=1"/.test(B) && /function cutterRequested\(\)/.test(H2) && /cutterRequested\(\)\) \{[\s\S]{0,160}openCutterDoor\(\)/.test(H2));
+  check("...the bundle ships it", /"cutterdoor\.js",/.test(B));
+  check("...the Toolbox reaches it, with or without an outline on the plate", /Popular shapes…/.test(H2) && /openCutterDoor\(\);            \/\/ nothing on the plate/.test(H2));
+  check("...and Design your own is the search card", /onCustom: \(\) => openSearch\(\),/.test(H2));
+  const DS = readFileSync(new URL("../viewer/cutterdoor.js", import.meta.url), "utf8");
+  check("the kind of kit is chosen at the top of the shelf, and a shape makes that kit",
+    /class="ck-kinds"/.test(DS) && /onPick\?\.\(exampleById\(card\.dataset\.id\), chosen\)/.test(DS) && /await emit\(kind, ex\.loops, \{ size: 70 \}\);/.test(H2));
+  check("a + card brings your own: search, an SVG, or a picture to trace",
+    /data-own="1"/.test(DS) && /data-act="svg"/.test(DS) && /data-act="pic"/.test(DS) && /onSvg: async \(text, name\) =>/.test(H2) && /\$\("trace-file"\)\.click\(\);/.test(H2));
+  // every kit builds from a shelf shape
+  for (const k of KINDS) {
+    let ok = false, detail = "";
+    try { ok = (toSTL(await build(fromOpenSCAD(makeKit(k.id, D.exampleById("star").loops, { size: 70 }))), "t").match(/facet normal/g) || []).length > 40; }
+    catch (err) { detail = String(err.message || err).slice(0, 160); }
+    check(`a star as a ${k.id} builds`, ok, detail);
+  }
 }
 
 console.log("\nand it builds — through the real kernel\n");
