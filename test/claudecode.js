@@ -97,5 +97,38 @@ console.log("\nthe bridge it depends on is really there\n");
     /ASYNC on purpose/.test(MAIN));
 }
 
+console.log("\nthe CLI is run lean, and the newest one on the machine is the one that runs\n");
+{
+  // Measured 2026-11-09: spawned the old way a five-word question carried 131
+  // tools, 7 MCP servers and 55,918 tokens of prompt; this way, 284.
+  check("it runs in a folder of its own, away from anyone's project", /spawn\(r\.file, r\.args, \{ windowsHide: true, env, \.\.\.\(cwd \? \{ cwd \} : \{\}\) \}\)/.test(MAIN)
+    && /const WORK_DIR = path\.join\(os\.tmpdir\(\), "BREPcode-chat"\);/.test(MAIN));
+  check("no MCP servers, one tool, and the effort as the CLI's own flag",
+    /args\.push\("--strict-mcp-config", "--tools", "Read", "--effort", eff\);/.test(MAIN));
+  check("the instructions are the real system prompt, from a file named by a constant",
+    /args\.push\("--system-prompt-file", SYSTEM_FILE\);/.test(MAIN) && /const SYSTEM_FILE = "system\.txt";/.test(MAIN),
+    "argv carries allowlisted tokens only: the text itself never touches it");
+  check("the effort is allowlisted before it reaches argv",
+    /const eff = EFFORTS\.has\(String\(effort\)\) \? String\(effort\) : "medium";/.test(MAIN));
+  check("an old CLI that refuses the flags is asked the old way, once",
+    /if \(!r\.ok && r\.unknownFlag && leanOk\) \{\s*\n\s*leanOk = false;/.test(MAIN));
+  check("high effort is given the time it asks for", /const TIME_LIMIT_MIN = \{ low: 5, medium: 5, high: 12/.test(MAIN));
+  check("a CLI too old for the model says to update, not 'returned nothing'",
+    /does not support this model/.test(MAIN) && /claude update/.test(MAIN));
+  check("the model list carries Fable 5.2 by id, since the alias lags",
+    /"claude-code": \["default", "claude-fable-5-2", "fable", "opus", "sonnet", "haiku"\]/.test(HTML));
+
+  const { createRequire } = await import("node:module");
+  const cc = createRequire(import.meta.url)("../desktop/claude.cjs");
+  check("2.1.309 is newer than 2.1.290", cc.cmpVersion("2.1.309 (Claude Code)", "2.1.290") > 0);
+  check("...and 2.1.241 older", cc.cmpVersion("2.1.241 (Claude Code)", "2.1.290") < 0);
+  check("...and a version is equal to itself, however it is dressed", cc.cmpVersion("2.1.309", "2.1.309 (Claude Code)") === 0);
+  check("a newer CLI in the Claude app replaces an older one on PATH",
+    /const newer = bundledClis\(\)\.find\(\(b\) => cmpVersion\(b\.version, cached\.version\) > 0\);/.test(MAIN));
+  const found = cc.bundledClis();
+  check("listing the app's CLIs never throws, and is newest first",
+    Array.isArray(found) && found.every((b, i) => i === 0 || cc.cmpVersion(found[i - 1].version, b.version) >= 0));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

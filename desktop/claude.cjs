@@ -43,6 +43,7 @@ function runnerFor(exe, args) {
 
 let cached = null;                     // resolved { found, path, version }
 let cachedP = null;                    // in-flight probe, shared by all callers
+let versionP = null;                   // the version probe running behind it
 
 // ASYNC on purpose. The version probe spawns claude.exe, and a cold start of
 // a node-based CLI can take seconds — done synchronously it blocked Electron's
@@ -170,6 +171,8 @@ async function probe() {
         }
       } catch (e) { log.push(`Packages scan: ${String(e?.message || e).slice(0, 120)}`); }
     }
+    // ...and whatever layout the app's own folders really have, sandbox included
+    candidates.push(...bundledClis().map((b) => b.file));
     for (const c of candidates) {
       let hit = false;
       try { hit = fs.statSync(c).isFile(); } catch { /* absent */ }
@@ -186,12 +189,67 @@ async function probe() {
   // say so with the actual error instead of detection quietly lying.
   if (exe) {
     const r = runnerFor(exe, ["--version"]);
-    execFileP(r.file, r.args, { encoding: "utf8", timeout: 60000, windowsHide: true })
-      .then((out) => { if (cached) cached.version = out.stdout.trim(); })
+    versionP = execFileP(r.file, r.args, { encoding: "utf8", timeout: 60000, windowsHide: true })
+      .then((out) => {
+        if (!cached) return;
+        cached.version = out.stdout.trim();
+        // THE NEWEST CLI WINS. A machine often has two: the one on PATH and the
+        // one the Claude app carries, and the PATH one can be months behind.
+        // Measured here: PATH had 2.1.241, the app 2.1.309, and Fable 5.2 needs
+        // 2.1.290, so the older one answered "does not support this model" (or
+        // quietly ran "fable" as Fable 5). Both use the same sign-in.
+        const newer = bundledClis().find((b) => cmpVersion(b.version, cached.version) > 0);
+        if (newer) {
+          cached.probeLog?.push(`newer CLI in the Claude app: ${newer.file} (was ${cached.path} ${cached.version})`);
+          cached.path = newer.file;
+          cached.version = `${newer.version} (Claude Code)`;
+        }
+      })
       .catch(() => { /* version stays unknown; existence already answered */ });
   }
   log.push(`APPDATA=${process.env.APPDATA || "(unset)"}`);
   return { found: !!exe, path: exe, version, probeLog: log };
+}
+
+// "2.1.309 (Claude Code)" against "2.1.290": positive when a is the newer.
+function cmpVersion(a, b) {
+  const nums = (v) => (String(v || "").match(/\d+(\.\d+)+/)?.[0] || "0").split(".").map(Number);
+  const A = nums(a), B = nums(b);
+  for (let i = 0; i < Math.max(A.length, B.length); i++) {
+    if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) - (B[i] || 0);
+  }
+  return 0;
+}
+
+// Every CLI the Claude desktop app carries on this machine, newest first. The
+// version is the folder's name, so this costs a directory listing, not a spawn.
+function bundledClis() {
+  const exeName = process.platform === "win32" ? "claude.exe" : "claude";
+  const roots = [];
+  if (process.platform === "darwin") roots.push(path.join(os.homedir(), "Library", "Application Support", "Claude", "claude-code"));
+  if (process.platform === "win32" && process.env.APPDATA) roots.push(path.join(process.env.APPDATA, "Claude", "claude-code"));
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    // the MSIX / Store install keeps the real files in its package sandbox
+    const pkgs = path.join(process.env.LOCALAPPDATA, "Packages");
+    try {
+      for (const d of fs.readdirSync(pkgs)) {
+        if (/^(Anthropic)?Claude_/i.test(d)) roots.push(path.join(pkgs, d, "LocalCache", "Roaming", "Claude", "claude-code"));
+      }
+    } catch { /* no Store apps */ }
+  }
+  const out = [];
+  for (const root of roots) {
+    let versions = [];
+    try { versions = fs.readdirSync(root).filter((d) => /^\d+[\d.]*$/.test(d)); } catch { continue; }
+    for (const v of versions) {
+      // claude-code/<version>/claude(.exe) or, in newer builds, one folder deeper
+      const spots = [path.join(root, v, exeName)];
+      try { for (const b of fs.readdirSync(path.join(root, v))) spots.push(path.join(root, v, b, exeName)); } catch { /* not a dir */ }
+      const file = spots.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+      if (file) out.push({ version: v, file });
+    }
+  }
+  return out.sort((a, b) => cmpVersion(b.version, a.version));
 }
 
 // Legacy sync view for callers that only want the cached answer.
@@ -204,11 +262,59 @@ function detect() {
 // concurrent CLI sessions writing the same session id would interleave badly.
 let inflight = null;
 
-async function ask({ system, prompt, model, effort, resume, imagePath, imagePaths } = {}, onProgress) {
+// THE CLI RUNS LEAN, in a folder of its own.
+//
+// Measured on a real install (2026-11-09), one five-word question to fable:
+//     as it used to be spawned     131 tools, 7 MCP servers, 55,918 tokens of
+//                                  prompt written to the cache
+//     as it is spawned below       no MCP servers, one tool, 284 tokens
+// The old way inherited everything the user's own Claude Code is set up for:
+// every MCP server they have connected (BREPcode's own bridge among them), the
+// CLAUDE.md of whatever folder the app happened to be started from, and the
+// coding agent's whole system prompt, with our instructions pasted into the
+// user turn underneath it. Each message then appended another copy of those
+// instructions to the session. None of it helps write a CAD model, all of it
+// is read and paid for, and a deep model takes every line of it seriously.
+//
+// So: our own working folder (no project files, no CLAUDE.md), no MCP servers,
+// Read as the only tool, and the instructions as the REAL system prompt, in a
+// file we write ourselves. The file is named by a constant and found through
+// the working folder, so argv still carries nothing but allowlisted tokens.
+const WORK_DIR = path.join(os.tmpdir(), "BREPcode-chat");
+const SYSTEM_FILE = "system.txt";
+// --effort is the CLI's own thinking control. MAX_THINKING_TOKENS, which this
+// used to set, is a token budget, and the models that think adaptively
+// (everything current) do not take one.
+const EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
+// How long a reply may run before it is stopped. High effort is a deliberate
+// choice of a slower, deeper answer, so it is given the time it asks for.
+const TIME_LIMIT_MIN = { low: 5, medium: 5, high: 12, xhigh: 20, max: 20 };
+// A CLI too old to know these flags says "unknown option" and exits. It is
+// then asked the old way, and remembered, so only one message pays for it.
+let leanOk = true;
+
+async function ask(opts = {}, onProgress) {
   const d = await detectAsync();
   if (!d.found) return { ok: false, error: "Claude Code isn't installed (or isn't on PATH). Install it from claude.com/code, sign in once, and restart BREPcode." };
   if (inflight) return { ok: false, error: "Still working on the previous message." };
+  inflight = (async () => {
+    // Give the version probe a moment before the first message: it is what
+    // trades an old CLI for the newer one in the Claude app, and a model the
+    // old one cannot run fails outright. Never longer than this; a cold CLI
+    // can take a minute to say its version and the message must not wait on it.
+    if (versionP) await Promise.race([versionP, new Promise((res) => setTimeout(res, 4000))]);
+    let r = await runCli(cached?.path || d.path, opts, leanOk, onProgress);
+    if (!r.ok && r.unknownFlag && leanOk) {
+      leanOk = false;
+      r = await runCli(cached?.path || d.path, opts, false, onProgress);
+    }
+    delete r.unknownFlag;
+    return r;
+  })().finally(() => { inflight = null; });
+  return inflight;
+}
 
+function runCli(exe, { system, prompt, model, effort, resume, imagePath, imagePaths } = {}, lean, onProgress) {
   // stream-json instead of json: the CLI then reports events AS THEY HAPPEN
   // — model chosen, text being written — and the chat can show a wait that is
   // evidence rather than a spinner. A three-minute fable reply with nothing
@@ -229,24 +335,41 @@ async function ask({ system, prompt, model, effort, resume, imagePath, imagePath
   if (okPaths.length) args.push("--add-dir", IMG_DIR, "--allowedTools", "Read");
 
   const env = { ...process.env };
-  // Effort maps to the thinking budget. Medium is Claude Code's own default,
-  // so it stays untouched; the numbers are budgets, not magic.
-  const eff = String(effort || "medium");
-  if (eff === "low") env.MAX_THINKING_TOKENS = "1024";
-  if (eff === "high") env.MAX_THINKING_TOKENS = "16000";
+  const eff = EFFORTS.has(String(effort)) ? String(effort) : "medium";
+  let stdinPayload = String(prompt || "");
+  let cwd;
+  if (lean) {
+    args.push("--strict-mcp-config", "--tools", "Read", "--effort", eff);
+    try {
+      fs.mkdirSync(WORK_DIR, { recursive: true });
+      cwd = WORK_DIR;
+      if (system) {
+        fs.writeFileSync(path.join(WORK_DIR, SYSTEM_FILE), String(system));
+        args.push("--system-prompt-file", SYSTEM_FILE);
+      }
+    } catch { /* no temp folder to work in: the CLI's own prompt will have to do */ }
+    if (system && !args.includes("--system-prompt-file")) {
+      stdinPayload = `<system-instructions>\n${String(system).slice(0, 32000)}\n</system-instructions>\n\n${stdinPayload}`;
+    }
+  } else {
+    // The old way, for a CLI that predates the flags above. The system
+    // instructions ride on stdin with the prompt, not on argv: free text on a
+    // command line that may pass through cmd.exe is exactly the injection this
+    // module promises not to allow — and models follow a labelled preamble fine.
+    if (eff === "low") env.MAX_THINKING_TOKENS = "1024";
+    if (eff === "high") env.MAX_THINKING_TOKENS = "16000";
+    if (system) stdinPayload = `<system-instructions>\n${String(system).slice(0, 32000)}\n</system-instructions>\n\n${stdinPayload}`;
+  }
+  const limitMin = TIME_LIMIT_MIN[eff];
 
-  // The system instructions ride on stdin with the prompt, not on argv.
-  // --append-system-prompt would be the purer channel, but free text on a
-  // command line that may pass through cmd.exe is exactly the injection this
-  // module promises not to allow — and models follow a labelled preamble fine.
-  const stdinPayload = system
-    ? `<system-instructions>\n${String(system).slice(0, 32000)}\n</system-instructions>\n\n${String(prompt || "")}`
-    : String(prompt || "");
-
-  const r = runnerFor(d.path, args);
-  inflight = new Promise((resolve) => {
+  const r = runnerFor(exe, args);
+  return new Promise((resolve) => {
     const friendly = (raw) => {
       const t = String(raw || "");
+      // "Claude Code 2.1.241 does not support this model; version 2.1.290 …"
+      if (/does not support this model/i.test(t)) {
+        return `This Claude Code is too old for that model (${t.replace(/^API Error:\s*\d*\s*/i, "").slice(0, 160)}). Update it (run \`claude update\` in a terminal, or update the Claude app), restart BREPcode, and try again. Until then, pick another model in ⚙.`;
+      }
       if (/log\s*in|login|authenticat|OAuth|API key/i.test(t)) {
         return "Claude Code isn't signed in. Open a terminal, run `claude`, sign in once, then try again.";
       }
@@ -256,12 +379,12 @@ async function ask({ system, prompt, model, effort, resume, imagePath, imagePath
       return t.slice(0, 300) || "Claude Code returned nothing.";
     };
 
-    const child = spawn(r.file, r.args, { windowsHide: true, env });
-    // Five minutes, then it is stopped: and SAID to be stopped. A kill with no
+    const child = spawn(r.file, r.args, { windowsHide: true, env, ...(cwd ? { cwd } : {}) });
+    // A time limit, then it is stopped: and SAID to be stopped. A kill with no
     // result event used to come out as "Claude Code returned nothing", which
     // reads as a broken install rather than a reply that ran out of time.
     let timedOut = false;
-    const killer = setTimeout(() => { timedOut = true; try { child.kill(); } catch { /* already gone */ } }, 300000);
+    const killer = setTimeout(() => { timedOut = true; try { child.kill(); } catch { /* already gone */ } }, limitMin * 60000);
 
     let result = null, stderr = "", lineBuf = "", chars = 0, lastNote = 0;
     const note = (text) => {
@@ -296,12 +419,10 @@ async function ask({ system, prompt, model, effort, resume, imagePath, imagePath
     child.stderr.on("data", (dta) => { stderr += dta; });
     child.on("error", (e) => {
       clearTimeout(killer);
-      inflight = null;
       resolve({ ok: false, error: friendly(String(e?.message || e)) });
     });
     child.on("close", () => {
       clearTimeout(killer);
-      inflight = null;
       if (lineBuf.trim()) handleLine(lineBuf);
       if (result && typeof result.result === "string" && !result.is_error) {
         resolve({ ok: true, text: result.result, sessionId: result.session_id || null,
@@ -310,15 +431,15 @@ async function ask({ system, prompt, model, effort, resume, imagePath, imagePath
       }
       if (result && result.is_error) { resolve({ ok: false, error: friendly(result.result || stderr) }); return; }
       if (timedOut) {
-        resolve({ ok: false, error: `Claude Code was still working after 5 minutes, so I stopped it${chars ? ` (${chars.toLocaleString()} characters in)` : ""}. Try Effort: Low, a faster model, or ask for less in one go.` });
+        resolve({ ok: false, error: `Claude Code was still working after ${limitMin} minutes, so I stopped it${chars ? ` (${chars.toLocaleString()} characters in)` : ""}. Try Effort: Low, a faster model, or ask for less in one go.` });
         return;
       }
-      resolve({ ok: false, error: friendly(stderr || "Claude Code returned nothing.") });
+      resolve({ ok: false, error: friendly(stderr || "Claude Code returned nothing."),
+        unknownFlag: /unknown option|unknown argument/i.test(stderr) });
     });
     child.stdin.on("error", () => { /* EPIPE if it died instantly — close reports it */ });
     child.stdin.end(stdinPayload);
   });
-  return inflight;
 }
 
 // Park an attached image where ask() is allowed to Read it. The name is minted
@@ -371,4 +492,4 @@ function register() {
   });
 }
 
-module.exports = { register, detect, detectAsync, ask, saveImage, IMG_DIR };
+module.exports = { register, detect, detectAsync, ask, saveImage, IMG_DIR, WORK_DIR, bundledClis, cmpVersion };

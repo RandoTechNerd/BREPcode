@@ -72,6 +72,23 @@ contextBridge.exposeInMainWorld("brepcodeDesktop", {
   // models but not to chat — and it is locked to an allowlist of AI hosts,
   // GET/POST, and the handful of headers such a call legitimately carries.
   aiRelay: (req) => ipcRenderer.invoke("ai:relay", req),
+  // The same errand for a reply that streams: the head (status, content type)
+  // comes back as the result, the body arrives in pieces through onChunk, and
+  // onEnd(error|null) closes it. The page mints the id so it can stop a
+  // request that has not answered yet.
+  aiRelayStream: async (req, onChunk, onEnd) => {
+    const id = String(req?.id || "");
+    const listener = (_e, rid, kind, data) => {
+      if (rid !== id) return;
+      if (kind === "chunk") onChunk(data);
+      else { ipcRenderer.removeListener("ai-relay-stream", listener); onEnd(data || null); }
+    };
+    ipcRenderer.on("ai-relay-stream", listener);
+    const head = await ipcRenderer.invoke("ai:relayStream", req);
+    if (head?.error) ipcRenderer.removeListener("ai-relay-stream", listener);
+    return head;
+  },
+  aiRelayAbort: (id) => ipcRenderer.send("ai:relayAbort", String(id || "")),
 
   // Settings > Connect your AI. The page names one of four fixed app ids
   // (claude-desktop, claude-code, cursor, vscode); main decides every path

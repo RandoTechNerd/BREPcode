@@ -3931,11 +3931,11 @@
           <button id="browser-load-btn" class="hist-btn" style="font-size:12px">Load</button>
           <span class="note" id="browser-load-status" style="flex:1"></span>
         </div>
-        <div class="row" id="cc-effort-row" style="display:none"><label title="How much thinking budget Claude gets before answering">Effort</label>
+        <div class="row" id="cc-effort-row" style="display:none"><label title="How hard Claude thinks before answering. It is the main control over how long a reply takes.">Effort</label>
           <select id="cc-effort">
-            <option value="medium" selected>Medium - Claude Code's default</option>
+            <option value="medium" selected>Medium - balanced, best for chatting</option>
             <option value="low">Low - quick answers</option>
-            <option value="high">High - think harder on tricky parts</option>
+            <option value="high">High - slower, for hard parts and whole designs</option>
           </select>
         </div>
         <div class="row"><label title="When generated code fails to build, the error goes straight back to the AI and it retries — this is how many attempts before it stops and shows you">Auto-fix</label>
@@ -25260,7 +25260,61 @@ let SIMPLIFY_TARGET = 10000;
     // the main process (allowlisted hosts only); everywhere else it is a plain
     // fetch. Returns something Response-shaped either way so callers do not
     // have to care which happened.
+    const canRelayStream = !!window.brepcodeDesktop?.aiRelayStream;
+    // A streamed request through the relay: the main process reads the body
+    // and passes it on piece by piece, and Stop reaches it. Response-shaped,
+    // like the rest, so the stream readers do not know the difference.
+    async function relayStreamFetch(url, options) {
+      const abortErr = () => new DOMException("stopped", "AbortError");
+      if (options.signal?.aborted) throw abortErr();
+      const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const queue = [];
+      let ended = false, failed = null, wake = null;
+      const nudge = () => { const w = wake; wake = null; w?.(); };
+      options.signal?.addEventListener("abort", () => {
+        window.brepcodeDesktop.aiRelayAbort(id);
+        failed = abortErr();
+        nudge();
+      }, { once: true });
+      const head = await window.brepcodeDesktop.aiRelayStream(
+        { id, url, method: options.method || "GET", headers: options.headers, body: options.body },
+        (text) => { queue.push(text); nudge(); },
+        (err) => { if (err && !failed) failed = new Error(err); ended = true; nudge(); });
+      if (options.signal?.aborted) throw abortErr();
+      if (head?.error) throw new Error(head.error);
+      const enc = new TextEncoder();
+      const reader = {
+        async read() {
+          for (;;) {
+            if (failed?.name === "AbortError") throw failed;
+            if (queue.length) return { done: false, value: enc.encode(queue.shift()) };
+            if (failed) throw failed;
+            if (ended) return { done: true, value: undefined };
+            await new Promise((res) => { wake = res; });
+          }
+        },
+      };
+      const whole = async () => {
+        const dec = new TextDecoder();
+        let t = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) return t;
+          t += dec.decode(value, { stream: true });
+        }
+      };
+      return {
+        ok: head.ok, status: head.status,
+        headers: { get: (k) => (/^content-type$/i.test(k) ? head.contentType : null) },
+        body: { getReader: () => reader },
+        json: async () => JSON.parse(await whole()),
+        text: whole,
+      };
+    }
     async function aiFetch(url, options = {}) {
+      if (isDesktop && canRelayStream && typeof options.body === "string" && /"stream":true/.test(options.body)) {
+        return relayStreamFetch(url, options);
+      }
       if (isDesktop) {
         const r = await window.brepcodeDesktop.aiRelay({
           url, method: options.method || "GET", headers: options.headers, body: options.body,
@@ -25513,8 +25567,8 @@ let SIMPLIFY_TARGET = 10000;
     // decides what you can use — it just stops the dropdown being empty.
     // These must be REAL model ids: this list once carried a made-up
     // "claude-opus-5" and no fable — so one failed re-verify made fable
-    // vanish and offered a model that 404s. The Claude 5 family is fable-5
-    // and sonnet-5; opus tops out at 4.8.
+    // vanish and offered a model that 404s. Checked against Anthropic's
+    // models page on 2026-11-09: fable-5-2, opus-5-5, sonnet-5-5, haiku-5-5.
     const AI_MODELS = {
       builtin: [],
       local: [],          // filled by asking the server what it has loaded
@@ -25527,13 +25581,17 @@ let SIMPLIFY_TARGET = 10000;
         "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
       ],
       gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-      claude: ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"],
+      claude: ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
       // A starting list only — the real one comes from /v1/models the moment a
       // key checks out, which is the whole point of pasting one.
       openai: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"],
       // Aliases the CLI resolves itself, so this list never goes stale;
-      // "default" means "whatever the user's Claude Code is set to".
-      "claude-code": ["default", "fable", "opus", "sonnet", "haiku"],
+      // "default" means "whatever the user's Claude Code is set to". One full
+      // id rides along because an alias follows the CLI, not the calendar: on
+      // the day Fable 5.2 shipped, "fable" still meant 5.1 on the newest CLI
+      // and 5 on an older one. The id needs Claude Code 2.1.290 or newer; an
+      // older one says so (see friendly() in desktop/claude.cjs).
+      "claude-code": ["default", "claude-fable-5-2", "fable", "opus", "sonnet", "haiku"],
     };
     // The last list a WORKING key actually returned, per provider — a network
     // blip on a later page load must not shrink the dropdown to the curated
@@ -26213,7 +26271,7 @@ let SIMPLIFY_TARGET = 10000;
         aiCheck.textContent = ccFound ? "✓" : "✗";
         aiCheck.className = ccFound ? "ok" : "bad";
         updateSpark();
-        if (announce && ccFound) addMsg("bot", `✓ Claude Code found (${ccVersion || "installed"}) — you'll chat on your own Claude subscription, no API key. First message may ask you to sign in once (a button will walk you through it). Paste images with Ctrl+V. Speed tip: <b>fable</b> is the deepest and slowest model — pick <b>sonnet</b> in ⚙ for quick drafts, and Effort: Low for snappier replies.`);
+        if (announce && ccFound) addMsg("bot", `✓ Claude Code found (${ccVersion || "installed"}) — you'll chat on your own Claude subscription, no API key. First message may ask you to sign in once (a button will walk you through it). Paste images with Ctrl+V. Speed tip: Effort in ⚙ sets the pace. <b>claude-fable-5-2</b> is the deepest model and still answers a simple part in seconds at Low or Medium; High is for hard parts. <b>sonnet</b> uses the least of your plan.`);
         if (announce && !ccFound) addMsg("bot", "Claude Code isn't installed on this computer (or isn't signed in). Install it from claude.com/code, run `claude` once to sign in, then restart BREPcode.");
         return;
       }
@@ -26411,7 +26469,7 @@ let SIMPLIFY_TARGET = 10000;
         : lo ? "click for the list — blank means llama.cpp on :8080"
         : "paste your key";
       $("ai-key-label").textContent = lo ? "Server URL" : "API key";
-      $("cc-effort-row").style.display = cc ? "" : "none";
+      $("cc-effort-row").style.display = cc || aiProvider.value === "claude" ? "" : "none";
       $("browser-load-row").style.display = br ? "" : "none";
       if (br) paintBrowserLoadRow();
 
@@ -27344,7 +27402,7 @@ let SIMPLIFY_TARGET = 10000;
       try {
         const resp = await aiFetch(req.url, req.options);
         if (!resp.ok) return;
-        found = CHAT.parsePriorArt(CHAT.extractApiText(await resp.json()), { safeUrl: PA.safeModelUrl });
+        found = CHAT.parsePriorArt(CHAT.extractApiText(cfg.provider, await resp.json()), { safeUrl: PA.safeModelUrl });
       } catch { return; }                     // a bonus feature fails silently
       if (!found.length || mine !== priorArtSeq) return;
       showPriorArt(named.subject, found, PA);
@@ -28085,7 +28143,11 @@ ${SC.describeSelectionContext(anchor)}` : "");
           hasImage: imgs.length > 0,
           text: context,
           // A reasoning model gets #deep instead of #speed — see AUTO_SECTIONS.
-          deepModel: CHAT?.isDeepModel?.(cfg.model) ?? false,
+          deepModel: CHAT?.isDeepModel?.(cfg.model, $("cc-effort").value) ?? false,
+          // the request (or the CLI) sets how hard it thinks, so the prompt
+          // does not also ask it to think less
+          effortModel: cfg.provider === "claude-code"
+            || (cfg.provider === "claude" && !!CHAT?.claudeTraits?.(cfg.model).adaptive),
           pastedCode: looksLikeOpenSCAD(context)
             || /module\.exports|@jscad\/modeling|build123d|cadquery/.test(context),
           builtModel: reference.includes("THE BUILT MODEL"),
@@ -28249,9 +28311,12 @@ ${SC.describeSelectionContext(anchor)}` : "");
           let ladderStep = null, busyRetries = 0, paidRung = false;
           const ladderTried = new Set();
           for (;;) {
-            // The desktop relay returns a finished body, so streaming is only
-            // asked for when the request really is a browser fetch.
-            const wantStream = !isDesktop
+            // The desktop relay returns a finished body for most providers,
+            // so streaming is asked for when the request really is a browser
+            // fetch, or is Claude's, which the relay does stream: a deep model
+            // thinking for minutes behind a body that only arrives whole was a
+            // dead spinner, no Stop, and past five minutes a failed request.
+            const wantStream = (!isDesktop || (cfg.provider === "claude" && canRelayStream))
               && (cfg.provider === "claude" || cfg.provider === "local" || cfg.provider === "openai");
             const { url, options } = buildApiRequest(cfg, msgs,
               { includeThoughts: wantThoughts, stream: wantStream, reference, context: msgContext, ...harnessOpts(),
@@ -28259,6 +28324,7 @@ ${SC.describeSelectionContext(anchor)}` : "");
                 // Set once the watchdog has fired: same model, reasoning low.
                 capReasoning: capThinking === "applied",
                 lowReasoning: !!house || quickEdit,
+                effort: $("cc-effort").value,
                 override: CHAT.composeOverride({ approach: dir?.approach, language: dir?.language }) });
             // One controller per ATTEMPT, so the watchdog can kill a stuck
             // attempt while the loop lives on to retry — a shared controller

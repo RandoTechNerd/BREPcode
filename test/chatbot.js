@@ -447,6 +447,9 @@ console.log("\nmodel ranking\n");
   const rank = (ids) => [...ids].sort((a, b) => modelScore(b) - modelScore(a));
   const beats = (a, b) => modelScore(a) > modelScore(b);
   check("a newer version outranks an older one", beats("claude-opus-5", "claude-opus-4-8"));
+  check("fable 5.2 outranks opus 5.5: a tier above, whatever the version numbers say",
+    beats("claude-fable-5-2", "claude-opus-5-5"));
+  check("...and its own predecessors", beats("claude-fable-5-2", "claude-fable-5-1") && beats("claude-fable-5-1", "claude-fable-5"));
   check("within a version, opus outranks sonnet", beats("claude-opus-5", "claude-sonnet-5"));
   check("and sonnet outranks haiku", beats("claude-sonnet-5", "claude-haiku-4-5"));
   check("a newer sonnet outranks an older opus", beats("claude-sonnet-5", "claude-opus-4-6"));
@@ -914,6 +917,92 @@ console.log("\nmodel ranking\n");
   check("claude requests stream with a 32k budget", body.stream === true && body.max_tokens === 32000);
   const req2 = buildApiRequest({ provider: "claude", model: "m", key: "k" }, [{ role: "user", text: "hi" }]);
   check("...and stream stays off unless asked", JSON.parse(req2.options.body).stream === undefined);
+}
+{
+  // THE CURRENT CLAUDE MODELS: adaptive thinking, an effort, and a thinking
+  // summary that has to be asked for. Checked against Anthropic's Fable 5.2
+  // migration guide on 2026-11-09. A budget_tokens or a disabled thinking is a
+  // 400 there, so neither may ever be sent.
+  const ask = (model, opts) => JSON.parse(buildApiRequest({ provider: "claude", model, key: "k" },
+    [{ role: "user", text: "a bracket" }], opts).options.body);
+  const fable = ask("claude-fable-5-2", { stream: true, effort: "high" });
+  check("fable 5.2: adaptive thinking, with the summary the waiting label shows",
+    fable.thinking?.type === "adaptive" && fable.thinking.display === "summarized", JSON.stringify(fable.thinking));
+  check("...never a token budget", !("budget_tokens" in (fable.thinking || {})));
+  check("...the chosen effort rides in output_config", fable.output_config?.effort === "high");
+  check("...a stream gets room for a long think and the reply", fable.max_tokens === 64000);
+  check("...no sampling parameters, which it refuses",
+    !("temperature" in fable) && !("top_p" in fable) && !("top_k" in fable));
+  check("...and no forced tool choice or prefill", !("tool_choice" in fable)
+    && fable.messages[fable.messages.length - 1].role === "user");
+  check("effort defaults to medium, the level meant for chatting",
+    ask("claude-fable-5-2").output_config.effort === "medium");
+  check("...and an unknown level is not passed on",
+    ask("claude-fable-5-2", { effort: "ludicrous" }).output_config.effort === "medium");
+  check("a quick edit of the model on screen asks for low",
+    ask("claude-fable-5-2", { effort: "high", lowReasoning: true }).output_config.effort === "low");
+  check("without a stream the ceiling stays where the relay can carry it",
+    ask("claude-fable-5-2").max_tokens === 32000);
+  for (const [m, adaptive, summary] of [
+    ["claude-fable-5-2", true, true], ["claude-mythos-5-2", true, true], ["claude-fable-5", true, true],
+    ["claude-opus-5-5", true, true], ["claude-sonnet-5-5", true, true], ["claude-haiku-5-5", true, true],
+    ["claude-opus-4-8", true, true], ["claude-opus-4-6", true, false], ["claude-sonnet-4-6", true, false],
+    ["claude-haiku-4-5", false, false], ["claude-haiku-4-5-20251001", false, false],
+    ["claude-sonnet-4-5", false, false], ["some-future-thing", false, false]]) {
+    const t = CB.claudeTraits(m);
+    check(`claudeTraits(${m})`, t.adaptive === adaptive && t.summary === summary, JSON.stringify(t));
+  }
+  const old = ask("claude-haiku-4-5", { effort: "high" });
+  check("an older model gets the request it always got", !("thinking" in old) && !("output_config" in old));
+  const older46 = ask("claude-opus-4-6");
+  check("4.6 takes adaptive thinking but is not sent a display it predates",
+    older46.thinking?.type === "adaptive" && !("display" in older46.thinking));
+
+  // a refusal is an answer, not an empty reply
+  const refused = { content: [], stop_reason: "refusal", stop_details: { type: "refusal", category: "cyber" } };
+  check("a declined request says it was declined, and by which check",
+    /declined/.test(emptyReplyReason("claude", refused)) && /cyber/.test(emptyReplyReason("claude", refused)));
+  check("...with or without a category",
+    /declined/.test(emptyReplyReason("claude", { content: [], stop_reason: "refusal" })));
+
+  // deep or fast follows the effort on the models that take one
+  check("fable at medium is a fast model", CB.isDeepModel("claude-fable-5-2", "medium") === false);
+  check("...and at high a deep one", CB.isDeepModel("claude-fable-5-2", "high") === true);
+  check("...by alias too, as Claude Code names it", CB.isDeepModel("fable", "high") === true);
+  check("sonnet is never deep", CB.isDeepModel("claude-sonnet-5-5", "high") === false);
+  const P2 = (ctx) => composeSystemParts({ context: ctx });
+  const told = P2({ text: "a cube", deepModel: true, effortModel: true });
+  check("a model with an effort setting is not also told to think less",
+    told.volatile.includes("DEEP MODEL") && !/THINK ON A BUDGET/.test(told.volatile));
+  check("...a reasoning model without one still is",
+    /THINK ON A BUDGET/.test(P2({ text: "a cube", deepModel: true }).volatile));
+
+  // the lookup that never read its answer
+  const pa = JSON.parse(CB.priorArtRequest({ provider: "claude", key: "k", model: "claude-fable-5-2", subject: "benchy", sites: ["printables.com"] }).options.body);
+  check("prior art: low effort and room to think before the answer",
+    pa.output_config?.effort === "low" && pa.max_tokens >= 4000, JSON.stringify({ e: pa.output_config, m: pa.max_tokens }));
+  const { readFileSync: rfp } = await import("node:fs");
+  const HTMLp = rfp(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("...and its reply is read with the provider named",
+    /CHAT\.parsePriorArt\(CHAT\.extractApiText\(cfg\.provider, await resp\.json\(\)\)/.test(HTMLp));
+  check("the fallback list names models that exist",
+    /claude: \["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"\]/.test(HTMLp));
+  check("the effort row shows for the Claude API as well as Claude Code",
+    /\$\("cc-effort-row"\)\.style\.display = cc \|\| aiProvider\.value === "claude" \? "" : "none";/.test(HTMLp));
+  check("...and its value reaches the request", /lowReasoning: !!house \|\| quickEdit,\s*\n\s*effort: \$\("cc-effort"\)\.value,/.test(HTMLp));
+  check("the desktop streams Claude through the relay",
+    /const wantStream = \(!isDesktop \|\| \(cfg\.provider === "claude" && canRelayStream\)\)/.test(HTMLp));
+}
+{
+  // a stream that ends in a refusal keeps the reason
+  const sse = [
+    'data: {"type":"message_start","message":{}}',
+    'data: {"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"type":"refusal","category":"bio"}}}',
+    'data: {"type":"message_stop"}', ""].join("\n");
+  const resp = { body: { getReader: () => { let sent = false; return { read: async () => sent ? { done: true } : (sent = true, { done: false, value: new TextEncoder().encode(sse) }) }; } } };
+  const json = await readClaudeStream(resp, () => {});
+  check("the stream reader keeps why a reply was declined",
+    json.stop_reason === "refusal" && json.stop_details?.category === "bio", JSON.stringify(json));
 }
 
 // ---- local (OpenAI-compatible) provider ------------------------------------

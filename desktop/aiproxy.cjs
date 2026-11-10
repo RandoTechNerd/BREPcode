@@ -20,8 +20,8 @@
 //   - HTTPS only, and only to an allowlisted set of AI hosts
 //   - method fixed to GET or POST, nothing else
 //   - only the headers an AI call actually needs, by name
-//   - the response comes back as text; no streaming, no redirects followed
-//     to anywhere off the allowlist
+//   - the response comes back as text, whole or (relayStream) in pieces; no
+//     redirects followed to anywhere off the allowlist
 
 const ALLOWED_HOSTS = new Set([
   "api.openai.com",
@@ -88,8 +88,66 @@ async function relay({ url, method, headers, body } = {}) {
   return { ok: resp.ok, status: resp.status, text: await resp.text() };
 }
 
+// The same request, streamed. A deep model can think for many minutes, and a
+// body that only arrives whole means nothing on screen, no way to stop it, and
+// (past the five minutes this process waits for response headers) a request
+// that fails outright. Same allowlists as relay(); the only new input is an id
+// the page uses to stop its own request.
+const live = new Map();                // id -> AbortController
+
+async function relayStream({ id, url, method, headers, body } = {}, send) {
+  const u = checkUrl(url);
+  const m = String(method || "GET").toUpperCase();
+  if (m !== "GET" && m !== "POST") throw new Error("method not allowed");
+  const key = String(id || "");
+  if (!/^[\w-]{1,40}$/.test(key) || live.has(key)) throw new Error("bad stream id");
+  const ctl = new AbortController();
+  live.set(key, ctl);
+  let resp;
+  try {
+    resp = await fetch(u.toString(), {
+      method: m,
+      headers: cleanHeaders(headers),
+      ...(m === "POST" && body != null ? { body: String(body) } : {}),
+      redirect: "error",
+      signal: ctl.signal,
+    });
+  } catch (err) {
+    live.delete(key);
+    throw err;
+  }
+  // The head goes back as the result; the body follows on its own.
+  (async () => {
+    const dec = new TextDecoder();
+    let error = null;
+    try {
+      for await (const chunk of resp.body) send(key, "chunk", dec.decode(chunk, { stream: true }));
+    } catch (err) {
+      error = ctl.signal.aborted ? "stopped" : String(err?.message || err);
+    } finally {
+      live.delete(key);
+      send(key, "end", error);
+    }
+  })();
+  return { ok: resp.ok, status: resp.status, contentType: resp.headers.get("content-type") || "" };
+}
+
+function stopStream(id) {
+  live.get(String(id || ""))?.abort();
+}
+
 function register() {
   const { ipcMain } = require("electron");
+  ipcMain.handle("ai:relayStream", async (e, req) => {
+    try {
+      return await relayStream(req || {}, (id, kind, data) => {
+        try { e.sender.send("ai-relay-stream", id, kind, data); } catch { /* window gone */ }
+      });
+    } catch (err) {
+      return { ok: false, status: 0, error: String(err?.message || err) };
+    }
+  });
+  ipcMain.on("ai:relayAbort", (_e, id) => stopStream(id));
   ipcMain.handle("ai:relay", async (_e, req) => {
     try {
       return await relay(req || {});
@@ -99,4 +157,4 @@ function register() {
   });
 }
 
-module.exports = { register, relay, checkUrl, cleanHeaders };
+module.exports = { register, relay, relayStream, stopStream, checkUrl, cleanHeaders };

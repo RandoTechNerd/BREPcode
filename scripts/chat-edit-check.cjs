@@ -32,6 +32,7 @@ const SRC = [
 // What the stand-in AI says, one reply per request, and what it was asked.
 const replies = [];
 const asked = [];
+const streamed = [];
 const claudeJson = (text) => JSON.stringify({
   id: "msg_test", type: "message", role: "assistant", model: "claude-test",
   content: [{ type: "text", text }], stop_reason: "end_turn",
@@ -51,6 +52,36 @@ app.whenReady().then(async () => {
     asked.push(body);
     const text = replies.shift() ?? "I only build models.";
     return { ok: true, status: 200, text: claudeJson(text) };
+  });
+  // Claude requests stream through the relay now. The stand-in answers those
+  // the same way, as real server-sent events cut into small pieces, so the
+  // stream reader and the Stop wiring are the real ones too.
+  const sse = (text) => [
+    { type: "message_start", message: { id: "msg_test", role: "assistant" } },
+    { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Reading the model on screen." } },
+    { type: "content_block_stop", index: 0 },
+    { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } },
+    ...(text.match(/[\s\S]{1,40}/g) || []).map((t) => ({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: t } })),
+    { type: "content_block_stop", index: 1 },
+    { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 10 } },
+    { type: "message_stop" },
+  ].map((ev) => `event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`).join("");
+  try { ipcMain.removeHandler("ai:relayStream"); } catch { /* not registered */ }
+  ipcMain.handle("ai:relayStream", async (e, req) => {
+    let body = {};
+    try { body = JSON.parse(req?.body || "{}"); } catch { /* not ours */ }
+    streamed.push(body);
+    asked.push(body);
+    const out = sse(replies.shift() ?? "I only build models.");
+    setTimeout(async () => {
+      for (let i = 0; i < out.length; i += 97) {
+        e.sender.send("ai-relay-stream", req.id, "chunk", out.slice(i, i + 97));
+        await wait(2);
+      }
+      e.sender.send("ai-relay-stream", req.id, "end", null);
+    }, 20);
+    return { ok: true, status: 200, contentType: "text/event-stream" };
   });
   shellApp.serveBundle();
   const win = shellApp.createWindow();
@@ -114,6 +145,9 @@ app.whenReady().then(async () => {
     const s1 = await ask("engrave a little star constellation along the rim please", 1);
     const sys = JSON.stringify(asked[0]?.system || "");
     check("the AI was asked (not the local rule engine)", asked.length === 1, `${asked.length} calls`);
+    check("...as a stream through the relay, with adaptive thinking and an effort",
+      streamed.length === 1 && streamed[0].stream === true && streamed[0].thinking?.type === "adaptive"
+      && ["low", "medium", "high"].includes(streamed[0].output_config?.effort), JSON.stringify({ n: streamed.length, t: streamed[0]?.thinking, o: streamed[0]?.output_config }));
     check("...and offered edit blocks, with a model on screen", /SMALL CHANGES AS EDITS/.test(sys));
     check("the edit blocks were applied to the code", (s1.code || "").includes("const WALL = 6;") && s1.code.includes("cube([70, 30, TALL])"), s1.code);
     check("...and nothing else changed", s1.code === SRC.replace("WALL = 4", "WALL = 6").replace(/40/g, "70"), s1.code);

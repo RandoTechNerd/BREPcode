@@ -2296,11 +2296,35 @@ The Material panel's filament is set to "${look}", which draws EVERY shape see-t
 // already knows, plus the reasoning models that reach us through
 // OpenAI-COMPATIBLE hosts, whose ids are namespaced and match none of
 // OpenAI's patterns (stealth/ox-alpha, deepseek/deepseek-r1, qwen/qwq-32b).
-export const isDeepModel = (m) => {
+//
+// Claude's deepest line (fable, mythos) is deep only when it is ASKED to be:
+// its thinking follows the effort setting, and measured through Claude Code a
+// simple part comes back in about six seconds at low or medium and takes
+// noticeably longer at high. So the effort decides which advice it gets.
+export const isDeepModel = (m, effort) => {
   const s = String(m || "");
   return /^(o\d|gpt-5|gpt-4\.5)/i.test(s)
-    || /(ox-alpha|deepseek-r|\br1\b|qwq|thinking|reasoner|magistral)/i.test(s);
+    || /(ox-alpha|deepseek-r|\br1\b|qwq|thinking|reasoner|magistral)/i.test(s)
+    || (/fable|mythos/i.test(s) && /^(high|xhigh|max)$/.test(String(effort || "")));
 };
+
+// What a Claude model's request may carry, read off its name because the name
+// is all we are given. Anything unrecognised gets nothing extra, which is the
+// request this app has always sent.
+//   adaptive: takes thinking {type: "adaptive"} and output_config.effort
+//   summary:  hides its thinking unless asked (display defaults to "omitted"),
+//             so the live "what it is thinking" line stays blank without this
+export function claudeTraits(model) {
+  const s = String(model || "").toLowerCase();
+  if (/fable|mythos/.test(s)) return { adaptive: true, summary: true };
+  const m = /(opus|sonnet|haiku)-(\d+)(?:[-.](\d+))?(?!\d)/.exec(s);
+  if (!m) return { adaptive: false, summary: false };
+  const ver = +m[2] + (m[3] ? +m[3] / 10 : 0);
+  if (m[1] === "opus") return { adaptive: ver >= 4.6, summary: ver >= 4.7 };
+  if (m[1] === "sonnet") return { adaptive: ver >= 4.6, summary: ver >= 5 };
+  return { adaptive: ver >= 5, summary: ver >= 5 };
+}
+const CLAUDE_EFFORTS = ["low", "medium", "high"];
 
 export const AUTO_SECTIONS = {
   // #speed and #deep are the same advice pointed in opposite directions, so
@@ -2339,7 +2363,15 @@ export function composeSystemParts(opts = {}) {
     for (const s of harnessSections(harnessText)) {
       const gate = s.tag && AUTO_SECTIONS[s.tag];
       if (!gate) keep.push(s.lines.join("\n"));
-      else if (gate(ctx)) extra.push(s.lines.join("\n"));
+      else if (gate(ctx)) {
+        // "Think on a budget" is for models whose thinking nothing else
+        // limits. Where the request sets the effort, that setting is the
+        // budget, and Fable 5.2 thinks as the effort says whatever the prompt
+        // asks: the line would only be read, not obeyed.
+        const lines = s.tag === "deep" && ctx.effortModel
+          ? s.lines.filter((l) => !/^THINK ON A BUDGET/.test(l)) : s.lines;
+        extra.push(lines.join("\n"));
+      }
     }
     harnessText = keep.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     if (extra.length) autoExtra = "\n\n" + extra.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -2622,6 +2654,7 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
     };
   }
   if (provider === "claude") {
+    const traits = claudeTraits(model);
     return {
       url: "https://api.anthropic.com/v1/messages",
       options: {
@@ -2634,14 +2667,29 @@ export function buildApiRequest({ provider, model, key, baseUrl }, messages, opt
         },
         body: JSON.stringify({
           model,
+          // The current models think adaptively and take an EFFORT, which is
+          // the one control over how long a reply takes. Medium is the level
+          // meant for interactive work; a quick edit of the model on screen
+          // (or a retry after the watchdog fired) asks for low. Their thinking
+          // also comes back hidden unless a summary is asked for, and the
+          // summary is what the waiting label shows.
+          ...(traits.adaptive ? {
+            thinking: { type: "adaptive", ...(traits.summary ? { display: "summarized" } : {}) },
+            output_config: {
+              effort: opts.capReasoning || opts.lowReasoning ? "low"
+                : CLAUDE_EFFORTS.includes(opts.effort) ? opts.effort : "medium",
+            },
+          } : {}),
           // History of this number: 2000 truncated real models mid-code; then
           // 8000 produced the "no response" bug — the Claude 5 family THINKS
           // by default and thinking spends the same budget, so a hard request
           // burned all 8000 on reasoning, stopped at max_tokens with zero text
           // blocks, and the user saw nothing at all. 32000 leaves room for a
           // long think AND the model; streaming (below) keeps it safe from
-          // request timeouts.
-          max_tokens: 32000,
+          // request timeouts. Thinking and the reply share this ceiling, and
+          // it is a cap, not a charge, so a stream gets the room high effort
+          // can use.
+          max_tokens: opts.stream && traits.adaptive ? 64000 : 32000,
           ...(opts.stream ? { stream: true } : {}),
           // Two system blocks with a cache breakpoint between them. The first
           // holds still all session and is marked cacheable; the second is the
@@ -2871,7 +2919,7 @@ export async function readClaudeStream(resp, onProgress) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   const blocks = [];
-  let stopReason = null, error = null, buf = "";
+  let stopReason = null, stopDetails = null, error = null, buf = "";
   const note = (phase, chars, text) => { try { onProgress?.({ phase, chars, text }); } catch { /* UI gone */ } };
   const handle = (data) => {
     let ev = null;
@@ -2892,6 +2940,7 @@ export async function readClaudeStream(resp, onProgress) {
       }
     } else if (ev.type === "message_delta") {
       stopReason = ev.delta?.stop_reason ?? stopReason;
+      stopDetails = ev.delta?.stop_details ?? stopDetails;
     } else if (ev.type === "error") {
       error = ev.error || { message: "stream error" };
     }
@@ -2907,7 +2956,8 @@ export async function readClaudeStream(resp, onProgress) {
       if (line.startsWith("data:")) handle(line.slice(5).trim());
     }
   }
-  return { content: blocks.filter(Boolean), stop_reason: stopReason, ...(error ? { error } : {}) };
+  return { content: blocks.filter(Boolean), stop_reason: stopReason,
+    ...(stopDetails ? { stop_details: stopDetails } : {}), ...(error ? { error } : {}) };
 }
 
 // What the request actually cost, for the log line.
@@ -2954,6 +3004,13 @@ export function usageNote(provider, json) {
 export function emptyReplyReason(provider, json) {
   if (json?.error) return apiErrorText(json.error);
   if (provider === "claude") {
+    // The newest models run safety classifiers that can decline a request
+    // outright: HTTP 200, no text, stop_reason "refusal". Retrying the same
+    // words gets the same answer, so say what happened and what does help.
+    if (json?.stop_reason === "refusal") {
+      const cat = json?.stop_details?.category;
+      return `The model declined this request${cat ? ` (its "${cat}" safety check)` : ""}. Rewording it, or picking another model in ⚙ for this one, usually gets it through.`;
+    }
     const thought = (json?.content ?? []).some((b) => b.type === "thinking");
     if (json?.stop_reason === "max_tokens") {
       return thought
@@ -3064,7 +3121,11 @@ export function modelScore(id) {
     const g = s.match(/gemma-(\d+)/);             // small open models trail their peers
     if (g && +g[1] <= 20) v += +g[1] * 10 - 15;
   }
-  if (/opus|fable|mythos|pro(?:$|[^a-z])/.test(s)) v += 8;
+  // fable and mythos sit a tier above opus, and their version numbers run
+  // behind it (fable 5.2 arrived after opus 5.5), so the tier has to outweigh
+  // a few tenths of a version.
+  if (/fable|mythos/.test(s)) v += 14;
+  else if (/opus|pro(?:$|[^a-z])/.test(s)) v += 8;
   else if (/sonnet|flash(?!-?lite)/.test(s)) v += 5;
   else if (/haiku|lite|nano|mini|gemma/.test(s)) v += 2;
   if (/preview|exp(?:$|[^a-z])/.test(s)) v -= 1;
@@ -3110,7 +3171,11 @@ export function priorArtRequest({ provider, key, model, subject, sites = [] }) {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 1200,
+          // A lookup, not a design: low effort where the model takes one. The
+          // ceiling covers thinking too, and a model that always thinks spent
+          // the old 1,200 before it wrote a word of the answer.
+          ...(claudeTraits(model).adaptive ? { output_config: { effort: "low" } } : {}),
+          max_tokens: 6000,
           tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
           messages: [{ role: "user", content: ask }],
         }),
