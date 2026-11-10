@@ -321,6 +321,7 @@ function helperBuild(h, json, data) {
 // (desktop/kernel.cjs): a multi-part model builds its parts on all of them at
 // once. nativePort is the first, which everything single-shot uses.
 const NATIVE_EXPECTED = PARAMS.get("native") === "1";
+let nativeNoEdges = false;           // this host's kernel cannot list edges
 let nativePort = null;
 let nativePorts = [];
 let nativeDown = !NATIVE_EXPECTED;   // nothing coming, or the host went away
@@ -587,9 +588,21 @@ self.onmessage = async ({ data, ports }) => {
   trace(`message: ${op} #${id}`);
   try {
     // compile's edge lookup (fillet/chamfer edges: "z", "top", ...): the
-    // partial history on the wasm Rust kernel, every solid's named edges with
-    // points along them. Never the native kernels: neither lists its edges.
+    // partial history, every solid's named edges with points along them. On
+    // the desktop's native Rust kernel when it can list them (it holds the
+    // model already), else the wasm one. NVIDIA's adapter never can.
     if (op === "edges") {
+      if (!nativeNoEdges && await nativeKernel()) {
+        try {
+          const r = await nativeCall({ op: "edges", json: data.json });
+          self.postMessage({ id, ok: true, solids: r.solids, native: true });
+          return;
+        } catch (e) {
+          // an addon built before it could, or a host that went away: the
+          // wasm kernel from here on. A refusal is the wasm kernel's to repeat.
+          if (/no-edge-listing|unknown op/.test(String(e?.message || e))) nativeNoEdges = true;
+        }
+      }
       const rust = await loadRust(data.rustWasmUrl);
       const out = await runEngine(data.json, { rust, manifold: loadManifold, edges: true });
       self.postMessage({ id, ok: true, solids: out.solids.map((s) => ({ name: s.name, faces: s.faces.map((f) => f.name), edges: s.edges ?? null })) });

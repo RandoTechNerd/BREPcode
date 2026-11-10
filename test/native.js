@@ -99,6 +99,29 @@ for (const [label, make] of Object.entries(CASES)) {
   check("stl_to_step_json matches", faces(x.step) === faces(y.step) && faces(y.step) === 6, `${faces(y.step)} faces`);
 }
 
+// The native kernel lists a solid's edges, as the wasm one does. Fillet and
+// chamfer pick their edges from that list; while only the wasm kernel had it,
+// every edge lookup on the desktop re-read an imported STEP in a second,
+// slower kernel (a 9 MB file: 12.8 s before a fillet that builds in under one).
+{
+  const json = await featureList(d.fillet({ r: 4, edges: "z" }, d.cube([40, 30, 20])));
+  const base = await featureList(d.cube([40, 30, 20]));
+  check("the native kernel hands out a solid's topology buffer", typeof native.solid_handle_to_buffer === "function");
+  const a = await runEngine(base, { rust: native, manifold: loadManifoldNode, edges: true });
+  const b = await runEngine(base, { rust: wasm, manifold: loadManifoldNode, edges: true });
+  const names = (out) => (out.solids[0].edges || []).map((e) => e.name).sort().join(",");
+  check("...a box has its twelve edges", a.solids[0].edges?.length === 12, `${a.solids[0].edges?.length}`);
+  check("...named exactly as the wasm kernel names them", names(a) === names(b) && names(a).length > 0);
+  check("...each with points along it", a.solids[0].edges.every((e) => Array.isArray(e.pts) && e.pts.length >= 2));
+  const built = await runEngine(json, { rust: native, manifold: loadManifoldNode });
+  check("a fillet picked from those names builds on the native kernel", built.lane === "exact" && built.solids[0].faces.length === 10, `${built.solids[0].faces.length} faces`);
+  const host = require("node:fs").readFileSync(new URL("../desktop/kernel-host.cjs", import.meta.url), "utf8");
+  const worker = require("node:fs").readFileSync(new URL("../viewer/kernel-worker.js", import.meta.url), "utf8");
+  check("the kernel host answers an edge lookup", /else if \(op === "edges"\) r = await edges\(data\);/.test(host));
+  check("...and the worker asks it before loading the wasm kernel",
+    /if \(!nativeNoEdges && await nativeKernel\(\)\) \{[\s\S]{0,200}nativeCall\(\{ op: "edges", json: data\.json \}\)/.test(worker));
+}
+
 if (fails) { console.log(`\n${fails} native kernel check(s) failed`); process.exit(1); }
 console.log("\nnative kernel: all checks passed");
 process.exit(0);   // the JS kernel keeps the event loop alive

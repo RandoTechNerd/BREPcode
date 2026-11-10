@@ -86,7 +86,15 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
       if (!fp) return false;
       const text = host.text();
       const ctx = context(fp, text);
-      if (!ctx || (!fp.outline && !ctx.radial)) {
+      if (!ctx) {
+        // not the face's fault: the code has no call this face maps back to
+        // (a shape made in a loop or a helper), or the model is mid-rebuild
+        host.setHint(host.featureMap()
+          ? `Press-pull can't tell which line of code made <code>${fp?.name ?? "that face"}</code> (a shape built in a loop or a helper). Use Extrude (E) on it instead.`
+          : "The model is still rebuilding: try the pull again in a moment.");
+        return false;
+      }
+      if (!fp.outline && !ctx.radial) {
         host.setHint(`Press-pull works on flat faces and a cylinder's round side; <code>${fp?.name ?? "that"}</code> is neither.`);
         return false;
       }
@@ -173,6 +181,9 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
       if (!mesh) return;
       const fp = facePick({ object: mesh, point: new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3()) }, THREE);
       if (!fp?.outline || !fp.normal) return;
+      // arrows only where a pull will be taken: they used to show on any flat
+      // face and then the press was refused, which reads as broken arrows
+      if (!context(fp, host.text())) return;
       const n = new THREE.Vector3(...fp.normal).normalize();
       const at = new THREE.Vector3(...F.facePlane(fp.outline).origin ?? fp.point);
       const c = new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3());

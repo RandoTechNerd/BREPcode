@@ -351,6 +351,12 @@ function estimateOne(root) {
     if (n.kind === "revolve") { tris += 2 * (n.pts?.length || 8) * 32; return; }
     if (n.kind === "import") {
       const text = IMPORTS.get(n.name);
+      // An exact import is STEP text, not facets: read once by the exact
+      // kernel (about a second per 4 MB, native) and kept. Counted as ASCII
+      // STL it looked like a mesh of 4,500 triangles per megabyte, which is
+      // how a big STEP ended up behind "Heavy model, press Build" after a
+      // one-edge fillet.
+      if (isStepText(text)) { tris += Math.max(50, Math.round(text.length / 2000)); return; }
       tris += text ? Math.max(50, Math.round(text.length / 220)) : 5000;   // ~220 chars per ascii facet
       return;
     }

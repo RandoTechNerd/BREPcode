@@ -118,6 +118,29 @@ pub fn face_names_handle(handle: u32) -> Result<String> {
     })
 }
 
+#[napi(object)]
+pub struct SolidBuffer {
+    pub data: Float64Array,
+    pub names_json: String,
+}
+
+/// A resident solid's whole topology as one flat buffer plus its face and
+/// edge names: what the wasm build calls solid_handle_to_buffer. The app reads
+/// a part's EDGES out of it (fillet and chamfer pick theirs by direction or
+/// height). Without it every edge lookup went to the wasm kernel in the
+/// viewer's worker, a second kernel that had to read an imported STEP all
+/// over again before it could say what its edges were.
+#[napi]
+pub fn solid_handle_to_buffer(handle: u32) -> Result<SolidBuffer> {
+    let (data, names_json) = on_kernel(move || {
+        let solid = kernel::registered_solid_clone(handle)?;
+        let (data, names) = kernel::encode_solid(&solid).map_err(|e| e.to_string())?;
+        let names_json = serde_json::to_string(&names).map_err(|e| e.to_string())?;
+        Ok((data, names_json))
+    })?;
+    Ok(SolidBuffer { data: data.into(), names_json })
+}
+
 #[napi]
 pub fn free_solid(handle: u32) -> Result<()> {
     on_kernel(move || {

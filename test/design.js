@@ -936,5 +936,49 @@ return difference(across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0), ...cuts);
   for (const [p, n, want] of cases) check(`timeline step named "${want}"`, editLabel(p, n) === want, editLabel(p, n));
 }
 
+// 2026-11-09, from one afternoon of use: dots left hanging after an edit, a
+// Browser that could not be moved, no visible Explode, press-pull arrows that
+// refused the press, and a preview that looked stuck on a big STEP.
+{
+  const html = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const shell = readFileSync(new URL("../viewer/design-shell.js", import.meta.url), "utf8");
+  const dialogs = readFileSync(new URL("../viewer/design/dialogs.js", import.meta.url), "utf8");
+  const pp = readFileSync(new URL("../viewer/design/presspull.js", import.meta.url), "utf8");
+
+  check("the STEP close map goes with ANY change to the code, not only typing",
+    /if \(closeMapFor != null && code\.value !== closeMapFor\) hideCloseMap\(\);/.test(html)
+    && /scene\.add\(closeMap\);\s*\n\s*closeMapFor = code\.value;/.test(html));
+  check("...and belongs to the close code once that is chosen",
+    /code\.value = r\.closeCode;\s*\n\s*closeMapFor = code\.value;/.test(html));
+
+  check("the Browser drags by its title", /sideHd\.addEventListener\("pointerdown"/.test(shell) && /placeSide\(sidePos\)/.test(shell));
+  check("...not when the press is on one of its buttons", /if \(e\.button !== 0 \|\| e\.target\.closest\("button"\)\) return;/.test(shell));
+  check("...is remembered, and a double-click sends it home",
+    /localStorage\.setItem\(SIDE_POS_KEY/.test(shell) && /sideHd\.addEventListener\("dblclick"/.test(shell) && /localStorage\.removeItem\(SIDE_POS_KEY\)/.test(shell));
+  check("...and the window column only makes room for it while it is on the left",
+    /const room = side && side\.left < W \* 0\.35 \? W - side\.right - 2 \* ZM : W;/.test(html));
+
+  check("Explode has a key", /explode: "X"/.test(shell));
+  check("...and is the last tool a narrow toolbar hides, not the first",
+    /const keep = tools\.filter\(\(t\) => t\.dataset\.tool === "explode"\);/.test(shell));
+
+  check("press-pull shows its arrows only where a pull is taken", /if \(!context\(fp, host\.text\(\)\)\) return;/.test(pp));
+  check("...and says why when the code has no line for the face", /Press-pull can't tell which line of code made/.test(pp));
+
+  check("a slow preview counts the seconds instead of sitting still", /Building the preview… \$\{s\} s/.test(dialogs) && /clearInterval\(tick\)/.test(dialogs));
+  check("a Design edit held behind the Build button does not leave its dialog waiting",
+    /buildAfterToolEdit\(\)\.then\(\(ran\) => \{ if \(ran === false\) resolve\(\{ ok: true, failure: null, held: true \}\); \}\);/.test(html)
+    && /holdHeavyBuild\(est\);\s*\n\s*return false;/.test(html));
+
+  // an exact STEP is not a mesh of its own text
+  const dslMod = await import("../src/dsl.js");
+  const stepText = "ISO-10303-21;\nHEADER;\n" + "#1=CARTESIAN_POINT('',(0.,0.,0.));\n".repeat(60000);
+  dslMod.registerImport("big-estimate.step", stepText);
+  const est = dslMod.estimateBuild(dslMod.fillet({ r: 1, edges: "top" }, dslMod.importedSolid("big-estimate.step")));
+  check("a 2 MB STEP is not estimated as a nine-thousand-triangle mesh", est.tris < 3000, `${est.tris} triangles, ${est.sec.toFixed(1)} s`);
+
+  check("glitter has a needle-sharp flash as well as its glow", /THE TWINKLE/.test(html) && /pow\(h, sharp \* 9\.0\)/.test(html));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

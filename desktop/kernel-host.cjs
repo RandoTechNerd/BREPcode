@@ -82,6 +82,20 @@ async function build(msg, post) {
   return { ok: true, lane: out.lane, solids, stats: { ...out.stats, native: true, kernel: used, nvidiaRefused, nativeMs: Math.round(ms) } };
 }
 
+// compile's edge lookup (fillet / chamfer edges: "z", "top", ...): every
+// solid's named edges with points along them, on the kernel that already
+// holds the model. It used to be the worker's wasm kernel only, which for an
+// imported STEP meant reading the whole file a second time, in the slower
+// kernel, before the first fillet could even pick its edges (a 9 MB file:
+// 12.8 s for a fillet that then builds in under one).
+async function edges(msg) {
+  if (!kernel) throw new Error(`native kernel unavailable: ${native.load.error}`);
+  if (typeof kernel.solid_handle_to_buffer !== "function") throw new Error("no-edge-listing");
+  const { runEngine } = await engineP;
+  const out = await runEngine(msg.json, { rust: kernel, manifold: loadManifold, tolerance: msg.tolerance ?? 0.05, edges: true });
+  return { ok: true, solids: out.solids.map((s) => ({ name: s.name, faces: s.faces.map((f) => f.name), edges: s.edges ?? null })) };
+}
+
 // No stl2step here any more: "Open as an exact solid" runs in throwaway
 // wasm workers (viewer/stl2step-worker.js), because a reconstruction that
 // hangs here would hold this one build queue for every model.
@@ -94,6 +108,7 @@ function serve(port) {
         if (!kernel && !(op === "build" && nvidia) && op !== "info") throw new Error(`native kernel unavailable: ${native.load.error}`);
         let r;
         if (op === "build") r = await build(data, (m) => port.postMessage(m));
+        else if (op === "edges") r = await edges(data);
         else if (op === "info") r = { ok: true, info: kernel?.info, nvidia: nvidia ? nvidia.info : null };
         else throw new Error(`unknown op "${op}"`);
         port.postMessage({ id, ...r });

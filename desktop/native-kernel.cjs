@@ -48,6 +48,14 @@ function wrap(n) {
       };
     },
     face_names_handle: (handle) => n.faceNamesHandle(handle),
+    // a solid's topology and names, in the wasm kernel's own shape (engine.js
+    // solidEdges reads edges out of it); absent from an addon built before it
+    ...(typeof n.solidHandleToBuffer === "function" ? {
+      solid_handle_to_buffer(handle) {
+        const b = n.solidHandleToBuffer(handle);
+        return { names_json: () => b.namesJson, take_data: () => b.data };
+      },
+    } : {}),
     free_solid: (handle) => n.freeSolid(handle),
     registered_solid_count: () => n.registeredSolidCount(),
     clear_history_cache_json: () => n.clearHistoryCache(),

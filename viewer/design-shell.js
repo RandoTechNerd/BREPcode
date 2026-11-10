@@ -69,7 +69,7 @@ const GIZMO_MODE = { move: "translate", rotate: "rotate", scale: "scale" };
 // shown in each button's tooltip. Close to Fusion's where Code mode's own keys
 // allow: S sketch, E extrude, Q press-pull, F fillet, H hole, M move.
 const KEYS = { select: "V", move: "M", rotate: "R", scale: "Shift+S", sketch: "S", extrude: "E", hole: "H",
-  presspull: "Q", fillet: "F", chamfer: "Shift+F", combine: "B" };
+  presspull: "Q", fillet: "F", chamfer: "Shift+F", combine: "B", explode: "X" };
 // Press and hold a button for these: straight into a sketch tool, or a
 // dialog opened on that choice.
 const SUBS = {
@@ -370,6 +370,58 @@ export function initDesignShell(host) {
     if (host.isStarter?.()) { host.clearModel(); host.setHint?.("Empty plate. Sketch (S), drop an STL or a STEP, or pick from the catalog."); return; }
     confirmClear();
   });
+
+  // The Browser moves like any other window: drag it by its title, and it
+  // stays where it was put (double-click the title to send it home). It was
+  // the one panel pinned to the top left, over whatever part of the model
+  // happened to be there. Inline left/top win over the stylesheet's home spot;
+  // the height follows so the tree still ends above the timeline.
+  const SIDE_POS_KEY = "brepcode-dz-browser-pos";
+  const placeSide = (pos) => {
+    if (!pos) { for (const k of ["left", "top", "maxHeight"]) side.style[k] = ""; return; }
+    const x = Math.max(0, Math.min(innerWidth - 80, pos.x)), y = Math.max(0, Math.min(innerHeight - 40, pos.y));
+    side.style.left = `${x}px`;
+    side.style.top = `${y}px`;
+    side.style.maxHeight = `${Math.max(120, innerHeight - y - 96)}px`;
+  };
+  let sidePos = null;
+  try { sidePos = JSON.parse(localStorage.getItem(SIDE_POS_KEY)); } catch { /* starts at home */ }
+  if (sidePos && Number.isFinite(sidePos.x) && Number.isFinite(sidePos.y)) placeSide(sidePos); else sidePos = null;
+  const sideHd = side.querySelector("h3");
+  sideHd.style.cursor = "move";
+  sideHd.title = "Drag to move the browser (double-click to put it back)";
+  sideHd.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    e.preventDefault();
+    const r = side.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    let moved = false;
+    sideHd.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      // a click that wobbles a pixel is not a drag
+      if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+      moved = true;
+      sidePos = { x: ev.clientX - dx, y: ev.clientY - dy };
+      placeSide(sidePos);
+    };
+    const up = () => {
+      sideHd.removeEventListener("pointermove", move);
+      if (!moved) return;
+      try { localStorage.setItem(SIDE_POS_KEY, JSON.stringify(sidePos)); } catch { /* not remembered */ }
+      queueFit();                     // the windows beside it re-measure
+    };
+    sideHd.addEventListener("pointermove", move);
+    sideHd.addEventListener("pointerup", up, { once: true });
+    sideHd.addEventListener("pointercancel", up, { once: true });
+  });
+  sideHd.addEventListener("dblclick", (e) => {
+    if (e.target.closest("button") || !sidePos) return;
+    sidePos = null;
+    placeSide(null);
+    try { localStorage.removeItem(SIDE_POS_KEY); } catch { /* nothing kept */ }
+    queueFit();
+  });
+  // a smaller window must not strand it off screen
+  addEventListener("resize", () => { if (sidePos) placeSide(sidePos); });
   function confirmClear() {
     document.getElementById("dz-confirm")?.remove();
     const lines = host.text().trim().split("\n").length;
@@ -496,7 +548,14 @@ export function initDesignShell(host) {
     const groups = [...bar.querySelectorAll(".dz-g:not(.dz-hist)")];
     const queue = phone.matches
       ? [...groups[0].querySelectorAll(".dz-t")].slice(1).reverse()
-      : [groups[groups.length - 1], ...groups.slice(1, -1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse()];
+      // from the far end, one tool at a time. Explode goes last of all: it
+      // sat at the very end of the last group, so it was the first thing a
+      // narrow bar hid, and "I don't see a way to do exploded" followed.
+      : (() => {
+        const tools = groups.slice(1).flatMap((g) => [...g.querySelectorAll(".dz-t")]).reverse();
+        const keep = tools.filter((t) => t.dataset.tool === "explode");
+        return [...tools.filter((t) => !keep.includes(t)), ...keep];
+      })();
     for (const el of queue) {
       if (!overflows()) break;
       el.classList.add("dz-over");

@@ -749,7 +749,18 @@ export function openDialog(id, ctx) {
     setStatus("busy", "Building the preview…");
     last = { text: r.next, ok: null };
     render();
-    let res = await host.preview(r.next);
+    // A slow build says so, and for how long. "Building the preview…" with
+    // nothing moving read as stuck on a big imported STEP, where the first
+    // build can take a while. Only the status line is touched: a redraw every
+    // second would take the cursor out of the number being typed.
+    const t0 = Date.now();
+    const tick = setInterval(() => {
+      const st = box.querySelector(".st.busy");
+      const s = Math.round((Date.now() - t0) / 1000);
+      if (st && !closed && mine === seq && s >= 3) st.textContent = `Building the preview… ${s} s${s >= 20 ? " (a big model: it is still working; Cancel stops waiting)" : ""}`;
+    }, 1000);
+    let res;
+    try { res = await host.preview(r.next); } finally { clearInterval(tick); }
     if (closed || mine !== seq) return;
     last = { text: r.next, from: r.next, ok: res.ok, failure: res.failure };
     // refused: the writer's other ways of saying the same thing, in order
