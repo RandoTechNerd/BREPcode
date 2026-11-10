@@ -4983,6 +4983,29 @@
             <input type="range" id="cutter-size" min="30" max="160" value="70" />
             <output id="cutter-size-o">70</output>
           </div>
+          <!-- The cutter itself: what a cutter designer lets you choose. Kept
+               to the choices that change the print; each has a default that
+               makes a good cutter untouched. -->
+          <div class="mat-row" title="How tall the blade stands. 15 mm suits rolled dough; go taller for thick dough or fondant."><span>Blade height</span>
+            <input type="range" id="cutter-height" min="8" max="30" step="0.5" value="15" />
+            <output id="cutter-height-o">15 mm</output>
+          </div>
+          <div class="mat-row" title="How thick the blade wall is. 0.9 mm is two passes of a 0.4 nozzle; thicker is stiffer."><span>Blade wall</span>
+            <input type="range" id="cutter-wall" min="0.8" max="2" step="0.1" value="0.9" />
+            <output id="cutter-wall-o">0.9 mm</output>
+          </div>
+          <label class="mat-row" title="Thin the last 2 mm of the blade to one line: a cleaner cut, a more fragile edge"><span>Sharp edge</span>
+            <input type="checkbox" id="cutter-sharp" />
+          </label>
+          <label class="mat-row" title="The rim you press on"><span>Handle</span>
+            <select id="cutter-handle"></select>
+          </label>
+          <label class="mat-row" title="Bars across the opening: they stiffen a big cutter and give you something to lift it by. Not used with a stamp, which has to drop through."><span>Centre bars</span>
+            <select id="cutter-bars"></select>
+          </label>
+          <label class="mat-row" title="Flip the shape left to right. A stamp presses its picture backwards, so lettering wants this on."><span>Mirror</span>
+            <input type="checkbox" id="cutter-mirror" />
+          </label>
           <div id="cutter-kinds"></div>
         </div>
         <div id="cutter-stat"></div>
@@ -25110,10 +25133,54 @@ let SIMPLIFY_TARGET = 10000;
         return Math.round(Math.max(hi - lo, hi2 - lo2));
       };
 
+      // The cutter's own choices (blade, handle, bars, mirror), remembered
+      // between visits. Every way of making a kit goes through emit(), so an
+      // outline already on the plate gets them as well as a searched icon.
+      const CUTTER_KEY = "brepcode-cutter-opts";
+      const cutterPrefs = (() => { try { return JSON.parse(localStorage.getItem(CUTTER_KEY)) || {}; } catch { return {}; } })();
+      const cutterExtras = () => ({
+        height: +$("cutter-height").value, wall: +$("cutter-wall").value, sharp: $("cutter-sharp").checked,
+        handle: $("cutter-handle").value || "standard", bars: +$("cutter-bars").value || 0, mirror: $("cutter-mirror").checked,
+      });
+      const paintCutterOpts = () => {
+        $("cutter-height-o").textContent = `${+$("cutter-height").value} mm`;
+        $("cutter-wall-o").textContent = `${(+$("cutter-wall").value).toFixed(1)} mm`;
+      };
+      let cutterOptsFilled = false;         // the remembered choices are applied once, not over what was just set
+      async function fillCutterOpts() {
+        if (cutterOptsFilled) return;
+        const { HANDLES, BARS } = await getCK();
+        cutterOptsFilled = true;
+        const fill = (sel, items) => {
+          if (sel.options.length) return;
+          for (const it of items) {
+            const o = document.createElement("option");
+            o.value = String(it.id);
+            o.textContent = it.blurb ? `${it.label}: ${it.blurb}` : it.label;
+            sel.appendChild(o);
+          }
+        };
+        fill($("cutter-handle"), HANDLES);
+        fill($("cutter-bars"), BARS);
+        if (Number.isFinite(+cutterPrefs.height)) $("cutter-height").value = cutterPrefs.height;
+        if (Number.isFinite(+cutterPrefs.wall)) $("cutter-wall").value = cutterPrefs.wall;
+        $("cutter-sharp").checked = !!cutterPrefs.sharp;
+        $("cutter-mirror").checked = !!cutterPrefs.mirror;
+        if (HANDLES.some((h) => h.id === cutterPrefs.handle)) $("cutter-handle").value = cutterPrefs.handle;
+        if (BARS.some((b) => b.id === +cutterPrefs.bars)) $("cutter-bars").value = String(+cutterPrefs.bars);
+        paintCutterOpts();
+      }
+      for (const id of ["cutter-height", "cutter-wall", "cutter-sharp", "cutter-handle", "cutter-bars", "cutter-mirror"]) {
+        $(id).addEventListener("input", () => {
+          paintCutterOpts();
+          try { localStorage.setItem(CUTTER_KEY, JSON.stringify(cutterExtras())); } catch { /* a preference only */ }
+        });
+      }
       async function emit(kind, loops, extra = {}) {
         const { makeKit } = await getCK();
         try {
-          applyGeneratedCode(makeKit(kind, loops, extra));
+          await fillCutterOpts();
+          applyGeneratedCode(makeKit(kind, loops, { ...cutterExtras(), ...extra }));
           toggleCard(panel, openBtn, true);
         } catch (err) {
           // A refused outline is the interesting failure — holes with nothing
@@ -25266,6 +25333,7 @@ let SIMPLIFY_TARGET = 10000;
 
       async function fillKinds() {
         const { KINDS } = await getCK();
+        await fillCutterOpts();
         const box = $("cutter-kinds");
         box.textContent = "";
         for (const k of KINDS) {

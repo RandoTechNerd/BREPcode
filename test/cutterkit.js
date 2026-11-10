@@ -401,6 +401,47 @@ console.log("\nthe Toolbox entry is wired to things that exist\n");
     /await import\("\.\/cutterkit\.js"\)/.test(block) && !/^import .*cutterkit/m.test(HTML));
 }
 
+console.log("\nthe choices a cutter designer offers\n");
+{
+  const { HANDLES, BARS, mirrorLoops } = await import("../viewer/cutterkit.js");
+  const one = [{ hole: false, points: star(5, 30, 14) }];
+  const dims = async (opts) => {
+    const stl = toSTL(await build(fromOpenSCAD(cutterScad(one, { size: 70, ...opts }))), "t");
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    const mm = (k) => [Math.min(...v.map((p) => p[k])), Math.max(...v.map((p) => p[k]))];
+    return { x: mm(0), z: mm(2), solids: (stl.match(/^solid /gm) || []).length, facets: v.length / 3 };
+  };
+  const plain = await dims({});
+  check("blade height is a dial", Math.abs((await dims({ height: 22 })).z[1] - 22) < 0.01);
+  check("the wall never goes under the nozzle floor, whatever the dial says", /WALL = 0\.8;/.test(cutterScad(one, { wall: 0.3 })));
+  check("handles: standard, wide, comfort, none", HANDLES.map((h) => h.id).join() === "standard,wide,comfort,none");
+  const wide = await dims({ handle: "wide" }), none = await dims({ handle: "none" }), comfort = await dims({ handle: "comfort" });
+  check("...wide reaches at least 4 mm further out (more at a point, where the rim mitres)", wide.x[1] - plain.x[1] >= 4, `${(wide.x[1] - plain.x[1]).toFixed(2)}`);
+  check("...none is the bare blade", none.x[1] < plain.x[1] - 4 && none.solids === 1, `${none.x[1].toFixed(1)} against ${plain.x[1].toFixed(1)}`);
+  check("...comfort adds a second tier on top, still one body", comfort.z[1] > plain.z[1] + 1 && comfort.solids === 1, `z to ${comfort.z[1]}, ${comfort.solids} solid(s)`);
+  const sharp = await dims({ sharp: true });
+  check("a sharp edge is still one body, the same size outside", sharp.solids === 1 && Math.abs(sharp.x[1] - plain.x[1]) < 0.01 && sharp.facets > plain.facets);
+  check("...thinned to one line over the last of the blade", /EDGE = 0\.45;/.test(cutterScad(one, { sharp: true })) && /EDGE_H = 2;/.test(cutterScad(one, { sharp: true })));
+  check("centre bars: off, one, or a cross", BARS.map((b) => b.id).join() === "0,1,2");
+  const bar = await dims({ bars: 1 }), cross = await dims({ bars: 2 });
+  check("...bars stay inside the outline and make it no bigger", bar.solids === 1 && cross.solids === 1 && Math.abs(cross.x[1] - plain.x[1]) < 0.01);
+  check("...a cross is more than a bar is more than none", cross.facets > bar.facets && bar.facets > plain.facets, `${plain.facets} / ${bar.facets} / ${cross.facets}`);
+  check("...and a stamp, which drops through the opening, never gets them", !/bars\(/.test(stampScad(one, { size: 70, bars: 2 })));
+  // mirror: an L, so left and right are different
+  const ell = [{ hole: false, points: [[0, 0], [30, 0], [30, 8], [8, 8], [8, 40], [0, 40]] }];
+  const m = mirrorLoops(ell)[0].points;
+  check("mirror flips left to right", Math.min(...m.map((p) => p[0])) === -30 && Math.max(...m.map((p) => p[0])) === 0);
+  const area = (p) => p.reduce((a, q, i) => a + q[0] * p[(i + 1) % p.length][1] - p[(i + 1) % p.length][0] * q[1], 0);
+  check("...and keeps each loop winding the way it did", Math.sign(area(m)) === Math.sign(area(ell[0].points)));
+  check("...in the code a mirrored cutter writes", /\[-30, ?0\]/.test(cutterScad(ell, { size: 40, mirror: true, tolerance: 0 })));
+  check("everything at once still builds as one body", (await dims({ sharp: true, handle: "comfort", bars: 2, mirror: true, height: 20, wall: 1.2 })).solids === 1);
+
+  const H = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("the card has the controls", ["cutter-height", "cutter-wall", "cutter-sharp", "cutter-handle", "cutter-bars", "cutter-mirror"].every((id) => H.includes(`id="${id}"`)));
+  check("...remembered choices are applied once, never over what was just set", /if (cutterOptsFilled) return;/.test(H));
+  check("...and every way of making a kit uses them", /makeKit\(kind, loops, \{ \.\.\.cutterExtras\(\), \.\.\.extra \}\)/.test(H));
+}
+
 console.log("\nand it builds — through the real kernel\n");
 {
   const src = cutterScad(LOOPS, { size: 70 });

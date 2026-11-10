@@ -25,7 +25,39 @@ export const DEFAULTS = {
   sheet: 1.2,        // stencil sheet thickness
   clearance: 0.35,   // bayonet fit, per side
   tolerance: 0.25,   // how far a simplified outline may stray, in mm — see below
+  // ---- the choices a cutter designer offers (the Toolbox card's controls) ----
+  sharp: false,      // thin the cutting edge: a cleaner cut, a more fragile blade
+  edge: 0.45,        // ...to this, one extrusion line wide
+  edgeHeight: 2,     // ...over the last 2 mm
+  handle: "standard", // the rim you press on: standard | wide | comfort | none
+  bars: 0,           // centre bars across the opening: 0, 1 (one bar) or 2 (a cross)
+  barWidth: 4,
+  mirror: false,     // flip left to right (a stamp presses its picture backwards)
 };
+
+// The handles on offer. A cutter is pressed with the flat of the hand, so the
+// rim is most of how it feels: standard is the classic 6 mm lip, wide spreads
+// the push over more palm for stiff dough, comfort adds a second, narrower
+// tier on top so the edge under your hand is stepped rather than square, and
+// none leaves the bare blade (for a cutter that nests inside another).
+export const HANDLES = [
+  { id: "standard", label: "Standard", blurb: "a 6 mm rim" },
+  { id: "wide", label: "Wide", blurb: "a 10 mm rim for stiff dough" },
+  { id: "comfort", label: "Comfort", blurb: "a stepped rim, easier on the hand" },
+  { id: "none", label: "None", blurb: "the bare blade" },
+];
+export const BARS = [
+  { id: 0, label: "Off" },
+  { id: 1, label: "One bar" },
+  { id: 2, label: "Cross" },
+];
+
+// Left to right, as in a mirror. The points are reversed as well so each loop
+// still winds the way it did: a mirrored outline with its winding flipped
+// turns holes into solids in anything that reads the winding.
+export function mirrorLoops(loops) {
+  return loops.map((l) => ({ ...l, points: l.points.map(([x, y]) => [x === 0 ? 0 : -x, y]).reverse() }));
+}
 
 const num = (n) => {
   const v = +n;
@@ -137,46 +169,99 @@ function loopVars(loops, tol) {
 // The blade: an outline offset outward and inward, the gap between them being
 // the wall. Every loop gets its own ring — dropping one is deleting part of the
 // model, which is the failure this whole file exists to avoid.
-function bladeModule(o) {
-  return `module blade(pts) {
+function bladeModule(opts = {}) {
+  const o = { ...DEFAULTS, ...opts };
+  // A sharp edge: the last EDGE_H of the blade, at the end away from the rim,
+  // is one extrusion line wide. It overlaps the full wall by 0.4 so the two
+  // are one body rather than two stacked on a shared face.
+  const blade = o.sharp
+    ? `module blade(pts) {
+  translate([0, 0, EDGE_H - 0.4]) linear_extrude(H - EDGE_H + 0.4) difference() {
+    offset(delta = WALL/2) polygon(pts);
+    offset(delta = -WALL/2) polygon(pts);
+  }
+  // the cutting edge, thinned from the OUTSIDE so the inside stays the outline
+  linear_extrude(EDGE_H) difference() {
+    offset(delta = EDGE - WALL/2) polygon(pts);
+    offset(delta = -WALL/2) polygon(pts);
+  }
+}`
+    : `module blade(pts) {
   linear_extrude(H) difference() {
     offset(delta = WALL/2) polygon(pts);
     offset(delta = -WALL/2) polygon(pts);
   }
-}
-module flange(pts) {
+}`;
+  const flange = o.handle === "none"
+    ? `module flange(pts) { }   // no rim: the bare blade`
+    : `module flange(pts) {
   // the rim sinks BITE into the blade rather than resting on it: two surfaces
   // in one plane is a hole in the mesh
   translate([0, 0, H - BITE - RIM_H]) linear_extrude(RIM_H + BITE) difference() {
     offset(delta = RIM) polygon(pts);
     offset(delta = -WALL/2) polygon(pts);
-  }
+  }${o.handle === "comfort" ? `
+  // the comfort tier: a narrower step on top, sunk into the rim the same way
+  translate([0, 0, H - BITE]) linear_extrude(RIM_H * 0.6 + BITE) difference() {
+    offset(delta = RIM * 0.55) polygon(pts);
+    offset(delta = -WALL/2) polygon(pts);
+  }` : ""}
 }`;
+  // Centre bars: strips across the opening at the rim's height, cut to the
+  // inside of the outline. They stop a big cutter flexing and give the fingers
+  // something to lift it by. BITE into the wall, like the rim.
+  const bars = o.bars > 0
+    ? `
+module bars(pts) {
+  translate([0, 0, H - BITE - RIM_H]) linear_extrude(RIM_H + BITE) intersection() {
+    offset(delta = WALL/2) polygon(pts);
+    union() {
+      square([SPAN * 2, BAR_W], center = true);${o.bars > 1 ? "\n      square([BAR_W, SPAN * 2], center = true);" : ""}
+    }
+  }
+}`
+    : "";
+  return blade + "\n" + flange + bars;
 }
 
 function header(opts) {
   const o = { ...DEFAULTS, ...opts };
+  // the wall never goes under the nozzle floor, whatever a dial says
+  o.wall = Math.max(0.8, +o.wall || DEFAULTS.wall);
+  o.height = Math.max(6, +o.height || DEFAULTS.height);
+  if (!HANDLES.some((h) => h.id === o.handle)) o.handle = DEFAULTS.handle;
+  if (o.handle === "wide" && !(opts && "rim" in opts)) o.rim = 10;
+  o.bars = [0, 1, 2].includes(+o.bars) ? +o.bars : 0;
   return { o, text: `$fn = 48;
 H = ${num(o.height)};        // blade height
 WALL = ${num(o.wall)};       // blade thickness — 0.8 is the floor at a 0.4 nozzle
 RIM = ${num(o.rim)};         // the flange you press on
 RIM_H = ${num(o.rimHeight)};
 BITE = ${num(o.bite)};       // how far the rim sinks INTO the blade
-` };
+`
+    + (o.sharp ? `EDGE = ${num(Math.min(o.edge, o.wall))};      // the cutting edge, one line wide
+EDGE_H = ${num(o.edgeHeight)};      // ...over the last of the blade
+` : "")
+    + (o.bars ? `BAR_W = ${num(o.barWidth)};       // centre bars across the opening
+SPAN = ${num(o.size)};       // long enough to cross it
+` : "") };
 }
 
 // ---------------------------------------------------------------- 1. cutter
 export function cutterScad(loops, opts = {}) {
-  const { text } = header(opts);
-  const { lines, nSolid } = loopVars(loops, opts.tolerance);
-  const calls = Array.from({ length: nSolid }, (_, i) => `blade(o${i}); flange(o${i});`);
-  return `// Cookie cutter\n${text}\n${lines.join("\n")}\n\n${bladeModule()}\n\n${calls.join("\n")}\n`;
+  // the bars have to reach across whatever came in, sized or not
+  let span = 0;
+  for (const l of loops) for (const [x, y] of l.points) span = Math.max(span, Math.abs(x), Math.abs(y));
+  const { o, text } = header({ ...opts, size: Math.max(+opts.size || 0, span * 2, 10) });
+  const { lines, nSolid } = loopVars(o.mirror ? mirrorLoops(loops) : loops, opts.tolerance);
+  const calls = Array.from({ length: nSolid }, (_, i) => `blade(o${i}); flange(o${i});${o.bars ? ` bars(o${i});` : ""}`);
+  return `// Cookie cutter\n${text}\n${lines.join("\n")}\n\n${bladeModule(o)}\n\n${calls.join("\n")}\n`;
 }
 
 // ------------------------------------------------- 2. cutter + stamp + knob
 export function stampScad(loops, opts = {}) {
-  const { o, text } = header(opts);
-  const { lines, nSolid, nHoles } = loopVars(loops, opts.tolerance);
+  const { o, text } = header({ ...opts, bars: 0 });   // a stamp drops through the opening: no bars across it
+  const { lines, nSolid, nHoles } = loopVars(o.mirror ? mirrorLoops(loops) : loops, opts.tolerance);
   const blades = Array.from({ length: nSolid }, (_, i) => `blade(o${i}); flange(o${i});`);
   // The stamp face: the outline shrunk so it drops inside the blade, with the
   // holes raised as the detail that presses into the dough.
@@ -193,7 +278,7 @@ POST = 6; LUG = 2.2; LUGH = 2.4; BOSS_R = 11; BOSS_H = 14;
 
 ${lines.join("\n")}
 
-${bladeModule()}
+${bladeModule(o)}
 
 // ---- the cutter ----
 ${blades.join("\n")}
