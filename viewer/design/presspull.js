@@ -18,7 +18,7 @@ import * as F from "./features.js";
 import { facePick } from "./dialogs.js";
 import { worldToPlane, planeFrame } from "../../src/dsl.js";
 import { findResizeTarget } from "../assist.js";
-import { makeSolidArrow } from "../handle-dots.js";
+import { makeSolidArrow, worldPerPixel } from "../handle-dots.js";
 
 const BOX = new Set(["cube", "cuboid"]);
 
@@ -189,9 +189,7 @@ export function createPressPull({ host, THREE, scene, camera, orbit }) {
       const c = new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3());
       const p = c.clone().sub(n.clone().multiplyScalar(c.clone().sub(at).dot(n)));
       // ~50 px long wherever the face is
-      const depth = -p.clone().applyMatrix4(camera.matrixWorldInverse).z;
-      const h = host.renderer.domElement.clientHeight || 600;
-      const wpp = (2 * Math.max(depth, 1e-6) * Math.tan(((camera.fov ?? 45) * Math.PI) / 360)) / (camera.zoom || 1) / h;
+      const wpp = worldPerPixel(THREE, camera, host.renderer.domElement, p);
       for (const [d, col] of [[n, 0x3ddc97], [n.clone().negate(), 0xff7a5c]]) {
         const a = makeSolidArrow(THREE, d, { gap: wpp * 8, shaft: wpp * 34, head: wpp * 16, r: wpp * 2, headR: wpp * 7, sleeveR: wpp * 11, color: col, hitMat: sleeveMat });
         a.position.copy(p);

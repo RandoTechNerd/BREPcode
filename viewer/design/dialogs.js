@@ -9,7 +9,8 @@
 // says why, in red, here and in the timeline, and OK waits for a good one.
 
 import * as F from "./features.js";
-import { worldToPlane } from "../../src/dsl.js";
+import { worldToPlane, planeFrame } from "../../src/dsl.js";
+import { makeSolidArrow, worldPerPixel } from "../handle-dots.js";
 import { SCREWS, INSERTS, BEARINGS } from "../../src/parts.js";
 import { dragSpanFor } from "../assist.js";
 
@@ -123,7 +124,7 @@ export function nearestEdge(edges, point, meshes) {
 const SPECS = {
   extrude: {
     title: "Extrude",
-    help: "Pick a flat face; it is pushed out (or cut in) as its own outline. Up to face: then click the face it should stop at.",
+    help: "Pick a flat face; it is pushed out (or cut in) as its own outline. Drag the arrow on the face to set the distance (past the face is a cut). Up to face: then click the face it should stop at.",
     picks: { kind: "face", flat: true, label: "Face" },
     fields: [
       { key: "extent", label: "Extent", type: "seg", options: [["dist", "Distance"], ["face", "Up to face"]] },
@@ -686,6 +687,150 @@ export function openDialog(id, ctx) {
   let previewT = 0;
   let closed = false;
 
+  // ---- the Extrude arrow ----
+  // Extrude's distance, as something to grab: an arrow standing on the picked
+  // face at the far end of the extrusion. Drag it along the face's normal and
+  // the Distance field follows; past the face the other way and it is a Cut
+  // (back out again: a Join). A translucent slab shows what comes or goes
+  // while dragging; the kernel builds the real preview on release. Ctrl is
+  // 0.1 mm steps, Shift 5 mm. Only this dialog has one: the others have no
+  // single distance along a single normal to hang it on.
+  const hasHandle = id === "extrude";
+  const handleGroup = new THREE.Group();
+  handleGroup.name = "design-dialog-handle";
+  const ghostGroup = new THREE.Group();
+  const sleeveMat = new THREE.MeshBasicMaterial({ visible: false });
+  const ghostAdd = new THREE.MeshBasicMaterial({ color: 0x3ddc97, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide });
+  const ghostCut = new THREE.MeshBasicMaterial({ color: 0xff5c5c, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide });
+  if (hasHandle) { scene.add(handleGroup); scene.add(ghostGroup); }
+  let handle = null, handleDrag = null, handleHot = false;
+  const canvas = host.renderer.domElement, cam = host.camera;
+  const signedH = () => (state.op === "cut" ? -1 : 1) * Math.abs(+state.h || 0);
+  const clearHandle = () => {
+    for (const a of [...handleGroup.children]) { handleGroup.remove(a); a.traverse((o) => { o.geometry?.dispose?.(); if (o.material !== sleeveMat) o.material?.dispose?.(); }); }
+    handle = null;
+  };
+  const clearGhost = () => { for (const c of [...ghostGroup.children]) { ghostGroup.remove(c); c.geometry.dispose(); } };
+  // the middle of the face, on its plane
+  const faceCentre = (fp) => {
+    const loop = fp.outline.loops[0];
+    const c = new THREE.Vector3();
+    for (const p of loop) c.add(new THREE.Vector3(p[0], p[1], p[2]));
+    return c.multiplyScalar(1 / loop.length);
+  };
+  function placeHandle() {
+    if (!hasHandle) return;
+    clearHandle();
+    const fp = state.face;
+    if (closed || !fp?.outline || !fp.normal || state.extent === "face") return;
+    const n = new THREE.Vector3(...fp.normal).normalize();
+    const at = faceCentre(fp).addScaledVector(n, handleDrag ? handleDrag.d : signedH());
+    // about 50 px long wherever the face is
+    const wpp = worldPerPixel(THREE, cam, canvas, at);
+    // Its LENGTH is measured along the way it points: an arrow standing on a
+    // face seen from above is foreshortened, and at the width's scale it came
+    // out a third as long on screen as it was drawn for, too short to grab.
+    // (Up to three times longer in the world; face-on it cannot be helped.)
+    const rect = canvas.getBoundingClientRect();
+    const px = (p) => { const q = p.clone().project(cam); return [(q.x + 1) / 2 * rect.width, (1 - q.y) / 2 * rect.height]; };
+    const a0 = px(at), a1 = px(at.clone().add(n));
+    const along = Math.hypot(a1[0] - a0[0], a1[1] - a0[1]);
+    const lpp = Math.min(3 * wpp, along > 1e-9 ? 1 / along : 3 * wpp);
+    handle = makeSolidArrow(THREE, n, { gap: lpp * 6, shaft: lpp * 34, head: lpp * 16, r: wpp * 2, headR: wpp * 7, sleeveR: wpp * 12,
+      color: (handleDrag ? handleDrag.d : signedH()) < 0 ? 0xff7a5c : 0x3ddc97, hitMat: sleeveMat });
+    handle.position.copy(at);
+    handle.userData.setHot?.(handleHot || !!handleDrag);
+    handleGroup.add(handle);
+  }
+  function handleAt(x, y) {
+    if (!handle) return false;
+    const rect = canvas.getBoundingClientRect();
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1), cam);
+    const sleeves = [];
+    // the arrow may have been put there since the last frame was drawn (a
+    // field typed, a preview landing): its matrices are only as fresh as that
+    handleGroup.updateMatrixWorld(true);
+    handleGroup.traverse((o) => { if (o.userData.arrowHit) sleeves.push(o); });
+    return rc.intersectObjects(sleeves, false).length > 0;
+  }
+  const onHandleHover = (e) => {
+    if (handleDrag || !handle) return;
+    const on = handleAt(e.clientX, e.clientY);
+    if (on === handleHot) return;
+    handleHot = on;
+    handle.userData.setHot?.(on);
+    canvas.style.cursor = on ? "grab" : "";
+  };
+  if (hasHandle) {
+    canvas.addEventListener("pointermove", onHandleHover);
+    host.orbit?.addEventListener?.("change", placeHandle);     // it keeps its size on screen
+  }
+  function drawGhost(d) {
+    clearGhost();
+    const fp = state.face;
+    if (!d || !fp?.outline) return;
+    const pl = F.facePlane(fp.outline), fr = planeFrame(pl);
+    const shape = new THREE.Shape(fp.outline.loops[0].map((p) => new THREE.Vector2(...worldToPlane(pl, p))));
+    const m = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: Math.abs(d), bevelEnabled: false }), d > 0 ? ghostAdd : ghostCut);
+    m.matrixAutoUpdate = false;
+    m.matrix.makeBasis(fr.x, fr.y, fr.n).setPosition(fr.origin.clone().addScaledVector(fr.n, d < 0 ? d : 0));
+    m.renderOrder = 996;
+    ghostGroup.add(m);
+  }
+  // a press on the stage: true when it took hold of the arrow
+  let lastHandlePress = null;     // for tests: where the last press on the stage landed, and whether it took the arrow
+  function handleDown(e) {
+    const took = hasHandle && !!handle && handleAt(e.clientX, e.clientY);
+    lastHandlePress = { x: Math.round(e.clientX), y: Math.round(e.clientY), took };
+    if (!took) return false;
+    const fp = state.face;
+    const n = new THREE.Vector3(...fp.normal).normalize();
+    const origin = faceCentre(fp).addScaledVector(n, signedH());
+    // the normal's direction and scale on screen, where the arrow stands
+    const rect = canvas.getBoundingClientRect();
+    const toPx = (p) => { const q = p.clone().project(cam); return [(q.x + 1) / 2 * rect.width, (1 - q.y) / 2 * rect.height]; };
+    const a = toPx(origin), b = toPx(origin.clone().add(n));
+    const dir = [b[0] - a[0], b[1] - a[1]];
+    const pxPerMm = Math.hypot(...dir);
+    // a face square on to the view has no screen direction: up the screen is out
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const sidePx = Math.hypot(...[0, 1].map((k) => toPx(origin.clone().add(right))[k] - a[k]));
+    const faceOn = pxPerMm < sidePx * 0.25;
+    handleDrag = { x0: e.clientX, y0: e.clientY, start: signedH(), d: signedH(),
+      pxPerMm: faceOn ? sidePx : pxPerMm, dir: faceOn ? [0, -1] : [dir[0] / pxPerMm, dir[1] / pxPerMm] };
+    if (host.orbit) host.orbit.enabled = false;
+    canvas.style.cursor = "grabbing";
+    clearTimeout(previewT);
+    return true;
+  }
+  function handleMove(e) {
+    if (!handleDrag) return;
+    const g = handleDrag;
+    const raw = g.start + ((e.clientX - g.x0) * g.dir[0] + (e.clientY - g.y0) * g.dir[1]) / g.pxPerMm;
+    const step = e.ctrlKey ? 0.1 : e.shiftKey ? 5 : 1;
+    g.d = Math.round(raw / step) * step;
+    // the fields follow as it moves: the distance, and Join or Cut by the side
+    if (Math.abs(g.d) >= 0.1) {
+      state.h = F.round(Math.abs(g.d));
+      if (g.d < 0) state.op = "cut"; else if (state.op === "cut") state.op = "join";
+    }
+    drawGhost(g.d);
+    placeHandle();
+    const f = box.querySelector('[data-k="h"]');
+    if (f) f.value = state.h;
+    for (const b of box.querySelectorAll('.seg[data-k="op"] button')) b.setAttribute("aria-pressed", String(b.dataset.v === state.op));
+  }
+  function handleUp() {
+    if (!handleDrag) return;
+    handleDrag = null;
+    if (host.orbit) host.orbit.enabled = true;
+    canvas.style.cursor = "";
+    clearGhost();
+    render();
+    schedule(30);
+  }
+
   const fieldHTML = (f) => {
     if (f.when && !f.when(state)) return "";
     const id = `dz-f-${f.key}`;
@@ -729,6 +874,7 @@ export function openDialog(id, ctx) {
       + (preview ? `<pre title="What will be written">${esc(preview)}</pre>` : "")
       + `<div class="ft"><button type="button" class="cancel">Cancel</button><button type="button" class="ok"${okReady() ? "" : " disabled"}>OK</button></div>`;
     if (focus) box.querySelector(`[data-k="${focus}"]`)?.focus();
+    placeHandle();
   };
   const okReady = () => !!last && last.ok && last.text !== base;
 
@@ -830,6 +976,16 @@ export function openDialog(id, ctx) {
     clearTimeout(previewT);
     removeEventListener("keydown", onKey);
     box.remove();
+    if (hasHandle) {
+      canvas.removeEventListener("pointermove", onHandleHover);
+      host.orbit?.removeEventListener?.("change", placeHandle);
+      if (handleDrag && host.orbit) host.orbit.enabled = true;
+      handleDrag = null;
+      canvas.style.cursor = "";
+      clearHandle(); clearGhost();
+      scene.remove(handleGroup); scene.remove(ghostGroup);
+      for (const m of [sleeveMat, ghostAdd, ghostCut]) m.dispose();
+    }
     clearPicks();
     pickMat.dispose();
     lineMat.dispose();
@@ -933,12 +1089,14 @@ export function openDialog(id, ctx) {
   return {
     id,
     takePick,
+    // the Extrude arrow: a press that lands on it drags the distance
+    handleDown, handleMove, handleUp,
     cancel,
     ok,
     get busy() { return !closed && last?.ok == null; },
     // for tests: the state, the text the preview built, and its outcome
     debug: () => ({ id, state: JSON.parse(JSON.stringify(state, (k, v) => (k === "mesh" || k === "outline" || k === "segments" ? undefined : v))),
-      lastPick, text: last?.text ?? null, ok: last?.ok ?? null, status: status.text.replace(/<[^>]+>/g, ""), line: last?.text ? changedLine(base, last.text) : null }),
+      lastPick, handle: handle ? { at: handle.position.toArray(), dragging: !!handleDrag, hot: handleHot, press: lastHandlePress } : null, text: last?.text ?? null, ok: last?.ok ?? null, status: status.text.replace(/<[^>]+>/g, ""), line: last?.text ? changedLine(base, last.text) : null }),
     set(key, value) { state[key] = value; render(); schedule(30); },
   };
 }

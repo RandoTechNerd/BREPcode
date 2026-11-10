@@ -27,6 +27,22 @@ export const DOT_PX = { corner: 6, face: 5 };
 export const RING_PX = 16;
 export const DWELL_MS = 600;
 
+// World millimetres per screen pixel at a point, measured by projecting a
+// millimetre there (across the view, so it is never foreshortened). An arrow
+// sized from this is the same length on screen wherever it stands. The
+// formula it replaces (depth x tan(fov / 2) over the canvas height) ignores
+// whatever else the camera is doing: with the view shifted to keep the model
+// clear of the open windows, arrows came out a quarter of the size they were
+// drawn for, and the part of them a press could land on with them.
+export function worldPerPixel(THREE, camera, canvas, at) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (p) => { const q = p.clone().project(camera); return [(q.x + 1) / 2 * rect.width, (1 - q.y) / 2 * rect.height]; };
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const a = px(at), b = px(at.clone().add(right));
+  const perMm = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return perMm > 1e-9 ? 1 / perMm : 1;
+}
+
 // A solid push/pull arrow along d: a shaft, a cone head, a white outline
 // that shows while the pointer is on it (setHot), and an invisible fat sleeve
 // over shaft AND head that is what a pick hits. Sizes are in the caller's

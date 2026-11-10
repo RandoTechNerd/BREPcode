@@ -1487,6 +1487,7 @@ export function initDesignShell(host) {
   function onPressMove(e) {
     if (press?.pp) pressPull.move(e);
     else if (press?.sk) sketcher.move(e);
+    else if (press?.dh) dialog?.handleMove(e);
   }
   function onPressUp(e) {
     removeEventListener("pointermove", onPressMove, true);
@@ -1495,6 +1496,7 @@ export function initDesignShell(host) {
     press = null;
     if (!p) return;
     if (p.pp) { pressPull.up(e); return; }
+    if (p.dh) { dialog?.handleUp(e); return; }
     if (p.sk) { sketcher.up(e); return; }
     if (p.choose) { if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= 5) sketcher.chooserClick(e); return; }
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 5) return;    // an orbit
@@ -1515,7 +1517,8 @@ export function initDesignShell(host) {
       } else if (sketcher?.choosing) {
         press = { x: e.clientX, y: e.clientY, choose: true };
       } else if (dialog) {
-        press = { x: e.clientX, y: e.clientY };
+        // on the Extrude arrow it is a drag of the distance; anywhere else a pick
+        press = dialog.handleDown?.(e) ? { x: e.clientX, y: e.clientY, dh: true } : { x: e.clientX, y: e.clientY };
       } else if (tool === "presspull" && pressPull) {
         // an arrow is a handle on its face: pressing it pulls that face
         const hit = pressPull.arrowAt(e.clientX, e.clientY) ?? host.pickAt(e.clientX, e.clientY);

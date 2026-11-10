@@ -977,6 +977,21 @@ return difference(across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0), ...cuts);
   const est = dslMod.estimateBuild(dslMod.fillet({ r: 1, edges: "top" }, dslMod.importedSolid("big-estimate.step")));
   check("a 2 MB STEP is not estimated as a nine-thousand-triangle mesh", est.tris < 3000, `${est.tris} triangles, ${est.sec.toFixed(1)} s`);
 
+  // Extrude's distance as an arrow to drag (driven with a real mouse by a
+  // scratch Electron check on 2026-11-09: out to 18 mm, back through the face
+  // to a 6 mm cut, OK). Here: that it is wired, and only into Extrude.
+  check("the Extrude dialog has a drag arrow, and only that dialog", /const hasHandle = id === "extrude";/.test(dialogs));
+  check("...a press on it is a drag of the distance, anywhere else still a pick",
+    /press = dialog\.handleDown\?\.\(e\) \? \{ x: e\.clientX, y: e\.clientY, dh: true \} : \{ x: e\.clientX, y: e\.clientY \};/.test(shell)
+    && /else if \(press\?\.dh\) dialog\?\.handleMove\(e\);/.test(shell) && /if \(p\.dh\) \{ dialog\?\.handleUp\(e\); return; \}/.test(shell));
+  check("...past the face it is a cut, back out a join", /if \(g\.d < 0\) state\.op = "cut"; else if \(state\.op === "cut"\) state\.op = "join";/.test(dialogs));
+  check("...the kernel builds on release, not on every pixel", /function handleUp\(\) \{[\s\S]{0,260}schedule\(30\);/.test(dialogs));
+  check("...its hit test does not trust the last frame's matrices", /handleGroup\.updateMatrixWorld\(true\);/.test(dialogs));
+  check("...and it leaves with the dialog", /scene\.remove\(handleGroup\); scene\.remove\(ghostGroup\);/.test(dialogs));
+  const dots = readFileSync(new URL("../viewer/handle-dots.js", import.meta.url), "utf8");
+  check("arrows are sized by measuring the screen, not from the field of view",
+    /export function worldPerPixel\(THREE, camera, canvas, at\)/.test(dots) && /worldPerPixel\(THREE, camera, host\.renderer\.domElement, p\)/.test(pp));
+
   check("glitter has a needle-sharp flash as well as its glow", /THE TWINKLE/.test(html) && /pow\(h, sharp \* 9\.0\)/.test(html));
 }
 
