@@ -4781,6 +4781,10 @@
               <option value="lattice">3D lattice</option>
             </select>
           </label>
+          <label class="mat-row" title="The colour of the grid lines. The theme picks one unless you do."><span>Grid colour</span>
+            <input type="color" id="grid-color" value="#2a3a5c" />
+            <button type="button" id="grid-color-reset" class="hist-btn" style="font-size:11px" hidden title="Back to the theme's own grid colour">Theme's</button>
+          </label>
           <div class="note" style="padding: 2px 10px 8px">
             The grid is the floor your part sits on, one square per 10mm at the
             current scale. The markers put an X and a Y at the far end of each
@@ -6264,8 +6268,37 @@
       lines.userData.grid3d = true;
       grid.add(lines);
     }
+    // The grid's own colour, when someone has picked one (Grid tab). The theme
+    // still supplies everything else; the minor lines are the same colour
+    // taken most of the way to the background, as the themes' own pairs are.
+    let gridColor = (() => {
+      try { const c = JSON.parse(localStorage.getItem("brepcode-grid") || "{}").color; return /^#[0-9a-f]{6}$/i.test(c) ? c : null; } catch { return null; }
+    })();
+    function gridTheme(t) {
+      if (!gridColor) return t;
+      const major = new THREE.Color(gridColor), minor = major.clone().lerp(new THREE.Color(t.bg), 0.55);
+      return { ...t, grid1: major.getHex(), grid2: minor.getHex(), axis: major.clone().lerp(new THREE.Color(0xffffff), 0.35).getHex() };
+    }
+    // just the floor, in the colours it should have now
+    function rebuildGrid() {
+      const t = gridTheme(THEMES[currentTheme] ?? THEMES.dark);
+      const old = grid;
+      grid = new THREE.GridHelper(200, 20, t.grid1, t.grid2);
+      grid.rotation.x = Math.PI / 2;
+      if (old) {
+        grid.position.copy(old.position);
+        grid.scale.copy(old.scale);
+        grid.visible = old.visible;
+        old.geometry?.dispose?.();
+        old.material?.dispose?.();
+        scene.remove(old);
+      }
+      scene.add(grid);
+      addGrid3D(t);
+      buildAxisLabels();
+    }
     function applyTheme(name) {
-      const t = THEMES[name] ?? THEMES.dark;
+      const t = gridTheme(THEMES[name] ?? THEMES.dark);
       currentTheme = name;
       document.documentElement.className = name === "dark" ? "" : `theme-${name}`;
       scene.background = new THREE.Color(t.bg);
@@ -8310,12 +8343,22 @@
 
       const applyGrid = () => {
         if (grid) grid.visible = showBox.checked && !gridExploded && !stageOn();
-        if (grid && gridStyle !== styleSel.value) { gridStyle = styleSel.value; addGrid3D(THEMES[currentTheme] ?? THEMES.dark); }
+        if (grid && gridStyle !== styleSel.value) { gridStyle = styleSel.value; addGrid3D(gridTheme(THEMES[currentTheme] ?? THEMES.dark)); }
         axisLabelsOn = axesBox.checked && showBox.checked && !gridExploded;   // markers belong to the floor
         buildAxisLabels();
         localStorage.setItem("brepcode-grid",
-          JSON.stringify({ show: showBox.checked, axes: axesBox.checked, style: styleSel.value }));
+          JSON.stringify({ show: showBox.checked, axes: axesBox.checked, style: styleSel.value, ...(gridColor ? { color: gridColor } : {}) }));
       };
+      // the grid's colour: a picker, and a way back to the theme's own
+      const colIn = $("grid-color"), colReset = $("grid-color-reset");
+      const paintGridColor = () => {
+        colIn.value = gridColor || "#" + (THEMES[currentTheme] ?? THEMES.dark).grid1.toString(16).padStart(6, "0");
+        colReset.hidden = !gridColor;
+      };
+      colIn.addEventListener("input", () => { gridColor = colIn.value; rebuildGrid(); applyGrid(); paintGridColor(); });
+      colReset.addEventListener("click", () => { gridColor = null; rebuildGrid(); applyGrid(); paintGridColor(); });
+      document.querySelectorAll(".theme-chip").forEach((c) => c.addEventListener("click", () => setTimeout(paintGridColor, 0)));
+      paintGridColor();
       showBox.addEventListener("change", applyGrid);
       axesBox.addEventListener("change", applyGrid);
       styleSel.addEventListener("change", applyGrid);

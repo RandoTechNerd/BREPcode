@@ -376,7 +376,26 @@ export function polygonText(loop, toPlane) {
 // extrudeText(text, body, outline, { h, mode, symmetric, toPlane })
 //   mode: "join" | "cut" | "new". A circular face extrudes as a cylinder
 //   (round, so exact), any other flat face as its outline on its own plane.
-export function extrudeCall(outline, { h, symmetric = false, cut = false, toPlane, taper = 0 }) {
+export function extrudeCall(outline, opts) {
+  const main = extrudeSolid(outline, opts);
+  if (typeof main !== "string") return main;
+  // A face with holes in it extrudes WITH its holes. Only the outer outline
+  // was being used, so pulling up the top of a drilled plate (most faces of an
+  // imported STEP) filled every hole it had. A cut does not need them: where
+  // the face has a hole there is nothing to cut. Each hole is taken back out
+  // of the new material, a little long both ways so nothing shares a face.
+  const holes = (outline.loops || []).slice(1);
+  if (!holes.length || opts.cut || opts.taper) return main;
+  const plane = facePlane(outline), n = plane.normal, h = opts.h;
+  const upright = Math.abs(Math.abs(n[2]) - 1) < 1e-9;
+  const cuts = holes.map((loop) => {
+    const c = upright ? circleOf(loop) : null;
+    if (c) return `translate(${vec([c.center[0], c.center[1], c.center[2] - h - 1])}, cylinder({ r: ${round(c.r)}, h: ${round(2 * h + 2)} }))`;
+    return `linearExtrude({ h: ${round(2 * h + 2)}, center: true, on: ${onText(plane)} }, ${polygonText(loop, opts.toPlane)})`;
+  });
+  return `difference(${main}, ${cuts.join(", ")})`;
+}
+function extrudeSolid(outline, { h, symmetric = false, cut = false, toPlane, taper = 0 }) {
   const plane = facePlane(outline);
   const circ = circleOf(outline.loops[0]);
   const n = plane.normal;

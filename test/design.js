@@ -992,6 +992,23 @@ return difference(across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0), ...cuts);
   check("arrows are sized by measuring the screen, not from the field of view",
     /export function worldPerPixel\(THREE, camera, canvas, at\)/.test(dots) && /worldPerPixel\(THREE, camera, host\.renderer\.domElement, p\)/.test(pp));
 
+  // a face with holes extrudes with its holes; a multi-body STEP says what it cannot do
+  {
+    const F = await import("../viewer/design/features.js");
+    const ring = (r, z, k = 24) => Array.from({ length: k }, (_, i) => [20 + r * Math.cos((2 * Math.PI * i) / k), 15 + r * Math.sin((2 * Math.PI * i) / k), z]);
+    const plate = { loops: [[[0, 0, 10], [40, 0, 10], [40, 30, 10], [0, 30, 10]], ring(5, 10)], normal: [0, 0, 1], point: [0, 0, 10] };
+    const toPlane = (p) => [p[0], p[1]];
+    const join = F.extrudeCall(plate, { h: 6, toPlane });
+    check("extruding a drilled face keeps its hole", /^difference\(linearExtrude\(/.test(join) && /cylinder\(\{ r: 5, h: 14 \}\)/.test(join), join.slice(0, 200));
+    check("...the hole runs clear through the new material, not flush with it", /translate\(\[20, 15, 3\]/.test(join), join);
+    const cut = F.extrudeCall(plate, { h: 6, cut: true, toPlane });
+    check("...a cut needs no holes: there is nothing there to cut", !/^difference/.test(cut), cut.slice(0, 120));
+    const solid = F.extrudeCall({ loops: [plate.loops[0]], normal: [0, 0, 1], point: [0, 0, 10] }, { h: 6, toPlane });
+    check("...and a face without holes is written exactly as before", /^linearExtrude\(\{ h: 6, on: /.test(solid), solid.slice(0, 120));
+    check("a multi-body STEP's Join or Cut is refused with what does work",
+      /_SOLID_\\d\+_Face_/.test(dialogs) && /This STEP has several bodies/.test(dialogs));
+  }
+
   check("glitter has a needle-sharp flash as well as its glow", /THE TWINKLE/.test(html) && /pow\(h, sharp \* 9\.0\)/.test(html));
 }
 

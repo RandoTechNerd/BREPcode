@@ -138,6 +138,13 @@ const SPECS = {
       if (!s.face?.outline) return { wait: "Click a flat face on the model." };
       const body = env.bodyOf(s.face.fid);
       if (!body) return { error: "That face has no call in the code to add to." };
+      // One body out of a multi-body STEP cannot be joined to or cut yet: the
+      // code has one name for the whole file, and a union or difference with
+      // it left every body untouched and the new shape lying beside them,
+      // reported as built. Say so, and offer what does work.
+      if (s.op !== "new" && /_SOLID_\d+_Face_/.test(s.face.name || "")) {
+        return { error: "This STEP has several bodies, and Join or Cut can't pick one of them out yet. Use New body here, or open the file with only the part you want to change." };
+      }
       let h = s.h, symmetric = s.symmetric;
       if (s.extent === "face") {
         if (!s.toFace?.outline) return { wait: "Now click the flat face it should run up to." };
