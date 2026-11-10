@@ -2141,6 +2141,16 @@
     #yn-ask .yn-acts button { padding: 6px 16px; border-radius: 7px; border: 1px solid var(--border); cursor: pointer;
       font: 500 12.5px system-ui, sans-serif; background: none; color: var(--text); }
     #yn-ask .yn-acts button.yn-yes { background: var(--accent); border-color: var(--accent); color: #fff; }
+    /* with info: one choice per row, each with an (i) that opens what it does */
+    #yn-ask .yn-box.wide { width: min(460px, calc(100vw - 32px)); }
+    #yn-ask .yn-acts.yn-choices { display: grid; grid-template-columns: 1fr auto; gap: 6px 6px; align-items: center; }
+    #yn-ask .yn-acts.yn-choices > button:not(.yn-i) { text-align: left; padding: 8px 12px; }
+    #yn-ask .yn-acts .yn-i { width: 26px; height: 26px; padding: 0; border-radius: 50%; font: italic 600 13px Georgia, serif;
+      color: var(--muted2); }
+    #yn-ask .yn-acts .yn-i[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
+    #yn-ask .yn-why { grid-column: 1 / -1; margin: -2px 0 4px; padding: 8px 10px; border-radius: 7px;
+      background: rgba(127, 150, 200, 0.10); color: var(--muted2); font-size: 12.5px; line-height: 1.45; }
+    #yn-ask .yn-why b { color: var(--text); }
     #sm-more-caret { display: inline-block; width: 10px; }
     #sm-swaps { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 2px; }
     #sm-swaps button {
@@ -8510,7 +8520,10 @@
     // A yes/no question in the middle of the screen. Resolves true for Yes,
     // false for Cancel, Escape or a click outside.
     // alt: an optional third answer, between the two; its button resolves "alt"
-    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel", alt = null, sticky = false }) {
+    // info: { yes, alt, no } HTML explaining each choice. Given it, the choices
+    // become a list, best first, each with an (i) that opens what it does, so
+    // a choice like the STEP import's can be learned where it is made.
+    function askYesNo({ head, sub = "", yes = "Yes", no = "Cancel", alt = null, sticky = false, info = null }) {
       const box = $("yn-ask");
       // at the top of the page, over every card, whatever its markup sits in
       if (box.parentNode !== document.body) document.body.appendChild(box);
@@ -8520,6 +8533,33 @@
       $("yn-no").textContent = no;
       $("yn-alt").hidden = !alt;
       $("yn-alt").textContent = alt || "";
+      const acts = box.querySelector(".yn-acts");
+      for (const old of acts.querySelectorAll(".yn-i, .yn-why")) old.remove();
+      acts.classList.toggle("yn-choices", !!info);
+      box.querySelector(".yn-box").classList.toggle("wide", !!info);
+      // the list reads best first; the plain row keeps Cancel on the left
+      for (const id of info ? ["yn-yes", "yn-alt", "yn-no"] : ["yn-no", "yn-alt", "yn-yes"]) acts.appendChild($(id));
+      if (info) {
+        for (const [k, id] of [["yes", "yn-yes"], ["alt", "yn-alt"], ["no", "yn-no"]]) {
+          const b = $(id);
+          if (b.hidden) continue;
+          const i = document.createElement("button");
+          i.type = "button";
+          i.className = "yn-i";
+          i.textContent = "i";
+          i.title = `What does "${b.textContent}" do?`;
+          i.setAttribute("aria-label", i.title);
+          i.setAttribute("aria-expanded", "false");
+          b.after(i);
+          if (!info[k]) { i.style.visibility = "hidden"; continue; }
+          const why = document.createElement("div");
+          why.className = "yn-why";
+          why.hidden = true;
+          why.innerHTML = info[k];
+          i.after(why);
+          i.onclick = (e) => { e.stopPropagation(); why.hidden = !why.hidden; i.setAttribute("aria-expanded", String(!why.hidden)); };
+        }
+      }
       box.classList.add("open");
       $("yn-yes").focus();
       return new Promise((resolve) => {
@@ -15503,6 +15543,7 @@ ${joined}${SITE_TAIL}`), joined);
       clearGhosts();
       if (drag.mode === "rotate") endRotateDrag(false);
       for (const m of drag.meshes) { m.position.set(0, 0, 0); m.scale.set(1, 1, 1); }
+      unstretchBoxPreview(drag.meshes);
       drag = null;
       dragPointer = null;
       downAt = null;              // the fingers' release is not a click either
@@ -15802,6 +15843,8 @@ ${joined}${SITE_TAIL}`), joined);
                 radial: !["cube", "cuboid"].includes(hSite.kind) && H.axis !== 2,
                 outDir,                       // handle drags pull along the true axis
                 uniformPreview: ["sphere", "spheroid"].includes(hSite.kind),
+                // a box face: the preview moves only what lies on that face
+                boxStretch: ["cube", "cuboid"].includes(hSite.kind) ? fbb.clone() : null,
                 center: fbb.getCenter(new THREE.Vector3()),
                 hitPoint: hHit.object.position.clone(),
                 anchor: anchorCentered ? fbb.getCenter(new THREE.Vector3())
@@ -16286,11 +16329,18 @@ ${joined}${SITE_TAIL}`), joined);
             m.position.copy(drag.center).multiplyScalar(1 - factor);
           }
         } else {
-          // stretch the meshes along the axis, anchored on the far face
-          for (const m of drag.meshes) {
-            m.scale.setComponent(drag.axis, factor);
-            m.position.setComponent(drag.axis,
-              drag.anchor.getComponent(drag.axis) * (1 - factor));
+          if (drag.boxStretch) {
+            // a box face moves; nothing else does. Scaling the whole mesh slid
+            // a hole's opening along with it, though the release leaves the
+            // hole exactly where it is (only the box's size changes)
+            stretchBoxPreview(drag);
+          } else {
+            // stretch the meshes along the axis, anchored on the far face
+            for (const m of drag.meshes) {
+              m.scale.setComponent(drag.axis, factor);
+              m.position.setComponent(drag.axis,
+                drag.anchor.getComponent(drag.axis) * (1 - factor));
+            }
           }
           // ...and, when the kernel can keep up, the TRUE geometry: cuts stay
           // round while the body stretches instead of ovalling until release.
@@ -16372,6 +16422,42 @@ ${joined}${SITE_TAIL}`), joined);
     // Applies the pull made since the last landed build to the TRUE geometry.
     // Same anchor arithmetic as the cheap preview, but the factor is relative
     // to the size already built, so it shrinks toward 1 as builds land.
+    // A box face pulled: only the vertices ON that face move (both faces,
+    // half each, for a centred cube), the way the release will change it.
+    // Everything inside the box stays put, so the opening of a hole cut
+    // through it no longer slides along with the drag.
+    function stretchBoxPreview(drag) {
+      const ax = drag.axis, box = drag.boxStretch;
+      const lo = box.min.getComponent(ax), hi = box.max.getComponent(ax);
+      const eps = Math.max(1e-3, (hi - lo) * 1e-4);
+      const k = anchorCentered ? 0.5 : 1, move = drag.sign * drag.amount * k;
+      for (const m of drag.meshes) {
+        const pos = m.geometry?.attributes?.position;
+        if (!pos) continue;
+        const orig = (m.userData.stretchOrig ??= pos.array.slice());
+        const a = pos.array;
+        for (let i = ax; i < a.length; i += 3) {
+          const c = orig[i];
+          const pulled = drag.sign > 0 ? c >= hi - eps : c <= lo + eps;
+          const opposite = anchorCentered && (drag.sign > 0 ? c <= lo + eps : c >= hi - eps);
+          a[i] = pulled ? c + move : opposite ? c - move : c;
+        }
+        pos.needsUpdate = true;
+        m.geometry.computeBoundingSphere?.();
+        m.geometry.computeBoundingBox?.();
+      }
+    }
+    function unstretchBoxPreview(meshes) {
+      for (const m of meshes) {
+        const orig = m.userData.stretchOrig, pos = m.geometry?.attributes?.position;
+        if (!orig || !pos) continue;
+        pos.array.set(orig);
+        pos.needsUpdate = true;
+        m.geometry.computeBoundingSphere?.();
+        m.geometry.computeBoundingBox?.();
+        delete m.userData.stretchOrig;
+      }
+    }
     function nudgeDragPreview() {
       if (!drag || drag.liveBase == null || !dragGroup.children.length) return;
       const f = (drag.target.value + drag.amount) / (drag.target.value + drag.liveBase);
@@ -16710,6 +16796,7 @@ ${joined}${SITE_TAIL}`), joined);
           return;
         }
         for (const m of drag.meshes) { m.position.set(0, 0, 0); m.scale.set(1, 1, 1); }
+        unstretchBoxPreview(drag.meshes);
         const wasSplit = drag.mode === "splitAt" || drag.mode === "splitBy";
         if (wasDrag) {
           commitDrag();
@@ -20688,11 +20775,22 @@ let SIMPLIFY_TARGET = 10000;
     // False: the person chose the mesh import, or this could not run.
     async function openStepAsCode(file) {
       const yes = await askYesNo({
-        head: `Open ${file.name} as editable code?`,
-        sub: "BREPcode rebuilds each body as code, with its holes and thicknesses as dials, and checks every one against the file. "
-          + "A body it can't rebuild exactly stays the file's own solid.<br><b>Editable solid</b> keeps the file exactly as it is, "
-          + "ready to fillet edges and push, move or delete faces (Design mode's Face edit).",
+        head: `How should ${file.name} come in?`,
+        sub: "Three ways in, each good at something different. Press <b>i</b> beside one to see what it gives you.",
         yes: "Open as code", alt: "Editable solid", no: "Import as a mesh",
+        info: {
+          yes: "Rebuilds each body of the file as BREPcode: blocks of extrudes, drilled holes and turned profiles, with "
+            + "sizes as <b>dials you can change</b>. Every body is checked against the file, and one it can't rebuild exactly "
+            + "stays the file's own solid.<br><b>Best for</b> machined, boxy or turned parts.<br><b>Not for</b> freeform "
+            + "shapes (sculpted or organic surfaces): those can't be rebuilt exactly, and the closest code is a stack of "
+            + "extrude blocks that looks terraced.",
+          alt: "Keeps the file's geometry <b>exactly as it is</b>, as one true solid with real curves. Its sizes aren't dials, "
+            + "but Design mode can still round its edges (<b>Fillet</b>) and push, move or delete its faces (<b>Face edit</b>), "
+            + "and it exports as true-curve STEP.<br><b>Best for</b> freeform or complex parts you only want to tweak.",
+          no: "Turns it into <b>triangles</b>, like an STL. Always works and is quick, but curves become flat facets, it can't be "
+            + "filleted or exported as true-curve STEP, and cuts run on the mesh.<br><b>Best for</b> when you only want to "
+            + "print it, or to drill a hole through it.",
+        },
       });
       if (yes === "alt") return stepAsSolid(file);
       if (!yes) return false;
@@ -20797,6 +20895,14 @@ let SIMPLIFY_TARGET = 10000;
         sub: `${list}<br><br>The dots show where: <b style="color:#ff3b30">red</b> is the file's material the close code leaves out, `
           + `<b style="color:#2f8cff">blue</b> is material it adds. Keep the file's solid and they stay exactly as the file has them.`,
         yes: "Use the close code", no: "Keep the file's solid", sticky: true,
+        info: {
+          yes: "Swaps those bodies for code built from a <b>stack of extrude blocks</b>: horizontal slices of the shape, each "
+            + "a dial you can change. Curved and sloping surfaces become steps, so it looks <b>terraced</b>, and the numbers above "
+            + "say how much of its volume still matches.<br><b>Best for</b> when you want to resize or reshape it in code.",
+          no: "Keeps those bodies as the <b>file's own exact solid</b>, so they look exactly like the file. Their sizes aren't "
+            + "dials, but Design mode's Fillet and Face edit still work on them. You can switch to the close code later from "
+            + "the link under the model.<br><b>Best for</b> when it should look like the original.",
+        },
       });
       if (!yes) {
         hideCloseMap();

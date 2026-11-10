@@ -109,7 +109,7 @@ app.whenReady().then(() => server.listen(0, "127.0.0.1", async () => {
     let t0 = Date.now();
     await give("bracket.step", files.bracket);
     const head = await answer(true);
-    check("a STEP file asks to open as code", /Open bracket\.step as editable code\?/.test(head), head);
+    check("a STEP file asks how to open it", /How should bracket\.step come in\?/.test(head), head);
     await drain();
     let s = await settle(t0);
     const codeText = await run(`document.getElementById("code").value`);
