@@ -119,7 +119,7 @@ app.whenReady().then(async () => {
     //     cannot parse alone.
     //   - plain values, no input: kernelDefault ("rust" | "nvidia") and
     //     kernelChoice (does NVIDIA's kernel ship), read once at load.
-    const EXPECTED_BRIDGE = "aiConnect,aiDisconnect,aiRelay,aiSnippet,aiStatus,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
+    const EXPECTED_BRIDGE = "aiConnect,aiDisconnect,aiRelay,aiRelayAbort,aiRelayStream,aiSnippet,aiStatus,claudeAsk,claudeInfo,claudeLogin,claudeSaveImage,"
       + "fetchModel,isDesktop,kernelChoice,kernelDefault,lessonsAppend,lessonsForget,lessonsLoad,lessonsReveal,"
       + "lessonsSave,lessonsWhere,loadMail,nativeKernelPort,nativeKernelReset,onClaudeProgress,onOpenFile,openBlueprint,"
       + "openInSlicer,recoveryList,recoveryRead,recoveryReveal,recoverySave,saveMail,"
