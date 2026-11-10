@@ -438,7 +438,7 @@ console.log("\nthe choices a cutter designer offers\n");
 
   const H = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
   check("the card has the controls", ["cutter-height", "cutter-wall", "cutter-sharp", "cutter-handle", "cutter-bars", "cutter-mirror"].every((id) => H.includes(`id="${id}"`)));
-  check("...remembered choices are applied once, never over what was just set", /if (cutterOptsFilled) return;/.test(H));
+  check("...remembered choices are applied once, never over what was just set", /if \(cutterOptsFilled\) return;/.test(H));
   check("...and every way of making a kit uses them", /makeKit\(kind, loops, \{ \.\.\.cutterExtras\(\), \.\.\.extra \}\)/.test(H));
 }
 
