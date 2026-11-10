@@ -102,5 +102,68 @@ console.log("\na cut that misses the model is not a band\n");
     r?.solids?.length === 1, `${r?.solids?.length} solids`);
 }
 
+console.log("\nmeasuring a shape does not mean building it on the slow kernel\n");
+{
+  // Reported as "why does this model take so long to build and freeze the
+  // app": a blended, cut stand under colorByHeight() took 57 s. 49 of them
+  // were this op. It built its child on the JS kernel just to learn how tall
+  // it was (32 s, on the page's own thread), and compiled the blend inside it
+  // three times over (once to measure, once per band). The fast kernel now
+  // does the measuring, and a blend keeps its surface with its node.
+  const { compile, boxOfSolids, smoothUnion, sphere } = await import("../src/dsl.js");
+  const { stats } = await import("../index.js");
+  const { PartHistory } = await import("brep-io-kernel");
+
+  check("the box of a kernel's solids is read off their faces",
+    JSON.stringify(boxOfSolids([{ faces: [{ positions: new Float32Array([0, 1, 2, 5, -3, 9, 1, 1, 1]) }] }]))
+      === JSON.stringify({ lo: [0, -3, 1], hi: [5, 1, 9] }));
+  check("...and no surface is no box", boxOfSolids([]) === null && boxOfSolids([{ faces: [] }]) === null);
+
+  // compile() asks the hook, and when it answers the JS kernel never runs
+  let asked = 0, ran = 0;
+  class Counting extends PartHistory {
+    async runHistory(...a) { ran++; return super.runHistory(...a); }
+  }
+  const ph = new Counting();
+  await compile(colorByHeight({ at: [10], colors: ["#e33333", "#3399ff"] }, model()), ph, null, {
+    solidBox: async () => { asked++; return { lo: [0, 0, 0], hi: [40, 40, 50] }; },
+  });
+  check("the height is asked of the fast kernel", asked === 1, `${asked} asks`);
+  check("...and nothing is replayed on the JS kernel to find it", ran === 0, `${ran} replays`);
+  const ph2 = new Counting();
+  ran = 0;
+  await compile(colorByHeight({ at: [10], colors: ["#e33333", "#3399ff"] }, model()), ph2, null, { solidBox: async () => null });
+  check("a kernel that cannot say falls back to the replay", ran === 1, `${ran} replays`);
+
+  // the real thing: bands land where they would have, off the fast kernel's box
+  const blend = () => smoothUnion(3, translate([0, 0, 8], sphere({ r: 8 })), translate([0, 0, 20], sphere({ r: 6 })));
+  const t0 = performance.now();
+  const r = await build(colorByHeight({ at: [9], colors: ["#3b3f45", "#b8d600"] }, blend()));
+  const secs = (performance.now() - t0) / 1000;
+  const st = stats(r);
+  check("a blend comes out as two bands", st.length === 2, `${st.length} solids`);
+  const zs = st.map((x) => x.bounds.z).sort((a, b) => a[0] - b[0]);
+  check("...split 9 mm above its own bottom", Math.abs(zs[0][1] - (zs[0][0] + 9)) < 0.05 && Math.abs(zs[1][0] - zs[0][1]) < 0.05,
+    JSON.stringify(zs));
+  check("...in seconds", secs < 30, `${secs.toFixed(1)} s`);
+}
+
+console.log("\nmaxTris is a ceiling even when res is written out\n");
+{
+  const { smoothUnion, sphere } = await import("../src/dsl.js");
+  const { stats } = await import("../index.js");
+  const two = (opts) => smoothUnion(opts, translate([0, 0, 10], sphere({ r: 10 })), translate([0, 0, 24], sphere({ r: 7 })));
+  const tris = async (opts) => stats(await build(two(opts))).reduce((n, x) => n + x.facets, 0);
+  const pinned = await tris({ k: 4, res: 64 });
+  const capped = await tris({ k: 4, res: 64, maxTris: 2000 });
+  const budget = await tris({ k: 4, maxTris: 2000 });
+  check("res alone still pins the lattice", pinned > 6000, `${pinned} triangles`);
+  check("res with a maxTris is held to the budget, not the lattice", capped < pinned / 4, `${capped} against ${pinned}`);
+  check("...the same surface the budget alone would make", capped === budget, `${capped} against ${budget}`);
+  const generous = await tris({ k: 4, res: 32, maxTris: 200000 });
+  const coarse = await tris({ k: 4, res: 32 });
+  check("a budget far above the res changes nothing: res is the detail asked for", generous === coarse, `${generous} against ${coarse}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

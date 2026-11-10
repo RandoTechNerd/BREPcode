@@ -12917,6 +12917,13 @@ ${joined}${SITE_TAIL}`), joined);
           fastNamed = true;
           return r.solids;
         } : null;
+        // ...and a shape built only to be measured (colorByHeight, clearance):
+        // the worker's box of it, in place of a JS-kernel replay on this thread
+        const solidBox = getBuildWorker() ? async (json) => {
+          if (mine !== token) return null;
+          const r = await workerCall({ op: "build", key: "probe", json, engine: "split", kernel: buildKernel(), rustWasmUrl: window.__BREP_RUST_WASM_URL });
+          return dsl.boxOfSolids(r.solids);
+        } : null;
         let fastNamed = false;
         dsl.setPartHook(async (name, stl) => {
           if (mine !== token) return;
@@ -12930,7 +12937,7 @@ ${joined}${SITE_TAIL}`), joined);
             await new Promise((r) => { const t = setTimeout(r, 50); requestAnimationFrame(() => { clearTimeout(t); setTimeout(r, 0); }); });
           }
         });
-        try { await dsl.compile(shape, ph, trace, { faceNames, edgeNames }); }
+        try { await dsl.compile(shape, ph, trace, { faceNames, edgeNames, solidBox }); }
         finally { dsl.setPartHook(null); }
         if (mine !== token) return;
 

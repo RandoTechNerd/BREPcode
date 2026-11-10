@@ -369,6 +369,13 @@ function estimateOne(root) {
   return { tris: Math.round(tris), booleans, sec };
 }
 
+// A blend's finished surface, kept with the node that asked for it. The same
+// node is compiled more than once whenever something above it builds a shape
+// to measure it and then again for real: colorByHeight() over a blend sampled
+// the whole field three times (once to find the height, once per band). A
+// node never changes after it is made, so its blend cannot either.
+const BLEND_STL = new WeakMap();
+
 // Baked-transform cache: rebuilds re-run compile constantly, and transforming
 // a large STL's every vertex each keystroke would hurt.
 const XFORM_CACHE = new Map();
@@ -412,6 +419,26 @@ function knownTriangles(c, M = null) {
     }
   }
   return flat;
+}
+
+// The box around a fast kernel's solids ([{ faces: [{ positions }] }], as
+// runEngine and the viewer's worker return them): { lo, hi }, or null when
+// there is no surface in them. What an opts.solidBox hook hands compile().
+export function boxOfSolids(solids) {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const s of solids || []) {
+    for (const f of s?.faces || []) {
+      const p = f?.positions;
+      if (!p) continue;
+      for (let i = 0; i + 2 < p.length; i += 3) {
+        for (let k = 0; k < 3; k++) {
+          if (p[i + k] < lo[k]) lo[k] = p[i + k];
+          if (p[i + k] > hi[k]) hi[k] = p[i + k];
+        }
+      }
+    }
+  }
+  return Number.isFinite(lo[2]) ? { lo, hi } : null;
 }
 
 // ...and the box of one, for the ops that build a shape only to measure it
@@ -2418,7 +2445,7 @@ export function smoothUnion(opts, ...children) {
   }
   return node({
     kind: "sdfblend", children: kids, fix: IDENTITY,
-    opts: { k, res: o.res ? Math.max(24, Math.min(160, Number(o.res))) : null, maxTris: Number(o.maxTris) || 6000, balls: null },
+    opts: { k, res: o.res ? Math.max(24, Math.min(160, Number(o.res))) : null, maxTris: Number(o.maxTris) || 6000, capTris: !!Number(o.maxTris), balls: null },
   });
 }
 
@@ -3963,6 +3990,20 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     } catch { return null; }
   }
 
+  // opts.solidBox(featureListJson) -> { lo, hi }: how big a FAST kernel makes
+  // a history, for the ops that build a shape only to measure it. The JS
+  // replay it spares is the whole child on the slow kernel, on the page's own
+  // thread: a blended, cut stand under colorByHeight() spent 32 of its 57 s
+  // there, window frozen, to learn that the part is 32 mm tall. null (no fast
+  // kernel here, or it refused) means the JS replay after all.
+  async function fastBox(history) {
+    if (typeof opts.solidBox !== "function") return null;
+    try {
+      const b = await opts.solidBox(await history.toJSON());
+      return b && b.lo?.length === 3 && b.hi?.length === 3 && [...b.lo, ...b.hi].every(Number.isFinite) ? b : null;
+    } catch { return null; }
+  }
+
   async function childFaceNames(childId, filter, start = 0) {
     let names = await fastFaceNames(childId);
     if (!names) {
@@ -4325,11 +4366,12 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // minutes). A clearance does not need the offset's one honest advantage,
       // its rounded corners, because the gap is smaller than the corner.
       // an import is measured from its own triangles (knownBox), unbuilt
-      const kb = knownBox(n.child);
+      let kb = knownBox(n.child);
       const scratch = new partHistory.constructor();
       if (!kb) {
         await compile(n.child, scratch);
-        await scratch.runHistory({ throwOnFeatureError: true });
+        kb = await fastBox(scratch);
+        if (!kb) await scratch.runHistory({ throwOnFeatureError: true });
       }
       const lo = kb ? kb.lo : [Infinity, Infinity, Infinity], hi = kb ? kb.hi : [-Infinity, -Infinity, -Infinity];
       const v = new Vector3();
@@ -4371,11 +4413,12 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // it. Then cut it into bands and emit them as a GROUP — separate solids,
       // one colour each, which is the whole point (see colorByHeight).
       // an import is measured from its own triangles (knownBox), unbuilt
-      const kb = knownBox(n.child);
+      let kb = knownBox(n.child);
       const scratch = new partHistory.constructor();
       if (!kb) {
         await compile(n.child, scratch);
-        await scratch.runHistory({ throwOnFeatureError: true });
+        kb = await fastBox(scratch);
+        if (!kb) await scratch.runHistory({ throwOnFeatureError: true });
       }
       const lo = kb ? kb.lo : [Infinity, Infinity, Infinity], hi = kb ? kb.hi : [-Infinity, -Infinity, -Infinity];
       const v = new Vector3();
@@ -4786,6 +4829,8 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
     if (n.kind === "sdfblend") {
       const { k, balls, maxTris } = n.opts;
       let res = n.opts.res;
+      let stl = BLEND_STL.get(n);
+      if (!stl) {
       const fields = [];
       let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
       const take = (p) => {
@@ -4856,7 +4901,12 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       // and organic surfaces — smooth by construction — read fine there.
       // Raise res (or maxTris) for the one build before export.
       const span = Math.max(...[0, 1, 2].map((d) => hi[d] - lo[d]), 1);
-      if (!res) {
+      // res AND maxTris both written out: the res is the detail asked for and
+      // the budget is still a ceiling on it. It used to be ignored outright
+      // once res was pinned, so { res: 96, maxTris: 24000 } made 106,000
+      // triangles and every boolean after it paid for them.
+      const pinned = res && n.opts.capTris ? res : null;
+      if (!res || pinned) {
         let area = 0;
         if (balls) {
           for (const b of balls) area += 4 * Math.PI * b[3] * b[3];
@@ -4872,6 +4922,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         }
         const cell = Math.sqrt((2 * area) / Math.max(1000, maxTris));
         res = Math.max(24, Math.min(160, Math.round(span / Math.max(cell, 0.2))));
+        if (pinned) res = Math.min(pinned, res);
       }
       // room for the blend: the bulge never reaches past k, plus a cell so the
       // surface cannot clip flat against the sampled volume's wall
@@ -4909,7 +4960,7 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
       const out = { mesh: blendMesh };
       if (!out.mesh.faces.length) throw new Error("smoothUnion(): the blend produced nothing — are the shapes hundreds of mm apart?");
 
-      let stl = "solid blend\n";
+      stl = "solid blend\n";
       for (const [a, b, c] of out.mesh.faces) {
         stl += "facet normal 0 0 0\nouter loop\n";
         for (const i of [a, b, c]) {
@@ -4919,6 +4970,8 @@ export async function compile(root, partHistory, trace = null, opts = {}) {
         stl += "endloop\nendfacet\n";
       }
       stl += "endsolid blend\n";
+      BLEND_STL.set(n, stl);
+      }
 
       await ensureImportClonePatch(partHistory);
       const name = `__sdf${texSeq++}`;

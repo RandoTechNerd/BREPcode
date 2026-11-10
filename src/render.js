@@ -1,7 +1,7 @@
 // Builds a BrepScript shape into kernel geometry and exports it.
 
 import { PartHistory, ConstraintSolver } from "brep-io-kernel";
-import { compile, useSketchSolver } from "./dsl.js";
+import { compile, useSketchSolver, boxOfSolids } from "./dsl.js";
 import { runEngine, solidsToSTL, EngineRefusal } from "./engine.js";
 import { loadRustKernel, loadManifoldNode, loadNvidiaKernel } from "./engine-node.js";
 
@@ -27,6 +27,9 @@ export async function build(shape, { tolerance = 6, engine = process.env.BREPSCR
   await compile(shape, ph, null, probe ? {
     faceNames: (json) => probe(json, faceKernel),
     edgeNames: (json) => probe(json, loadRustKernel, true),
+    // a shape built only to be measured (colorByHeight, clearance): no names
+    // are taken from it, so it never forces the JS kernel's own recompile
+    solidBox: async (json) => boxOfSolids((await runEngine(json, { rust: await faceKernel(), manifold: loadManifoldNode })).solids),
   } : {});
   let fallback = null;
   // "nvidia": NVIDIA's kernel first, then the Rust one, then the JS kernel.
