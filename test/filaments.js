@@ -22,10 +22,10 @@ const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s);
 
 console.log("\nthe line-up is what was agreed\n");
 {
-  check("nine spools and two tri-colours", SPOOLS.length === 11 && SPOOLS.filter((s) => !s.group).length === 9, `${SPOOLS.length}`);
+  check("eleven spools and two tri-colours", SPOOLS.length === 13 && SPOOLS.filter((s) => !s.group).length === 11, `${SPOOLS.length}`);
   const groups = byFamily();
   for (const g of groups) {
-    check(`${g.family} has its spools`, g.spools.length === (g.family === "Tri-colour silk" ? 2 : 3), `${g.spools.length}`);
+    check(`${g.family} has its spools`, g.spools.length === (g.family === "Tri-colour silk" ? 2 : g.family === "TPU" ? 3 : 4), `${g.spools.length}`);
   }
   check("the families are PLA, PETG, TPU, then the tri-colour silks",
     groups.map((g) => g.family).join(",") === "PLA,PETG,TPU,Tri-colour silk");
@@ -278,7 +278,7 @@ console.log("\nnaming a spool the way a person would\n");
   }
   check("every spool is reachable by its own short name",
     spoolNames().every((n) => findSpool(n)), spoolNames().filter((n) => !findSpool(n)).join(","));
-  check("...and there are eleven names to offer", spoolNames().length === 11);
+  check("...and there are thirteen names to offer", spoolNames().length === 13);
 }
 
 console.log("\nfilament() is wired, and cannot change the geometry\n");
@@ -514,6 +514,26 @@ console.log("\nthe glint is a real specular test against the real lights\n");
     /fxFlakeLayer\(Nw, Vw, Rw, body, [\d.]+,\s+uFxFlakeD, uFxFlakeS,\s+[\d.]+, [\d.]+,\s+[\d.]+\)/.test(HTML)
       && /\* s \* s \*/.test(HTML),
     "an exponent that moves with sparkle makes the dial work backwards");
+}
+
+console.log("\na printed part looks printed, and a studio is somewhere to look at it\n");
+{
+  const fx = fxFor(SPOOLS.find((s) => s.id === "teal-violet-glitter"));
+  check("a spool carries layer lines, and how strongly", fx.layers > 0 && fx.layers <= 1, String(fx.layers));
+  check("...and a spool that says nothing still gets some", fxFor(SPOOLS.find((s) => s.id === "ruby-red")).layers > 0);
+  check("the shader draws them on walls only, and fades them before they shimmer",
+    /float fxLayerShade\(vec3 nW\)/.test(HTML) && /smoothstep\(0\.75, 0\.97, abs\(nW\.z\)\)/.test(HTML) && /fwidth\(ph\)/.test(HTML));
+  check("...only when the Layer lines dial asks: smooth plastic is the default",
+    /sharedFx\.layer\.value = \(fx\.layers \?\? 0\) \* \(mat\.layerLines \?\? 0\);/.test(HTML) && /layerLines: 0,/.test(HTML));
+  check("no dark speck: a resting flake is only a shade duller than the plastic",
+    !/fxDarkSpeck|uFxDark/.test(HTML) && /diffuseColor\.rgb \*= 1\.0 - 0\.07 \* fxFlakeRest\(\);/.test(HTML));
+  check("the flakes the light hits square are brighter, on top of the soft glow", /acc \+= hot \* 8\.0;/.test(HTML));
+  check("there are three studio stages", /studio: \{ label: "Studio, bright white"/.test(HTML) && /"studio-grey": \{/.test(HTML) && /"studio-dark": \{/.test(HTML));
+  check("...with a soft shadow under the part, fitted to it", /new THREE\.ShadowMaterial\(/.test(HTML) && /function fitStage\(\)/.test(HTML) && /keyLight\.castShadow = !!st;/.test(HTML));
+  check("...that scale the light sliders rather than replace them", /keyLight\.intensity \*= st\.direct;/.test(HTML));
+  check("...hide the grid and the CAD edge lines, and ink the dimensions",
+    /!gridExploded && !stageOn\(\)/.test(HTML) && /outlineGroup\.visible = !st;/.test(HTML) && /dimMaterial\.color\.set\(ink \?\? DIM_INK\);/.test(HTML));
+  check("...and the workshop grid is still the default", /stage: "grid",/.test(HTML));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

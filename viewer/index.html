@@ -4593,6 +4593,10 @@
           <!-- Only means anything on a spool that HAS flake, so the row hides
                itself the rest of the time rather than sitting there greyed and
                inviting a drag that does nothing. -->
+          <div class="mat-row" id="mat-layers-row" style="display:none" title="Show the fine horizontal lines a printed part has. Off gives the smooth plastic look."><span>Layer lines</span>
+            <input type="range" id="mat-layers" min="0" max="200" value="0" />
+            <output id="mat-layers-o">off</output>
+          </div>
           <div class="mat-row" id="mat-sparkle-row" style="display:none"><span>Sparkle</span>
             <input type="range" id="mat-sparkle" min="0" max="250" value="100" />
             <output id="mat-sparkle-o">1.0×</output>
@@ -4744,6 +4748,14 @@
             <span class="swatches" id="rimcol-swatches"></span>
             <button id="rimcol-add" class="swatch-add" title="Add a custom rim-light tint">+</button>
             <input type="color" id="mat-rimcol" value="#ffffff" />
+          </label>
+          <label class="mat-row" title="What the model stands on. The studios give it a plain surface, its own soft shadow and even light, like a product photo."><span>Stage</span>
+            <select id="mat-stage">
+              <option value="grid">Workshop grid</option>
+              <option value="studio">Studio, bright white</option>
+              <option value="studio-grey">Studio, soft grey</option>
+              <option value="studio-dark">Studio, dark</option>
+            </select>
           </label>
           <label class="mat-row"><span>Background</span>
             <span class="swatches" id="bg-swatches"></span>
@@ -6270,6 +6282,7 @@
     // the empty scene.) `grow` is for parts arriving one at a time: the grid
     // only gets bigger, and stays put while the parts still fit on it.
     function seatGrid({ grow = false } = {}) {
+      try { fitStage(); } catch { /* the stage is set up further down */ }
       const bb = new THREE.Box3();
       if (modelGroup.visible) bb.expandByObject(modelGroup);
       bb.expandByObject(buildGhost);
@@ -6323,7 +6336,9 @@
       c.height = 36;
       const ctx2 = c.getContext("2d");
       ctx2.font = "600 26px system-ui, sans-serif";
-      ctx2.fillStyle = "#aec4e8";
+      let ink = "#aec4e8";
+      try { ink = stageInk ?? ink; } catch { /* before the stage exists */ }
+      ctx2.fillStyle = ink;
       ctx2.textBaseline = "middle";
       ctx2.fillText(text, 8, 19);
       const tex = new THREE.CanvasTexture(c);
@@ -6857,6 +6872,8 @@
       // as "more glittery" rather than just "brighter" — a wide soft highlight
       // is a shiny surface, a narrow blinding one is a speck of foil.
       sparkle: { value: 1 },
+      // printed layer lines and their height in mm
+      layer: { value: 0 }, layerH: { value: 0.3 },
     };
     // A SECOND set of these, per material, is what makes a per-part finish
     // possible: injectTex hands every material the same uniform OBJECTS, so
@@ -6871,6 +6888,8 @@
       flake: { value: 0 }, flakeD: { value: 20 }, flakeS: { value: 0.05 },
       flakeK: { value: 2 }, flakeC: { value: new THREE.Color(1, 1, 1) },
       rainbow: { value: 0 }, sparkle: { value: 1 },
+      // printed layer lines (0 = none) and their height in mm
+      layer: { value: 0 }, layerH: { value: 0.3 },
       // null means "follow the Material panel". A piece given its own pattern
       // gets a {value} of its own here and stops following.
       kind: null,
@@ -6895,6 +6914,7 @@
       bundle.flakeC.value.setRGB(...fx.flakeColour);
       bundle.rainbow.value = fx.flakeRainbow;
       bundle.sparkle.value = sparkle ?? 1;
+      bundle.layer.value = (fx.layers ?? 0) * (mat.layerLines ?? 0);
       if (Number.isFinite(lo) && Number.isFinite(hi)) { bundle.lo.value = lo; bundle.hi.value = hi; }
     }
 
@@ -6917,6 +6937,7 @@
         uFxFlake: sharedFx.flake, uFxFlakeD: sharedFx.flakeD, uFxFlakeS: sharedFx.flakeS,
         uFxFlakeK: sharedFx.flakeK, uFxFlakeC: sharedFx.flakeC, uFxRainbow: sharedFx.rainbow,
         uFxSparkle: sharedFx.sparkle,
+        uFxLayer: sharedFx.layer, uFxLayerH: sharedFx.layerH,
       });
       shader.vertexShader = shader.vertexShader
         .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;\nvarying vec3 vFxHome;\nvarying vec3 vFxNormalW;")
@@ -7011,6 +7032,45 @@
 
         // Three stops up the part. Two-stop ombres arrive here already widened
         // to three by fxFor(), so there is nothing to branch on.
+        // PRINTED LAYERS. A real print is a stack of beads, and the fine
+        // horizontal lines they leave are most of what makes a preview read
+        // as a printed thing rather than a render of a shape. Each layer is a
+        // rounded bead: dark in the groove between two, a touch lighter on
+        // its crown. Walls only (a top face shows no layer edges), and faded
+        // out as the lines get finer than the pixels, where they would only
+        // shimmer.
+        uniform float uFxLayer, uFxLayerH;
+        float fxLayerBead(float z) {
+          float ph = z / max(uFxLayerH, 0.02);
+          float f = abs(fract(ph) - 0.5) * 2.0;          // 0 on a crown, 1 in a groove
+          float fine = clamp(2.1 - fwidth(ph) * 2.4, 0.0, 1.0);
+          return f * fine;
+        }
+        float fxLayerShade(vec3 nW) {
+          if (uFxLayer <= 0.0) return 1.0;
+          float wall = 1.0 - smoothstep(0.75, 0.97, abs(nW.z));
+          float f = fxLayerBead(vFxHome.z);
+          float groove = smoothstep(0.62, 1.0, f);
+          float crown = 1.0 - smoothstep(0.0, 0.45, f);
+          return 1.0 - uFxLayer * wall * (0.34 * groove - 0.07 * crown);
+        }
+        // A FLAKE AT REST. Glitter is not white dots and it is not pepper: a
+        // flake that is not catching the light is nearly invisible, a shade
+        // duller than the plastic round it, and one that is catching it is a
+        // tiny lamp (see THE TWINKLE). This is the resting half: where a
+        // surface flake lies, the colour drops by a few percent. The same
+        // cells as the surface layer of the flake field, so the dull dot and
+        // the flash are the same flake.
+        float fxFlakeRest() {
+          if (uFxFlake < 0.5) return 0.0;
+          vec3 Q = vFxHome * uFxFlakeD;
+          vec3 cell = floor(Q);
+          if (tHash(cell) > uFxFlakeS) return 0.0;
+          vec3 centre = vec3(tHash(cell + 5.1), tHash(cell + 9.7), tHash(cell + 13.3)) * 0.5 + 0.25;
+          float size = mix(0.27, 0.48, pow(tHash(cell + 17.9), 2.5));
+          float d = length(Q - cell - centre);
+          return 1.0 - smoothstep(size * 0.8, size, d);
+        }
         vec3 fxGradient() {
           float span = max(uFxHi - uFxLo, 0.0001);
           float u = clamp((vFxHome.z - uFxLo) / span, 0.0, 1.0);
@@ -7161,7 +7221,12 @@
             float h = max(dot(facetW, normalize(Lw + Vw)), 0.0);
             hot += vec3(0.55) * pow(h, sharp * 7.0);
           }
-          acc += hot * 7.0;
+          // The soft glow stays as it was (flakes at every depth, each a
+          // little lit: that is the look that was liked) and the needle flash
+          // rides on top of it: the ones the light hits square are brighter
+          // than the rest, and which ones they are changes as the part turns.
+          // (Sixteen times was tried: every hit became a hard white square.)
+          acc += hot * 8.0;
           vec3 tint = fxFlakeTint(cell, align * 1.4);
           // a faint metallic glint even off-angle, so flake reads as flake and
           // not only as the few that happen to line up; and the FLASH, which
@@ -7218,7 +7283,9 @@
           // A gradient spool REPLACES the part colour — on the real thing the
           // filament is the colour, and mixing the two just makes mud.
           if (uFxGrad > 1.5) diffuseColor.rgb = fxTri();
-          else if (uFxGrad > 0.5) diffuseColor.rgb = fxGradient();`)
+          else if (uFxGrad > 0.5) diffuseColor.rgb = fxGradient();
+          diffuseColor.rgb *= fxLayerShade(vFxNormalW);
+          diffuseColor.rgb *= 1.0 - 0.07 * fxFlakeRest();`)
         // Flake is emissive, not diffuse: a speck that only reflects the key
         // light disappears the moment it faces away, and real glitter does the
         // opposite — it is brightest at the angle nothing else is.
@@ -7613,6 +7680,7 @@
         // call made it.
         mesh.userData.faceName = nm || null;
         mesh.userData.solidName = solidName || null;
+        mesh.castShadow = mesh.receiveShadow = true;
         out.push(mesh);
       }
       paintCutFaces(out);
@@ -7819,6 +7887,110 @@
     });
     if (localStorage.getItem("brepcode-negatives")) negBtn.classList.add("active");
 
+    // --------------------------------------------------------- the stage
+    // What the model stands on. "grid" is the workshop: dark space, a
+    // measured floor. The studios are for looking at the thing: a plain bright
+    // (or grey, or dark) surface with the part's own soft shadow on it and
+    // even light from all round, which is the difference between a CAD
+    // viewport and a picture of something you could pick up. Nothing here
+    // touches the light sliders: the studio adds its own soft sky and floor
+    // bounce on top of whatever they are set to.
+    const STAGES = {
+      // ink: the colour of the dimension lines and their numbers on that surface
+      studio: { label: "Studio, bright white", bg: "#f2f0ec", shadow: 0.30, sky: 0.2, direct: 0.36, ground: "#e9e4dc", ink: "#20242c" },
+      "studio-grey": { label: "Studio, soft grey", bg: "#c5c8ce", shadow: 0.34, sky: 0.18, direct: 0.4, ground: "#b7bac0", ink: "#20242c" },
+      "studio-dark": { label: "Studio, dark", bg: "#16181c", shadow: 0.55, sky: 0.12, direct: 0.6, ground: "#101114", ink: null },
+    };
+    const stageSky = new THREE.HemisphereLight(0xffffff, 0xe9e4dc, 0);
+    stageSky.position.set(0, 0, 1);
+    scene.add(stageSky);
+    const stageFloor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ opacity: 0.3, transparent: true, depthWrite: false }));
+    stageFloor.receiveShadow = true;
+    stageFloor.visible = false;
+    stageFloor.renderOrder = -1;
+    scene.add(stageFloor);
+    scene.add(keyLight.target);
+    const KEY_DIR = new THREE.Vector3(60, -80, 120).normalize();
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.radius = 7;
+    keyLight.shadow.bias = -0.0006;
+    keyLight.shadow.normalBias = 0.35;
+    const stageOn = () => !!STAGES[mat?.stage];
+    let stageInk = null;              // the studio's dimension colour, or null for the usual one
+    const DIM_INK = 0x7d92b8;         // the dimension lines' own colour, on the workshop grid
+    // the light and the floor follow the model: a shadow map only as big as
+    // the part keeps its edge soft and its texels small
+    function fitStage() {
+      const st = STAGES[mat?.stage];
+      if (!st) return;
+      const bb = new THREE.Box3();
+      if (modelGroup.visible) bb.expandByObject(modelGroup);
+      if (bb.isEmpty()) { stageFloor.visible = false; return; }
+      const c = bb.getCenter(new THREE.Vector3()), size = bb.getSize(new THREE.Vector3());
+      const R = Math.max(size.length() / 2, 5);
+      keyLight.target.position.copy(c);
+      keyLight.position.copy(c).addScaledVector(KEY_DIR, R * 4);
+      const cam = keyLight.shadow.camera;
+      cam.left = cam.bottom = -R * 1.6; cam.right = cam.top = R * 1.6;
+      cam.near = R * 0.5; cam.far = R * 8;
+      cam.updateProjectionMatrix();
+      stageFloor.visible = true;
+      stageFloor.scale.set(R * 14, R * 14, 1);
+      stageFloor.position.set(c.x, c.y, bb.min.z - 0.01);
+    }
+    function applyStage() {
+      const st = STAGES[mat.stage];
+      const was = renderer.shadowMap.enabled;
+      renderer.shadowMap.enabled = !!st;
+      keyLight.castShadow = !!st;
+      stageSky.intensity = st ? st.sky : 0;
+      if (st) {
+        // The workshop lights are set to read a part against black, and on a
+        // bright surface they burn every upward face to white. The studio
+        // turns the direct lights down and lets its sky do the filling, so
+        // colour stays colour. (applyMaterialNow has just set them from the
+        // sliders, so this scales the sliders, it does not replace them.)
+        keyLight.intensity *= st.direct;
+        ambientLight.intensity *= st.direct * 0.8;
+        fillLight.intensity *= st.direct;
+        stageSky.groundColor.set(st.ground);
+        stageFloor.material.opacity = st.shadow;
+        scene.background.set(st.bg);
+        if (grid) grid.visible = false;
+        fitStage();
+      }
+      // A studio shows the object, not its construction: the CAD edge lines
+      // (every facet of a traced outline has one) go, and the dimensions are
+      // inked for the surface they are drawn on.
+      try { outlineGroup.visible = !st; } catch { /* the outlines are set up further down the page (they ask stageOn() when they are) */ }
+      try {
+        const ink = st?.ink ?? null;
+        if (stageInk !== ink) {
+          stageInk = ink;
+          dimMaterial.color.set(ink ?? DIM_INK);
+          dimMaterialBehind.color.set(ink ?? DIM_INK);
+          updateDims();
+        }
+      } catch { /* no dimensions drawn yet: the next build inks them */ }
+      if (st) {
+      } else {
+        stageFloor.visible = false;
+        if (was) {
+          // back to the workshop: the theme's (or the user's) background and
+          // the grid as the Grid tab has it
+          keyLight.position.set(60, -80, 120);
+          keyLight.target.position.set(0, 0, 0);
+          scene.background.set(matUserBg ? mat.bg : (THEMES[currentTheme] ?? THEMES.dark).bg);
+          window.brepscriptApplyGrid?.();
+        }
+      }
+      // shadows are compiled into every lit material
+      if (was !== renderer.shadowMap.enabled) scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) if (m) m.needsUpdate = true; });
+      const sel = document.getElementById("mat-stage");
+      if (sel) sel.value = st ? mat.stage : "grid";
+    }
+
     // ------------------------------------------- material & lighting panel
     const MAT_DEFAULTS = {
       // satin printed plastic: no metalness (a plastic part has none) and a
@@ -7828,6 +8000,11 @@
       // 1 = the spool as specified. The dial goes to 2.5 for anyone who
       // wants it unmistakable rather than accurate.
       sparkle: 1,
+      // Printed layer lines, as a choice: 0 (the default) is the smooth,
+      // well-lit plastic most pictures want; the dial brings the lines in.
+      layerLines: 0,
+      // what the model stands on: "grid", or one of STAGES
+      stage: "grid",
       texture: 0, texDepth: 50, texScale: 30, texRot: 0, texOffX: 0, texOffY: 0,
       flat: false, wire: false,
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
@@ -8024,6 +8201,7 @@
       fillLight.color.set(mat.fillcol || "#ffffff");
       rimLight.color.set(mat.rimcol || mat.lightcol);
       if (matUserBg) scene.background.set(mat.bg);
+      applyStage();
       // reflect widget values
       $("mat-color").value = mat.color;
       $("mat-bg").value = mat.bg;
@@ -8108,7 +8286,7 @@
       styleSel.value = ["walls", "lattice"].includes(stored.style) ? stored.style : "floor";
 
       const applyGrid = () => {
-        if (grid) grid.visible = showBox.checked && !gridExploded;
+        if (grid) grid.visible = showBox.checked && !gridExploded && !stageOn();
         if (grid && gridStyle !== styleSel.value) { gridStyle = styleSel.value; addGrid3D(THEMES[currentTheme] ?? THEMES.dark); }
         axisLabelsOn = axesBox.checked && showBox.checked && !gridExploded;   // markers belong to the floor
         buildAxisLabels();
@@ -8425,6 +8603,17 @@
     // swap, no recompile. Every solid shares one uniform object, so dragging
     // this re-lights the whole model on the next frame, which is what makes it
     // feel like a dial rather than a setting.
+    $("mat-stage").addEventListener("change", (e) => {
+      mat.stage = e.target.value;
+      saveMat();
+      applyMaterialNow();
+    });
+    $("mat-layers").addEventListener("input", (e) => {
+      mat.layerLines = +e.target.value / 100;
+      $("mat-layers-o").textContent = mat.layerLines > 0 ? `${mat.layerLines.toFixed(1)}×` : "off";
+      saveMat();
+      applySpoolFx();
+    });
     $("mat-sparkle").addEventListener("input", (e) => {
       mat.sparkle = +e.target.value / 100;
       $("mat-sparkle-o").textContent = `${mat.sparkle.toFixed(1)}×`;
@@ -8517,7 +8706,9 @@
       if (!spool || !_fil) {
         sharedFx.grad.value = 0;
         sharedFx.flake.value = 0;
+        sharedFx.layer.value = 0;
         $("mat-sparkle-row").style.display = "none";
+        $("mat-layers-row").style.display = "none";
         return;
       }
       _fil.then((F) => {
@@ -8532,8 +8723,12 @@
         sharedFx.flakeK.value = fx.flakeStrength;
         sharedFx.flakeC.value.setRGB(...fx.flakeColour);
         sharedFx.rainbow.value = fx.flakeRainbow;
+        sharedFx.layer.value = (fx.layers ?? 0) * (mat.layerLines ?? 0);
         // The dial only exists for spools that actually carry flake.
         $("mat-sparkle-row").style.display = fx.flake ? "" : "none";
+        $("mat-layers-row").style.display = fx.layers ? "" : "none";
+        $("mat-layers").value = Math.round((mat.layerLines ?? 0) * 100);
+        $("mat-layers-o").textContent = (mat.layerLines ?? 0) > 0 ? `${mat.layerLines.toFixed(1)}×` : "off";
         sharedFx.sparkle.value = mat.sparkle ?? 1;
         const bb = new THREE.Box3().setFromObject(modelGroup);
         if (!bb.isEmpty()) { sharedFx.lo.value = bb.min.z; sharedFx.hi.value = bb.max.z; }
@@ -13770,6 +13965,7 @@ ${joined}${SITE_TAIL}`), joined);
       }
     };
     scene.add(outlineGroup);
+    try { outlineGroup.visible = !stageOn(); } catch { /* no stage yet */ }
 
     // Design's cut view (design/explode.js): clip planes on every model mesh
     // and on the edge lines traced from it, plus a cap where the cut goes

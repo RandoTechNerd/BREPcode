@@ -110,6 +110,28 @@ export const SPOOLS = [
     flake: { density: 3.0, size: 0.16, strength: 2.8, colour: "#8fe8ff", rainbow: false },
   },
   {
+    // teal at the top running down to violet, with mirror flake
+    id: "teal-violet-glitter",
+    aliases: ["mermaid-glitter"],   // what people call the look; not a name of ours
+    family: "PLA",
+    label: "Teal Violet Glitter · violet → teal, with flake",
+    base: "#49b9c9",
+    t: 0, atten: 20, a: 1, rough: 0.5, env: 0.16,
+    grad: ["#7a4fd8", "#5a86e2", "#3cc8bd"],
+    flake: { density: 2.2, size: 0.13, strength: 1.5, colour: "#ffffff", rainbow: false },
+  },
+  {
+    // gloss black with fine gold flake: nearly nothing until the light finds
+    // a flake, and then a point of gold that moves as the part turns
+    id: "midnight-gold-flake",
+    aliases: ["star-dust", "stardust"],   // what people call the look; not a name of ours
+    family: "PETG",
+    label: "Midnight Gold Flake · gloss black with gold flake",
+    base: "#0c0c0e",
+    t: 0, atten: 20, a: 1, rough: 0.3, env: 0.5,
+    flake: { density: 3.4, size: 0.08, strength: 1.6, colour: "#ffb428", rainbow: false },
+  },
+  {
     id: "ocean-gradient",
     aliases: ["cc-mermaid", "mermaid"],   // names it had before, still accepted
     family: "PETG",
@@ -211,6 +233,10 @@ export const LOOKS = {
   "ruby-red": { key: 132, fill: 46, rim: 115, ambient: 42, exposure: 116, opacity: 90, bg: "#0c0a0e" },
   // deep violet would crush to black without a strong key AND a rim
   "violet-flake": { key: 168, fill: 56, rim: 108, ambient: 44, exposure: 114, opacity: 96, bg: "#080a12" },
+  // an opaque pastel gradient: open and even, so the two colours both read
+  "teal-violet-glitter": { key: 140, fill: 74, rim: 50, ambient: 62, exposure: 104, opacity: 100, bg: "#0d1018" },
+  // black needs light to read as gloss rather than as a hole: key and rim both up
+  "midnight-gold-flake": { key: 175, fill: 60, rim: 130, ambient: 50, exposure: 118, opacity: 100, bg: "#0d0e12" },
   // glossy PETG: enough rim to throw the specular line that says "gloss"
   "ocean-gradient": { key: 152, fill: 72, rim: 76, ambient: 58, exposure: 108, opacity: 96, bg: "#0a0f16" },
   // the hardest one in the set — everything up, or it is a hole in the screen
@@ -316,6 +342,9 @@ export function fxFor(spool) {
     flakeStrength: f ? f.strength : 0,
     flakeColour: hexToRgb(f ? f.colour : "#ffffff"),
     flakeRainbow: f && f.rainbow ? 1 : 0,
+    // how strongly the printed layer lines show (every spool is a printed
+    // part; a spool can say less)
+    layers: spool.layers ?? 0.6,
     // the physical half, merged with the family defaults
     // env is overridable per spool for the same reason rough is: the two
     // NEARLY CLEAR spools have pale bodies that any reflection pushes to white,
