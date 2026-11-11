@@ -33,11 +33,28 @@ function load() {
   return cached;
 }
 
+// FAST TRIMS on an imported STEP. Before a boolean, the kernel re-fits every
+// trim curve of both operands that lies on a free-form surface, and again on
+// the result. On a real part that is nearly all of the time: a 395-face
+// bracket with 70 spline faces took 123 s for its first boolean (51 s + 61 s
+// in those two passes) and 8 s without them, for the same faces. The passes
+// polish trims the file itself wrote; the part on screen already has them as
+// they are. The kernel reads these two switches from the environment on every
+// call, so they are set for a history that carries a STEP and cleared after.
+const FAST_TRIMS = { BREP_DEBUG_TRIM_REFIT_OFF: "1", BREP_INHERITED_TRIM_REFIT: "0" };
+function withFastTrims(json, run) {
+  if (process.env.BREPCODE_STEP_TRIMS === "full" || !json.includes('"stepText"')) return run();
+  const before = {};
+  for (const k of Object.keys(FAST_TRIMS)) { before[k] = process.env[k]; process.env[k] = FAST_TRIMS[k]; }
+  try { return run(); }
+  finally { for (const k of Object.keys(FAST_TRIMS)) { if (before[k] === undefined) delete process.env[k]; else process.env[k] = before[k]; } }
+}
+
 function wrap(n) {
   return {
     native: true,
     info: n.nativeInfo(),
-    execute_history_json: (json) => n.executeHistoryJson(json),
+    execute_history_json: (json) => withFastTrims(json, () => n.executeHistoryJson(json)),
     tessellate_handle(handle, tol) {
       const m = n.tessellateHandle(handle, tol);
       return {

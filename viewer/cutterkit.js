@@ -16,9 +16,8 @@
 export const DEFAULTS = {
   height: 15,        // blade height
   wall: 0.9,         // blade thickness — never below 0.8, see #cookiecutter
-  rim: 6,            // the flange you press on
+  rim: 6,            // the flange you press on: printed on the plate, the blade rising from it
   rimHeight: 2.5,
-  bite: 1,           // how far the rim sinks INTO the blade — never rest on
   size: 70,          // across, in mm
   relief: 1.6,       // how proud stamp detail stands
   plate: 3,          // stamp backing plate
@@ -155,7 +154,19 @@ export function simplifyLoops(loops, tol = 0.25) {
 // Name the loops so the generated code reads like something a person wrote.
 // Simplification happens HERE because all four generators come through it, so
 // a fifth one added later gets it without anyone remembering.
-function loopVars(loops, tol) {
+// The same outline twice is one cutter, built twice. Two-tone icons draw their
+// shape once per tone, and each copy is its own blade, rim and set of cuts: a
+// traced dinosaur took 31 s with its outline doubled and 6 s without.
+export function dedupeLoops(loops) {
+  const same = (a, b) => a.hole === b.hole && a.points.length === b.points.length
+    && a.points.every(([x, y], i) => Math.abs(x - b.points[i][0]) < 0.05 && Math.abs(y - b.points[i][1]) < 0.05);
+  const out = [];
+  for (const l of loops) if (!out.some((k) => same(k, l))) out.push(l);
+  return out;
+}
+
+function loopVars(loops0, tol) {
+  const loops = dedupeLoops(loops0);
   const src = tol === 0 ? loops : simplifyLoops(loops, tol ?? DEFAULTS.tolerance);
   const solid = src.filter((l) => !l.hole);
   const holes = src.filter((l) => l.hole);
@@ -171,17 +182,23 @@ function loopVars(loops, tol) {
 // model, which is the failure this whole file exists to avoid.
 function bladeModule(opts = {}) {
   const o = { ...DEFAULTS, ...opts };
-  // A sharp edge: the last EDGE_H of the blade, at the end away from the rim,
-  // is one extrusion line wide. It overlaps the full wall by 0.4 so the two
-  // are one body rather than two stacked on a shared face.
+  // PRINTED THE WAY IT STANDS: the rim, the wide part, lies on the plate and
+  // the blade rises from it to the cutting edge. That is the most plastic on
+  // the first layer (it sticks, it cannot tip), no overhang anywhere, and the
+  // edge that cuts is the last thing printed, so it is the cleanest. Turn it
+  // over to use it: the flat that was on the plate is what you press on.
+  //
+  // A sharp edge: the last EDGE_H of the blade, at the top, is one extrusion
+  // line wide. It overlaps the full wall by 0.4 so the two are one body rather
+  // than two stacked on a shared face.
   const blade = o.sharp
     ? `module blade(pts) {
-  translate([0, 0, EDGE_H - 0.4]) linear_extrude(H - EDGE_H + 0.4) difference() {
+  linear_extrude(H - EDGE_H) difference() {
     offset(delta = WALL/2) polygon(pts);
     offset(delta = -WALL/2) polygon(pts);
   }
   // the cutting edge, thinned from the OUTSIDE so the inside stays the outline
-  linear_extrude(EDGE_H) difference() {
+  translate([0, 0, H - EDGE_H - 0.4]) linear_extrude(EDGE_H + 0.4) difference() {
     offset(delta = EDGE - WALL/2) polygon(pts);
     offset(delta = -WALL/2) polygon(pts);
   }
@@ -195,25 +212,25 @@ function bladeModule(opts = {}) {
   const flange = o.handle === "none"
     ? `module flange(pts) { }   // no rim: the bare blade`
     : `module flange(pts) {
-  // the rim sinks BITE into the blade rather than resting on it: two surfaces
-  // in one plane is a hole in the mesh
-  translate([0, 0, H - BITE - RIM_H]) linear_extrude(RIM_H + BITE) difference() {
-    offset(delta = RIM) polygon(pts);
-    offset(delta = -WALL/2) polygon(pts);
+  // on the plate, the blade standing in it. offset(r) rounds every corner the
+  // outline turns outward at, so a star's rim has soft points, not spikes.
+  linear_extrude(RIM_H) difference() {
+    offset(r = RIM) polygon(pts);
+    polygon(pts);   // ends INSIDE the blade's wall, not flush with its inner face
   }${o.handle === "comfort" ? `
-  // the comfort tier: a narrower step on top, sunk into the rim the same way
-  translate([0, 0, H - BITE]) linear_extrude(RIM_H * 0.6 + BITE) difference() {
-    offset(delta = RIM * 0.55) polygon(pts);
-    offset(delta = -WALL/2) polygon(pts);
+  // the comfort tier: a narrower step on the rim, sunk 0.4 into it
+  translate([0, 0, RIM_H - 0.4]) linear_extrude(RIM_H * 0.6 + 0.4) difference() {
+    offset(r = RIM * 0.55) polygon(pts);
+    polygon(pts);
   }` : ""}
 }`;
   // Centre bars: strips across the opening at the rim's height, cut to the
   // inside of the outline. They stop a big cutter flexing and give the fingers
-  // something to lift it by. BITE into the wall, like the rim.
+  // something to lift it by. On the plate with the rim, so they print flat.
   const bars = o.bars > 0
     ? `
 module bars(pts) {
-  translate([0, 0, H - BITE - RIM_H]) linear_extrude(RIM_H + BITE) intersection() {
+  linear_extrude(RIM_H) intersection() {
     offset(delta = WALL/2) polygon(pts);
     union() {
       square([SPAN * 2, BAR_W], center = true);${o.bars > 1 ? "\n      square([BAR_W, SPAN * 2], center = true);" : ""}
@@ -235,9 +252,8 @@ function header(opts) {
   return { o, text: `$fn = 48;
 H = ${num(o.height)};        // blade height
 WALL = ${num(o.wall)};       // blade thickness — 0.8 is the floor at a 0.4 nozzle
-RIM = ${num(o.rim)};         // the flange you press on
+RIM = ${num(o.rim)};         // the rim: on the plate when printed, under your hand when cutting
 RIM_H = ${num(o.rimHeight)};
-BITE = ${num(o.bite)};       // how far the rim sinks INTO the blade
 `
     + (o.sharp ? `EDGE = ${num(Math.min(o.edge, o.wall))};      // the cutting edge, one line wide
 EDGE_H = ${num(o.edgeHeight)};      // ...over the last of the blade
@@ -253,7 +269,9 @@ export function cutterScad(loops, opts = {}) {
   let span = 0;
   for (const l of loops) for (const [x, y] of l.points) span = Math.max(span, Math.abs(x), Math.abs(y));
   const { o, text } = header({ ...opts, size: Math.max(+opts.size || 0, span * 2, 10) });
-  const { lines, nSolid } = loopVars(o.mirror ? mirrorLoops(loops) : loops, opts.tolerance);
+  // the blade goes round the outside: interior detail is the stamp's, not a hole in the wall
+  const outer = loops.filter((l) => !l.hole);
+  const { lines, nSolid } = loopVars(o.mirror ? mirrorLoops(outer) : outer, opts.tolerance);
   const calls = Array.from({ length: nSolid }, (_, i) => `blade(o${i}); flange(o${i});${o.bars ? ` bars(o${i});` : ""}`);
   return `// Cookie cutter\n${text}\n${lines.join("\n")}\n\n${bladeModule(o)}\n\n${calls.join("\n")}\n`;
 }
@@ -583,6 +601,35 @@ export async function iconSvg(name, { size = 256, fetchImpl = fetch } = {}) {
   const text = await r.text();
   if (!/<svg/i.test(text)) throw new Error(`${id} did not come back as an SVG`);
   return text;
+}
+
+// Many icons in a few requests: one per icon set, each carrying every icon
+// asked of it. A search shows 48 cutters, and fetching 48 SVGs one by one is
+// what gets a visitor rate-limited after their third search. Returns a Map of
+// "set:name" -> SVG text; an icon the answer leaves out is simply not in it.
+export async function iconSvgs(names, { fetchImpl = fetch } = {}) {
+  const sets = new Map();
+  for (const n of names || []) {
+    const [prefix, icon, more] = String(n).split(":");
+    if (more !== undefined || !/^[\w.-]+$/.test(prefix || "") || !/^[\w.-]+$/.test(icon || "")) continue;
+    if (!sets.has(prefix)) sets.set(prefix, []);
+    sets.get(prefix).push(icon);
+  }
+  const out = new Map();
+  await Promise.all([...sets].map(async ([prefix, icons]) => {
+    try {
+      const r = await fetchImpl(`${ICONIFY}/${prefix}.json?icons=${icons.join(",")}`);
+      if (!r.ok) return;
+      const j = await r.json();
+      for (const icon of icons) {
+        const d = j?.icons?.[icon];
+        if (typeof d?.body !== "string") continue;
+        const box = [d.left ?? j.left ?? 0, d.top ?? j.top ?? 0, d.width ?? j.width ?? 16, d.height ?? j.height ?? 16];
+        out.set(`${prefix}:${icon}`, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.join(" ")}">${d.body}</svg>`);
+      }
+    } catch { /* that set is fetched icon by icon instead */ }
+  }));
+  return out;
 }
 
 export const iconPreview = (name, size = 48) => {

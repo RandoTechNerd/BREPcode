@@ -52,6 +52,37 @@ export async function svgToStl(svgText, { height = 3, maxSize = 60, name = "svg"
 
 // svgText -> OUTLINE LOOPS in mm, ready to offset into a cutter.
 //
+// What an SVG draws, as it draws it: filled shapes (outer loop, then holes)
+// and stroked lines with their width, in the SVG's own units. svgToLoops
+// below reads every path as a filled shape, which turns a line icon's strokes
+// into slivers and an invisible fill="none" bounding box into a solid square.
+// viewer/cutteroutline.js fuses these into the ink a person actually sees.
+export async function svgParts(svgText, { divisions = 12 } = {}) {
+  await loadSvg();
+  const data = new SVGLoader().parse(svgText);
+  const fills = [], strokes = [];
+  const pts = (c) => c.getPoints(divisions).map((p) => [p.x, p.y]);
+  const on = (v) => v !== undefined && v !== null && v !== "none" && v !== "transparent";
+  for (const path of data.paths) {
+    const st = path.userData?.style || {};
+    if (on(st.fill) && st.fillOpacity !== 0) {
+      for (const s of SVGLoader.createShapes(path)) fills.push([pts(s), ...(s.holes || []).map(pts)]);
+    }
+    if (on(st.stroke) && +st.strokeWidth > 0 && st.strokeOpacity !== 0) {
+      for (const sp of path.subPaths) {
+        const p = pts(sp);
+        if (p.length >= 2) strokes.push({ points: p, width: +st.strokeWidth, closed: !!sp.autoClose });
+      }
+    }
+  }
+  // the frame the picture is seen through. Icons park things outside it (a
+  // second unicorn a page to the left, a body that runs off the edge) which a
+  // browser never shows, so the ink is cut to it as well
+  const vb = /viewBox\s*=\s*["']\s*([-\d.eE]+)[\s,]+([-\d.eE]+)[\s,]+([-\d.eE]+)[\s,]+([-\d.eE]+)/.exec(svgText);
+  const box = vb && +vb[3] > 0 && +vb[4] > 0 ? [+vb[1], +vb[2], +vb[1] + +vb[3], +vb[2] + +vb[4]] : null;
+  return { fills, strokes, box };
+}
+
 // svgToStl above gives a solid, which is a dead end for a cutter: a blade is a
 // polygon offset, and an offset needs POINTS. So this returns the same shapes
 // as flat point loops instead — outer contours and their holes, in the same

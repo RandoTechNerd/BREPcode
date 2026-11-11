@@ -8,7 +8,7 @@
 import {
   KINDS, makeKit, cutterScad, stampScad, stencilScad, rollerScad,
   loopLiteral, DEFAULTS, searchIcons, iconSvg, iconPreview, ICONIFY,
-  loopsFromCode, scaleLoops, simplifyLoops, pieceNote,
+  loopsFromCode, scaleLoops, simplifyLoops, pieceNote, iconSvgs,
 } from "../viewer/cutterkit.js";
 import { fromOpenSCAD } from "../src/openscad.js";
 import { build, toSTL } from "../index.js";
@@ -48,7 +48,7 @@ console.log("\nevery loop of the outline reaches the output\n");
   check("cutter: one blade per solid loop", (c.match(/blade\(o\d\)/g) || []).length === 2,
     (c.match(/blade\(o\d\)/g) || []).join(","));
   check("cutter: and a flange on each", (c.match(/flange\(o\d\)/g) || []).length === 2);
-  check("holes become h-vars, not extra blades", /h0 = \[/.test(c));
+  check("holes are not extra blades, and are not carried into a cutter", !/h0 = \[/.test(c) && /h0 = \[/.test(stampScad(LOOPS)));
 }
 
 console.log("\nthe numbers the recipe justifies are the numbers emitted\n");
@@ -56,7 +56,23 @@ console.log("\nthe numbers the recipe justifies are the numbers emitted\n");
   const c = cutterScad(LOOPS);
   check("wall is never below the nozzle floor", DEFAULTS.wall >= 0.8, `${DEFAULTS.wall}`);
   check("...and it is in the source", /WALL = 0\.9/.test(c));
-  check("the rim BITES into the blade rather than resting on it", /BITE/.test(c) && DEFAULTS.bite > 0);
+  // PRINTED AS IT STANDS: the rim is the wide part and it is on the plate, the
+  // blade rising from it. Its corners are rounded (offset r, not delta).
+  check("the rim lies on the plate, the blade standing in it", /module flange\(pts\) \{[^}]*?\n  linear_extrude\(RIM_H\) difference\(\) \{/.test(c) && !/translate\(\[0, 0, H - /.test(c.replace(/translate\(\[0, 0, H - EDGE_H/g, "")));
+  check("...with rounded corners", /offset\(r = RIM\) polygon\(pts\);/.test(c));
+  {
+    const sq = [{ hole: false, points: [[-20, -20], [20, -20], [20, 20], [-20, 20]] }];
+    const stl = toSTL(await build(fromOpenSCAD(cutterScad(sq, { size: 40 }))), "t");
+    const v = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    const wide = (z0, z1) => Math.max(...v.filter((p) => p[2] >= z0 && p[2] <= z1).map((p) => Math.abs(p[0])));
+    check("...built: widest at the plate, bare blade at the top", wide(0, 0.01) > 25.9 && wide(14.9, 15.1) < 20.6, `${wide(0, 0.01)} / ${wide(14.9, 15.1)}`);
+    const corner = Math.max(...v.filter((p) => p[2] < 0.01).map((p) => Math.hypot(p[0], p[1])));
+    check("...and the rim's corner is an arc, not a point", corner > 34.2 && corner < 34.4, `${corner.toFixed(2)} (a mitred point would reach 36.77)`);
+  }
+  {
+    const twice = [LOOPS[0], { hole: false, points: LOOPS[0].points.map((q) => [...q]) }, LOOPS[2]];
+    check("the same outline twice is one blade", (cutterScad(twice).match(/blade\(o\d\)/g) || []).length === 1);
+  }
   check("blade height is a printable 15mm", /H = 15/.test(c));
 
   const s = stampScad(LOOPS);
@@ -416,9 +432,9 @@ console.log("\nthe choices a cutter designer offers\n");
   check("the wall never goes under the nozzle floor, whatever the dial says", /WALL = 0\.8;/.test(cutterScad(one, { wall: 0.3 })));
   check("handles: standard, wide, comfort, none", HANDLES.map((h) => h.id).join() === "standard,wide,comfort,none");
   const wide = await dims({ handle: "wide" }), none = await dims({ handle: "none" }), comfort = await dims({ handle: "comfort" });
-  check("...wide reaches at least 4 mm further out (more at a point, where the rim mitres)", wide.x[1] - plain.x[1] >= 4, `${(wide.x[1] - plain.x[1]).toFixed(2)}`);
+  check("...wide reaches 4 mm further out, all the way round (the rim is rounded, so no further at a point)", Math.abs(wide.x[1] - plain.x[1] - 4) < 0.05, `${(wide.x[1] - plain.x[1]).toFixed(2)}`);
   check("...none is the bare blade", none.x[1] < plain.x[1] - 4 && none.solids === 1, `${none.x[1].toFixed(1)} against ${plain.x[1].toFixed(1)}`);
-  check("...comfort adds a second tier on top, still one body", comfort.z[1] > plain.z[1] + 1 && comfort.solids === 1, `z to ${comfort.z[1]}, ${comfort.solids} solid(s)`);
+  check("...comfort adds a second, narrower tier on the rim, still one body", Math.abs(comfort.z[1] - plain.z[1]) < 0.01 && comfort.solids === 1 && comfort.facets > plain.facets && /linear_extrude\(RIM_H \* 0\.6 \+ 0\.4\)/.test(cutterScad(one, { handle: "comfort" })), `z to ${comfort.z[1]}, ${comfort.solids} solid(s)`);
   const sharp = await dims({ sharp: true });
   check("a sharp edge is still one body, the same size outside", sharp.solids === 1 && Math.abs(sharp.x[1] - plain.x[1]) < 0.01 && sharp.facets > plain.facets);
   check("...thinned to one line over the last of the blade", /EDGE = 0\.45;/.test(cutterScad(one, { sharp: true })) && /EDGE_H = 2;/.test(cutterScad(one, { sharp: true })));
@@ -472,19 +488,36 @@ console.log("\nthe shelf of popular shapes\n");
     const fast = await build(fromOpenSCAD(cutterScad(e.loops, { size: 70 })));
     check(`${e.id}: builds on the exact kernel, no fallback`, fast.engine === "exact", `${fast.engine} ${String(fast.fallback || "").slice(0, 80)}`);
     const svg = D.previewSvg(e.loops);
-    check(`${e.id}: has a picture, drawn standing up`, /^<svg /.test(svg) && (svg.match(/<defs><path /g) || []).length === 1 && (svg.match(/<use /g) || []).length > 30 && (svg.match(/<circle /g) || []).length > 20 && !/NaN|Infinity|undefined/.test(svg));
+    check(`${e.id}: has a picture, drawn standing up`, /^<svg /.test(svg) && (svg.match(/<defs><path /g) || []).length === 1 && (svg.match(/fill="url\(#ckp\d+w\d+\)"/g) || []).length > 12 && (svg.match(/<circle /g) || []).length > 20 && !/NaN|Infinity|undefined/.test(svg));
+    for (const o of [{ kind: "stamp" }, { kind: "stencil" }, { kind: "roller" }, { handle: "comfort", bars: 2, sharp: true, height: 28 }, { handle: "none" }]) {
+      const s2 = D.previewSvg(e.loops, o);
+      if (!/^<svg /.test(s2) || /NaN|Infinity|undefined/.test(s2) || s2 === svg) check(`${e.id}: the picture follows ${JSON.stringify(o)}`, false);
+    }
   }
   const H2 = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
   const B = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
   check("/cutter opens the shelf", /bounce\("cutter", "cutter=1"/.test(B) && /function cutterRequested\(\)/.test(H2) && /cutterRequested\(\)\) \{[\s\S]{0,160}openCutterDoor\(\)/.test(H2));
   check("...the bundle ships it", /"cutterdoor\.js",/.test(B));
   check("...the Toolbox reaches it, with or without an outline on the plate", /Popular shapes…/.test(H2) && /openCutterDoor\(\);            \/\/ nothing on the plate/.test(H2));
-  check("...and Design your own is the search card", /onCustom: \(\) => openSearch\(\),/.test(H2));
+  check("...and searching is the door itself, the caret in its search box", /const openSearch = \(\) => openCutterDoor\(\{ focusSearch: true \}\);/.test(H2));
   const DS = readFileSync(new URL("../viewer/cutterdoor.js", import.meta.url), "utf8");
-  check("the kind of kit is chosen at the top of the shelf, and a shape makes that kit",
-    /class="ck-kinds"/.test(DS) && /onPick\?\.\(exampleById\(card\.dataset\.id\), chosen\)/.test(DS) && /await emit\(kind, ex\.loops, \{ size: 70 \}\);/.test(H2));
-  check("a + card brings your own: search, an SVG, or a picture to trace",
-    /data-own="1"/.test(DS) && /data-act="svg"/.test(DS) && /data-act="pic"/.test(DS) && /onSvg: async \(text, name\) =>/.test(H2) && /\$\("trace-file"\)\.click\(\);/.test(H2));
+  check("one window: the search, what it found drawn as cutters, the chosen one large with its dials",
+    /class="ck-q"/.test(DS) && /class="ck-kinds"/.test(DS) && /class="ck-stage"/.test(DS) && /class="ck-make"/.test(DS)
+    && /card\.querySelector\("\.ck-wait"\)\.outerHTML = previewSvg\(shaped\(got, 70, false\), \{ \.\.\.tintOf\(\+card\.dataset\.n\), \.\.\.FOUND_VIEW \}\);/.test(DS));
+  check("...nothing is built until Make it, at the size on the dial", /const scaled = \(\) => \(tools\.scaleLoops \? tools\.scaleLoops\(sel\.loops, size\) : sel\.loops\);/.test(DS) && /const loops = shaped\(\);/.test(DS) && /await emit\(kind, loops, \{ size \}, \{ showCode: false \}\);/.test(H2));
+  check("...a late answer to an old search is dropped", /if \(mine !== seq\) return;/.test(DS));
+  check("bring your own: an SVG, or a picture to trace",
+    /data-act="svg"/.test(DS) && /data-act="pic"/.test(DS) && /\$\("trace-file"\)\.click\(\);/.test(H2));
+  check("the loading screen does not sit over an editor that starts empty", /if \(prefs\.starterCube === false\) \{ code\.value = ""; updateHint\(\); bootDismiss\(\); \}/.test(H2));
+  // A kit is only ever printed, so a cut the exact kernel refuses (most traced
+  // icons) is redone on triangles instead of on the slow kernel: measured on a
+  // searched cat, 9 s down to 2.3 s. The page knows a kit by its first line.
+  {
+    const E = readFileSync(new URL("../src/engine.js", import.meta.url), "utf8");
+    const head = new RegExp(/const KIT_HEAD = \/(.+)\/;/.exec(H2)?.[1] || "^$");
+    check("a kit is marked print-only by its first line, whichever kit it is", KINDS.every((k) => head.test(makeKit(k.id, D.exampleById("star").loops, { size: 70 }))) && !head.test("// A bracket; cube(10);"));
+    check("...and the engine is told so", /const every = !!src\.meshIfRefused;/.test(E) && /delete src\.meshIfRefused;/.test(E) && /json: printOnlyKit\(j\)/.test(H2));
+  }
   // every kit builds from a shelf shape
   for (const k of KINDS) {
     let ok = false, detail = "";
@@ -509,6 +542,101 @@ console.log("\nand it builds — through the real kernel\n");
   check("...with BOTH pieces on the plate", Math.max(...xs) > 45,
     `x reaches ${Math.max(...xs).toFixed(1)}`);
   check("...and it is a wall, not a filled slab", facets < 2000, `${facets} facets`);
+}
+
+// ------------------------------------------------- a drawing -> one outline
+//
+// A searched icon is a pile of pieces: head, eyes, whiskers, strokes. Each as
+// its own blade is what put walls across the inside of a cat cutter and loose
+// slivers beside it. viewer/cutteroutline.js reduces the drawing to the one
+// silhouette a cutter goes round, and the engine builds a kit on triangles.
+console.log("\na drawing becomes one outline\n");
+{
+  const O = await import("../viewer/cutteroutline.js");
+  const CS = await O.loadCross();
+  const circle = (cx, cy, r, n = 32) => Array.from({ length: n }, (_, i) => [cx + Math.cos((i / n) * 2 * Math.PI) * r, cy + Math.sin((i / n) * 2 * Math.PI) * r]);
+  // a face drawn the way a line icon draws it: a stroked ring, two filled
+  // eyes, a mouth, and two hairline whiskers that poke out
+  const face = {
+    fills: [[circle(8, 9, 1.2)], [circle(16, 9, 1.2)]],
+    strokes: [
+      { points: circle(12, 12, 9), width: 2, closed: true },
+      { points: [[8, 16], [12, 18], [16, 16]], width: 2, closed: false },
+      { points: [[2, 13], [-3, 13]], width: 0.3, closed: false },
+      { points: [[22, 13], [27, 13]], width: 0.3, closed: false },
+    ],
+  };
+  const ink = O.inkLoops(CS, face, { maxSize: 70 });
+  const spanOf = (ls) => { const xs = ls.flatMap((l) => l.points.map((p) => p[0])), ys = ls.flatMap((l) => l.points.map((p) => p[1])); return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]; };
+  check("the ink is everything drawn, strokes at their width, scaled to size", Math.abs(Math.max(...spanOf(ink)) - 70) < 0.01 && ink.some((l) => l.hole) && ink.filter((l) => !l.hole).length >= 3, `${ink.length} loops, ${spanOf(ink).map((v) => v.toFixed(1))}`);
+  const cut = O.cutterOutline(CS, ink, { detail: false });
+  check("the cutter goes round ONE outline: no blade for an eye, a mouth or the inside of the ring", cut.loops.length === 1 && !cut.loops[0].hole, `${cut.loops.length} loops`);
+  // the whiskers are 0.3 of 30 units wide: under a millimetre at 70 mm
+  const [w] = spanOf(cut.loops);
+  check("...and hairlines too thin for a blade are gone, not left as slivers", w < 50 && w > 40, `${w.toFixed(1)} mm across`);
+  const stamp = O.cutterOutline(CS, ink);
+  const det = stamp.loops.filter((l) => l.hole);
+  check("for a stamp the inside comes back as detail, in pieces without holes", det.length >= 3 && stamp.loops.filter((l) => !l.hole).length === 1, `${det.length} detail pieces`);
+  const scad = stampScad(stamp.loops, { size: 70 });
+  check("...which the stamp kit raises", (scad.match(/polygon\(h\d+\)/g) || []).length === det.length && /blade\(o0\)/.test(scad) && !/blade\(o1\)/.test(scad));
+  check("a cutter's code carries no interior loops at all", !/h0 = /.test(cutterScad(stamp.loops, { size: 70 })));
+  // two pieces 2 mm apart are one cutter; a speck is nobody's cutter
+  const sq = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  const two = O.cutterOutline(CS, [{ hole: false, points: sq(0, 0, 30) }, { hole: false, points: sq(32, 0, 30) }, { hole: false, points: sq(80, 80, 2) }], { detail: false });
+  check("near pieces fuse and a speck is dropped", two.pieces === 1 && two.loops.length === 1, `${two.pieces} pieces, ${two.dropped} dropped`);
+  const far = O.cutterOutline(CS, [{ hole: false, points: sq(0, 0, 30) }, { hole: false, points: sq(40, 0, 20) }], { detail: false });
+  check("...but two real pieces stay two cutters, biggest first", far.pieces === 2 && Math.abs(spanOf([far.loops[0]])[0] - 30) < 0.5);
+  // corners are rounded: a square's corner point is no longer on the outline
+  const one = O.cutterOutline(CS, [{ hole: false, points: sq(0, 0, 30) }], { detail: false }).loops[0].points;
+  check("outside corners come out rounded", !one.some(([x, y]) => Math.hypot(x, y) < 0.3) && one.some(([x, y]) => Math.hypot(x, y) < 0.8));
+  // an emoji whose body runs off the frame, with a spare shape parked a page
+  // to the left: only what shows through the viewBox is ink
+  const framed = O.inkLoops(CS, { fills: [[sq(4, 4, 40)], [sq(-130, 0, 20)]], strokes: [], box: [0, 0, 24, 24] }, { maxSize: 70 });
+  check("ink is cut to the picture's frame", framed.length === 1 && Math.abs(spanOf(framed)[0] - 70) < 0.01 && Math.abs(spanOf(framed)[1] - 70) < 0.01, `${framed.length} loops, ${spanOf(framed).map((v) => v.toFixed(1))}`);
+  check("...which svgParts reads from the viewBox", /return \{ fills, strokes, box \};/.test(readFileSync(new URL("../viewer/svg.js", import.meta.url), "utf8")));
+  // A rim grown 6 mm round a notch 2 mm wide: the plain offset crosses itself
+  // there and the loop extrudes as a spur. The clipper's does not: every
+  // point of it is a full 6 mm from the outline.
+  {
+    const { offsetPolygon, setPolygonOffsetter } = await import("../src/openscad.js");
+    const notched = [[0, 0], [40, 0], [40, 30], [22, 30], [21.5, 12], [21, 10], [20, 9.5], [19, 10], [18.5, 12], [18, 30], [0, 30], [0, 20], [0, 10], [0, 5]];
+    const dist = ([px, py]) => Math.min(...notched.map((a, i) => {
+      const b = notched[(i + 1) % notched.length], dx = b[0] - a[0], dy = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy);
+    }));
+    const off = O.makeOffsetter(CS);
+    const clean = off(notched, 6, 48, true), plain = offsetPolygon(notched, 6, 48, true);
+    check("the clipper's offset has no inside-out loop at a tight notch", clean.every((p) => dist(p) > 5.9) && plain.some((p) => dist(p) < 5), `nearest ${Math.min(...clean.map(dist)).toFixed(2)} vs ${Math.min(...plain.map(dist)).toFixed(2)} mm`);
+    let asked = 0;
+    setPolygonOffsetter((...a) => { asked++; return off(...a); });
+    const lit = (pts) => "[" + pts.map((p) => `[${p}]`).join(",") + "]";
+    fromOpenSCAD(`linear_extrude(2) offset(r = 6) polygon(${lit(notched)});`);
+    const many = asked;
+    fromOpenSCAD(`linear_extrude(2) offset(r = 2) polygon([[0,0],[10,0],[10,10],[0,10]]);`);
+    setPolygonOffsetter(null);
+    check("...the translator uses it for many-sided outlines only", many === 1 && asked === 1, `${many}, ${asked}`);
+    check("...and the page hands it over before a kit is written", /setPolygonOffsetter\(O\.makeOffsetter\(outliner\.CS\)\);/.test(readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8")) && /await ensureOutliner\(\)\.catch\(\(\) => \{\}\);/.test(readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8")));
+  }
+  check("an empty drawing says so", (() => { try { O.inkLoops(CS, { fills: [], strokes: [] }); return false; } catch (e) { return /nothing is drawn/.test(e.message); } })());
+
+  const SV = readFileSync(new URL("../viewer/svg.js", import.meta.url), "utf8");
+  const DS = readFileSync(new URL("../viewer/cutterdoor.js", import.meta.url), "utf8");
+  const HT = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  const BS = readFileSync(new URL("../build-site.mjs", import.meta.url), "utf8");
+  const EN = readFileSync(new URL("../src/engine.js", import.meta.url), "utf8");
+  check("an SVG is read as it is drawn: fills where filled, strokes where stroked", /export async function svgParts/.test(SV) && /on\(st\.fill\)/.test(SV) && /on\(st\.stroke\)/.test(SV));
+  check("the door traces through it, and makes the outline at the size on the dial", /O\.inkLoops\(CS, await S\.svgParts\(text\), o\)/.test(HT) && /sel\.cut = \{ key, loops: tools\.outline\(scaled\(\), \{ detail \}\) \}/.test(DS) && /"cutteroutline\.js",/.test(BS));
+  check("a search fetches its drawings a set at a time, and keeps what it traced", /await tools\.iconSvgs\(need\)/.test(DS) && /^const TRACED = new Map\(\);/m.test(DS) && /limit: 48/.test(DS));
+  // one request per icon set, each icon rebuilt as an SVG
+  const asked = [];
+  const got = await iconSvgs(["mdi:cat", "mdi:dog", "tabler:cat", "bad name", "x:y:z"], { fetchImpl: async (url) => {
+    asked.push(url);
+    return { ok: true, json: async () => (/mdi\.json/.test(url) ? { width: 24, height: 24, icons: { cat: { body: "<path d='M0 0h4v4z'/>" }, dog: { body: "<path/>", width: 20 } } } : { icons: {} }) };
+  } });
+  check("iconSvgs: one request per set, an SVG per icon it answered", asked.length === 2 && asked.some((u) => u.endsWith("/mdi.json?icons=cat,dog")) && got.size === 2
+    && /viewBox="0 0 24 24"/.test(got.get("mdi:cat")) && /viewBox="0 0 20 24"/.test(got.get("mdi:dog")), `${asked.length} requests, ${got.size} icons`);
+  check("a kit is cut on triangles from the start, not after the exact kernel has refused it", /if \(src\.meshIfRefused && !hulls\.length\) \{/.test(EN) && /out\.stats = \{ \.\.\.out\.stats, printOnly: true \};/.test(EN));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

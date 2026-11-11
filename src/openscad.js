@@ -581,6 +581,17 @@ const circlePts = (r, n) => Array.from({ length: n }, (_, i) => {
 // convex vertices when `rounded` (offset(r=…)), or a miter intersection when
 // straight (offset(delta=…)). Positive grows, negative shrinks. Handles simple
 // convex/concave polygons — the square/rounded-rect case that dominates.
+//
+// It does not clean up after itself: where an outline turns in more tightly
+// than the offset (the notch where a fish's tail meets its body, grown 6 mm
+// for a rim) the shifted edges cross and leave a small inside-out loop, which
+// extrudes as a spur. A page that has a real polygon clipper to hand gives it
+// to setPolygonOffsetter, and offset() uses that for many-sided outlines
+// (traced artwork); it answers null to pass.
+let polygonOffsetter = null;
+export function setPolygonOffsetter(fn) { polygonOffsetter = typeof fn === "function" ? fn : null; }
+const OFFSETTER_MIN_POINTS = 13;      // a square or a hexagon stays on the path the exact lane reads
+
 export function offsetPolygon(pts, amount, fn = 24, rounded = true) {
   if (!amount) return pts.slice();
   // work CCW so the right-hand normal points outward
@@ -1074,7 +1085,9 @@ function evalCall(stmt, scope) {
       if (!amount) return child;
       // offset(r=) rounds convex corners; offset(delta=) is a straight/miter offset
       const rounded = r !== undefined && !chamfer;
-      const pts = offsetPolygon(child.pts, amount, fnOf(args, scope) || 24, rounded);
+      const clean = polygonOffsetter && child.pts.length >= OFFSETTER_MIN_POINTS
+        ? polygonOffsetter(child.pts, amount, fnOf(args, scope) || 24, rounded) : null;
+      const pts = clean || offsetPolygon(child.pts, amount, fnOf(args, scope) || 24, rounded);
       // growing a convex outline with round corners: remember it, so the
       // extrusion can be the exact rounded prism
       if (rounded && amount > 0) {

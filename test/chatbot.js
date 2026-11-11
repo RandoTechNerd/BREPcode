@@ -2024,6 +2024,34 @@ console.log("\nhearing a newcomer\n");
   }
 }
 
+// A SKETCH IN, A MODEL OUT. Run for real against Claude Code (Fable 5.2, Sonnet
+// and Haiku) with a hand sketch of an L bracket: all three built the part from
+// the sizes written on it in about half a minute. What the run turned up is
+// pinned here.
+{
+  const { readFileSync } = await import("node:fs");
+  const HTML = readFileSync(new URL("../viewer/index.html", import.meta.url), "utf8");
+  check("a picture is first sorted: a sketch of the part, or artwork to put on one",
+    /ATTACHED PICTURE\$\{imageNames\.length > 1 \? "S" : ""\}: first decide what/.test(HTML)
+    && /\(a\) A SKETCH, DRAWING, SCREENSHOT OR PHOTO OF THE PART TO BUILD/.test(HTML)
+    && /Do NOT use image\(\) for this: the trace of a`\s*\+ ` sketch is its pencil lines, not the part\./.test(HTML)
+    && /\(b\) ARTWORK TO PUT ON A PART/.test(HTML));
+  check("...and no longer told to place the trace and nothing else", /yourself: place image\(\)\.`;/.test(HTML));
+  check("a new design from the chat is framed afresh; an edit keeps the view", /if \(!quickEdit && autoPlaced\) framedRadius = 0;/.test(HTML));
+  check("the header names the model the list landed on", /fillModelOptions\(aiProvider\.value, aiModel\.value \|\| aiCfg\.model\);[\s\S]{0,200}saveAiCfg\(\);/.test(HTML));
+  // the answer's light markdown, read on escaped text
+  const src = /function proseHtml\(text\) \{[\s\S]*?\n    \}/.exec(HTML)?.[0];
+  check("the answer bubble reads the reply's light markdown", !!src && /replyEl\.innerHTML = proseHtml\(/.test(HTML));
+  if (src) {
+    const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const proseHtml = new Function("esc", src + "; return proseHtml;")(esc);
+    const out = proseHtml("Built it.\n\n\n\n- **Hole size:** raise `HOLE_D` to 5.5\n- <img src=x onerror=alert(1)>");
+    check("...bold, code and bullets", out.includes("• <b>Hole size:</b> raise <code>HOLE_D</code> to 5.5"), out);
+    check("...the hole a removed code block leaves is closed", !/\n\n\n/.test(out) && out.startsWith("Built it.\n\n•"));
+    check("...and anything else stays text", out.includes("&lt;img src=x onerror=alert(1)&gt;") && !out.includes("<img"));
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
 

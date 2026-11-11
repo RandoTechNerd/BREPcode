@@ -246,9 +246,10 @@ const readsOf = (f) => {
 
 // Fillet/chamfer name edges by FACE name, and a face name starts with the
 // feature that made the solid ("P.CU1_PX").
+// The face edits (pushFace, moveFace, deleteFace) name FACES the same way.
 const edgeOwners = (f, names) => {
-  const edges = f.inputParams?.edges;
-  if (!Array.isArray(edges)) return [];
+  const edges = [f.inputParams?.edges, f.inputParams?.faces].filter(Array.isArray).flat();
+  if (!edges.length) return [];
   return [...names].filter((n) => edges.some((e) => typeof e === "string" && (e === n || e.startsWith(`${n}_`))));
 };
 
@@ -268,7 +269,10 @@ export function planLanes(features, { exactTwist = false } = {}) {
       meshNames.add(id);
       continue;
     }
-    const touches = readsOf(f).some((n) => meshNames.has(n)) || edgeOwners(f, meshNames).length > 0;
+    // asMesh: a boolean the exact kernel refused on an imported STEP, sent
+    // round again as triangles (runEngineHulls)
+    const touches = (f.type === "B" && f.inputParams?.asMesh)
+      || readsOf(f).some((n) => meshNames.has(n)) || edgeOwners(f, meshNames).length > 0;
     if (!touches) continue;
     if (f.type === "F" || f.type === "CH") {
       throw new EngineRefusal(`${f.type === "F" ? "fillet" : "chamfer"}() on a mesh: a mesh has no exact edges to round. Round the part before adding texture or mesh features.`, "mesh");
@@ -608,9 +612,28 @@ async function runEngineHulls(src, opts) {
   // exact hulls and twisted extrudes both carry a mesh to fall back on
   const hulls = (src.features || []).filter((f) => f.type === "IMPORT3D" && typeof f.inputParams?.fileToImport === "string"
     && ((f.inputParams.exactHull && typeof f.inputParams.stepText === "string") || f.inputParams.twistExtrude));
+  // A print-only kit (src.meshIfRefused, a cookie cutter) has its cuts done on
+  // triangles from the start. Its outline is a polygon either way, so nothing
+  // true is lost, and trying the exact cut first is where the wait was: a
+  // traced cat spent 2.9 s being refused and 0.05 s being built.
+  if (src.meshIfRefused && !hulls.length) {
+    const asMesh = structuredClone(src);
+    for (const f of asMesh.features || []) if (f.type === "B" && f.inputParams) f.inputParams.asMesh = true;
+    try {
+      const out = await runEngineOnce(asMesh, opts);
+      out.stats = { ...out.stats, printOnly: true };
+      return out;
+    } catch (e) {
+      if (!(e instanceof EngineRefusal)) throw e;     // the usual way, below
+    }
+  }
   try {
     return await runEngineOnce(src, opts);
   } catch (e) {
+    if (e instanceof EngineRefusal && !hulls.length) {
+      const out = await stepBooleanAsMesh(src, opts, e);
+      if (out) return out;
+    }
     if (!(e instanceof EngineRefusal) || !hulls.length) throw e;
     const asMesh = structuredClone(src);
     for (const f of asMesh.features) {
@@ -623,8 +646,49 @@ async function runEngineHulls(src, opts) {
   }
 }
 
+// A boolean on an imported STEP that the exact kernel turns down (the new
+// piece shares a wall with the part, or lies tangent to one of its fillets:
+// what extruding a face of the part makes) used to go to the JS kernel, which
+// cannot read a STEP at all and never came back. The part and the tool are both
+// already built and exact; only joining them was refused. So that one boolean
+// is done on their triangles instead, which takes a moment and always works.
+// The result is a mesh from there on, and says so (stats.booleanAsMesh).
+//
+// The same goes for a model that says it is only ever printed
+// (src.meshIfRefused, set by the page for a cookie-cutter kit): a traced
+// outline's blade is two prisms a hair apart all the way round, the exact
+// kernel refuses that cut on most icons, and the slow kernel then took 9 s
+// over a cat. There every refused boolean is redone on triangles, one by one.
+async function stepBooleanAsMesh(src, opts, refusal) {
+  const realStep = (f) => f.type === "IMPORT3D" && typeof f.inputParams?.stepText === "string" && !f.inputParams.exactHull;
+  const every = !!src.meshIfRefused;
+  if (!every && !(src.features || []).some(realStep)) return null;
+  const asMesh = structuredClone(src);
+  let first = null, err = refusal;
+  for (let tries = 0; tries < (every ? 12 : 1); tries++) {
+    const m = /^Rust kernel, B (\S+):/.exec(err?.message || "");
+    const b = m && asMesh.features.find((f) => f.type === "B" && f.inputParams?.id === m[1]);
+    if (!b || b.inputParams.asMesh) return null;
+    b.inputParams.asMesh = true;
+    // a print-only kit: everything cut after this one meets its triangles
+    // anyway, so they all go over now, in one rebuild instead of one each
+    if (every) for (const f of asMesh.features.slice(asMesh.features.indexOf(b))) if (f.type === "B") f.inputParams.asMesh = true;
+    first ??= m[1];
+    try {
+      const out = await runEngineOnce(asMesh, opts);
+      out.stats = { ...out.stats, booleanAsMesh: first, ...(every ? { printOnly: true } : {}), exactRefusal: String(refusal.message || refusal).slice(0, 200) };
+      return out;
+    } catch (e) {
+      if (!(e instanceof EngineRefusal)) return null;
+      err = e;                  // the next boolean it refuses, or a step that needs the exact solid
+    }
+  }
+  return null;
+}
+
 async function runEngineOnce(json, { rust: rk, manifold, tolerance = 0.05, trackManifolds = null, onProgress = null, edges = false } = {}) {
   const src = typeof json === "string" ? JSON.parse(json) : structuredClone(json);
+  delete src.meshIfRefused;     // ours (see stepBooleanAsMesh), not the kernel's
   const features = src.features || [];
   const progress = progressReporter(onProgress, features.length);
   const { meshFeatures } = planLanes(features, { exactTwist: !!rk?.nvidia });

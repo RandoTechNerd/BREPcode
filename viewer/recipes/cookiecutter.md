@@ -20,14 +20,13 @@ offset at all**, and the obvious workarounds both fail:
   many-sided extruded outline it does not finish — measured past ten minutes on
   a nine-sided fish.
 
-The whole cutter, verified end to end (313 ms, 148 facets):
+The whole cutter, verified end to end (441 ms, 244 facets):
 
 ```
 H = 15;        // blade height
 WALL = 0.9;    // blade thickness — never below 0.8
-RIM = 6;       // rim width, the part you press on
+RIM = 6;       // rim width: on the plate when printed, under your hand when cutting
 RIM_H = 2.5;
-BITE = 1;      // how far the rim sinks INTO the blade
 
 pts = [[0,0],[30,8],[45,0],[45,20],[30,12],[0,20],[-10,25],[-6,10],[-10,-5]];
 
@@ -37,24 +36,26 @@ union() {
     linear_extrude(H) polygon(pts);
     translate([0,0,-1]) linear_extrude(H+2) offset(delta=-WALL) polygon(pts);
   }
-  // the rim: the same trick, wider, sunk INTO the top of the blade
-  translate([0,0,H-BITE]) difference() {
-    linear_extrude(RIM_H+BITE) offset(delta=RIM) polygon(pts);
-    translate([0,0,-1]) linear_extrude(RIM_H+BITE+2) polygon(pts);
+  // the rim: the same trick, wider and rounded, LYING ON THE PLATE with the
+  // blade standing in it. The wide part goes down: it sticks, nothing overhangs
+  difference() {
+    linear_extrude(RIM_H) offset(r=RIM) polygon(pts);
+    translate([0,0,-1]) linear_extrude(RIM_H+2) polygon(pts);
   }
 }
 ```
 
-`offset(delta=)` is the mitred offset and is the right one for a blade;
-`offset(r=)` rounds the corners off, which softens a shape people chose for its
-corners.
+`offset(delta=)` is the mitred offset and is the right one for a blade:
+`offset(r=)` there would round off corners people chose the shape for. The rim
+is the opposite case, so it takes `offset(r=)`: soft corners under the hand.
 
 The other two ways a cutter fails:
 
-- **Coincident faces.** A rim resting exactly on the blade's top face gives the
-  kernel two surfaces in one plane and it drops both, leaving a hole. The `BITE`
-  above sinks the rim 1 mm INTO the blade — **always overlap, never rest on**.
-  Same rule for the bore: it starts 1 mm below and runs 2 mm past the top.
+- **Coincident faces.** A part resting exactly on another's face gives the
+  kernel two surfaces in one plane and it drops both, leaving a hole. The rim
+  wraps the blade's foot, so they overlap; anything stacked on the rim sinks
+  0.4 mm INTO it: **always overlap, never rest on**. Same for the bore: it
+  starts 1 mm below and runs 2 mm past the top.
 - **A wall thinner than the nozzle.** A 0.3 mm blade looks right on screen and
   simply is not printed — the slicer has nothing to lay down, so long runs
   vanish while corners survive. Keep `WALL ≥ 0.8`, two perimeters at a 0.4
@@ -115,7 +116,7 @@ Outline rules:
 - **Nothing narrower than 2 × WALL.** A fin or a lip that pinches to 1.5 mm has
   no inside left after a 0.9 mm inset, and that stretch of wall closes up or
   breaks. Fatten it in the outline first, or say plainly that it will fill in.
-- Print blade-down, no supports. The rim is the top.
+- Prints as modelled: rim on the plate, blade up, no supports. Never a rim at the top (an overhang).
 
 Sizes: cutters are usually **50–90 mm** across and **15 mm** tall. With no size
 given, use 70 mm across and say so.
