@@ -132,6 +132,8 @@ const VIEWER_JS = ["assist.js", "exporters.js", "chatbot.js", "inventory.js", "c
   "casebuilder.js",
   // the cookie-cutter shelf (/cutter and the Toolbox): popular shapes, then the search
   "cutterdoor.js",
+  // ...each card's picture of its cutter, rendered
+  "cutterview.js",
   // ...and what turns a searched drawing into the one outline a cutter goes round
   "cutteroutline.js",
   // the seed starter configurator (/seedstarter): watering chooser + dials

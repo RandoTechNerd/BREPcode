@@ -106,7 +106,7 @@ console.log("\nflake at the size real flake is\n");
   // number decides it here.
   const ff = spool("pastel-glitter");
   const span = GL.tileSpanMm(ff.flake.density);
-  check("a tile covers a sane span of the part", near(span, 24 / 2.8, 0.01), `${span.toFixed(2)}mm`);
+  check("a tile covers a sane span of the part", near(span, 24 / 3.9, 0.01), `${span.toFixed(2)}mm`);
   const speck = span / 24;
   check("...putting one speck every 0.2-0.5mm, which is what glitter is",
     speck > 0.15 && speck < 0.6, `${speck.toFixed(3)}mm`);

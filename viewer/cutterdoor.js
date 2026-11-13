@@ -396,7 +396,8 @@ const CSS = `
 #ck-door .ck-card:hover, #ck-door .ck-card:focus-visible { transform: translateY(-3px); outline: none;
   box-shadow: 0 1px 0 rgba(255, 255, 255, .9) inset, 0 16px 34px rgba(0, 0, 0, .46); }
 #ck-door .ck-card[aria-pressed="true"] { box-shadow: 0 0 0 3px #7f9bff, 0 0 0 7px rgba(110, 140, 255, .24), 0 16px 34px rgba(0, 0, 0, .46); }
-#ck-door .ck-card svg, #ck-door .ck-card .ck-wait { width: 132px; height: 132px; }
+#ck-door .ck-card svg, #ck-door .ck-card canvas, #ck-door .ck-card .ck-wait { width: 132px; height: 132px; }
+#ck-door .ck-thumb, #ck-door .ck-pic { display: contents; }
 #ck-door .ck-card .ck-wait { display: block; border-radius: 14px; background: linear-gradient(100deg, rgba(27, 34, 48, .05) 30%, rgba(27, 34, 48, .12) 50%, rgba(27, 34, 48, .05) 70%) 0 0 / 300% 100%; animation: ck-wait 1.1s linear infinite; }
 @keyframes ck-wait { to { background-position: -150% 0; } }
 #ck-door .ck-card b { font-size: 13.5px; font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -407,7 +408,7 @@ const CSS = `
   display: flex; flex-direction: column; gap: 12px; }
 #ck-door .ck-stage { position: relative; flex: none; border-radius: 20px; background: ${STUDIO}; display: flex; align-items: center; justify-content: center;
   aspect-ratio: 1 / .78; box-shadow: 0 1px 0 rgba(255, 255, 255, .9) inset, 0 14px 34px rgba(0, 0, 0, .42); overflow: hidden; }
-#ck-door .ck-stage svg { width: auto; height: 100%; max-width: 100%; }
+#ck-door .ck-stage svg, #ck-door .ck-stage canvas { width: auto; height: 100%; max-width: 100%; }
 #ck-door .ck-tag { position: absolute; left: 12px; bottom: 10px; right: 12px; display: flex; justify-content: space-between; gap: 8px;
   font: 600 11px system-ui, sans-serif; color: #4d5766; white-space: nowrap; }
 #ck-door .ck-name { font-size: 17px; font-weight: 700; margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -443,9 +444,9 @@ const CSS = `
   #ck-door .ck-main { display: flex; flex-direction: column; overflow: auto; }
   #ck-door .ck-left, #ck-door .ck-hero { overflow: visible; padding: 14px; }
   #ck-door .ck-hero { order: -1; border-left: 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
-  #ck-door .ck-stage { aspect-ratio: 1 / .62; } #ck-door .ck-stage svg { width: auto; height: 100%; }
+  #ck-door .ck-stage { aspect-ratio: 1 / .62; } #ck-door .ck-stage svg, #ck-door .ck-stage canvas { width: auto; height: 100%; }
   #ck-door .ck-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
-  #ck-door .ck-card svg, #ck-door .ck-card .ck-wait { width: 104px; height: 104px; }
+  #ck-door .ck-card svg, #ck-door .ck-card canvas, #ck-door .ck-card .ck-wait { width: 104px; height: 104px; }
 }
 `;
 
@@ -467,6 +468,8 @@ const TRACED = new Map();                                // icon name -> { loops
 //   tools: { searchIcons, iconSvg, iconPreview, svgToLoops, scaleLoops } (cutterkit.js and svg.js),
 //     and outline(loops, { detail }) (cutteroutline.js): a drawing's ink, at the size it
 //     will be printed, to the silhouette a cutter goes round. Without it loops pass as they are.
+//     render3d(loops, opts) -> a canvas (or a promise of one), or null: the cutter itself in
+//     miniature (cutterview.js). Without it, or where it answers null, the drawing stays.
 //   onMake({ loops, label, kind, size, opts }): loops are at `size` mm.
 export function showCutterDoor({ kinds = [], kind = null, handles = [], bars = [], opts = {}, tools = {}, focusSearch = false, onMake, onPicture } = {}) {
   const st = {
@@ -540,10 +543,25 @@ export function showCutterDoor({ kinds = [], kind = null, handles = [], bars = [
     if (sel.cut?.key !== key) sel.cut = { key, loops: tools.outline(scaled(), { detail }) };
     return sel.cut.loops;
   }
+  // A PICTURE OF THE CUTTER, in `holder`. The drawing is there at once; the
+  // rendered miniature (the real blade, rim and connectors, lit) replaces it
+  // as soon as it is ready. A holder already showing a render keeps it until
+  // the next one lands, so a dial being dragged does not flicker to a drawing
+  // and back. A later call for the same holder wins over an earlier one.
+  const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+  function picture(holder, loops, o) {
+    const mine = (holder.ckSeq = (holder.ckSeq || 0) + 1);
+    const drawn = () => { holder.innerHTML = previewSvg(loops, o); };
+    if (!holder.querySelector("canvas")) drawn();
+    if (!tools.render3d) return Promise.resolve();
+    return Promise.resolve().then(() => tools.render3d(loops, { ...o, px: Math.round((o.size || 132) * dpr), high: (o.squash || 0) > 0.7 }))
+      .then((cv) => { if (holder.ckSeq !== mine) return; if (cv) holder.replaceChildren(cv); else drawn(); })
+      .catch(() => { if (holder.ckSeq === mine) drawn(); });
+  }
   function paintHero() {
     const cut = shaped();
     const loops = st.mirror ? flip(cut) : cut;
-    q(".ck-pic").innerHTML = previewSvg(loops, { size: 320, ...tintOf(st.sel.n), height: st.height, handle: st.handle, bars: st.kind === "cutter" ? st.bars : 0, sharp: st.sharp, kind: st.kind });
+    picture(q(".ck-pic"), loops, { size: 320, ...tintOf(st.sel.n), height: st.height, handle: st.handle, bars: st.kind === "cutter" ? st.bars : 0, sharp: st.sharp, kind: st.kind });
     const { w, h } = bounds(solidOf(cut));
     const k = 1;
     q(".ck-dims").textContent = cutterish() ? `${Math.round(w * k)} × ${Math.round(h * k)} × ${st.height} mm` : `from a ${st.size} mm outline`;
@@ -566,7 +584,15 @@ export function showCutterDoor({ kinds = [], kind = null, handles = [], bars = [
   function showShelf() {
     seq++;
     bar.innerHTML = `<b>Popular shapes</b><span>one outline each, so they print first time</span>`;
-    grid.innerHTML = EXAMPLES.map((e, i) => `<button type="button" class="ck-card" data-key="${e.id}" data-ex="${e.id}" data-n="${i}">${previewSvg(e.loops, tintOf(i))}<b>${e.label}</b><small>${e.blurb}</small></button>`).join("");
+    grid.innerHTML = EXAMPLES.map((e, i) => `<button type="button" class="ck-card" data-key="${e.id}" data-ex="${e.id}" data-n="${i}"><span class="ck-thumb"></span><b>${e.label}</b><small>${e.blurb}</small></button>`).join("");
+    const mine = seq;
+    // one after another: the window stays live, and the first row is first
+    (async () => {
+      for (const card of grid.querySelectorAll(".ck-card")) {
+        if (mine !== seq) return;
+        await picture(card.querySelector(".ck-thumb"), exampleById(card.dataset.ex).loops, tintOf(+card.dataset.n));
+      }
+    })();
     paintHero();
   }
 
@@ -614,7 +640,10 @@ export function showCutterDoor({ kinds = [], kind = null, handles = [], bars = [
         if (mine !== seq) return;
         // nothing printable in it (an empty drawing, hairlines): it leaves the shelf
         if (got instanceof Error) { card.remove(); count(); continue; }
-        card.querySelector(".ck-wait").outerHTML = previewSvg(shaped(got, 70, false), { ...tintOf(+card.dataset.n), ...FOUND_VIEW });
+        const thumb = document.createElement("span");
+        thumb.className = "ck-thumb";
+        card.querySelector(".ck-wait").replaceWith(thumb);
+        await picture(thumb, shaped(got, 70, false), { ...tintOf(+card.dataset.n), ...FOUND_VIEW });
         await new Promise((r) => setTimeout(r));          // the window stays live while 48 are drawn
       }
     };

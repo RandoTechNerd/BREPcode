@@ -1009,7 +1009,7 @@ return difference(across([[0, 0], [40, 0], [40, 30], [0, 30]], 40, 0), ...cuts);
       /_SOLID_\\d\+_Face_/.test(dialogs) && /This STEP has several bodies/.test(dialogs));
   }
 
-  check("glitter has a needle-sharp flash as well as its glow", /THE TWINKLE/.test(html) && /pow\(h, sharp \* 9\.0\)/.test(html));
+  check("glitter has a sharp flash as well as its glow", /SIMULATED SPARKLE/.test(html) && /float fire = pow\(wave, 14\.0\);/.test(html));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

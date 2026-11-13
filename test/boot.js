@@ -314,9 +314,21 @@ console.log("\nit is scenery, so the plate underneath stays live\n");
 // and the inside of a cup painted over its own wall.
 {
   check("translucent parts get a near-skin depth pass in the transmissive list",
-    /skinDepthMat\.transmission = 1;/.test(html) && /d\.renderOrder = -1;/.test(html) && /function syncSkin\(\)/.test(html));
+    /const skinDepthMat = depthOnly\(THREE\.FrontSide, true\);/.test(html) && /if \(main\) m\.transmission = 1;/.test(html)
+    && /peelHelper\(m, skinDepthMat, -1\)/.test(html) && /function syncSkin\(\)/.test(html));
   check("...whose shader drops USE_TRANSMISSION so it compiles",
-    /skinDepthMat\.onBeforeCompile[\s\S]{0,200}#undef USE_TRANSMISSION/.test(html));
+    /if \(main\) shader\.fragmentShader = "#undef USE_TRANSMISSION\\n" \+ shader\.fragmentShader;/.test(html));
+  // ...and what is BEHIND the near wall must still draw: with the near skin
+  // alone, a see-through part seen through another vanished down to its
+  // outline. Two more layers, each the nearest front face past the exit of the
+  // one in front, shaded only where the face IS that depth.
+  check("see-through parts behind a see-through part are drawn, in layers past each exit",
+    /const layer2Mat = depthBeyond\(THREE\.FrontSide, true, exit1\.depthTexture/.test(html)
+    && /const layer3Mat = depthBeyond\(THREE\.FrontSide, true, exit2\.depthTexture/.test(html)
+    && /material\.depthFunc = THREE\.EqualDepth;/.test(html));
+  check("...every pass rasterises a face to the same depth", (html.match(/invariant gl_Position;/g) || []).length >= 2);
+  check("...the layers follow the model before every frame", /try \{ peelFrame\(r, cam\); \}/.test(html));
+  check("...and a faded part layers with the filament parts", /if \(!\(mm\.transmission > 0\)\) mm\.transmission = 1e-4;/.test(html));
   check("...rebuilt when the material changes and when a model lands",
     /syncHiddenEdges\(\); syncSkin\(\);/.test(html) && /function refreshOutlines\(\) \{\s*try \{ syncSkin\(\); \}/.test(html));
 }

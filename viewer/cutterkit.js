@@ -32,6 +32,8 @@ export const DEFAULTS = {
   bars: 0,           // centre bars across the opening: 0, 1 (one bar) or 2 (a cross)
   barWidth: 4,
   mirror: false,     // flip left to right (a stamp presses its picture backwards)
+  links: true,       // join pieces that stand apart with a flat connector, so it is one cutter
+  linkWidth: 5,
 };
 
 // The handles on offer. A cutter is pressed with the flat of the hand, so the
@@ -151,6 +153,111 @@ export function simplifyLoops(loops, tol = 0.25) {
   });
 }
 
+// ------------------------------------------------------------ connectors
+//
+// A rocket and its flame, a cloud and its raindrops: a drawing whose pieces
+// stand apart makes a blade for each, and nothing holds one to the next. They
+// come off the plate as loose rings, and pressed into dough one at a time they
+// never land where the drawing put them.
+//
+// So pieces that stand apart are joined: a flat strip at the rim's height
+// across the narrowest gap between two of them, enough strips that every
+// piece is reached and no more (a spanning tree: n pieces, n - 1 strips,
+// shortest first). It lies on the plate with the rim, so it prints flat with
+// no support, and sits at the top of the cutter in use, clear of the dough.
+//
+// WHY THE NARROWEST GAP. The segment between the two nearest points of two
+// shapes crosses neither of them, so a strip along it bridges the space
+// between the blades and never lies across an opening. And a strip that
+// would cross a THIRD piece is never the shortest way to join anything, so
+// the tree leaves it out.
+const nearestOnSeg = (p, a, b) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+  let t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return [a[0] + t * dx, a[1] + t * dy];
+};
+// the two nearest points of two outlines, and how far apart they are
+function nearestPair(A, B) {
+  let best = { d: Infinity, a: A[0], b: B[0] };
+  const scan = (P, Q, swap) => {
+    for (const p of P) {
+      for (let i = 0, n = Q.length; i < n; i++) {
+        const q = nearestOnSeg(p, Q[i], Q[(i + 1) % n]);
+        const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+        if (d < best.d) best = swap ? { d, a: q, b: p } : { d, a: p, b: q };
+      }
+    }
+  };
+  scan(A, B, false);
+  scan(B, A, true);
+  return best;
+}
+const within = (pt, poly) => {
+  let hit = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi || 1e-12) + xi) hit = !hit;
+  }
+  return hit;
+};
+// loops -> [{ from, to, a, b, gap }]: the strips that make one cutter of them.
+// from / to index the SOLID loops (holes are the stamp's, not blades). Pieces
+// that overlap, or sit one inside another, are already one body and get none.
+export function pieceLinks(loops) {
+  const solid = dedupeLoops((loops || []).filter((l) => !l.hole && l.points?.length >= 3)).map((l) => l.points);
+  const n = solid.length;
+  if (n < 2) return [];
+  const pair = solid.map(() => []);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const p = nearestPair(solid[i], solid[j]);
+      // touching, crossing or nested: no gap to bridge
+      if (p.d < 0.05 || within(solid[i][0], solid[j]) || within(solid[j][0], solid[i])) p.d = 0;
+      pair[i][j] = p;
+      pair[j][i] = { d: p.d, a: p.b, b: p.a };
+    }
+  }
+  // Prim's: grow one body from piece 0, always by the nearest piece not yet in it
+  const inTree = new Uint8Array(n);
+  inTree[0] = 1;
+  const out = [];
+  for (let k = 1; k < n; k++) {
+    let best = null;
+    for (let i = 0; i < n; i++) {
+      if (!inTree[i]) continue;
+      for (let j = 0; j < n; j++) {
+        if (inTree[j]) continue;
+        if (!best || pair[i][j].d < best.p.d) best = { i, j, p: pair[i][j] };
+      }
+    }
+    inTree[best.j] = 1;
+    if (best.p.d > 0) out.push({ from: best.i, to: best.j, a: best.p.a, b: best.p.b, gap: best.p.d });
+  }
+  return out;
+}
+// One strip as a four-cornered outline: `width` across, and `into` further
+// than the gap at each end, so it finishes inside the two blades' walls
+// rather than flush against them.
+export function linkStrip({ a, b }, width = DEFAULTS.linkWidth, into = 0.2) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+  const ux = dx / L, uy = dy / L, nx = -uy * width / 2, ny = ux * width / 2;
+  const p = [a[0] - ux * into, a[1] - uy * into], q = [b[0] + ux * into, b[1] + uy * into];
+  return [[p[0] + nx, p[1] + ny], [p[0] - nx, p[1] - ny], [q[0] - nx, q[1] - ny], [q[0] + nx, q[1] + ny]];
+}
+// the strips as code, after the blades; nothing when the outline is one piece
+function linkLines(loops, o) {
+  if (o.links === false) return "";
+  const links = pieceLinks(loops);
+  if (!links.length) return "";
+  const w = Math.max(2, +o.linkWidth || DEFAULTS.linkWidth), into = Math.min(0.2, o.wall / 2 - 0.1);
+  return `\n// Connectors: the pieces of this shape stand apart, so a flat strip across
+// each gap holds them together as ONE cutter. They lie on the plate with the
+// rim and print without support. Delete a line and that piece is loose again.
+`
+    + links.map((l) => `linear_extrude(RIM_H) polygon(${loopLiteral(linkStrip(l, w, into))});   // piece ${l.to + 1} to piece ${l.from + 1}, across ${num(l.gap)} mm`).join("\n") + "\n";
+}
+
 // Name the loops so the generated code reads like something a person wrote.
 // Simplification happens HERE because all four generators come through it, so
 // a fifth one added later gets it without anyone remembering.
@@ -163,6 +270,13 @@ export function dedupeLoops(loops) {
   const out = [];
   for (const l of loops) if (!out.some((k) => same(k, l))) out.push(l);
   return out;
+}
+
+// the solid loops exactly as loopVars writes them (o0, o1, ...): what the
+// connectors are measured between has to be what the blades are built from
+function simplifiedSolids(loops0, tol) {
+  const loops = dedupeLoops(loops0);
+  return (tol === 0 ? loops : simplifyLoops(loops, tol ?? DEFAULTS.tolerance)).filter((l) => !l.hole);
 }
 
 function loopVars(loops0, tol) {
@@ -273,7 +387,8 @@ export function cutterScad(loops, opts = {}) {
   const outer = loops.filter((l) => !l.hole);
   const { lines, nSolid } = loopVars(o.mirror ? mirrorLoops(outer) : outer, opts.tolerance);
   const calls = Array.from({ length: nSolid }, (_, i) => `blade(o${i}); flange(o${i});${o.bars ? ` bars(o${i});` : ""}`);
-  return `// Cookie cutter\n${text}\n${lines.join("\n")}\n\n${bladeModule(o)}\n\n${calls.join("\n")}\n`;
+  const used = simplifiedSolids(o.mirror ? mirrorLoops(outer) : outer, opts.tolerance);
+  return `// Cookie cutter\n${text}\n${lines.join("\n")}\n\n${bladeModule(o)}\n\n${calls.join("\n")}\n${linkLines(used, o)}`;
 }
 
 // ------------------------------------------------- 2. cutter + stamp + knob
@@ -300,7 +415,7 @@ ${bladeModule(o)}
 
 // ---- the cutter ----
 ${blades.join("\n")}
-
+${linkLines(simplifiedSolids(o.mirror ? mirrorLoops(loops) : loops, opts.tolerance), o)}
 // ---- the stamp, set aside so both print flat on one plate ----
 translate([${num(o.size * 1.15)}, 0, 0]) {
   difference() {
@@ -463,7 +578,7 @@ export function pieceNote(loops) {
     ? " — the build grows steeply past three outlines (about 12 s for three, 35 s for five)"
     : "";
   if (groups === 1) return `${n} overlapping outlines that fuse into one cutter${slow}`;
-  return `${n} outlines in ${groups} separate pieces — that is ${groups} cutters${slow}`;
+  return `${n} outlines in ${groups} separate pieces, joined by connectors into one cutter${slow}`;
 }
 
 export function makeKit(kind, loops, opts) {

@@ -22,13 +22,13 @@ const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s);
 
 console.log("\nthe line-up is what was agreed\n");
 {
-  check("eleven spools and two tri-colours", SPOOLS.length === 13 && SPOOLS.filter((s) => !s.group).length === 11, `${SPOOLS.length}`);
+  check("eleven spools, ten plain translucents and two tri-colours", SPOOLS.length === 23 && SPOOLS.filter((s) => !s.group).length === 11, `${SPOOLS.length}`);
   const groups = byFamily();
   for (const g of groups) {
-    check(`${g.family} has its spools`, g.spools.length === (g.family === "Tri-colour silk" ? 2 : g.family === "TPU" ? 3 : 4), `${g.spools.length}`);
+    check(`${g.family} has its spools`, g.spools.length === (g.family === "Tri-colour silk" ? 2 : g.family === "Translucent" ? 10 : g.family === "TPU" ? 3 : 4), `${g.spools.length}`);
   }
-  check("the families are PLA, PETG, TPU, then the tri-colour silks",
-    groups.map((g) => g.family).join(",") === "PLA,PETG,TPU,Tri-colour silk");
+  check("the families are PLA, PETG, TPU, then the translucents and the tri-colour silks",
+    groups.map((g) => g.family).join(",") === "PLA,PETG,TPU,Translucent,Tri-colour silk");
   check("every id is unique", new Set(SPOOLS.map((s) => s.id)).size === SPOOLS.length);
   check("every spool is named for a real product",
     SPOOLS.every((s) => s.label && s.label.length > 3));
@@ -44,6 +44,56 @@ console.log("\nthe line-up is what was agreed\n");
   check("there is glitter", flakes >= 3, `${flakes}`);
   check("...and something plain to contrast against", plain >= 1, `${plain}`);
   check("at least one spool does BOTH", SPOOLS.some((s) => s.grad && s.flake));
+}
+
+console.log("\nplain translucent colours\n");
+{
+  const clear = SPOOLS.filter((s) => s.clear);
+  check("the everyday colours come see-through: at least ten of them", clear.length >= 10, `${clear.length}`);
+  for (const want of ["blue", "green", "yellow", "orange", "pink", "purple", "teal", "smoke", "clear"]) {
+    const sp = findSpool(`translucent ${want}`);
+    check(`"translucent ${want}" is a spool`, !!sp?.clear, sp?.id ?? "none");
+  }
+  check("a see-through colour lets real light through", clear.every((s) => s.t >= 0.5 && s.a <= 0.72),
+    clear.filter((s) => !(s.t >= 0.5 && s.a <= 0.72)).map((s) => s.id).join(","));
+  check("...and has no flake or gradient to hide behind", clear.every((s) => !s.flake && !s.grad && !s.tri));
+  check("the deep colours saturate sooner than the pale ones",
+    SPOOLS.find((s) => s.id === "sapphire-blue").atten < SPOOLS.find((s) => s.id === "ice-blue").atten);
+  check("the viewer shows a clear spool see-through however it was named",
+    /function spoolSeeThrough\(f\) \{ return mat\.filamentChosen \|\| !!f\?\.spool\?\.flake \|\| !!f\?\.spool\?\.clear; \}/.test(HTML));
+  check("...with a gloss coat on any stage", /m\.userData\.spoolGloss = t > 0 && f\.spool\?\.clear \? 0\.4 : 0;/.test(HTML)
+    && /const g = m\.userData\.spoolGloss \|\|/.test(HTML));
+  check("tinted plastic is lit from within, by the scene's own lights",
+    /LIGHT INSIDE THE PLASTIC/.test(HTML) && /totalEmissiveRadiance \+= pow\(gC, vec3\(0\.8\)\) \* lit \* transmission/.test(HTML));
+  check("the right-click lists group them as the panel does",
+    (HTML.match(/of F\.byFamily\(\)\)/g) || []).length >= 3);
+}
+
+console.log("\nglitter that does not repeat, and no wait for it\n");
+{
+  check("the flake grid is turned off the part's axes and bent", /vec3 fxLattice\(vec3 pos, float freq, float seed\)/.test(HTML)
+    && /0\.33 \* sin\(q\.yzx \* 0\.73 \+ seed\)/.test(HTML));
+  check("every depth and the resting dot use that one lattice",
+    /vec3 Q = fxLattice\(vFxHome \+ Rw \* t, freq, seed\);/.test(HTML) && /vec3 Q = fxLattice\(vFxHome, uFxFlakeD \* 1\.35, 0\.0\);/.test(HTML));
+  check("no sin() hash left in the flake", !/tHash\(cell/.test(HTML));
+  check("flakes come in mixed sizes, mostly fine", /float size = mix\(0\.11, 0\.34, k \* k \* k\);/.test(HTML));
+  // The sparkle is SIMULATED: no mirror per flake, no test of each flake
+  // against each light. A flake fires when a wave swept by the view direction
+  // peaks at its own random angle, as hard as the surface is near the light.
+  check("which flakes fire is random per flake and changes with the view",
+    /float wave = 0\.5 \+ 0\.5 \* sin\(dot\(Vw, k - 0\.5\) \* 34\.0 \+ h\.z \* 6\.28318\);/.test(HTML) && /float fire = pow\(wave, 14\.0\);/.test(HTML));
+  check("...and how hard is how near the light the surface is, worked out once per pixel",
+    /light \+= directionalLights\[i\]\.color \* \(0\.12 \* nl \+ 0\.75 \* pow\(nh, 6\.0\)\);/.test(HTML)
+    && !/facetW/.test(HTML));
+  check("a flash keeps its colour at its brightest", /fxGlint = v \* \(3\.2 \/ \(3\.2 \+ max\(v\.r, max\(v\.g, v\.b\)\)\)\);/.test(HTML));
+  check("a spool kept from the last session comes back with its own lighting",
+    /const kept = FILAMENTS\[mat\.filament\]\?\.spool;\s*if \(kept && !lightBackup\) \{ applySpoolLook\(kept\); applyMaterial\(\); \}/.test(HTML));
+  check("every solid material shares one program family", /m\.customProgramCacheKey = \(\) => "brep-solid";/.test(HTML));
+  check("the see-through programs are made ahead, off the main thread",
+    /function warmSeeThrough\(\)/.test(HTML) && /renderer\.compileAsync\(frame, camera, scene\)/.test(HTML)
+    && /id: "warm:seethrough"/.test(HTML));
+  check("...and drawn once when a filament list is reached for",
+    /for \(const id of \["sm-filament", "sm-material", "mat-filament"\]\)/.test(HTML) && /async function warmDraw\(\)/.test(HTML));
 }
 
 console.log("\nevery colour and constant is usable\n");
@@ -278,7 +328,7 @@ console.log("\nnaming a spool the way a person would\n");
   }
   check("every spool is reachable by its own short name",
     spoolNames().every((n) => findSpool(n)), spoolNames().filter((n) => !findSpool(n)).join(","));
-  check("...and there are thirteen names to offer", spoolNames().length === 13);
+  check("...and there are twenty-three names to offer", spoolNames().length === 23);
 }
 
 console.log("\nfilament() is wired, and cannot change the geometry\n");
@@ -461,7 +511,6 @@ console.log("\nthe glint is a real specular test against the real lights\n");
   check("a speck is tested against the half-vector of light and eye",
     /normalize\(directionalLights\[i\]\.direction \+ V\)/.test(HTML),
     "no half-vector — the flake cannot know where the light is");
-  check("...for point lights too", /NUM_POINT_LIGHTS/.test(HTML));
   check("...using the view direction", /vec3 V = normalize\(vViewPosition\)/.test(HTML));
   // It has to be INJECTED at lights_pars_begin, which is where three declares
   // directionalLights[]. Put it in the HELPERS block at <common> instead and
@@ -478,25 +527,45 @@ console.log("\nthe glint is a real specular test against the real lights\n");
   // anything — half the glitter simply missing.
   // (in WORLD space now, fixed to the part: tied to the camera, a flake kept
   // its tilt relative to the eye and orbiting barely changed it)
-  check("a facet is the surface normal jittered, not a random direction",
-    /normalize\(Nw \+ jitter \* [\d.]+\)/.test(HTML));
-  check("...fixed to the part, so turning it makes flakes blaze and go dark",
-    /normalize\(\(viewMatrix \* vec4\(facetW, 0\.0\)\)\.xyz\)/.test(HTML));
   // A constant baseline as bright as 0.25 is what made glitter read as a pale
   // coat of paint. With small flakes and clear plastic between them a FAINT
-  // floor (under 0.1) is what keeps off-angle flake reading as flake.
+  // floor is what keeps off-angle flake reading as flake: the whole speck,
+  // dim, in its own colour (never a bright outline round it), well under the
+  // old 0.25 even as its turn to fire comes.
   check("there is no strong always-on baseline glow",
-    !/0\.25 \+ 0\.75 \* flash/.test(HTML) && /tint \* 0\.0\d \+ flash/.test(HTML));
+    !/0\.25 \+ 0\.75 \* flash/.test(HTML) && /vec3 rest = tint \* \(0\.4 \+ light\) \* \(0\.1 \+ 0\.16 \* wave \* wave\)/.test(HTML)
+      && /\(rest \+ flash\) \* through \* gain \* shape/.test(HTML));
+  // The edge softening is measured on the lattice before it is cut into
+  // cells; on the cell distance it jumps at every cell wall and draws one.
+  // SPEED. Measured on an M2 Pro at 2800x1800: the refraction capture at
+  // full size made a glitter frame 31 ms, at a third 15 ms, same picture.
+  // And the flake code must hang off the uniform alone: with gl_FrontFacing
+  // in that test every see-through spool took 3.5 times as long.
+  check("the refraction capture is drawn small (it is only ever seen frosted)",
+    /renderer\.transmissionResolutionScale = 0\.35;/.test(HTML));
+  check("the flake code is skipped on the uniform alone",
+    /if \(uFxFlake > 0\.5\) totalEmissiveRadiance \+= fxFlake/.test(HTML)
+      && !/uFxFlake > 0\.5 && gl_FrontFacing/.test(HTML));
+  check("a firing flake has no outline round its cell",
+    /float qw = length\(fwidth\(Q\)\)/.test(HTML) && !/fwidth\(d\)/.test(HTML.slice(HTML.indexOf("vec3 fxFlakeLayer"), HTML.indexOf("vec3 fxFlake("))));
   // Glitter is suspended IN the plastic: several depths, sampled along the
   // refracted view ray, so deeper flakes slide against the surface as you orbit.
-  check("flake at three depths, not one layer painted on the surface",
-    (HTML.match(/fxFlakeLayer\(Nw, Vw, Rw, body,/g) || []).length === 3);
+  check("flake at three depths, not one layer painted on the surface (and one more where the plastic is clear)",
+    (HTML.match(/fxFlakeLayer\(Vw, Rw, Nw, body, light,/g) || []).length === 4 && /if \(uFxClear > 0\.05\)/.test(HTML));
+  // Glitter is flake in plastic you can see into: every spool with flake is at
+  // least a little see-through, and is shown that way however it was named.
+  check("every spool with flake is see-through",
+    SPOOLS.filter((s) => s.flake).every((s) => s.t > 0 && s.a < 1));
+  check("...and is shown see-through however it was named",
+    /const t = spoolSeeThrough\(f\) \? f\.t : 0;/.test(HTML) && /mat\.filamentChosen \|\| !!f\?\.spool\?\.flake/.test(HTML));
+  check("a flake stays solid however clear the body round it",
+    /gl_FragColor\.a = max\(gl_FragColor\.a, clamp\(dot\(fxGlint/.test(HTML));
   check("...sampled along the refracted view ray (parallax)",
     /refract\(-Vw, Nw, 1\.0 \/ 1\.5\)/.test(HTML) && /vFxHome \+ Rw \* t/.test(HTML));
   check("...deeper flake dimmer and tinted by the plastic it shines through",
     /vec3 through = mix\(vec3\(1\.0\), body,/.test(HTML));
-  check("flakes are hexagons of mixed size, not filled grid cells",
-    /float fxHex\(vec2 p\)/.test(HTML) && /float size = mix\(0\.\d+, 0\.\d+, pow\(tHash/.test(HTML));
+  check("flakes are angular specks of mixed size, not filled grid cells",
+    /float d = \(o\.x \+ o\.y \+ o\.z\) \* 0\.62;/.test(HTML) && /float size = mix\(0\.\d+, 0\.\d+, k \* k \* k\)/.test(HTML));
   check("grazing angles show more flake", /float fres = pow\(1\.0 - clamp\(dot\(N, V\)/.test(HTML));
 
   // The dial.
@@ -511,7 +580,7 @@ console.log("\nthe glint is a real specular test against the real lights\n");
   // turning it UP produce a sparser, dimmer surface, because a tighter lobe
   // catches fewer flakes than the extra gain adds back.
   check("sparkle scales gain, and the exponents are constants",
-    /fxFlakeLayer\(Nw, Vw, Rw, body, [\d.]+,\s+uFxFlakeD, uFxFlakeS,\s+[\d.]+, [\d.]+,\s+[\d.]+\)/.test(HTML)
+    /float fire = pow\(wave, 14\.0\);/.test(HTML)
       && /\* s \* s \*/.test(HTML),
     "an exponent that moves with sparkle makes the dial work backwards");
 }
@@ -527,13 +596,21 @@ console.log("\na printed part looks printed, and a studio is somewhere to look a
     /sharedFx\.layer\.value = \(fx\.layers \?\? 0\) \* \(mat\.layerLines \?\? 0\);/.test(HTML) && /layerLines: 0,/.test(HTML));
   check("no dark speck: a resting flake is only a shade duller than the plastic",
     !/fxDarkSpeck|uFxDark/.test(HTML) && /diffuseColor\.rgb \*= 1\.0 - 0\.07 \* fxFlakeRest\(\);/.test(HTML));
-  check("the flakes the light hits square are brighter, on top of the soft glow", /acc \+= hot \* 8\.0;/.test(HTML));
+  check("a few flakes are mirrors, most are modest", /float bright = 0\.6 \+ 2\.6 \* k\.x \* k\.x \* k\.x \* k\.x;/.test(HTML));
   check("there are three studio stages", /studio: \{ label: "Studio, bright white"/.test(HTML) && /"studio-grey": \{/.test(HTML) && /"studio-dark": \{/.test(HTML));
   check("...with a soft shadow under the part, fitted to it", /new THREE\.ShadowMaterial\(/.test(HTML) && /function fitStage\(\)/.test(HTML) && /keyLight\.castShadow = !!st;/.test(HTML));
   check("...that scale the light sliders rather than replace them", /keyLight\.intensity \*= st\.direct;/.test(HTML));
   check("...hide the grid and the CAD edge lines, and ink the dimensions",
-    /!gridExploded && !stageOn\(\)/.test(HTML) && /outlineGroup\.visible = !st;/.test(HTML) && /dimMaterial\.color\.set\(ink \?\? DIM_INK\);/.test(HTML));
-  check("...and the workshop grid is still the default", /stage: "grid",/.test(HTML));
+    /!gridExploded && !stagePlain\(\)/.test(HTML) && /if \(grid && !st\.grid\) grid\.visible = false;/.test(HTML) && /dimMaterial\.color\.set\(ink \?\? DIM_INK\);/.test(HTML));
+  // The default is the showcase: a dark studio that keeps the grid and the
+  // edge lines, and adds the room's reflections, a gloss coat, the part's
+  // shadow and a backdrop that falls away to the corners.
+  check("the default stage is the showcase, which keeps the grid", /stage: "showcase",/.test(HTML) && /showcase: \{ label: "Showcase, dark with grid"[^}]*grid: true[^}]*env: [\d.]+[^}]*gloss: [\d.]+ \}/.test(HTML));
+  check("...the workshop grid is still there to choose", /<option value="grid">Workshop grid<\/option>/.test(HTML) && /<option value="showcase">/.test(HTML));
+  check("...a saved look still on the old default moves over once, and only once", /if \(!mat\.stage2\) \{\s*if \(mat\.stage === "grid"\) mat\.stage = MAT_DEFAULTS\.stage;\s*mat\.stage2 = true;/.test(HTML));
+  check("...only a stage without a grid hides the grid and the edge lines", /grid\.visible = showBox\.checked && !gridExploded && !stagePlain\(\);/.test(HTML) && /outlineGroup\.visible = !st \|\| !!st\.grid;/.test(HTML));
+  check("...its backdrop steps aside when a snapshot swaps the background", /b\?\.isColor && b\.getHex\(\) === stageBackdrop\.userData\.bg \? 1 : 0/.test(HTML));
+  check("...and the gloss coat stays off see-through plastic and pieces with their own finish", /const own = m\.userData\.finish \|\| m\.userData\.codeClear != null \|\| m\.transmission > 0\.01;/.test(HTML));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

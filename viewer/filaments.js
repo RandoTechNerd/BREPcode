@@ -58,8 +58,16 @@ export const FAMILY = {
 // real glitter and, at any normal zoom, several specks per PIXEL. The GPU
 // dutifully averaged them into a faint sheen, which is why it read as a
 // pearlescent coat rather than glitter. Real flake is 0.2-0.5mm, so density
-// belongs around 2-4. Nothing else about the shader mattered until this was
-// right.
+// belongs around 3-5 (a cell holds one flake a quarter to three quarters of
+// its width: 2-4 read as a little too large). Nothing else about the shader
+// mattered until this was right.
+//
+// EVERY SPOOL WITH FLAKE IS AT LEAST A LITTLE SEE-THROUGH (t > 0, a < 1), and
+// is shown that way however it was named (a spool without flake is only
+// see-through when picked by hand). Glitter is flake suspended in plastic you
+// can see into: the viewer shows flake deeper inside the clearer the body is,
+// and the flake on the far walls through the near ones. With t at 0 it is a
+// speckle painted on the surface.
 //
 // tri   three colours SIDE BY SIDE in the strand (coextruded "tri-colour
 //       silk"). The colour you see depends on which way the wall FACES, not
@@ -79,7 +87,7 @@ export const SPOOLS = [
     label: "Rainbow Glitter · clear with rainbow flake",
     base: "#dfe7ec",
     t: 0.66, atten: 46, a: 0.60, rough: 0.30, env: 0.14,
-    flake: { density: 2.4, size: 0.19, strength: 3.0, colour: "#ffffff", rainbow: true },
+    flake: { density: 3.4, size: 0.19, strength: 3.0, colour: "#ffffff", rainbow: true },
   },
   {
     id: "pink-blue-gradient",
@@ -96,7 +104,7 @@ export const SPOOLS = [
     family: "PLA",
     label: "Ruby Red · translucent",
     base: "#c0182c",
-    t: 0.46, atten: 15, a: 0.78, rough: 0.32,
+    t: 0.52, atten: 15, a: 0.70, rough: 0.38, env: 0.4, clear: true,
   },
 
   // --------------------------------------------------------------- PETG
@@ -106,8 +114,8 @@ export const SPOOLS = [
     family: "PETG",
     label: "Violet Flake · violet with cyan flake",
     base: "#5326b8",
-    t: 0.24, atten: 11, a: 0.94,
-    flake: { density: 3.0, size: 0.16, strength: 2.8, colour: "#8fe8ff", rainbow: false },
+    t: 0.34, atten: 11, a: 0.84,
+    flake: { density: 4.2, size: 0.16, strength: 2.8, colour: "#8fe8ff", rainbow: false },
   },
   {
     // teal at the top running down to violet, with mirror flake
@@ -116,9 +124,9 @@ export const SPOOLS = [
     family: "PLA",
     label: "Teal Violet Glitter · violet → teal, with flake",
     base: "#49b9c9",
-    t: 0, atten: 20, a: 1, rough: 0.5, env: 0.16,
+    t: 0.30, atten: 20, a: 0.86, rough: 0.5, env: 0.16,
     grad: ["#7a4fd8", "#5a86e2", "#3cc8bd"],
-    flake: { density: 2.2, size: 0.13, strength: 1.5, colour: "#ffffff", rainbow: false },
+    flake: { density: 3.1, size: 0.13, strength: 1.5, colour: "#ffffff", rainbow: false },
   },
   {
     // gloss black with fine gold flake: nearly nothing until the light finds
@@ -128,8 +136,8 @@ export const SPOOLS = [
     family: "PETG",
     label: "Midnight Gold Flake · gloss black with gold flake",
     base: "#0c0c0e",
-    t: 0, atten: 20, a: 1, rough: 0.3, env: 0.5,
-    flake: { density: 3.4, size: 0.08, strength: 1.6, colour: "#ffb428", rainbow: false },
+    t: 0.26, atten: 8, a: 0.88, rough: 0.3, env: 0.5,
+    flake: { density: 4.6, size: 0.08, strength: 1.6, colour: "#ffb428", rainbow: false },
   },
   {
     id: "ocean-gradient",
@@ -146,8 +154,8 @@ export const SPOOLS = [
     family: "PETG",
     label: "Smoky Violet · near-black translucent",
     base: "#241a3a",
-    t: 0.40, atten: 9, a: 0.82,
-    flake: { density: 3.6, size: 0.10, strength: 2.2, colour: "#b79bff", rainbow: false },
+    t: 0.40, atten: 9, a: 0.78,
+    flake: { density: 4.8, size: 0.10, strength: 2.2, colour: "#b79bff", rainbow: false },
   },
 
   // ---------------------------------------------------------------- TPU
@@ -157,9 +165,9 @@ export const SPOOLS = [
     family: "TPU",
     label: "Pastel Glitter · pink → purple → blue, glittered",
     base: "#b98cf0",
-    t: 0.28, atten: 24, a: 0.88,
+    t: 0.34, atten: 24, a: 0.82,
     grad: ["#ff9ad5", "#b98cf0", "#7fc4ff"],
-    flake: { density: 2.8, size: 0.15, strength: 2.4, colour: "#ffffff", rainbow: true },
+    flake: { density: 3.9, size: 0.15, strength: 2.4, colour: "#ffffff", rainbow: true },
   },
   {
     id: "gold-flake",
@@ -167,8 +175,8 @@ export const SPOOLS = [
     family: "TPU",
     label: "Gold Flake · clear with gold flake",
     base: "#e6ded0",
-    t: 0.58, atten: 42, a: 0.64, env: 0.20,
-    flake: { density: 2.2, size: 0.17, strength: 3.2, colour: "#ffc95e", rainbow: false },
+    t: 0.58, atten: 42, a: 0.60, env: 0.20,
+    flake: { density: 3.1, size: 0.17, strength: 3.2, colour: "#ffc95e", rainbow: false },
   },
   {
     id: "pink-ombre",
@@ -178,6 +186,105 @@ export const SPOOLS = [
     base: "#ff7ab8",
     t: 0.22, atten: 18, a: 0.92,
     grad: ["#ffd8ea", "#ff5fa2"],
+  },
+
+  // ------------------------------------------------------ plain translucent
+  //
+  // The everyday see-through colours: no flake, no gradient, just tinted
+  // plastic you can see into. `clear: true` says the see-through IS the spool,
+  // so it is shown that way however it was named (in code, by the assistant,
+  // or picked by hand). Shallow attenuation on the deep colours, so a thick
+  // section goes rich and a thin wall stays light, which is most of what
+  // makes tinted plastic read as plastic and not as a faded part.
+  {
+    id: "crystal-clear",
+    aliases: ["translucent-clear", "clear", "transparent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Crystal Clear · nearly colourless",
+    base: "#e9f1f4",
+    t: 0.74, atten: 60, a: 0.50, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "ice-blue",
+    aliases: ["translucent-light-blue", "translucent-ice"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Ice Blue · translucent",
+    base: "#a9dcf5",
+    t: 0.66, atten: 34, a: 0.58, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "sapphire-blue",
+    aliases: ["translucent-blue", "blue-translucent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Sapphire Blue · translucent",
+    base: "#1f5fd8",
+    t: 0.58, atten: 16, a: 0.66, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "aqua-teal",
+    aliases: ["translucent-teal", "translucent-aqua", "translucent-turquoise"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Aqua Teal · translucent",
+    base: "#12b5a6",
+    t: 0.60, atten: 18, a: 0.64, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "emerald-green",
+    aliases: ["translucent-green", "green-translucent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Emerald Green · translucent",
+    base: "#16a34a",
+    t: 0.58, atten: 16, a: 0.66, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "lemon-yellow",
+    aliases: ["translucent-yellow", "yellow-translucent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Lemon Yellow · translucent",
+    base: "#f3d21c",
+    t: 0.62, atten: 26, a: 0.62, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "amber-orange",
+    aliases: ["translucent-orange", "translucent-amber", "orange-translucent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Amber Orange · translucent",
+    base: "#f28a12",
+    t: 0.60, atten: 20, a: 0.64, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "rose-pink",
+    aliases: ["translucent-pink", "pink-translucent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Rose Pink · translucent",
+    base: "#f25c9c",
+    t: 0.60, atten: 20, a: 0.64, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "amethyst-purple",
+    aliases: ["translucent-purple", "translucent-violet", "purple-translucent"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Amethyst Purple · translucent",
+    base: "#7c3aed",
+    t: 0.58, atten: 15, a: 0.66, rough: 0.38, env: 0.4, clear: true,
+  },
+  {
+    id: "smoke-grey",
+    aliases: ["translucent-smoke", "translucent-grey", "translucent-gray", "translucent-black", "smoke"],
+    group: "Translucent",
+    family: "PETG",
+    label: "Smoke Grey · translucent",
+    base: "#4a4f58",
+    t: 0.60, atten: 14, a: 0.64, rough: 0.38, env: 0.4, clear: true,
   },
 
   // ------------------------------------------------- coextruded tri-colour
@@ -226,27 +333,41 @@ export const LOOKS = {
   // to white and left the coloured specks nowhere to read — the one spool whose
   // whole name is its glitter, and you could not see it. Backlight and exposure
   // pulled down to leave headroom for the flake.
-  "rainbow-glitter": { key: 112, fill: 38, rim: 88, ambient: 34, exposure: 104, opacity: 88, bg: "#0a0d14" },
+  "rainbow-glitter": { key: 112, fill: 38, rim: 88, ambient: 34, exposure: 104, opacity: 62, bg: "#0a0d14" },
   // a ramp has to be READ, so light it evenly and do not blow out the top
   "pink-blue-gradient": { key: 145, fill: 78, rim: 48, ambient: 66, exposure: 106, opacity: 100, bg: "#0d1018" },
   // jewel tone: it should glow from behind like held-up glass
-  "ruby-red": { key: 132, fill: 46, rim: 115, ambient: 42, exposure: 116, opacity: 90, bg: "#0c0a0e" },
+  "ruby-red": { key: 132, fill: 46, rim: 124, ambient: 40, exposure: 114, opacity: 68, bg: "#0c0a0e" },
   // deep violet would crush to black without a strong key AND a rim
-  "violet-flake": { key: 168, fill: 56, rim: 108, ambient: 44, exposure: 114, opacity: 96, bg: "#080a12" },
-  // an opaque pastel gradient: open and even, so the two colours both read
-  "teal-violet-glitter": { key: 140, fill: 74, rim: 50, ambient: 62, exposure: 104, opacity: 100, bg: "#0d1018" },
+  "violet-flake": { key: 168, fill: 56, rim: 108, ambient: 44, exposure: 114, opacity: 84, bg: "#080a12" },
+  // a pastel gradient: open and even, so the two colours both read
+  "teal-violet-glitter": { key: 140, fill: 74, rim: 50, ambient: 62, exposure: 104, opacity: 86, bg: "#0d1018" },
   // black needs light to read as gloss rather than as a hole: key and rim both up
-  "midnight-gold-flake": { key: 175, fill: 60, rim: 130, ambient: 50, exposure: 118, opacity: 100, bg: "#0d0e12" },
+  "midnight-gold-flake": { key: 175, fill: 60, rim: 130, ambient: 50, exposure: 118, opacity: 88, bg: "#0d0e12" },
   // glossy PETG: enough rim to throw the specular line that says "gloss"
   "ocean-gradient": { key: 152, fill: 72, rim: 76, ambient: 58, exposure: 108, opacity: 96, bg: "#0a0f16" },
   // the hardest one in the set — everything up, or it is a hole in the screen
-  "smoky-violet": { key: 178, fill: 62, rim: 140, ambient: 52, exposure: 128, opacity: 88, bg: "#0d0b14" },
+  "smoky-violet": { key: 178, fill: 62, rim: 140, ambient: 52, exposure: 128, opacity: 80, bg: "#0d0b14" },
   // pastel gradient on matte TPU: soft and open, no hard highlights
-  "pastel-glitter": { key: 136, fill: 82, rim: 72, ambient: 68, exposure: 107, opacity: 98, bg: "#0e1017" },
+  "pastel-glitter": { key: 136, fill: 82, rim: 72, ambient: 68, exposure: 107, opacity: 84, bg: "#0e1017" },
   // warm flake wants a warm backlight, or the gold reads grey
-  "gold-flake": { key: 112, fill: 44, rim: 82, ambient: 34, exposure: 103, opacity: 86, rimcol: "#ffd9a0", bg: "#0a0a0d" },
+  "gold-flake": { key: 112, fill: 44, rim: 82, ambient: 34, exposure: 103, opacity: 62, rimcol: "#ffd9a0", bg: "#0a0a0d" },
   // matte needs FILL above all — lit like the others it looks dead flat
   "pink-ombre": { key: 142, fill: 92, rim: 42, ambient: 74, exposure: 104, opacity: 100, bg: "#0f1016" },
+  // The plain translucents share one idea: light from BEHIND and to the side,
+  // because tinted plastic glows where light comes through it and is dull lit
+  // from the front; a dark room so the glow has something to show against; and
+  // the pale ones held back from clipping.
+  "crystal-clear": { key: 108, fill: 40, rim: 120, ambient: 30, exposure: 102, opacity: 52, bg: "#0a0c11" },
+  "ice-blue": { key: 112, fill: 42, rim: 118, ambient: 32, exposure: 104, opacity: 60, bg: "#090c12" },
+  "sapphire-blue": { key: 140, fill: 48, rim: 128, ambient: 40, exposure: 110, opacity: 68, bg: "#080a10" },
+  "aqua-teal": { key: 128, fill: 46, rim: 122, ambient: 38, exposure: 106, opacity: 66, bg: "#080b10" },
+  "emerald-green": { key: 136, fill: 48, rim: 126, ambient: 40, exposure: 108, opacity: 68, bg: "#080b0e" },
+  "lemon-yellow": { key: 114, fill: 44, rim: 116, ambient: 34, exposure: 104, opacity: 64, rimcol: "#fff1c4", bg: "#0b0b0d" },
+  "amber-orange": { key: 124, fill: 46, rim: 124, ambient: 36, exposure: 108, opacity: 66, rimcol: "#ffe0b0", bg: "#0b0a0c" },
+  "rose-pink": { key: 124, fill: 48, rim: 120, ambient: 38, exposure: 108, opacity: 66, bg: "#0c0a0e" },
+  "amethyst-purple": { key: 142, fill: 50, rim: 130, ambient: 40, exposure: 110, opacity: 68, bg: "#0a0910" },
+  "smoke-grey": { key: 150, fill: 52, rim: 136, ambient: 42, exposure: 110, opacity: 66, bg: "#0c0d10" },
   // silk: a bright even key so all three colours read, and a rim for the sheen
   "tri-ryb": { key: 150, fill: 70, rim: 96, ambient: 52, exposure: 106, opacity: 100, bg: "#0b0e15" },
   // dark silk: the black third needs a strong rim and key or it is a hole;

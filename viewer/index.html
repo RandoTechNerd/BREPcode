@@ -4752,6 +4752,7 @@
           </label>
           <label class="mat-row" title="What the model stands on. The studios give it a plain surface, its own soft shadow and even light, like a product photo."><span>Stage</span>
             <select id="mat-stage">
+              <option value="showcase">Showcase, dark with grid</option>
               <option value="grid">Workshop grid</option>
               <option value="studio">Studio, bright white</option>
               <option value="studio-grey">Studio, soft grey</option>
@@ -5687,6 +5688,13 @@
     // gets a solid black image on many machines.
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // What shows THROUGH see-through plastic is drawn into a capture first,
+    // and at full size that capture (multisampled, with its mip chain) was
+    // more than half of every frame a translucent or glitter part was on
+    // screen: 30 ms a frame on an M2 at 2x. It is only ever seen frosted (the
+    // blur floor in injectTexInto), so a third of the size looks the same
+    // and the frame takes half as long.
+    renderer.transmissionResolutionScale = 0.35;
     stage.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -6983,6 +6991,10 @@
       // as "more glittery" rather than just "brighter" — a wide soft highlight
       // is a shiny surface, a narrow blinding one is a speck of foil.
       sparkle: { value: 1 },
+      // How clear the plastic round the flake is (the spool's transmission
+      // when it is shown see-through, else 0): clear plastic shows flake
+      // further in.
+      clear: { value: 0 },
       // printed layer lines and their height in mm
       layer: { value: 0 }, layerH: { value: 0.3 },
     };
@@ -6998,7 +7010,7 @@
       lo: { value: 0 }, hi: { value: 1 },
       flake: { value: 0 }, flakeD: { value: 20 }, flakeS: { value: 0.05 },
       flakeK: { value: 2 }, flakeC: { value: new THREE.Color(1, 1, 1) },
-      rainbow: { value: 0 }, sparkle: { value: 1 },
+      rainbow: { value: 0 }, sparkle: { value: 1 }, clear: { value: 0 },
       // printed layer lines (0 = none) and their height in mm
       layer: { value: 0 }, layerH: { value: 0.3 },
       // null means "follow the Material panel". A piece given its own pattern
@@ -7025,6 +7037,7 @@
       bundle.flakeC.value.setRGB(...fx.flakeColour);
       bundle.rainbow.value = fx.flakeRainbow;
       bundle.sparkle.value = sparkle ?? 1;
+      bundle.clear.value = fx.flake ? (fx.t ?? 0) : 0;   // a finish() spool is always shown see-through
       bundle.layer.value = (fx.layers ?? 0) * (mat.layerLines ?? 0);
       if (Number.isFinite(lo) && Number.isFinite(hi)) { bundle.lo.value = lo; bundle.hi.value = hi; }
     }
@@ -7047,11 +7060,13 @@
         uFxGradC: sharedFx.gradC, uFxLo: sharedFx.lo, uFxHi: sharedFx.hi,
         uFxFlake: sharedFx.flake, uFxFlakeD: sharedFx.flakeD, uFxFlakeS: sharedFx.flakeS,
         uFxFlakeK: sharedFx.flakeK, uFxFlakeC: sharedFx.flakeC, uFxRainbow: sharedFx.rainbow,
-        uFxSparkle: sharedFx.sparkle,
+        uFxSparkle: sharedFx.sparkle, uFxClear: sharedFx.clear,
         uFxLayer: sharedFx.layer, uFxLayerH: sharedFx.layerH,
       });
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;\nvarying vec3 vFxHome;\nvarying vec3 vFxNormalW;")
+        // the see-through depth passes (peelFrame) test these faces for EQUAL
+        // depth against a depth-only copy: both must come out bit for bit alike
+        .replace("#include <common>", "invariant gl_Position;\n#include <common>\nvarying vec3 vTexPos;\nvarying vec3 vFxWorld;\nvarying vec3 vFxHome;\nvarying vec3 vFxNormalW;")
         // The gradient runs bottom-to-top through the finished part. A built
         // mesh's own coordinates ARE the bed's (translate() is baked into the
         // geometry; the mesh itself sits at the origin), so vFxHome is the
@@ -7116,8 +7131,11 @@
         // ---- named-spool effects ----
         uniform float uFxGrad; uniform vec3 uFxGradA, uFxGradB, uFxGradC;
         uniform float uFxLo, uFxHi;
-        uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow, uFxSparkle;
+        uniform float uFxFlake, uFxFlakeD, uFxFlakeS, uFxFlakeK, uFxRainbow, uFxSparkle, uFxClear;
         uniform vec3 uFxFlakeC;
+        // the light this pixel's flake sent back, kept for the alpha (a flake
+        // is foil: it does not fade with the clear plastic round it)
+        vec3 fxGlint = vec3(0.0);
         varying vec3 vFxWorld;
         // where the point is on the part as built (its own coordinates): a
         // part moved by Explode or a drag keeps its gradient and its flake
@@ -7168,19 +7186,44 @@
         // A FLAKE AT REST. Glitter is not white dots and it is not pepper: a
         // flake that is not catching the light is nearly invisible, a shade
         // duller than the plastic round it, and one that is catching it is a
-        // tiny lamp (see THE TWINKLE). This is the resting half: where a
+        // tiny lamp (see SIMULATED SPARKLE). This is the resting half: where a
         // surface flake lies, the colour drops by a few percent. The same
         // cells as the surface layer of the flake field, so the dull dot and
         // the flash are the same flake.
+        // Flake hashes without sin(): one call gives three numbers, and they
+        // do not band or repeat on a large part the way fract(sin()) does.
+        vec3 fxH3(vec3 p) {
+          p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+          p += dot(p, p.yxz + 33.33);
+          return fract((p.xxy + p.yxx) * p.zyx);
+        }
+        // THE FLAKE LATTICE. One flake per cell of a grid is what made glitter
+        // look routine: the grid ran square to the part, so flakes sat in rows
+        // you could see, and every depth shared the same rows. The grid is now
+        // turned off the part's axes (a different way for each depth) and bent
+        // by a slow wave, so no row runs straight and none lines up with a
+        // wall or with the layer under it.
+        vec3 fxLattice(vec3 pos, float freq, float seed) {
+          vec3 q = pos * freq;
+          if (seed > 100.0) q = q.yzx; else if (seed > 30.0) q = q.zxy;
+          q = mat3(0.36, 0.48, -0.8,  -0.8, 0.6, 0.0,  0.48, 0.64, 0.6) * q + seed * vec3(1.0, 1.7, 2.3);
+          return q + 0.33 * sin(q.yzx * 0.73 + seed) + 0.21 * sin(q.zxy * 1.37 + 1.7 * seed);
+        }
+        // where in its cell a flake sits and how big it is: xyz centre, w radius.
+        // Mostly fine, a few large, anywhere in the cell it fits.
+        vec4 fxFlakeSpot(vec3 cell) {
+          float k = fxH3(cell + 19.19).x;
+          float size = mix(0.11, 0.34, k * k * k);
+          return vec4(size + fxH3(cell + 7.7) * (1.0 - 2.0 * size), size);
+        }
         float fxFlakeRest() {
           if (uFxFlake < 0.5) return 0.0;
-          vec3 Q = vFxHome * uFxFlakeD;
+          vec3 Q = fxLattice(vFxHome, uFxFlakeD * 1.35, 0.0);
           vec3 cell = floor(Q);
-          if (tHash(cell) > uFxFlakeS) return 0.0;
-          vec3 centre = vec3(tHash(cell + 5.1), tHash(cell + 9.7), tHash(cell + 13.3)) * 0.5 + 0.25;
-          float size = mix(0.27, 0.48, pow(tHash(cell + 17.9), 2.5));
-          float d = length(Q - cell - centre);
-          return 1.0 - smoothstep(size * 0.8, size, d);
+          if (fxH3(cell).x > uFxFlakeS) return 0.0;
+          vec4 spot = fxFlakeSpot(cell);
+          float d = length(Q - cell - spot.xyz);
+          return 1.0 - smoothstep(spot.w * 0.8, spot.w, d);
         }
         vec3 fxGradient() {
           float span = max(uFxHi - uFxLo, 0.0001);
@@ -7193,9 +7236,9 @@
         // itself so a speck keeps its colour as the part turns.
         // shift: holographic flake changes colour with the angle you see it
         // at, so the caller passes how the flake faces the light and the eye.
-        vec3 fxFlakeTint(vec3 cell, float shift) {
+        vec3 fxFlakeTint(float hue, float shift) {
           if (uFxRainbow > 0.5) {
-            vec3 c = 0.5 + 0.5 * cos(6.28318 * (tHash(cell + 3.7) + shift + vec3(0.0, 0.33, 0.67)));
+            vec3 c = 0.5 + 0.5 * cos(6.28318 * (hue + shift + vec3(0.0, 0.33, 0.67)));
             // Saturate hard. The raw cosine palette never lets a channel reach
             // zero, so every speck carries a lot of white — which is invisible
             // added onto the pale, nearly clear body that rainbow glitter
@@ -7203,7 +7246,7 @@
             // gives specks that read as RED, GREEN, BLUE rather than as
             // slightly tinted white.
             c = clamp((c - 0.35) / 0.65, 0.0, 1.0);
-            return mix(vec3(1.0), c, 0.85);
+            return mix(vec3(1.0), c, 0.9);
           }
           return uFxFlakeC;
         }`;
@@ -7258,124 +7301,91 @@
         //   - rainbow flake shifts hue with the angle, like holographic film
         // Peak brightness still runs past 1.0 so the heart of a flash clips to
         // white: that blow-out is what reads as GLOWING rather than a pale dot.
-        float fxHex(vec2 p) {
-          p = abs(p);
-          return max(dot(p, vec2(0.8660254, 0.5)), p.y);
-        }
-        vec3 fxFlakeLayer(vec3 Nw, vec3 Vw, vec3 Rw, vec3 body, float depth, float freq,
-                          float cover, float sharp, float gain, float seed) {
+        // SIMULATED SPARKLE. Each flake used to be a little mirror with its own
+        // tilt, tested against every light: correct, costly, and nobody can
+        // tell by eye which way a speck of glitter faces. What the eye reads
+        // is simpler: where the surface is anywhere near the path of the
+        // light the glitter blazes, and WHICH specks are lit keeps changing
+        // as the part turns. So that is all this does. A flake has a random
+        // number of its own; the view direction sweeps a wave past it, and
+        // when the wave peaks the flake fires, at an angle that is random per
+        // flake. How hard it fires is how near the light the surface is
+        // (worked out once per pixel, not per flake).
+        vec3 fxFlakeLayer(vec3 Vw, vec3 Rw, vec3 Nw, vec3 body, vec3 light, float depth, float freq,
+                          float cover, float gain, float seed) {
           // where the view ray is, depth mm under the surface
           float t = depth / max(dot(Rw, -Nw), 0.25);
-          vec3 Q = (vFxHome + Rw * t) * freq + seed;
+          vec3 Q = fxLattice(vFxHome + Rw * t, freq, seed);
+          float qw = length(fwidth(Q));       // before any early return
           vec3 cell = floor(Q);
-          if (tHash(cell) > cover) return vec3(0.0);
-          // tilt: mostly along the surface (flakes lie in the flow), but each
-          // its own way, fixed to the part
-          vec3 jitter = vec3(tHash(cell + 11.0), tHash(cell + 23.0), tHash(cell + 41.0)) - 0.5;
-          vec3 facetW = normalize(Nw + jitter * 1.6);
-          // the hexagon, in the flake's own plane
-          vec3 centre = vec3(tHash(cell + 5.1), tHash(cell + 9.7), tHash(cell + 13.3)) * 0.5 + 0.25;
-          vec3 o = (Q - cell) - centre;
-          vec3 ax = normalize(cross(facetW, abs(facetW.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
-          vec3 ay = cross(facetW, ax);
-          float spin = tHash(cell + 29.0) * 1.0472;
-          vec2 p = vec2(dot(o, ax), dot(o, ay));
-          p = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * p;
-          // radius in cells: with density 2-4 cells/mm that is flake about
-          // 0.2-0.35 mm across, a few up to half a millimetre, like the real
-          // stuff (finer read as dust, larger as confetti)
-          float size = mix(0.27, 0.48, pow(tHash(cell + 17.9), 2.5));
-          float d = fxHex(p);
-          float aa = max(fwidth(d), 0.002);
-          float shape = 1.0 - smoothstep(size - aa, size + aa, d);
+          vec3 h = fxH3(cell);                 // x: is there a flake, y: its hue, z: when it fires
+          if (h.x > cover) return vec3(0.0);
+          vec4 spot = fxFlakeSpot(cell);
+          // an angular speck: a slice through a small octahedron
+          vec3 o = abs(Q - cell - spot.xyz);
+          float d = (o.x + o.y + o.z) * 0.62;
+          // Soften the edge by how fast the lattice moves across a pixel,
+          // measured BEFORE it is cut into cells. Measured on d itself the
+          // rate jumps at every cell wall, and the wall drew as a bright
+          // dotted outline round a flake that was firing.
+          float aa = clamp(qw * 0.62, 0.002, spot.w);
+          float shape = 1.0 - smoothstep(spot.w - aa, spot.w + aa, d);
           if (shape <= 0.0) return vec3(0.0);
-          // light it: a tiny mirror tested against each light's half-vector
-          vec3 facet = normalize((viewMatrix * vec4(facetW, 0.0)).xyz);
-          vec3 V = normalize(vViewPosition);
-          vec3 acc = vec3(0.0);
-          float align = 0.0;
-          #if NUM_DIR_LIGHTS > 0
-            for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
-              vec3 H = normalize(directionalLights[i].direction + V);
-              float h = max(dot(facet, H), 0.0);
-              align = max(align, h);
-              acc += directionalLights[i].color * pow(h, sharp);
-            }
-          #endif
-          #if NUM_POINT_LIGHTS > 0
-            for (int i = 0; i < NUM_POINT_LIGHTS; i++) {
-              vec3 H = normalize(normalize(pointLights[i].position + vViewPosition) + V);
-              float h = max(dot(facet, H), 0.0);
-              align = max(align, h);
-              acc += pointLights[i].color * pow(h, sharp);
-            }
-          #endif
-          // THE TWINKLE. The lobes above are broad on purpose (so enough
-          // flakes catch something), and broad lobes glow: every lit flake
-          // came out the same pale dot and none of them blazed, which is the
-          // difference between speckled and sparkly. So each flake also has a
-          // needle-sharp mirror flash, tested against the scene's lights and
-          // against a ring of fixed "room" directions, since real glitter
-          // picks up the window and the ceiling as well as the lamp. A faked
-          // room is why a face turned away from the key light still twinkles,
-          // and a different handful of flakes fire at every angle as you orbit.
-          vec3 hot = vec3(0.0);
-          #if NUM_DIR_LIGHTS > 0
-            for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
-              float h = max(dot(facet, normalize(directionalLights[i].direction + V)), 0.0);
-              hot += directionalLights[i].color * pow(h, sharp * 9.0);
-            }
-          #endif
-          for (int i = 0; i < 5; i++) {
-            float a = float(i) * 1.2566;
-            vec3 Lw = normalize(vec3(cos(a) * 0.8, sin(a) * 0.8, 0.45 + 0.25 * sin(a * 2.0)));
-            float h = max(dot(facetW, normalize(Lw + Vw)), 0.0);
-            hot += vec3(0.55) * pow(h, sharp * 7.0);
-          }
-          // The soft glow stays as it was (flakes at every depth, each a
-          // little lit: that is the look that was liked) and the needle flash
-          // rides on top of it: the ones the light hits square are brighter
-          // than the rest, and which ones they are changes as the part turns.
-          // (Sixteen times was tried: every hit became a hard white square.)
-          acc += hot * 8.0;
-          vec3 tint = fxFlakeTint(cell, align * 1.4);
-          // a faint metallic glint even off-angle, so flake reads as flake and
-          // not only as the few that happen to line up; and the FLASH, which
-          // runs toward white at its peak (holographic film goes nearly white
-          // at the exact angle, colour only at the fringes) and past 1.0 so
-          // its heart clips: that is what reads as a speck blazing
-          vec3 flash = acc * mix(tint, vec3(1.0), 0.5);
+          vec3 k = fxH3(cell + 41.3);
+          float wave = 0.5 + 0.5 * sin(dot(Vw, k - 0.5) * 34.0 + h.z * 6.28318);
+          float fire = pow(wave, 14.0);                       // lit for a moment, dark the rest
+          float bright = 0.6 + 2.6 * k.x * k.x * k.x * k.x;   // a few are mirrors
+          vec3 tint = fxFlakeTint(h.y, wave * 0.6);
+          // the flash keeps the flake's colour and runs to white at its peak,
+          // past 1.0 so its heart clips: a speck blazing
+          vec3 flash = light * fire * bright * 9.0 * mix(tint, vec3(1.0), 0.18);
           // light that reached a deeper flake crossed more plastic
           float deep = 1.0 - exp(-depth * 0.9);
           vec3 through = mix(vec3(1.0), body, deep * 0.75) * (1.0 - deep * 0.45);
-          return (tint * 0.06 + flash) * through * gain * shape;
+          // A flake that is not firing still shows, whole and dim: the full
+          // speck in its own colour, a little brighter as its turn comes.
+          vec3 rest = tint * (0.4 + light) * (0.1 + 0.16 * wave * wave);
+          return (rest + flash) * through * gain * shape;
         }
 
         vec3 fxFlake(vec3 nrm, vec3 body) {
           vec3 N = normalize(nrm);
           vec3 V = normalize(vViewPosition);
-          // world-space normal and view direction: the flake field lives in
-          // the part, so orbiting moves the eye through it
           vec3 Nw = normalize((vec4(N, 0.0) * viewMatrix).xyz);
           vec3 Vw = normalize(cameraPosition - vFxWorld);
           vec3 Rw = refract(-Vw, Nw, 1.0 / 1.5);
           if (dot(Rw, Rw) < 0.5) Rw = -Nw;
+          // HOW NEAR THE LIGHT. A wide lobe on purpose: glitter lights up
+          // well before the surface is square to the lamp, and a floor so a
+          // face turned away still twinkles a little, as it does in a room.
+          vec3 light = vec3(0.22) + ambientLightColor * 0.15;
+          #if NUM_DIR_LIGHTS > 0
+            for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+              float nh = max(dot(N, normalize(directionalLights[i].direction + V)), 0.0);
+              float nl = max(dot(N, directionalLights[i].direction), 0.0);
+              light += directionalLights[i].color * (0.12 * nl + 0.75 * pow(nh, 6.0));
+            }
+          #endif
           float s = max(uFxSparkle, 0.0);
-          // Sparkle drives BRIGHTNESS only; the lobes are constants (a tighter
-          // lobe on a sparkle dial made the surface SPARSER, measured). Three
-          // depths: at the surface, just under it, deep inside. Same flake
-          // size at every depth (a millimetre further in is not visibly
-          // smaller; a finer grid there turned the deep layers into dust),
-          // each with its own seed so the layers do not line up, a little
-          // sparser and with a broader lobe as they go deeper.
-          vec3 g = fxFlakeLayer(Nw, Vw, Rw, body, 0.02, uFxFlakeD, uFxFlakeS,        38.0, 2.4,  0.0)
-                 + fxFlakeLayer(Nw, Vw, Rw, body, 0.6,  uFxFlakeD, uFxFlakeS,        30.0, 1.9,  37.0)
-                 + fxFlakeLayer(Nw, Vw, Rw, body, 1.7,  uFxFlakeD, uFxFlakeS * 0.9,  24.0, 1.4,  71.0);
+          // Finer than the spool says by a fixed step (a cell holds one
+          // flake). Three depths, each with its own seed so they do not line
+          // up; one more, deep, where the plastic is clear enough to see it.
+          float f = uFxFlakeD * 1.35;
+          vec3 g = fxFlakeLayer(Vw, Rw, Nw, body, light, 0.02, f, uFxFlakeS,       2.4,  0.0)
+                 + fxFlakeLayer(Vw, Rw, Nw, body, light, 0.6,  f, uFxFlakeS,       1.9, 37.0)
+                 + fxFlakeLayer(Vw, Rw, Nw, body, light, 1.7,  f, uFxFlakeS * 0.9, 1.4, 71.0);
+          if (uFxClear > 0.05)
+            g += clamp(uFxClear * 1.6, 0.0, 1.0) * fxFlakeLayer(Vw, Rw, Nw, body, light, 3.6, f, uFxFlakeS * 0.85, 1.3, 113.0);
           // Grazing angles show more flake: you look along the plastic and
           // through more of it, which is why a curved part sparkles most
           // around its silhouette.
           float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.5);
-          return g * uFxFlakeK * s * s * (1.0 + 1.6 * fres);
+          vec3 v = g * uFxFlakeK * s * s * (1.0 + 1.6 * fres);
+          // Brighter than white, but with a ceiling that keeps the hue: left
+          // to clip, every flash went white and gold or rainbow flake lost
+          // its colour exactly where it was brightest.
+          fxGlint = v * (3.2 / (3.2 + max(v.r, max(v.g, v.b))));
+          return fxGlint;
         }`;
 
       shader.fragmentShader = shader.fragmentShader
@@ -7401,7 +7411,39 @@
         // light disappears the moment it faces away, and real glitter does the
         // opposite — it is brightest at the angle nothing else is.
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-          if (uFxFlake > 0.5) totalEmissiveRadiance += fxFlake(normal, diffuseColor.rgb);`)
+          // (keep this test on the uniform alone: with gl_FrontFacing in it
+          // the compiler stopped skipping the flake code and every see-through
+          // spool, glitter or not, took three times as long to draw)
+          if (uFxFlake > 0.5) totalEmissiveRadiance += fxFlake(normal, diffuseColor.rgb);
+          // LIGHT INSIDE THE PLASTIC. Transmission only shows what is BEHIND
+          // a part, and behind a part on a dark stage is the dark: tinted
+          // filament came out as a dim, flat colour, like paint with the
+          // opacity turned down. Real tinted plastic is lit from within: the
+          // light that got in bounces about and comes out its colour, most of
+          // all where you look toward a lamp through it and along its edges.
+          // Driven by the scene's own lights (dark room, dark part), and by
+          // how coloured the plastic is, so a clear body stays clear and does
+          // not turn to milk.
+          #ifdef USE_TRANSMISSION
+            if (transmission > 0.05) {
+              vec3 gN = normalize(normal), gV = normalize(vViewPosition);
+              vec3 lit = ambientLightColor * 0.36;
+              #if NUM_DIR_LIGHTS > 0
+                for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+                  vec3 gL = directionalLights[i].direction;
+                  float wrap = dot(gN, gL) * 0.5 + 0.5;
+                  float thru = pow(max(dot(-gV, gL), 0.0), 2.0);
+                  lit += directionalLights[i].color * (0.12 * wrap + 0.32 * thru);
+                }
+              #endif
+              vec3 gC = diffuseColor.rgb;
+              float gMax = max(gC.r, max(gC.g, gC.b));
+              float gSat = gMax > 0.0 ? (gMax - min(gC.r, min(gC.g, gC.b))) / gMax : 0.0;
+              float gEdge = 1.0 - clamp(dot(gN, gV), 0.0, 1.0);
+              totalEmissiveRadiance += pow(gC, vec3(0.8)) * lit * transmission
+                * mix(0.2, 1.0, gSat) * (0.75 + 0.7 * gEdge * gEdge);
+            }
+          #endif`)
         .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
           if (uTexKind > 0 && uTexDepth > 0.0) {
             vec3 P = tCoord(vTexPos);
@@ -7428,12 +7470,19 @@
             // capture (the near-skin depth pass rejects it everywhere else):
             // it is the inside of the part, so it takes on the plastic's own
             // colour and loses its lighting, like a shape seen through a wall.
-            if (!gl_FrontFacing) gl_FragColor.rgb = mix(gl_FragColor.rgb, diffuseColor.rgb * 0.5, 0.65);
-            {
+            // (a faded part carries a trace of transmission only so that it
+            // sorts with the filament parts, see peelFrame: not for this)
+            if (!gl_FrontFacing && transmission > 0.01) gl_FragColor.rgb = mix(gl_FragColor.rgb, diffuseColor.rgb * 0.5, 0.65);
+            if (transmission > 0.01) {
               float fr = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
               gl_FragColor.a = mix(gl_FragColor.a, min(1.0, gl_FragColor.a + 0.35), fr);
             }
-          #endif`);
+          #endif
+          // A flake is a speck of foil, not plastic: however clear the body
+          // round it, the flake itself is solid. Without this a see-through
+          // spool faded its own glitter along with the body, so the clearer
+          // the plastic the LESS it sparkled.
+          gl_FragColor.a = max(gl_FragColor.a, clamp(dot(fxGlint, vec3(0.4)), 0.0, 1.0));`);
     }
     // Every solid mesh gets a material from this factory: same texture + shading,
     // its own colour. matForFeature() hands each shape either the shared default
@@ -7453,6 +7502,13 @@
       // on the material so a rebuild can refill it without recompiling.
       m.userData.fx = fx;
       m.onBeforeCompile = fx ? injectTexWith(fx) : injectTex;
+      // ONE PROGRAM FAMILY. three keys its program cache on the text of
+      // onBeforeCompile, and the two functions above read differently, so a
+      // piece given its own filament compiled the whole shader again (about
+      // two seconds, with the page frozen) although the GLSL is the same to
+      // the letter: only the uniform objects differ, and those are per
+      // material anyway.
+      m.customProgramCacheKey = () => "brep-solid";
       return m;
     }
 
@@ -7481,6 +7537,7 @@
 
     // Transmission needs something to refract, and thickness has to be in the
     // model's own scale or a 200mm part looks like a 2mm one.
+    const SEE_BEND = 0.25;
     function applyFilament(m, key, color) {
       const f = FILAMENTS[key] || FILAMENTS.opaque;
       // TRANSLUCENCY IS OPT-IN. Most glitter spools are modelled as clear
@@ -7491,14 +7548,27 @@
       // colour and the sparkle are what a named spool means; the glassiness
       // only applies when the filament was picked by hand in the panel,
       // where the result is on screen as you pick.
-      const t = mat.filamentChosen ? f.t : 0;
+      //
+      // GLITTER IS THE EXCEPTION. That report was the inside of the model
+      // drawn on top of its outside; the layered see-through pass (peelFrame)
+      // keeps the near wall in front and hides what is inside another solid.
+      // And flake in clear plastic is the whole look of a glitter spool: shown
+      // opaque it is a painted speckle. So a spool with flake is see-through
+      // however it was named.
+      const t = spoolSeeThrough(f) ? f.t : 0;
       m.transmission = t;
+      m.userData.spoolGloss = t > 0 && f.spool?.clear ? 0.4 : 0;
       m.ior = f.ior;
       if (t > 0) {
         const bb = new THREE.Box3().setFromObject(modelGroup);
         const span = bb.isEmpty() ? 20 : bb.getSize(new THREE.Vector3()).length() * 0.35;
-        m.thickness = span;
-        m.attenuationDistance = f.atten;
+        // three bends the view through a see-through part by its thickness,
+        // and at the part's real depth that reaches right across the screen:
+        // the top of one piece showed a smear of the piece beside it. A
+        // quarter of the depth bends enough to read as plastic; the colour
+        // depends only on thickness OVER attenuation, so both are scaled.
+        m.thickness = span * SEE_BEND;
+        m.attenuationDistance = f.atten * SEE_BEND;
         m.attenuationColor.set(color ?? m.color);
         m.roughness = f.rough;
         // the diffuse that transmission took away has to come back from
@@ -7525,6 +7595,7 @@
         m.envMapIntensity = mat.envInt ?? 1;
       }
     }
+    function spoolSeeThrough(f) { return mat.filamentChosen || !!f?.spool?.flake || !!f?.spool?.clear; }
     const solidMaterial = makeSolidMat(0x9fb4d6);
     const featureColors = {};          // featureId -> "#hex" per-shape override (right-click menu)
     const featureFinish = {};          // featureId -> material name, right-click override
@@ -7647,7 +7718,7 @@
         m.ior = fam.ior ?? m.ior;
         m.transmission = spool.t ?? 0;
         m.thickness = spool.t ? Math.max(1, (bb.isEmpty() ? 10 : bb.getSize(new THREE.Vector3()).z)) : 0;
-        m.attenuationDistance = spool.atten || Infinity;
+        m.attenuationDistance = spool.atten ? spool.atten * (spool.t ? SEE_BEND : 1) : Infinity;
         m.attenuationColor = new THREE.Color(spool.base);
         // A see-through spool shaded exactly as the panel's filament is
         // (applyFilament): the depth of the whole part, the room's reflections
@@ -7655,8 +7726,10 @@
         // both sides so you see INTO it. Without these a finish("ruby-red", ...)
         // piece rendered as flat tinted plastic beside the same spool picked in
         // the panel, which is how "Change all" first looked.
+        m.userData.spoolGloss = spool.t && spool.clear ? 0.4 : 0;
+        try { stageGloss(m); } catch { /* before the stages exist */ }
         if (spool.t) {
-          m.thickness = bb.isEmpty() ? 20 : bb.getSize(new THREE.Vector3()).length() * 0.35;
+          m.thickness = (bb.isEmpty() ? 20 : bb.getSize(new THREE.Vector3()).length() * 0.35) * SEE_BEND;
           m.envMapIntensity = spool.env ?? fam.env ?? 1.8;
           if (mat.opacity >= 100) {
             m.transparent = true;
@@ -7715,6 +7788,7 @@
         m.envMap = envTex;                               // null until ensureEnv lands
         m.envMapIntensity = 1.25;
       }
+      try { stageGloss(m); } catch { /* the stages are set up further down the page */ }
       if (m.userData.codeGlow) {                         // a glow() shape keeps its own emissive
         m.emissive.set(m.userData.codeGlow.hex);
         m.emissiveIntensity = m.userData.codeGlow.int;
@@ -8011,7 +8085,57 @@
       studio: { label: "Studio, bright white", bg: "#f2f0ec", shadow: 0.30, sky: 0.2, direct: 0.36, ground: "#e9e4dc", ink: "#20242c" },
       "studio-grey": { label: "Studio, soft grey", bg: "#c5c8ce", shadow: 0.34, sky: 0.18, direct: 0.4, ground: "#b7bac0", ink: "#20242c" },
       "studio-dark": { label: "Studio, dark", bg: "#16181c", shadow: 0.55, sky: 0.12, direct: 0.6, ground: "#101114", ink: null },
+      // THE DEFAULT. A studio you can still work in: the grid and the edge
+      // lines stay (grid: true), and the part gets what makes it read as an
+      // object rather than a diagram: the room reflected in it (env), a clear
+      // gloss coat (gloss), its own soft shadow on the floor, and a backdrop
+      // that falls away to the corners (edge) so the eye goes to the part.
+      showcase: { label: "Showcase, dark with grid", bg: "#1b1e24", edge: "#07080a", shadow: 0.55, sky: 0.04, direct: 0.5, ambient: 0.1, ground: "#101114", ink: null, grid: true, env: 0.55, gloss: 0.6 },
     };
+    // The backdrop: one triangle pair behind everything, lit in the middle and
+    // dark at the corners. It draws only while the background IS the stage's
+    // own colour, so a snapshot or a product shot that swaps the background
+    // for its own gets exactly the background it asked for.
+    const stageBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+      depthTest: false, depthWrite: false, toneMapped: false,
+      uniforms: { uA: { value: new THREE.Color() }, uB: { value: new THREE.Color() }, uOn: { value: 0 } },
+      vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 1.0, 1.0); }",
+      fragmentShader: `varying vec2 vUv; uniform vec3 uA, uB; uniform float uOn;
+        void main() {
+          if (uOn < 0.5) discard;
+          vec2 p = (vUv - vec2(0.5, 0.56)) * vec2(1.0, 1.15);
+          float d = smoothstep(0.12, 0.85, length(p) * 1.35);
+          // a hair of noise: a dark gradient bands in eight bits without it
+          float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+          gl_FragColor = vec4(mix(uA, uB, d) + n * 0.004, 1.0);
+          #include <colorspace_fragment>
+        }`,
+    }));
+    stageBackdrop.frustumCulled = false;
+    stageBackdrop.renderOrder = -1e6;
+    stageBackdrop.visible = false;
+    stageBackdrop.raycast = () => {};
+    stageBackdrop.userData.bg = -1;
+    stageBackdrop.onBeforeRender = () => {
+      const b = scene.background;
+      stageBackdrop.material.uniforms.uOn.value = b?.isColor && b.getHex() === stageBackdrop.userData.bg ? 1 : 0;
+    };
+    scene.add(stageBackdrop);
+    // the gloss coat a stage asks for, on one material. Not over see-through
+    // plastic (a filament has its own surface) and not over a piece given its
+    // own finish or made glass in the code.
+    function stageGloss(m) {
+      const st = STAGES[mat?.stage];
+      const own = m.userData.finish || m.userData.codeClear != null || m.transmission > 0.01;
+      // a plain translucent spool is glossy on any stage: the highlights and
+      // the room in its surface are half of what makes it read as plastic
+      const g = m.userData.spoolGloss || (st?.gloss && !own ? st.gloss : 0);
+      if ((m.clearcoat > 0) !== (g > 0)) m.needsUpdate = true;
+      m.clearcoat = g;
+      // softer on see-through plastic: a flat top sits at the key light's
+      // mirror angle, and a sharp coat there is a white glare with no colour
+      m.clearcoatRoughness = m.userData.spoolGloss ? 0.3 : 0.16;
+    }
     const stageSky = new THREE.HemisphereLight(0xffffff, 0xe9e4dc, 0);
     stageSky.position.set(0, 0, 1);
     scene.add(stageSky);
@@ -8028,6 +8152,9 @@
     keyLight.shadow.bias = -0.0006;
     keyLight.shadow.normalBias = 0.35;
     const stageOn = () => !!STAGES[mat?.stage];
+    // a stage that shows the object alone: no grid, no construction lines
+    const stagePlain = () => { const st = STAGES[mat?.stage]; return !!st && !st.grid; };
+    let stageWas;                     // the stage last applied
     let stageInk = null;              // the studio's dimension colour, or null for the usual one
     const DIM_INK = 0x7d92b8;         // the dimension lines' own colour, on the workshop grid
     // the light and the floor follow the model: a shadow map only as big as
@@ -8063,18 +8190,34 @@
         // colour stays colour. (applyMaterialNow has just set them from the
         // sliders, so this scales the sliders, it does not replace them.)
         keyLight.intensity *= st.direct;
-        ambientLight.intensity *= st.direct * 0.8;
+        ambientLight.intensity *= st.ambient ?? st.direct * 0.8;   // a stage lit by the room needs little flat light
         fillLight.intensity *= st.direct;
         stageSky.groundColor.set(st.ground);
         stageFloor.material.opacity = st.shadow;
         scene.background.set(st.bg);
-        if (grid) grid.visible = false;
+        if (grid && !st.grid) grid.visible = false;
         fitStage();
       }
+      stageBackdrop.visible = !!st?.edge;
+      if (st?.edge) {
+        stageBackdrop.material.uniforms.uA.value.set(st.bg);
+        stageBackdrop.material.uniforms.uB.value.set(st.edge);
+        stageBackdrop.userData.bg = scene.background.getHex();
+      }
+      // The room, reflected: image-based light for every material that has
+      // no environment of its own. A see-through filament has already asked
+      // for it at full strength (applyMaterialNow), and keeps that.
+      const clearFil = (mat.filament || "opaque") !== "opaque";
+      scene.environmentIntensity = clearFil ? 1 : (st?.env ?? 1);
+      if (st?.env && !clearFil) {
+        if (envTex) scene.environment = envTex;
+        else ensureEnv().then(() => { if (STAGES[mat.stage]?.env) { scene.environment = envTex; } }).catch(() => {});
+      }
+      try { stageGloss(solidMaterial); for (const m of overrideMats.values()) stageGloss(m); } catch { /* before the materials exist */ }
       // A studio shows the object, not its construction: the CAD edge lines
       // (every facet of a traced outline has one) go, and the dimensions are
       // inked for the surface they are drawn on.
-      try { outlineGroup.visible = !st; } catch { /* the outlines are set up further down the page (they ask stageOn() when they are) */ }
+      try { outlineGroup.visible = !st || !!st.grid; } catch { /* the outlines are set up further down the page (they ask stagePlain() when they are) */ }
       try {
         const ink = st?.ink ?? null;
         if (stageInk !== ink) {
@@ -8085,6 +8228,8 @@
         }
       } catch { /* no dimensions drawn yet: the next build inks them */ }
       if (st) {
+        // a stage that keeps the grid: as the Grid tab has it
+        if (st.grid && stageWas !== mat.stage) window.brepscriptApplyGrid?.();
       } else {
         stageFloor.visible = false;
         if (was) {
@@ -8098,6 +8243,7 @@
       }
       // shadows are compiled into every lit material
       if (was !== renderer.shadowMap.enabled) scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) if (m) m.needsUpdate = true; });
+      stageWas = mat.stage;
       const sel = document.getElementById("mat-stage");
       if (sel) sel.value = st ? mat.stage : "grid";
     }
@@ -8115,7 +8261,7 @@
       // well-lit plastic most pictures want; the dial brings the lines in.
       layerLines: 0,
       // what the model stands on: "grid", or one of STAGES
-      stage: "grid",
+      stage: "showcase",
       texture: 0, texDepth: 50, texScale: 30, texRot: 0, texOffX: 0, texOffY: 0,
       flat: false, wire: false,
       outline: true, outlineCol: "#0d1117", outlineAngle: 20, outlineWidth: 1.5,
@@ -8209,6 +8355,14 @@
       }
       mat.lights3 = true;
       delete mat.lights2;
+      try { localStorage.setItem("brepcode-material", JSON.stringify(mat)); } catch { /* private mode */ }
+    }
+    // The showcase became the default stage. A saved blob still on the plain
+    // workshop grid from before it existed moves over once; the grid picked
+    // again after that is a choice, and stays.
+    if (!mat.stage2) {
+      if (mat.stage === "grid") mat.stage = MAT_DEFAULTS.stage;
+      mat.stage2 = true;
       try { localStorage.setItem("brepcode-material", JSON.stringify(mat)); } catch { /* private mode */ }
     }
     // SOLID UNLESS YOU SAID OTHERWISE. A see-through spool tried once (funfetti
@@ -8397,7 +8551,7 @@
       styleSel.value = ["walls", "lattice"].includes(stored.style) ? stored.style : "floor";
 
       const applyGrid = () => {
-        if (grid) grid.visible = showBox.checked && !gridExploded && !stageOn();
+        if (grid) grid.visible = showBox.checked && !gridExploded && !stagePlain();
         if (grid && gridStyle !== styleSel.value) { gridStyle = styleSel.value; addGrid3D(gridTheme(THEMES[currentTheme] ?? THEMES.dark)); }
         axisLabelsOn = axesBox.checked && showBox.checked && !gridExploded;   // markers belong to the floor
         buildAxisLabels();
@@ -8769,7 +8923,8 @@
         // A spool's lighting preset may also fade the whole model (funfetti
         // ships opacity 88) — that rides with the same choice its translucency
         // does. Lights and background are just staging; keep those.
-        if (k === "opacity" && !mat.filamentChosen && look[k] < 100) continue;
+        // (A glitter spool is see-through however it was named: applyFilament.)
+        if (k === "opacity" && !mat.filamentChosen && !spool.flake && !spool.clear && look[k] < 100) continue;
         mat[k] = look[k];
       }
       // the background only takes effect once the user "owns" it; a spool that
@@ -8813,6 +8968,12 @@
           if (sp && FILAMENTS[sp.id]) { mat.filament = sp.id; saveMat(); }
         }
         if (mat.filament && FILAMENTS[mat.filament]) sel.value = mat.filament;
+        // A spool kept from the last session comes back with ITS lighting.
+        // Only the user's own lights are saved (saveMat), so after a restart
+        // the spool was shown in whatever rig was there before it: a clear
+        // glitter under full ambient is a white block with no glitter in it.
+        const kept = FILAMENTS[mat.filament]?.spool;
+        if (kept && !lightBackup) { applySpoolLook(kept); applyMaterial(); }
         applySpoolFx();
         return F;
       }).catch(() => null));
@@ -8827,6 +8988,7 @@
       if (!spool || !_fil) {
         sharedFx.grad.value = 0;
         sharedFx.flake.value = 0;
+        sharedFx.clear.value = 0;
         sharedFx.layer.value = 0;
         $("mat-sparkle-row").style.display = "none";
         $("mat-layers-row").style.display = "none";
@@ -8844,6 +9006,7 @@
         sharedFx.flakeK.value = fx.flakeStrength;
         sharedFx.flakeC.value.setRGB(...fx.flakeColour);
         sharedFx.rainbow.value = fx.flakeRainbow;
+        sharedFx.clear.value = fx.flake && spoolSeeThrough(entry) ? (fx.t ?? 0) : 0;
         sharedFx.layer.value = (fx.layers ?? 0) * (mat.layerLines ?? 0);
         // The dial only exists for spools that actually carry flake.
         $("mat-sparkle-row").style.display = fx.flake ? "" : "none";
@@ -9353,12 +9516,12 @@
       patSel.appendChild(opt("0", "None — plain surface"));
       // Spools load lazily; until they do the Material list is still useful.
       (_fil ??= import("./filaments.js")).then((F) => {
-        const byFam = {};
-        for (const sp of F.SPOOLS) (byFam[sp.family] ??= []).push(sp);
-        for (const fam of Object.keys(byFam)) {
+        // the same groups as the Material panel's list (the plain
+        // translucents and the tri-colour silks are groups of their own)
+        for (const { family, spools } of F.byFamily()) {
           const g = document.createElement("optgroup");
-          g.label = `Filament — ${fam}`;
-          for (const sp of byFam[fam]) g.appendChild(opt(sp.id, sp.label));
+          g.label = /^(PLA|PETG|TPU)$/.test(family) ? `Filament — ${family}` : family;
+          for (const sp of spools) g.appendChild(opt(sp.id, sp.label));
           matSel.appendChild(g);
         }
         if (shapeMenuFid) syncShapeMatUI(shapeMenuFid);   // re-select if the menu is open
@@ -9406,12 +9569,10 @@
     let smFilFilled = null;
     function fillShapeFilaments() {
       smFilFilled ??= (_fil ??= import("./filaments.js")).then((F) => {
-        const byFam = {};
-        for (const sp of F.SPOOLS) (byFam[sp.family] ??= []).push(sp);
-        for (const fam of Object.keys(byFam)) {
+        for (const { family: fam, spools } of F.byFamily()) {
           const g = document.createElement("optgroup");
           g.label = fam;
-          for (const sp of byFam[fam]) {
+          for (const sp of spools) {
             const o = document.createElement("option");
             o.value = sp.id; o.textContent = sp.label;
             g.appendChild(o);
@@ -9593,6 +9754,7 @@
       shapeMenu.style.left = `${Math.min(clientX, innerWidth - 240)}px`;
       shapeMenu.style.top = `${Math.min(clientY, innerHeight - 200)}px`;
       shapeMenu.classList.add("open");
+      try { warmSeeThrough(); } catch { /* a head start only */ }
       // The material block stays open between right-clicks — somebody assigning
       // a material to six pieces should not re-open it six times.
       if (!$("sm-matblock").hidden) { fillShapeMaterials(); syncShapeMatUI(shapeMenuFid); }
@@ -13089,7 +13251,11 @@ ${joined}${SITE_TAIL}`), joined);
     }
     // Every frame, before drawing: the wedge follows the view. Cheap, two
     // planes, and it catches every way the camera moves (orbit, glide, snap).
-    scene.onBeforeRender = () => { if (cutGroup.children.length) aimCut(); };
+    scene.onBeforeRender = (r, _scene, cam) => {
+      if (cutGroup.children.length) aimCut();
+      // the see-through layers follow the model and the view (see peelFrame)
+      try { peelFrame(r, cam); } catch { /* before the layers exist */ }
+    };
     $("parts-open").addEventListener("submit", async (e) => {
       e.preventDefault();
       const box = $("parts-open-name");
@@ -14101,7 +14267,7 @@ ${joined}${SITE_TAIL}`), joined);
       }
     };
     scene.add(outlineGroup);
-    try { outlineGroup.visible = !stageOn(); } catch { /* no stage yet */ }
+    try { outlineGroup.visible = !stagePlain(); } catch { /* no stage yet */ }
 
     // Design's cut view (design/explode.js): clip planes on every model mesh
     // and on the edge lines traced from it, plus a cap where the cut goes
@@ -14215,53 +14381,315 @@ ${joined}${SITE_TAIL}`), joined);
       }
     }
 
-    // THE NEAR WALL WINS. A translucent filament puts every face of the part
-    // (each B-rep face is its own mesh) in three's transmissive list with depth
-    // writing off, so faces paint in centre-distance order, and a bore's centre
-    // ties with the outer wall's: the inside of a cup drew ON TOP of its own
-    // near wall, and any part with something inside read as clear glass.
-    // A depth-only copy of each face draws first in that same list
-    // (transmission > 0 is what files it there; FrontSide keeps it out of the
-    // back-face transmission capture), so only the nearest skin gets the
-    // filament. What is inside still shows, through the transmission
-    // refraction, blurred by the plastic's own roughness: below, not on top.
+    // THE NEAR WALL WINS, AND WHAT IS BEHIND IT STILL SHOWS. A see-through
+    // face does not write depth, so faces paint in centre-distance order (each
+    // B-rep face is its own mesh), and a bore's centre ties with the outer
+    // wall's: the inside of a cup drew ON TOP of its own near wall.
+    //
+    // The first cure was one depth-only copy of every see-through face, drawn
+    // first, so only the nearest skin got shaded. That fixed the order and
+    // broke something else: EVERYTHING see-through behind that skin failed the
+    // depth test, so a see-through part seen through another one vanished down
+    // to its outline, and came back when you orbited round. Which parts
+    // vanished depended only on the angle.
+    //
+    // Now the see-through faces are drawn in up to three layers, far to near,
+    // the same way from every angle and with no sorting of parts to get wrong.
+    // A layer is the nearest front face BEYOND where the solid in front of it
+    // ends (its nearest back face), which is what you would see through it:
+    //   layer 1   the nearest front face of all
+    //   layer 2   the nearest front face at or past layer 1's exit: the far
+    //             wall of a cup, a ball inside it, the next part along
+    //   layer 3   the same again past layer 2's exit: a part behind the cup
+    // A face INSIDE another solid (a leg run into a body) lies before the
+    // exit, so it is in no layer and stays hidden, as it prints. Past three
+    // layers there is too little light left to see, so that is where it stops.
+    //
+    // Each layer is a depth-only pass and then the faces themselves, tested
+    // for EQUAL depth so only that layer's pixels are shaded. The exits are
+    // depth-only renders into small targets of their own, taken before the
+    // frame (peelFrame). Everything draws in three's transmissive list
+    // (transmission > 0 files a material there), so a faded part (opacity,
+    // glass()) and a filament part layer together: the frame hook gives a
+    // see-through material with no transmission of its own a trace of it.
     const skinGroup = new THREE.Group();
     scene.add(skinGroup);
-    const skinDepthMat = new THREE.MeshBasicMaterial({
-      colorWrite: false, depthWrite: true, side: THREE.FrontSide,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
-    });
-    skinDepthMat.transmission = 1;
-    // ...which also defines USE_TRANSMISSION, and the basic shader then reads
-    // a `material.transmissionAlpha` it never declared: the program failed to
-    // compile and the pass silently drew nothing. It writes depth only, so
-    // the define has no business here.
-    skinDepthMat.onBeforeCompile = (shader) => {
-      shader.fragmentShader = "#undef USE_TRANSMISSION\n" + shader.fragmentShader;
+    // every pass must rasterise a face to the same depth, bit for bit
+    const SAME_DEPTH = (shader) => { shader.vertexShader = "invariant gl_Position;\n" + shader.vertexShader; };
+    const depthOnly = (side, main) => {
+      const m = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side });
+      // In the main frame the pass has to sit in the transmissive list with
+      // the faces. That also defines USE_TRANSMISSION, and the basic shader
+      // then reads a `material.transmissionAlpha` it never declared: the
+      // program failed to compile and the pass silently drew nothing.
+      if (main) m.transmission = 1;
+      m.onBeforeCompile = (shader) => {
+        SAME_DEPTH(shader);
+        if (main) shader.fragmentShader = "#undef USE_TRANSMISSION\n" + shader.fragmentShader;
+      };
+      return m;
     };
-    // The opacity slider fades without transmission, so those faces sit in
-    // the plain transparent list: their skin goes there too, at renderOrder
-    // -1, AFTER everything opaque (the bed still shows through the part) and
-    // BEFORE the faces, so only the nearest surface blends. Frosted plastic,
-    // not inner walls and pocket floors punching through the outside.
-    const skinAlphaMat = new THREE.MeshBasicMaterial({
-      colorWrite: false, depthWrite: true, transparent: true, side: THREE.FrontSide,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
-    });
-    function syncSkin() {
-      skinGroup.clear();                       // geometry is borrowed: nothing to dispose
-      for (const m of modelGroup.children) {
-        const mm = m.material;
-        if (!m.isMesh || !m.visible || !mm || Array.isArray(mm)) continue;
-        if (mm.depthWrite || !mm.transparent && !(mm.transmission > 0)) continue;
-        const d = new THREE.Mesh(m.geometry, mm.transmission > 0 ? skinDepthMat : skinAlphaMat);
-        d.renderOrder = -1;
-        d.matrixAutoUpdate = false;
-        d.matrix.copy(m.matrixWorld);
-        d.matrixWorld.copy(m.matrixWorld);
-        d.raycast = () => {};                  // never picked instead of the face
-        skinGroup.add(d);
+    // ...and one that only keeps what lies beyond a depth already taken.
+    // `past`: strictly past it (the exit of a layer); otherwise at or past it,
+    // with a margin, because a touching part's face sits exactly ON the exit
+    // of the part in front and must still count as beyond it.
+    const depthBeyond = (side, main, tex, view, past) => {
+      const m = depthOnly(side, main);
+      const inner = m.onBeforeCompile;
+      m.onBeforeCompile = (shader) => {
+        inner(shader);
+        shader.uniforms.tPeel = { value: tex };
+        shader.uniforms.uPeelView = view;
+        shader.fragmentShader = shader.fragmentShader.replace("void main() {", `uniform sampler2D tPeel;
+          uniform vec4 uPeelView;
+          void main() {
+            float peelRef = texture2D(tPeel, (gl_FragCoord.xy - uPeelView.xy) / uPeelView.zw).x;
+            if (gl_FragCoord.z ${past ? "<= peelRef + 1e-6" : "< peelRef - 1e-6"}) discard;`);
+      };
+      // one program per variant, not one shared by whichever compiled first
+      m.customProgramCacheKey = () => `peel-${side}-${main}-${past}`;
+      return m;
+    };
+    const peelTarget = () => {
+      const t = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RedFormat, depthTexture: new THREE.DepthTexture(1, 1) });
+      t.texture.generateMipmaps = false;
+      return t;
+    };
+    const exit1 = peelTarget(), front2 = peelTarget(), exit2 = peelTarget();
+    const peelViewMain = { value: new THREE.Vector4(0, 0, 1, 1) };   // the frame's viewport, device pixels
+    const peelViewOwn = { value: new THREE.Vector4(0, 0, 1, 1) };    // the targets' own
+    const peelScene = new THREE.Scene();       // the see-through faces alone, for the exits
+    peelScene.matrixWorldAutoUpdate = false;
+    const exit1Mat = depthOnly(THREE.BackSide, false);
+    const front2Mat = depthBeyond(THREE.FrontSide, false, exit1.depthTexture, peelViewOwn, false);
+    const exit2Mat = depthBeyond(THREE.BackSide, false, front2.depthTexture, peelViewOwn, true);
+    // the layers' depth passes in the frame itself
+    const skinDepthMat = depthOnly(THREE.FrontSide, true);
+    skinDepthMat.polygonOffset = true;         // a hair behind the surface, so the face on it passes
+    skinDepthMat.polygonOffsetFactor = 1;
+    skinDepthMat.polygonOffsetUnits = 1;
+    const layer2Mat = depthBeyond(THREE.FrontSide, true, exit1.depthTexture, peelViewMain, false);
+    const layer3Mat = depthBeyond(THREE.FrontSide, true, exit2.depthTexture, peelViewMain, false);
+    // A far layer's faces are tested for EQUAL depth, so its depth pass takes
+    // the face material's own polygon offset for each draw.
+    function layerDepthBefore(_r, _s, _c, _g, material) {
+      const src = this.userData.source.material;
+      material.polygonOffset = src.polygonOffset;
+      material.polygonOffsetFactor = src.polygonOffsetFactor;
+      material.polygonOffsetUnits = src.polygonOffsetUnits;
+    }
+    // The far faces wear the part's own material, so they need no upkeep; the
+    // depth test is flipped to EQUAL for the draw. three also draws the back
+    // of every transmissive face into its refraction capture, and the part's
+    // own mesh has already put it there: this copy draws nothing in that pass
+    // (three turns the material to BackSide before it calls in, which is how
+    // the pass is told apart).
+    function layerFaceBefore(_r, _s, _c, _g, material) {
+      if (material.side === THREE.BackSide) { this.userData.held = "colour"; material.colorWrite = false; }
+      else { this.userData.held = "depth"; material.depthFunc = THREE.EqualDepth; }
+    }
+    function layerFaceAfter(_r, _s, _c, _g, material) {
+      if (this.userData.held === "colour") material.colorWrite = true;
+      else if (this.userData.held === "depth") material.depthFunc = THREE.LessEqualDepth;
+      this.userData.held = null;
+    }
+    const isSeeThroughFace = (m) => {
+      const mm = m.material;
+      if (!m.isMesh || !m.visible || !mm || Array.isArray(mm)) return false;
+      return !mm.depthWrite && (mm.transparent || mm.transmission > 0);
+    };
+    const peelHelper = (src, material, order) => {
+      const d = new THREE.Mesh(src.geometry, material);   // geometry is borrowed: nothing to dispose
+      d.renderOrder = order;
+      d.matrixAutoUpdate = false;
+      d.userData.source = src;
+      d.raycast = () => {};                    // never picked instead of the face
+      return d;
+    };
+    // Every face is its own mesh and every layer draws it again, so a model of
+    // thousands of faces gets fewer layers rather than a slow frame.
+    const peelLayersFor = (n) => (n <= 600 ? 3 : n <= 2400 ? 2 : 1);
+    let peelRows = null, peelLayers = 0;       // { src, geometry, all: [helpers], faces: [far-layer faces] }
+    function syncSkin() { peelRows = null; }   // rebuilt before the next frame draws
+    // Before every frame (scene.onBeforeRender): the layers follow the model
+    // as it is NOW. A material that turned see-through late (a finish() spool
+    // loads on idle), a part moved by Explode, a recolour: all caught here
+    // rather than by remembering to call something.
+    const _peelView = new THREE.Vector4();
+    let peelBusy = false;
+    function peelFrame(r, cam) {
+      if (peelBusy || !cam) return;
+      const faces = modelGroup.visible ? modelGroup.children.filter(isSeeThroughFace) : [];
+      const layers = peelLayersFor(faces.length);
+      skinGroup.visible = faces.length > 0;
+      if (!peelRows || peelLayers !== layers || peelRows.length !== faces.length
+          || faces.some((m, i) => m !== peelRows[i].src || m.geometry !== peelRows[i].geometry)) {
+        skinGroup.clear();
+        peelScene.clear();
+        peelRows = faces.map((m) => {
+          const row = { src: m, geometry: m.geometry, all: [], faces: [] };
+          for (const [mat, order] of [[layer3Mat, -5], [layer2Mat, -3]].slice(3 - layers)) {
+            const depth = peelHelper(m, mat, order);
+            depth.onBeforeRender = layerDepthBefore;
+            const face = peelHelper(m, m.material, order + 1);
+            face.onBeforeRender = layerFaceBefore;
+            face.onAfterRender = layerFaceAfter;
+            row.all.push(depth, face);
+            row.faces.push(face);
+          }
+          row.all.push(peelHelper(m, skinDepthMat, -1));
+          skinGroup.add(...row.all);
+          if (layers > 1) { const d = peelHelper(m, exit1Mat, 0); row.all.push(d); peelScene.add(d); }
+          return row;
+        });
+        peelLayers = layers;
       }
+      if (!faces.length) return;
+      for (const row of peelRows) {
+        const m = row.src, mm = m.material;
+        if (!(mm.transmission > 0)) mm.transmission = 1e-4;   // into the transmissive list with the rest
+        for (const f of row.faces) if (f.material !== mm) f.material = mm;
+        for (const d of row.all) {
+          d.matrix.copy(m.matrixWorld);
+          d.matrixWorld.copy(m.matrixWorld);
+        }
+      }
+      if (layers < 2) return;
+      // the exits, at the size and through the camera of the frame about to be drawn
+      const view = r.getCurrentViewport(_peelView);
+      const w = Math.max(1, Math.round(view.z)), h = Math.max(1, Math.round(view.w));
+      for (const t of layers > 2 ? [exit1, front2, exit2] : [exit1]) if (t.width !== w || t.height !== h) t.setSize(w, h);
+      peelViewMain.value.copy(view);
+      peelViewOwn.value.set(0, 0, w, h);
+      const target = r.getRenderTarget(), face = r.getActiveCubeFace(), mip = r.getActiveMipmapLevel();
+      const auto = r.autoClear, shadows = r.shadowMap.autoUpdate;
+      peelBusy = true;
+      try {
+        r.autoClear = true;
+        r.shadowMap.autoUpdate = false;
+        for (const [t, mat] of layers > 2 ? [[exit1, exit1Mat], [front2, front2Mat], [exit2, exit2Mat]] : [[exit1, exit1Mat]]) {
+          peelScene.overrideMaterial = mat;
+          r.setRenderTarget(t);
+          r.render(peelScene, cam);
+        }
+      } finally {
+        r.setRenderTarget(target, face, mip);
+        r.autoClear = auto;
+        r.shadowMap.autoUpdate = shadows;
+        peelBusy = false;
+      }
+    }
+
+    // READY BEFORE IT IS ASKED FOR. The first time anything turned see-through
+    // (a filament on one piece from the right-click menu, a translucent spool
+    // in the panel) the page stopped while the graphics card was handed about
+    // a dozen new programs at once: the see-through plastic drawn from in
+    // front, from behind and into the refraction capture, the layer passes
+    // above, the hidden-edge lines, and a second copy of everything opaque for
+    // that capture. Each is compiled the first time it is DRAWN, and nothing
+    // else happens until it is.
+    //
+    // So they are made ahead of time, while the page is idle, and with the
+    // browser's parallel compile (compileAsync), which builds them off the
+    // main thread: nothing on screen changes and nothing waits. The stand-in
+    // meshes borrow a real piece's geometry and are never added to the scene;
+    // the two stand-in materials are KEPT, because a program lives only as
+    // long as something uses it.
+    let warmDone = null;
+    const warmKeep = [];
+    const warmTarget = new THREE.WebGLRenderTarget(4, 4);
+    function warmSeeThrough() {
+      if (warmDone) return warmDone;
+      const src = modelGroup.children.find((m) => m.isMesh && m.geometry?.attributes?.normal && !Array.isArray(m.material));
+      if (!src || !renderer.compileAsync) return Promise.resolve(false);
+      return (warmDone = (async () => {
+        await ensureEnv();
+        const group = new THREE.Group();
+        const add = (material) => {
+          const o = new THREE.Mesh(src.geometry, material);
+          o.castShadow = src.castShadow; o.receiveShadow = src.receiveShadow;
+          group.add(o);
+        };
+        // see-through plastic as a spool makes it, with the gloss coat and without
+        for (const gloss of [0, 0.4]) {
+          const m = makeSolidMat("#8899aa", newFxBundle());
+          m.userData.finish = "warm";             // keeps the panel's filament off it
+          syncMatProps(m);
+          Object.assign(m, { transmission: 0.5, thickness: 10, transparent: true, opacity: 0.7,
+            depthWrite: false, side: THREE.DoubleSide, envMap: envTex, clearcoat: gloss, clearcoatRoughness: 0.16 });
+          warmKeep.push(m);
+          add(m);
+        }
+        const frame = new THREE.Group(), capture = new THREE.Group();
+        for (const o of [...group.children]) capture.add(o.clone());
+        // as the frame draws them
+        for (const pm of [layer2Mat, layer3Mat, skinDepthMat, depthOnlyMat]) add(pm);
+        frame.add(group);
+        // the edges of a see-through piece, seen through it
+        const hid = outlineGroup.children.find((o) => o.userData.role === "hidden");
+        if (hid) frame.add(new LineSegments2(hid.geometry, outlineHiddenMat));
+        // as the refraction capture and the layer exits draw them (a render
+        // target: linear, no tone curve, so different programs)
+        for (const pm of [solidMaterial, exit1Mat, front2Mat, exit2Mat]) {
+          const o = new THREE.Mesh(src.geometry, pm);
+          o.castShadow = src.castShadow; o.receiveShadow = src.receiveShadow;
+          capture.add(o);
+        }
+        const jobs = [renderer.compileAsync(frame, camera, scene)];
+        const target = renderer.getRenderTarget(), face = renderer.getActiveCubeFace(), mip = renderer.getActiveMipmapLevel();
+        try {
+          renderer.setRenderTarget(warmTarget);
+          jobs.push(renderer.compileAsync(capture, camera, scene));
+          // ...and everything else on the stage (grid, floor, lines) as the
+          // capture sees it
+          jobs.push(renderer.compileAsync(scene, camera));
+        } finally {
+          renderer.setRenderTarget(target, face, mip);
+        }
+        await Promise.all(jobs);
+        return true;
+      })().catch(() => { warmDone = null; return false; }));
+    }
+
+    // The programs being ready is most of it, not all: the graphics card also
+    // builds its own state for each one the first time it is really DRAWN,
+    // and the first see-through frame makes the capture and layer buffers.
+    // That is done when somebody reaches for a filament list (the click that
+    // opens it), not at idle: it costs video memory nobody else should pay
+    // for. A speck of the stand-in plastic, a millionth the size of a piece
+    // and inside one, rides along for two frames and is taken away again.
+    let warmDrawn = false;
+    async function warmDraw() {
+      if (warmDrawn) return;
+      if (modelGroup.children.some(isSeeThroughFace)) { warmDrawn = true; return; }   // already on screen
+      if (!(await warmSeeThrough()) || warmDrawn) return;
+      const src = modelGroup.children.find((m) => m.isMesh && m.visible && m.geometry?.attributes?.normal && !Array.isArray(m.material));
+      if (!src) return;
+      warmDrawn = true;
+      src.geometry.computeBoundingBox();
+      const c = src.geometry.boundingBox.getCenter(new THREE.Vector3()), k = 1e-6;
+      const specks = [warmKeep[0], warmKeep[1], depthOnlyMat].map((material) => {
+        const o = new THREE.Mesh(src.geometry, material);
+        o.scale.setScalar(k);
+        o.position.copy(c).multiplyScalar(1 - k).add(src.position);
+        o.raycast = () => {};
+        return o;
+      });
+      modelGroup.add(specks[0], specks[1]);
+      scene.add(specks[2]);
+      try {
+        await new Promise((done) => {
+          const t = setTimeout(done, 400);
+          requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); done(); }));
+        });
+      } finally {
+        modelGroup.remove(specks[0], specks[1]);
+        scene.remove(specks[2]);
+        try { syncSkin(); } catch { /* nothing to resync */ }
+      }
+    }
+    for (const id of ["sm-filament", "sm-material", "mat-filament"]) {
+      for (const ev of ["pointerdown", "focus"]) $(id)?.addEventListener(ev, () => { warmDraw().catch(() => {}); });
     }
 
     function refreshOutlines() {
@@ -25329,6 +25757,7 @@ let SIMPLIFY_TARGET = 10000;
       // which is the search card below. From brepcode.com/cutter, and from
       // the Toolbox row when there is no outline on the plate to start from.
       let outliner = null;                    // cutteroutline.js and its 2D kernel, once a drawing is traced
+      let cutterViewer = null;                // cutterview.js's renderer, once the door has drawn a card
       // The kit's offset()s, done by that 2D kernel: a rim grown round a tight
       // notch then has no inside-out loop to print as a spur. Loaded before a
       // kit is written, and when a saved kit is what the page opens on.
@@ -25360,6 +25789,14 @@ let SIMPLIFY_TARGET = 10000;
               return O.inkLoops(CS, await S.svgParts(text), o);
             },
             outline: (loops, o) => (outliner ? outliner.O.cutterOutline(outliner.CS, loops, o).loops : loops),
+            // each card's picture: the cutter itself in miniature, rendered
+            // (viewer/cutterview.js). One small renderer, made on first use.
+            render3d: async (loops, o) => {
+              const [V, { CS }, { RoomEnvironment }] = await Promise.all([import("./cutterview.js"), ensureOutliner(),
+                import("three/addons/environments/RoomEnvironment.js")]);
+              cutterViewer ??= V.makeCutterViewer(THREE, RoomEnvironment);
+              return cutterViewer.render(V.cutterSolids(CS, loops, o), o);
+            },
           },
           onMake: async ({ loops, label, kind, size, opts: o }) => {
             // what was chosen in the door is what the Toolbox remembers
@@ -30287,6 +30724,9 @@ ${SC.describeSelectionContext(anchor)}` : "");
     // Dead last: the named spools are the least urgent thing in the app — a
     // colour nobody has asked for yet.
     bg.background({ id: "warm:spools", needs: "network", priority: 90, run: () => loadSpools() });
+    // after the spools: the see-through programs, so the first translucent
+    // filament does not stop the page (warmSeeThrough)
+    bg.background({ id: "warm:seethrough", needs: "network", priority: 91, run: () => warmSeeThrough() });
     bg.start();
   </script>
   <!-- Publish and the cloud stash: a host file brepcode.com serves beside the

@@ -331,7 +331,7 @@ console.log("\nthe wait is announced before it is spent\n");
   // apart, so genuinely two cutters.
   const many = pieceNote(LOOPS);
   check("two pieces that are really apart do get a warning", many.length > 0, many);
-  check("...and are called two cutters", /2 separate pieces/.test(many) && /2 cutters/.test(many), many);
+  check("...and are said to be joined into one cutter", /2 separate pieces/.test(many) && /joined by connectors into one cutter/.test(many), many);
 
   // The one this check exists for. A traced salmon arrives as four outlines —
   // body, tail, fin, gill — that all OVERLAP, so their blades fuse into a
@@ -348,10 +348,10 @@ console.log("\nthe wait is announced before it is spent\n");
   check("...and the build cost is still reported, because that is per outline",
     /\d+ s for/.test(fused), fused);
   const apart = pieceNote([0, 60, 120].map((cx) => ({ hole: false, points: ring(cx, 10) })));
-  check("three outlines far apart really are three cutters",
-    /3 separate pieces/.test(apart) && /3 cutters/.test(apart), apart);
-  check("...and two touching plus one apart is two cutters",
-    /2 cutters/.test(pieceNote([0, 6, 90].map((cx) => ({ hole: false, points: ring(cx, 10) })))),
+  check("three outlines far apart really are three pieces",
+    /3 separate pieces/.test(apart) && /one cutter/.test(apart), apart);
+  check("...and two touching plus one apart is two pieces",
+    /2 separate pieces/.test(pieceNote([0, 6, 90].map((cx) => ({ hole: false, points: ring(cx, 10) })))),
     pieceNote([0, 6, 90].map((cx) => ({ hole: false, points: ring(cx, 10) }))));
   check("a warning under three outlines does not quote a build time",
     !/\d+ s for/.test(pieceNote([0, 60].map((cx) => ({ hole: false, points: ring(cx, 10) })))));
@@ -503,7 +503,35 @@ console.log("\nthe shelf of popular shapes\n");
   const DS = readFileSync(new URL("../viewer/cutterdoor.js", import.meta.url), "utf8");
   check("one window: the search, what it found drawn as cutters, the chosen one large with its dials",
     /class="ck-q"/.test(DS) && /class="ck-kinds"/.test(DS) && /class="ck-stage"/.test(DS) && /class="ck-make"/.test(DS)
-    && /card\.querySelector\("\.ck-wait"\)\.outerHTML = previewSvg\(shaped\(got, 70, false\), \{ \.\.\.tintOf\(\+card\.dataset\.n\), \.\.\.FOUND_VIEW \}\);/.test(DS));
+    && /await picture\(thumb, shaped\(got, 70, false\), \{ \.\.\.tintOf\(\+card\.dataset\.n\), \.\.\.FOUND_VIEW \}\);/.test(DS));
+  // Each card's picture is the cutter itself in miniature (cutterview.js):
+  // the drawing is there at once, the render replaces it when it is ready.
+  check("...each picture is the cutter rendered, the drawing first and where there is no WebGL",
+    /if \(!holder\.querySelector\("canvas"\)\) drawn\(\);/.test(DS) && /if \(cv\) holder\.replaceChildren\(cv\); else drawn\(\);/.test(DS)
+    && /cutterViewer \?\?= V\.makeCutterViewer\(THREE, RoomEnvironment\);/.test(H2) && /"cutterview\.js",/.test(B));
+  {
+    const V = await import("../viewer/cutterview.js");
+    const O = await import("../viewer/cutteroutline.js");
+    const CS = await O.loadCross();
+    const sq = (x0, y0, x1, y1) => ({ hole: false, points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+    const one = V.cutterSolids(CS, [sq(-20, -20, 20, 20)], { height: 15, handle: "standard" });
+    const by = (r, part) => r.parts.filter((p) => p.part === part);
+    check("the miniature is the real cutter: a blade the full height, a rim on the plate",
+      by(one, "blade").length === 1 && by(one, "blade")[0].z1 === 15 && by(one, "rim").length === 1 && by(one, "rim")[0].z1 === 2.5 && one.top === 15,
+      JSON.stringify(one.parts.map((p) => [p.part, p.z0, p.z1, p.polys.length])));
+    check("...the blade is a ring (an outline with a hole in it), not a slab", by(one, "blade")[0].polys.length === 1 && by(one, "blade")[0].polys[0].length === 2);
+    const two = V.cutterSolids(CS, [sq(-12, -10, 12, 30), sq(-6, -34, 6, -22)], { handle: "none" });
+    check("...two pieces apart are shown joined by their connector, as they will be built", by(two, "rim").length === 1 && by(two, "rim")[0].polys.length === 1 && by(two, "blade")[0].polys.length === 2,
+      JSON.stringify(two.parts.map((p) => [p.part, p.polys.length])));
+    check("...and loose when told to be", by(V.cutterSolids(CS, [sq(-12, -10, 12, 30), sq(-6, -34, 6, -22)], { handle: "none", links: false }), "rim").length === 0);
+    const bars = V.cutterSolids(CS, [sq(-20, -20, 20, 20)], { bars: 2, handle: "none" });
+    check("...centre bars lie across the opening at the rim's height", by(bars, "rim").length === 1 && by(bars, "rim")[0].z1 === 2.5);
+    const stamp = V.cutterSolids(CS, [sq(-20, -20, 20, 20)], { kind: "stamp" });
+    check("...a stamp kit shows its stamp and knob over the cutter", by(stamp, "stamp").length === 1 && by(stamp, "knob").length === 1 && stamp.top > 15);
+    const sheet = V.cutterSolids(CS, [sq(-20, -20, 20, 20)], { kind: "stencil" });
+    check("...a stencil is a sheet with the shape cut through it twelve times", sheet.flat && sheet.parts[0].polys[0].length === 13, `${sheet.parts[0]?.polys[0]?.length}`);
+    check("...the roller keeps its drawing", V.cutterSolids(CS, [sq(-20, -20, 20, 20)], { kind: "roller" }) === null);
+  }
   check("...nothing is built until Make it, at the size on the dial", /const scaled = \(\) => \(tools\.scaleLoops \? tools\.scaleLoops\(sel\.loops, size\) : sel\.loops\);/.test(DS) && /const loops = shaped\(\);/.test(DS) && /await emit\(kind, loops, \{ size \}, \{ showCode: false \}\);/.test(H2));
   check("...a late answer to an old search is dropped", /if \(mine !== seq\) return;/.test(DS));
   check("bring your own: an SVG, or a picture to trace",
@@ -542,6 +570,61 @@ console.log("\nand it builds — through the real kernel\n");
   check("...with BOTH pieces on the plate", Math.max(...xs) > 45,
     `x reaches ${Math.max(...xs).toFixed(1)}`);
   check("...and it is a wall, not a filled slab", facets < 2000, `${facets} facets`);
+}
+
+console.log("\npieces that stand apart are joined into one cutter\n");
+{
+  // A rocket and its flame: two outlines with a gap between them used to come
+  // off the plate as two loose rings.
+  const { pieceLinks, linkStrip } = await import("../viewer/cutterkit.js");
+  const box = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  const rocket = [{ hole: false, points: box(-12, -10, 12, 30) }, { hole: false, points: box(-6, -34, 6, -22) }];
+  const links = pieceLinks(rocket);
+  check("two pieces apart get one connector", links.length === 1, `${links.length}`);
+  check("...across the narrowest gap between them", Math.abs(links[0].gap - 12) < 0.01 && Math.abs(links[0].a[1] - -10) < 0.01 && Math.abs(links[0].b[1] - -22) < 0.01, JSON.stringify(links[0]));
+  const strip = linkStrip(links[0], 5, 0.2);
+  const ys = strip.map((p) => p[1]);
+  check("...a strip that ends inside both blades' walls, not flush with them", Math.max(...ys) > -10 && Math.max(...ys) < -9.5 && Math.min(...ys) < -22 && Math.min(...ys) > -22.5, ys.join());
+  check("one piece needs none", pieceLinks([rocket[0]]).length === 0);
+  check("overlapping pieces need none", pieceLinks([rocket[0], { hole: false, points: box(0, 0, 40, 10) }]).length === 0);
+  check("a piece inside another needs none", pieceLinks([rocket[0], { hole: false, points: box(-4, 0, 4, 8) }]).length === 0);
+  check("holes are not pieces", pieceLinks([rocket[0], { hole: true, points: box(-6, -34, 6, -22) }]).length === 0);
+  // five in a row: a chain of four, each to its neighbour, never end to end
+  const row = [0, 30, 60, 90, 120].map((x) => ({ hole: false, points: box(x, 0, x + 20, 20) }));
+  const chain = pieceLinks(row);
+  check("n pieces take n - 1 connectors, each to its nearest", chain.length === 4 && chain.every((l) => Math.abs(l.gap - 10) < 0.01), chain.map((l) => l.gap).join());
+  const src = cutterScad(rocket, { size: 64, tolerance: 0 });
+  check("the cutter's code says what the strip is for", /Connectors: the pieces of this shape stand apart/.test(src) && (src.match(/linear_extrude\(RIM_H\) polygon\(/g) || []).length === 1, src.slice(-400));
+  check("...and can be told not to", !/Connectors/.test(cutterScad(rocket, { size: 64, links: false })));
+  // The page decides what language it is reading from the words in it, and a
+  // comment saying "to let that piece go" was read as JavaScript's let: the
+  // whole kit went to the wrong parser and failed on line 12.
+  const { looksLikeOpenSCAD } = await import("../src/openscad.js");
+  check("...and the page still reads the kit as OpenSCAD, comment and all", looksLikeOpenSCAD(src) && looksLikeOpenSCAD(stampScad(rocket, { size: 64 })));
+  check("a one-piece cutter has none", !/Connectors/.test(cutterScad([rocket[0]], { size: 40 })));
+  check("the stamp kit's cutter is joined as well", /Connectors/.test(stampScad(rocket, { size: 64 })));
+  // bodies, counted on the mesh itself: triangles that share a corner are one
+  // body, and what is left over is how many separate things would come off the plate
+  const bodies = (stl) => {
+    const id = new Map(), parent = [];
+    const find = (i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+    const vs = [...stl.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => {
+      const k = `${(+m[1]).toFixed(3)},${(+m[2]).toFixed(3)},${(+m[3]).toFixed(3)}`;
+      if (!id.has(k)) { id.set(k, parent.length); parent.push(parent.length); }
+      return id.get(k);
+    });
+    for (let i = 0; i + 2 < vs.length; i += 3) { parent[find(vs[i])] = find(vs[i + 1]); parent[find(vs[i + 1])] = find(vs[i + 2]); }
+    return new Set(parent.map((_, i) => find(i))).size;
+  };
+  const count = async (opts, loops = rocket) => bodies(toSTL(await build(fromOpenSCAD(cutterScad(loops, { size: 64, ...opts }))), "t"));
+  let joined = -1, bare = -1, loose = -1, err = "";
+  try { joined = await count({}); bare = await count({ handle: "none" }); loose = await count({ handle: "none", links: false }); } catch (e) { err = String(e.message || e); }
+  let single = -1;
+  try { single = await count({}, [rocket[0]]); } catch (e) { err = String(e.message || e); }
+  check("(a one-piece cutter counts as one body, so the count means something)", single === 1, err || `${single} bodies`);
+  check("built through the kernel, the two pieces are ONE body", joined === 1, err || `${joined} bodies`);
+  check("...with no rim at all, too", bare === 1, err || `${bare} bodies`);
+  check("...and without the connector they are two, which is what it is for", loose === 2, err || `${loose} bodies`);
 }
 
 // ------------------------------------------------- a drawing -> one outline

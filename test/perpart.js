@@ -332,11 +332,17 @@ console.log("\nthe view turns around the model\n");
   // transparency, because nobody chose it. Measured after the gate: the same
   // look() gives transmission 0 / opacity 1; picking the spool by hand in the
   // panel gives the full 0.58 / 0.86 resin.
-  has("const t = mat.filamentChosen ? f.t : 0;",
-    "a spool's glassiness applies only when picked by hand");
-  has('if (k === "opacity" && !mat.filamentChosen && look[k] < 100) continue;',
-    "...and its preset cannot fade an un-chosen model either",
-    "funfetti's lighting preset ships opacity 88");
+  //
+  // GLITTER IS THE EXCEPTION, since the see-through faces are drawn in layers
+  // (the near wall in front, what is inside another solid hidden): a spool with
+  // flake is see-through however it was named, because flake in clear plastic
+  // is the whole look of it.
+  has("function spoolSeeThrough(f) { return mat.filamentChosen || !!f?.spool?.flake || !!f?.spool?.clear; }",
+    "a spool's glassiness applies when picked by hand, when the spool has flake, or when see-through is what the spool is");
+  has("const t = spoolSeeThrough(f) ? f.t : 0;", "...and nowhere else");
+  has('if (k === "opacity" && !mat.filamentChosen && !spool.flake && !spool.clear && look[k] < 100) continue;',
+    "...and a plain spool's preset cannot fade an un-chosen model either",
+    "a see-through spool's lighting preset ships an opacity under 100");
   has("mat.filamentChosen = true;", "the panel picker is the one hand-picked path");
   check("every code path marks the spool as merely named",
     (V.match(/mat\.filamentChosen = false;/g) || []).length >= 3,
